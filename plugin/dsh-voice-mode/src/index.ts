@@ -38,11 +38,12 @@ const defaultModelCacheDir = (): string =>
     : join(homedir(), '.cache', 'dsh-voice-mode', 'models')
 
 /**
- * Q15 设置命名空间：全部运行时旋钮（音色/语速/打断/静音/超时/镜像/自动发送）。
+ * Q15 设置命名空间：全部运行时旋钮（音色/语速/打断/静音/超时/镜像/自动发送/模式/唤醒词）。
  *
- * 第一性原则：设置是用户可调的唯一活来源；插件启动时以 config 播种默认值，
- * 设置文件一旦显式写入即覆盖 config（config 不再是「写了无效」的死键）。
- * 生效范围：voice/rate 即时生效（TTS 热切换）；其余在下次进入语音模式时生效。
+ * 官方分层（dsh-settings 契约）：resolve = schema(mergeLayers(base, 用户文档))——
+ * schema 默认（平台常量）为最底、组合包 config 经 register 的 `base` 为第二顺位、
+ * 设置面板（用户文档）最高。因此：本文件 schema 默认全是平台常量；config 子集在
+ * apply 期以 `{ base }` 传入。生效范围：voice/rate 即时（TTS 热切换）；其余下次进入生效。
  */
 export interface VoiceSettingsValue {
   voice: string
@@ -52,43 +53,58 @@ export interface VoiceSettingsValue {
   silenceMs: number
   /** 空闲多少分钟自动退出语音模式（Q11，默认 10）。 */
   idleTimeoutMinutes: number
-  /** 模型上游 host（国内网络可配 hf-mirror.com）。 */
+  /** 模型上游 host（空 = 默认源；国内网络可配 hf-mirror.com）。 */
   modelHost: string
-  /** 定稿后是否自动发送（关 = 只进草稿，按住 Ctrl 仍可强制发送）。 */
+  /** 定稿后是否自动发送（关 = 只进草稿，按住 Ctrl/松手仍可强制发送）。 */
   autoSend: boolean
+  /** 交互模式：toggle 持续聆听+2s 静音断句；hold 按住说话、松手发送。 */
+  mode: 'toggle' | 'hold'
+  /** 唤醒词（空 = 关；如「你好小D」）：待机态说出后激活，避免误触。 */
+  wakeWord: string
 }
 
-/** 以 config 默认值构造设置 schema（apply 期调用，避免死配置）。 */
-export function createVoiceSettingsSchema(defs: VoiceSettingsValue): z<VoiceSettingsValue> {
-  return z.object({
-    voice: z
-      .string()
-      .default(defs.voice)
-      .description(
-        'Edge TTS 音色（常用：zh-CN-XiaoxiaoNeural 晓晓 / zh-CN-YunxiNeural 云希 / zh-CN-YunjianNeural 云健 / zh-CN-YunyangNeural 云扬 / zh-CN-XiaoyiNeural 晓伊 / en-US-AriaNeural）',
-      ),
-    rate: z.number().default(defs.rate).description('朗读语速倍率（0.5 = 慢速，2.0 = 快速，1.0 = 正常）'),
-    interruptLevel: z
-      .union([z.const(0), z.const(1), z.const(2)])
-      .default(defs.interruptLevel)
-      .description('发声打断灵敏度：0 高门槛（安静环境，默认）/ 1 中 / 2 低（嘈杂环境更容易打断）'),
-    silenceMs: z.number().default(defs.silenceMs).description('说完整一句的静音停顿毫秒数（默认 2000 = 2 秒）'),
-    idleTimeoutMinutes: z.number().default(defs.idleTimeoutMinutes).description('无活动自动退出语音模式的分钟数（默认 10）'),
-    modelHost: z.string().default(defs.modelHost).description('ASR 模型下载源（国内网络可填 https://hf-mirror.com；留空用默认）'),
-    autoSend: z.boolean().default(defs.autoSend).description('识别定稿后自动发送（关闭则只进草稿供编辑；按住 Ctrl 仍可强制发送）'),
-  })
-}
-
-/** 兼容导出：以默认配置构造的 schema（供外部引用/自检）。 */
-export const VoiceSettingsSchema: z<VoiceSettingsValue> = createVoiceSettingsSchema({
+/** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
+const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   voice: 'zh-CN-XiaoxiaoNeural',
   rate: 1.0,
   interruptLevel: 0,
   silenceMs: 2000,
   idleTimeoutMinutes: 10,
-  modelHost: 'https://huggingface.co',
+  modelHost: '',
   autoSend: true,
-})
+  mode: 'toggle',
+  wakeWord: '',
+}
+
+/** 以平台常量默认构造设置 schema。 */
+export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z<VoiceSettingsValue> {
+  const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs }
+  return z.object({
+    voice: z
+      .string()
+      .default(d.voice)
+      .description(
+        'Edge TTS 音色（大陆自然音：zh-CN-XiaoxiaoNeural 晓晓·女 / zh-CN-XiaoyiNeural 晓伊·女 / zh-CN-YunxiNeural 云希·男 / zh-CN-YunjianNeural 云健·男 / zh-CN-YunyangNeural 云扬·男 / zh-CN-YunxiaNeural 云夏·男；方言：东北-小北 / 陕西-小妮；粤语：HiuGaai/HiuMaan/WanLung；台湾：HsiaoChen/HsiaoYu/YunJhe；完整清单见 scripts/list-voices.mjs）',
+      ),
+    rate: z.number().default(d.rate).description('朗读语速倍率（0.5 = 慢速，2.0 = 快速，1.0 = 正常）'),
+    interruptLevel: z
+      .union([z.const(0), z.const(1), z.const(2)])
+      .default(d.interruptLevel)
+      .description('发声打断灵敏度：0 高门槛（安静环境，默认）/ 1 中 / 2 低（嘈杂环境更容易打断）'),
+    silenceMs: z.number().default(d.silenceMs).description('说完整一句的静音停顿毫秒数（默认 2000 = 2 秒）'),
+    idleTimeoutMinutes: z.number().default(d.idleTimeoutMinutes).description('无活动自动退出语音模式的分钟数（默认 10）'),
+    modelHost: z.string().default(d.modelHost).description('ASR 模型下载源（留空用默认源；国内网络可填 https://hf-mirror.com）'),
+    autoSend: z.boolean().default(d.autoSend).description('识别定稿后自动发送（关闭则只进草稿供编辑；按住 Ctrl / hold 松手仍会发送）'),
+    mode: z
+      .union([z.const('toggle'), z.const('hold')])
+      .default(d.mode)
+      .description('交互模式：toggle 持续聆听 + 静音自动断句（默认）；hold 按住说话、松手发送（短按退出）'),
+    wakeWord: z.string().default(d.wakeWord).description('唤醒词：在待机态说出后开始识别（默认关；如「你好小D」）'),
+  })
+}
+
+/** 兼容导出：平台常量默认 schema（供外部引用/自检）。 */
+export const VoiceSettingsSchema: z<VoiceSettingsValue> = createVoiceSettingsSchema()
 
 /** 插件配置（cordis.patch.yml / 设置面板可覆盖；默认值面向对话场景）。 */
 export interface Config {
@@ -141,18 +157,20 @@ export function apply(ctx: Context, config: Config): void {
     }
   }
 
-  // --- 设置命名空间（Q15）：以 config 播种默认，用户可实时覆盖全部旋钮。 ---
+  // --- 设置命名空间（官方分层：schema 平台常量默认 ⊕ config base ⊕ 用户文档）。 ---
   const settingsScope = ctx.settings.register(
     settingsNamespace('voice-mode'),
-    createVoiceSettingsSchema({
-      voice: config.voice,
-      rate: config.rate,
-      interruptLevel: config.interruptLevel,
-      silenceMs: config.silenceMs,
-      idleTimeoutMinutes: config.idleTimeoutMinutes,
-      modelHost: config.modelHost,
-      autoSend: true,
-    }),
+    createVoiceSettingsSchema(),
+    {
+      base: {
+        voice: config.voice,
+        rate: config.rate,
+        interruptLevel: config.interruptLevel,
+        silenceMs: config.silenceMs,
+        idleTimeoutMinutes: config.idleTimeoutMinutes,
+        modelHost: config.modelHost,
+      },
+    },
   )
   let vset: VoiceSettingsValue = settingsScope.get()
 
@@ -224,7 +242,6 @@ export function apply(ctx: Context, config: Config): void {
         res.end(
           JSON.stringify({
             basePath: base,
-            silenceMs: config.silenceMs,
             rate: currentRate(),
             voice: currentVoice(),
             interruptLevel: currentInterrupt(),
@@ -232,6 +249,8 @@ export function apply(ctx: Context, config: Config): void {
             idleTimeoutMinutes: vset.idleTimeoutMinutes,
             modelHost: vset.modelHost,
             autoSend: vset.autoSend,
+            mode: vset.mode,
+            wakeWord: vset.wakeWord,
             cacheDir: config.cacheDir,
           }),
         )
