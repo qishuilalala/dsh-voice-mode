@@ -70,5 +70,8 @@
     "zipformer2",
     "msedge-tts"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT"
 }

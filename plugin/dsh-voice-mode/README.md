@@ -1,70 +1,159 @@
 # dsh-voice-mode
 
-DeepSeek Harness 语音双工对话模式（full-duplex voice mode）：会话内开关 + 全局快捷键进入，zipformer2 流式识别、停顿自动发送、只读最终答复按句流式朗读、开口即可打断。普通会话零打扰（模式隔离）。
+> Full-duplex voice conversation mode for DeepSeek Harness (dsh): speak, get a
+> spoken answer. Streamed zipformer2 ASR → editable draft → auto send → the
+> final reply is read out sentence-by-sentence via Edge TTS, and your voice
+> interrupts playback and the running turn. No API key.
 
-## 功能
+DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（真 barge-in）。无需 API Key，模型在本地宿主端推理。
 
-- **进入模式**：输入框工具排麦克风按钮或全局快捷键 `Ctrl+Shift+V`；全局单活（同一时刻仅一个会话处于语音模式，切换会话自动让出）
-- **输入链路**：持续聆听 → VAD 分段 → zipformer2 流式识别（边说边出字）→ 静音 2s 自动断句 → 定稿进草稿并自动发送；按住 `Ctrl` 强制立即发送（兜底）；识别文本进草稿可编辑，一旦打字即退出语音模式（双通道不混入）
-- **输出链路**：只朗读模型最终答复的 `text-delta`（reasoning/工具调用不读），按句流式 Edge TTS 朗读 + 实时字幕；工具调用触发提示音；全文照常写入聊天记录（可回看/复制）
-- **开口打断**：高门槛语音前沿（能量阈值 + 持续时长，三档灵敏度）→ 停 TTS + 取消当前回合（保留半截并标注）+ 你的话自动续入新消息
-- **容错**：麦克风被拒红点提示、ASR 加载中自动重试不丢音频、TTS 单句失败不阻塞、SSE 断线自动重连、提交失败文字留在草稿
-- **设置**：设置 → 插件配置 → voice-mode，可调音色（晓晓/云希/云扬等）、语速、打断灵敏度，即时生效
-- **空闲退出**：10 分钟无活动自动退出语音模式并释放麦克风
+## 特性
+
+- **语音模式**：输入框工具排麦克风按钮或全局快捷键 `Ctrl+Shift+V` 进入/退出；全局单活（同一时刻仅一个会话处于语音模式，切换会话自动让出）
+- **输入链路**：持续聆听 → RMS VAD 分段 → zipformer2 流式识别（边说边出字，实时字幕预览）→ 静音 2 秒自动断句进草稿并自动发送；按住 `Ctrl` 强制立即发送；识别文本进可编辑草稿，一旦打字即退出语音模式（双通道不混入）
+- **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式 Edge TTS 朗读 + 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录
+- **开口打断（barge-in）**：三档灵敏度的发声前沿检测 → 本地静音 + host 合成队列作废（epoch）+ 正在运行的回合取消（保留半截并自然续入你的新消息）
+- **模型懒加载与进度**：首次使用自动下载 zipformer2 中文流式模型（约 160MB，`.part` 断点续传），状态条实时显示下载进度；可用 `npm run prefetch` 预下载
+- **容错**：麦克风被拒红点提示、模型下载失败可见提示、TTS 连接失败状态条提示（自动重试）、提交失败文字留在草稿、SSE 断线自动重连
+- **设置**：设置 → 插件配置 → voice-mode，可调音色 / 语速 / 打断灵敏度，即时生效
+- **空闲退出**：10 分钟无活动自动退出并释放麦克风
+
+## 操作手势
+
+| 手势 | 行为 |
+| --- | --- |
+| 点按麦克风按钮 / `Ctrl+Shift+V` | 进入 / 退出语音模式 |
+| 直接说话，停顿 2 秒 | 自动断句并发送 |
+| 按住 `Ctrl`（≥250ms 语音） | 强制立即发送当前段 |
+| AI 朗读时开口说话 | 打断朗读并取消当前回合 |
+| 在输入框打字 | 自动退出语音模式（草稿保留） |
 
 ## 安装
 
+**要求**：dsh web（Node ≥ 18），现代浏览器（Chrome / Edge / Firefox，需支持 `getUserMedia` 与 Web Audio）。
+
 ```sh
+# 方式一：从 npm 安装（推荐）
 dsh plugin --profile web add dsh-voice-mode
-systemctl restart dsh   # bundle 插件需重启生效
+# 等价形式（本机未装 dsh CLI 时由 npx 临时拉起）：
+npx -y @deepseek-ai/dsh plugin --profile web add dsh-voice-mode
+
+# 方式二：本地 tarball
+dsh plugin --profile web add ./dsh-voice-mode-0.1.0.tgz
+
+# 方式三：从源码安装
+git clone https://github.com/qishuilalala/dsh-voice-mode.git
+cd dsh-voice-mode/plugin/dsh-voice-mode && pnpm install && pnpm build
+dsh plugin --profile web add .
 ```
 
-或从源码/本地 tarball 安装：
+**bundle 插件需重启 dsh 生效**（不同平台的重启方式）：
+
+- **Linux（systemd）**：`systemctl restart dsh`
+- **Windows / macOS / 手动托管**：重启你的 dsh 进程（结束进程后重新 `dsh web`，或在其服务管理器中重启）
+
+**可选**：预下载 ASR 模型，让首次进入语音模式零等待：
 
 ```sh
-dsh plugin --profile web add ./dsh-voice-mode-x.y.z.tgz
+npm run prefetch          # 插件目录内执行；默认写到平台缓存目录
+# 或指定缓存位置：node scripts/prefetch.mjs --cache-dir /where/ever/models
 ```
 
 ## 使用
 
 1. 点击输入框工具排的麦克风按钮（或按 `Ctrl+Shift+V`）进入语音模式，输入框上方出现状态条
 2. 直接说话；说完停顿 2 秒自动发送；按住 `Ctrl` 立即发送
-3. AI 回复逐句朗读，右下角浮层显示字幕；点「跳过」或直接开口即可打断
+3. AI 回复逐句朗读，右下角浮层显示字幕；点「跳过」或直接开口打断
 4. 点状态条「退出」（或再按 `Ctrl+Shift+V`）退出语音模式
 
-首次进入语音模式会下载 zipformer2 中文流式识别模型（约 160MB，断点续传，缓存于 `~/.cache/dsh-voice-mode/models/`）。
+首次进入会下载识别模型，状态条显示 `正在加载模型… <文件> <百分比>%`。
+
+## 设置（设置 → 插件配置 → voice-mode）
+
+| 键 | 默认 | 说明 |
+| --- | --- | --- |
+| `voice` | `zh-CN-XiaoxiaoNeural` | Edge TTS 音色（晓晓 / 云希 / 云健 / 云扬 / 晓伊 / en-US-AriaNeural 等） |
+| `rate` | `1.0` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速） |
+| `interruptLevel` | `0` | 发声打断灵敏度：0 高门槛 / 1 中 / 2 低 |
+
+## 配置（bundle patch / 设置面板可覆盖）
+
+```yaml
+- id: voice-mode
+  name: dsh-voice-mode
+  config:
+    enabled: true
+    basePath: /voice-mode
+    voice: zh-CN-XiaoxiaoNeural
+    rate: 1.0
+    interruptLevel: 0
+    silenceMs: 2000          # 静音多少毫秒判定说完一句
+    idleTimeoutMinutes: 10   # 无活动自动退出
+    cacheDir: ~/.cache/dsh-voice-mode/models   # 可覆盖；默认按平台
+    modelHost: https://huggingface.co          # 也可用 https://hf-mirror.com（国内网络）
+```
+
+## API
+
+| 路由 | 说明 |
+| --- | --- |
+| `GET /voice-mode/stream` | SSE：`event: audio`（`{sessionId, seq, text, audio(base64 MP3)}`）、`event: mode`（全局单活归属）、`event: tool`（提示音）、`event: asr-progress / asr-ready / asr-error / tts-error` |
+| `POST /voice-mode/toggle` | `{sessionId, on}` 进入/退出语音模式（全局单活） |
+| `POST /voice-mode/asr` | 原始 f32 LE 16k PCM 载荷 → `{text}`（流式 zipformer2）；模型未就绪返回 `202 {loading}` |
+| `POST /voice-mode/cancel` | `{sessionId}` 作废 TTS 队列并丢弃在途 ASR 段 |
+| `GET /voice-mode/config` | 客户端引导参数（静音阈值 / 灵敏度 / 音色语速等） |
+| `GET /voice-mode` | 健康检查 `{ok, name, enabled, active}` |
+
+## 模型与缓存
+
+- 识别模型：`csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30`（encoder ≈154MB / decoder / joiner / tokens，共约 160MB），宿主端 sherpa-onnx（Node WASM，Apache-2.0，天然跨平台）
+- 缓存目录默认值按平台：
+  - **Windows**：`%LOCALAPPDATA%\dsh-voice-mode\models`
+  - **macOS / Linux**：`~/.cache/dsh-voice-mode/models`
+  - 均可通过 `cacheDir` 配置覆盖
+- 下载走 `.part` 断点续传，`huggingface.co` 失败自动回退 `hf-mirror.com`（可配置 `modelHost`）
 
 ## 工作原理
 
 ```
-input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f32 PCM，16k）
-                                           │ zipformer2 流式识别（增量解码）
+input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f32 PCM，16k，增量解码）
+                                           │ zipformer2 流式识别（宿主端 WASM）
                                            ▼
         composer draft ──autoSend──▶ model stream ──llm/stream tap（仅活跃语音会话）
                                            │ text-delta 过滤 → 句子切分
                                            ▼
         browser ◀── SSE /voice-mode/stream ◀── TtsQueue（msedge-tts 逐句合成）
-
-barge-in: 高门槛语音前沿 ──▶ skip 本地播放 + POST /cancel（TTS epoch++）
-                            + session.cancel({ keepInbox: true })（取消回合、保新消息）
 ```
 
-- 语音与朗读只发生在 **activeVoiceSession**（全局单活指针）；普通会话 `llm/stream` 直达、零开销（模式隔离）
-- `llm/stream` tap 无损：每个 chunk 原样透传，分句/合成只旁观，不阻塞模型流
-- zipformer2 在 host 端推理（sherpa-onnx Node WASM，Apache-2.0），浏览器只采集与端点检测
-- TTS 队列按会话隔离 + epoch 版本号：打断后旧帧全部丢弃，真正静音
+- 语音与朗读只发生在全局单活指针 `activeVoiceSession` 指定的会话；普通会话 `llm/stream` 直达、零开销（模式隔离）
+- `llm/stream` tap 无损：每个 chunk 原样透传，切句/合成只旁观，不阻塞模型流
+- zipformer2 在宿主端推理（sherpa-onnx Node WASM），浏览器只负责采集（`getUserMedia` 16k 单声道）与端点检测
+- TTS 队列按会话隔离 + epoch 版本号：打断后旧帧全部作废，真正静音
 
 ## 已知限制
 
-- 打断依赖浏览器回声消除（`echoCancellation`）；扬声器音量过大时可能漏声到麦克风（无法在 JS 层做 AEC）
-- `Ctrl+Shift+V` 覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍可用 `Ctrl+V`）
-- 中文语音模型为简体中文优先；识别质量受环境噪声影响
+- 发声打断依赖浏览器回声消除（`echoCancellation`）；扬声器音量过大时可能漏声到麦克风（JS 层无法做 AEC）
+- `Ctrl+Shift+V` 会覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍可用 `Ctrl+V`）
+- 识别模型为简体中文优先；识别质量受环境噪声影响
+- 浏览器自动播放策略：朗读需要页面已有用户交互（点击麦克风即满足）；若浏览器拦截播放且状态条无提示，请确认网页处于前台且非静音状态
+
+## 故障排查
+
+| 现象 | 处理 |
+| --- | --- |
+| 点麦克风无反应，状态条提示红字 | 浏览器拒绝了麦克风权限：地址栏允许麦克风后重试 |
+| 状态条显示「正在加载模型… x%」卡住 | 检查网络；模型大（160MB）可先 `npm run prefetch`；国内网络把 `modelHost` 配成 `https://hf-mirror.com` |
+| 状态条显示「语音模型下载失败」 | 两镜像均不可达：检查网络/代理后重新进入语音模式（断点续传） |
+| 有字幕（浮层）但听不到声音 | 检查系统音量/输出设备；浏览器自动播放被拦时点击页面任意处后再试 |
+| 状态条显示「朗读连接失败：正在重试…」 | Edge TTS 服务不可达（境外服务），稍后自动重试；持续失败请检查网络/代理 |
+| 识别不准 | 靠近麦克风、降低环境噪声；还有回声时把「打断灵敏度」调高一档 |
 
 ## 开发
 
 ```sh
-pnpm install && pnpm build   # esbuild：lib/index.js（host）+ lib/client.js（browser）
-systemctl restart dsh
+pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js（browser）
+pnpm test                     # segmenter 纯单元测试（无网络）
+systemctl restart dsh         # Linux；其他平台重启 dsh 进程
 ```
 
 结构：
@@ -73,9 +162,11 @@ systemctl restart dsh
 src/index.ts      host：单活指针、llm/stream tap、SSE、settings 注册
 src/asr-host.ts   host：zipformer2 流式识别 + 模型懒下载（.part 断点续传）
 src/tts-queue.ts  host：逐会话 TTS 队列 + epoch 打断机制
-src/segmenter.ts  host/client：句子切分（markdown 剥离 + 终止标点）
+src/segmenter.ts  host：句子切分（markdown 剥离 + 终止标点）
 src/client.tsx    client：麦克风按钮 + 状态条 + 朗读浮层 + 打断
 src/asr.ts        client：getUserMedia + RMS VAD + partial 轮询
+scripts/prefetch.mjs  模型预下载（跨平台缓存目录 + 断点续传）
+test/segmenter.test.mjs 单元测试
 ```
 
 ## 许可
