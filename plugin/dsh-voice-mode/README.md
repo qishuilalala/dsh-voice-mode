@@ -152,7 +152,7 @@ input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f
 
 ```sh
 pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js（browser）
-pnpm test                     # segmenter 纯单元测试（无网络）
+pnpm test                     # segmenter 单测 + 发布前自检（均无需网络）
 systemctl restart dsh         # Linux；其他平台重启 dsh 进程
 ```
 
@@ -166,8 +166,11 @@ src/segmenter.ts  host：句子切分（markdown 剥离 + 终止标点）
 src/client.tsx    client：麦克风按钮 + 状态条 + 朗读浮层 + 打断
 src/asr.ts        client：getUserMedia + RMS VAD + partial 轮询
 scripts/prefetch.mjs  模型预下载（跨平台缓存目录 + 断点续传）
-test/segmenter.test.mjs 单元测试
+test/segmenter.test.mjs 句子切分单元测试
+test/verify-client.mjs   发布前自检（bundle 清单/导出/形状）
 ```
+
+发布与精选列表提交流程见仓库根 `BEST_PRACTICES.md` 与 `docs/publish/`。
 
 ## 许可
 
