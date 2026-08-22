@@ -32,7 +32,8 @@
   "scripts": {
     "build": "node build.mjs",
     "prepack": "node build.mjs",
-    "test": "node test/segmenter.test.mjs",
+    "test": "node test/segmenter.test.mjs && node test/verify-client.mjs",
+    "verify:client": "node test/verify-client.mjs",
     "prefetch": "node scripts/prefetch.mjs"
   },
   "dsh": {

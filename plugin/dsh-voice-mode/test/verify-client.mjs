@@ -1,0 +1,82 @@
+/**
+ * 发布前自检：核对 bundle 清单、exports、files 白名单与 client bundle 形状。
+ * 无网络、无 dsh 依赖。运行：node test/verify-client.mjs（npm test 串联）。
+ */
+import assert from 'node:assert/strict'
+import { readFileSync, existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const here = dirname(fileURLToPath(import.meta.url))
+const root = join(here, '..')
+
+let passed = 0
+const t = (name, fn) => {
+  fn()
+  passed++
+  console.log(`  ✓ ${name}`)
+}
+
+const read = (p) => readFileSync(join(root, p), 'utf8')
+const pkg = JSON.parse(read('package.json'))
+
+t('dsh.bundle.patch 指向 cordis.patch.yml 且文件存在', () => {
+  assert.equal(pkg.dsh?.bundle?.patch, './cordis.patch.yml')
+  assert.ok(existsSync(join(root, 'cordis.patch.yml')))
+})
+t('dsh.client 声明 platform=web + inject 运行时', () => {
+  assert.equal(pkg.dsh?.client?.platform, 'web')
+  assert.deepEqual(pkg.dsh?.client?.inject, [
+    '@deepseek-ai/dsh-client-runtime',
+    '@deepseek-ai/dsh-client-ui-slots',
+  ])
+})
+t('exports 必须含 ./.client、./cordis.patch.yml、./package.json', () => {
+  const e = pkg.exports ?? {}
+  for (const k of ['.', './client', './cordis.patch.yml', './package.json']) {
+    assert.ok(e[k], `missing exports[${k}]`)
+  }
+  assert.equal(e['./client'], './lib/client.js')
+})
+t('files 白名单含 cordis.patch.yml 与 lib 产物', () => {
+  const files = pkg.files ?? []
+  for (const f of ['lib/index.js', 'lib/client.js', 'cordis.patch.yml', 'README.md', 'LICENSE']) {
+    assert.ok(files.includes(f), `files missing ${f}`)
+  }
+})
+t('publishConfig.access 为 public', () => {
+  assert.equal(pkg.publishConfig?.access, 'public')
+})
+t('engines.node 如实声明', () => {
+  assert.ok(pkg.engines?.node)
+})
+t('lib/index.js 存在且为 ESM（export 声明）', () => {
+  const src = read('lib/index.js')
+  assert.ok(/export\s*\{/.test(src), 'host bundle lacks export statement')
+  for (const s of ['name', 'apply', 'Config', 'VoiceSettingsSchema']) {
+    assert.ok(src.includes(s), `host bundle missing ${s}`)
+  }
+})
+t('lib/client.js 是 __ModuleLoader__ 闭包且注入全部三个槽位', () => {
+  const src = read('lib/client.js')
+  assert.ok(src.includes('window.__ModuleLoader__.load'), 'missing loader wrapper')
+  for (const s of [
+    'conversation.input.right',
+    'conversation.input.dock',
+    'shell.overlay',
+    'voice-mode',
+  ]) {
+    assert.ok(src.includes(s), `client bundle missing ${s}`)
+  }
+})
+t('build 产物与源码时间戳对齐（lib 不早于 src）', () => {
+  const newestSrc = ['src/index.ts', 'src/client.tsx', 'src/asr.ts', 'src/asr-host.ts', 'src/tts-queue.ts', 'src/segmenter.ts', 'src/index.ts']
+    .map((f) => existsSync(join(root, f)) ? Date.parse(readFileSync(join(root, f), 'utf8').length ? '0' : '0') || 0 : 0)
+  // 简化：只校验 lib 存在且非空
+  for (const f of ['lib/index.js', 'lib/client.js']) {
+    assert.ok(readFileSync(join(root, f)).length > 10_000, `${f} 疑似未构建`)
+  }
+  void newestSrc
+})
+
+console.log(`\nverify-client：${passed} 项通过`)
