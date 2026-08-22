@@ -428,7 +428,7 @@ function createAudioEngine(setUi) {
       URL.revokeObjectURL(url);
       playNext();
     };
-    setUi({ playing: true, playingCaption: frame.text });
+    setUi({ playing: true, playingCaption: frame.text, ttsNotice: null });
     void audio.play().catch(() => playNext());
   };
   let beepCtx = null;
@@ -470,7 +470,9 @@ function createVoiceBus(basePath = "/voice-mode", ctx) {
     levels: [],
     error: null,
     playingCaption: null,
-    playing: false
+    playing: false,
+    model: null,
+    ttsNotice: null
   };
   const listeners = /* @__PURE__ */ new Set();
   const audioListeners = /* @__PURE__ */ new Set();
@@ -523,6 +525,39 @@ function createVoiceBus(basePath = "/voice-mode", ctx) {
             fn(ev);
           } catch {
           }
+        }
+      } catch {
+      }
+    });
+    source.addEventListener("asr-progress", (e) => {
+      try {
+        const p = JSON.parse(e.data);
+        ui.model = { file: p.file ?? "", percent: p.percent ?? 0 };
+        notify();
+      } catch {
+      }
+    });
+    source.addEventListener("asr-ready", () => {
+      if (ui.model) {
+        ui.model = null;
+        notify();
+      }
+    });
+    source.addEventListener("asr-error", (e) => {
+      try {
+        const p = JSON.parse(e.data);
+        ui.error = `\u8BED\u97F3\u6A21\u578B\u4E0B\u8F7D\u5931\u8D25\uFF08${p.file ?? ""}\uFF09\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u65B0\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u91CD\u8BD5`;
+        ui.model = null;
+        notify();
+      } catch {
+      }
+    });
+    source.addEventListener("tts-error", (e) => {
+      try {
+        const p = JSON.parse(e.data);
+        if (p.sessionId === activeSessionId) {
+          ui.ttsNotice = "\u6717\u8BFB\u8FDE\u63A5\u5931\u8D25\uFF1A\u6B63\u5728\u91CD\u8BD5\u2026";
+          notify();
         }
       } catch {
       }
@@ -675,7 +710,7 @@ function MicButton({
     const engine = engineRef.current;
     engineRef.current = null;
     if (engine) void engine.stop();
-    bus.setUi({ state: "idle", partial: "", levels: [], error: null });
+    bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null });
     const sid = sidRef.current;
     if (sid) void bus.exit(sid);
   };
@@ -760,7 +795,7 @@ function MicButton({
         }
         bus.setUi({ partial: "\u2026" });
       });
-      bus.setUi({ state: "idle", partial: "", levels: [] });
+      bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null });
       await engine.start();
       setLocalMode("on");
       resetIdle();
@@ -933,7 +968,7 @@ function VoiceStatusBar({ bus, sessionId }) {
           },
           i
         )) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.partial ? b.ui.partial : stateText }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026 ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {

@@ -4,6 +4,17 @@
   "version": "0.1.0",
   "type": "module",
   "main": "lib/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qishuilalala/dsh-voice-mode.git"
+  },
+  "homepage": "https://github.com/qishuilalala/dsh-voice-mode#readme",
+  "bugs": {
+    "url": "https://github.com/qishuilalala/dsh-voice-mode/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",

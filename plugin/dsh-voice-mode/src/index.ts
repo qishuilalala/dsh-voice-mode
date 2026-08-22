@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
-import os from 'node:os'
+import { homedir } from 'node:os'
 import { createAsrRuntime, handleAsrRequest } from './asr-host.ts'
 import { SentenceSegmenter } from './segmenter.ts'
 import { TtsQueue } from './tts-queue.ts'
@@ -28,6 +28,15 @@ export const name = 'voice-mode'
 
 export const inject = ['webServer', 'settings']
 
+/**
+ * 模型缓存目录平台默认值：Windows 用 LOCALAPPDATA，类 Unix 用 ~/.cache。
+ * 跨平台一致约定（WINDOWS/macOS/Linux 均无需额外配置即可写入）。
+ */
+const defaultModelCacheDir = (): string =>
+  process.platform === 'win32'
+    ? join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'dsh-voice-mode', 'models')
+    : join(homedir(), '.cache', 'dsh-voice-mode', 'models')
+
 /** Q15 设置命名空间 schema：音色 / 语速 / 打断灵敏度。 */
 export interface VoiceSettingsValue {
   voice: string
@@ -36,9 +45,17 @@ export interface VoiceSettingsValue {
 }
 
 export const VoiceSettingsSchema: z<VoiceSettingsValue> = z.object({
-  voice: z.string().default('zh-CN-XiaoxiaoNeural'),
-  rate: z.number().default(1.0),
-  interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
+  voice: z
+    .string()
+    .default('zh-CN-XiaoxiaoNeural')
+    .description(
+      'Edge TTS 音色（常用：zh-CN-XiaoxiaoNeural 晓晓 / zh-CN-YunxiNeural 云希 / zh-CN-YunjianNeural 云健 / zh-CN-YunyangNeural 云扬 / zh-CN-XiaoyiNeural 晓伊 / en-US-AriaNeural）',
+    ),
+  rate: z.number().default(1.0).description('朗读语速倍率（0.5 = 慢速，2.0 = 快速，1.0 = 正常）'),
+  interruptLevel: z
+    .union([z.const(0), z.const(1), z.const(2)])
+    .default(0)
+    .description('发声打断灵敏度：0 高门槛（安静环境，默认）/ 1 中 / 2 低（嘈杂环境更容易打断）'),
 })
 
 /** 插件配置（cordis.patch.yml / 设置面板可覆盖；默认值面向对话场景）。 */
@@ -66,7 +83,7 @@ export interface Config {
 export const Config: z<Config> = z.object({
   basePath: z.string().default('/voice-mode'),
   enabled: z.boolean().default(true),
-  cacheDir: z.string().default(join(os.homedir(), '.cache', 'dsh-voice-mode', 'models')),
+  cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default('https://huggingface.co'),
   voice: z.string().default('zh-CN-XiaoxiaoNeural'),
   rate: z.number().default(1.0),
@@ -106,7 +123,11 @@ export function apply(ctx: Context, config: Config): void {
     VoiceSettingsSchema,
   )
   let vset: VoiceSettingsValue = settingsScope.get()
-  const queue = new TtsQueue({ voice: vset.voice, rate: vset.rate })
+  const queue = new TtsQueue({
+    voice: vset.voice,
+    rate: vset.rate,
+    onError: (sessionId) => broadcast('tts-error', { sessionId }),
+  })
   const unsubscribe = queue.subscribe((frame) => broadcast('audio', frame))
   ctx.effect(() => unsubscribe)
   // 设置变化即时生效（applies 'live'）：音色/语速直接热更换。
@@ -200,11 +221,14 @@ export function apply(ctx: Context, config: Config): void {
           }
           if (on === true) {
             // 全局单活：新会话进入即覆盖让出旧会话（Q11 切换会话自动让出）。
+            const previous = activeVoiceSession
             activeVoiceSession = sessionId
+            if (previous && previous !== sessionId) queue.prune(previous)
             broadcast('mode', { active: activeVoiceSession })
           } else {
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null
+              queue.prune(sessionId)
               broadcast('mode', { active: null })
             }
           }

@@ -22,6 +22,10 @@ interface VoiceUiState {
   /** 正在朗读的句子字幕（播放引擎写入）。 */
   playingCaption: string | null
   playing: boolean
+  /** 模型下载进度（host asr-progress 事件写入）。 */
+  model: { file: string; percent: number } | null
+  /** TTS 不可达的暂时提示（host tts-error 事件写入，下一帧成功即清）。 */
+  ttsNotice: string | null
 }
 
 /** 一帧 TTS 音频（host SSE 'audio' 事件载荷）。 */
@@ -125,7 +129,7 @@ function createAudioEngine(setUi: (patch: Partial<VoiceUiState>) => void): {
       URL.revokeObjectURL(url)
       playNext()
     }
-    setUi({ playing: true, playingCaption: frame.text })
+    setUi({ playing: true, playingCaption: frame.text, ttsNotice: null })
     void audio.play().catch(() => playNext())
   }
 
@@ -172,6 +176,8 @@ function createVoiceBus(basePath: string = '/voice-mode', ctx?: any): VoiceBus {
     error: null,
     playingCaption: null,
     playing: false,
+    model: null,
+    ttsNotice: null,
   }
   const listeners = new Set<(b: { active: string | null; ui: VoiceUiState }) => void>()
   const audioListeners = new Set<(frame: VoiceFrame) => void>()
@@ -235,6 +241,43 @@ function createVoiceBus(basePath: string = '/voice-mode', ctx?: any): VoiceBus {
           } catch {
             // ignore
           }
+        }
+      } catch {
+        // ignore malformed frame
+      }
+    })
+    // 模型下载进度/就绪/失败（状态条展示百分比）。
+    source.addEventListener('asr-progress', (e: MessageEvent<string>) => {
+      try {
+        const p = JSON.parse(e.data) as { file?: string; percent?: number }
+        ui.model = { file: p.file ?? '', percent: p.percent ?? 0 }
+        notify()
+      } catch {
+        // ignore malformed frame
+      }
+    })
+    source.addEventListener('asr-ready', () => {
+      if (ui.model) {
+        ui.model = null
+        notify()
+      }
+    })
+    source.addEventListener('asr-error', (e: MessageEvent<string>) => {
+      try {
+        const p = JSON.parse(e.data) as { file?: string }
+        ui.error = `语音模型下载失败（${p.file ?? ''}）：请检查网络后重新进入语音模式重试`
+        ui.model = null
+        notify()
+      } catch {
+        // ignore malformed frame
+      }
+    })
+    source.addEventListener('tts-error', (e: MessageEvent<string>) => {
+      try {
+        const p = JSON.parse(e.data) as { sessionId?: string }
+        if (p.sessionId === activeSessionId) {
+          ui.ttsNotice = '朗读连接失败：正在重试…'
+          notify()
         }
       } catch {
         // ignore malformed frame
@@ -413,7 +456,7 @@ export function MicButton({
     const engine = engineRef.current
     engineRef.current = null
     if (engine) void engine.stop()
-    bus.setUi({ state: 'idle', partial: '', levels: [], error: null })
+    bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null })
     const sid = sidRef.current
     if (sid) void bus.exit(sid)
   }
@@ -516,7 +559,7 @@ export function MicButton({
         bus.setUi({ partial: '…' })
       })
 
-      bus.setUi({ state: 'idle', partial: '', levels: [] })
+      bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null })
       await engine.start()
       setLocalMode('on')
       resetIdle()
@@ -742,9 +785,15 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexGrow: 1 }}>
         {b.ui.error
           ? b.ui.error
-          : b.ui.partial
-            ? b.ui.partial
-            : stateText}
+          : b.ui.state === 'loading-model' || b.ui.model
+            ? b.ui.model
+              ? `正在加载模型… ${b.ui.model.file} ${b.ui.model.percent}%`
+              : stateText
+            : b.ui.partial
+              ? b.ui.partial
+              : b.ui.ttsNotice
+                ? b.ui.ttsNotice
+                : stateText}
       </span>
       <button
         onClick={() => {

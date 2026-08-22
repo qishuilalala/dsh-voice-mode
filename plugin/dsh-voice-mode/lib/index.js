@@ -1,7 +1,7 @@
 // src/index.ts
 import z from "@deepseek-ai/schemastery";
 import { join as join2 } from "node:path";
-import os from "node:os";
+import { homedir } from "node:os";
 
 // src/asr-host.ts
 import { createWriteStream } from "node:fs";
@@ -35,7 +35,10 @@ function createAsrRuntime(options) {
       modelsLoading = (async () => {
         if (!await haveAllModels()) {
           for (const f of MODEL_FILES) {
-            if (!await ensureFile(repoDir, f, broadcast)) return false;
+            if (!await ensureFile(repoDir, f, broadcast)) {
+              broadcast("asr-error", { file: f });
+              return false;
+            }
           }
         }
         modelsReady = true;
@@ -260,9 +263,12 @@ var TtsQueue = class {
   voice;
   prosody;
   ready = null;
+  /** TTS 全体不可达通知（每会话去重，成功后复位）。 */
+  onError;
   constructor(options = {}) {
     this.voice = options.voice ?? "zh-CN-XiaoxiaoNeural";
     this.prosody = prosodyFromRate(options.rate);
+    this.onError = options.onError;
   }
   /** 动态更换音色/语速（Q15 设置即时生效；正在合成的句子不受影响）。 */
   updateVoice(voice, rate) {
@@ -294,7 +300,7 @@ var TtsQueue = class {
   enqueue(sessionId, text) {
     let q = this.queues.get(sessionId);
     if (!q) {
-      q = { pending: [], busy: false, seq: 0, epoch: 0 };
+      q = { pending: [], busy: false, seq: 0, epoch: 0, errorNotified: false };
       this.queues.set(sessionId, q);
     }
     q.pending.push({ text, epoch: q.epoch });
@@ -310,6 +316,10 @@ var TtsQueue = class {
       q.epoch++;
       q.pending.length = 0;
     }
+  }
+  /** 会话退出/被抢占时彻底清理其队列（防止 Map 长期累积）。 */
+  prune(sessionId) {
+    this.queues.delete(sessionId);
   }
   async pump(sessionId, q) {
     if (q.busy) return;
@@ -327,6 +337,7 @@ var TtsQueue = class {
           const buf = Buffer.concat(chunks);
           if (buf.length === 0 || buf[0] !== MP3_MAGIC) continue;
           if (item.epoch !== q.epoch) continue;
+          q.errorNotified = false;
           const frame = {
             sessionId,
             seq: q.seq++,
@@ -345,6 +356,10 @@ var TtsQueue = class {
       }
     } catch (e) {
       console.warn(`[dsh-voice-mode] TTS unavailable: ${String(e)}`);
+      if (!q.errorNotified) {
+        q.errorNotified = true;
+        this.onError?.(sessionId);
+      }
     } finally {
       q.busy = false;
       if (q.pending.length > 0) void this.pump(sessionId, q);
@@ -360,15 +375,18 @@ var TtsQueue = class {
 import { settingsNamespace } from "@deepseek-ai/dsh-settings";
 var name = "voice-mode";
 var inject = ["webServer", "settings"];
+var defaultModelCacheDir = () => process.platform === "win32" ? join2(process.env.LOCALAPPDATA ?? join2(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join2(homedir(), ".cache", "dsh-voice-mode", "models");
 var VoiceSettingsSchema = z.object({
-  voice: z.string().default("zh-CN-XiaoxiaoNeural"),
-  rate: z.number().default(1),
-  interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0)
+  voice: z.string().default("zh-CN-XiaoxiaoNeural").description(
+    "Edge TTS \u97F3\u8272\uFF08\u5E38\u7528\uFF1Azh-CN-XiaoxiaoNeural \u6653\u6653 / zh-CN-YunxiNeural \u4E91\u5E0C / zh-CN-YunjianNeural \u4E91\u5065 / zh-CN-YunyangNeural \u4E91\u626C / zh-CN-XiaoyiNeural \u6653\u4F0A / en-US-AriaNeural\uFF09"
+  ),
+  rate: z.number().default(1).description("\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 = \u6162\u901F\uFF0C2.0 = \u5FEB\u901F\uFF0C1.0 = \u6B63\u5E38\uFF09"),
+  interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0).description("\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF1A0 \u9AD8\u95E8\u69DB\uFF08\u5B89\u9759\u73AF\u5883\uFF0C\u9ED8\u8BA4\uFF09/ 1 \u4E2D / 2 \u4F4E\uFF08\u5608\u6742\u73AF\u5883\u66F4\u5BB9\u6613\u6253\u65AD\uFF09")
 });
 var Config = z.object({
   basePath: z.string().default("/voice-mode"),
   enabled: z.boolean().default(true),
-  cacheDir: z.string().default(join2(os.homedir(), ".cache", "dsh-voice-mode", "models")),
+  cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default("https://huggingface.co"),
   voice: z.string().default("zh-CN-XiaoxiaoNeural"),
   rate: z.number().default(1),
@@ -397,7 +415,11 @@ function apply(ctx, config) {
     VoiceSettingsSchema
   );
   let vset = settingsScope.get();
-  const queue = new TtsQueue({ voice: vset.voice, rate: vset.rate });
+  const queue = new TtsQueue({
+    voice: vset.voice,
+    rate: vset.rate,
+    onError: (sessionId) => broadcast("tts-error", { sessionId })
+  });
   const unsubscribe = queue.subscribe((frame) => broadcast("audio", frame));
   ctx.effect(() => unsubscribe);
   ctx.effect(
@@ -480,11 +502,14 @@ function apply(ctx, config) {
             return;
           }
           if (on === true) {
+            const previous = activeVoiceSession;
             activeVoiceSession = sessionId;
+            if (previous && previous !== sessionId) queue.prune(previous);
             broadcast("mode", { active: activeVoiceSession });
           } else {
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null;
+              queue.prune(sessionId);
               broadcast("mode", { active: null });
             }
           }

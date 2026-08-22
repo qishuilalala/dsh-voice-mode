@@ -38,6 +38,8 @@ interface SessionQueue {
   seq: number
   /** cancel() 时提升；携带旧 epoch 的句子被丢弃。 */
   epoch: number
+  /** TTS 不可达已通知过（去重，直到下一帧成功才复位）。 */
+  errorNotified: boolean
 }
 
 export class TtsQueue {
@@ -47,10 +49,13 @@ export class TtsQueue {
   private voice: string
   private prosody?: ProsodyOptions
   private ready: Promise<void> | null = null
+  /** TTS 全体不可达通知（每会话去重，成功后复位）。 */
+  private readonly onError?: (sessionId: string) => void
 
-  constructor(options: { voice?: string; rate?: number } = {}) {
+  constructor(options: { voice?: string; rate?: number; onError?: (sessionId: string) => void } = {}) {
     this.voice = options.voice ?? 'zh-CN-XiaoxiaoNeural'
     this.prosody = prosodyFromRate(options.rate)
+    this.onError = options.onError
   }
 
   /** 动态更换音色/语速（Q15 设置即时生效；正在合成的句子不受影响）。 */
@@ -88,7 +93,7 @@ export class TtsQueue {
   enqueue(sessionId: string, text: string): void {
     let q = this.queues.get(sessionId)
     if (!q) {
-      q = { pending: [], busy: false, seq: 0, epoch: 0 }
+      q = { pending: [], busy: false, seq: 0, epoch: 0, errorNotified: false }
       this.queues.set(sessionId, q)
     }
     q.pending.push({ text, epoch: q.epoch })
@@ -105,6 +110,11 @@ export class TtsQueue {
       q.epoch++
       q.pending.length = 0
     }
+  }
+
+  /** 会话退出/被抢占时彻底清理其队列（防止 Map 长期累积）。 */
+  prune(sessionId: string): void {
+    this.queues.delete(sessionId)
   }
 
   private async pump(sessionId: string, q: SessionQueue): Promise<void> {
@@ -125,6 +135,7 @@ export class TtsQueue {
           if (buf.length === 0 || buf[0] !== MP3_MAGIC) continue
           // 合成期间被打断：丢弃本句。
           if (item.epoch !== q.epoch) continue
+          q.errorNotified = false // 有帧成功：复位不可达提示
           const frame: VoiceFrame = {
             sessionId,
             seq: q.seq++,
@@ -144,8 +155,12 @@ export class TtsQueue {
         }
       }
     } catch (e) {
-      // ensureReady 失败：把句子推回以便重试
+      // ensureReady 失败：把句子推回以便重试；每会话只提示一次
       console.warn(`[dsh-voice-mode] TTS unavailable: ${String(e)}`)
+      if (!q.errorNotified) {
+        q.errorNotified = true
+        this.onError?.(sessionId)
+      }
     } finally {
       q.busy = false
       if (q.pending.length > 0) void this.pump(sessionId, q)

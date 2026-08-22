@@ -87,7 +87,10 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         // 已下载跳过下载；否则逐个懒下载（断点续传）。
         if (!(await haveAllModels())) {
           for (const f of MODEL_FILES) {
-            if (!(await ensureFile(repoDir, f, broadcast))) return false
+            if (!(await ensureFile(repoDir, f, broadcast))) {
+              broadcast('asr-error', { file: f })
+              return false
+            }
           }
         }
         modelsReady = true
