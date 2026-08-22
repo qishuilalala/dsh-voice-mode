@@ -1,0 +1,6 @@
+# dsh-voice-mode bundle: host voice engine + client voice UI.
+# 全局单活语音模式：仅 activeVoiceSession 的 llm/stream 被 tap（朗读），
+# 普通会话 next() 直达、零开销（模式隔离，验收点 7）。
+- insert:
+    - id: voice-mode
+      name: dsh-voice-mode
