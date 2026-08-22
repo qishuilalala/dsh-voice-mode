@@ -25,12 +25,15 @@
     "lib/index.js",
     "lib/client.js",
     "cordis.patch.yml",
+    "scripts/prefetch.mjs",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "node build.mjs",
-    "prepack": "node build.mjs"
+    "prepack": "node build.mjs",
+    "test": "node test/segmenter.test.mjs",
+    "prefetch": "node scripts/prefetch.mjs"
   },
   "dsh": {
     "bundle": {
