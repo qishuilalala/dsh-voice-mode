@@ -63,12 +63,15 @@
 - ASR 走宿主端本地模型（sherpa-onnx WASM，跨平台免编译）优于云端 API：
   无 key、隐私好、离线可用；模型懒下载 + `.part` 断点续传 + 镜像回退
   （hf-mirror）+ 下载进度广播（SSE `asr-progress`）是标配；提供 `prefetch`
-  脚本预算缓存。
+  脚本预算缓存（haoku123/dsh-voice 同款 `npm run prefetch` 实证）。
 - TTS：msedge-tts（微软 Edge 免费神经音色）纯 JS；队列按会话隔离 + epoch
   打断；**不可达时给用户可见提示**（不能只 console.warn）。
+- 涉及 API 密钥的配置：密文不落 yaml——配置优先、环境变量回退
+  （参照 STARDUSTLC666/dsh-voice 的 `DSH_VOICE_ASR_KEY` 模式）。
 - 浏览器侧：`getUserMedia` 16k 单声道 + `echoCancellation`；RMS VAD 端点检测，
   静音停顿切句、段长上限、pre-pad；打断三档灵敏度；提交失败文字留草稿；
   SSE 断线自动重连。自动播放策略：朗读前页面需有用户手势（点击麦克风即满足）。
+- 覆盖系统快捷键（如 `Ctrl+Shift+V`）要在 README 已知限制中声明。
 
 ## 3. 文档侧最佳实践（README）
 
