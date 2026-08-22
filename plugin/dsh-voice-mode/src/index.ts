@@ -124,7 +124,6 @@ export function apply(ctx: Context, config: Config): void {
   // --- llm/stream 无损 tap：仅活跃语音会话被观察，其余直达（验收点 7）。 ---
   ctx.on('llm/stream', (options: GenerateOptions, next): AsyncIterable<StreamChunk> => {
     const sessionId = options.sessionId
-    console.log(`[dsh-voice-mode] llm/stream event sessionId=${String(sessionId)}`)
     if (!config.enabled || sessionId === undefined) return next()
     if (activeVoiceSession !== sessionId) return next()
     return tapActiveStream(sessionId, next(), queue, broadcast)
@@ -279,7 +278,7 @@ export function apply(ctx: Context, config: Config): void {
           clearInterval(heartbeat)
           sseClients.delete(send)
         }
-        req.on('close', cleanup)
+        _req.on('close', cleanup)
         res.on('close', cleanup)
       },
     }),
@@ -297,27 +296,19 @@ async function* tapActiveStream(
   queue: TtsQueue,
   broadcast: (event: string, payload: unknown) => void,
 ): AsyncIterable<StreamChunk> {
-  console.log(`[dsh-voice-mode] tap iterating sessionId=${sessionId}`)
   const segmenter = new SentenceSegmenter()
   let flushed = false
   let finishReason: unknown = null
-  let deltaText = 0
-  let enqueued = 0
   const flushOnce = (): void => {
     if (flushed) return
     flushed = true
     for (const s of segmenter.flush()) queue.enqueue(sessionId, s)
-    console.log(`[dsh-voice-mode] tap finish: deltaChars=${deltaText} enqueued=${enqueued}`)
   }
   try {
     for await (const chunk of inner) {
       // 只朗读最终答复的 text-delta（Q7）；reasoning/tool-call 不读。
       if (chunk.type === 'text-delta' && chunk.text) {
-        deltaText += chunk.text.length
-        for (const s of segmenter.feed(chunk.text)) {
-          enqueued++
-          queue.enqueue(sessionId, s)
-        }
+        for (const s of segmenter.feed(chunk.text)) queue.enqueue(sessionId, s)
       }
       // 工具调用事件：提示音（Q7，二期可关）。
       if (chunk.type === 'tool-call-delta' && chunk.name) {

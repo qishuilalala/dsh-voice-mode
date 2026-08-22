@@ -83,6 +83,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   // --- 打断状态机（Q10：首音节强度 + 持续时长） ---
   const intLevel = INTERRUPT_LEVELS[config.interruptLevel] ?? INTERRUPT_LEVELS[0]
   let interruptCandidateMs = 0
+  let bargeInDampingUntil = 0
 
   // --- partial 轮询 ---
   let sincePartialMs = 0
@@ -240,11 +241,14 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       }
     }
 
-    // 打断前沿（高门槛，Q10）：达到即报（MicButton 决定是否真打断）
-    if (rms > intLevel.rms) {
+    // 打断前沿（高门槛，Q10）：达到即报；阻尼期内不重复报（800ms）。
+    if (Date.now() < bargeInDampingUntil) {
+      interruptCandidateMs = 0
+    } else if (rms > intLevel.rms) {
       interruptCandidateMs += durationMs
       if (interruptCandidateMs >= intLevel.ms) {
         interruptCandidateMs = 0
+        bargeInDampingUntil = Date.now() + 800
         for (const fn of speechStartListeners) {
           try {
             fn()

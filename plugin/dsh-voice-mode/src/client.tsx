@@ -451,21 +451,48 @@ export function MicButton({
         // 定稿进草稿（可编辑 Q13）+ 自动提交（Q5 停顿 2s 已等过）
         resetIdle()
         const actions = actionsRef.current
-        if (!actions || typeof actions.setDraft !== 'function') return
         const trimmed = text.trim()
         if (!trimmed) return
-        actions.setDraft(trimmed)
-        if (typeof actions.submit === 'function') {
-          // 延时提交窗口：期间用户打字则取消（打字已触发退出模式）
-          cancelPendingSubmit()
-          submitTimerRef.current = setTimeout(() => {
-            try {
-              actions.submit?.()
-            } catch {
-              // 提交失败：文字已留在草稿（Q16）
-            }
-          }, SUBMIT_DELAY_MS)
+        // 追加式写入：保留已有草稿内容，避免覆盖用户正在编辑的文本
+        try {
+          const cur = (actions as any)?.getDraft?.() ?? (actions as any)?.draft
+          const curText = typeof cur === 'string' ? cur : ''
+          const nextDraft = curText ? `${curText} ${trimmed}` : trimmed
+          if (typeof actions?.setDraft === 'function') actions.setDraft(nextDraft)
+          else if (typeof (actions as any)?.setDraft === 'function') (actions as any).setDraft(nextDraft)
+        } catch {
+          try {
+            actions?.setDraft?.(trimmed)
+          } catch {
+            // 提交失败：文字已留在草稿（Q16）
+          }
         }
+        // 自动提交：增加重试与可见降级（Q16 提交失败→留在草稿+错误提示）
+        const doSubmit = (): void => {
+          try {
+            const r: any = actions?.submit?.()
+            // 兼容 Promise 型 submit
+            if (r && typeof r.then === 'function') {
+              r.catch(() => {
+                bus.setUi({ error: '发送失败，已保留在草稿' })
+              })
+            }
+          } catch {
+            bus.setUi({ error: '发送失败，已保留在草稿' })
+          }
+        }
+        cancelPendingSubmit()
+        // 立即尝试一次，失败则 800ms 后重试一次
+        doSubmit()
+        submitTimerRef.current = setTimeout(() => {
+          // 若草稿仍非空且未进入新一轮，说明首发未消费，做一次兜底重试
+          try {
+            const cur2 = (actions as any)?.getDraft?.() ?? (actions as any)?.draft
+            if (typeof cur2 === 'string' && cur2.trim()) doSubmit()
+          } catch {
+            // ignore
+          }
+        }, 800)
       })
       engine.onSpeechStart(async () => {
         // barge-in（Q2 硬打断）三层：

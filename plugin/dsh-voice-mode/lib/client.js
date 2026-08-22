@@ -64,6 +64,7 @@ function createAsrEngine(config, sessionId) {
   let prePad = [];
   const intLevel = INTERRUPT_LEVELS[config.interruptLevel] ?? INTERRUPT_LEVELS[0];
   let interruptCandidateMs = 0;
+  let bargeInDampingUntil = 0;
   let sincePartialMs = 0;
   let partialInFlight = false;
   let segmentEpoch = 0;
@@ -197,10 +198,13 @@ function createAsrEngine(config, sessionId) {
       } catch {
       }
     }
-    if (rms > intLevel.rms) {
+    if (Date.now() < bargeInDampingUntil) {
+      interruptCandidateMs = 0;
+    } else if (rms > intLevel.rms) {
       interruptCandidateMs += durationMs;
       if (interruptCandidateMs >= intLevel.ms) {
         interruptCandidateMs = 0;
+        bargeInDampingUntil = Date.now() + 800;
         for (const fn of speechStartListeners) {
           try {
             fn();
@@ -363,7 +367,6 @@ function createAsrEngine(config, sessionId) {
 var import_jsx_runtime = require("react/jsx-runtime");
 var inject = ["slots", "sessions"];
 var WAVE_BARS = 14;
-var SUBMIT_DELAY_MS = 600;
 function apply(ctx) {
   const bus = createVoiceBus(void 0, ctx);
   ctx.slots.inject(
@@ -705,19 +708,41 @@ function MicButton({
       engine.onSegment((text) => {
         resetIdle();
         const actions = actionsRef.current;
-        if (!actions || typeof actions.setDraft !== "function") return;
         const trimmed = text.trim();
         if (!trimmed) return;
-        actions.setDraft(trimmed);
-        if (typeof actions.submit === "function") {
-          cancelPendingSubmit();
-          submitTimerRef.current = setTimeout(() => {
-            try {
-              actions.submit?.();
-            } catch {
-            }
-          }, SUBMIT_DELAY_MS);
+        try {
+          const cur = actions?.getDraft?.() ?? actions?.draft;
+          const curText = typeof cur === "string" ? cur : "";
+          const nextDraft = curText ? `${curText} ${trimmed}` : trimmed;
+          if (typeof actions?.setDraft === "function") actions.setDraft(nextDraft);
+          else if (typeof actions?.setDraft === "function") actions.setDraft(nextDraft);
+        } catch {
+          try {
+            actions?.setDraft?.(trimmed);
+          } catch {
+          }
         }
+        const doSubmit = () => {
+          try {
+            const r = actions?.submit?.();
+            if (r && typeof r.then === "function") {
+              r.catch(() => {
+                bus.setUi({ error: "\u53D1\u9001\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u5728\u8349\u7A3F" });
+              });
+            }
+          } catch {
+            bus.setUi({ error: "\u53D1\u9001\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u5728\u8349\u7A3F" });
+          }
+        };
+        cancelPendingSubmit();
+        doSubmit();
+        submitTimerRef.current = setTimeout(() => {
+          try {
+            const cur2 = actions?.getDraft?.() ?? actions?.draft;
+            if (typeof cur2 === "string" && cur2.trim()) doSubmit();
+          } catch {
+          }
+        }, 800);
       });
       engine.onSpeechStart(async () => {
         resetIdle();

@@ -131,14 +131,8 @@ async function download(host, repoDir, file, resumeFrom, broadcast) {
   const reader = src.getReader();
   let received = resumeFrom;
   const done = new Promise((resolve, reject) => {
-    sink.on("error", (e) => {
-      console.log(`[dsh-voice-mode] download sink error ${file}: ${String(e)}`);
-      reject(e);
-    });
-    sink.on("finish", () => {
-      console.log(`[dsh-voice-mode] download finished ${file} bytes=${received}`);
-      resolve(true);
-    });
+    sink.on("error", (e) => reject(e));
+    sink.on("finish", () => resolve(true));
     (async () => {
       try {
         for (; ; ) {
@@ -164,12 +158,12 @@ async function download(host, repoDir, file, resumeFrom, broadcast) {
   });
   return done.catch(() => false);
 }
-function handleAsrRequest(asr, activeSessionId, req2, res) {
+function handleAsrRequest(asr, activeSessionId, req, res) {
   const chunks = [];
-  req2.on("data", (c) => chunks.push(c));
-  req2.on("end", () => {
+  req.on("data", (c) => chunks.push(c));
+  req.on("end", () => {
     res.setHeader("content-type", "application/json");
-    const url = new URL(req2.url ?? "/", "http://localhost");
+    const url = new URL(req.url ?? "/", "http://localhost");
     const sessionId = url.searchParams.get("sessionId") ?? "";
     const final = url.searchParams.get("final") === "1";
     if (!sessionId || sessionId !== activeSessionId) {
@@ -417,7 +411,6 @@ function apply(ctx, config) {
   const currentInterrupt = () => vset.interruptLevel;
   ctx.on("llm/stream", (options, next) => {
     const sessionId = options.sessionId;
-    console.log(`[dsh-voice-mode] llm/stream event sessionId=${String(sessionId)}`);
     if (!config.enabled || sessionId === void 0) return next();
     if (activeVoiceSession !== sessionId) return next();
     return tapActiveStream(sessionId, next(), queue, broadcast);
@@ -467,12 +460,12 @@ function apply(ctx, config) {
     () => ctx.webServer.register({
       kind: "exact",
       path: `${base}/toggle`,
-      handler: (req2, res) => {
+      handler: (req, res) => {
         let body = "";
-        req2.on("data", (c) => {
+        req.on("data", (c) => {
           body += c;
         });
-        req2.on("end", () => {
+        req.on("end", () => {
           let sessionId;
           let on;
           try {
@@ -505,8 +498,8 @@ function apply(ctx, config) {
     () => ctx.webServer.register({
       kind: "exact",
       path: `${base}/asr`,
-      handler: (req2, res) => {
-        handleAsrRequest(asr, activeVoiceSession, req2, res);
+      handler: (req, res) => {
+        handleAsrRequest(asr, activeVoiceSession, req, res);
       }
     })
   );
@@ -514,12 +507,12 @@ function apply(ctx, config) {
     () => ctx.webServer.register({
       kind: "exact",
       path: `${base}/cancel`,
-      handler: (req2, res) => {
+      handler: (req, res) => {
         let body = "";
-        req2.on("data", (c) => {
+        req.on("data", (c) => {
           body += c;
         });
-        req2.on("end", () => {
+        req.on("end", () => {
           let sessionId;
           try {
             const parsed = JSON.parse(body || "{}");
@@ -562,33 +555,25 @@ data: ${JSON.stringify(payload)}
           clearInterval(heartbeat);
           sseClients.delete(send);
         };
-        req.on("close", cleanup);
+        _req.on("close", cleanup);
         res.on("close", cleanup);
       }
     })
   );
 }
 async function* tapActiveStream(sessionId, inner, queue, broadcast) {
-  console.log(`[dsh-voice-mode] tap iterating sessionId=${sessionId}`);
   const segmenter = new SentenceSegmenter();
   let flushed = false;
   let finishReason = null;
-  let deltaText = 0;
-  let enqueued = 0;
   const flushOnce = () => {
     if (flushed) return;
     flushed = true;
     for (const s of segmenter.flush()) queue.enqueue(sessionId, s);
-    console.log(`[dsh-voice-mode] tap finish: deltaChars=${deltaText} enqueued=${enqueued}`);
   };
   try {
     for await (const chunk of inner) {
       if (chunk.type === "text-delta" && chunk.text) {
-        deltaText += chunk.text.length;
-        for (const s of segmenter.feed(chunk.text)) {
-          enqueued++;
-          queue.enqueue(sessionId, s);
-        }
+        for (const s of segmenter.feed(chunk.text)) queue.enqueue(sessionId, s);
       }
       if (chunk.type === "tool-call-delta" && chunk.name) {
         broadcast("tool", { sessionId, name: chunk.name });

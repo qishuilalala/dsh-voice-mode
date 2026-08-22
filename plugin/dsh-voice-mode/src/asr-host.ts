@@ -212,14 +212,8 @@ async function download(
   const reader = src.getReader()
   let received = resumeFrom
   const done = new Promise<boolean>((resolve, reject) => {
-    sink.on('error', (e) => {
-      console.log(`[dsh-voice-mode] download sink error ${file}: ${String(e)}`)
-      reject(e)
-    })
-    sink.on('finish', () => {
-      console.log(`[dsh-voice-mode] download finished ${file} bytes=${received}`)
-      resolve(true)
-    })
+    sink.on('error', (e) => reject(e))
+    sink.on('finish', () => resolve(true))
     ;(async () => {
       try {
         for (;;) {
