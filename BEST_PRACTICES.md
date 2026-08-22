@@ -115,10 +115,13 @@
 ## 5. 质量门（针对 dsh-voice-mode 的复盘清单）
 
 - [ ] 三平台路径/缓存默认值正确（Windows LOCALAPPDATA；Unix ~/.cache）
-- [ ] 模型下载：进度可见、失败可见、断点续传、镜像回退；prefetch 可独立跑
+- [ ] 运行时旋钮单一活来源：设置面板为最终生效值，bundle 配置只播种默认
+      （防死配置；e.g. modelHost 曾解构未用、idleTimeout 曾不被消费）
+- [ ] 模型下载：进度可见、失败可见、断点续传、镜像回退（modelHost 生效）；prefetch 可独立跑
 - [ ] TTS 失败：状态条提示 + 自动重试 + 成功复位
 - [ ] 打断：本地静音 + host epoch + 回合取消三层到位
-- [ ] 提交链路：定稿追加草稿 + 立即/重试提交 + 失败留草稿
+- [ ] 提交链路：定稿追加草稿 + 立即/重试提交 + 失败留草稿（autoSend 可关，Ctrl 仍可强制）
+- [ ] 跨平台音频：浏览器忽略 sampleRate 选项时（Safari）有重采样守卫
 - [ ] SSE：心跳、断线重连、多标签页模式广播一致
-- [ ] 单元测试（segmenter 10 项）+ 集成探测（asr-diag 全链路）
+- [ ] 单元测试（segmenter 10 项 + verify-client 9 项）+ 集成探测（asr-diag 全链路）
 - [ ] README 完整、命令在 Linux 实测可执行；Windows/macOS 说明不含 systemd 独家假设

@@ -39,7 +39,8 @@ const MODEL_FILES = ['encoder.int8.onnx', 'decoder.onnx', 'joiner.int8.onnx', 't
 
 export interface AsrRuntimeOptions {
   cacheDir: string
-  modelHost: string
+  /** 模型上游 host getter（下载期读最新设置；为空用默认源）。 */
+  modelHost: () => string
   /** 状态广播（SSE）：{kind:'asr-progress'|'asr-ready', ...} */
   broadcast: (event: string, payload: unknown) => void
 }
@@ -87,7 +88,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         // 已下载跳过下载；否则逐个懒下载（断点续传）。
         if (!(await haveAllModels())) {
           for (const f of MODEL_FILES) {
-            if (!(await ensureFile(repoDir, f, broadcast))) {
+            if (!(await ensureFile(repoDir, f, modelHost(), broadcast))) {
               broadcast('asr-error', { file: f })
               return false
             }
@@ -161,11 +162,12 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
 
 /**
  * 单文件断点续传下载：<file>.part 存在则 Range 续传，完成后改名。
- * 失败自动换镜像 host，两处都失败返回 false。
+ * 上游依次尝试：设置/配置的 modelHost（哈希去重后）→ 默认官方源 → 镜像源。
  */
 async function ensureFile(
   repoDir: string,
   file: string,
+  primaryHost: string,
   broadcast: (event: string, payload: unknown) => void,
 ): Promise<boolean> {
   const localPath = join(repoDir, file)
@@ -174,7 +176,7 @@ async function ensureFile(
   await mkdir(repoDir, { recursive: true }).catch(() => undefined)
   const partPath = `${localPath}.part`
   const partSt = await stat(partPath).catch(() => null)
-  const hosts = [HOST_PRIMARY, HOST_FALLBACK]
+  const hosts = [...new Set([primaryHost, HOST_PRIMARY, HOST_FALLBACK].filter(Boolean))]
   for (const host of hosts) {
     try {
       const ok = await download(host, repoDir, file, partSt?.size ?? 0, broadcast)

@@ -37,25 +37,57 @@ const defaultModelCacheDir = (): string =>
     ? join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'dsh-voice-mode', 'models')
     : join(homedir(), '.cache', 'dsh-voice-mode', 'models')
 
-/** Q15 设置命名空间 schema：音色 / 语速 / 打断灵敏度。 */
+/**
+ * Q15 设置命名空间：全部运行时旋钮（音色/语速/打断/静音/超时/镜像/自动发送）。
+ *
+ * 第一性原则：设置是用户可调的唯一活来源；插件启动时以 config 播种默认值，
+ * 设置文件一旦显式写入即覆盖 config（config 不再是「写了无效」的死键）。
+ * 生效范围：voice/rate 即时生效（TTS 热切换）；其余在下次进入语音模式时生效。
+ */
 export interface VoiceSettingsValue {
   voice: string
   rate: number
   interruptLevel: 0 | 1 | 2
+  /** 静音停顿多少毫秒判定说完一句（Q5，默认 2000 = 2s）。 */
+  silenceMs: number
+  /** 空闲多少分钟自动退出语音模式（Q11，默认 10）。 */
+  idleTimeoutMinutes: number
+  /** 模型上游 host（国内网络可配 hf-mirror.com）。 */
+  modelHost: string
+  /** 定稿后是否自动发送（关 = 只进草稿，按住 Ctrl 仍可强制发送）。 */
+  autoSend: boolean
 }
 
-export const VoiceSettingsSchema: z<VoiceSettingsValue> = z.object({
-  voice: z
-    .string()
-    .default('zh-CN-XiaoxiaoNeural')
-    .description(
-      'Edge TTS 音色（常用：zh-CN-XiaoxiaoNeural 晓晓 / zh-CN-YunxiNeural 云希 / zh-CN-YunjianNeural 云健 / zh-CN-YunyangNeural 云扬 / zh-CN-XiaoyiNeural 晓伊 / en-US-AriaNeural）',
-    ),
-  rate: z.number().default(1.0).description('朗读语速倍率（0.5 = 慢速，2.0 = 快速，1.0 = 正常）'),
-  interruptLevel: z
-    .union([z.const(0), z.const(1), z.const(2)])
-    .default(0)
-    .description('发声打断灵敏度：0 高门槛（安静环境，默认）/ 1 中 / 2 低（嘈杂环境更容易打断）'),
+/** 以 config 默认值构造设置 schema（apply 期调用，避免死配置）。 */
+export function createVoiceSettingsSchema(defs: VoiceSettingsValue): z<VoiceSettingsValue> {
+  return z.object({
+    voice: z
+      .string()
+      .default(defs.voice)
+      .description(
+        'Edge TTS 音色（常用：zh-CN-XiaoxiaoNeural 晓晓 / zh-CN-YunxiNeural 云希 / zh-CN-YunjianNeural 云健 / zh-CN-YunyangNeural 云扬 / zh-CN-XiaoyiNeural 晓伊 / en-US-AriaNeural）',
+      ),
+    rate: z.number().default(defs.rate).description('朗读语速倍率（0.5 = 慢速，2.0 = 快速，1.0 = 正常）'),
+    interruptLevel: z
+      .union([z.const(0), z.const(1), z.const(2)])
+      .default(defs.interruptLevel)
+      .description('发声打断灵敏度：0 高门槛（安静环境，默认）/ 1 中 / 2 低（嘈杂环境更容易打断）'),
+    silenceMs: z.number().default(defs.silenceMs).description('说完整一句的静音停顿毫秒数（默认 2000 = 2 秒）'),
+    idleTimeoutMinutes: z.number().default(defs.idleTimeoutMinutes).description('无活动自动退出语音模式的分钟数（默认 10）'),
+    modelHost: z.string().default(defs.modelHost).description('ASR 模型下载源（国内网络可填 https://hf-mirror.com；留空用默认）'),
+    autoSend: z.boolean().default(defs.autoSend).description('识别定稿后自动发送（关闭则只进草稿供编辑；按住 Ctrl 仍可强制发送）'),
+  })
+}
+
+/** 兼容导出：以默认配置构造的 schema（供外部引用/自检）。 */
+export const VoiceSettingsSchema: z<VoiceSettingsValue> = createVoiceSettingsSchema({
+  voice: 'zh-CN-XiaoxiaoNeural',
+  rate: 1.0,
+  interruptLevel: 0,
+  silenceMs: 2000,
+  idleTimeoutMinutes: 10,
+  modelHost: 'https://huggingface.co',
+  autoSend: true,
 })
 
 /** 插件配置（cordis.patch.yml / 设置面板可覆盖；默认值面向对话场景）。 */
@@ -109,20 +141,30 @@ export function apply(ctx: Context, config: Config): void {
     }
   }
 
+  // --- 设置命名空间（Q15）：以 config 播种默认，用户可实时覆盖全部旋钮。 ---
+  const settingsScope = ctx.settings.register(
+    settingsNamespace('voice-mode'),
+    createVoiceSettingsSchema({
+      voice: config.voice,
+      rate: config.rate,
+      interruptLevel: config.interruptLevel,
+      silenceMs: config.silenceMs,
+      idleTimeoutMinutes: config.idleTimeoutMinutes,
+      modelHost: config.modelHost,
+      autoSend: true,
+    }),
+  )
+  let vset: VoiceSettingsValue = settingsScope.get()
+
   // --- zipformer2 流式 ASR runtime（模型懒下载，§8.3）。 ---
+  // modelHost 用 getter：下载期读取最新设置（国内可切 hf-mirror，无需改 YAML）。
   const asr = createAsrRuntime({
     cacheDir: config.cacheDir,
-    modelHost: config.modelHost,
+    modelHost: () => vset.modelHost,
     broadcast,
   })
 
   // --- TTS 队列（§8.4）：逐句合成后经 SSE 广播；epoch 机制支撑打断。 ---
-  // 队列参数 = config 默认 ⊕ settings 用户层（Q15，settings 优先）。
-  const settingsScope = ctx.settings.register(
-    settingsNamespace('voice-mode'),
-    VoiceSettingsSchema,
-  )
-  let vset: VoiceSettingsValue = settingsScope.get()
   const queue = new TtsQueue({
     voice: vset.voice,
     rate: vset.rate,
@@ -130,14 +172,14 @@ export function apply(ctx: Context, config: Config): void {
   })
   const unsubscribe = queue.subscribe((frame) => broadcast('audio', frame))
   ctx.effect(() => unsubscribe)
-  // 设置变化即时生效（applies 'live'）：音色/语速直接热更换。
+  // 设置变化即时生效（applies 'live'）：音色/语速直接热更换；其余在下次进入生效。
   ctx.effect(() =>
     settingsScope.watch((next) => {
       vset = next
       queue.updateVoice(next.voice, next.rate)
     }),
   )
-  /** 当前生效的声音参数（config 响应输出给 client 引导）。 */
+  /** 当前生效参数（/config 输出给 client 引导；client 每次进入模式重新拉取）。 */
   const currentVoice = (): string => vset.voice
   const currentRate = (): number => vset.rate
   const currentInterrupt = (): 0 | 1 | 2 => vset.interruptLevel
@@ -186,8 +228,10 @@ export function apply(ctx: Context, config: Config): void {
             rate: currentRate(),
             voice: currentVoice(),
             interruptLevel: currentInterrupt(),
-            idleTimeoutMinutes: config.idleTimeoutMinutes,
-            modelHost: config.modelHost,
+            silenceMs: vset.silenceMs,
+            idleTimeoutMinutes: vset.idleTimeoutMinutes,
+            modelHost: vset.modelHost,
+            autoSend: vset.autoSend,
             cacheDir: config.cacheDir,
           }),
         )

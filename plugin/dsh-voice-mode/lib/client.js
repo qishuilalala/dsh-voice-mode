@@ -57,6 +57,7 @@ function createAsrEngine(config, sessionId) {
   let processor = null;
   let active = false;
   let inFlush = false;
+  let ctxRate = SAMPLE_RATE;
   let speechActive = false;
   let segment = [];
   let segmentMs = 0;
@@ -68,6 +69,7 @@ function createAsrEngine(config, sessionId) {
   let sincePartialMs = 0;
   let partialInFlight = false;
   let segmentEpoch = 0;
+  let forcePending = false;
   const asrUrl = (final) => `${location.origin}${config.basePath.replace(/\/+$/, "")}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}`;
   const setState = (s) => {
     state = s;
@@ -78,12 +80,12 @@ function createAsrEngine(config, sessionId) {
       }
     }
   };
-  const emit = (listeners, text) => {
+  const emit = (listeners, text, meta) => {
     const t = text.trim();
     if (!t) return;
     for (const fn of listeners) {
       try {
-        fn(t);
+        fn(t, meta);
       } catch {
       }
     }
@@ -144,6 +146,8 @@ function createAsrEngine(config, sessionId) {
     if (segment.length === 0) return;
     const samples = concatSegment();
     const epoch = ++segmentEpoch;
+    const meta = { force: forcePending };
+    forcePending = false;
     segment = [];
     speechActive = false;
     silenceMs = 0;
@@ -180,14 +184,15 @@ function createAsrEngine(config, sessionId) {
         if (!res.ok) return;
         const out = await res.json();
         if (epoch !== segmentEpoch) return;
-        if (out.text) emit(transcriptListeners, out.text);
+        if (out.text) emit(transcriptListeners, out.text, meta);
       } catch {
         setState(active ? speechActive ? "speech" : "listening" : "idle");
       }
     })();
   };
-  const handleAudio = (data) => {
+  const handleAudio = (raw) => {
     if (!active || inFlush) return;
+    const data = ctxRate !== SAMPLE_RATE ? resampleTo16k(raw, ctxRate) : raw;
     let sum = 0;
     for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
     const rms = Math.sqrt(sum / data.length);
@@ -250,6 +255,19 @@ function createAsrEngine(config, sessionId) {
       void requestPartial();
     }
   };
+  function resampleTo16k(src, srcRate) {
+    const ratio = srcRate / SAMPLE_RATE;
+    const outLen = Math.max(1, Math.floor(src.length / ratio));
+    const out = new Float32Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+      const pos = i * ratio;
+      const i0 = Math.floor(pos);
+      const i1 = Math.min(i0 + 1, src.length - 1);
+      const frac = pos - i0;
+      out[i] = src[i0] + (src[i1] - src[i0]) * frac;
+    }
+    return out;
+  }
   const startRecorder = async () => {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -259,7 +277,9 @@ function createAsrEngine(config, sessionId) {
         autoGainControl: true
       }
     });
-    audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+    const AC = window.AudioContext ?? window.webkitAudioContext;
+    audioCtx = new AC({ sampleRate: SAMPLE_RATE });
+    ctxRate = audioCtx.sampleRate;
     const source = audioCtx.createMediaStreamSource(stream);
     processor = audioCtx.createScriptProcessor(BUFFER_SIZE, 1, 1);
     processor.onaudioprocess = (e) => {
@@ -274,6 +294,7 @@ function createAsrEngine(config, sessionId) {
     active = false;
     inFlush = true;
     segmentEpoch++;
+    forcePending = false;
     segment = [];
     speechActive = false;
     silenceMs = 0;
@@ -295,6 +316,7 @@ function createAsrEngine(config, sessionId) {
     } catch {
     }
     audioCtx = null;
+    ctxRate = SAMPLE_RATE;
     inFlush = false;
   };
   return {
@@ -325,6 +347,7 @@ function createAsrEngine(config, sessionId) {
     forceSend() {
       const speechS = segment.reduce((n, c) => n + c.length, 0) / SAMPLE_RATE;
       if (speechActive && speechS >= 0.25) {
+        forcePending = true;
         sincePartialMs = 0;
         finalizeSegment();
       }
@@ -635,7 +658,6 @@ function createVoiceBus(basePath = "/voice-mode", ctx) {
     }
   };
 }
-var IDLE_MS = 10 * 60 * 1e3;
 var styleInjected = false;
 function useVoiceCss() {
   (0, import_react.useEffect)(() => {
@@ -665,11 +687,34 @@ function MicButton({
   const submitTimerRef = (0, import_react.useRef)(null);
   const idleTimerRef = (0, import_react.useRef)(null);
   const runningRef = (0, import_react.useRef)(false);
-  const bootRef = (0, import_react.useRef)(null);
+  const cfgRef = (0, import_react.useRef)({
+    basePath: "/voice-mode",
+    silenceMs: 2e3,
+    interruptLevel: 0,
+    idleTimeoutMinutes: 10,
+    autoSend: true
+  });
   useVoiceCss();
   const setLocalMode = (m) => {
     localRef.current = m;
     setLocal(m);
+  };
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch(`${location.origin}/voice-mode/config`);
+      if (!res.ok) return cfgRef.current;
+      const c = await res.json();
+      cfgRef.current = {
+        basePath: c.basePath ?? cfgRef.current.basePath,
+        silenceMs: c.silenceMs ?? cfgRef.current.silenceMs,
+        interruptLevel: c.interruptLevel ?? cfgRef.current.interruptLevel,
+        idleTimeoutMinutes: c.idleTimeoutMinutes ?? cfgRef.current.idleTimeoutMinutes,
+        autoSend: c.autoSend ?? cfgRef.current.autoSend
+      };
+      return cfgRef.current;
+    } catch {
+      return cfgRef.current;
+    }
   };
   const clearIdle = () => {
     if (idleTimerRef.current) {
@@ -679,10 +724,11 @@ function MicButton({
   };
   const resetIdle = () => {
     clearIdle();
+    const idleMs = (cfgRef.current.idleTimeoutMinutes > 0 ? cfgRef.current.idleTimeoutMinutes : 10) * 60 * 1e3;
     idleTimerRef.current = setTimeout(() => {
       const sid = sidRef.current;
       if (localRef.current === "on" && sid) void exitModeRef.current("idle");
-    }, IDLE_MS);
+    }, idleMs);
   };
   (0, import_react.useEffect)(() => {
     return bus.subscribe(() => {
@@ -724,10 +770,10 @@ function MicButton({
         setLocalMode("off");
         return;
       }
-      const cfg = bootRef.current;
-      const basePath = cfg?.basePath ?? "/voice-mode";
-      const silenceMs = cfg?.silenceMs ?? 2e3;
-      const interruptLevel = cfg?.interruptLevel ?? 0;
+      const cfg = await fetchConfig();
+      const basePath = cfg.basePath;
+      const silenceMs = cfg.silenceMs;
+      const interruptLevel = cfg.interruptLevel;
       const engine = createAsrEngine({ silenceMs, interruptLevel, basePath }, sid);
       engineRef.current = engine;
       engine.onState((s) => {
@@ -740,7 +786,7 @@ function MicButton({
         bus.setUi({ levels: next });
       });
       engine.onPartial((text) => bus.setUi({ partial: text }));
-      engine.onSegment((text) => {
+      engine.onSegment((text, meta) => {
         resetIdle();
         const actions = actionsRef.current;
         const trimmed = text.trim();
@@ -757,6 +803,7 @@ function MicButton({
           } catch {
           }
         }
+        if (cfgRef.current.autoSend === false && !meta?.force) return;
         const doSubmit = () => {
           try {
             const r = actions?.submit?.();
@@ -815,13 +862,6 @@ function MicButton({
   toggleRef.current = toggle;
   const exitModeRef = (0, import_react.useRef)(exitMode);
   exitModeRef.current = exitMode;
-  (0, import_react.useEffect)(() => {
-    if (bootRef.current) return;
-    fetch(`${location.origin}/voice-mode/config`).then((r) => r.json()).then((c) => {
-      bootRef.current = c;
-    }).catch(() => {
-    });
-  }, []);
   (0, import_react.useEffect)(() => {
     actionsRef.current = inputActions;
   }, [inputActions]);

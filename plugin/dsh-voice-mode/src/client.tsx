@@ -362,13 +362,20 @@ function createVoiceBus(basePath: string = '/voice-mode', ctx?: any): VoiceBus {
   }
 }
 
-const IDLE_MS = 10 * 60 * 1000
-
 interface MicProps extends VoiceSlotActions {
   sessionId?: string
   useSession?: <T>(sel: (s: any) => T) => T
   useInput?: <T>(sel: (s: any) => T) => T
   inputActions?: { submit?: () => void; setDraft?: (text: string) => void }
+}
+
+/** host /config 的运行时引导参数（客户端每次进入语音模式重新拉取）。 */
+interface VoiceBootConfig {
+  basePath: string
+  silenceMs: number
+  interruptLevel: 0 | 1 | 2
+  idleTimeoutMinutes: number
+  autoSend: boolean
 }
 
 let styleInjected = false
@@ -403,13 +410,39 @@ export function MicButton({
   const submitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const runningRef = useRef(false)
-  const bootRef = useRef<{ basePath: string; silenceMs: number; interruptLevel: 0 | 1 | 2 } | null>(null)
+  /** 本次/上次进入的引导配置（进入时刷新；拉取失败用兜底默认）。 */
+  const cfgRef = useRef<VoiceBootConfig>({
+    basePath: '/voice-mode',
+    silenceMs: 2000,
+    interruptLevel: 0,
+    idleTimeoutMinutes: 10,
+    autoSend: true,
+  })
 
   useVoiceCss()
 
   const setLocalMode = (m: 'off' | 'pending' | 'on'): void => {
     localRef.current = m
     setLocal(m)
+  }
+
+  /** 每次进入语音模式重新拉取 /config（设置面板改动即时生效，无需刷新页面）。 */
+  const fetchConfig = async (): Promise<VoiceBootConfig> => {
+    try {
+      const res = await fetch(`${location.origin}/voice-mode/config`)
+      if (!res.ok) return cfgRef.current
+      const c = (await res.json()) as Partial<VoiceBootConfig>
+      cfgRef.current = {
+        basePath: c.basePath ?? cfgRef.current.basePath,
+        silenceMs: c.silenceMs ?? cfgRef.current.silenceMs,
+        interruptLevel: c.interruptLevel ?? cfgRef.current.interruptLevel,
+        idleTimeoutMinutes: c.idleTimeoutMinutes ?? cfgRef.current.idleTimeoutMinutes,
+        autoSend: c.autoSend ?? cfgRef.current.autoSend,
+      }
+      return cfgRef.current
+    } catch {
+      return cfgRef.current
+    }
   }
 
   const clearIdle = (): void => {
@@ -420,10 +453,11 @@ export function MicButton({
   }
   const resetIdle = (): void => {
     clearIdle()
+    const idleMs = (cfgRef.current.idleTimeoutMinutes > 0 ? cfgRef.current.idleTimeoutMinutes : 10) * 60 * 1000
     idleTimerRef.current = setTimeout(() => {
       const sid = sidRef.current
       if (localRef.current === 'on' && sid) void exitModeRef.current('idle')
-    }, IDLE_MS)
+    }, idleMs)
   }
 
   // host 广播：被抢占/他会话让出 -> 自动退出（Q11）
@@ -471,11 +505,11 @@ export function MicButton({
         setLocalMode('off')
         return
       }
-      // 拉取 host 引导参数（停顿/打断档位）
-      const cfg = bootRef.current
-      const basePath = cfg?.basePath ?? '/voice-mode'
-      const silenceMs = cfg?.silenceMs ?? 2000
-      const interruptLevel = cfg?.interruptLevel ?? 0
+      // 每次进入重新拉取 host 引导参数（静音/打断档位/自动发送/空闲超时）
+      const cfg = await fetchConfig()
+      const basePath = cfg.basePath
+      const silenceMs = cfg.silenceMs
+      const interruptLevel = cfg.interruptLevel
       const engine = createAsrEngine({ silenceMs, interruptLevel, basePath }, sid)
       engineRef.current = engine
 
@@ -490,8 +524,9 @@ export function MicButton({
         bus.setUi({ levels: next })
       })
       engine.onPartial((text) => bus.setUi({ partial: text }))
-      engine.onSegment((text) => {
-        // 定稿进草稿（可编辑 Q13）+ 自动提交（Q5 停顿 2s 已等过）
+      engine.onSegment((text, meta) => {
+        // 定稿进草稿（可编辑 Q13）+ 自动发送（Q5 停顿已等过；autoSend=false 只进草稿，
+        // 按住 Ctrl 强制发送仍提交）
         resetIdle()
         const actions = actionsRef.current
         const trimmed = text.trim()
@@ -510,6 +545,8 @@ export function MicButton({
             // 提交失败：文字已留在草稿（Q16）
           }
         }
+        // 自动提交门控：设置关闭或未强制时只留草稿，等待用户编辑/发送
+        if (cfgRef.current.autoSend === false && !meta?.force) return
         // 自动提交：增加重试与可见降级（Q16 提交失败→留在草稿+错误提示）
         const doSubmit = (): void => {
           try {
@@ -586,20 +623,6 @@ export function MicButton({
   toggleRef.current = toggle
   const exitModeRef = useRef(exitMode)
   exitModeRef.current = exitMode
-
-  // 引导参数只拉一次
-  useEffect(() => {
-    if (bootRef.current) return
-    fetch(`${location.origin}/voice-mode/config`)
-      .then((r) => r.json() as Promise<{ basePath: string; silenceMs: number; interruptLevel: 0 | 1 | 2 }>)
-      .then((c) => {
-        bootRef.current = c
-      })
-      .catch(() => {
-        // host 不可达：进入时用默认参数
-      })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   useEffect(() => {
     actionsRef.current = inputActions

@@ -20,6 +20,11 @@ export interface AsrConfig {
   basePath: string
 }
 
+export interface SegmentMeta {
+  /** true = 由按住 Ctrl 强制发送触发（autoSend=false 时仍提交）。 */
+  force?: boolean
+}
+
 export interface AsrEngine {
   readonly state: AsrState
   start(): Promise<void>
@@ -27,7 +32,7 @@ export interface AsrEngine {
   /** 按住 Ctrl 强制立即发送当前段（Q5 兜底）。 */
   forceSend(): void
   /** 定稿文本（段结束/强制发送后）。 */
-  readonly onSegment: (fn: (text: string) => void) => () => void
+  readonly onSegment: (fn: (text: string, meta?: SegmentMeta) => void) => () => void
   /** 实时字幕（partial，仅预览）。 */
   readonly onPartial: (fn: (text: string) => void) => () => void
   /** 语音前沿（高门槛打断信号，Q10）。 */
@@ -61,7 +66,7 @@ const INTERRUPT_LEVELS: Record<0 | 1 | 2, { rms: number; ms: number }> = {
 export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine {
   let state: AsrState = 'idle'
   const stateListeners = new Set<(s: AsrState) => void>()
-  const transcriptListeners = new Set<(text: string) => void>()
+  const transcriptListeners = new Set<(text: string, meta?: SegmentMeta) => void>()
   const partialListeners = new Set<(text: string) => void>()
   const speechStartListeners = new Set<() => void>()
   const levelListeners = new Set<(level: number) => void>()
@@ -72,6 +77,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let processor: ScriptProcessorNode | null = null
   let active = false
   let inFlush = false
+  /** AudioContext 实际采样率（可能 ≠ 16k，用于重采样守卫）。 */
+  let ctxRate: number = SAMPLE_RATE
 
   // --- 分段状态 ---
   let speechActive = false
@@ -90,6 +97,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let partialInFlight = false
   /** 段纪元：finalize/stop 后迟到的 partial 丢弃。 */
   let segmentEpoch = 0
+  /** Ctrl 强制发送标记（随本段定稿的 meta 传递）。 */
+  let forcePending = false
 
   const asrUrl = (final: boolean): string =>
     `${location.origin}${config.basePath.replace(/\/+$/, '')}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}`
@@ -105,12 +114,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
   }
 
-  const emit = (listeners: Set<(t: string) => void>, text: string): void => {
+  const emit = (listeners: Set<(t: string, meta?: SegmentMeta) => void>, text: string, meta?: SegmentMeta): void => {
     const t = text.trim()
     if (!t) return
     for (const fn of listeners) {
       try {
-        fn(t)
+        fn(t, meta)
       } catch {
         // ignore
       }
@@ -182,6 +191,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     if (segment.length === 0) return
     const samples = concatSegment()
     const epoch = ++segmentEpoch
+    const meta: SegmentMeta = { force: forcePending }
+    forcePending = false
     segment = []
     speechActive = false
     silenceMs = 0
@@ -218,7 +229,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         if (!res.ok) return
         const out = (await res.json()) as { text?: string }
         if (epoch !== segmentEpoch) return
-        if (out.text) emit(transcriptListeners, out.text)
+        if (out.text) emit(transcriptListeners, out.text, meta)
       } catch {
         // 定稿失败：文本留在草稿由 UI 提示（Q16 提交失败不丢文字）
         setState(active ? (speechActive ? 'speech' : 'listening') : 'idle')
@@ -226,8 +237,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     })()
   }
 
-  const handleAudio = (data: Float32Array): void => {
+  const handleAudio = (raw: Float32Array): void => {
     if (!active || inFlush) return
+    // 跨平台守卫：Safari 等浏览器会忽略 AudioContext({sampleRate}) 选项，
+    // 实际按 44.1k/48k 输出。非 16k 时先线性重采样，保证 host zipformer2
+    // 始终收到 16k PCM（避免识别错乱）。
+    const data = ctxRate !== SAMPLE_RATE ? resampleTo16k(raw, ctxRate) : raw
     let sum = 0
     for (let i = 0; i < data.length; i++) sum += data[i] * data[i]
     const rms = Math.sqrt(sum / data.length)
@@ -299,7 +314,22 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
   }
 
-  const startRecorder = async (): Promise<void> => {
+  /** 线性插值重采样到 16k（跨平台守卫；两倍率差值在可接受范围）。 */
+function resampleTo16k(src: Float32Array, srcRate: number): Float32Array {
+  const ratio = srcRate / SAMPLE_RATE
+  const outLen = Math.max(1, Math.floor(src.length / ratio))
+  const out = new Float32Array(outLen)
+  for (let i = 0; i < outLen; i++) {
+    const pos = i * ratio
+    const i0 = Math.floor(pos)
+    const i1 = Math.min(i0 + 1, src.length - 1)
+    const frac = pos - i0
+    out[i] = src[i0] + (src[i1] - src[i0]) * frac
+  }
+  return out
+}
+
+const startRecorder = async (): Promise<void> => {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
@@ -308,7 +338,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         autoGainControl: true,
       },
     })
-    audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE })
+    const AC: typeof AudioContext =
+      window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    audioCtx = new AC({ sampleRate: SAMPLE_RATE })
+    // 浏览器可能忽略 sampleRate 选项（Safari 等）：记录真实采样率供重采样。
+    ctxRate = audioCtx.sampleRate
     const source = audioCtx.createMediaStreamSource(stream)
     processor = audioCtx.createScriptProcessor(BUFFER_SIZE, 1, 1)
     processor.onaudioprocess = (e) => {
@@ -324,6 +358,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     active = false
     inFlush = true
     segmentEpoch++ // 迟到的请求结果全部作废
+    forcePending = false
     segment = []
     speechActive = false
     silenceMs = 0
@@ -348,6 +383,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       // ignore
     }
     audioCtx = null
+    ctxRate = SAMPLE_RATE
     inFlush = false
   }
 
@@ -377,9 +413,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       setState('idle')
     },
     forceSend() {
-      // 至少 250ms 语音才强制发送（≥250ms 防误触，Q5）
+      // 至少 250ms 语音才强制发送（≥250ms 防误触，Q5）；标记 force 供 autoSend=false 兜底
       const speechS = segment.reduce((n, c) => n + c.length, 0) / SAMPLE_RATE
       if (speechActive && speechS >= 0.25) {
+        forcePending = true
         sincePartialMs = 0
         finalizeSegment()
       }

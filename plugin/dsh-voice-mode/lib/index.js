@@ -35,7 +35,7 @@ function createAsrRuntime(options) {
       modelsLoading = (async () => {
         if (!await haveAllModels()) {
           for (const f of MODEL_FILES) {
-            if (!await ensureFile(repoDir, f, broadcast)) {
+            if (!await ensureFile(repoDir, f, modelHost(), broadcast)) {
               broadcast("asr-error", { file: f });
               return false;
             }
@@ -96,14 +96,14 @@ function createAsrRuntime(options) {
   };
   return { feed, reset: (sessionId) => segments.delete(sessionId) };
 }
-async function ensureFile(repoDir, file, broadcast) {
+async function ensureFile(repoDir, file, primaryHost, broadcast) {
   const localPath = join(repoDir, file);
   const st = await stat(localPath).catch(() => null);
   if (st?.isFile()) return true;
   await mkdir(repoDir, { recursive: true }).catch(() => void 0);
   const partPath = `${localPath}.part`;
   const partSt = await stat(partPath).catch(() => null);
-  const hosts = [HOST_PRIMARY, HOST_FALLBACK];
+  const hosts = [...new Set([primaryHost, HOST_PRIMARY, HOST_FALLBACK].filter(Boolean))];
   for (const host of hosts) {
     try {
       const ok = await download(host, repoDir, file, partSt?.size ?? 0, broadcast);
@@ -376,12 +376,27 @@ import { settingsNamespace } from "@deepseek-ai/dsh-settings";
 var name = "voice-mode";
 var inject = ["webServer", "settings"];
 var defaultModelCacheDir = () => process.platform === "win32" ? join2(process.env.LOCALAPPDATA ?? join2(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join2(homedir(), ".cache", "dsh-voice-mode", "models");
-var VoiceSettingsSchema = z.object({
-  voice: z.string().default("zh-CN-XiaoxiaoNeural").description(
-    "Edge TTS \u97F3\u8272\uFF08\u5E38\u7528\uFF1Azh-CN-XiaoxiaoNeural \u6653\u6653 / zh-CN-YunxiNeural \u4E91\u5E0C / zh-CN-YunjianNeural \u4E91\u5065 / zh-CN-YunyangNeural \u4E91\u626C / zh-CN-XiaoyiNeural \u6653\u4F0A / en-US-AriaNeural\uFF09"
-  ),
-  rate: z.number().default(1).description("\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 = \u6162\u901F\uFF0C2.0 = \u5FEB\u901F\uFF0C1.0 = \u6B63\u5E38\uFF09"),
-  interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0).description("\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF1A0 \u9AD8\u95E8\u69DB\uFF08\u5B89\u9759\u73AF\u5883\uFF0C\u9ED8\u8BA4\uFF09/ 1 \u4E2D / 2 \u4F4E\uFF08\u5608\u6742\u73AF\u5883\u66F4\u5BB9\u6613\u6253\u65AD\uFF09")
+function createVoiceSettingsSchema(defs) {
+  return z.object({
+    voice: z.string().default(defs.voice).description(
+      "Edge TTS \u97F3\u8272\uFF08\u5E38\u7528\uFF1Azh-CN-XiaoxiaoNeural \u6653\u6653 / zh-CN-YunxiNeural \u4E91\u5E0C / zh-CN-YunjianNeural \u4E91\u5065 / zh-CN-YunyangNeural \u4E91\u626C / zh-CN-XiaoyiNeural \u6653\u4F0A / en-US-AriaNeural\uFF09"
+    ),
+    rate: z.number().default(defs.rate).description("\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 = \u6162\u901F\uFF0C2.0 = \u5FEB\u901F\uFF0C1.0 = \u6B63\u5E38\uFF09"),
+    interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(defs.interruptLevel).description("\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF1A0 \u9AD8\u95E8\u69DB\uFF08\u5B89\u9759\u73AF\u5883\uFF0C\u9ED8\u8BA4\uFF09/ 1 \u4E2D / 2 \u4F4E\uFF08\u5608\u6742\u73AF\u5883\u66F4\u5BB9\u6613\u6253\u65AD\uFF09"),
+    silenceMs: z.number().default(defs.silenceMs).description("\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 2000 = 2 \u79D2\uFF09"),
+    idleTimeoutMinutes: z.number().default(defs.idleTimeoutMinutes).description("\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09"),
+    modelHost: z.string().default(defs.modelHost).description("ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u56FD\u5185\u7F51\u7EDC\u53EF\u586B https://hf-mirror.com\uFF1B\u7559\u7A7A\u7528\u9ED8\u8BA4\uFF09"),
+    autoSend: z.boolean().default(defs.autoSend).description("\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173\u95ED\u5219\u53EA\u8FDB\u8349\u7A3F\u4F9B\u7F16\u8F91\uFF1B\u6309\u4F4F Ctrl \u4ECD\u53EF\u5F3A\u5236\u53D1\u9001\uFF09")
+  });
+}
+var VoiceSettingsSchema = createVoiceSettingsSchema({
+  voice: "zh-CN-XiaoxiaoNeural",
+  rate: 1,
+  interruptLevel: 0,
+  silenceMs: 2e3,
+  idleTimeoutMinutes: 10,
+  modelHost: "https://huggingface.co",
+  autoSend: true
 });
 var Config = z.object({
   basePath: z.string().default("/voice-mode"),
@@ -405,16 +420,24 @@ function apply(ctx, config) {
       }
     }
   };
-  const asr = createAsrRuntime({
-    cacheDir: config.cacheDir,
-    modelHost: config.modelHost,
-    broadcast
-  });
   const settingsScope = ctx.settings.register(
     settingsNamespace("voice-mode"),
-    VoiceSettingsSchema
+    createVoiceSettingsSchema({
+      voice: config.voice,
+      rate: config.rate,
+      interruptLevel: config.interruptLevel,
+      silenceMs: config.silenceMs,
+      idleTimeoutMinutes: config.idleTimeoutMinutes,
+      modelHost: config.modelHost,
+      autoSend: true
+    })
   );
   let vset = settingsScope.get();
+  const asr = createAsrRuntime({
+    cacheDir: config.cacheDir,
+    modelHost: () => vset.modelHost,
+    broadcast
+  });
   const queue = new TtsQueue({
     voice: vset.voice,
     rate: vset.rate,
@@ -470,8 +493,10 @@ function apply(ctx, config) {
             rate: currentRate(),
             voice: currentVoice(),
             interruptLevel: currentInterrupt(),
-            idleTimeoutMinutes: config.idleTimeoutMinutes,
-            modelHost: config.modelHost,
+            silenceMs: vset.silenceMs,
+            idleTimeoutMinutes: vset.idleTimeoutMinutes,
+            modelHost: vset.modelHost,
+            autoSend: vset.autoSend,
             cacheDir: config.cacheDir
           })
         );
@@ -615,6 +640,7 @@ export {
   Config,
   VoiceSettingsSchema,
   apply,
+  createVoiceSettingsSchema,
   inject,
   name
 };

@@ -72,11 +72,17 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
-| `voice` | `zh-CN-XiaoxiaoNeural` | Edge TTS 音色（晓晓 / 云希 / 云健 / 云扬 / 晓伊 / en-US-AriaNeural 等） |
-| `rate` | `1.0` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速） |
+| `voice` | `zh-CN-XiaoxiaoNeural` | Edge TTS 音色（晓晓 / 云希 / 云健 / 云扬 / 晓伊 / en-US-AriaNeural 等），**即时生效** |
+| `rate` | `1.0` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
 | `interruptLevel` | `0` | 发声打断灵敏度：0 高门槛 / 1 中 / 2 低 |
+| `silenceMs` | `2000` | 说完整一句的静音停顿毫秒数 |
+| `idleTimeoutMinutes` | `10` | 无活动自动退出语音模式的分钟数 |
+| `modelHost` | `https://huggingface.co` | ASR 模型下载源（国内网络填 `https://hf-mirror.com`） |
+| `autoSend` | `true` | 识别定稿后自动发送；关闭则只进草稿（按住 `Ctrl` 仍可强制发送） |
 
-## 配置（bundle patch / 设置面板可覆盖）
+生效范围：`voice`/`rate` 修改后**立即生效**（TTS 热切换）；其余设置下次进入语音模式时生效。设置项默认值以插件配置播种——未显式修改时跟随配置。
+
+## 配置（bundle patch）
 
 ```yaml
 - id: voice-mode
@@ -84,14 +90,19 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
   config:
     enabled: true
     basePath: /voice-mode
+    cacheDir: ~/.cache/dsh-voice-mode/models   # 可覆盖；默认按平台
+    # 以下为设置项的默认播种值（设置面板可覆盖；最终生效值以设置面板为准）：
     voice: zh-CN-XiaoxiaoNeural
     rate: 1.0
     interruptLevel: 0
-    silenceMs: 2000          # 静音多少毫秒判定说完一句
-    idleTimeoutMinutes: 10   # 无活动自动退出
-    cacheDir: ~/.cache/dsh-voice-mode/models   # 可覆盖；默认按平台
-    modelHost: https://huggingface.co          # 也可用 https://hf-mirror.com（国内网络）
+    silenceMs: 2000
+    idleTimeoutMinutes: 10
+    modelHost: https://huggingface.co
 ```
+
+> 说明：`voice/rate/interruptLevel/silenceMs/idleTimeoutMinutes/modelHost/autoSend`
+> 的最终生效值以**设置面板**为准；bundle 配置仅为这些键提供默认播种值
+> （`enabled/basePath/cacheDir` 仍只由 bundle 配置控制）。
 
 ## API
 
