@@ -202,12 +202,14 @@ input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f
 
 ## 开发
 
-### 依赖版本纪律（重要）
+### 依赖纪律（重要）
 
-`package.json` 中 `@deepseek-ai/schemastery`、`dsh-settings`、`dsh-host-webserver`、`dsh-llm`
-的版本**必须与当前 dsh 运行时一致**（本机 dsh 0.1.1-rc.2 对应 `^0.1.1-rc.2` / schemastery
-`^3.18.1`）。写低于运行时的 registry 版本会被 pnpm 解析装进 profile 并导致
-`webServer` 等服务缺失、相关插件全部 pending 的崩溃循环。升级 dsh 时须同步这四个版本。
+DSH 宿主共享包（`@deepseek-ai/dsh-settings`、`dsh-host-webserver`、`dsh-llm`、`schemastery`，
+以及 `cordis`/`dsh-web`）**必须声明为 peerDependencies，禁止写入 dependencies**。宿主包由
+dsh 运行时提供；若进 dependencies 会被 dshmarket 判定「遮蔽宿主版本」而拦截插件市场升级，
+且 pnpm 重解析时会把具体版装进 profile 导致 `webServer` 等服务缺失的崩溃循环。peer 版本须
+与当前 dsh 运行时一致（本机 dsh 0.1.1-rc.2 → `^0.1.1-rc.2` / schemastery `^3.18.1`），升级
+dsh 时同步更新。`dependencies` 只保留真正的第三方运行依赖（`msedge-tts` / `sherpa-onnx`）。
 
 ## 开发
 
