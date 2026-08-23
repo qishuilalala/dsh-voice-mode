@@ -15,7 +15,6 @@ function pcmToSamples(buf) {
   if (buf.length % 4 !== 0 || buf.length === 0) return null;
   return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
 }
-var MAX_ASR_BYTES = 4 * 1024 * 1024;
 function createAsrRuntime(options) {
   const { cacheDir, modelHost, broadcast } = options;
   const repoDir = join(cacheDir, MODEL_REPO);
@@ -164,21 +163,8 @@ async function download(host, repoDir, file, resumeFrom, broadcast) {
 }
 function handleAsrRequest(asr, activeSessionId, req, res) {
   const chunks = [];
-  let received = 0;
-  let tooLarge = false;
-  req.on("data", (c) => {
-    if (tooLarge) return;
-    received += c.length;
-    if (received > MAX_ASR_BYTES) {
-      tooLarge = true;
-      res.statusCode = 413;
-      res.end(JSON.stringify({ error: "pcm payload too large" }));
-      return;
-    }
-    chunks.push(c);
-  });
+  req.on("data", (c) => chunks.push(c));
   req.on("end", () => {
-    if (tooLarge) return;
     res.setHeader("content-type", "application/json");
     const url = new URL(req.url ?? "/", "http://localhost");
     const sessionId = url.searchParams.get("sessionId") ?? "";
@@ -272,9 +258,13 @@ var SentenceSegmenter = class {
 // src/tts-queue.ts
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 var MP3_MAGIC = 255;
+var TTS_METADATA = { wordBoundaryEnabled: false, sentenceBoundaryEnabled: false };
 function prosodyFromRate(rate) {
   if (rate !== void 0 && rate > 0 && rate !== 1) return { rate };
   return void 0;
+}
+function isValidMp3(buf) {
+  return buf.length > 0 && buf[0] === MP3_MAGIC;
 }
 var TtsQueue = class {
   tts = new MsEdgeTTS();
@@ -298,13 +288,31 @@ var TtsQueue = class {
     this.prosody = nextProsody;
     this.ready = null;
   }
+  /**
+   * 一次性合成（设置卡「试听」用）：独立连接，不干扰朗读队列的在途合成；
+   * 音色/语速可指定，缺省用当前队列参数。失败（含非法 ShortName）抛错。
+   */
+  async synthesize(text, options = {}) {
+    const tts = new MsEdgeTTS();
+    try {
+      await tts.setMetadata(options.voice ?? this.voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, TTS_METADATA);
+      const { audioStream } = tts.toStream(text, prosodyFromRate(options.rate));
+      const chunks = [];
+      for await (const chunk of audioStream) chunks.push(chunk);
+      const buf = Buffer.concat(chunks);
+      if (!isValidMp3(buf)) throw new Error("empty or invalid audio");
+      return buf;
+    } finally {
+      try {
+        await tts.close();
+      } catch {
+      }
+    }
+  }
   /** 初始化 Edge TTS WebSocket（懒执行，close 后可重来）。 */
   async ensureReady() {
     if (this.ready) return this.ready;
-    this.ready = this.tts.setMetadata(this.voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, {
-      wordBoundaryEnabled: false,
-      sentenceBoundaryEnabled: false
-    }).catch((e) => {
+    this.ready = this.tts.setMetadata(this.voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, TTS_METADATA).catch((e) => {
       this.ready = null;
       throw e;
     });
@@ -355,7 +363,7 @@ var TtsQueue = class {
             chunks.push(chunk);
           }
           const buf = Buffer.concat(chunks);
-          if (buf.length === 0 || buf[0] !== MP3_MAGIC) continue;
+          if (!isValidMp3(buf)) continue;
           if (item.epoch !== q.epoch) continue;
           q.errorNotified = false;
           const frame = {
@@ -578,6 +586,59 @@ function apply(ctx, config) {
   ctx.effect(
     () => ctx.webServer.register({
       kind: "exact",
+      path: `${base}/preview`,
+      handler: (req, res) => {
+        if (!config.enabled) {
+          res.statusCode = 403;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ error: "voice mode disabled" }));
+          return;
+        }
+        collectBody(req, res, MAX_JSON_BODY, async (body) => {
+          let voice = "";
+          let rate;
+          try {
+            const parsed = JSON.parse(body || "{}");
+            voice = String(parsed.voice ?? "").trim();
+            if (typeof parsed.rate === "number" && Number.isFinite(parsed.rate)) {
+              rate = Math.min(2, Math.max(0.5, parsed.rate));
+            }
+          } catch {
+          }
+          if (voice.length > 128) {
+            res.statusCode = 400;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ error: "voice too long" }));
+            return;
+          }
+          if (!voice) {
+            res.statusCode = 400;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ error: "voice required" }));
+            return;
+          }
+          const sample = voice.startsWith("zh-") ? "\u4F60\u597D\uFF0C\u6B22\u8FCE\u4F7F\u7528\u8BED\u97F3\u6A21\u5F0F\u3002" : "Hello, welcome to voice mode.";
+          let buf;
+          try {
+            buf = await queue.synthesize(sample, { voice, rate });
+          } catch (e) {
+            console.warn(`[dsh-voice-mode] preview synthesis failed: ${String(e)}`);
+            res.statusCode = 502;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ error: "\u9884\u89C8\u5408\u6210\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u97F3\u8272\u540D\uFF08ShortName\uFF09\u662F\u5426\u6B63\u786E" }));
+            return;
+          }
+          res.statusCode = 200;
+          res.setHeader("content-type", "audio/mpeg");
+          res.setHeader("cache-control", "no-store");
+          res.end(buf);
+        });
+      }
+    })
+  );
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: "exact",
       path: `${base}/asr`,
       handler: (req, res) => {
         handleAsrRequest(asr, activeVoiceSession, req, res);
@@ -653,7 +714,13 @@ function collectBody(req, res, maxBytes, onBody) {
     }
   });
   req.on("end", () => {
-    if (!tooLarge) onBody(body);
+    if (tooLarge) return;
+    try {
+      const r = onBody(body);
+      if (r && typeof r.then === "function") r.catch(() => {
+      });
+    } catch {
+    }
   });
   req.on("error", () => {
   });

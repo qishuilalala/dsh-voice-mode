@@ -22,9 +22,17 @@ export type FrameListener = (frame: VoiceFrame) => void
 
 const MP3_MAGIC = 0xff
 
+/** setMetadata 的统一选项：句子/词边界回调都不需要（帧内无字幕元数据）。 */
+const TTS_METADATA = { wordBoundaryEnabled: false, sentenceBoundaryEnabled: false } as const
+
 function prosodyFromRate(rate?: number): ProsodyOptions | undefined {
   if (rate !== undefined && rate > 0 && rate !== 1) return { rate }
   return undefined
+}
+
+/** 合法 MP3 帧以同步字开头；空音频（如英文音色读不了中文）视同无效。 */
+function isValidMp3(buf: Buffer): boolean {
+  return buf.length > 0 && buf[0] === MP3_MAGIC
 }
 
 interface QueuedSentence {
@@ -67,14 +75,35 @@ export class TtsQueue {
     this.ready = null // 下次合成重新 setMetadata
   }
 
+  /**
+   * 一次性合成（设置卡「试听」用）：独立连接，不干扰朗读队列的在途合成；
+   * 音色/语速可指定，缺省用当前队列参数。失败（含非法 ShortName）抛错。
+   */
+  async synthesize(text: string, options: { voice?: string; rate?: number } = {}): Promise<Buffer> {
+    const tts = new MsEdgeTTS()
+    try {
+      await tts.setMetadata(options.voice ?? this.voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, TTS_METADATA)
+      const { audioStream } = tts.toStream(text, prosodyFromRate(options.rate))
+      const chunks: Buffer[] = []
+      for await (const chunk of audioStream) chunks.push(chunk as Buffer)
+      const buf = Buffer.concat(chunks)
+      if (!isValidMp3(buf)) throw new Error('empty or invalid audio')
+      return buf
+    } finally {
+      // close 自身异常不得吞掉合成错误（连接未建立时 close 非必要）。
+      try {
+        await tts.close()
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   /** 初始化 Edge TTS WebSocket（懒执行，close 后可重来）。 */
   private async ensureReady(): Promise<void> {
     if (this.ready) return this.ready
     this.ready = this.tts
-      .setMetadata(this.voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, {
-        wordBoundaryEnabled: false,
-        sentenceBoundaryEnabled: false,
-      })
+      .setMetadata(this.voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, TTS_METADATA)
       .catch((e) => {
         this.ready = null
         throw e
@@ -132,7 +161,7 @@ export class TtsQueue {
           }
           const buf = Buffer.concat(chunks)
           // 合法 MP3 帧以同步字开头；丢弃元数据垃圾。
-          if (buf.length === 0 || buf[0] !== MP3_MAGIC) continue
+          if (!isValidMp3(buf)) continue
           // 合成期间被打断：丢弃本句。
           if (item.epoch !== q.epoch) continue
           q.errorNotified = false // 有帧成功：复位不可达提示

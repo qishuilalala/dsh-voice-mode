@@ -66,6 +66,12 @@
   脚本预算缓存（haoku123/dsh-voice 同款 `npm run prefetch` 实证）。
 - TTS：msedge-tts（微软 Edge 免费神经音色）纯 JS；队列按会话隔离 + epoch
   打断；**不可达时给用户可见提示**（不能只 console.warn）。
+- **设置卡音色试听**：一次性合成走独立 `preview` 端点（每次合成建独立
+  MsEdgeTTS 连接并关闭，**不复用朗读队列的连接**，避免并发冲突）；
+  例句按音色区域分流（`zh-*` 用中文例句，其余英文——实测英文音色读中文
+  例句产出 0 字节空音频，会误报失败）；非法 ShortName 报错要转成用户可见
+  提示；客户端 `Audio` 对象必须在点击手势内创建且用 `AbortSignal.timeout`
+  兜底超时（否则「合成中…」永久挂死），打断旧试听时同步 revoke 旧 blob URL。
 - 涉及 API 密钥的配置：密文不落 yaml——配置优先、环境变量回退
   （参照 STARDUSTLC666/dsh-voice 的 `DSH_VOICE_ASR_KEY` 模式）。
 - 浏览器侧：`getUserMedia` 16k 单声道 + `echoCancellation`；RMS VAD 端点检测，

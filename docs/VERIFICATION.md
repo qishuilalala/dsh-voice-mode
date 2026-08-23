@@ -140,3 +140,28 @@ record-demo：assets/demo.gif 5 帧（76KB）已重录于独立实例
 - 验证：`node build.mjs`（21:00:44）→ 重启 dsh（21:01:11，PID 1413864）→
   `/voice-mode` 与 `/voice-mode/config` 均 200；产物含 purpose 过滤；
   journalctl 无插件加载错误。用户侧复验：语音模式发消息后不再出现「自己的消息被朗读」。
+
+## 附录 C：设置卡音色「试听」验证记录（2026-08-23）
+
+- 功能：`voice` 行旁新增「试听」按钮——`POST /voice-mode/preview` 用当前音色 +
+  当前语速一次性合成（独立 MsEdgeTTS 连接，不干扰朗读队列）并播放；自定义
+  ShortName（预设列表外）同样可试听；失败有可见提示。
+- 关键实测发现（决定实现取舍）：
+  - **英文音色读中文例句产出 0 字节空音频**（不报错）→ 例句按 `voice.startsWith('zh-')`
+    分流：中文音色中文例句、其余英文例句；空/非法 MP3 帧按失败处理（502）。
+  - **非法 ShortName** 报 `Stream closed before the synthesis completed`
+    → 转成用户可见「试听失败：请检查网络或音色名（ShortName）是否正确」。
+  - 自定义草稿未提交（未失焦/未 Enter）时点试听 → **用输入草稿实时值**，无需先提交。
+- 复核后加固（两轴审查结论）：客户端 fetch 加 `AbortSignal.timeout(15000)`（防
+  「合成中…」挂死）；打断旧试听时 revoke 旧 blob URL（防泄漏）；服务端 voice 长度
+  上限 128（400）；删除客户端从未使用的 `text` 覆盖参数（Speculative Generality）；
+  `synthesize()` finally 的 close 容错（不吞合成错误）；`/preview` gate
+  `config.enabled`（403，与 `/toggle` 语义一致）；`collectBody` 捕获 async 回调
+  rejection；抽取 `TTS_METADATA`/`isValidMp3` 消除与 pump 的重复。
+- 验证：typecheck 双 program 绿（host 用统一 paths 消除模块增强环境分裂，见层 1 注）；
+  verify 28 项过；curl 七场景（预设/自定义合法/英文/非法 502/缺 voice 400/超长
+  voice 400/带 rate）；headless UI E2E（`test/preview-ui-check.js`，自恢复式：
+  结束写回原始 voice 并校验 `/voice-mode/config` 一致，测试不污染设置文档）。
+- 注：E2E 首版曾因点击试听导致输入框失焦提交非法音色名污染 `settings.yaml`
+  （已恢复 `zh-CN-XiaoyiNeural`）；脚本已改为「记录 → 提交 → 恢复 → 校验」自恢复
+  模式，今后重跑不会污染。

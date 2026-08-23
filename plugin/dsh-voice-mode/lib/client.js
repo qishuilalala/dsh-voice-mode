@@ -509,6 +509,7 @@ var t = {
   term: "var(--dsw-alias-label-tertiary)",
   brand: "var(--dsw-alias-brand-primary)"
 };
+var BASE_PATH = "/voice-mode";
 var cardStyle = {
   border: `1px solid ${t.border}`,
   background: t.bg,
@@ -663,7 +664,8 @@ function SelectField({
   field,
   value,
   options,
-  placeholder
+  placeholder,
+  footer
 }) {
   const cur = String(value ?? "");
   const inOptions = options.some((o) => o.v === cur);
@@ -710,7 +712,87 @@ function SelectField({
           if (e.key === "Enter") void score.set(field, custom);
         }
       }
-    )
+    ),
+    footer?.(inOptions ? cur : custom)
+  ] });
+}
+function VoicePreviewButton({ voice, rate }) {
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [note, setNote] = (0, import_react.useState)(null);
+  const audioRef = (0, import_react.useRef)(null);
+  const play = () => {
+    if (busy) return;
+    const v = voice.trim();
+    if (!v) {
+      setNote("\u8BF7\u5148\u586B\u5199\u97F3\u8272\u540D\uFF08ShortName\uFF09");
+      return;
+    }
+    setBusy(true);
+    setNote(null);
+    const audio = new Audio();
+    const prev = audioRef.current;
+    if (prev) {
+      prev.pause();
+      if (prev.src.startsWith("blob:")) URL.revokeObjectURL(prev.src);
+    }
+    audioRef.current = audio;
+    void (async () => {
+      try {
+        const res = await fetch(`${BASE_PATH}/preview`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ voice: v, rate }),
+          signal: AbortSignal.timeout(15e3)
+        });
+        if (res.status === 403) {
+          setNote("\u8BED\u97F3\u6A21\u5F0F\u5DF2\u7981\u7528\uFF08\u63D2\u4EF6 enabled=false\uFF09\uFF0C\u65E0\u6CD5\u8BD5\u542C");
+          return;
+        }
+        if (!res.ok) throw new Error(`preview http ${res.status}`);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        audio.src = url;
+        audio.onended = () => URL.revokeObjectURL(url);
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          setNote("\u8BD5\u542C\u5931\u8D25\uFF1A\u65E0\u6CD5\u64AD\u653E\u8BE5\u97F3\u8272");
+        };
+        try {
+          await audio.play();
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          setNote(
+            e instanceof DOMException && e.name === "NotAllowedError" ? "\u6D4F\u89C8\u5668\u62E6\u622A\u4E86\u81EA\u52A8\u64AD\u653E\uFF0C\u8BF7\u518D\u70B9\u4E00\u6B21\u8BD5\u542C" : "\u8BD5\u542C\u5931\u8D25\uFF1A\u65E0\u6CD5\u64AD\u653E\u8BE5\u97F3\u8272"
+          );
+        }
+      } catch {
+        setNote("\u8BD5\u542C\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u97F3\u8272\u540D\uFF08ShortName\uFF09\u662F\u5426\u6B63\u786E");
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+  const btnStyle = {
+    font: "inherit",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    cursor: busy ? "default" : "pointer",
+    color: t.label,
+    background: "var(--dsw-alias-bg-layer-2)",
+    border: `1px solid ${t.border}`,
+    borderRadius: 6,
+    padding: "4px 10px",
+    fontSize: 12,
+    lineHeight: "18px"
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", onClick: play, disabled: busy, style: btnStyle, title: "\u8BD5\u542C\u5F53\u524D\u97F3\u8272\uFF08\u5F53\u524D\u8BED\u901F\uFF09", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 11, height: 11, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 3l9 5-9 5z" }) }),
+      busy ? "\u5408\u6210\u4E2D\u2026" : "\u8BD5\u542C"
+    ] }),
+    note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
   ] });
 }
 function Row({ name, desc, children }) {
@@ -757,7 +839,17 @@ function VoiceSettingsCard({ scope }) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...setChevron, transform: collapsed ? "rotate(0deg)" : "rotate(180deg)" }, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 14, height: 14, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 6l4 4 4-4z" }) }) })
     ] }),
     !collapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: setBody, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "voice", desc: "Edge TTS \u97F3\u8272\uFF08\u4E0B\u62C9\u5E38\u7528\uFF0C\u5176\u4F59\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u52A8\u586B ShortName\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "voice", value: value.voice ?? "", options: VOICE_OPTIONS, placeholder: "zh-CN-XiaoxiaoNeural" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "voice", desc: "Edge TTS \u97F3\u8272\uFF08\u4E0B\u62C9\u5E38\u7528\uFF0C\u5176\u4F59\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u52A8\u586B ShortName\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        SelectField,
+        {
+          score: scope,
+          field: "voice",
+          value: value.voice ?? "",
+          options: VOICE_OPTIONS,
+          placeholder: "zh-CN-XiaoxiaoNeural",
+          footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1) })
+        }
+      ) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1, min: 0.5, max: 2, step: 0.1 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         SegGroup,

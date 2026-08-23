@@ -14,7 +14,7 @@
  * 全部走 --dsw-alias-* 主题变量（深浅色自适应）。
  */
 import * as React from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface ScopeController {
   getSnapshot(): {
@@ -35,6 +35,9 @@ const t = {
   term: 'var(--dsw-alias-label-tertiary)',
   brand: 'var(--dsw-alias-brand-primary)',
 }
+
+/** 插件 HTTP 命名空间（与 host 侧 BASE_PATH 常量及其余 client 引用一致，固定不可配置）。 */
+const BASE_PATH = '/voice-mode'
 
 const cardStyle: React.CSSProperties = {
   border: `1px solid ${t.border}`,
@@ -209,12 +212,15 @@ function SelectField({
   value,
   options,
   placeholder,
+  footer,
 }: {
   score: ScopeController
   field: string
   value: unknown
   options: Array<{ v: string; label: string }>
   placeholder?: string
+  /** 附加渲染（如试听按钮）：入参为当前生效值（预设 = 已选值；自定义 = 输入草稿实时值）。 */
+  footer?: (current: string) => React.ReactNode
 }): React.ReactElement {
   const cur = String(value ?? '')
   const inOptions = options.some((o) => o.v === cur)
@@ -261,6 +267,103 @@ function SelectField({
             if (e.key === 'Enter') void score.set(field, custom)
           }}
         />
+      )}
+      {footer?.(inOptions ? cur : custom)}
+    </span>
+  )
+}
+
+/**
+ * 试听按钮：请求 host /preview 用「当前音色 + 当前语速」一次性合成并播放。
+ * Audio 必须在用户手势内创建（自动播放策略）；fetch 完成后仍处短暂激活期内。
+ */
+function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): React.ReactElement {
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const play = (): void => {
+    if (busy) return
+    const v = voice.trim()
+    if (!v) {
+      setNote('请先填写音色名（ShortName）')
+      return
+    }
+    setBusy(true)
+    setNote(null)
+    const audio = new Audio()
+    // 新试听打断旧试听：停播并释放旧 blob URL（onended/onerror 之外的打断路径）。
+    const prev = audioRef.current
+    if (prev) {
+      prev.pause()
+      if (prev.src.startsWith('blob:')) URL.revokeObjectURL(prev.src)
+    }
+    audioRef.current = audio
+    void (async () => {
+      try {
+        // 超时兜底：Edge 不可达/网络黑洞时避免「合成中…」永久挂死。
+        const res = await fetch(`${BASE_PATH}/preview`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ voice: v, rate }),
+          signal: AbortSignal.timeout(15000),
+        })
+        if (res.status === 403) {
+          setNote('语音模式已禁用（插件 enabled=false），无法试听')
+          return
+        }
+        if (!res.ok) throw new Error(`preview http ${res.status}`)
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        audio.src = url
+        audio.onended = () => URL.revokeObjectURL(url)
+        audio.onerror = () => {
+          URL.revokeObjectURL(url)
+          setNote('试听失败：无法播放该音色')
+        }
+        try {
+          await audio.play()
+        } catch (e) {
+          URL.revokeObjectURL(url)
+          setNote(
+            e instanceof DOMException && e.name === 'NotAllowedError'
+              ? '浏览器拦截了自动播放，请再点一次试听'
+              : '试听失败：无法播放该音色',
+          )
+        }
+      } catch {
+        setNote('试听失败：请检查网络或音色名（ShortName）是否正确')
+      } finally {
+        setBusy(false)
+      }
+    })()
+  }
+
+  const btnStyle: React.CSSProperties = {
+    font: 'inherit',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    cursor: busy ? 'default' : 'pointer',
+    color: t.label,
+    background: 'var(--dsw-alias-bg-layer-2)',
+    border: `1px solid ${t.border}`,
+    borderRadius: 6,
+    padding: '4px 10px',
+    fontSize: 12,
+    lineHeight: '18px',
+  }
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+      <button type="button" onClick={play} disabled={busy} style={btnStyle} title="试听当前音色（当前语速）">
+        <svg viewBox="0 0 16 16" width={11} height={11} aria-hidden="true">
+          <path fill="currentColor" d="M4 3l9 5-9 5z" />
+        </svg>
+        {busy ? '合成中…' : '试听'}
+      </button>
+      {note && (
+        <span style={{ color: 'var(--dsw-alias-state-error-primary)', fontSize: 12, lineHeight: '18px' }}>{note}</span>
       )}
     </span>
   )
@@ -340,7 +443,14 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
         <div style={setBody}>
           <div style={{ marginTop: 4 }}>
             <Row name="voice" desc="Edge TTS 音色（下拉常用，其余选「自定义」手动填 ShortName）">
-              <SelectField score={scope} field="voice" value={value.voice ?? ''} options={VOICE_OPTIONS} placeholder="zh-CN-XiaoxiaoNeural" />
+              <SelectField
+                score={scope}
+                field="voice"
+                value={value.voice ?? ''}
+                options={VOICE_OPTIONS}
+                placeholder="zh-CN-XiaoxiaoNeural"
+                footer={(v) => <VoicePreviewButton voice={v} rate={Number(value.rate ?? 1)} />}
+              />
             </Row>
             <Row name="rate" desc="朗读语速倍率（0.5 慢速 ～ 2.0 快速，1.0 正常）">
               <NumberField score={scope} field="rate" value={value.rate ?? 1} min={0.5} max={2} step={0.1} />

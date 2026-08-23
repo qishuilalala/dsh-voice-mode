@@ -322,6 +322,64 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() =>
     ctx.webServer.register({
       kind: 'exact',
+      path: `${base}/preview`,
+      handler: (req: IncomingMessage, res: ServerResponse) => {
+        // 总开关一致语义（同 /toggle 403）：关闭时试听也不发起 Edge 网络调用。
+        if (!config.enabled) {
+          res.statusCode = 403
+          res.setHeader('content-type', 'application/json')
+          res.end(JSON.stringify({ error: 'voice mode disabled' }))
+          return
+        }
+        collectBody(req, res, MAX_JSON_BODY, async (body) => {
+          let voice = ''
+          let rate: number | undefined
+          try {
+            const parsed = JSON.parse(body || '{}') as { voice?: unknown; rate?: unknown }
+            voice = String(parsed.voice ?? '').trim()
+            if (typeof parsed.rate === 'number' && Number.isFinite(parsed.rate)) {
+              rate = Math.min(2, Math.max(0.5, parsed.rate))
+            }
+          } catch {
+            // malformed body → voice '' → 400 below
+          }
+          // 音色名上限：拦截畸形长串（MAX_JSON_BODY 内的兜底）；合法 ShortName 均远短于此。
+          if (voice.length > 128) {
+            res.statusCode = 400
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify({ error: 'voice too long' }))
+            return
+          }
+          if (!voice) {
+            res.statusCode = 400
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify({ error: 'voice required' }))
+            return
+          }
+          // 试听例句按音色区域选：中文音色读中文，其余读英文（英文音色读中文会产出空音频）。
+          const sample = voice.startsWith('zh-') ? '你好，欢迎使用语音模式。' : 'Hello, welcome to voice mode.'
+          let buf: Buffer
+          try {
+            buf = await queue.synthesize(sample, { voice, rate })
+          } catch (e) {
+            console.warn(`[dsh-voice-mode] preview synthesis failed: ${String(e)}`)
+            res.statusCode = 502
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify({ error: '预览合成失败：请检查网络或音色名（ShortName）是否正确' }))
+            return
+          }
+          res.statusCode = 200
+          res.setHeader('content-type', 'audio/mpeg')
+          res.setHeader('cache-control', 'no-store')
+          res.end(buf)
+        })
+      },
+    }),
+  )
+
+  ctx.effect(() =>
+    ctx.webServer.register({
+      kind: 'exact',
       path: `${base}/asr`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
         handleAsrRequest(asr, activeVoiceSession, req, res)
@@ -395,7 +453,7 @@ function collectBody(
   req: IncomingMessage,
   res: ServerResponse,
   maxBytes: number,
-  onBody: (body: string) => void,
+  onBody: (body: string) => void | Promise<void>,
 ): void {
   let body = ''
   let tooLarge = false
@@ -410,7 +468,14 @@ function collectBody(
     }
   })
   req.on('end', () => {
-    if (!tooLarge) onBody(body)
+    if (tooLarge) return
+    // onBody 可能是 async（如 /preview）；rejection 不得成为未处理错误（响应已由回调内部处理）。
+    try {
+      const r = onBody(body)
+      if (r && typeof r.then === 'function') r.catch(() => {})
+    } catch {
+      // 同步抛已由回调自身兜住；此处仅防漏
+    }
   })
   req.on('error', () => {
     // 客户端中断：忽略（不重复响应）

@@ -86,7 +86,7 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
-| `voice` | `zh-CN-XiaoxiaoNeural` | Edge TTS 音色（见下方常用音色表），**即时生效** |
+| `voice` | `zh-CN-XiaoxiaoNeural` | Edge TTS 音色（见下方常用音色表），**即时生效**；行内「试听」按钮按当前音色 + 当前语速合成预览（下拉常用音色与「自定义」ShortName 均可试听，失败有可见提示） |
 | `rate` | `1.0` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
 | `interruptLevel` | `0` | 发声打断灵敏度：0 高门槛 / 1 中 / 2 低 |
 | `silenceMs` | `2000` | 说完整一句的静音停顿毫秒数 |
@@ -147,6 +147,7 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 | `POST /voice-mode/toggle` | `{sessionId, on}` 进入/退出语音模式（全局单活） |
 | `POST /voice-mode/asr` | 原始 f32 LE 16k PCM 载荷 → `{text}`（流式 zipformer2）；模型未就绪返回 `202 {loading}`；`?reset=1` 丢弃进行中识别段（唤醒词命中清场用） |
 | `POST /voice-mode/cancel` | `{sessionId}` 作废 TTS 队列并丢弃在途 ASR 段 |
+| `POST /voice-mode/preview` | `{voice, rate?}` 一次性合成试听 → `audio/mpeg`（400 缺 voice / voice 过长；502 合成失败，含非法 ShortName；插件 `enabled=false` 时 403）。不要求语音模式激活，使用独立合成连接，不影响朗读队列 |
 | `GET /voice-mode/config` | 客户端引导参数（静音阈值 / 灵敏度 / 音色语速等） |
 | `GET /voice-mode` | 健康检查 `{ok, name, enabled, active}` |
 
@@ -187,6 +188,7 @@ input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f
 - **唤醒词为轻量实现**（基于流式识别文本匹配，非专用 KWS 引擎）：嘈杂环境可能延迟或误激活；唤醒词本身不会进入聊天（命中即丢弃缓冲）
 - hold 模式按住时如果切换窗口/标签页会**放弃本段**（防持续收音），回来需重新按住
 - hero（新会话空态）没有语音入口：语音模式是会话级功能，请先进入会话使用输入框麦克风按钮
+- 「试听」的请求超时兜底使用 `AbortSignal.timeout`（Chrome 103+ / Firefox 100+ / Safari 16+）；更老的浏览器点击试听会立即显示失败提示，属预期降级
 
 ## 故障排查
 
@@ -199,19 +201,31 @@ input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f
 | 状态条显示「朗读连接失败：正在重试…」 | Edge TTS 服务不可达（境外服务），稍后自动重试；持续失败请检查网络/代理 |
 | 识别不准 | 靠近麦克风、降低环境噪声；还有回声时把「打断灵敏度」调高一档 |
 | hold 模式按住没反应 | 确认切换到了 hold 模式并处于语音模式中（按钮显示「按住说话」）；浏览器窗口需在前台 |
+| 「试听」按钮提示合成失败 | Edge TTS 服务不可达（境外服务）或音色名（ShortName）不存在：核对音色名（`node scripts/list-voices.mjs` 可查全部），稍后重试 |
 
 ## 开发
 
 ### 依赖纪律（重要）
 
-DSH 宿主共享包（`@deepseek-ai/dsh-settings`、`dsh-host-webserver`、`dsh-llm`、`schemastery`，
-以及 `cordis`/`dsh-web`）**必须声明为 peerDependencies，禁止写入 dependencies**。宿主包由
-dsh 运行时提供；若进 dependencies 会被 dshmarket 判定「遮蔽宿主版本」而拦截插件市场升级，
-且 pnpm 重解析时会把具体版装进 profile 导致 `webServer` 等服务缺失的崩溃循环。peer 版本须
-与当前 dsh 运行时一致（本机 dsh 0.1.1-rc.2 → `^0.1.1-rc.2` / schemastery `^3.18.1`），升级
-dsh 时同步更新。`dependencies` 只保留真正的第三方运行依赖（`msedge-tts` / `sherpa-onnx`）。
+分三类，各有归属：
 
-## 开发
+- **第三方运行依赖**（`msedge-tts` / `sherpa-onnx`）与 **registry 可解析的框架包**
+  （`@deepseek-ai/schemastery`）→ `dependencies`。schemastery 是公开 npm 包且
+  dsh 宿主平台内部不遮蔽它，装进 profile 不会引发版本冲突。
+- **宿主框架包**（`@deepseek-ai/cordis` / `@deepseek-ai/dsh-web` / `react`）→
+  `peerDependencies`。宿主包由 dsh 运行时提供；若进 dependencies 会被 dshmarket
+  判定「遮蔽宿主版本」而拦截插件市场升级。peer 版本须与当前 dsh 运行时一致
+  （本机：cordis `^4.0.1`、dsh-web `^0.1.0-rc.6 || ^0.1.1-rc.0`、react `^18.2.0`），
+  升级 dsh 时同步更新。
+- **仅类型引用**（`@deepseek-ai/dsh-settings` / `dsh-host-webserver` / `dsh-llm`）→
+  实例之间没有任何运行时 import（`import type` + esbuild 剔除），无需声明；
+  开发期类型经 pnpm `file:` 链接指向本机 dsh 发行版 node_modules（registry 的
+  rc.1 类型快照落后于发行版，发行版类型才是运行时真值）。
+
+`dependencies` 只保留真正的第三方运行依赖，禁止把宿主共享包写进去；改依赖后
+跑 `npm pack --dry-run` 与 `pnpm test` 回归。
+
+### 构建与测试
 
 ```sh
 pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js（browser）
