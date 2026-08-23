@@ -6,10 +6,13 @@
  *    段定稿后提交；按住 Ctrl（≥250ms 语音）强制立即发送兜底；
  *  - partial 轮询（≈900ms）走 host 流式识别增量，实时字幕只在状态条预览，
  *    定稿文本才作为结果（Q6/Q13：可编辑草稿 + 自动提交）；
- *  - speechStart = 打断信号（Q10 高门槛：能量阈值 + 持续时长，三档可调）。
+ *  - speechStart = 打断信号（Q10 高门槛：能量阈值 + 持续时长，三档可调）；
+ *  - v0.2：hold 模式（按住说话、松手发送，绕过 VAD）与唤醒词待机（wake）。
  */
 
-export type AsrState = 'idle' | 'listening' | 'speech' | 'transcribing' | 'loading-model'
+import { matchWakeWord } from './wakeword.ts'
+
+export type AsrState = 'idle' | 'listening' | 'wake' | 'speech' | 'transcribing' | 'loading-model'
 
 export interface AsrConfig {
   /** 静音多少 ms 判句结束（Q5，默认 2000）。 */
@@ -18,10 +21,12 @@ export interface AsrConfig {
   interruptLevel: 0 | 1 | 2
   /** host 路由前缀。 */
   basePath: string
+  /** 唤醒词（空 = 关）：进入后先在 wake 待机态，说出唤醒词才正式开口。 */
+  wakeWord?: string
 }
 
 export interface SegmentMeta {
-  /** true = 由按住 Ctrl 强制发送触发（autoSend=false 时仍提交）。 */
+  /** true = 由强制发送触发（按住 Ctrl / hold 松手；autoSend=false 时仍提交）。 */
   force?: boolean
 }
 
@@ -31,6 +36,10 @@ export interface AsrEngine {
   stop(): Promise<void>
   /** 按住 Ctrl 强制立即发送当前段（Q5 兜底）。 */
   forceSend(): void
+  /** hold 模式：按下开始录制（绕过 VAD 门控，忽略静音切句）。 */
+  beginHeld(): void
+  /** hold 模式：松手定稿发送（cancel=true 放弃本段）。 */
+  endHeld(cancel?: boolean): void
   /** 定稿文本（段结束/强制发送后）。 */
   readonly onSegment: (fn: (text: string, meta?: SegmentMeta) => void) => () => void
   /** 实时字幕（partial，仅预览）。 */
@@ -86,6 +95,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let segmentMs = 0
   let silenceMs = 0
   let prePad: Float32Array[] = []
+  /** hold 模式：按住录制中（绕过 VAD 门控与静音切句，整段按压区间保留）。 */
+  let holdActive = false
+  /** 唤醒词（归一化后；空串 = 关闭）。 */
+  const wakeWord = (config.wakeWord ?? '').trim().toLowerCase().replace(/[\s\u3000]+/g, '')
 
   // --- 打断状态机（Q10：首音节强度 + 持续时长） ---
   const intLevel = INTERRUPT_LEVELS[config.interruptLevel] ?? INTERRUPT_LEVELS[0]
@@ -178,11 +191,34 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       const out = (await res.json()) as { text?: string }
       if (epoch !== segmentEpoch) return
       if (state === 'loading-model') setState('speech')
+      // 唤醒词门：wake 待机态下 partial 文本只用于匹配，命中→清本地与 host 流→激活。
+      if (state === 'wake' && wakeWord) {
+        if (matchWakeWord(out.text ?? '', wakeWord)) {
+          segmentEpoch++
+          segment = []
+          segmentMs = 0
+          silenceMs = 0
+          prePad = []
+          sincePartialMs = 0
+          await resetHostStream()
+          if (active) setState('listening')
+        }
+        return
+      }
       emit(partialListeners, out.text ?? '')
     } catch {
       // 预览失败静默（Q16：识别重试由定时轮询自然覆盖）
     } finally {
       partialInFlight = false
+    }
+  }
+
+  /** 清 host 识别流（唤醒词命中 / wake 滚窗）。 */
+  const resetHostStream = async (): Promise<void> => {
+    try {
+      await fetch(`${asrUrl(false)}&reset=1`, { method: 'POST' })
+    } catch {
+      // 重置失败：下次 partial 走增量仍可续（host 流健壮）
     }
   }
 
@@ -276,7 +312,44 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       interruptCandidateMs = 0
     }
 
-    if (rms > SPEECH_RMS) {
+    if (holdActive) {
+      // hold：按压区间全部保留（绕过 VAD 门控与静音切句），仅段长上限兜底。
+      if (!speechActive) {
+        speechActive = true
+        if (state !== 'speech') setState('speech')
+      }
+      segmentMs += durationMs
+      silenceMs = 0
+      segment.push(data)
+      if (segmentMs > MAX_SEGMENT_MS) finalizeSegment()
+    } else if (state === 'wake') {
+      // wake 待机：有人声才累积（满足 partial 门槛），但不置 speech、不 finalize；
+      // 唤醒词匹配在 requestPartial 结果上做，命中后由它重置。
+      if (rms > SPEECH_RMS) {
+        segmentMs += durationMs
+        segment.push(data)
+        // 上限兜底：滚窗重置（防无唤醒词时空累积无界）。
+        if (segmentMs > MAX_SEGMENT_MS) {
+          segment = []
+          segmentMs = 0
+          silenceMs = 0
+          prePad = []
+          void resetHostStream()
+        }
+      } else {
+        prePad.push(data)
+        let total = 0
+        let cut = 0
+        for (let i = prePad.length - 1; i >= 0; i--) {
+          total += (prePad[i].length / SAMPLE_RATE) * 1000
+          if (total > PRE_PAD_MS) {
+            cut = i + 1
+            break
+          }
+        }
+        if (cut > 0) prePad = prePad.slice(cut)
+      }
+    } else if (rms > SPEECH_RMS) {
       if (!speechActive) {
         speechActive = true
         setState('speech')
@@ -308,7 +381,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
 
     // partial 轮询：段内节拍驱动（无独立 timer，随音频帧推进）
     sincePartialMs += durationMs
-    if (speechActive && sincePartialMs >= PARTIAL_INTERVAL_MS) {
+    if ((speechActive || holdActive || state === 'wake') && sincePartialMs >= PARTIAL_INTERVAL_MS) {
       sincePartialMs = 0
       void requestPartial()
     }
@@ -359,6 +432,7 @@ const startRecorder = async (): Promise<void> => {
     inFlush = true
     segmentEpoch++ // 迟到的请求结果全部作废
     forcePending = false
+    holdActive = false
     segment = []
     speechActive = false
     silenceMs = 0
@@ -396,7 +470,9 @@ const startRecorder = async (): Promise<void> => {
       segmentEpoch++
       sincePartialMs = 0
       interruptCandidateMs = 0
-      setState('listening')
+      holdActive = false
+      // 配置了唤醒词 → 先进 wake 待机态（说出唤醒词才正式开口）；否则直接聆听。
+      setState(wakeWord ? 'wake' : 'listening')
       try {
         await startRecorder()
       } catch (error) {
@@ -420,6 +496,39 @@ const startRecorder = async (): Promise<void> => {
         sincePartialMs = 0
         finalizeSegment()
       }
+    },
+    beginHeld() {
+      if (!active || holdActive) return
+      holdActive = true
+      forcePending = true // 松手定稿 = 明确发送意图（autoSend=false 也发）
+      segmentEpoch++ // 作废迟到的 wake/旧段 partial
+      segment = []
+      segmentMs = 0
+      silenceMs = 0
+      prePad = []
+      speechActive = true
+      sincePartialMs = 0
+      // 按下首帧注入打断阻尼：避免"录制开始"被误判为打断前沿（Q10）。
+      bargeInDampingUntil = Date.now() + 800
+      setState('speech')
+    },
+    endHeld(cancel = false) {
+      if (!active || !holdActive) return
+      holdActive = false
+      if (cancel) {
+        // 放弃本段（滑出取消 / Escape / blur 兜底）
+        segmentEpoch++
+        segment = []
+        segmentMs = 0
+        silenceMs = 0
+        prePad = []
+        speechActive = false
+        setState(wakeWord ? 'wake' : 'listening')
+        return
+      }
+      forcePending = true
+      sincePartialMs = 0
+      finalizeSegment()
     },
     onSegment(fn) {
       transcriptListeners.add(fn)

@@ -26,6 +26,9 @@ interface VoiceUiState {
   model: { file: string; percent: number } | null
   /** TTS 不可达的暂时提示（host tts-error 事件写入，下一帧成功即清）。 */
   ttsNotice: string | null
+  /** 本会话激活时读取的交互参数（hold 模式/唤醒词，供状态条展示）。 */
+  mode: 'toggle' | 'hold'
+  wakeWord: string
 }
 
 /** 一帧 TTS 音频（host SSE 'audio' 事件载荷）。 */
@@ -178,6 +181,8 @@ function createVoiceBus(basePath: string = '/voice-mode', ctx?: any): VoiceBus {
     playing: false,
     model: null,
     ttsNotice: null,
+    mode: 'toggle',
+    wakeWord: '',
   }
   const listeners = new Set<(b: { active: string | null; ui: VoiceUiState }) => void>()
   const audioListeners = new Set<(frame: VoiceFrame) => void>()
@@ -376,6 +381,8 @@ interface VoiceBootConfig {
   interruptLevel: 0 | 1 | 2
   idleTimeoutMinutes: number
   autoSend: boolean
+  mode: 'toggle' | 'hold'
+  wakeWord: string
 }
 
 let styleInjected = false
@@ -410,6 +417,8 @@ export function MicButton({
   const submitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const runningRef = useRef(false)
+  /** hold 模式 Ctrl 按住说话中（600ms 阈值后才置真）。 */
+  const holdCtrlRef = useRef(false)
   /** 本次/上次进入的引导配置（进入时刷新；拉取失败用兜底默认）。 */
   const cfgRef = useRef<VoiceBootConfig>({
     basePath: '/voice-mode',
@@ -417,6 +426,8 @@ export function MicButton({
     interruptLevel: 0,
     idleTimeoutMinutes: 10,
     autoSend: true,
+    mode: 'toggle',
+    wakeWord: '',
   })
 
   useVoiceCss()
@@ -438,6 +449,8 @@ export function MicButton({
         interruptLevel: c.interruptLevel ?? cfgRef.current.interruptLevel,
         idleTimeoutMinutes: c.idleTimeoutMinutes ?? cfgRef.current.idleTimeoutMinutes,
         autoSend: c.autoSend ?? cfgRef.current.autoSend,
+        mode: c.mode === 'hold' ? 'hold' : 'toggle',
+        wakeWord: c.wakeWord ?? cfgRef.current.wakeWord,
       }
       return cfgRef.current
     } catch {
@@ -505,12 +518,13 @@ export function MicButton({
         setLocalMode('off')
         return
       }
-      // 每次进入重新拉取 host 引导参数（静音/打断档位/自动发送/空闲超时）
+      // 每次进入重新拉取 host 引导参数（静音/打断档位/自动发送/空闲超时/模式/唤醒词）
       const cfg = await fetchConfig()
       const basePath = cfg.basePath
       const silenceMs = cfg.silenceMs
       const interruptLevel = cfg.interruptLevel
-      const engine = createAsrEngine({ silenceMs, interruptLevel, basePath }, sid)
+      const engine = createAsrEngine({ silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord }, sid)
+      bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord })
       engineRef.current = engine
 
       engine.onState((s) => {
@@ -658,22 +672,58 @@ export function MicButton({
     }
   }, [])
 
-  // 快捷键：Ctrl+Shift+V 切换模式；单独 Ctrl（语音模式下）强制发送（Q5）
+  // 快捷键：Ctrl+Shift+V 切换模式；单独 Ctrl 按模式分支——toggle：强制发送；
+  // hold：按住即录、松开即发（≥600ms 阈值 + 他键/失焦作废，防 Ctrl+Shift+V 误触）。
   useEffect(() => {
+    let ctrlTimer: ReturnType<typeof setTimeout> | null = null
+    const cancelCtrl = (): void => {
+      if (ctrlTimer) {
+        clearTimeout(ctrlTimer)
+        ctrlTimer = null
+      }
+      if (holdCtrlRef.current) {
+        holdCtrlRef.current = false
+        engineRef.current?.endHeld(false)
+      }
+    }
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v' && !e.repeat) {
         e.preventDefault()
+        cancelCtrl()
         toggleRef.current()
         return
       }
-      // 强制发送：Ctrl（无 Shift/Alt/Meta）且语音模式下且段内有语音
       const eng = engineRef.current
-      if (e.key === 'Control' && !e.shiftKey && !e.altKey && !e.metaKey && !e.repeat && eng) {
+      if (e.key !== 'Control' || e.shiftKey || e.altKey || e.metaKey || e.repeat || !eng) return
+      if (cfgRef.current.mode === 'hold') {
+        // hold：600ms 阈值后视为按住说话（避免组合快捷键按下时序误触发）
+        ctrlTimer = setTimeout(() => {
+          ctrlTimer = null
+          holdCtrlRef.current = true
+          eng.beginHeld()
+        }, 600)
+      } else {
+        // toggle：≥250ms 语音才强制发送（Q5 兜底）
         eng.forceSend()
       }
     }
+    const onKeyUp = (e: KeyboardEvent): void => {
+      if (e.key === 'Control') cancelCtrl()
+    }
+    const onBlur = (): void => {
+      // 失焦即取消：blur 收不到 keyup 时不能把"按住"留在收音态（AGENTS 契约）。
+      cancelCtrl()
+      if (localRef.current === 'on' && cfgRef.current.mode === 'hold') engineRef.current?.endHeld(true)
+    }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+      cancelCtrl()
+    }
   }, [])
 
   // 打字退出（Q13）：受控 textarea 的程序化 setDraft 不派发原生 input 事件。
@@ -687,6 +737,29 @@ export function MicButton({
     window.addEventListener('input', onInput, true)
     return () => window.removeEventListener('input', onInput, true)
   }, [])
+
+  // hold 模式收尾兜底：Escape 放弃当前段；切走标签页/隐藏文档时取消（防持续收音）。
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      if (localRef.current !== 'on' || cfgRef.current.mode !== 'hold') return
+      engineRef.current?.endHeld(true)
+      holdCtrlRef.current = false
+      bus.setUi({ partial: '' })
+    }
+    const onVisibility = (): void => {
+      if (document.hidden && cfgRef.current.mode === 'hold') {
+        engineRef.current?.endHeld(true)
+        holdCtrlRef.current = false
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [bus])
 
   // 模式状态即 bus.active 归属（pending 期间等待 host 确认）
   useEffect(() => {
@@ -704,25 +777,79 @@ export function MicButton({
 
   const on = local === 'on'
   const busy = bus.ui.state === 'transcribing' || bus.ui.state === 'loading-model'
+  const holdMode = cfgRef.current.mode === 'hold'
   const label = on
     ? busy
       ? '识别中…'
-      : '语音中'
+      : holdMode
+        ? '按住说话'
+        : '语音中'
     : local === 'pending'
       ? '进入中…'
       : '语音'
 
+  // hold 手势（仅 hold 模式激活后有效）：按下即录；<250ms 视为短按退出；
+  // 按住中途向上滑出 ≥40px 放弃本段；松手定稿发送。click 一律不切换
+  // （Blocker-1：pointerup 合成的 click 会自毁退出）。
+  const holdPtrRef = useRef<{ t: number; y: number; id: number } | null>(null)
+  const onPointerDown = (e: React.PointerEvent): void => {
+    if (cfgRef.current.mode !== 'hold' || localRef.current !== 'on') return
+    holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId }
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    engineRef.current?.beginHeld()
+  }
+  const onPointerMove = (e: React.PointerEvent): void => {
+    const p = holdPtrRef.current
+    if (!p || p.id !== e.pointerId) return
+    // 向上滑出 ≥40px → 放弃本段（保留在语音模式）
+    if (p.y - e.clientY >= 40) {
+      holdPtrRef.current = null
+      engineRef.current?.endHeld(true)
+      bus.setUi({ partial: '' })
+    }
+  }
+  const onPointerUp = (e: React.PointerEvent): void => {
+    const p = holdPtrRef.current
+    holdPtrRef.current = null
+    if (!p || p.id !== e.pointerId) return
+    const ms = Date.now() - p.t
+    if (ms < 250) {
+      // 短按 = 退出语音模式（tap-to-exit）
+      engineRef.current?.endHeld(true)
+      void exitModeRef.current('manual')
+      return
+    }
+    engineRef.current?.endHeld(false)
+  }
+  const onPointerCancel = (): void => {
+    holdPtrRef.current = null
+    engineRef.current?.endHeld(true)
+  }
+
   return (
     <button
-      onClick={toggle}
+      onClick={holdMode && on ? () => undefined : toggle}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      aria-label={on ? '语音模式进行中' : '进入语音对话模式'}
       title={
         on
-          ? '语音模式进行中 · 点击退出（Ctrl+Shift+V）· 按住 Ctrl 立即发送'
+          ? holdMode
+            ? '语音模式进行中 · 按住说话、松手发送；短按退出；Esc/失去焦点放弃；Ctlr+Shift+V 退出'
+            : '语音模式进行中 · 点击退出（Ctrl+Shift+V）· 按住 Ctrl 立即发送'
           : '进入语音对话模式（Ctrl+Shift+V）'
       }
       style={{
         border: 'none',
-        background: on ? 'rgba(63, 185, 80, 0.16)' : local === 'pending' ? 'rgba(88, 166, 255, 0.14)' : 'transparent',
+        background: on
+          ? holdMode
+            ? 'rgba(88, 166, 255, 0.16)'
+            : 'rgba(63, 185, 80, 0.16)'
+          : local === 'pending'
+            ? 'rgba(88, 166, 255, 0.14)'
+            : 'transparent',
         cursor: 'pointer',
         padding: '4px 8px',
         borderRadius: 8,
@@ -731,8 +858,10 @@ export function MicButton({
         gap: 6,
         fontSize: 11,
         fontFamily: 'system-ui, sans-serif',
-        color: on ? '#3fb950' : local === 'pending' ? '#58a6ff' : '#8b949e',
+        color: on ? (holdMode ? '#58a6ff' : '#3fb950') : local === 'pending' ? '#58a6ff' : '#8b949e',
         transition: 'background 0.15s ease, color 0.2s ease',
+        touchAction: 'none', // 触摸设备上让 pointer 事件独占（滑出取消可用）
+        userSelect: 'none',
       }}
     >
       <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden="true">
@@ -771,8 +900,14 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
       : b.ui.state === 'transcribing'
         ? '识别中…'
         : b.ui.state === 'speech'
-          ? '聆听中…'
-          : '语音模式 · 聆听中…'
+          ? b.ui.mode === 'hold'
+            ? '按住说话…'
+            : '聆听中…'
+          : b.ui.state === 'wake'
+            ? `说「${b.ui.wakeWord || '唤醒词'}」开始`
+            : b.ui.mode === 'hold'
+              ? '语音模式 · 按住说话（短按退出）'
+              : '语音模式 · 聆听中…'
 
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0)
 

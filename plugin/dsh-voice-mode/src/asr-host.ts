@@ -260,9 +260,17 @@ export function handleAsrRequest(
     const url = new URL(req.url ?? '/', 'http://localhost')
     const sessionId = url.searchParams.get('sessionId') ?? ''
     const final = url.searchParams.get('final') === '1'
+    const reset = url.searchParams.get('reset') === '1'
     if (!sessionId || sessionId !== activeSessionId) {
       res.statusCode = 403
       res.end(JSON.stringify({ error: 'not the active voice session' }))
+      return
+    }
+    // reset=1：丢弃该会话进行中的识别段并新建流（唤醒词命中后的清场，防止
+    // 唤醒词头漏进正式定稿）。
+    if (reset) {
+      asr.reset(sessionId)
+      res.end(JSON.stringify({ ok: true }))
       return
     }
     const samples = pcmToSamples(Buffer.concat(chunks))

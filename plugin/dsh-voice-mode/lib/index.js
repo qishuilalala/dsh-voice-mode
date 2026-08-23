@@ -169,9 +169,15 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
     const url = new URL(req.url ?? "/", "http://localhost");
     const sessionId = url.searchParams.get("sessionId") ?? "";
     const final = url.searchParams.get("final") === "1";
+    const reset = url.searchParams.get("reset") === "1";
     if (!sessionId || sessionId !== activeSessionId) {
       res.statusCode = 403;
       res.end(JSON.stringify({ error: "not the active voice session" }));
+      return;
+    }
+    if (reset) {
+      asr.reset(sessionId);
+      res.end(JSON.stringify({ ok: true }));
       return;
     }
     const samples = pcmToSamples(Buffer.concat(chunks));

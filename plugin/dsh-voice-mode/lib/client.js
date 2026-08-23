@@ -30,6 +30,19 @@ __export(client_exports, {
 module.exports = __toCommonJS(client_exports);
 var import_react = require("react");
 
+// src/wakeword.ts
+function normalizeWake(text) {
+  return String(text ?? "").replace(/[\s\u3000]+/g, "").toLowerCase().replace(/[，。！？!?；;、,.]/g, "");
+}
+function matchWakeWord(partial, wakeWord) {
+  const w = normalizeWake(wakeWord);
+  if (!w) return false;
+  const p = normalizeWake(partial);
+  if (!p) return false;
+  if (p.startsWith(w)) return true;
+  return false;
+}
+
 // src/asr.ts
 var SAMPLE_RATE = 16e3;
 var SPEECH_RMS = 0.015;
@@ -63,6 +76,8 @@ function createAsrEngine(config, sessionId) {
   let segmentMs = 0;
   let silenceMs = 0;
   let prePad = [];
+  let holdActive = false;
+  const wakeWord = (config.wakeWord ?? "").trim().toLowerCase().replace(/[\s\u3000]+/g, "");
   const intLevel = INTERRUPT_LEVELS[config.interruptLevel] ?? INTERRUPT_LEVELS[0];
   let interruptCandidateMs = 0;
   let bargeInDampingUntil = 0;
@@ -136,10 +151,29 @@ function createAsrEngine(config, sessionId) {
       const out = await res.json();
       if (epoch !== segmentEpoch) return;
       if (state === "loading-model") setState("speech");
+      if (state === "wake" && wakeWord) {
+        if (matchWakeWord(out.text ?? "", wakeWord)) {
+          segmentEpoch++;
+          segment = [];
+          segmentMs = 0;
+          silenceMs = 0;
+          prePad = [];
+          sincePartialMs = 0;
+          await resetHostStream();
+          if (active) setState("listening");
+        }
+        return;
+      }
       emit(partialListeners, out.text ?? "");
     } catch {
     } finally {
       partialInFlight = false;
+    }
+  };
+  const resetHostStream = async () => {
+    try {
+      await fetch(`${asrUrl(false)}&reset=1`, { method: "POST" });
+    } catch {
     }
   };
   const finalizeSegment = () => {
@@ -220,7 +254,40 @@ function createAsrEngine(config, sessionId) {
     } else {
       interruptCandidateMs = 0;
     }
-    if (rms > SPEECH_RMS) {
+    if (holdActive) {
+      if (!speechActive) {
+        speechActive = true;
+        if (state !== "speech") setState("speech");
+      }
+      segmentMs += durationMs;
+      silenceMs = 0;
+      segment.push(data);
+      if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
+    } else if (state === "wake") {
+      if (rms > SPEECH_RMS) {
+        segmentMs += durationMs;
+        segment.push(data);
+        if (segmentMs > MAX_SEGMENT_MS) {
+          segment = [];
+          segmentMs = 0;
+          silenceMs = 0;
+          prePad = [];
+          void resetHostStream();
+        }
+      } else {
+        prePad.push(data);
+        let total = 0;
+        let cut = 0;
+        for (let i = prePad.length - 1; i >= 0; i--) {
+          total += prePad[i].length / SAMPLE_RATE * 1e3;
+          if (total > PRE_PAD_MS) {
+            cut = i + 1;
+            break;
+          }
+        }
+        if (cut > 0) prePad = prePad.slice(cut);
+      }
+    } else if (rms > SPEECH_RMS) {
       if (!speechActive) {
         speechActive = true;
         setState("speech");
@@ -250,7 +317,7 @@ function createAsrEngine(config, sessionId) {
       if (cut > 0) prePad = prePad.slice(cut);
     }
     sincePartialMs += durationMs;
-    if (speechActive && sincePartialMs >= PARTIAL_INTERVAL_MS) {
+    if ((speechActive || holdActive || state === "wake") && sincePartialMs >= PARTIAL_INTERVAL_MS) {
       sincePartialMs = 0;
       void requestPartial();
     }
@@ -295,6 +362,7 @@ function createAsrEngine(config, sessionId) {
     inFlush = true;
     segmentEpoch++;
     forcePending = false;
+    holdActive = false;
     segment = [];
     speechActive = false;
     silenceMs = 0;
@@ -328,7 +396,8 @@ function createAsrEngine(config, sessionId) {
       segmentEpoch++;
       sincePartialMs = 0;
       interruptCandidateMs = 0;
-      setState("listening");
+      holdActive = false;
+      setState(wakeWord ? "wake" : "listening");
       try {
         await startRecorder();
       } catch (error) {
@@ -351,6 +420,37 @@ function createAsrEngine(config, sessionId) {
         sincePartialMs = 0;
         finalizeSegment();
       }
+    },
+    beginHeld() {
+      if (!active || holdActive) return;
+      holdActive = true;
+      forcePending = true;
+      segmentEpoch++;
+      segment = [];
+      segmentMs = 0;
+      silenceMs = 0;
+      prePad = [];
+      speechActive = true;
+      sincePartialMs = 0;
+      bargeInDampingUntil = Date.now() + 800;
+      setState("speech");
+    },
+    endHeld(cancel = false) {
+      if (!active || !holdActive) return;
+      holdActive = false;
+      if (cancel) {
+        segmentEpoch++;
+        segment = [];
+        segmentMs = 0;
+        silenceMs = 0;
+        prePad = [];
+        speechActive = false;
+        setState(wakeWord ? "wake" : "listening");
+        return;
+      }
+      forcePending = true;
+      sincePartialMs = 0;
+      finalizeSegment();
     },
     onSegment(fn) {
       transcriptListeners.add(fn);
@@ -495,7 +595,9 @@ function createVoiceBus(basePath = "/voice-mode", ctx) {
     playingCaption: null,
     playing: false,
     model: null,
-    ttsNotice: null
+    ttsNotice: null,
+    mode: "toggle",
+    wakeWord: ""
   };
   const listeners = /* @__PURE__ */ new Set();
   const audioListeners = /* @__PURE__ */ new Set();
@@ -687,12 +789,15 @@ function MicButton({
   const submitTimerRef = (0, import_react.useRef)(null);
   const idleTimerRef = (0, import_react.useRef)(null);
   const runningRef = (0, import_react.useRef)(false);
+  const holdCtrlRef = (0, import_react.useRef)(false);
   const cfgRef = (0, import_react.useRef)({
     basePath: "/voice-mode",
     silenceMs: 2e3,
     interruptLevel: 0,
     idleTimeoutMinutes: 10,
-    autoSend: true
+    autoSend: true,
+    mode: "toggle",
+    wakeWord: ""
   });
   useVoiceCss();
   const setLocalMode = (m) => {
@@ -709,7 +814,9 @@ function MicButton({
         silenceMs: c.silenceMs ?? cfgRef.current.silenceMs,
         interruptLevel: c.interruptLevel ?? cfgRef.current.interruptLevel,
         idleTimeoutMinutes: c.idleTimeoutMinutes ?? cfgRef.current.idleTimeoutMinutes,
-        autoSend: c.autoSend ?? cfgRef.current.autoSend
+        autoSend: c.autoSend ?? cfgRef.current.autoSend,
+        mode: c.mode === "hold" ? "hold" : "toggle",
+        wakeWord: c.wakeWord ?? cfgRef.current.wakeWord
       };
       return cfgRef.current;
     } catch {
@@ -774,7 +881,8 @@ function MicButton({
       const basePath = cfg.basePath;
       const silenceMs = cfg.silenceMs;
       const interruptLevel = cfg.interruptLevel;
-      const engine = createAsrEngine({ silenceMs, interruptLevel, basePath }, sid);
+      const engine = createAsrEngine({ silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord }, sid);
+      bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord });
       engineRef.current = engine;
       engine.onState((s) => {
         bus.setUi({ state: s });
@@ -890,19 +998,52 @@ function MicButton({
     };
   }, []);
   (0, import_react.useEffect)(() => {
+    let ctrlTimer = null;
+    const cancelCtrl = () => {
+      if (ctrlTimer) {
+        clearTimeout(ctrlTimer);
+        ctrlTimer = null;
+      }
+      if (holdCtrlRef.current) {
+        holdCtrlRef.current = false;
+        engineRef.current?.endHeld(false);
+      }
+    };
     const onKeyDown = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "v" && !e.repeat) {
         e.preventDefault();
+        cancelCtrl();
         toggleRef.current();
         return;
       }
       const eng = engineRef.current;
-      if (e.key === "Control" && !e.shiftKey && !e.altKey && !e.metaKey && !e.repeat && eng) {
+      if (e.key !== "Control" || e.shiftKey || e.altKey || e.metaKey || e.repeat || !eng) return;
+      if (cfgRef.current.mode === "hold") {
+        ctrlTimer = setTimeout(() => {
+          ctrlTimer = null;
+          holdCtrlRef.current = true;
+          eng.beginHeld();
+        }, 600);
+      } else {
         eng.forceSend();
       }
     };
+    const onKeyUp = (e) => {
+      if (e.key === "Control") cancelCtrl();
+    };
+    const onBlur = () => {
+      cancelCtrl();
+      if (localRef.current === "on" && cfgRef.current.mode === "hold") engineRef.current?.endHeld(true);
+    };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+      cancelCtrl();
+    };
   }, []);
   (0, import_react.useEffect)(() => {
     const onInput = (e) => {
@@ -914,6 +1055,27 @@ function MicButton({
     window.addEventListener("input", onInput, true);
     return () => window.removeEventListener("input", onInput, true);
   }, []);
+  (0, import_react.useEffect)(() => {
+    const onKeyDown = (e) => {
+      if (e.key !== "Escape") return;
+      if (localRef.current !== "on" || cfgRef.current.mode !== "hold") return;
+      engineRef.current?.endHeld(true);
+      holdCtrlRef.current = false;
+      bus.setUi({ partial: "" });
+    };
+    const onVisibility = () => {
+      if (document.hidden && cfgRef.current.mode === "hold") {
+        engineRef.current?.endHeld(true);
+        holdCtrlRef.current = false;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [bus]);
   (0, import_react.useEffect)(() => {
     return bus.subscribe(() => {
       const sid = sidRef.current;
@@ -928,15 +1090,53 @@ function MicButton({
   }, [bus]);
   const on = local === "on";
   const busy = bus.ui.state === "transcribing" || bus.ui.state === "loading-model";
-  const label = on ? busy ? "\u8BC6\u522B\u4E2D\u2026" : "\u8BED\u97F3\u4E2D" : local === "pending" ? "\u8FDB\u5165\u4E2D\u2026" : "\u8BED\u97F3";
+  const holdMode = cfgRef.current.mode === "hold";
+  const label = on ? busy ? "\u8BC6\u522B\u4E2D\u2026" : holdMode ? "\u6309\u4F4F\u8BF4\u8BDD" : "\u8BED\u97F3\u4E2D" : local === "pending" ? "\u8FDB\u5165\u4E2D\u2026" : "\u8BED\u97F3";
+  const holdPtrRef = (0, import_react.useRef)(null);
+  const onPointerDown = (e) => {
+    if (cfgRef.current.mode !== "hold" || localRef.current !== "on") return;
+    holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    engineRef.current?.beginHeld();
+  };
+  const onPointerMove = (e) => {
+    const p = holdPtrRef.current;
+    if (!p || p.id !== e.pointerId) return;
+    if (p.y - e.clientY >= 40) {
+      holdPtrRef.current = null;
+      engineRef.current?.endHeld(true);
+      bus.setUi({ partial: "" });
+    }
+  };
+  const onPointerUp = (e) => {
+    const p = holdPtrRef.current;
+    holdPtrRef.current = null;
+    if (!p || p.id !== e.pointerId) return;
+    const ms = Date.now() - p.t;
+    if (ms < 250) {
+      engineRef.current?.endHeld(true);
+      void exitModeRef.current("manual");
+      return;
+    }
+    engineRef.current?.endHeld(false);
+  };
+  const onPointerCancel = () => {
+    holdPtrRef.current = null;
+    engineRef.current?.endHeld(true);
+  };
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
     "button",
     {
-      onClick: toggle,
-      title: on ? "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u70B9\u51FB\u9000\u51FA\uFF08Ctrl+Shift+V\uFF09\xB7 \u6309\u4F4F Ctrl \u7ACB\u5373\u53D1\u9001" : "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F\uFF08Ctrl+Shift+V\uFF09",
+      onClick: holdMode && on ? () => void 0 : toggle,
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerCancel,
+      "aria-label": on ? "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D" : "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F",
+      title: on ? holdMode ? "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF1B\u77ED\u6309\u9000\u51FA\uFF1BEsc/\u5931\u53BB\u7126\u70B9\u653E\u5F03\uFF1BCtlr+Shift+V \u9000\u51FA" : "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u70B9\u51FB\u9000\u51FA\uFF08Ctrl+Shift+V\uFF09\xB7 \u6309\u4F4F Ctrl \u7ACB\u5373\u53D1\u9001" : "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F\uFF08Ctrl+Shift+V\uFF09",
       style: {
         border: "none",
-        background: on ? "rgba(63, 185, 80, 0.16)" : local === "pending" ? "rgba(88, 166, 255, 0.14)" : "transparent",
+        background: on ? holdMode ? "rgba(88, 166, 255, 0.16)" : "rgba(63, 185, 80, 0.16)" : local === "pending" ? "rgba(88, 166, 255, 0.14)" : "transparent",
         cursor: "pointer",
         padding: "4px 8px",
         borderRadius: 8,
@@ -945,8 +1145,11 @@ function MicButton({
         gap: 6,
         fontSize: 11,
         fontFamily: "system-ui, sans-serif",
-        color: on ? "#3fb950" : local === "pending" ? "#58a6ff" : "#8b949e",
-        transition: "background 0.15s ease, color 0.2s ease"
+        color: on ? holdMode ? "#58a6ff" : "#3fb950" : local === "pending" ? "#58a6ff" : "#8b949e",
+        transition: "background 0.15s ease, color 0.2s ease",
+        touchAction: "none",
+        // 触摸设备上让 pointer 事件独占（滑出取消可用）
+        userSelect: "none"
       },
       children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", { viewBox: "0 0 24 24", width: 14, height: 14, "aria-hidden": "true", children: [
@@ -977,7 +1180,7 @@ function VoiceStatusBar({ bus, sessionId }) {
   }, [bus]);
   const isActive = b.active === sessionId;
   if (!isActive) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, {});
-  const stateText = b.ui.state === "loading-model" ? "\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026" : b.ui.state === "transcribing" ? "\u8BC6\u522B\u4E2D\u2026" : b.ui.state === "speech" ? "\u8046\u542C\u4E2D\u2026" : "\u8BED\u97F3\u6A21\u5F0F \xB7 \u8046\u542C\u4E2D\u2026";
+  const stateText = b.ui.state === "loading-model" ? "\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026" : b.ui.state === "transcribing" ? "\u8BC6\u522B\u4E2D\u2026" : b.ui.state === "speech" ? b.ui.mode === "hold" ? "\u6309\u4F4F\u8BF4\u8BDD\u2026" : "\u8046\u542C\u4E2D\u2026" : b.ui.state === "wake" ? `\u8BF4\u300C${b.ui.wakeWord || "\u5524\u9192\u8BCD"}\u300D\u5F00\u59CB` : b.ui.mode === "hold" ? "\u8BED\u97F3\u6A21\u5F0F \xB7 \u6309\u4F4F\u8BF4\u8BDD\uFF08\u77ED\u6309\u9000\u51FA\uFF09" : "\u8BED\u97F3\u6A21\u5F0F \xB7 \u8046\u542C\u4E2D\u2026";
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
     "div",
