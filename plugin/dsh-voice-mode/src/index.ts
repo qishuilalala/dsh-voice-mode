@@ -22,7 +22,6 @@ import { homedir } from 'node:os'
 import { createAsrRuntime, handleAsrRequest } from './asr-host.ts'
 import { SentenceSegmenter } from './segmenter.ts'
 import { TtsQueue } from './tts-queue.ts'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 
 export const name = 'voice-mode'
 
@@ -159,7 +158,7 @@ export function apply(ctx: Context, config: Config): void {
 
   // --- 设置命名空间（官方分层：schema 平台常量默认 ⊕ config base ⊕ 用户文档）。 ---
   const settingsScope = ctx.settings.register(
-    settingsNamespace('voice-mode'),
+    'voice-mode',
     createVoiceSettingsSchema(),
     {
       base: {
