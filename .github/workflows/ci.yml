@@ -13,17 +13,12 @@ jobs:
         working-directory: plugin/dsh-voice-mode
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
-          cache-dependency-path: plugin/dsh-voice-mode/pnpm-lock.yaml
       - name: Install
-        run: pnpm install
+        run: npm install --no-audit --no-fund
       - name: Unit tests & manifest self-check
-        run: pnpm test
+        run: npm test
       - name: Build
-        run: pnpm build
+        run: npm run build
