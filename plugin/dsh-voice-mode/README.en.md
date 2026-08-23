@@ -1,7 +1,7 @@
 # dsh-voice-mode
 
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square)](https://www.npmjs.com/package/dsh-voice-mode)
-[![License](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square)](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/dsh--plugin-voice-brightgreen?style=flat-square)](https://github.com/topics/dsh-plugin)
 
 > Full-duplex voice conversation mode for DeepSeek Harness (dsh): speak, get a
@@ -11,7 +11,7 @@
 >
 > 中文说明见 [README.md](./README.md)。
 
-![demo](assets/demo.gif)
+![demo](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo.gif)
 
 ## Features
 
@@ -164,7 +164,7 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 
 ## How it works
 
-![architecture](assets/architecture.svg)
+![architecture](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/architecture.svg)
 
 ```
 input:  mic ──RMS VAD (2s silence split)──▶ POST /voice-mode/asr (f32 PCM, 16k, incremental)

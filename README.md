@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="assets/ai-logo.png" width="88" alt="dsh-voice-mode">
+  <img src="https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/ai-logo.png" width="88" alt="dsh-voice-mode">
 </p>
 
 <p align="center">
-  <img src="assets/banner.jpg" width="800" alt="dsh-voice-mode banner">
+  <img src="https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/banner.jpg" width="800" alt="dsh-voice-mode banner">
 </p>
 
 <p align="center">
@@ -38,7 +38,7 @@ bundle 插件安装后需重启 dsh 生效；完整使用说明见 [中文文档
 
 ## 演示
 
-![demo](plugin/assets/demo.gif)
+![demo](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo.gif)
 
 ## 文档
 
