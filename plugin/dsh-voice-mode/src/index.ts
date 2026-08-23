@@ -121,7 +121,7 @@ export interface Config {
   /** Edge TTS 语速倍率（Q15 设置可改）。 */
   rate: number
   /** 打断灵敏度档位：0 高门槛（默认）/ 1 中 / 2 低（Q10）。 */
-  interruptLevel: number
+  interruptLevel: 0 | 1 | 2
   /** 静音停顿多少毫秒判定为说完一句（Q5，默认 2s）。 */
   silenceMs: number
   /** 空闲多少分钟自动退出语音模式（Q11，默认 10）。 */

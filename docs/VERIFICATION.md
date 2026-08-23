@@ -8,7 +8,7 @@
 
 | 层 | 内容 | 命令 | 状态 |
 |---|---|---|---|
-| 1 | typecheck（tsc 双 program，host/client） | `tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit` | 待补（下轮） |
+| 1 | typecheck（tsc 双 program，host/client） | `npm run typecheck` | ✅ strict 双 program 全绿 |
 | 2 | build | `pnpm build`（esbuild：lib/index.js + lib/client.js） | ✅ |
 | 3 | 离线纯逻辑验证 | `npm run verify`（segmenter/wakeword/verify-client 聚合） | ✅ 28 项 |
 | 4 | 组合树离线检查 | `dsh --profile vtest --dump-config` | ✅ 含 voice-mode |
@@ -33,6 +33,16 @@ DSH_HOME=/tmp/dsh-vtest-home DEEPSEEK_API_KEY=dummy-dev-key-9f3a \
 ```
 
 ## 各层实测结果（2026-08-23）
+
+### 层 1 typecheck（tsc 5.9 双 program，strict + skipLibCheck）
+```
+TYPECHECK OK (double program)     # tsconfig.json（host）+ tsconfig.client.json（client）
+```
+类型依赖说明（本机开发期做法，官方 §4.2）：宿主/框架类型（@deepseek-ai/cordis、dsh-host-webserver、
+dsh-llm、dsh-settings、schemastery、cosmokit、dsh-web）以**符号链接指向 dsh 发行版 node_modules**
+——registry 的 rc.1 快照类型落后于发行版（如 webServer 别名缺失），发行版类型才是运行时真值；
+`typescript`/`@types/node`/`@types/react` 为 devDependencies。sherpa-onnx 无声明，以
+`src/ambient.d.ts` 收口（实现在 asr-host.ts 内结构化约束）。
 
 ### 层 2 build
 ```
@@ -82,5 +92,5 @@ record-demo：assets/demo.gif 5 帧（76KB）已重录于独立实例
 
 ## 待办
 
-- [ ] 层 1 typecheck（tsc 双 program + 类型依赖链接（官方 §4.2 做法））
-- [ ] 把 `test/run-isolated.sh` 沉淀进 repo 并支持一键 启动→验证→清理
+- [ ] 发布（等待用户本机 gh/npm 认证：repo 公开、push、npm publish、满 1 天后 awesome PR）
+- [ ] headless 层：本插件为 web 双半（client 在浏览器），host 半由第 6、7 层覆盖——如未来增加纯 host 工具链再补该层

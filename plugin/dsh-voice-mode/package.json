@@ -39,7 +39,8 @@
     "verify:client": "node test/verify-client.mjs",
     "prefetch": "node scripts/prefetch.mjs",
     "list-voices": "node scripts/list-voices.mjs",
-    "verify": "node scripts/verify.mjs"
+    "verify": "node scripts/verify.mjs",
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.client.json --noEmit"
   },
   "dsh": {
     "bundle": {
@@ -67,7 +68,10 @@
     "react": "^18.2.0"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.2",
+    "@types/node": "^26.0.0",
+    "@types/react": "^19.0.0"
   },
   "keywords": [
     "dsh",

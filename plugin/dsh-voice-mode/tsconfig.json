@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "verbatimModuleSyntax": false,
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src/ambient.d.ts",
+    "src/index.ts",
+    "src/asr-host.ts",
+    "src/tts-queue.ts",
+    "src/segmenter.ts",
+    "src/wakeword.ts"
+  ],
+  "exclude": [
+    "src/client.tsx",
+    "src/asr.ts",
+    "node_modules"
+  ]
+}
