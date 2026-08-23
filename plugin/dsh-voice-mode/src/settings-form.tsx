@@ -43,8 +43,9 @@ const nameStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
   lineHeight: 1.4,
-  width: '48%',
-  minWidth: 220,
+  flex: '0 0 46%',
+  minWidth: 200,
+  whiteSpace: 'normal',
 }
 const descStyle: React.CSSProperties = {
   color: theme.dimmed,
@@ -52,8 +53,11 @@ const descStyle: React.CSSProperties = {
   fontWeight: 400,
   lineHeight: 1.5,
   marginTop: 3,
+  width: '100%',
   maxWidth: '100%',
+  whiteSpace: 'normal',
   overflowWrap: 'break-word',
+  wordBreak: 'break-word',
 }
 const ctrlStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', flex: '1 1 auto', justifyContent: 'flex-end', minWidth: 0 }
 const inputStyle: React.CSSProperties = {

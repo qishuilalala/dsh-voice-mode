@@ -523,8 +523,9 @@ var nameStyle = {
   fontSize: 13,
   fontWeight: 600,
   lineHeight: 1.4,
-  width: "48%",
-  minWidth: 220
+  flex: "0 0 46%",
+  minWidth: 200,
+  whiteSpace: "normal"
 };
 var descStyle = {
   color: theme.dimmed,
@@ -532,8 +533,11 @@ var descStyle = {
   fontWeight: 400,
   lineHeight: 1.5,
   marginTop: 3,
+  width: "100%",
   maxWidth: "100%",
-  overflowWrap: "break-word"
+  whiteSpace: "normal",
+  overflowWrap: "break-word",
+  wordBreak: "break-word"
 };
 var ctrlStyle = { display: "flex", alignItems: "center", flex: "1 1 auto", justifyContent: "flex-end", minWidth: 0 };
 var inputStyle = {
