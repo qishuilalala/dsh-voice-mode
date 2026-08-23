@@ -44,6 +44,10 @@ dsh-llm、dsh-settings、schemastery、cosmokit、dsh-web）以**符号链接指
 `typescript`/`@types/node`/`@types/react` 为 devDependencies。sherpa-onnx 无声明，以
 `src/ambient.d.ts` 收口（实现在 asr-host.ts 内结构化约束）。
 
+> 回归记录：settingsNamespace 内联时曾把 dsh-settings 的类型增强（`ctx.settings` 与
+> `SettingsNamespace`）一并丢掉，层 1 实际为红；已修复（type-only import + 本地品牌化常量
+> `NS_VOICE_MODE`，构建产物零运行时引用），与设置卡 height 修复同批验证通过。
+
 ### 层 2 build
 ```
 [dsh-voice-mode] build done: lib/index.js (host) + lib/client.js (browser)
