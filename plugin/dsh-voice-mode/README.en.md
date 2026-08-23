@@ -15,6 +15,9 @@
 
 ## Features
 
+![Voice mode: live captions and status bar](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/screenshot-voice.png)
+
+
 - **Voice mode**: toggle with the microphone button in the input toolbar or the global shortcut `Ctrl+Shift+V`; globally single-active (only one session is in voice mode at a time; switching sessions yields automatically)
 - **Two interaction modes (switchable in settings)**:
   - `toggle` (default) continuous listening: RMS VAD segmentation → streaming zipformer2 ASR (words appear as you speak, live caption preview) → automatic sentence split and send after 2 s of silence; hold `Ctrl` to force an immediate send

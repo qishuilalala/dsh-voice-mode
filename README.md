@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/ai-logo.png" width="88" alt="dsh-voice-mode">
+  <img src="https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/hero-logo.png" width="88" alt="dsh-voice-mode">
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/banner.jpg" width="800" alt="dsh-voice-mode banner">
+  <img src="https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/hero-banner.png" width="800" alt="dsh-voice-mode banner">
 </p>
 
 <p align="center">
@@ -38,7 +38,9 @@ bundle 插件安装后需重启 dsh 生效；完整使用说明见 [中文文档
 
 ## 演示
 
-![demo](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo.gif)
+![语音模式：实时字幕与状态条](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/screenshot-voice.png)
+
+> 完整演示动画（边说边出字 → 停顿发送 → 按句朗读）见 [中文文档](plugin/dsh-voice-mode/README.md)
 
 ## 文档
 
