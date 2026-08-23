@@ -3,3 +3,9 @@ node_modules/
 *.log
 .DS_Store
 research/
+# 凭据与密钥
+.env
+.env.*
+*.pem
+*.key
+*.p12
