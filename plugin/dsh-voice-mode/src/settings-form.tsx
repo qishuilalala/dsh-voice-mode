@@ -328,6 +328,7 @@ function SegGroup({
 
 export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.ReactElement {
   const [snap, setSnap] = useState(() => scope.getSnapshot())
+  const [collapsed, setCollapsed] = useState(false)
   useEffect(
     () =>
       scope.subscribe(() => {
@@ -346,6 +347,18 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
     )
   }
 
+  const chevron = (
+    <svg
+      viewBox="0 0 16 16"
+      width={14}
+      height={14}
+      aria-hidden="true"
+      style={{ flexShrink: 0, transition: 'transform 0.15s ease', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+    >
+      <path fill="currentColor" d="M4 6l4 4 4-4z" />
+    </svg>
+  )
+
   return (
     <div
       data-dshvm-settings="card"
@@ -353,83 +366,110 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
         background: theme.bg,
         border: `1px solid ${theme.border}`,
         borderRadius: 12,
-        padding: '16px 18px 18px',
+        padding: '14px 18px',
         color: theme.label,
         overflow: 'visible',
       }}
     >
       <style>{focusVisibleCss}</style>
-      <div style={{ marginBottom: 8, paddingBottom: 10, borderBottom: `1px solid ${theme.border}` }}>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>语音模式</span>
-        <span style={{ color: theme.dimmed, fontSize: 11, marginLeft: 8 }}>dsh-voice-mode</span>
-        <div
-          style={{
-            color: theme.secondary,
-            fontSize: 12,
-            marginTop: 5,
-            lineHeight: 1.5,
-            whiteSpace: 'normal',
-            overflowWrap: 'break-word',
-            wordBreak: 'break-word',
-            maxWidth: '100%',
-          }}
-        >
-          音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词；改后即存，
-          voice 与 rate 即时生效，其余下次进入语音模式生效。
-        </div>
-      </div>
+      {/* 可折叠标题栏（与其他设置卡一致） */}
+      <button
+        type="button"
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed((c) => !c)}
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 12,
+          width: '100%',
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          color: 'inherit',
+          textAlign: 'left',
+          fontFamily: 'inherit',
+        }}
+      >
+        <span style={{ flex: '1 1 auto', minWidth: 0 }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>语音模式</span>
+          <span style={{ color: theme.dimmed, fontSize: 11, marginLeft: 8 }}>dsh-voice-mode</span>
+          <div
+            style={{
+              color: theme.secondary,
+              fontSize: 12,
+              marginTop: 4,
+              lineHeight: 1.5,
+              whiteSpace: 'normal',
+              overflowWrap: 'break-word',
+              wordBreak: 'break-word',
+              maxWidth: '100%',
+            }}
+          >
+            音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词；改后即存，
+            voice 与 rate 即时生效，其余下次进入语音模式生效。
+          </div>
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', color: theme.secondary, paddingTop: 2 }}>{chevron}</span>
+      </button>
 
-      <Row id="vm-voice" name="voice" desc="Edge TTS 音色（下拉常用，其余选「自定义」手动填 ShortName）">
-        <SelectField id="vm-voice" score={scope} field="voice" value={value.voice ?? ''} options={VOICE_OPTIONS} placeholder="zh-CN-XiaoxiaoNeural" />
-      </Row>
-      <Row id="vm-rate" name="rate" desc="朗读语速倍率（0.5 慢速 ～ 2.0 快速，1.0 正常）">
-        <NumberField id="vm-rate" score={scope} field="rate" value={value.rate ?? 1} min={0.5} max={2} step={0.1} />
-      </Row>
-      <Row id="vm-interrupt" name="interruptLevel" desc="发声打断灵敏度（0 高门槛 / 1 中 / 2 低）">
-        <SegGroup
-          id="vm-interrupt"
-          score={scope}
-          field="interruptLevel"
-          value={value.interruptLevel}
-          options={[
-            { v: 0, label: '0 高门槛' },
-            { v: 1, label: '1 中' },
-            { v: 2, label: '2 低' },
-          ]}
-        />
-      </Row>
-      <Row id="vm-silence" name="silenceMs" desc="说完整一句的静音停顿毫秒数（默认 2000 = 2 秒）">
-        <NumberField id="vm-silence" score={scope} field="silenceMs" value={value.silenceMs ?? 2000} min={500} max={30000} step={100} />
-      </Row>
-      <Row id="vm-idle" name="idleTimeoutMinutes" desc="无活动自动退出语音模式的分钟数（默认 10）">
-        <NumberField id="vm-idle" score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 10} min={1} max={120} step={1} />
-      </Row>
-      <Row id="vm-host" name="modelHost" desc="ASR 模型下载源（官方源 / 国内镜像，或选「自定义」填任意镜像）">
-        <SelectField id="vm-host" score={scope} field="modelHost" value={value.modelHost ?? ''} options={HOST_OPTIONS} placeholder="https://..." />
-      </Row>
-      <Row id="vm-autosend" name="autoSend" desc="识别定稿后自动发送（关=只进草稿；按住 Ctrl / hold 松手仍发送）">
-        <input
-          id="vm-autosend"
-          type="checkbox"
-          checked={Boolean(value.autoSend)}
-          onChange={(e) => void scope.set('autoSend', e.target.checked)}
-        />
-      </Row>
-      <Row id="vm-mode" name="mode" desc="交互模式（toggle 持续聆听+静音断句 / hold 按住说话）">
-        <SegGroup
-          id="vm-mode"
-          score={scope}
-          field="mode"
-          value={value.mode}
-          options={[
-            { v: 'toggle', label: '持续聆听' },
-            { v: 'hold', label: '按住说话' },
-          ]}
-        />
-      </Row>
-      <Row id="vm-wake" name="wakeWord" desc="唤醒词（默认关；如「你好小D」，说出后开始识别）">
-        <TextField id="vm-wake" score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder="如：你好小D" />
-      </Row>
+      {!collapsed && (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ borderBottom: `1px solid ${theme.border}`, marginBottom: 2 }} />
+          <Row id="vm-voice" name="voice" desc="Edge TTS 音色（下拉常用，其余选「自定义」手动填 ShortName）">
+            <SelectField id="vm-voice" score={scope} field="voice" value={value.voice ?? ''} options={VOICE_OPTIONS} placeholder="zh-CN-XiaoxiaoNeural" />
+          </Row>
+          <Row id="vm-rate" name="rate" desc="朗读语速倍率（0.5 慢速 ～ 2.0 快速，1.0 正常）">
+            <NumberField id="vm-rate" score={scope} field="rate" value={value.rate ?? 1} min={0.5} max={2} step={0.1} />
+          </Row>
+          <Row id="vm-interrupt" name="interruptLevel" desc="发声打断灵敏度（0 高门槛 / 1 中 / 2 低）">
+            <SegGroup
+              id="vm-interrupt"
+              score={scope}
+              field="interruptLevel"
+              value={value.interruptLevel}
+              options={[
+                { v: 0, label: '0 高门槛' },
+                { v: 1, label: '1 中' },
+                { v: 2, label: '2 低' },
+              ]}
+            />
+          </Row>
+          <Row id="vm-silence" name="silenceMs" desc="说完整一句的静音停顿毫秒数（默认 2000 = 2 秒）">
+            <NumberField id="vm-silence" score={scope} field="silenceMs" value={value.silenceMs ?? 2000} min={500} max={30000} step={100} />
+          </Row>
+          <Row id="vm-idle" name="idleTimeoutMinutes" desc="无活动自动退出语音模式的分钟数（默认 10）">
+            <NumberField id="vm-idle" score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 10} min={1} max={120} step={1} />
+          </Row>
+          <Row id="vm-host" name="modelHost" desc="ASR 模型下载源（官方源 / 国内镜像，或选「自定义」填任意镜像）">
+            <SelectField id="vm-host" score={scope} field="modelHost" value={value.modelHost ?? ''} options={HOST_OPTIONS} placeholder="https://..." />
+          </Row>
+          <Row id="vm-autosend" name="autoSend" desc="识别定稿后自动发送（关=只进草稿；按住 Ctrl / hold 松手仍发送）">
+            <input
+              id="vm-autosend"
+              type="checkbox"
+              checked={Boolean(value.autoSend)}
+              onChange={(e) => void scope.set('autoSend', e.target.checked)}
+            />
+          </Row>
+          <Row id="vm-mode" name="mode" desc="交互模式（toggle 持续聆听+静音断句 / hold 按住说话）">
+            <SegGroup
+              id="vm-mode"
+              score={scope}
+              field="mode"
+              value={value.mode}
+              options={[
+                { v: 'toggle', label: '持续聆听' },
+                { v: 'hold', label: '按住说话' },
+              ]}
+            />
+          </Row>
+          <Row id="vm-wake" name="wakeWord" desc="唤醒词（默认关；如「你好小D」，说出后开始识别）">
+            <TextField id="vm-wake" score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder="如：你好小D" />
+          </Row>
+        </div>
+      )}
     </div>
   )
 }
