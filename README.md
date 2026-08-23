@@ -63,4 +63,6 @@ bundle 插件安装后需重启 dsh 生效；完整使用说明见 [中文文档
 
 [MIT](LICENSE)
 
+> 部分实现借鉴 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)（派生声明见子包 LICENSE）。
+
 > 插件代码以宿主权限运行，安装前请了解来源与风险（与官方列表一致的安全提示）。
