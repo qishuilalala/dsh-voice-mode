@@ -64,13 +64,14 @@ dsh --profile vtest --dump-config   # 离线，不 boot
 #   - id: voice-mode / name: dsh-voice-mode
 ```
 
-### 层 6 独立实例接口探测（3020，隔离 home）
+### 层 6 独立实例接口探测 + 真实 ASR（3020，隔离 home）
 ```
 GET  /voice-mode                    → {"ok":true,"name":"dsh-voice-mode","enabled":true,"active":null}
 GET  /voice-mode/config             → 键含 mode/wakeWord/autoSend/silenceMs/...（10 键）
 GET  /plugins/dsh-voice-mode/client.js → 200
 GET  /                              → 200（web shell）
 POST /voice-mode/asr?sessionId=x&reset=1 → 403（非活跃会话守卫正确）
+真实 ASR（asr-diag BASE=3020）：流式 partial 逐 chunk 累积 → FINAL 定稿一致（"对我做了介绍…感兴趣呢"）
 ```
 
 ### 层 7 独立浏览器 E2E（BASE=http://127.0.0.1:3020）
@@ -89,6 +90,22 @@ record-demo：assets/demo.gif 5 帧（76KB）已重录于独立实例
    并实测：独立加载 bundle 成功、隔离实例正常 boot。
 2. **全新 home 无工作区/会话**：E2E 需先种子 workspace（schema 校验必填 createdAt/updatedAt 由引导流程反馈确认）
    并用探测 key 让引导向导就绪——这些正是「全新安装路径」的真实前提，已入启动脚本与文档。
+
+## 验证体系对抗性审查（四问）
+
+1. **层完整性**：1–7 全覆盖；层 5（headless）对本插件（web 双半，client 只在浏览器）无适用语义，
+   host 半由层 6 真实 ASR 全链路（partial+FINAL）与层 7 浏览器 E2E 覆盖，已在文档说明，不留未论证缺口。
+2. **命令真实性**：每层命令均为本机实跑记录（非转述）；含官方 `dsh plugin --profile vtest add`、
+   `--dump-config`、`--port`、`$DSH_HOME`（源码注释实证可被测试/启动器设置）。
+3. **与生产一致性**：隔离实例与生产同源码（路径 link）、同发行版依赖（符号链接向
+   /www/.../dsh/node_modules/@deepseek-ai/*，层 1 已证明 registry rc.1 类型快照落后于发行版）、
+   同模型缓存（homedir 未变）；差异仅为生产多装社区插件与隔离 home 的设置文档——符合"独立 profile"精神。
+4. **可重放性**：BASE 环境变量贯穿全部浏览器脚本与 asr-diag；`test/run-isolated.sh` 幂等（profile
+   模板/workspace 种子/探测 key 前置均显式化）；唯一非幂等前提是 vtest profile 模板首次创建
+   （`dsh plugin --profile vtest add <插件>`，0.7s，已文档化）。
+
+**审查结论**：无 Blocker/Important；Minor 一项：隔离实例的内联启动方式会被工具会话清理回收，
+后续重启用托管后台任务或 run-isolated.sh 前台常驻（已记录）。
 
 ## 待办
 
