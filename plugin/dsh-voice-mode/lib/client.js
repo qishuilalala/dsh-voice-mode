@@ -515,7 +515,7 @@ var rowStyle = {
   alignItems: "flex-start",
   justifyContent: "space-between",
   gap: 20,
-  padding: "13px 2px",
+  padding: "15px 2px",
   borderBottom: `1px solid ${theme.border}`
 };
 var nameStyle = {
@@ -563,6 +563,7 @@ var segStyle = (active) => ({
 });
 var focusVisibleCss = `
 [data-dshvm-settings="card"] input:focus-visible,
+[data-dshvm-settings="card"] select:focus-visible,
 [data-dshvm-settings="card"] button:focus-visible {
   outline: 2px solid var(--dsw-alias-brand-primary);
   outline-offset: 1px;
@@ -570,6 +571,84 @@ var focusVisibleCss = `
 @media (prefers-reduced-motion: reduce) {
   [data-dshvm-settings="card"], [data-dshvm-settings="card"] * { transition: none !important; }
 }`;
+var VOICE_OPTIONS = [
+  { v: "zh-CN-XiaoxiaoNeural", label: "\u6653\u6653 \xB7 \u5973 \xB7 \u7B80\u4F53\u4E2D\u6587" },
+  { v: "zh-CN-XiaoyiNeural", label: "\u6653\u4F0A \xB7 \u5973 \xB7 \u7B80\u4F53\u4E2D\u6587" },
+  { v: "zh-CN-YunxiNeural", label: "\u4E91\u5E0C \xB7 \u7537 \xB7 \u7B80\u4F53\u4E2D\u6587" },
+  { v: "zh-CN-YunjianNeural", label: "\u4E91\u5065 \xB7 \u7537 \xB7 \u7B80\u4F53\u4E2D\u6587" },
+  { v: "zh-CN-YunyangNeural", label: "\u4E91\u626C \xB7 \u7537 \xB7 \u7B80\u4F53\u4E2D\u6587" },
+  { v: "zh-CN-YunxiaNeural", label: "\u4E91\u590F \xB7 \u7537 \xB7 \u7B80\u4F53\u4E2D\u6587" },
+  { v: "zh-CN-liaoning-XiaobeiNeural", label: "\u5C0F\u5317 \xB7 \u5973 \xB7 \u4E1C\u5317\u8BDD" },
+  { v: "zh-CN-shaanxi-XiaoniNeural", label: "\u5C0F\u59AE \xB7 \u5973 \xB7 \u9655\u897F\u8BDD" },
+  { v: "zh-HK-HiuMaanNeural", label: "\u6653\u66FC \xB7 \u5973 \xB7 \u7CA4\u8BED" },
+  { v: "zh-HK-WanLungNeural", label: "\u4E91\u9F99 \xB7 \u7537 \xB7 \u7CA4\u8BED" },
+  { v: "zh-TW-HsiaoYuNeural", label: "\u5C0F\u96E8 \xB7 \u5973 \xB7 \u53F0\u6E7E\u8154" },
+  { v: "zh-TW-YunJheNeural", label: "\u4E91\u54F2 \xB7 \u7537 \xB7 \u53F0\u6E7E\u8154" },
+  { v: "en-US-AriaNeural", label: "Aria \xB7 \u5973 \xB7 English" },
+  { v: "en-US-GuyNeural", label: "Guy \xB7 \u7537 \xB7 English" }
+];
+var HOST_OPTIONS = [
+  { v: "https://huggingface.co", label: "\u5B98\u65B9\u6E90 huggingface.co" },
+  { v: "https://hf-mirror.com", label: "\u56FD\u5185\u955C\u50CF hf-mirror.com" }
+];
+function SelectField({
+  id,
+  score,
+  field,
+  value,
+  options,
+  placeholder
+}) {
+  const cur = String(value ?? "");
+  const inOptions = options.some((o) => o.v === cur);
+  const [custom, setCustom] = (0, import_react.useState)(inOptions ? "" : cur);
+  (0, import_react.useEffect)(() => {
+    if (!options.some((o) => o.v === cur)) setCustom(cur);
+  }, [cur, options]);
+  const selectStyle = {
+    ...inputStyle,
+    width: "100%",
+    maxWidth: 320,
+    appearance: "none",
+    background: "var(--dsw-alias-bg-layer-2)",
+    cursor: "pointer"
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 320, alignItems: "stretch" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "select",
+      {
+        id,
+        style: selectStyle,
+        value: inOptions ? cur : "__custom__",
+        onChange: (e) => {
+          const v = e.target.value;
+          if (v === "__custom__") {
+            void score.set(field, custom);
+          } else {
+            void score.set(field, v);
+          }
+        },
+        children: [
+          options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v)),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "__custom__", children: inOptions ? "\u81EA\u5B9A\u4E49\u2026" : "\u81EA\u5B9A\u4E49\u2026" })
+        ]
+      }
+    ),
+    !inOptions && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "input",
+      {
+        style: inputStyle,
+        value: custom,
+        placeholder,
+        onChange: (e) => setCustom(e.target.value),
+        onBlur: () => void score.set(field, custom),
+        onKeyDown: (e) => {
+          if (e.key === "Enter") void score.set(field, custom);
+        }
+      }
+    )
+  ] });
+}
 function NumberField({
   id,
   score,
@@ -694,17 +773,33 @@ function VoiceSettingsCard({ scope }) {
         background: theme.bg,
         border: `1px solid ${theme.border}`,
         borderRadius: 12,
-        padding: "16px 18px 14px",
-        color: theme.label
+        padding: "16px 18px 18px",
+        color: theme.label,
+        overflow: "visible"
       },
       children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: focusVisibleCss }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${theme.border}` }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 8, paddingBottom: 10, borderBottom: `1px solid ${theme.border}` }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 600 }, children: "\u8BED\u97F3\u6A21\u5F0F" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: theme.dimmed, fontSize: 11, marginLeft: 8 }, children: "dsh-voice-mode" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: theme.secondary, fontSize: 12, marginTop: 5, lineHeight: 1.5 }, children: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD\uFF1B\u6539\u540E\u5373\u5B58\uFF0C voice \u4E0E rate \u5373\u65F6\u751F\u6548\uFF0C\u5176\u4F59\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u751F\u6548\u3002" })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "div",
+            {
+              style: {
+                color: theme.secondary,
+                fontSize: 12,
+                marginTop: 5,
+                lineHeight: 1.5,
+                whiteSpace: "normal",
+                overflowWrap: "break-word",
+                wordBreak: "break-word",
+                maxWidth: "100%"
+              },
+              children: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD\uFF1B\u6539\u540E\u5373\u5B58\uFF0C voice \u4E0E rate \u5373\u65F6\u751F\u6548\uFF0C\u5176\u4F59\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u751F\u6548\u3002"
+            }
+          )
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-voice", name: "voice", desc: "Edge TTS \u97F3\u8272\uFF08\u6653\u6653 / \u4E91\u5E0C / \u4E91\u5065 / \u4E91\u626C / \u6653\u4F0A / HiuMaan / Aria\u2026\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { id: "vm-voice", score: scope, field: "voice", value: value.voice ?? "" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-voice", name: "voice", desc: "Edge TTS \u97F3\u8272\uFF08\u4E0B\u62C9\u5E38\u7528\uFF0C\u5176\u4F59\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u52A8\u586B ShortName\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { id: "vm-voice", score: scope, field: "voice", value: value.voice ?? "", options: VOICE_OPTIONS, placeholder: "zh-CN-XiaoxiaoNeural" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-rate", name: "rate", desc: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { id: "vm-rate", score: scope, field: "rate", value: value.rate ?? 1, min: 0.5, max: 2, step: 0.1 }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-interrupt", name: "interruptLevel", desc: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           SegGroup,
@@ -722,7 +817,7 @@ function VoiceSettingsCard({ scope }) {
         ) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-silence", name: "silenceMs", desc: "\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 2000 = 2 \u79D2\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { id: "vm-silence", score: scope, field: "silenceMs", value: value.silenceMs ?? 2e3, min: 500, max: 3e4, step: 100 }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-idle", name: "idleTimeoutMinutes", desc: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { id: "vm-idle", score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-host", name: "modelHost", desc: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u7559\u7A7A\u9ED8\u8BA4\u6E90\uFF1B\u56FD\u5185\u7F51\u7EDC\u586B https://hf-mirror.com\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { id: "vm-host", score: scope, field: "modelHost", value: value.modelHost ?? "", placeholder: "https://huggingface.co" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-host", name: "modelHost", desc: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u5B98\u65B9\u6E90 / \u56FD\u5185\u955C\u50CF\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u586B\u4EFB\u610F\u955C\u50CF\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { id: "vm-host", score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-autosend", name: "autoSend", desc: "\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "input",
           {

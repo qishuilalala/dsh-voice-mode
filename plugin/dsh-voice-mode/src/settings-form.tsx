@@ -35,7 +35,7 @@ const rowStyle: React.CSSProperties = {
   alignItems: 'flex-start',
   justifyContent: 'space-between',
   gap: 20,
-  padding: '13px 2px',
+  padding: '15px 2px',
   borderBottom: `1px solid ${theme.border}`,
 }
 const nameStyle: React.CSSProperties = {
@@ -83,6 +83,7 @@ const segStyle = (active: boolean): React.CSSProperties => ({
 })
 const focusVisibleCss = `
 [data-dshvm-settings="card"] input:focus-visible,
+[data-dshvm-settings="card"] select:focus-visible,
 [data-dshvm-settings="card"] button:focus-visible {
   outline: 2px solid var(--dsw-alias-brand-primary);
   outline-offset: 1px;
@@ -90,6 +91,99 @@ const focusVisibleCss = `
 @media (prefers-reduced-motion: reduce) {
   [data-dshvm-settings="card"], [data-dshvm-settings="card"] * { transition: none !important; }
 }`
+
+/** 常用 Edge TTS 音色（ShortName 取自 msedge-tts getVoices 实测权威清单）。 */
+const VOICE_OPTIONS: Array<{ v: string; label: string }> = [
+  { v: 'zh-CN-XiaoxiaoNeural', label: '晓晓 · 女 · 简体中文' },
+  { v: 'zh-CN-XiaoyiNeural', label: '晓伊 · 女 · 简体中文' },
+  { v: 'zh-CN-YunxiNeural', label: '云希 · 男 · 简体中文' },
+  { v: 'zh-CN-YunjianNeural', label: '云健 · 男 · 简体中文' },
+  { v: 'zh-CN-YunyangNeural', label: '云扬 · 男 · 简体中文' },
+  { v: 'zh-CN-YunxiaNeural', label: '云夏 · 男 · 简体中文' },
+  { v: 'zh-CN-liaoning-XiaobeiNeural', label: '小北 · 女 · 东北话' },
+  { v: 'zh-CN-shaanxi-XiaoniNeural', label: '小妮 · 女 · 陕西话' },
+  { v: 'zh-HK-HiuMaanNeural', label: '晓曼 · 女 · 粤语' },
+  { v: 'zh-HK-WanLungNeural', label: '云龙 · 男 · 粤语' },
+  { v: 'zh-TW-HsiaoYuNeural', label: '小雨 · 女 · 台湾腔' },
+  { v: 'zh-TW-YunJheNeural', label: '云哲 · 男 · 台湾腔' },
+  { v: 'en-US-AriaNeural', label: 'Aria · 女 · English' },
+  { v: 'en-US-GuyNeural', label: 'Guy · 男 · English' },
+]
+
+/** ASR 模型下载源预置（"自定义" 时自由输入）。 */
+const HOST_OPTIONS: Array<{ v: string; label: string }> = [
+  { v: 'https://huggingface.co', label: '官方源 huggingface.co' },
+  { v: 'https://hf-mirror.com', label: '国内镜像 hf-mirror.com' },
+]
+
+/** 通用下拉选择（内置选项 + "自定义…" 触发文本输入；即选即存）。 */
+function SelectField({
+  id,
+  score,
+  field,
+  value,
+  options,
+  placeholder,
+}: {
+  id: string
+  score: ScopeController
+  field: string
+  value: unknown
+  options: Array<{ v: string; label: string }>
+  placeholder?: string
+}): React.ReactElement {
+  const cur = String(value ?? '')
+  const inOptions = options.some((o) => o.v === cur)
+  const [custom, setCustom] = useState<string>(inOptions ? '' : cur)
+  useEffect(() => {
+    if (!options.some((o) => o.v === cur)) setCustom(cur)
+  }, [cur, options])
+  const selectStyle: React.CSSProperties = {
+    ...inputStyle,
+    width: '100%',
+    maxWidth: 320,
+    appearance: 'none',
+    background: 'var(--dsw-alias-bg-layer-2)',
+    cursor: 'pointer',
+  }
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', maxWidth: 320, alignItems: 'stretch' }}>
+      <select
+        id={id}
+        style={selectStyle}
+        value={inOptions ? cur : '__custom__'}
+        onChange={(e) => {
+          const v = e.target.value
+          if (v === '__custom__') {
+            // 进入自定义模式，用当前输入值（或空）
+            void score.set(field, custom)
+          } else {
+            void score.set(field, v)
+          }
+        }}
+      >
+        {options.map((o) => (
+          <option key={o.v} value={o.v}>
+            {o.label}
+          </option>
+        ))}
+        <option value="__custom__">{inOptions ? '自定义…' : '自定义…'}</option>
+      </select>
+      {!inOptions && (
+        <input
+          style={inputStyle}
+          value={custom}
+          placeholder={placeholder}
+          onChange={(e) => setCustom(e.target.value)}
+          onBlur={() => void score.set(field, custom)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void score.set(field, custom)
+          }}
+        />
+      )}
+    </span>
+  )
+}
 
 /** 数值字段：受控 draft + 失焦/Enter 提交 + 范围钳制；非数/空输入不写。 */
 function NumberField({
@@ -257,22 +351,34 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
         background: theme.bg,
         border: `1px solid ${theme.border}`,
         borderRadius: 12,
-        padding: '16px 18px 14px',
+        padding: '16px 18px 18px',
         color: theme.label,
+        overflow: 'visible',
       }}
     >
       <style>{focusVisibleCss}</style>
-      <div style={{ marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${theme.border}` }}>
+      <div style={{ marginBottom: 8, paddingBottom: 10, borderBottom: `1px solid ${theme.border}` }}>
         <span style={{ fontSize: 14, fontWeight: 600 }}>语音模式</span>
         <span style={{ color: theme.dimmed, fontSize: 11, marginLeft: 8 }}>dsh-voice-mode</span>
-        <div style={{ color: theme.secondary, fontSize: 12, marginTop: 5, lineHeight: 1.5 }}>
+        <div
+          style={{
+            color: theme.secondary,
+            fontSize: 12,
+            marginTop: 5,
+            lineHeight: 1.5,
+            whiteSpace: 'normal',
+            overflowWrap: 'break-word',
+            wordBreak: 'break-word',
+            maxWidth: '100%',
+          }}
+        >
           音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词；改后即存，
           voice 与 rate 即时生效，其余下次进入语音模式生效。
         </div>
       </div>
 
-      <Row id="vm-voice" name="voice" desc="Edge TTS 音色（晓晓 / 云希 / 云健 / 云扬 / 晓伊 / HiuMaan / Aria…）">
-        <TextField id="vm-voice" score={scope} field="voice" value={value.voice ?? ''} />
+      <Row id="vm-voice" name="voice" desc="Edge TTS 音色（下拉常用，其余选「自定义」手动填 ShortName）">
+        <SelectField id="vm-voice" score={scope} field="voice" value={value.voice ?? ''} options={VOICE_OPTIONS} placeholder="zh-CN-XiaoxiaoNeural" />
       </Row>
       <Row id="vm-rate" name="rate" desc="朗读语速倍率（0.5 慢速 ～ 2.0 快速，1.0 正常）">
         <NumberField id="vm-rate" score={scope} field="rate" value={value.rate ?? 1} min={0.5} max={2} step={0.1} />
@@ -296,8 +402,8 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
       <Row id="vm-idle" name="idleTimeoutMinutes" desc="无活动自动退出语音模式的分钟数（默认 10）">
         <NumberField id="vm-idle" score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 10} min={1} max={120} step={1} />
       </Row>
-      <Row id="vm-host" name="modelHost" desc="ASR 模型下载源（留空默认源；国内网络填 https://hf-mirror.com）">
-        <TextField id="vm-host" score={scope} field="modelHost" value={value.modelHost ?? ''} placeholder="https://huggingface.co" />
+      <Row id="vm-host" name="modelHost" desc="ASR 模型下载源（官方源 / 国内镜像，或选「自定义」填任意镜像）">
+        <SelectField id="vm-host" score={scope} field="modelHost" value={value.modelHost ?? ''} options={HOST_OPTIONS} placeholder="https://..." />
       </Row>
       <Row id="vm-autosend" name="autoSend" desc="识别定稿后自动发送（关=只进草稿；按住 Ctrl / hold 松手仍发送）">
         <input
