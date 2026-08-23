@@ -108,6 +108,21 @@
 
 ## 4. 发布侧最佳实践（checklist）
 
+### 凭证管理（本机可复用惯例）
+
+- **真源单一**：发布凭证集中在 `/root/.env`（`NPM_TOKEN` / `GH_TOKEN`，文件权限 600，值绝不落库、不入 README/文档）；
+- **系统级注入**：`/etc/systemd/system/dsh.service.d/credentials.conf` 声明
+  `EnvironmentFile=/root/.env`——dsh 服务及其会话（agent bash / 新终端）环境变量
+  即含 `$NPM_TOKEN` / `$GH_TOKEN`，后续对话直接复用（`env` 键名可见，值不回显）；
+- **npm 引用化**：`~/.npmrc` 只写 `${NPM_TOKEN}`（npm 配置值支持环境变量替换），
+  不留明文；发布用 `npm publish --registry=https://registry.npmjs.org/`（拉包仍走
+  镜像 registry 不影响）；
+- **gh 引用化**：`~/.config/gh/hosts.yml` 的 `oauth_token: "env:GH_TOKEN"`（gh CLI
+  支持 env 前缀），`gh auth status` 即用环境变量认证；
+- 常用发布命令（凭证均已就绪）：
+  `git push https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git <ref>`、
+  GitHub API `Authorization: token ${GH_TOKEN}`、`npm publish`（经 npmrc 引用）。
+
 ### 准备
 - [ ] `npm pack --dry-run` 核对 files 白名单（含 cordis.patch.yml / client / README / LICENSE）
 - [ ] `pnpm test` 通过；集成探测在运行实例上跑一遍
