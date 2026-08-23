@@ -63,6 +63,19 @@ async function main() {
     console.log('✓ 长按松手：已提交进聊天（草稿已消费）')
   }
 
+  // ---- 2.5 Escape 放弃段：按住中按 Esc → 松手不应发送 ----
+  const bb1 = await mic.boundingBox()
+  await page.mouse.move(bb1.x + bb1.width / 2, bb1.y + bb1.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(400)
+  await page.keyboard.press('Escape')
+  await page.mouse.up()
+  await page.waitForTimeout(700)
+  const countBefore = await page.getByText('你好世界').count()
+  const labelEsc = (await mic.textContent()).trim()
+  if (labelEsc !== '按住说话') fail(`escape discard: label=${labelEsc}`)
+  console.log('✓ Escape 放弃：按钮仍在模式（按住说话），消息数未增 =', countBefore)
+
   // ---- 3. 短按 <250ms：退出模式 ----
   const bb2 = await mic.boundingBox()
   const cx2 = bb2.x + bb2.width / 2, cy2 = bb2.y + bb2.height / 2
