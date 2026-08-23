@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: dsh 官方讨论
+    url: https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/discussions
+    about: 插件生态相关的通用讨论

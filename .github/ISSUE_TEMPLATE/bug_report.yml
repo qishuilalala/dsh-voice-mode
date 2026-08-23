@@ -1,0 +1,58 @@
+name: Bug report
+description: 报告问题（功能异常 / 报错 / 安装失败）
+title: "[bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: 请尽量提供可复现信息，便于定位。
+  - type: input
+    id: dsh-version
+    attributes:
+      label: dsh 版本
+      description: "运行 `dsh --version` 或页面底部版本号"
+      placeholder: "0.1.1-rc.2"
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: dsh-voice-mode 版本
+      description: "设置 → Plugins → 语音模式可查，或 `npm view dsh-voice-mode version`"
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台 / 浏览器
+      options:
+        - Linux (Chrome/Edge)
+        - macOS (Chrome/Edge)
+        - Windows (Chrome/Edge)
+        - Linux (Firefox)
+        - macOS (Firefox)
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 期望行为与实际现象
+      placeholder: "进入语音模式后……"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      placeholder: "1. … 2. … 3. …"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志
+      description: 浏览器控制台（F12 Console）或 dsh 日志里的报错
+      render: shell
