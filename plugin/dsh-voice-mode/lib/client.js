@@ -501,47 +501,163 @@ function createAsrEngine(config, sessionId) {
 // src/settings-form.tsx
 var import_react = require("react");
 var import_jsx_runtime = require("react/jsx-runtime");
-var labelStyle = {
+var theme = {
+  bg: "var(--dsw-alias-bg-module-platform)",
+  border: "var(--dsw-alias-border-l2)",
+  label: "var(--dsw-alias-label-primary)",
+  secondary: "var(--dsw-alias-label-secondary)",
+  dimmed: "var(--dsw-alias-label-dimmed)",
+  brand: "var(--dsw-alias-brand-primary)",
+  error: "var(--dsw-alias-label-error)"
+};
+var rowStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   gap: 16,
-  padding: "10px 2px",
-  borderBottom: "1px solid rgba(128,128,128,0.15)",
-  fontSize: 13
+  padding: "11px 2px",
+  borderBottom: `1px solid ${theme.border}`
 };
-var nameStyle = { color: "inherit", flexShrink: 0 };
-var descStyle = { color: "rgba(128,128,128,0.9)", fontSize: 11, fontWeight: 400 };
+var nameStyle = {
+  color: theme.label,
+  fontSize: 13,
+  flexShrink: 0
+};
+var descStyle = {
+  color: theme.dimmed,
+  fontSize: 11,
+  fontWeight: 400,
+  marginTop: 2
+};
 var inputStyle = {
-  width: 220,
+  width: 230,
   padding: "6px 10px",
   borderRadius: 8,
-  border: "1px solid rgba(128,128,128,0.35)",
-  background: "rgba(128,128,128,0.08)",
-  color: "inherit",
-  fontSize: 13
+  border: `1px solid ${theme.border}`,
+  background: "var(--dsw-alias-bg-layer-2)",
+  color: theme.label,
+  fontSize: 13,
+  fontFamily: "inherit",
+  outline: "none"
 };
 var segStyle = (active) => ({
-  border: "1px solid rgba(128,128,128,0.35)",
-  background: active ? "rgba(46, 160, 67, 0.18)" : "transparent",
-  color: "inherit",
+  border: `1px solid ${active ? theme.brand : theme.border}`,
+  background: active ? "color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent)" : "transparent",
+  color: theme.label,
   cursor: "pointer",
   padding: "4px 10px",
   fontSize: 12,
-  borderRadius: 6
+  borderRadius: 6,
+  fontFamily: "inherit"
 });
+var focusVisibleCss = `
+[data-dshvm-settings="card"] input:focus-visible,
+[data-dshvm-settings="card"] button:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-dshvm-settings="card"], [data-dshvm-settings="card"] * { transition: none !important; }
+}`;
+function NumberField({
+  id,
+  score,
+  field,
+  value,
+  min,
+  max,
+  step
+}) {
+  const [draft, setDraft] = (0, import_react.useState)(String(value ?? ""));
+  (0, import_react.useEffect)(() => {
+    setDraft((d) => d === String(value ?? "") ? d : String(value ?? ""));
+  }, [value]);
+  const commit = () => {
+    const n = Number(draft);
+    if (!Number.isFinite(n) || draft.trim() === "") return;
+    const clamped = Math.min(max, Math.max(min, n));
+    setDraft(String(clamped));
+    void score.set(field, clamped);
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "input",
+    {
+      id,
+      style: inputStyle,
+      type: "number",
+      step,
+      min,
+      max,
+      value: draft,
+      onChange: (e) => setDraft(e.target.value),
+      onBlur: commit,
+      onKeyDown: (e) => {
+        if (e.key === "Enter") commit();
+      }
+    }
+  );
+}
+function TextField({
+  id,
+  score,
+  field,
+  value,
+  placeholder
+}) {
+  const [draft, setDraft] = (0, import_react.useState)(String(value ?? ""));
+  (0, import_react.useEffect)(() => {
+    setDraft((d) => d === String(value ?? "") ? d : String(value ?? ""));
+  }, [value]);
+  const commit = () => {
+    const next = draft;
+    void score.set(field, next);
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "input",
+    {
+      id,
+      style: inputStyle,
+      value: draft,
+      placeholder,
+      onChange: (e) => setDraft(e.target.value),
+      onBlur: commit,
+      onKeyDown: (e) => {
+        if (e.key === "Enter") commit();
+      }
+    }
+  );
+}
 function Row({
+  id,
   name,
   desc,
   children
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: labelStyle, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: nameStyle, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rowStyle, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { htmlFor: id, style: nameStyle, children: [
       name,
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: descStyle, children: desc })
     ] }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flexShrink: 0 }, children })
   ] });
+}
+function SegGroup({
+  id,
+  score,
+  field,
+  value,
+  options
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "group", "aria-labelledby": id, style: { display: "inline-flex", gap: 4 }, children: options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "button",
+    {
+      style: segStyle(value === o.v),
+      "aria-pressed": value === o.v,
+      onClick: () => void score.set(field, o.v),
+      children: o.label
+    },
+    String(o.v)
+  )) });
 }
 function VoiceSettingsCard({ scope }) {
   const [snap, setSnap] = (0, import_react.useState)(() => scope.getSnapshot());
@@ -554,61 +670,74 @@ function VoiceSettingsCard({ scope }) {
   const value = snap?.value ?? {};
   const unavailable = snap?.status === "unavailable" || snap?.status === "error";
   if (unavailable) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "8px 2px", fontSize: 12, color: "rgba(128,128,128,0.9)" }, children: "\u914D\u7F6E\u4E0D\u53EF\u7528\uFF08\u8BBE\u7F6E\u6587\u6863\u672A\u5C31\u7EEA\uFF09\uFF0C\u7A0D\u540E\u81EA\u52A8\u91CD\u8BD5\u3002" });
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: theme.secondary, fontSize: 12, padding: 4 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: theme.error }, children: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528" }),
+      "\uFF08\u8BBE\u7F6E\u6587\u6863\u672A\u5C31\u7EEA\uFF0C\u9762\u677F\u5C31\u7EEA\u540E\u4F1A\u81EA\u52A8\u51FA\u73B0\uFF09\u3002"
+    ] });
   }
-  const setF = (field, v) => {
-    void scope.set(field, v);
-  };
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { padding: "4px 2px 8px", fontSize: 13 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "voice", desc: "Edge TTS \u97F3\u8272\uFF08\u6653\u6653 / \u4E91\u5E0C / \u4E91\u5065 / \u4E91\u626C / \u6653\u4F0A / HiuMaan / Aria\u2026\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { style: inputStyle, value: String(value.voice ?? ""), onChange: (e) => setF("voice", e.target.value) }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "input",
-      {
-        style: inputStyle,
-        type: "number",
-        step: 0.1,
-        min: 0.5,
-        max: 2,
-        value: String(value.rate ?? 1),
-        onChange: (e) => setF("rate", Number(e.target.value))
-      }
-    ) }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { display: "inline-flex", gap: 4 }, children: [0, 1, 2].map((lv) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "button",
-      {
-        style: segStyle(value.interruptLevel === lv),
-        onClick: () => setF("interruptLevel", lv),
-        children: lv
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+    "div",
+    {
+      "data-dshvm-settings": "card",
+      style: {
+        background: theme.bg,
+        border: `1px solid ${theme.border}`,
+        borderRadius: 12,
+        padding: "14px 18px 10px",
+        color: theme.label
       },
-      lv
-    )) }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: "\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 2000 = 2 \u79D2\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "input",
-      {
-        style: inputStyle,
-        type: "number",
-        step: 100,
-        min: 500,
-        value: String(value.silenceMs ?? 2e3),
-        onChange: (e) => setF("silenceMs", Number(e.target.value))
-      }
-    ) }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "input",
-      {
-        style: inputStyle,
-        type: "number",
-        step: 1,
-        min: 1,
-        value: String(value.idleTimeoutMinutes ?? 10),
-        onChange: (e) => setF("idleTimeoutMinutes", Number(e.target.value))
-      }
-    ) }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u7559\u7A7A\u9ED8\u8BA4\uFF1B\u56FD\u5185\u7F51\u7EDC\u586B https://hf-mirror.com\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { style: inputStyle, value: String(value.modelHost ?? ""), onChange: (e) => setF("modelHost", e.target.value) }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: "\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoSend), onChange: (e) => setF("autoSend", e.target.checked) }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { display: "inline-flex", gap: 4 }, children: ["toggle", "hold"].map((m) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { style: segStyle(value.mode === m), onClick: () => setF("mode", m), children: m === "toggle" ? "\u6301\u7EED\u8046\u542C" : "\u6309\u4F4F\u8BF4\u8BDD" }, m)) }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { style: inputStyle, value: String(value.wakeWord ?? ""), onChange: (e) => setF("wakeWord", e.target.value) }) })
-  ] });
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: focusVisibleCss }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 4 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 600 }, children: "\u8BED\u97F3\u6A21\u5F0F" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: theme.dimmed, fontSize: 11, marginLeft: 8 }, children: "dsh-voice-mode" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: theme.secondary, fontSize: 12, marginTop: 4 }, children: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD\uFF1B\u6539\u540E\u5373\u5B58\uFF0C voice \u4E0E rate \u5373\u65F6\u751F\u6548\uFF0C\u5176\u4F59\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u751F\u6548\u3002" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-voice", name: "voice", desc: "Edge TTS \u97F3\u8272\uFF08\u6653\u6653 / \u4E91\u5E0C / \u4E91\u5065 / \u4E91\u626C / \u6653\u4F0A / HiuMaan / Aria\u2026\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { id: "vm-voice", score: scope, field: "voice", value: value.voice ?? "" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-rate", name: "rate", desc: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { id: "vm-rate", score: scope, field: "rate", value: value.rate ?? 1, min: 0.5, max: 2, step: 0.1 }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-interrupt", name: "interruptLevel", desc: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          SegGroup,
+          {
+            id: "vm-interrupt",
+            score: scope,
+            field: "interruptLevel",
+            value: value.interruptLevel,
+            options: [
+              { v: 0, label: "0 \u9AD8\u95E8\u69DB" },
+              { v: 1, label: "1 \u4E2D" },
+              { v: 2, label: "2 \u4F4E" }
+            ]
+          }
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-silence", name: "silenceMs", desc: "\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 2000 = 2 \u79D2\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { id: "vm-silence", score: scope, field: "silenceMs", value: value.silenceMs ?? 2e3, min: 500, max: 3e4, step: 100 }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-idle", name: "idleTimeoutMinutes", desc: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { id: "vm-idle", score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-host", name: "modelHost", desc: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u7559\u7A7A\u9ED8\u8BA4\u6E90\uFF1B\u56FD\u5185\u7F51\u7EDC\u586B https://hf-mirror.com\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { id: "vm-host", score: scope, field: "modelHost", value: value.modelHost ?? "", placeholder: "https://huggingface.co" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-autosend", name: "autoSend", desc: "\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "input",
+          {
+            id: "vm-autosend",
+            type: "checkbox",
+            checked: Boolean(value.autoSend),
+            onChange: (e) => void scope.set("autoSend", e.target.checked)
+          }
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-mode", name: "mode", desc: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          SegGroup,
+          {
+            id: "vm-mode",
+            score: scope,
+            field: "mode",
+            value: value.mode,
+            options: [
+              { v: "toggle", label: "\u6301\u7EED\u8046\u542C" },
+              { v: "hold", label: "\u6309\u4F4F\u8BF4\u8BDD" }
+            ]
+          }
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-wake", name: "wakeWord", desc: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { id: "vm-wake", score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD" }) })
+      ]
+    }
+  );
 }
 
 // src/client.tsx
