@@ -120,7 +120,10 @@
 - [ ] 模型下载：进度可见、失败可见、断点续传、镜像回退（modelHost 生效）；prefetch 可独立跑
 - [ ] TTS 失败：状态条提示 + 自动重试 + 成功复位
 - [ ] 打断：本地静音 + host epoch + 回合取消三层到位
-- [ ] 提交链路：定稿追加草稿 + 立即/重试提交 + 失败留草稿（autoSend 可关，Ctrl 仍可强制）
+- [ ] 提交链路：定稿追加草稿 + 立即/重试提交 + 失败留草稿（autoSend 可关，Ctrl/hold 松手仍可强制）
+- [ ] hold 模式：pointer 驱动进入/退出（trailing click 抑制）、<250ms 短按、滑出/Esc/blur 放弃、
+      Ctrl ≥600ms 阈值与失焦作废
+- [ ] 唤醒词：partial 累积匹配 + host 流 reset（定稿不含唤醒词头）、默认关、局限入 README
 - [ ] 跨平台音频：浏览器忽略 sampleRate 选项时（Safari）有重采样守卫
 - [ ] SSE：心跳、断线重连、多标签页模式广播一致
 - [ ] 单元测试（segmenter 10 项 + verify-client 9 项）+ 集成探测（asr-diag 全链路）

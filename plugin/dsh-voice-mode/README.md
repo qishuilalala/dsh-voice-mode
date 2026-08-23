@@ -10,12 +10,15 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 ## 特性
 
 - **语音模式**：输入框工具排麦克风按钮或全局快捷键 `Ctrl+Shift+V` 进入/退出；全局单活（同一时刻仅一个会话处于语音模式，切换会话自动让出）
-- **输入链路**：持续聆听 → RMS VAD 分段 → zipformer2 流式识别（边说边出字，实时字幕预览）→ 静音 2 秒自动断句进草稿并自动发送；按住 `Ctrl` 强制立即发送；识别文本进可编辑草稿，一旦打字即退出语音模式（双通道不混入）
+- **两种交互模式（设置可切换）**：
+  - `toggle`（默认）持续聆听：RMS VAD 分段 → zipformer2 流式识别（边说边出字，实时字幕预览）→ 静音 2 秒自动断句进草稿并自动发送；按住 `Ctrl` 强制立即发送
+  - `hold` 按住说话：短按进入/退出，**按住麦克风按钮说话、松手即发**（滑出取消、`Esc`/失焦放弃本段）；`Ctrl` 按住即录、松开即发
+- **唤醒词（可选，默认关）**：设置 `wakeWord` 后，进入语音模式处于待机态，说出唤醒词才开始识别（如「你好小D」），避免误触
 - **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式 Edge TTS 朗读 + 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录
 - **开口打断（barge-in）**：三档灵敏度的发声前沿检测 → 本地静音 + host 合成队列作废（epoch）+ 正在运行的回合取消（保留半截并自然续入你的新消息）
 - **模型懒加载与进度**：首次使用自动下载 zipformer2 中文流式模型（约 160MB，`.part` 断点续传），状态条实时显示下载进度；可用 `npm run prefetch` 预下载
 - **容错**：麦克风被拒红点提示、模型下载失败可见提示、TTS 连接失败状态条提示（自动重试）、提交失败文字留在草稿、SSE 断线自动重连
-- **设置**：设置 → 插件配置 → voice-mode，可调音色 / 语速 / 打断灵敏度，即时生效
+- **设置**：设置 → 插件配置 → voice-mode，可调音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词
 - **空闲退出**：10 分钟无活动自动退出并释放麦克风
 
 ## 操作手势
@@ -23,8 +26,11 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 | 手势 | 行为 |
 | --- | --- |
 | 点按麦克风按钮 / `Ctrl+Shift+V` | 进入 / 退出语音模式 |
-| 直接说话，停顿 2 秒 | 自动断句并发送 |
-| 按住 `Ctrl`（≥250ms 语音） | 强制立即发送当前段 |
+| 直接说话，停顿 2 秒（toggle） | 自动断句并发送 |
+| 按住 `Ctrl`（toggle，≥250ms 语音） | 强制立即发送当前段 |
+| **按住麦克风按钮（hold）** | 按住说话，松手发送；向上滑出 / `Esc` / 失去焦点放弃本段；<250ms 短按退出模式 |
+| 按住 `Ctrl`（hold，≥600ms） | 键盘按住说话，松开即发 |
+| 先喊一声唤醒词（已配置） | 从待机激活为聆听（其后才识别与发送） |
 | AI 朗读时开口说话 | 打断朗读并取消当前回合 |
 | 在输入框打字 | 自动退出语音模式（草稿保留） |
 
@@ -62,25 +68,46 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 ## 使用
 
 1. 点击输入框工具排的麦克风按钮（或按 `Ctrl+Shift+V`）进入语音模式，输入框上方出现状态条
-2. 直接说话；说完停顿 2 秒自动发送；按住 `Ctrl` 立即发送
+2. 说话方式二选一：直接说、停顿 2 秒自动发送（toggle）；或按住麦克风按钮、松手发送（hold）
 3. AI 回复逐句朗读，右下角浮层显示字幕；点「跳过」或直接开口打断
 4. 点状态条「退出」（或再按 `Ctrl+Shift+V`）退出语音模式
 
 首次进入会下载识别模型，状态条显示 `正在加载模型… <文件> <百分比>%`。
 
+配置了唤醒词时，进入后会先处于待机态（状态条提示「说『唤醒词』开始」），说完唤醒词即激活。
+
 ## 设置（设置 → 插件配置 → voice-mode）
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
-| `voice` | `zh-CN-XiaoxiaoNeural` | Edge TTS 音色（晓晓 / 云希 / 云健 / 云扬 / 晓伊 / en-US-AriaNeural 等），**即时生效** |
+| `voice` | `zh-CN-XiaoxiaoNeural` | Edge TTS 音色（见下方常用音色表），**即时生效** |
 | `rate` | `1.0` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
 | `interruptLevel` | `0` | 发声打断灵敏度：0 高门槛 / 1 中 / 2 低 |
 | `silenceMs` | `2000` | 说完整一句的静音停顿毫秒数 |
 | `idleTimeoutMinutes` | `10` | 无活动自动退出语音模式的分钟数 |
-| `modelHost` | `https://huggingface.co` | ASR 模型下载源（国内网络填 `https://hf-mirror.com`） |
-| `autoSend` | `true` | 识别定稿后自动发送；关闭则只进草稿（按住 `Ctrl` 仍可强制发送） |
+| `modelHost` | 默认源 | ASR 模型下载源（国内网络填 `https://hf-mirror.com`） |
+| `autoSend` | `true` | 识别定稿后自动发送；关闭则只进草稿（按住 `Ctrl` / hold 松手仍会发送） |
+| `mode` | `toggle` | 交互模式：`toggle` 持续聆听 + 2s 静音断句；`hold` 按住说话、松手发送（短按退出） |
+| `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭 |
 
-生效范围：`voice`/`rate` 修改后**立即生效**（TTS 热切换）；其余设置下次进入语音模式时生效。设置项默认值以插件配置播种——未显式修改时跟随配置。
+生效范围：`voice`/`rate` 修改后**立即生效**（TTS 热切换）；其余设置下次进入语音模式时生效。设置项默认值由插件配置（`base` 层）提供——未显式修改时跟随配置。
+
+### 常用音色（完整清单见 `node scripts/list-voices.mjs`）
+
+| ShortName | 说明 |
+| --- | --- |
+| `zh-CN-XiaoxiaoNeural` | 晓晓 · 女声（默认） |
+| `zh-CN-XiaoyiNeural` | 晓伊 · 女声 |
+| `zh-CN-YunxiNeural` | 云希 · 男声 |
+| `zh-CN-YunjianNeural` | 云健 · 男声 |
+| `zh-CN-YunyangNeural` | 云扬 · 男声 |
+| `zh-CN-YunxiaNeural` | 云夏 · 男声 |
+| `zh-CN-liaoning-XiaobeiNeural` | 小北 · 东北话 · 女声 |
+| `zh-CN-shaanxi-XiaoniNeural` | 小妮 · 陕西话 · 女声 |
+| `zh-HK-HiuMaanNeural` | 晓曼 · 粤语 · 女声 |
+| `zh-TW-HsiaoYuNeural` | 小雨 · 台湾腔 · 女声 |
+| `en-US-AriaNeural` | Aria · 英语 · 女声 |
+| `en-US-GuyNeural` | Guy · 英语 · 男声 |
 
 ## 配置（bundle patch）
 
@@ -110,7 +137,7 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 | --- | --- |
 | `GET /voice-mode/stream` | SSE：`event: audio`（`{sessionId, seq, text, audio(base64 MP3)}`）、`event: mode`（全局单活归属）、`event: tool`（提示音）、`event: asr-progress / asr-ready / asr-error / tts-error` |
 | `POST /voice-mode/toggle` | `{sessionId, on}` 进入/退出语音模式（全局单活） |
-| `POST /voice-mode/asr` | 原始 f32 LE 16k PCM 载荷 → `{text}`（流式 zipformer2）；模型未就绪返回 `202 {loading}` |
+| `POST /voice-mode/asr` | 原始 f32 LE 16k PCM 载荷 → `{text}`（流式 zipformer2）；模型未就绪返回 `202 {loading}`；`?reset=1` 丢弃进行中识别段（唤醒词命中清场用） |
 | `POST /voice-mode/cancel` | `{sessionId}` 作废 TTS 队列并丢弃在途 ASR 段 |
 | `GET /voice-mode/config` | 客户端引导参数（静音阈值 / 灵敏度 / 音色语速等） |
 | `GET /voice-mode` | 健康检查 `{ok, name, enabled, active}` |
@@ -147,6 +174,9 @@ input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f
 - `Ctrl+Shift+V` 会覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍可用 `Ctrl+V`）
 - 识别模型为简体中文优先；识别质量受环境噪声影响
 - 浏览器自动播放策略：朗读需要页面已有用户交互（点击麦克风即满足）；若浏览器拦截播放且状态条无提示，请确认网页处于前台且非静音状态
+- **唤醒词为轻量实现**（基于流式识别文本匹配，非专用 KWS 引擎）：嘈杂环境可能延迟或误激活；唤醒词本身不会进入聊天（命中即丢弃缓冲）
+- hold 模式按住时如果切换窗口/标签页会**放弃本段**（防持续收音），回来需重新按住
+- hero（新会话空态）没有语音入口：语音模式是会话级功能，请先进入会话使用输入框麦克风按钮
 
 ## 故障排查
 
@@ -158,12 +188,14 @@ input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f
 | 有字幕（浮层）但听不到声音 | 检查系统音量/输出设备；浏览器自动播放被拦时点击页面任意处后再试 |
 | 状态条显示「朗读连接失败：正在重试…」 | Edge TTS 服务不可达（境外服务），稍后自动重试；持续失败请检查网络/代理 |
 | 识别不准 | 靠近麦克风、降低环境噪声；还有回声时把「打断灵敏度」调高一档 |
+| hold 模式按住没反应 | 确认切换到了 hold 模式并处于语音模式中（按钮显示「按住说话」）；浏览器窗口需在前台 |
 
 ## 开发
 
 ```sh
 pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js（browser）
-pnpm test                     # segmenter 单测 + 发布前自检（均无需网络）
+pnpm test                     # segmenter/wakeword 单测 + 发布前自检（均无需网络）
+node test/hold-e2e.js         # hold 模式验收（独立浏览器，/asr 路由拦截）
 systemctl restart dsh         # Linux；其他平台重启 dsh 进程
 ```
 
@@ -178,7 +210,10 @@ src/client.tsx    client：麦克风按钮 + 状态条 + 朗读浮层 + 打断
 src/asr.ts        client：getUserMedia + RMS VAD + partial 轮询
 scripts/prefetch.mjs  模型预下载（跨平台缓存目录 + 断点续传）
 test/segmenter.test.mjs 句子切分单元测试
+test/wakeword.test.mjs    唤醒词匹配单元测试
 test/verify-client.mjs   发布前自检（bundle 清单/导出/形状）
+test/hold-e2e.js          hold 模式端到端验收（独立浏览器）
+scripts/list-voices.mjs   打印 Edge TTS 全部音色（音色表来源）
 ```
 
 发布与精选列表提交流程见仓库根 `BEST_PRACTICES.md` 与 `docs/publish/`。
