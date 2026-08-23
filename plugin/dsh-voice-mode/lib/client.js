@@ -587,6 +587,15 @@ function createAudioEngine(setUi) {
 }
 function createVoiceBus(basePath = "/voice-mode", ctx) {
   let activeSessionId = null;
+  const DEFAULT_BOOT = {
+    basePath: "/voice-mode",
+    silenceMs: 2e3,
+    interruptLevel: 0,
+    idleTimeoutMinutes: 10,
+    autoSend: true,
+    mode: "toggle",
+    wakeWord: ""
+  };
   const ui = {
     state: "idle",
     partial: "",
@@ -596,6 +605,7 @@ function createVoiceBus(basePath = "/voice-mode", ctx) {
     playing: false,
     model: null,
     ttsNotice: null,
+    boot: DEFAULT_BOOT,
     mode: "toggle",
     wakeWord: ""
   };
@@ -790,16 +800,15 @@ function MicButton({
   const idleTimerRef = (0, import_react.useRef)(null);
   const runningRef = (0, import_react.useRef)(false);
   const holdCtrlRef = (0, import_react.useRef)(false);
-  const cfgRef = (0, import_react.useRef)({
-    basePath: "/voice-mode",
-    silenceMs: 2e3,
-    interruptLevel: 0,
-    idleTimeoutMinutes: 10,
-    autoSend: true,
-    mode: "toggle",
-    wakeWord: ""
-  });
+  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 2e3, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: "toggle", wakeWord: "" };
   useVoiceCss();
+  const [, bumpUi] = (0, import_react.useState)(0);
+  (0, import_react.useEffect)(
+    () => bus.subscribe(() => {
+      bumpUi((t) => t + 1);
+    }),
+    [bus]
+  );
   const setLocalMode = (m) => {
     localRef.current = m;
     setLocal(m);
@@ -807,20 +816,22 @@ function MicButton({
   const fetchConfig = async () => {
     try {
       const res = await fetch(`${location.origin}/voice-mode/config`);
-      if (!res.ok) return cfgRef.current;
+      if (!res.ok) return bootNow();
       const c = await res.json();
-      cfgRef.current = {
-        basePath: c.basePath ?? cfgRef.current.basePath,
-        silenceMs: c.silenceMs ?? cfgRef.current.silenceMs,
-        interruptLevel: c.interruptLevel ?? cfgRef.current.interruptLevel,
-        idleTimeoutMinutes: c.idleTimeoutMinutes ?? cfgRef.current.idleTimeoutMinutes,
-        autoSend: c.autoSend ?? cfgRef.current.autoSend,
+      const cur = bootNow();
+      const next = {
+        basePath: c.basePath ?? cur.basePath,
+        silenceMs: c.silenceMs ?? cur.silenceMs,
+        interruptLevel: c.interruptLevel ?? cur.interruptLevel,
+        idleTimeoutMinutes: c.idleTimeoutMinutes ?? cur.idleTimeoutMinutes,
+        autoSend: c.autoSend ?? cur.autoSend,
         mode: c.mode === "hold" ? "hold" : "toggle",
-        wakeWord: c.wakeWord ?? cfgRef.current.wakeWord
+        wakeWord: c.wakeWord ?? cur.wakeWord
       };
-      return cfgRef.current;
+      bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord });
+      return next;
     } catch {
-      return cfgRef.current;
+      return bootNow();
     }
   };
   const clearIdle = () => {
@@ -831,7 +842,7 @@ function MicButton({
   };
   const resetIdle = () => {
     clearIdle();
-    const idleMs = (cfgRef.current.idleTimeoutMinutes > 0 ? cfgRef.current.idleTimeoutMinutes : 10) * 60 * 1e3;
+    const idleMs = (bootNow().idleTimeoutMinutes > 0 ? bootNow().idleTimeoutMinutes : 10) * 60 * 1e3;
     idleTimerRef.current = setTimeout(() => {
       const sid = sidRef.current;
       if (localRef.current === "on" && sid) void exitModeRef.current("idle");
@@ -911,7 +922,7 @@ function MicButton({
           } catch {
           }
         }
-        if (cfgRef.current.autoSend === false && !meta?.force) return;
+        if (bootNow().autoSend === false && !meta?.force) return;
         const doSubmit = () => {
           try {
             const r = actions?.submit?.();
@@ -1018,7 +1029,7 @@ function MicButton({
       }
       const eng = engineRef.current;
       if (e.key !== "Control" || e.shiftKey || e.altKey || e.metaKey || e.repeat || !eng) return;
-      if (cfgRef.current.mode === "hold") {
+      if (bootNow().mode === "hold") {
         ctrlTimer = setTimeout(() => {
           ctrlTimer = null;
           holdCtrlRef.current = true;
@@ -1033,7 +1044,7 @@ function MicButton({
     };
     const onBlur = () => {
       cancelCtrl();
-      if (localRef.current === "on" && cfgRef.current.mode === "hold") engineRef.current?.endHeld(true);
+      if (localRef.current === "on" && bootNow().mode === "hold") engineRef.current?.endHeld(true);
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -1058,13 +1069,13 @@ function MicButton({
   (0, import_react.useEffect)(() => {
     const onKeyDown = (e) => {
       if (e.key !== "Escape") return;
-      if (localRef.current !== "on" || cfgRef.current.mode !== "hold") return;
+      if (localRef.current !== "on" || bootNow().mode !== "hold") return;
       engineRef.current?.endHeld(true);
       holdCtrlRef.current = false;
       bus.setUi({ partial: "" });
     };
     const onVisibility = () => {
-      if (document.hidden && cfgRef.current.mode === "hold") {
+      if (document.hidden && bootNow().mode === "hold") {
         engineRef.current?.endHeld(true);
         holdCtrlRef.current = false;
       }
@@ -1090,14 +1101,14 @@ function MicButton({
   }, [bus]);
   const on = local === "on";
   const busy = bus.ui.state === "transcribing" || bus.ui.state === "loading-model";
-  const holdMode = cfgRef.current.mode === "hold";
+  const holdMode = bootNow().mode === "hold";
   const label = on ? busy ? "\u8BC6\u522B\u4E2D\u2026" : holdMode ? "\u6309\u4F4F\u8BF4\u8BDD" : "\u8BED\u97F3\u4E2D" : local === "pending" ? "\u8FDB\u5165\u4E2D\u2026" : "\u8BED\u97F3";
   const holdPtrRef = (0, import_react.useRef)(null);
   const onPointerDown = (e) => {
-    if (cfgRef.current.mode !== "hold" || localRef.current !== "on") return;
+    if (bootNow().mode !== "hold") return;
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId };
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    engineRef.current?.beginHeld();
+    if (localRef.current === "on") engineRef.current?.beginHeld();
   };
   const onPointerMove = (e) => {
     const p = holdPtrRef.current;
@@ -1114,11 +1125,15 @@ function MicButton({
     if (!p || p.id !== e.pointerId) return;
     const ms = Date.now() - p.t;
     if (ms < 250) {
-      engineRef.current?.endHeld(true);
-      void exitModeRef.current("manual");
+      if (localRef.current === "on") {
+        engineRef.current?.endHeld(true);
+        void exitModeRef.current("manual");
+      } else {
+        void enterMode();
+      }
       return;
     }
-    engineRef.current?.endHeld(false);
+    if (localRef.current === "on") engineRef.current?.endHeld(false);
   };
   const onPointerCancel = () => {
     holdPtrRef.current = null;
@@ -1127,13 +1142,19 @@ function MicButton({
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
     "button",
     {
-      onClick: holdMode && on ? () => void 0 : toggle,
+      onClick: (e) => {
+        if (holdMode) {
+          if (e.detail !== 0) return;
+        }
+        toggle();
+      },
       onPointerDown,
       onPointerMove,
       onPointerUp,
       onPointerCancel,
+      "data-dshvm": "mic",
       "aria-label": on ? "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D" : "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F",
-      title: on ? holdMode ? "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF1B\u77ED\u6309\u9000\u51FA\uFF1BEsc/\u5931\u53BB\u7126\u70B9\u653E\u5F03\uFF1BCtlr+Shift+V \u9000\u51FA" : "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u70B9\u51FB\u9000\u51FA\uFF08Ctrl+Shift+V\uFF09\xB7 \u6309\u4F4F Ctrl \u7ACB\u5373\u53D1\u9001" : "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F\uFF08Ctrl+Shift+V\uFF09",
+      title: on ? holdMode ? "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF1B\u77ED\u6309\u9000\u51FA\uFF1BEsc/\u5931\u53BB\u7126\u70B9\u653E\u5F03\uFF1BCtrl+Shift+V \u9000\u51FA" : "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u70B9\u51FB\u9000\u51FA\uFF08Ctrl+Shift+V\uFF09\xB7 \u6309\u4F4F Ctrl \u7ACB\u5373\u53D1\u9001" : "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F\uFF08Ctrl+Shift+V\uFF09",
       style: {
         border: "none",
         background: on ? holdMode ? "rgba(88, 166, 255, 0.16)" : "rgba(63, 185, 80, 0.16)" : local === "pending" ? "rgba(88, 166, 255, 0.14)" : "transparent",

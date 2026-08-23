@@ -26,7 +26,9 @@ interface VoiceUiState {
   model: { file: string; percent: number } | null
   /** TTS 不可达的暂时提示（host tts-error 事件写入，下一帧成功即清）。 */
   ttsNotice: string | null
-  /** 本会话激活时读取的交互参数（hold 模式/唤醒词，供状态条展示）。 */
+  /** 本会话激活时读取的引导参数（bus 单例，跨组件重挂载稳定）。 */
+  boot: VoiceBootConfig
+  /** 便捷速记：交互模式 / 唤醒词（状态条与手势读取）。 */
   mode: 'toggle' | 'hold'
   wakeWord: string
 }
@@ -172,6 +174,15 @@ function createAudioEngine(setUi: (patch: Partial<VoiceUiState>) => void): {
 
 function createVoiceBus(basePath: string = '/voice-mode', ctx?: any): VoiceBus {
   let activeSessionId: string | null = null
+  const DEFAULT_BOOT: VoiceBootConfig = {
+    basePath: '/voice-mode',
+    silenceMs: 2000,
+    interruptLevel: 0,
+    idleTimeoutMinutes: 10,
+    autoSend: true,
+    mode: 'toggle',
+    wakeWord: '',
+  }
   const ui: VoiceUiState = {
     state: 'idle',
     partial: '',
@@ -181,6 +192,7 @@ function createVoiceBus(basePath: string = '/voice-mode', ctx?: any): VoiceBus {
     playing: false,
     model: null,
     ttsNotice: null,
+    boot: DEFAULT_BOOT,
     mode: 'toggle',
     wakeWord: '',
   }
@@ -419,42 +431,46 @@ export function MicButton({
   const runningRef = useRef(false)
   /** hold 模式 Ctrl 按住说话中（600ms 阈值后才置真）。 */
   const holdCtrlRef = useRef(false)
-  /** 本次/上次进入的引导配置（进入时刷新；拉取失败用兜底默认）。 */
-  const cfgRef = useRef<VoiceBootConfig>({
-    basePath: '/voice-mode',
-    silenceMs: 2000,
-    interruptLevel: 0,
-    idleTimeoutMinutes: 10,
-    autoSend: true,
-    mode: 'toggle',
-    wakeWord: '',
-  })
+  /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
+  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 2000, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: 'toggle', wakeWord: '' }
 
   useVoiceCss()
+
+  // bus.ui 镜像（仅模式/唤醒词/自动发送变化才触发重渲染；电平高频更新不打扰）。
+  const [, bumpUi] = useState(0)
+  useEffect(
+    () =>
+      bus.subscribe(() => {
+        bumpUi((t) => t + 1)
+      }),
+    [bus],
+  )
 
   const setLocalMode = (m: 'off' | 'pending' | 'on'): void => {
     localRef.current = m
     setLocal(m)
   }
 
-  /** 每次进入语音模式重新拉取 /config（设置面板改动即时生效，无需刷新页面）。 */
+  /** 每次进入语音模式重新拉取 /config（设置改动即时生效），失败用当前 bus.boot 兜底。 */
   const fetchConfig = async (): Promise<VoiceBootConfig> => {
     try {
       const res = await fetch(`${location.origin}/voice-mode/config`)
-      if (!res.ok) return cfgRef.current
+      if (!res.ok) return bootNow()
       const c = (await res.json()) as Partial<VoiceBootConfig>
-      cfgRef.current = {
-        basePath: c.basePath ?? cfgRef.current.basePath,
-        silenceMs: c.silenceMs ?? cfgRef.current.silenceMs,
-        interruptLevel: c.interruptLevel ?? cfgRef.current.interruptLevel,
-        idleTimeoutMinutes: c.idleTimeoutMinutes ?? cfgRef.current.idleTimeoutMinutes,
-        autoSend: c.autoSend ?? cfgRef.current.autoSend,
+      const cur = bootNow()
+      const next: VoiceBootConfig = {
+        basePath: c.basePath ?? cur.basePath,
+        silenceMs: c.silenceMs ?? cur.silenceMs,
+        interruptLevel: c.interruptLevel ?? cur.interruptLevel,
+        idleTimeoutMinutes: c.idleTimeoutMinutes ?? cur.idleTimeoutMinutes,
+        autoSend: c.autoSend ?? cur.autoSend,
         mode: c.mode === 'hold' ? 'hold' : 'toggle',
-        wakeWord: c.wakeWord ?? cfgRef.current.wakeWord,
+        wakeWord: c.wakeWord ?? cur.wakeWord,
       }
-      return cfgRef.current
+      bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord })
+      return next
     } catch {
-      return cfgRef.current
+      return bootNow()
     }
   }
 
@@ -466,7 +482,7 @@ export function MicButton({
   }
   const resetIdle = (): void => {
     clearIdle()
-    const idleMs = (cfgRef.current.idleTimeoutMinutes > 0 ? cfgRef.current.idleTimeoutMinutes : 10) * 60 * 1000
+    const idleMs = (bootNow().idleTimeoutMinutes > 0 ? bootNow().idleTimeoutMinutes : 10) * 60 * 1000
     idleTimerRef.current = setTimeout(() => {
       const sid = sidRef.current
       if (localRef.current === 'on' && sid) void exitModeRef.current('idle')
@@ -560,7 +576,7 @@ export function MicButton({
           }
         }
         // 自动提交门控：设置关闭或未强制时只留草稿，等待用户编辑/发送
-        if (cfgRef.current.autoSend === false && !meta?.force) return
+        if (bootNow().autoSend === false && !meta?.force) return
         // 自动提交：增加重试与可见降级（Q16 提交失败→留在草稿+错误提示）
         const doSubmit = (): void => {
           try {
@@ -695,7 +711,7 @@ export function MicButton({
       }
       const eng = engineRef.current
       if (e.key !== 'Control' || e.shiftKey || e.altKey || e.metaKey || e.repeat || !eng) return
-      if (cfgRef.current.mode === 'hold') {
+      if (bootNow().mode === 'hold') {
         // hold：600ms 阈值后视为按住说话（避免组合快捷键按下时序误触发）
         ctrlTimer = setTimeout(() => {
           ctrlTimer = null
@@ -713,7 +729,7 @@ export function MicButton({
     const onBlur = (): void => {
       // 失焦即取消：blur 收不到 keyup 时不能把"按住"留在收音态（AGENTS 契约）。
       cancelCtrl()
-      if (localRef.current === 'on' && cfgRef.current.mode === 'hold') engineRef.current?.endHeld(true)
+      if (localRef.current === 'on' && bootNow().mode === 'hold') engineRef.current?.endHeld(true)
     }
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
@@ -742,13 +758,13 @@ export function MicButton({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
-      if (localRef.current !== 'on' || cfgRef.current.mode !== 'hold') return
+      if (localRef.current !== 'on' || bootNow().mode !== 'hold') return
       engineRef.current?.endHeld(true)
       holdCtrlRef.current = false
       bus.setUi({ partial: '' })
     }
     const onVisibility = (): void => {
-      if (document.hidden && cfgRef.current.mode === 'hold') {
+      if (document.hidden && bootNow().mode === 'hold') {
         engineRef.current?.endHeld(true)
         holdCtrlRef.current = false
       }
@@ -777,7 +793,7 @@ export function MicButton({
 
   const on = local === 'on'
   const busy = bus.ui.state === 'transcribing' || bus.ui.state === 'loading-model'
-  const holdMode = cfgRef.current.mode === 'hold'
+  const holdMode = bootNow().mode === 'hold'
   const label = on
     ? busy
       ? '识别中…'
@@ -793,10 +809,11 @@ export function MicButton({
   // （Blocker-1：pointerup 合成的 click 会自毁退出）。
   const holdPtrRef = useRef<{ t: number; y: number; id: number } | null>(null)
   const onPointerDown = (e: React.PointerEvent): void => {
-    if (cfgRef.current.mode !== 'hold' || localRef.current !== 'on') return
+    // hold 模式全程 pointer 驱动：on=按住说话，off=短按进入；click 事件不参与
+    if (bootNow().mode !== 'hold') return
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId }
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
-    engineRef.current?.beginHeld()
+    if (localRef.current === 'on') engineRef.current?.beginHeld()
   }
   const onPointerMove = (e: React.PointerEvent): void => {
     const p = holdPtrRef.current
@@ -814,12 +831,16 @@ export function MicButton({
     if (!p || p.id !== e.pointerId) return
     const ms = Date.now() - p.t
     if (ms < 250) {
-      // 短按 = 退出语音模式（tap-to-exit）
-      engineRef.current?.endHeld(true)
-      void exitModeRef.current('manual')
+      // 短按：on → 退出语音模式（tap-to-exit）；off → 进入（hold 模式全程 pointer 驱动）
+      if (localRef.current === 'on') {
+        engineRef.current?.endHeld(true)
+        void exitModeRef.current('manual')
+      } else {
+        void enterMode()
+      }
       return
     }
-    engineRef.current?.endHeld(false)
+    if (localRef.current === 'on') engineRef.current?.endHeld(false)
   }
   const onPointerCancel = (): void => {
     holdPtrRef.current = null
@@ -828,16 +849,25 @@ export function MicButton({
 
   return (
     <button
-      onClick={holdMode && on ? () => undefined : toggle}
+      onClick={(e: React.MouseEvent) => {
+        if (holdMode) {
+          // pointer/触摸合成的 click 一律忽略（tap 进入/退出走 pointer 路径，
+          // 否则 tap-exit 的 trailing click 会再次触发 toggle 重进 —— Blocker-1 反面）
+          if (e.detail !== 0) return
+          // 键盘/Space/Enter 激活（detail === 0）保持 a11y 可用
+        }
+        toggle()
+      }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      data-dshvm="mic"
       aria-label={on ? '语音模式进行中' : '进入语音对话模式'}
       title={
         on
           ? holdMode
-            ? '语音模式进行中 · 按住说话、松手发送；短按退出；Esc/失去焦点放弃；Ctlr+Shift+V 退出'
+            ? '语音模式进行中 · 按住说话、松手发送；短按退出；Esc/失去焦点放弃；Ctrl+Shift+V 退出'
             : '语音模式进行中 · 点击退出（Ctrl+Shift+V）· 按住 Ctrl 立即发送'
           : '进入语音对话模式（Ctrl+Shift+V）'
       }
