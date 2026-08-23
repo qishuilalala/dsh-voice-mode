@@ -120,8 +120,11 @@
 - **gh 引用化**：`~/.config/gh/hosts.yml` 的 `oauth_token: "env:GH_TOKEN"`（gh CLI
   支持 env 前缀），`gh auth status` 即用环境变量认证；
 - 常用发布命令（凭证均已就绪）：
-  `git push https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git <ref>`、
-  GitHub API `Authorization: token ${GH_TOKEN}`、`npm publish`（经 npmrc 引用）。
+  GitHub API `Authorization: token ${GH_TOKEN}`、`npm publish`（经 npmrc 引用）；
+- **⚠️ 勿用含 token 的 URL 执行 `git push -u`**：`-u` 会把 remote URL（含 token）
+  回显到输出/日志造成泄露；推送改用临时 URL（不 `-u`）或
+  `git -c http.extraHeader="Authorization: token ${GH_TOKEN}" push`，并在用后
+  `git remote set-url` 清除持久化；含 token 的 clone 目录用完即删。
 
 ### 准备
 - [ ] `npm pack --dry-run` 核对 files 白名单（含 cordis.patch.yml / client / README / LICENSE）
