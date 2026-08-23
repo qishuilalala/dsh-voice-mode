@@ -3,6 +3,18 @@ const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/nod
 
 const BASE = process.env.BASE || 'http://127.0.0.1:3018'
 
+/** 全新隔离实例兜底：跳过首次引导（不代表产品路径，仅让空白 home 到达 composer）。 */
+async function dismissOnboarding(page) {
+  for (const label of ['Configure later', 'Save and continue']) {
+    const btn = page.locator(`button:has-text("${label}")`).first()
+    if (await btn.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await btn.click({ force: true }).catch(() => {})
+      await page.waitForTimeout(1500)
+      return
+    }
+  }
+}
+
 async function main() {
   const browser = await chromium.launch({
     executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',
@@ -29,7 +41,8 @@ async function main() {
 
   // 2. 语音按钮出现
   const micBtn = page.locator('[data-dshvm="mic"]').first()
-  await micBtn.waitFor({ timeout: 10000 })
+  await dismissOnboarding(page)
+  await micBtn.waitFor({ timeout: 20000 })
   console.log('MIC button found, text =', await micBtn.textContent())
 
   // 3. 点击进入 -> 语音中 + 状态条
@@ -76,7 +89,9 @@ async function main() {
   const page2 = await ctx.newPage()
   await page2.goto(BASE, { waitUntil: 'domcontentloaded' })
   await page2.waitForTimeout(2500)
+  await dismissOnboarding(page2)
   const mic2 = page2.locator('[data-dshvm="mic"]').first()
+  await mic2.waitFor({ timeout: 20000 })
   await mic2.click()
   await page.waitForTimeout(800)
   console.log('tab2 entered -> tab1 button text =', await micBtn.textContent())

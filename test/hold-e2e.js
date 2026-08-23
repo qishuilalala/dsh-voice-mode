@@ -2,6 +2,18 @@
 const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
 const BASE = process.env.BASE || 'http://127.0.0.1:3018'
 
+/** 全新隔离实例兜底：跳过首次引导（不代表产品路径，仅让空白 home 到达 composer）。 */
+async function dismissOnboarding(page) {
+  for (const label of ['Configure later', 'Save and continue']) {
+    const btn = page.locator(`button:has-text("${label}")`).first()
+    if (await btn.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await btn.click({ force: true }).catch(() => {})
+      await page.waitForTimeout(1500)
+      return
+    }
+  }
+}
+
 async function main() {
   const browser = await chromium.launch({
     executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',

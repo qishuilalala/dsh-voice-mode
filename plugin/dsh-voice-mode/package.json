@@ -37,7 +37,8 @@
     "test": "node test/segmenter.test.mjs && node test/wakeword.test.mjs && node test/verify-client.mjs",
     "verify:client": "node test/verify-client.mjs",
     "prefetch": "node scripts/prefetch.mjs",
-    "list-voices": "node scripts/list-voices.mjs"
+    "list-voices": "node scripts/list-voices.mjs",
+    "verify": "node scripts/verify.mjs"
   },
   "dsh": {
     "bundle": {
@@ -53,7 +54,11 @@
   },
   "dependencies": {
     "msedge-tts": "^2.0.7",
-    "sherpa-onnx": "^1.13.6"
+    "sherpa-onnx": "^1.13.6",
+    "@deepseek-ai/schemastery": "^3.18.0",
+    "@deepseek-ai/dsh-settings": "^0.0.1-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "^0.0.1-rc.1",
+    "@deepseek-ai/dsh-llm": "^0.0.1-rc.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
