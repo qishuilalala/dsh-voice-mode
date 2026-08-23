@@ -378,7 +378,6 @@ var TtsQueue = class {
 };
 
 // src/index.ts
-import { settingsNamespace } from "@deepseek-ai/dsh-settings";
 var name = "voice-mode";
 var inject = ["webServer", "settings"];
 var defaultModelCacheDir = () => process.platform === "win32" ? join2(process.env.LOCALAPPDATA ?? join2(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join2(homedir(), ".cache", "dsh-voice-mode", "models");
@@ -433,7 +432,7 @@ function apply(ctx, config) {
     }
   };
   const settingsScope = ctx.settings.register(
-    settingsNamespace("voice-mode"),
+    "voice-mode",
     createVoiceSettingsSchema(),
     {
       base: {
