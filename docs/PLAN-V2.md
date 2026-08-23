@@ -61,7 +61,7 @@ Blocker（必须照此实现）：
    （asr-host.ts:148），命中后若不重置 host 流，定稿必然带唤醒词头。**解决**：`/asr` 增
    `reset=1` 参数 → host `asr.reset(sessionId)`（asr-host.ts:56 已有 reset），命中唤醒词时
    先清 host 流再转 listening。
-4. **hero 槽位撞车**：`conversation.hero.{brand.mark,workspace,agentPreset}` 三个 root 单例槽
+4. **hero 槽位冲突**：`conversation.hero.{brand.mark,workspace,agentPreset}` 三个 root 单例槽
    （client.js:9993-10004）全部被官方包占用（dsh-client-ui-workspace:2444、
    dsh-client-ui-agent-preset:1648），single 无低优先级语义 → **v0.2 砍 hero 卡片**（用户已确认）。
 
@@ -86,7 +86,7 @@ startRecorder 参数；`/config` 重复键 silenceMs（index.ts:227/231）清理
 - 录制开始跳过 wake 态（显式意图）。202 模型加载期松手：沿用 5s 重试，仍失败→段文本保留在
   草稿并提示（不静默丢弃）。
 - a11y 补：按钮 aria-label 覆盖两种模式；dshvm 动画加 `prefers-reduced-motion`（optional）。
-- 竞品参考：haoku123 hold（<250ms 丢弃、绕过 VAD、slide-to-cancel、suppress-click 先例）。
+- 同类实现参考：haoku123 hold（<250ms 丢弃、绕过 VAD、slide-to-cancel、suppress-click 先例）。
 
 ### 1.2 唤醒词（保留，明示局限）
 - 设置 `wakeWord: string`（默认空=关）。

@@ -8,14 +8,14 @@
 
 ## 1. 生态定位
 
-- GitHub `topic:dsh-plugin` 下仓库数量大但**污染严重**（约 1/3 为真插件）；
+- GitHub `topic:dsh-plugin` 下仓库数量大但**质量参差**（实测约 1/3 为合格插件）；
   高 star 多为大仓 monorepo 本体（如 dsh-memory-plugin 31.9k 来自
   volcengine/OpenViking examples），**独立插件自身 star 普遍很低**。不要用
   star 数判断影响力；应看：是否有 `dsh.bundle` 清单、是否入 awesome-dsh-plugin
   列表、是否被 dshmarket 收录。
 - 权威分发路径：npm（`dsh plugin add <pkg>`）→ [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)（精选列表，入表后 dshmarket 可一键安装）。
-- 竞争对手参照（语音类）：`haoku123/dsh-voice`（全双工 + SenseVoice + Edge TTS，
-  文档与测试都齐全）、`1624318455/dsh-plugin-tts`（朗读 + RVC）、
+- 同类插件参照（语音类）：`haoku123/dsh-voice`（全双工 + SenseVoice + Edge TTS，
+  文档与测试均齐全）、`1624318455/dsh-plugin-tts`（朗读 + RVC）、
   `tangzheng202202/dsh-voice-live`（火山云流式）、`Zhangbo-cn/dsh-voice-input-plugin`。
 
 ## 2. 代码侧最佳实践

@@ -86,7 +86,7 @@ hold-e2e：进入 ✓ / 长按发送（聊天可见）✓ / Escape 放弃段（�
 record-demo：assets/demo.gif 5 帧（76KB）已重录于独立实例
 ```
 
-## 验证体系发现的真实缺陷（本记录的价值）
+## 验证体系发现的真实缺陷（本记录的发现）
 
 1. **运行时外部依赖未声明**：`lib/index.js` 静态导入 `@deepseek-ai/schemastery`/`dsh-settings`/`dsh-host-webserver`/`dsh-llm`，
    但 package.json 未声明——干净安装会 `ERR_MODULE_NOT_FOUND`；生产只因 profiles/node_modules 巧合可解析。

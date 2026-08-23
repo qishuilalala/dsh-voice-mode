@@ -30,6 +30,7 @@
     "scripts/prefetch.mjs",
     "scripts/list-voices.mjs",
     "README.md",
+    "README.en.md",
     "LICENSE"
   ],
   "scripts": {

@@ -9,7 +9,9 @@
 > final reply is read out sentence-by-sentence via Edge TTS, and your voice
 > interrupts playback and the running turn. No API key.
 
-DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（真 barge-in）。无需 API Key，模型在本地宿主端推理。
+DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（barge-in）。无需 API Key，模型在本地宿主端推理。
+
+[English](./README.en.md)
 
 ![demo](assets/demo.gif)
 
@@ -64,7 +66,7 @@ dsh plugin --profile web add .
 - **Linux（systemd）**：`systemctl restart dsh`
 - **Windows / macOS / 手动托管**：重启你的 dsh 进程（结束进程后重新 `dsh web`，或在其服务管理器中重启）
 
-**可选**：预下载 ASR 模型，让首次进入语音模式零等待：
+**可选**：预下载 ASR 模型，减少首次进入语音模式的下载等待：
 
 ```sh
 npm run prefetch          # 插件目录内执行；默认写到平台缓存目录
