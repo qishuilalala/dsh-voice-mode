@@ -15,6 +15,7 @@ function pcmToSamples(buf) {
   if (buf.length % 4 !== 0 || buf.length === 0) return null;
   return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
 }
+var MAX_ASR_BYTES = 4 * 1024 * 1024;
 function createAsrRuntime(options) {
   const { cacheDir, modelHost, broadcast } = options;
   const repoDir = join(cacheDir, MODEL_REPO);
@@ -163,8 +164,21 @@ async function download(host, repoDir, file, resumeFrom, broadcast) {
 }
 function handleAsrRequest(asr, activeSessionId, req, res) {
   const chunks = [];
-  req.on("data", (c) => chunks.push(c));
+  let received = 0;
+  let tooLarge = false;
+  req.on("data", (c) => {
+    if (tooLarge) return;
+    received += c.length;
+    if (received > MAX_ASR_BYTES) {
+      tooLarge = true;
+      res.statusCode = 413;
+      res.end(JSON.stringify({ error: "pcm payload too large" }));
+      return;
+    }
+    chunks.push(c);
+  });
   req.on("end", () => {
+    if (tooLarge) return;
     res.setHeader("content-type", "application/json");
     const url = new URL(req.url ?? "/", "http://localhost");
     const sessionId = url.searchParams.get("sessionId") ?? "";
@@ -380,6 +394,7 @@ var TtsQueue = class {
 // src/index.ts
 var name = "voice-mode";
 var NS_VOICE_MODE = "voice-mode";
+var BASE_PATH = "/voice-mode";
 var inject = ["webServer", "settings"];
 var defaultModelCacheDir = () => process.platform === "win32" ? join2(process.env.LOCALAPPDATA ?? join2(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join2(homedir(), ".cache", "dsh-voice-mode", "models");
 var VOICE_SETTINGS_DEFAULTS = {
@@ -411,7 +426,6 @@ function createVoiceSettingsSchema(defs) {
 }
 var VoiceSettingsSchema = createVoiceSettingsSchema();
 var Config = z.object({
-  basePath: z.string().default("/voice-mode"),
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default("https://huggingface.co"),
@@ -459,6 +473,7 @@ function apply(ctx, config) {
   });
   const unsubscribe = queue.subscribe((frame) => broadcast("audio", frame));
   ctx.effect(() => unsubscribe);
+  ctx.effect(() => () => void queue.close());
   ctx.effect(
     () => settingsScope.watch((next) => {
       vset = next;
@@ -470,11 +485,11 @@ function apply(ctx, config) {
   const currentInterrupt = () => vset.interruptLevel;
   ctx.on("llm/stream", (options, next) => {
     const sessionId = options.sessionId;
-    if (!config.enabled || sessionId === void 0) return next();
+    if (!config.enabled || sessionId === void 0 || options.purpose !== void 0) return next();
     if (activeVoiceSession !== sessionId) return next();
     return tapActiveStream(sessionId, next(), queue, broadcast);
   });
-  const base = config.basePath;
+  const base = BASE_PATH;
   ctx.effect(
     () => ctx.webServer.register({
       kind: "prefix",
@@ -523,11 +538,7 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/toggle`,
       handler: (req, res) => {
-        let body = "";
-        req.on("data", (c) => {
-          body += c;
-        });
-        req.on("end", () => {
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
           let sessionId;
           let on;
           try {
@@ -542,6 +553,11 @@ function apply(ctx, config) {
             return;
           }
           if (on === true) {
+            if (!config.enabled) {
+              res.statusCode = 403;
+              res.end(JSON.stringify({ error: "voice mode disabled" }));
+              return;
+            }
             const previous = activeVoiceSession;
             activeVoiceSession = sessionId;
             if (previous && previous !== sessionId) queue.prune(previous);
@@ -573,11 +589,7 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/cancel`,
       handler: (req, res) => {
-        let body = "";
-        req.on("data", (c) => {
-          body += c;
-        });
-        req.on("end", () => {
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
           let sessionId;
           try {
             const parsed = JSON.parse(body || "{}");
@@ -625,6 +637,26 @@ data: ${JSON.stringify(payload)}
       }
     })
   );
+}
+var MAX_JSON_BODY = 16 * 1024;
+function collectBody(req, res, maxBytes, onBody) {
+  let body = "";
+  let tooLarge = false;
+  req.on("data", (c) => {
+    if (tooLarge) return;
+    body += c;
+    if (body.length > maxBytes) {
+      tooLarge = true;
+      res.statusCode = 413;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ error: "request body too large" }));
+    }
+  });
+  req.on("end", () => {
+    if (!tooLarge) onBody(body);
+  });
+  req.on("error", () => {
+  });
 }
 async function* tapActiveStream(sessionId, inner, queue, broadcast) {
   const segmenter = new SentenceSegmenter();

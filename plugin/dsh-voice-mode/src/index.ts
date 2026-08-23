@@ -33,6 +33,13 @@ export const name = 'voice-mode'
  */
 const NS_VOICE_MODE = 'voice-mode' as SettingsNamespace
 
+/**
+ * 插件 HTTP 命名空间（固定路径）。client bundle 以静态产物分发，无法感知
+ * 宿主侧配置；若 basePath 可配置而客户端硬编码，一旦修改即分叉。故按
+ * 客户端契约固定为 /voice-mode（不提供覆盖键；custom basePath 无增益）。
+ */
+const BASE_PATH = '/voice-mode'
+
 export const inject = ['webServer', 'settings']
 
 /**
@@ -115,9 +122,7 @@ export const VoiceSettingsSchema: z<VoiceSettingsValue> = createVoiceSettingsSch
 
 /** 插件配置（cordis.patch.yml / 设置面板可覆盖；默认值面向对话场景）。 */
 export interface Config {
-  /** HTTP 路由前缀。 */
-  basePath: string
-  /** 总开关。 */
+  /** 总开关；关闭时拒绝进入语音模式（toggle 返回 403）。 */
   enabled: boolean
   /** 模型缓存目录。 */
   cacheDir: string
@@ -136,7 +141,6 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  basePath: z.string().default('/voice-mode'),
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default('https://huggingface.co'),
@@ -197,6 +201,8 @@ export function apply(ctx: Context, config: Config): void {
   })
   const unsubscribe = queue.subscribe((frame) => broadcast('audio', frame))
   ctx.effect(() => unsubscribe)
+  // 生命周期收尾：插件卸载/热重载时关闭 TTS WebSocket（否则连接悬挂泄漏）。
+  ctx.effect(() => () => void queue.close())
   // 设置变化即时生效（applies 'live'）：音色/语速直接热更换；其余在下次进入生效。
   ctx.effect(() =>
     settingsScope.watch((next) => {
@@ -212,13 +218,15 @@ export function apply(ctx: Context, config: Config): void {
   // --- llm/stream 无损 tap：仅活跃语音会话被观察，其余直达（验收点 7）。 ---
   ctx.on('llm/stream', (options: GenerateOptions, next): AsyncIterable<StreamChunk> => {
     const sessionId = options.sessionId
-    if (!config.enabled || sessionId === undefined) return next()
+    // 只朗读主对话回合：compaction / session-title 等内部生成流带 purpose，
+    // 若被 tap 会把「会话摘要/标题生成」播出来（官方 GenerateOptions.purpose 契约）。
+    if (!config.enabled || sessionId === undefined || options.purpose !== undefined) return next()
     if (activeVoiceSession !== sessionId) return next()
     return tapActiveStream(sessionId, next(), queue, broadcast)
   })
 
   // --- HTTP 面 ---
-  const base = config.basePath
+  const base = BASE_PATH
 
   ctx.effect(() =>
     ctx.webServer.register({
@@ -270,11 +278,7 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/toggle`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
-        let body = ''
-        req.on('data', (c: Buffer) => {
-          body += c
-        })
-        req.on('end', () => {
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
           let sessionId: string | undefined
           let on: boolean | undefined
           try {
@@ -290,6 +294,12 @@ export function apply(ctx: Context, config: Config): void {
             return
           }
           if (on === true) {
+            // 总开关关闭时拒绝进入（enabled=false 的诚实语义：整功能关停）。
+            if (!config.enabled) {
+              res.statusCode = 403
+              res.end(JSON.stringify({ error: 'voice mode disabled' }))
+              return
+            }
             // 全局单活：新会话进入即覆盖让出旧会话（Q11 切换会话自动让出）。
             const previous = activeVoiceSession
             activeVoiceSession = sessionId
@@ -324,11 +334,7 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/cancel`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
-        let body = ''
-        req.on('data', (c: Buffer) => {
-          body += c
-        })
-        req.on('end', () => {
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
           let sessionId: string | undefined
           try {
             const parsed = JSON.parse(body || '{}') as { sessionId?: string }
@@ -377,6 +383,38 @@ export function apply(ctx: Context, config: Config): void {
       },
     }),
   )
+}
+
+/**
+ * 有界 JSON 请求体收集：超过 maxBytes 立即 413（插件 HTTP 面不信任
+ * 外部载荷体积；/asr 的 PCM 上限在 asr-host.ts 单独控制）。
+ */
+const MAX_JSON_BODY = 16 * 1024
+
+function collectBody(
+  req: IncomingMessage,
+  res: ServerResponse,
+  maxBytes: number,
+  onBody: (body: string) => void,
+): void {
+  let body = ''
+  let tooLarge = false
+  req.on('data', (c: Buffer) => {
+    if (tooLarge) return
+    body += c
+    if (body.length > maxBytes) {
+      tooLarge = true
+      res.statusCode = 413
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify({ error: 'request body too large' }))
+    }
+  })
+  req.on('end', () => {
+    if (!tooLarge) onBody(body)
+  })
+  req.on('error', () => {
+    // 客户端中断：忽略（不重复响应）
+  })
 }
 
 /**

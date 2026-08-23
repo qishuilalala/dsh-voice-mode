@@ -124,3 +124,19 @@ record-demo：assets/demo.gif 5 帧（76KB）已重录于独立实例
 - 验证：展开高度 5911px → **781px**；折叠 75px；深浅色主题下均正常。
 - 注意：dsh 安装用 pnpm `file:` 链接（目录拷贝），`node build.mjs` 后需将
   `lib/client.js` 同步到 `<profile>/node_modules/dsh-voice-mode/lib/` 再重启 dsh，浏览器才能拿到新 bundle。
+
+## 附录 B：朗读「用户消息」回归记录（2026-08-23）
+
+- 缺陷：语音模式下用户发消息后，**自己的消息会被 TTS 再朗读一遍**（标题文本听起来像
+  用户消息的重复），助手回复照常朗读。
+- 根因：会话标题生成流被误 tap。宿主 `dsh-session-title-llm:215` 以
+  `{ sessionId, purpose: 'session-title' }` 调 `ctx.llm.stream`（:228），与插件 tap 条件
+  （仅 `activeVoiceSession === sessionId`）完全匹配；标题文本 = 用户消息的一句话概括，
+  经 `tapActiveStream` → TTS 队列被朗读。compaction 同理（`purpose: 'compaction'`）。
+  运行实例为 20:33 构建的旧 `lib/index.js`（无 purpose 过滤），故必现。
+- 修复：`llm/stream` tap 前置跳过带 `purpose` 的内部生成流
+  （`options.purpose !== undefined` 直达 next），只朗读无 purpose 的主对话回合
+  （官方契约：`compaction | 'session-title'` 两种内部流均被排除，agent loop 不带 purpose）。
+- 验证：`node build.mjs`（21:00:44）→ 重启 dsh（21:01:11，PID 1413864）→
+  `/voice-mode` 与 `/voice-mode/config` 均 200；产物含 purpose 过滤；
+  journalctl 无插件加载错误。用户侧复验：语音模式发消息后不再出现「自己的消息被朗读」。
