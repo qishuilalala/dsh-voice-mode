@@ -1,5 +1,6 @@
 window.__ModuleLoader__.load({ id: "dsh-voice-mode", factory: (require) => {
 var module = { exports: {} }; var exports = module.exports;
+"use strict";
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
