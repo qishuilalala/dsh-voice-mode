@@ -528,8 +528,8 @@ var nameStyle = {
   whiteSpace: "normal"
 };
 var descStyle = {
-  color: theme.dimmed,
-  fontSize: 11,
+  color: theme.secondary,
+  fontSize: 12,
   fontWeight: 400,
   lineHeight: 1.5,
   marginTop: 3,
@@ -543,7 +543,6 @@ var ctrlStyle = { display: "flex", alignItems: "center", flex: "1 1 auto", justi
 var inputStyle = {
   width: "100%",
   minWidth: 180,
-  maxWidth: 320,
   boxSizing: "border-box",
   padding: "7px 10px",
   borderRadius: 8,
@@ -612,12 +611,11 @@ function SelectField({
   const selectStyle = {
     ...inputStyle,
     width: "100%",
-    maxWidth: 320,
     appearance: "none",
     background: "var(--dsw-alias-bg-layer-2)",
     cursor: "pointer"
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 320, alignItems: "stretch" }, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: "100%", alignItems: "stretch" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "select",
       {

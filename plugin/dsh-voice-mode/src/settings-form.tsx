@@ -48,8 +48,8 @@ const nameStyle: React.CSSProperties = {
   whiteSpace: 'normal',
 }
 const descStyle: React.CSSProperties = {
-  color: theme.dimmed,
-  fontSize: 11,
+  color: theme.secondary,
+  fontSize: 12,
   fontWeight: 400,
   lineHeight: 1.5,
   marginTop: 3,
@@ -63,7 +63,6 @@ const ctrlStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', 
 const inputStyle: React.CSSProperties = {
   width: '100%',
   minWidth: 180,
-  maxWidth: 320,
   boxSizing: 'border-box',
   padding: '7px 10px',
   borderRadius: 8,
@@ -145,13 +144,12 @@ function SelectField({
   const selectStyle: React.CSSProperties = {
     ...inputStyle,
     width: '100%',
-    maxWidth: 320,
     appearance: 'none',
     background: 'var(--dsw-alias-bg-layer-2)',
     cursor: 'pointer',
   }
   return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', maxWidth: 320, alignItems: 'stretch' }}>
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', alignItems: 'stretch' }}>
       <select
         id={id}
         style={selectStyle}
