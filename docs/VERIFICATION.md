@@ -111,3 +111,12 @@ record-demo：assets/demo.gif 5 帧（76KB）已重录于独立实例
 
 - [ ] 发布（等待用户本机 gh/npm 认证：repo 公开、push、npm publish、满 1 天后 awesome PR）
 - [ ] headless 层：本插件为 web 双半（client 在浏览器），host 半由第 6、7 层覆盖——如未来增加纯 host 工具链再补该层
+
+## 附录 A：设置卡 UI 回归记录（2026-08-23）
+
+- 缺陷：展开高度 5911px——React 内联样式的 `lineHeight: 20 / 18` 是**无单位数字**，
+  按「字体大小 × 倍数」渲染（13px×20=260px/行），整卡被撑开，控件区下方大片空白。
+- 修复：`setLabel`/`setHint`/`setSegBtn` 的 lineHeight 改为带单位 `'20px'`/`'18px'`。
+- 验证：展开高度 5911px → **781px**；折叠 75px；深浅色主题下均正常。
+- 注意：dsh 安装用 pnpm `file:` 链接（目录拷贝），`node build.mjs` 后需将
+  `lib/client.js` 同步到 `<profile>/node_modules/dsh-voice-mode/lib/` 再重启 dsh，浏览器才能拿到新 bundle。
