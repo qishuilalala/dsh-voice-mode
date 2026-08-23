@@ -11,8 +11,9 @@
 import * as React from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { createAsrEngine, type AsrEngine, type AsrState } from './asr.ts'
+import { VoiceSettingsCard } from './settings-form.tsx'
 
-export const inject = ['slots', 'sessions']
+export const inject = ['slots', 'sessions', 'settingsScope']
 
 interface VoiceUiState {
   state: AsrState
@@ -104,6 +105,21 @@ export function apply(ctx: any): void {
       VoiceOverlay,
     ),
   )
+
+  // 设置卡片：Plugins → 插件配置 区（官方座位 settings.plugin.item，按命名空间 key 分发）。
+  if ((ctx as any).settingsScope) {
+    ctx.slots.inject('settings.plugin.item', () =>
+      ctx.slots.register(
+        {
+          name: 'settings.plugin.item',
+          key: 'voice-mode',
+          order: 100,
+          label: '语音模式',
+        },
+        () => React.createElement(VoiceSettingsCard, { scope: ctx.settingsScope.bind({ namespace: 'voice-mode' }) }),
+      ),
+    )
+  }
 }
 
 /** 播放引擎与 SSE 消费（apply 闭包单例）。 */

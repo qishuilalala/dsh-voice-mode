@@ -64,6 +64,7 @@ t('lib/client.js 是 __ModuleLoader__ 闭包且注入全部三个槽位', () => 
     'conversation.input.right',
     'conversation.input.dock',
     'shell.overlay',
+    'settings.plugin.item',
     'voice-mode',
   ]) {
     assert.ok(src.includes(s), `client bundle missing ${s}`)

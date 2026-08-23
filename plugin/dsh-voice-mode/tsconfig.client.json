@@ -3,7 +3,11 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
@@ -11,8 +15,22 @@
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "verbatimModuleSyntax": false,
-    "types": ["node", "react"]
+    "types": [
+      "node",
+      "react"
+    ]
   },
-  "include": ["src/client.tsx", "src/asr.ts", "src/wakeword.ts"],
-  "exclude": ["src/index.ts", "src/asr-host.ts", "src/tts-queue.ts", "src/segmenter.ts", "node_modules"]
+  "include": [
+    "src/client.tsx",
+    "src/settings-form.tsx",
+    "src/asr.ts",
+    "src/wakeword.ts"
+  ],
+  "exclude": [
+    "src/index.ts",
+    "src/asr-host.ts",
+    "src/tts-queue.ts",
+    "src/segmenter.ts",
+    "node_modules"
+  ]
 }

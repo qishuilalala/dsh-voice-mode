@@ -82,7 +82,7 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 
 配置了唤醒词时，进入后会先处于待机态（状态条提示「说『唤醒词』开始」），说完唤醒词即激活。
 
-## 设置（设置 → 插件配置 → voice-mode）
+## 设置（设置 → Plugins → 插件配置 → 语音模式）
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
@@ -115,7 +115,9 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 | `en-US-AriaNeural` | Aria · 英语 · 女声 |
 | `en-US-GuyNeural` | Guy · 英语 · 男声 |
 
-## 配置（bundle patch）
+## 配置（bundle patch / settings.yaml）
+
+也可直接编辑 `~/.dsh/settings.yaml` 的 `voice-mode:` 段（GUI 卡片与 RPC 写入同一文档层）：
 
 ```yaml
 - id: voice-mode
@@ -197,6 +199,15 @@ input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f
 | 状态条显示「朗读连接失败：正在重试…」 | Edge TTS 服务不可达（境外服务），稍后自动重试；持续失败请检查网络/代理 |
 | 识别不准 | 靠近麦克风、降低环境噪声；还有回声时把「打断灵敏度」调高一档 |
 | hold 模式按住没反应 | 确认切换到了 hold 模式并处于语音模式中（按钮显示「按住说话」）；浏览器窗口需在前台 |
+
+## 开发
+
+### 依赖版本纪律（重要）
+
+`package.json` 中 `@deepseek-ai/schemastery`、`dsh-settings`、`dsh-host-webserver`、`dsh-llm`
+的版本**必须与当前 dsh 运行时一致**（本机 dsh 0.1.1-rc.2 对应 `^0.1.1-rc.2` / schemastery
+`^3.18.1`）。写低于运行时的 registry 版本会被 pnpm 解析装进 profile 并导致
+`webServer` 等服务缺失、相关插件全部 pending 的崩溃循环。升级 dsh 时须同步这四个版本。
 
 ## 开发
 

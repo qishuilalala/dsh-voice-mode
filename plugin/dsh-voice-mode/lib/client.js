@@ -1,9 +1,11 @@
 window.__ModuleLoader__.load({ id: "dsh-voice-mode", factory: (require) => {
 var module = { exports: {} }; var exports = module.exports;
 "use strict";
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -17,6 +19,14 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/client.tsx
@@ -29,7 +39,8 @@ __export(client_exports, {
   inject: () => inject
 });
 module.exports = __toCommonJS(client_exports);
-var import_react = require("react");
+var React = __toESM(require("react"), 1);
+var import_react2 = require("react");
 
 // src/wakeword.ts
 function normalizeWake(text) {
@@ -487,9 +498,122 @@ function createAsrEngine(config, sessionId) {
   };
 }
 
-// src/client.tsx
+// src/settings-form.tsx
+var import_react = require("react");
 var import_jsx_runtime = require("react/jsx-runtime");
-var inject = ["slots", "sessions"];
+var labelStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 16,
+  padding: "10px 2px",
+  borderBottom: "1px solid rgba(128,128,128,0.15)",
+  fontSize: 13
+};
+var nameStyle = { color: "inherit", flexShrink: 0 };
+var descStyle = { color: "rgba(128,128,128,0.9)", fontSize: 11, fontWeight: 400 };
+var inputStyle = {
+  width: 220,
+  padding: "6px 10px",
+  borderRadius: 8,
+  border: "1px solid rgba(128,128,128,0.35)",
+  background: "rgba(128,128,128,0.08)",
+  color: "inherit",
+  fontSize: 13
+};
+var segStyle = (active) => ({
+  border: "1px solid rgba(128,128,128,0.35)",
+  background: active ? "rgba(46, 160, 67, 0.18)" : "transparent",
+  color: "inherit",
+  cursor: "pointer",
+  padding: "4px 10px",
+  fontSize: 12,
+  borderRadius: 6
+});
+function Row({
+  name,
+  desc,
+  children
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: labelStyle, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: nameStyle, children: [
+      name,
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: descStyle, children: desc })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flexShrink: 0 }, children })
+  ] });
+}
+function VoiceSettingsCard({ scope }) {
+  const [snap, setSnap] = (0, import_react.useState)(() => scope.getSnapshot());
+  (0, import_react.useEffect)(
+    () => scope.subscribe(() => {
+      setSnap({ ...scope.getSnapshot() });
+    }),
+    [scope]
+  );
+  const value = snap?.value ?? {};
+  const unavailable = snap?.status === "unavailable" || snap?.status === "error";
+  if (unavailable) {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "8px 2px", fontSize: 12, color: "rgba(128,128,128,0.9)" }, children: "\u914D\u7F6E\u4E0D\u53EF\u7528\uFF08\u8BBE\u7F6E\u6587\u6863\u672A\u5C31\u7EEA\uFF09\uFF0C\u7A0D\u540E\u81EA\u52A8\u91CD\u8BD5\u3002" });
+  }
+  const setF = (field, v) => {
+    void scope.set(field, v);
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { padding: "4px 2px 8px", fontSize: 13 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "voice", desc: "Edge TTS \u97F3\u8272\uFF08\u6653\u6653 / \u4E91\u5E0C / \u4E91\u5065 / \u4E91\u626C / \u6653\u4F0A / HiuMaan / Aria\u2026\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { style: inputStyle, value: String(value.voice ?? ""), onChange: (e) => setF("voice", e.target.value) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "input",
+      {
+        style: inputStyle,
+        type: "number",
+        step: 0.1,
+        min: 0.5,
+        max: 2,
+        value: String(value.rate ?? 1),
+        onChange: (e) => setF("rate", Number(e.target.value))
+      }
+    ) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { display: "inline-flex", gap: 4 }, children: [0, 1, 2].map((lv) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        style: segStyle(value.interruptLevel === lv),
+        onClick: () => setF("interruptLevel", lv),
+        children: lv
+      },
+      lv
+    )) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: "\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 2000 = 2 \u79D2\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "input",
+      {
+        style: inputStyle,
+        type: "number",
+        step: 100,
+        min: 500,
+        value: String(value.silenceMs ?? 2e3),
+        onChange: (e) => setF("silenceMs", Number(e.target.value))
+      }
+    ) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "input",
+      {
+        style: inputStyle,
+        type: "number",
+        step: 1,
+        min: 1,
+        value: String(value.idleTimeoutMinutes ?? 10),
+        onChange: (e) => setF("idleTimeoutMinutes", Number(e.target.value))
+      }
+    ) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u7559\u7A7A\u9ED8\u8BA4\uFF1B\u56FD\u5185\u7F51\u7EDC\u586B https://hf-mirror.com\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { style: inputStyle, value: String(value.modelHost ?? ""), onChange: (e) => setF("modelHost", e.target.value) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: "\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoSend), onChange: (e) => setF("autoSend", e.target.checked) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { display: "inline-flex", gap: 4 }, children: ["toggle", "hold"].map((m) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { style: segStyle(value.mode === m), onClick: () => setF("mode", m), children: m === "toggle" ? "\u6301\u7EED\u8046\u542C" : "\u6309\u4F4F\u8BF4\u8BDD" }, m)) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { style: inputStyle, value: String(value.wakeWord ?? ""), onChange: (e) => setF("wakeWord", e.target.value) }) })
+  ] });
+}
+
+// src/client.tsx
+var import_jsx_runtime2 = require("react/jsx-runtime");
+var inject = ["slots", "sessions", "settingsScope"];
 var WAVE_BARS = 14;
 function apply(ctx) {
   const bus = createVoiceBus(void 0, ctx);
@@ -529,6 +653,20 @@ function apply(ctx) {
       VoiceOverlay
     )
   );
+  if (ctx.settingsScope) {
+    ctx.slots.inject(
+      "settings.plugin.item",
+      () => ctx.slots.register(
+        {
+          name: "settings.plugin.item",
+          key: "voice-mode",
+          order: 100,
+          label: "\u8BED\u97F3\u6A21\u5F0F"
+        },
+        () => React.createElement(VoiceSettingsCard, { scope: ctx.settingsScope.bind({ namespace: "voice-mode" }) })
+      )
+    );
+  }
 }
 function createAudioEngine(setUi) {
   const queue = [];
@@ -773,7 +911,7 @@ function createVoiceBus(basePath = "/voice-mode", ctx) {
 }
 var styleInjected = false;
 function useVoiceCss() {
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     if (styleInjected) return;
     styleInjected = true;
     const el = document.createElement("style");
@@ -792,19 +930,19 @@ function MicButton({
   useSession,
   inputActions
 }) {
-  const [local, setLocal] = (0, import_react.useState)("off");
-  const localRef = (0, import_react.useRef)("off");
-  const sidRef = (0, import_react.useRef)(sessionId);
-  const engineRef = (0, import_react.useRef)(null);
-  const actionsRef = (0, import_react.useRef)(inputActions);
-  const submitTimerRef = (0, import_react.useRef)(null);
-  const idleTimerRef = (0, import_react.useRef)(null);
-  const runningRef = (0, import_react.useRef)(false);
-  const holdCtrlRef = (0, import_react.useRef)(false);
+  const [local, setLocal] = (0, import_react2.useState)("off");
+  const localRef = (0, import_react2.useRef)("off");
+  const sidRef = (0, import_react2.useRef)(sessionId);
+  const engineRef = (0, import_react2.useRef)(null);
+  const actionsRef = (0, import_react2.useRef)(inputActions);
+  const submitTimerRef = (0, import_react2.useRef)(null);
+  const idleTimerRef = (0, import_react2.useRef)(null);
+  const runningRef = (0, import_react2.useRef)(false);
+  const holdCtrlRef = (0, import_react2.useRef)(false);
   const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 2e3, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: "toggle", wakeWord: "" };
   useVoiceCss();
-  const [, bumpUi] = (0, import_react.useState)(0);
-  (0, import_react.useEffect)(
+  const [, bumpUi] = (0, import_react2.useState)(0);
+  (0, import_react2.useEffect)(
     () => bus.subscribe(() => {
       bumpUi((t) => t + 1);
     }),
@@ -849,7 +987,7 @@ function MicButton({
       if (localRef.current === "on" && sid) void exitModeRef.current("idle");
     }, idleMs);
   };
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     return bus.subscribe(() => {
       const sid = sidRef.current;
       if (localRef.current !== "on") return;
@@ -978,21 +1116,21 @@ function MicButton({
     if (localRef.current === "on") void exitModeRef.current("manual");
     else if (localRef.current === "off") void enterMode();
   };
-  const toggleRef = (0, import_react.useRef)(toggle);
+  const toggleRef = (0, import_react2.useRef)(toggle);
   toggleRef.current = toggle;
-  const exitModeRef = (0, import_react.useRef)(exitMode);
+  const exitModeRef = (0, import_react2.useRef)(exitMode);
   exitModeRef.current = exitMode;
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     actionsRef.current = inputActions;
   }, [inputActions]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     sidRef.current = sessionId;
   }, [sessionId]);
   const runningSel = useSession ? useSession((s) => s === void 0 ? void 0 : s.running) : void 0;
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     runningRef.current = runningSel === true;
   }, [runningSel]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     return () => {
       clearIdle();
       cancelPendingSubmit();
@@ -1009,7 +1147,7 @@ function MicButton({
       }
     };
   }, []);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     let ctrlTimer = null;
     const cancelCtrl = () => {
       if (ctrlTimer) {
@@ -1057,7 +1195,7 @@ function MicButton({
       cancelCtrl();
     };
   }, []);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     const onInput = (e) => {
       const t = e.target;
       if (!(t instanceof HTMLTextAreaElement)) return;
@@ -1067,7 +1205,7 @@ function MicButton({
     window.addEventListener("input", onInput, true);
     return () => window.removeEventListener("input", onInput, true);
   }, []);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     const onKeyDown = (e) => {
       if (e.key !== "Escape") return;
       if (localRef.current !== "on" || bootNow().mode !== "hold") return;
@@ -1088,7 +1226,7 @@ function MicButton({
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [bus]);
-  (0, import_react.useEffect)(() => {
+  (0, import_react2.useEffect)(() => {
     return bus.subscribe(() => {
       const sid = sidRef.current;
       if (localRef.current === "pending" || localRef.current === "on") {
@@ -1104,7 +1242,7 @@ function MicButton({
   const busy = bus.ui.state === "transcribing" || bus.ui.state === "loading-model";
   const holdMode = bootNow().mode === "hold";
   const label = on ? busy ? "\u8BC6\u522B\u4E2D\u2026" : holdMode ? "\u6309\u4F4F\u8BF4\u8BDD" : "\u8BED\u97F3\u4E2D" : local === "pending" ? "\u8FDB\u5165\u4E2D\u2026" : "\u8BED\u97F3";
-  const holdPtrRef = (0, import_react.useRef)(null);
+  const holdPtrRef = (0, import_react2.useRef)(null);
   const onPointerDown = (e) => {
     if (bootNow().mode !== "hold") return;
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId };
@@ -1140,7 +1278,7 @@ function MicButton({
     holdPtrRef.current = null;
     engineRef.current?.endHeld(true);
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "button",
     {
       onClick: (e) => {
@@ -1174,15 +1312,15 @@ function MicButton({
         userSelect: "none"
       },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", { viewBox: "0 0 24 24", width: 14, height: 14, "aria-hidden": "true", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 24 24", width: 14, height: 14, "aria-hidden": "true", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "path",
             {
               fill: "currentColor",
               d: "M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "path",
             {
               fill: "currentColor",
@@ -1196,15 +1334,15 @@ function MicButton({
   );
 }
 function VoiceStatusBar({ bus, sessionId }) {
-  const [b, setB] = (0, import_react.useState)(() => ({ active: bus.activeSessionId, ui: bus.ui }));
-  (0, import_react.useEffect)(() => {
+  const [b, setB] = (0, import_react2.useState)(() => ({ active: bus.activeSessionId, ui: bus.ui }));
+  (0, import_react2.useEffect)(() => {
     return bus.subscribe(setB);
   }, [bus]);
   const isActive = b.active === sessionId;
-  if (!isActive) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, {});
+  if (!isActive) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
   const stateText = b.ui.state === "loading-model" ? "\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026" : b.ui.state === "transcribing" ? "\u8BC6\u522B\u4E2D\u2026" : b.ui.state === "speech" ? b.ui.mode === "hold" ? "\u6309\u4F4F\u8BF4\u8BDD\u2026" : "\u8046\u542C\u4E2D\u2026" : b.ui.state === "wake" ? `\u8BF4\u300C${b.ui.wakeWord || "\u5524\u9192\u8BCD"}\u300D\u5F00\u59CB` : b.ui.mode === "hold" ? "\u8BED\u97F3\u6A21\u5F0F \xB7 \u6309\u4F4F\u8BF4\u8BDD\uFF08\u77ED\u6309\u9000\u51FA\uFF09" : "\u8BED\u97F3\u6A21\u5F0F \xB7 \u8046\u542C\u4E2D\u2026";
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",
     {
       style: {
@@ -1221,7 +1359,7 @@ function VoiceStatusBar({ bus, sessionId }) {
         animation: "dshvm-fadein 0.2s ease"
       },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { display: "inline-flex", alignItems: "flex-end", gap: 2, height: 14, flexShrink: 0 }, children: bars.map((v, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { display: "inline-flex", alignItems: "flex-end", gap: 2, height: 14, flexShrink: 0 }, children: bars.map((v, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "span",
           {
             className: "dshvm-bar",
@@ -1233,8 +1371,8 @@ function VoiceStatusBar({ bus, sessionId }) {
           },
           i
         )) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026 ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026 ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
             onClick: () => {
@@ -1256,12 +1394,12 @@ function VoiceStatusBar({ bus, sessionId }) {
   );
 }
 function VoiceOverlay({ bus }) {
-  const [b, setB] = (0, import_react.useState)(() => ({ active: bus.activeSessionId, ui: bus.ui }));
-  (0, import_react.useEffect)(() => {
+  const [b, setB] = (0, import_react2.useState)(() => ({ active: bus.activeSessionId, ui: bus.ui }));
+  (0, import_react2.useEffect)(() => {
     return bus.subscribe(setB);
   }, [bus]);
-  if (!b.ui.playing) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, {});
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+  if (!b.ui.playing) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",
     {
       style: {
@@ -1287,7 +1425,7 @@ function VoiceOverlay({ bus }) {
         animation: "dshvm-fadein 0.25s ease"
       },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { display: "inline-flex", alignItems: "flex-end", gap: 2, height: 12, flexShrink: 0 }, children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { display: "inline-flex", alignItems: "flex-end", gap: 2, height: 12, flexShrink: 0 }, children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "span",
           {
             style: {
@@ -1301,8 +1439,8 @@ function VoiceOverlay({ bus }) {
           },
           i
         )) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: b.ui.playingCaption ?? "\u6717\u8BFB\u4E2D\u2026" }, b.ui.playingCaption ?? "idle"),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: b.ui.playingCaption ?? "\u6717\u8BFB\u4E2D\u2026" }, b.ui.playingCaption ?? "idle"),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
             onClick: () => bus.skipAudio(),

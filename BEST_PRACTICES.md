@@ -117,6 +117,10 @@
 - [ ] 三平台路径/缓存默认值正确（Windows LOCALAPPDATA；Unix ~/.cache）
 - [ ] 运行时旋钮单一活来源：设置面板为最终生效值，bundle 配置只播种默认
       （防死配置；e.g. modelHost 曾解构未用、idleTimeout 曾不被消费）
+- [ ] **@deepseek-ai 依赖版本对齐 dsh 运行时**：dsh-settings / dsh-host-webserver /
+      dsh-llm / schemastery 的版本必须与当前 dsh 发行版一致（曾因写 0.0.1-rc.1 在 pnpm
+      重解析后装入 profile，webServer 服务缺失→21 插件 pending 崩溃循环）；升级 dsh 时
+      四版本必须同步更新（当前基准：^0.1.1-rc.2 / schemastery ^3.18.1）
 - [ ] 模型下载：进度可见、失败可见、断点续传、镜像回退（modelHost 生效）；prefetch 可独立跑
 - [ ] TTS 失败：状态条提示 + 自动重试 + 成功复位
 - [ ] 打断：本地静音 + host epoch + 回合取消三层到位
