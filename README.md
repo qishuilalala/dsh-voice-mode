@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="assets/logo.svg" width="88" alt="dsh-voice-mode">
+  <img src="assets/ai-logo.png" width="88" alt="dsh-voice-mode">
 </p>
 
 <p align="center">
-  <img src="assets/banner.svg" width="820" alt="dsh-voice-mode banner">
+  <img src="assets/banner.jpg" width="800" alt="dsh-voice-mode banner">
 </p>
 
 <p align="center">
