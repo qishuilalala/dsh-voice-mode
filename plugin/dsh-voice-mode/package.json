@@ -25,6 +25,7 @@
     "lib/index.js",
     "lib/client.js",
     "cordis.patch.yml",
+    "assets/architecture.svg",
     "assets/demo.gif",
     "scripts/prefetch.mjs",
     "scripts/list-voices.mjs",

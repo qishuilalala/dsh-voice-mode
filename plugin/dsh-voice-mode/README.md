@@ -1,5 +1,9 @@
 # dsh-voice-mode
 
+[![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square)](https://www.npmjs.com/package/dsh-voice-mode)
+[![License](https://img.shields.io/npm/l/dsh-voice-mode?style=flat-square)](LICENSE)
+[![dsh-plugin](https://img.shields.io/badge/dsh-plugin-voice-%232ea043?style=flat-square)](https://github.com/topics/dsh-plugin)
+
 > Full-duplex voice conversation mode for DeepSeek Harness (dsh): speak, get a
 > spoken answer. Streamed zipformer2 ASR → editable draft → auto send → the
 > final reply is read out sentence-by-sentence via Edge TTS, and your voice
@@ -154,6 +158,8 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 - 下载走 `.part` 断点续传，`huggingface.co` 失败自动回退 `hf-mirror.com`（可配置 `modelHost`）
 
 ## 工作原理
+
+![architecture](assets/architecture.svg)
 
 ```
 input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f32 PCM，16k，增量解码）
