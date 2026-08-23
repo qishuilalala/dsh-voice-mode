@@ -15,6 +15,7 @@ function pcmToSamples(buf) {
   if (buf.length % 4 !== 0 || buf.length === 0) return null;
   return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
 }
+var MAX_ASR_BYTES = 4 * 1024 * 1024;
 function createAsrRuntime(options) {
   const { cacheDir, modelHost, broadcast } = options;
   const repoDir = join(cacheDir, MODEL_REPO);
@@ -163,8 +164,21 @@ async function download(host, repoDir, file, resumeFrom, broadcast) {
 }
 function handleAsrRequest(asr, activeSessionId, req, res) {
   const chunks = [];
-  req.on("data", (c) => chunks.push(c));
+  let received = 0;
+  let tooLarge = false;
+  req.on("data", (c) => {
+    if (tooLarge) return;
+    received += c.length;
+    if (received > MAX_ASR_BYTES) {
+      tooLarge = true;
+      res.statusCode = 413;
+      res.end(JSON.stringify({ error: "pcm payload too large" }));
+      return;
+    }
+    chunks.push(c);
+  });
   req.on("end", () => {
+    if (tooLarge) return;
     res.setHeader("content-type", "application/json");
     const url = new URL(req.url ?? "/", "http://localhost");
     const sessionId = url.searchParams.get("sessionId") ?? "";
@@ -403,6 +417,8 @@ var TtsQueue = class {
 var name = "voice-mode";
 var NS_VOICE_MODE = "voice-mode";
 var BASE_PATH = "/voice-mode";
+var VOICE_SPOKEN_PROMPT = "\u3010\u8BED\u97F3\u6A21\u5F0F\u3011\u5F53\u524D\u56DE\u590D\u4F1A\u88AB\u8BED\u97F3\u6717\u8BFB\uFF0C\u8BF7\u59CB\u7EC8\u7528\u7528\u6237\u6240\u7528\u8BED\u8A00\u3001\u4EE5\u53E3\u8BED\u5316\u7684\u77ED\u53E5\u76F4\u63A5\u56DE\u7B54\uFF0C\u50CF\u9762\u5BF9\u9762\u804A\u5929\u4E00\u6837\u81EA\u7136\uFF0C\u907F\u514D\u4E66\u9762\u8BED\u548C\u957F\u96BE\u53E5\u3002\u4E0D\u8981\u4F7F\u7528\u4EFB\u4F55 Markdown \u6216\u6392\u7248\u7B26\u53F7\uFF08\u661F\u53F7\u3001\u4E0B\u5212\u7EBF\u3001\u53CD\u5F15\u53F7\u3001\u4E95\u53F7\u3001\u5217\u8868\u4E0E\u8868\u683C\u6807\u8BB0\u3001\u4EE3\u7801\u5757\u7B49\uFF09\u3002\u9700\u8981\u5206\u70B9\u8BF4\u660E\u65F6\u7528\u300C\u7B2C\u4E00\u3001\u7B2C\u4E8C\u300D\u6216\u8FDE\u8D2F\u7684\u77ED\u53E5\u8868\u8FBE\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EE3\u7801\u7247\u6BB5\u3001\u5B8C\u6574 URL \u6216\u5197\u957F\u5B9A\u4E49\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u6982\u62EC\u542B\u4E49\u5373\u53EF\u3002\u56DE\u7B54\u7B80\u6D01\u76F4\u63A5\uFF0C\u4E0D\u8981\u91CD\u590D\u548C\u5BD2\u6684\u3002";
+var VOICE_SPOKEN_SECTION = "voice-mode:spoken-format";
 var inject = ["webServer", "settings"];
 var defaultModelCacheDir = () => process.platform === "win32" ? join2(process.env.LOCALAPPDATA ?? join2(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join2(homedir(), ".cache", "dsh-voice-mode", "models");
 var VOICE_SETTINGS_DEFAULTS = {
@@ -414,7 +430,8 @@ var VOICE_SETTINGS_DEFAULTS = {
   modelHost: "",
   autoSend: true,
   mode: "toggle",
-  wakeWord: ""
+  wakeWord: "",
+  spokenFormat: false
 };
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
@@ -429,7 +446,8 @@ function createVoiceSettingsSchema(defs) {
     modelHost: z.string().default(d.modelHost).description("ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u7559\u7A7A\u7528\u9ED8\u8BA4\u6E90\uFF1B\u56FD\u5185\u7F51\u7EDC\u53EF\u586B https://hf-mirror.com\uFF09"),
     autoSend: z.boolean().default(d.autoSend).description("\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173\u95ED\u5219\u53EA\u8FDB\u8349\u7A3F\u4F9B\u7F16\u8F91\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u4F1A\u53D1\u9001\uFF09"),
     mode: z.union([z.const("toggle"), z.const("hold")]).default(d.mode).description("\u4EA4\u4E92\u6A21\u5F0F\uFF1Atoggle \u6301\u7EED\u8046\u542C + \u9759\u97F3\u81EA\u52A8\u65AD\u53E5\uFF08\u9ED8\u8BA4\uFF09\uFF1Bhold \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF08\u77ED\u6309\u9000\u51FA\uFF09"),
-    wakeWord: z.string().default(d.wakeWord).description("\u5524\u9192\u8BCD\uFF1A\u5728\u5F85\u673A\u6001\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF09")
+    wakeWord: z.string().default(d.wakeWord).description("\u5524\u9192\u8BCD\uFF1A\u5728\u5F85\u673A\u6001\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF09"),
+    spokenFormat: z.boolean().default(d.spokenFormat).description("\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u53E3\u8BED\u5316\u77ED\u53E5\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\uFF1B\u9ED8\u8BA4\u5173\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09")
   });
 }
 var VoiceSettingsSchema = createVoiceSettingsSchema();
@@ -491,6 +509,14 @@ function apply(ctx, config) {
   const currentVoice = () => vset.voice;
   const currentRate = () => vset.rate;
   const currentInterrupt = () => vset.interruptLevel;
+  ctx.on("system-prompt/assemble", (assembly, context, next) => {
+    if (!config.enabled || !vset.spokenFormat) return next();
+    const agentId = context.agent?.id;
+    if (agentId !== void 0 && agentId === activeVoiceSession) {
+      assembly.sections.push({ name: VOICE_SPOKEN_SECTION, text: VOICE_SPOKEN_PROMPT });
+    }
+    return next();
+  });
   ctx.on("llm/stream", (options, next) => {
     const sessionId = options.sessionId;
     if (!config.enabled || sessionId === void 0 || options.purpose !== void 0) return next();
@@ -544,48 +570,6 @@ function apply(ctx, config) {
   ctx.effect(
     () => ctx.webServer.register({
       kind: "exact",
-      path: `${base}/toggle`,
-      handler: (req, res) => {
-        collectBody(req, res, MAX_JSON_BODY, (body) => {
-          let sessionId;
-          let on;
-          try {
-            const parsed = JSON.parse(body || "{}");
-            sessionId = parsed.sessionId;
-            on = parsed.on;
-          } catch {
-          }
-          if (!sessionId) {
-            res.statusCode = 400;
-            res.end(JSON.stringify({ error: "sessionId required" }));
-            return;
-          }
-          if (on === true) {
-            if (!config.enabled) {
-              res.statusCode = 403;
-              res.end(JSON.stringify({ error: "voice mode disabled" }));
-              return;
-            }
-            const previous = activeVoiceSession;
-            activeVoiceSession = sessionId;
-            if (previous && previous !== sessionId) queue.prune(previous);
-            broadcast("mode", { active: activeVoiceSession });
-          } else {
-            if (activeVoiceSession === sessionId) {
-              activeVoiceSession = null;
-              queue.prune(sessionId);
-              broadcast("mode", { active: null });
-            }
-          }
-          res.setHeader("content-type", "application/json");
-          res.end(JSON.stringify({ active: activeVoiceSession }));
-        });
-      }
-    })
-  );
-  ctx.effect(
-    () => ctx.webServer.register({
-      kind: "exact",
       path: `${base}/preview`,
       handler: (req, res) => {
         if (!config.enabled) {
@@ -632,6 +616,48 @@ function apply(ctx, config) {
           res.setHeader("content-type", "audio/mpeg");
           res.setHeader("cache-control", "no-store");
           res.end(buf);
+        });
+      }
+    })
+  );
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: "exact",
+      path: `${base}/toggle`,
+      handler: (req, res) => {
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
+          let sessionId;
+          let on;
+          try {
+            const parsed = JSON.parse(body || "{}");
+            sessionId = parsed.sessionId;
+            on = parsed.on;
+          } catch {
+          }
+          if (!sessionId) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: "sessionId required" }));
+            return;
+          }
+          if (on === true) {
+            if (!config.enabled) {
+              res.statusCode = 403;
+              res.end(JSON.stringify({ error: "voice mode disabled" }));
+              return;
+            }
+            const previous = activeVoiceSession;
+            activeVoiceSession = sessionId;
+            if (previous && previous !== sessionId) queue.prune(previous);
+            broadcast("mode", { active: activeVoiceSession });
+          } else {
+            if (activeVoiceSession === sessionId) {
+              activeVoiceSession = null;
+              queue.prune(sessionId);
+              broadcast("mode", { active: null });
+            }
+          }
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ active: activeVoiceSession }));
         });
       }
     })
@@ -732,17 +758,23 @@ async function* tapActiveStream(sessionId, inner, queue, broadcast) {
   const flushOnce = () => {
     if (flushed) return;
     flushed = true;
-    for (const s of segmenter.flush()) queue.enqueue(sessionId, s);
+    for (const s of segmenter.flush()) {
+      queue.enqueue(sessionId, s);
+    }
   };
   try {
     for await (const chunk of inner) {
       if (chunk.type === "text-delta" && chunk.text) {
-        for (const s of segmenter.feed(chunk.text)) queue.enqueue(sessionId, s);
+        for (const s of segmenter.feed(chunk.text)) {
+          queue.enqueue(sessionId, s);
+        }
       }
       if (chunk.type === "tool-call-delta" && chunk.name) {
         broadcast("tool", { sessionId, name: chunk.name });
       }
-      if (chunk.type === "finish") finishReason = chunk.reason;
+      if (chunk.type === "finish") {
+        finishReason = chunk.reason;
+      }
       yield chunk;
     }
   } finally {

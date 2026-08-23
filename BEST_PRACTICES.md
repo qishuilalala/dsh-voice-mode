@@ -43,6 +43,20 @@
   `.description()` 而非 zod 的 `.describe()`**——用错会在启动期崩溃。
 - SSE 长连接：`text/event-stream` + 定期心跳注释帧；写端 try/catch 按连接
   隔离；退出/close 清理连接表；广播带事件名（`event: audio/mode/tool/...`）。
+- **按会话改系统提示词**：不要企图改 `llm/stream` 的 `options.system`——agent-loop
+  的 request 经 `deepFreeze`（只读，赋值抛 TypeError）。正确路径是监听
+  `system-prompt/assemble` 瀑布，在 `assembly.sections` 追加 section（推入末尾、
+  渲染时居最后）；会话身份经 `context.agent`（dsh-agent `assembleContextFor`
+  注入，官方 AssembleContext 类型为 merge-extensible 未声明，dsh-agent-presets
+  invariant 同款运行时用法），按 `agent.id` 过滤即可做到会话级隔离；受官方
+  complete prompt 契约约束（persona `complete: true` 时瀑布后恢复为仅 complete
+  section，追加被丢弃），此类开关要防呆：默认关 + 文档声明限制。
+- **宿主包仅类型引用**：`import type` 会被 esbuild 剔除（构建后 grep 确认无运行时
+  import），无需声明依赖；开发期把发行版类型包**实体化复制**进 node_modules，
+  不要用指向宿主 node_modules 的绝对路径 symlink——其内部 `cordis` 会解析到
+  宿主实例，与插件 `.pnpm` 的 cordis 模块身份分裂，`declare module
+  '@deepseek-ai/cordis'` 类型增强静默失效（症状：`ctx.settings`/`ctx.webServer`
+  等 Context 增强全部报红，且与"改了自己代码"无关，极易误判）。
 
 ### 2.3 跨平台兼容（Windows / macOS / Linux）
 

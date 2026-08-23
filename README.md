@@ -7,10 +7,10 @@
 </p>
 
 <p align="center">
-  <a href="#"><img src="https://img.shields.io/badge/dsh-plugin-voice-%232ea043?style=flat-square" alt="dsh-plugin voice"></a>
+  <a href="https://github.com/topics/dsh-plugin"><img src="https://img.shields.io/badge/dsh--plugin-voice-brightgreen?style=flat-square" alt="dsh-plugin voice"></a>
   <a href="https://www.npmjs.com/package/dsh-voice-mode"><img src="https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square" alt="npm version"></a>
   <a href="https://github.com/qishuilalala/dsh-voice-mode/releases"><img src="https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square" alt="GitHub release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/npm/l/dsh-voice-mode?style=flat-square" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square" alt="License"></a>
 </p>
 
 # dsh-voice-mode
@@ -25,6 +25,7 @@ DeepSeek Harness（dsh）语音双工对话插件：会话内一键进入语音�
 - zipformer2 流式识别（边说边出字），可选唤醒词，可选自动发送
 - 按句流式朗读 + 实时字幕 + 提示音；音色可试听（支持自定义 ShortName）
 - 打断灵敏度可调，真·开口打断朗读与正在运行的回合
+- 可选口语化提示词（设置 `spokenFormat`，默认关）：语音会话回复口语化短句、无 Markdown 排版符号，朗读更顺
 - 模型懒加载（约 160MB，断点续传 + 镜像回退），全局单活
 
 ## 安装
@@ -51,7 +52,7 @@ bundle 插件安装后需重启 dsh 生效；完整使用说明见 [中文文档
 
 ## 发布状态
 
-- npm：`dsh-voice-mode`（发布后可用）
+- npm：`dsh-voice-mode` v0.1.0（已发布）
 - GitHub Releases：[v0.1.0](https://github.com/qishuilalala/dsh-voice-mode/releases/tag/v0.1.0)
 - 插件市场：awesome-dsh-plugin 收录后 dshmarket 即见
 

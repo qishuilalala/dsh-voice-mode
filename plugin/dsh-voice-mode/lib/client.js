@@ -834,7 +834,7 @@ function VoiceSettingsCard({ scope }) {
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-expanded": !collapsed, onClick: () => setCollapsed((c) => !c), style: { ...setHeader, background: collapsed ? "transparent" : t.bgOpen }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: setHeadText, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setName, children: "\u8BED\u97F3\u6A21\u5F0F" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setDesc, children: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD" })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setDesc, children: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...setChevron, transform: collapsed ? "rotate(0deg)" : "rotate(180deg)" }, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 14, height: 14, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 6l4 4 4-4z" }) }) })
     ] }),
@@ -868,6 +868,7 @@ function VoiceSettingsCard({ scope }) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u5B98\u65B9\u6E90 / \u56FD\u5185\u955C\u50CF\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u586B\u4EFB\u610F\u955C\u50CF\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: "\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoSend), onChange: (e) => void scope.set("autoSend", e.target.checked) }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: "\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u56DE\u590D\u53E3\u8BED\u5316\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\uFF1B\u9ED8\u8BA4\u5173\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         SegGroup,
         {
@@ -889,6 +890,7 @@ function VoiceSettingsCard({ scope }) {
 var import_jsx_runtime2 = require("react/jsx-runtime");
 var inject = ["slots", "sessions", "settingsScope"];
 var WAVE_BARS = 14;
+var BASE_PATH2 = "/voice-mode";
 function apply(ctx) {
   const bus = createVoiceBus(void 0, ctx);
   ctx.slots.inject(
@@ -998,10 +1000,10 @@ function createAudioEngine(setUi) {
     toolBeep
   };
 }
-function createVoiceBus(basePath = "/voice-mode", ctx) {
+function createVoiceBus(basePath = BASE_PATH2, ctx) {
   let activeSessionId = null;
   const DEFAULT_BOOT = {
-    basePath: "/voice-mode",
+    basePath: BASE_PATH2,
     silenceMs: 2e3,
     interruptLevel: 0,
     idleTimeoutMinutes: 10,
@@ -1142,9 +1144,10 @@ function createVoiceBus(basePath = "/voice-mode", ctx) {
         const out = await res.json();
         activeSessionId = out.active ?? null;
         notify();
-        return out.active === sessionId;
+        if (!res.ok) return { ok: false, error: out.error ?? "\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5931\u8D25" };
+        return { ok: out.active === sessionId, error: out.active === sessionId ? void 0 : "\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5931\u8D25" };
       } catch {
-        return false;
+        return { ok: false, error: "\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5931\u8D25" };
       }
     },
     async exit(sessionId) {
@@ -1177,7 +1180,7 @@ function createVoiceBus(basePath = "/voice-mode", ctx) {
     },
     cancelTurn(sessionId) {
       try {
-        ctx?.sessions?.binding?.(sessionId)?.session.cancel?.(void 0, { keepInbox: true });
+        ctx?.sessions?.binding?.(sessionId)?.session.cancel?.();
       } catch {
       }
     }
@@ -1202,6 +1205,7 @@ function MicButton({
   bus,
   sessionId,
   useSession,
+  useInput,
   inputActions
 }) {
   const [local, setLocal] = (0, import_react2.useState)("off");
@@ -1228,7 +1232,7 @@ function MicButton({
   };
   const fetchConfig = async () => {
     try {
-      const res = await fetch(`${location.origin}/voice-mode/config`);
+      const res = await fetch(`${location.origin}${BASE_PATH2}/config`);
       if (!res.ok) return bootNow();
       const c = await res.json();
       const cur = bootNow();
@@ -1296,9 +1300,12 @@ function MicButton({
     if (!sid || localRef.current !== "off") return;
     setLocalMode("pending");
     try {
-      const ok = await bus.enter(sid);
-      if (!ok) {
+      const entered = await bus.enter(sid);
+      if (!entered.ok) {
         setLocalMode("off");
+        bus.setUi({
+          error: entered.error === "voice mode disabled" ? "\u8BED\u97F3\u6A21\u5F0F\u5DF2\u7981\u7528\uFF08\u63D2\u4EF6 enabled=false\uFF09" : entered.error ?? "\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5931\u8D25"
+        });
         return;
       }
       const cfg = await fetchConfig();
@@ -1324,11 +1331,12 @@ function MicButton({
         const trimmed = text.trim();
         if (!trimmed) return;
         try {
-          const cur = actions?.getDraft?.() ?? actions?.draft;
-          const curText = typeof cur === "string" ? cur : "";
+          const curText = draftRef.current;
           const nextDraft = curText ? `${curText} ${trimmed}` : trimmed;
           if (typeof actions?.setDraft === "function") actions.setDraft(nextDraft);
           else if (typeof actions?.setDraft === "function") actions.setDraft(nextDraft);
+          else {
+          }
         } catch {
           try {
             actions?.setDraft?.(trimmed);
@@ -1351,18 +1359,15 @@ function MicButton({
         cancelPendingSubmit();
         doSubmit();
         submitTimerRef.current = setTimeout(() => {
-          try {
-            const cur2 = actions?.getDraft?.() ?? actions?.draft;
-            if (typeof cur2 === "string" && cur2.trim()) doSubmit();
-          } catch {
-          }
+          const phase = phaseRef.current;
+          if (phase !== "submitting" && phase !== "adjudicating" && draftRef.current.trim()) doSubmit();
         }, 800);
       });
       engine.onSpeechStart(async () => {
         resetIdle();
         bus.skipAudio();
         try {
-          await fetch(`${location.origin}/voice-mode/cancel`, {
+          await fetch(`${location.origin}${BASE_PATH2}/cancel`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ sessionId: sidRef.current })
@@ -1411,7 +1416,7 @@ function MicButton({
       const sid = sidRef.current;
       if (localRef.current === "on" && sid) {
         void engineRef.current?.stop();
-        void fetch("/voice-mode/toggle", {
+        void fetch(`${location.origin}${BASE_PATH2}/toggle`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ sessionId: sid, on: false }),
@@ -1515,6 +1520,12 @@ function MicButton({
   const on = local === "on";
   const busy = bus.ui.state === "transcribing" || bus.ui.state === "loading-model";
   const holdMode = bootNow().mode === "hold";
+  const liveDraft = useInput ? useInput((s) => s?.draft ?? "") : "";
+  const draftRef = (0, import_react2.useRef)("");
+  draftRef.current = liveDraft;
+  const livePhase = useInput ? useInput((s) => s?.phase ?? "") : "";
+  const phaseRef = (0, import_react2.useRef)("");
+  phaseRef.current = livePhase;
   const label = on ? busy ? "\u8BC6\u522B\u4E2D\u2026" : holdMode ? "\u6309\u4F4F\u8BF4\u8BDD" : "\u8BED\u97F3\u4E2D" : local === "pending" ? "\u8FDB\u5165\u4E2D\u2026" : "\u8BED\u97F3";
   const holdPtrRef = (0, import_react2.useRef)(null);
   const onPointerDown = (e) => {
@@ -1567,6 +1578,7 @@ function MicButton({
       onPointerCancel,
       "data-dshvm": "mic",
       "aria-label": on ? "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D" : "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F",
+      "aria-pressed": on,
       title: on ? holdMode ? "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF1B\u77ED\u6309\u9000\u51FA\uFF1BEsc/\u5931\u53BB\u7126\u70B9\u653E\u5F03\uFF1BCtrl+Shift+V \u9000\u51FA" : "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u70B9\u51FB\u9000\u51FA\uFF08Ctrl+Shift+V\uFF09\xB7 \u6309\u4F4F Ctrl \u7ACB\u5373\u53D1\u9001" : "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F\uFF08Ctrl+Shift+V\uFF09",
       style: {
         border: "none",

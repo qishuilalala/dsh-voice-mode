@@ -1,8 +1,8 @@
 # dsh-voice-mode
 
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square)](https://www.npmjs.com/package/dsh-voice-mode)
-[![License](https://img.shields.io/npm/l/dsh-voice-mode?style=flat-square)](LICENSE)
-[![dsh-plugin](https://img.shields.io/badge/dsh-plugin-voice-%232ea043?style=flat-square)](https://github.com/topics/dsh-plugin)
+[![License](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square)](LICENSE)
+[![dsh-plugin](https://img.shields.io/badge/dsh--plugin-voice-brightgreen?style=flat-square)](https://github.com/topics/dsh-plugin)
 
 > Full-duplex voice conversation mode for DeepSeek Harness (dsh): speak, get a
 > spoken answer. Streamed zipformer2 ASR → editable draft → auto send → the
@@ -22,11 +22,11 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
   - `toggle`（默认）持续聆听：RMS VAD 分段 → zipformer2 流式识别（边说边出字，实时字幕预览）→ 静音 2 秒自动断句进草稿并自动发送；按住 `Ctrl` 强制立即发送
   - `hold` 按住说话：短按进入/退出，**按住麦克风按钮说话、松手即发**（滑出取消、`Esc`/失焦放弃本段）；`Ctrl` 按住即录、松开即发
 - **唤醒词（可选，默认关）**：设置 `wakeWord` 后，进入语音模式处于待机态，说出唤醒词才开始识别（如「你好小D」），避免误触
-- **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式 Edge TTS 朗读 + 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录
+- **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式 Edge TTS 朗读 + 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录；可选的口语化提示词（设置 `spokenFormat`，默认关）让语音会话回复为自然短句、不带 Markdown 排版符号，朗读侧再做一轮标记剥离，听感更顺
 - **开口打断（barge-in）**：三档灵敏度的发声前沿检测 → 本地静音 + host 合成队列作废（epoch）+ 正在运行的回合取消（保留半截并自然续入你的新消息）
 - **模型懒加载与进度**：首次使用自动下载 zipformer2 中文流式模型（约 160MB，`.part` 断点续传），状态条实时显示下载进度；可用 `npm run prefetch` 预下载
 - **容错**：麦克风被拒红点提示、模型下载失败可见提示、TTS 连接失败状态条提示（自动重试）、提交失败文字留在草稿、SSE 断线自动重连
-- **设置**：设置 → 插件配置 → voice-mode，可调音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词
+- **设置**：设置 → 插件配置 → voice-mode，可调音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词 / 口语化提示词；**音色可试听**（「试听」按钮按当前音色 + 当前语速即时合成预览，无需进入语音模式；自定义 ShortName 同样可试听）
 - **空闲退出**：10 分钟无活动自动退出并释放麦克风
 
 ## 操作手势
@@ -97,8 +97,9 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 | `autoSend` | `true` | 识别定稿后自动发送；关闭则只进草稿（按住 `Ctrl` / hold 松手仍会发送） |
 | `mode` | `toggle` | 交互模式：`toggle` 持续聆听 + 2s 静音断句；`hold` 按住说话、松手发送（短按退出） |
 | `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭 |
+| `spokenFormat` | `false` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效**（关闭后对后续回复立即失效；默认关） |
 
-生效范围：`voice`/`rate` 修改后**立即生效**（TTS 热切换）；其余设置下次进入语音模式时生效。设置项默认值由插件配置（`base` 层）提供——未显式修改时跟随配置。
+生效范围：`voice`/`rate`/`spokenFormat` 修改后**立即生效**（TTS 热切换 / 提示词组装时实时读取）；其余设置下次进入语音模式时生效。设置项默认值由插件配置（`base` 层）提供——未显式修改时跟随配置。
 
 ### 常用音色（完整清单见 `node scripts/list-voices.mjs`）
 
@@ -113,7 +114,9 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 | `zh-CN-liaoning-XiaobeiNeural` | 小北 · 东北话 · 女声 |
 | `zh-CN-shaanxi-XiaoniNeural` | 小妮 · 陕西话 · 女声 |
 | `zh-HK-HiuMaanNeural` | 晓曼 · 粤语 · 女声 |
+| `zh-HK-WanLungNeural` | 云龙 · 粤语 · 男声 |
 | `zh-TW-HsiaoYuNeural` | 小雨 · 台湾腔 · 女声 |
+| `zh-TW-YunJheNeural` | 云哲 · 台湾腔 · 男声 |
 | `en-US-AriaNeural` | Aria · 英语 · 女声 |
 | `en-US-GuyNeural` | Guy · 英语 · 男声 |
 
@@ -125,8 +128,7 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 - id: voice-mode
   name: dsh-voice-mode
   config:
-    enabled: true
-    basePath: /voice-mode
+    enabled: true                 # false = 关闭整个语音模式（无法进入，toggle 拒绝）
     cacheDir: ~/.cache/dsh-voice-mode/models   # 可覆盖；默认按平台
     # 以下为设置项的默认播种值（设置面板可覆盖；最终生效值以设置面板为准）：
     voice: zh-CN-XiaoxiaoNeural
@@ -139,7 +141,8 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 
 > 说明：`voice/rate/interruptLevel/silenceMs/idleTimeoutMinutes/modelHost/autoSend`
 > 的最终生效值以**设置面板**为准；bundle 配置仅为这些键提供默认播种值
-> （`enabled/basePath/cacheDir` 仍只由 bundle 配置控制）。
+> （`enabled/cacheDir` 仍只由 bundle 配置控制）。
+> 插件 HTTP 命名空间固定为 `/voice-mode`（与客户端 bundle 契约一致，不可配置）。
 
 ## API
 
@@ -191,6 +194,7 @@ input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f
 - hold 模式按住时如果切换窗口/标签页会**放弃本段**（防持续收音），回来需重新按住
 - hero（新会话空态）没有语音入口：语音模式是会话级功能，请先进入会话使用输入框麦克风按钮
 - 「试听」的请求超时兜底使用 `AbortSignal.timeout`（Chrome 103+ / Firefox 100+ / Safari 16+）；更老的浏览器点击试听会立即显示失败提示，属预期降级
+- `spokenFormat` 提示词经官方 `system-prompt/assemble` 瀑布注入；若当前会话使用**完整提示词**配置（persona `complete: true` 的 agent preset），其提示词会整体替换系统提示词（官方 complete 契约），此时口语化提示词不注入
 
 ## 故障排查
 
@@ -219,10 +223,12 @@ input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f
   判定「遮蔽宿主版本」而拦截插件市场升级。peer 版本须与当前 dsh 运行时一致
   （本机：cordis `^4.0.1`、dsh-web `^0.1.0-rc.6 || ^0.1.1-rc.0`、react `^18.2.0`），
   升级 dsh 时同步更新。
-- **仅类型引用**（`@deepseek-ai/dsh-settings` / `dsh-host-webserver` / `dsh-llm`）→
-  实例之间没有任何运行时 import（`import type` + esbuild 剔除），无需声明；
-  开发期类型经 pnpm `file:` 链接指向本机 dsh 发行版 node_modules（registry 的
-  rc.1 类型快照落后于发行版，发行版类型才是运行时真值）。
+- **仅类型引用**（`@deepseek-ai/dsh-settings` / `dsh-host-webserver` / `dsh-llm` /
+  `dsh-system-prompt`）→ 实例之间没有任何运行时 import（`import type` + esbuild 剔除），
+  无需声明；开发期类型直接**实体化复制**自本机 dsh 发行版 node_modules（勿用指向宿主
+  node_modules 的绝对路径 **symlink**：其内部 `cordis` 解析到宿主实例，与插件 `.pnpm`
+  的 cordis 模块身份分裂，`declare module '@deepseek-ai/cordis'` 类型增强全部失效；
+  registry 的 rc.1 类型快照落后于发行版，发行版类型才是运行时真值）。
 
 `dependencies` 只保留真正的第三方运行依赖，禁止把宿主共享包写进去；改依赖后
 跑 `npm pack --dry-run` 与 `pnpm test` 回归。
@@ -233,10 +239,15 @@ input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f
 pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js（browser）
 pnpm test                     # segmenter/wakeword 单测 + 发布前自检（均无需网络）
 node test/hold-e2e.js         # hold 模式验收（独立浏览器，/asr 路由拦截）
+bash test/spoken-prompt-rpc.sh  # 口语化提示词验证（RPC 直发，无需浏览器；需在线 TTS）
 systemctl restart dsh         # Linux；其他平台重启 dsh 进程
 ```
 
-结构：
+> 注意：dsh 安装的是 pnpm `file:` 链接（目录拷贝），改完 `node build.mjs` 后需把
+> `lib/client.js` 同步到 `<profile>/node_modules/dsh-voice-mode/lib/` 再重启 dsh，
+> 浏览器才能拿到新 bundle。
+
+### 结构
 
 ```
 src/index.ts      host：单活指针、llm/stream tap、SSE、settings 注册

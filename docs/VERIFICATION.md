@@ -165,3 +165,49 @@ record-demo：assets/demo.gif 5 帧（76KB）已重录于独立实例
 - 注：E2E 首版曾因点击试听导致输入框失焦提交非法音色名污染 `settings.yaml`
   （已恢复 `zh-CN-XiaoyiNeural`）；脚本已改为「记录 → 提交 → 恢复 → 校验」自恢复
   模式，今后重跑不会污染。
+## 附录 D：口语化提示词（spokenFormat）验证记录（2026-08-23）
+
+- 需求：语音模式下 TTS 朗读听感更顺——回复口语化、不带 Markdown 排版符号（星号
+  等读起来奇怪的标记）。两层保障：① 模型源头（口语化提示词注入，本附录）；
+  ② 朗读侧（`segmenter.plainText` 剥离，项目既有）。
+- 设计（两轮修订，最终形态）：
+  - 注入点：`system-prompt/assemble` 瀑布（不能改 `llm/stream` 的 `options.system`——
+    agent-loop request 经 `deepFreeze`，赋值抛 TypeError）；`assembly.sections.push`
+    追加 section（渲染居末）。
+  - 会话身份：`context.agent`（dsh-agent `assembleContextFor` 注入，官方
+    AssembleContext 为 merge-extensible 未声明字段，dsh-agent-presets invariant
+    同款运行时用法；类型侧本地声明 `AgentCarriedContext` 最小面）。
+  - 过滤：`agent.id === activeVoiceSession`（仅当前语音会话，子代理/后台/标题
+    生成流均不注入），与 `llm/stream` tap 的会话隔离第二道对齐。
+  - 开关：设置项 `spokenFormat`（schema 默认 `false`，schemastery `.description()`）；
+    每次 assemble 读 `vset`（settingsScope.watch 实时更新）→ 开：后续回复注入；
+    关：后续回复立即失效；设置卡新增 checkbox（与 autoSend 同模式），README
+    设置表/特性/已知限制三处同步。
+  - 契约边界：persona `complete: true` 的 agent preset（官方 complete prompt）
+    会在瀑布后恢复为仅 complete section，此时提示词不注入——写入 README 已知限制。
+- 验证（本机 21:41–21:59，重启后最新产物）：
+  - typecheck 双 program 绿；build 产物无 `dsh-system-prompt` 运行时 import
+    （`import type` 被 esbuild 剔除，grep 0）。
+  - 「开」：RPC 直发（`test/spoken-prompt-rpc.sh`，经 `session.create` +
+    `/voice-mode/toggle` + `session.prompt`，不经输入框——规避 client「打字即退出」）：
+    sse audio 帧 3、tts-error 0，会话 request/header system 长度 6934 **含
+    【语音模式】提示词**，回复纯口语化无任何 Markdown 符号。
+  - 「关」：`settings.update` 实时置 false → 同会话再发 → 最后 turn system 长度
+    6739 **不含提示词**（实时失效）；随后恢复 true（settings.yaml 持久化确认）。
+  - 模式隔离：其他会话与 subagent 的 assemble 日志（诊断期）显示 `active=null`
+    未注入；调试期 `ASSEMBLE/LLM-STREAM` 诊断日志已从产物移除。
+- 复核后加固（对抗性审查结论）：
+  - E2E 首版用 Playwright `fill()` 发消息，触发 client「打字即退出（Q13）」导致
+    active 置空、注入与朗读均无——**测试方法错误而非插件缺陷**；改用 RPC 直发。
+  - 早期「TTS 静音」的另外两个真因：settings.yaml 遗留非法音色名
+    `zh-CN-NotARealVoiceNeural`（预览测试中断残留，已恢复合法音色）；
+    Edge TTS 网络波动（preview 偶发截断）——均非本功能问题。
+  - 开发期 `node_modules` 类型包：绝对路径 symlink → 实体化复制（修 typecheck
+    增强分裂）；`build.mjs` 不加 `dsh-system-prompt` external（type-only 无运行时
+    依赖）。
+  - **client bundle 同步坑（实测复发）**：`lib/index.js` 与 profile 目录为同 inode
+    （硬链接/挂载）自动同步，但 `lib/client.js` 是**独立拷贝**——`cp` 第一条报
+    "same file" 即退，会让 client.js 漏同步。症状：host 功能（注入/TTS）正常，
+    但设置卡 UI 仍是旧版（无 `spokenFormat` 开关）。修复：`cp lib/client.js
+    <profile>/node_modules/dsh-voice-mode/lib/` 后浏览器刷新（bundle rev 变化）。
+    回归脚本：`test/spoken-toggle-ui-check.js`（独立 headless 检查开关行渲染）。

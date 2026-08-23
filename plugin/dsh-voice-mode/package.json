@@ -1,7 +1,7 @@
 {
   "name": "dsh-voice-mode",
   "description": "Full-duplex voice conversation mode for DeepSeek Harness: streamed zipformer2 ASR to draft, Edge TTS sentence-by-sentence reading of final replies, voice barge-in · DSH 语音双工对话模式",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "main": "lib/index.js",
   "repository": {

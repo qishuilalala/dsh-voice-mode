@@ -48,7 +48,7 @@ interface VoiceBus {
   ui: VoiceUiState
   subscribe(fn: (b: { active: string | null; ui: VoiceUiState }) => void): () => void
   setUi(patch: Partial<VoiceUiState>): void
-  enter(sessionId: string): Promise<boolean>
+  enter(sessionId: string): Promise<{ ok: boolean; error?: string }>
   exit(sessionId: string): Promise<void>
   /** 音频帧推入播放队列（播放引擎消费）。 */
   onAudioFrame(fn: (frame: VoiceFrame) => void): () => void
@@ -66,6 +66,8 @@ export interface VoiceSlotActions {
 
 const WAVE_BARS = 14
 const SUBMIT_DELAY_MS = 600
+/** 插件 HTTP 命名空间（与 host 侧 BASE_PATH 常量一致，固定不可配置）。 */
+const BASE_PATH = '/voice-mode'
 
 export function apply(ctx: any): void {
   const bus = createVoiceBus(undefined, ctx)
@@ -188,10 +190,10 @@ function createAudioEngine(setUi: (patch: Partial<VoiceUiState>) => void): {
   }
 }
 
-function createVoiceBus(basePath: string = '/voice-mode', ctx?: any): VoiceBus {
+function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   let activeSessionId: string | null = null
   const DEFAULT_BOOT: VoiceBootConfig = {
-    basePath: '/voice-mode',
+    basePath: BASE_PATH,
     silenceMs: 2000,
     interruptLevel: 0,
     idleTimeoutMinutes: 10,
@@ -347,12 +349,13 @@ function createVoiceBus(basePath: string = '/voice-mode', ctx?: any): VoiceBus {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ sessionId, on: true }),
         })
-        const out = (await res.json()) as { active?: string | null }
+        const out = (await res.json()) as { active?: string | null; error?: string }
         activeSessionId = out.active ?? null
         notify()
-        return out.active === sessionId
+        if (!res.ok) return { ok: false, error: out.error ?? '进入语音模式失败' }
+        return { ok: out.active === sessionId, error: out.active === sessionId ? undefined : '进入语音模式失败' }
       } catch {
-        return false
+        return { ok: false, error: '进入语音模式失败' }
       }
     },
     async exit(sessionId) {
@@ -386,8 +389,8 @@ function createVoiceBus(basePath: string = '/voice-mode', ctx?: any): VoiceBus {
     },
     cancelTurn(sessionId) {
       try {
-        // 打断第二层：取消当前回合；keepInbox 保留排队中的新消息（Q2）。
-        ctx?.sessions?.binding?.(sessionId)?.session.cancel?.(undefined, { keepInbox: true })
+        // 打断第二层：取消当前回合（官方 session.cancel 无参；Host 保留队列中的新消息）。
+        ctx?.sessions?.binding?.(sessionId)?.session.cancel?.()
       } catch {
         // cancel 失败不抛到录音循环
       }
@@ -434,6 +437,7 @@ export function MicButton({
   bus,
   sessionId,
   useSession,
+  useInput,
   inputActions,
 }: MicProps): React.ReactElement {
   // local: 'off' | 'pending' | 'on'（bus.active === sessionId 时有效）
@@ -470,7 +474,7 @@ export function MicButton({
   /** 每次进入语音模式重新拉取 /config（设置改动即时生效），失败用当前 bus.boot 兜底。 */
   const fetchConfig = async (): Promise<VoiceBootConfig> => {
     try {
-      const res = await fetch(`${location.origin}/voice-mode/config`)
+      const res = await fetch(`${location.origin}${BASE_PATH}/config`)
       if (!res.ok) return bootNow()
       const c = (await res.json()) as Partial<VoiceBootConfig>
       const cur = bootNow()
@@ -545,9 +549,15 @@ export function MicButton({
     if (!sid || localRef.current !== 'off') return
     setLocalMode('pending')
     try {
-      const ok = await bus.enter(sid)
-      if (!ok) {
+      const entered = await bus.enter(sid)
+      if (!entered.ok) {
         setLocalMode('off')
+        bus.setUi({
+          error:
+            entered.error === 'voice mode disabled'
+              ? '语音模式已禁用（插件 enabled=false）'
+              : entered.error ?? '进入语音模式失败',
+        })
         return
       }
       // 每次进入重新拉取 host 引导参数（静音/打断档位/自动发送/空闲超时/模式/唤醒词）
@@ -577,13 +587,15 @@ export function MicButton({
         const actions = actionsRef.current
         const trimmed = text.trim()
         if (!trimmed) return
-        // 追加式写入：保留已有草稿内容，避免覆盖用户正在编辑的文本
+        // 追加式写入：保留已有草稿内容，避免覆盖用户正在编辑的文本（读取 useInput 镜像）
         try {
-          const cur = (actions as any)?.getDraft?.() ?? (actions as any)?.draft
-          const curText = typeof cur === 'string' ? cur : ''
+          const curText = draftRef.current
           const nextDraft = curText ? `${curText} ${trimmed}` : trimmed
           if (typeof actions?.setDraft === 'function') actions.setDraft(nextDraft)
           else if (typeof (actions as any)?.setDraft === 'function') (actions as any).setDraft(nextDraft)
+          else {
+            // 提交失败兜底：文字已留在 UI 侧（Q16）
+          }
         } catch {
           try {
             actions?.setDraft?.(trimmed)
@@ -611,13 +623,11 @@ export function MicButton({
         // 立即尝试一次，失败则 800ms 后重试一次
         doSubmit()
         submitTimerRef.current = setTimeout(() => {
-          // 若草稿仍非空且未进入新一轮，说明首发未消费，做一次兜底重试
-          try {
-            const cur2 = (actions as any)?.getDraft?.() ?? (actions as any)?.draft
-            if (typeof cur2 === 'string' && cur2.trim()) doSubmit()
-          } catch {
-            // ignore
-          }
+          // 首发未消费的兜底重试：仅当输入机器未处于 submitting/adjudicating
+          // （提交在途/裁决中，草稿未清是正常情形）且草稿仍有我们的文本时重试，
+          // 否则会重复发送同一句话。
+          const phase = phaseRef.current
+          if (phase !== 'submitting' && phase !== 'adjudicating' && draftRef.current.trim()) doSubmit()
         }, 800)
       })
       engine.onSpeechStart(async () => {
@@ -628,7 +638,7 @@ export function MicButton({
         resetIdle()
         bus.skipAudio()
         try {
-          await fetch(`${location.origin}/voice-mode/cancel`, {
+          await fetch(`${location.origin}${BASE_PATH}/cancel`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ sessionId: sidRef.current }),
@@ -692,7 +702,7 @@ export function MicButton({
       const sid = sidRef.current
       if (localRef.current === 'on' && sid) {
         void engineRef.current?.stop()
-        void fetch('/voice-mode/toggle', {
+        void fetch(`${location.origin}${BASE_PATH}/toggle`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ sessionId: sid, on: false }),
@@ -810,6 +820,15 @@ export function MicButton({
   const on = local === 'on'
   const busy = bus.ui.state === 'transcribing' || bus.ui.state === 'loading-model'
   const holdMode = bootNow().mode === 'hold'
+  // 当前草稿：官方 InputActions 无 getDraft（仅 setDraft/submit），草稿与机器
+  // phase 的事实源为 useInput 标准 prop；值变化即重渲染，draftRef/phaseRef 在
+  // 事件回调里读最新值（phase 用于提交重试门控：避免把「提交在途」当失败重发）。
+  const liveDraft = useInput ? useInput((s: any) => (s?.draft as string) ?? '') : ''
+  const draftRef = useRef('')
+  draftRef.current = liveDraft
+  const livePhase = useInput ? useInput((s: any) => (s?.phase as string) ?? '') : ''
+  const phaseRef = useRef('')
+  phaseRef.current = livePhase
   const label = on
     ? busy
       ? '识别中…'
@@ -880,6 +899,7 @@ export function MicButton({
       onPointerCancel={onPointerCancel}
       data-dshvm="mic"
       aria-label={on ? '语音模式进行中' : '进入语音对话模式'}
+      aria-pressed={on}
       title={
         on
           ? holdMode

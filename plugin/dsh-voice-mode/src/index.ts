@@ -18,6 +18,9 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 // Type-only: chunk/options shapes for the llm/stream waterfall tap.
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
+// Type-only: pulls the 'system-prompt/assemble' waterfall into the Events
+// registry (so ctx.on can type-check the assembly callback).
+import type { AssembleContext, PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
@@ -40,6 +43,29 @@ const NS_VOICE_MODE = 'voice-mode' as SettingsNamespace
  */
 const BASE_PATH = '/voice-mode'
 
+/**
+ * 语音模式口语化提示词：设置项 spokenFormat（默认关）开启后，作为 system prompt
+ * 末尾 section 注入（仅活跃语音会话，见 apply 内 'system-prompt/assemble' 瀑布）。
+ * 让模型从源头用自然口语作答、不写 Markdown 排版符号——与 segmenter.plainText
+ * 的剥离互补：剥离只管朗读文本，提示词让模型不输出书面结构，TTS 逐句听感更顺、
+ * 字幕更自然。
+ */
+const VOICE_SPOKEN_PROMPT =
+  '【语音模式】当前回复会被语音朗读，请始终用用户所用语言、以口语化的短句直接回答，像面对面聊天一样自然，避免书面语和长难句。' +
+  '不要使用任何 Markdown 或排版符号（星号、下划线、反引号、井号、列表与表格标记、代码块等）。' +
+  '需要分点说明时用「第一、第二」或连贯的短句表达；除非用户明确要求，不要输出代码片段、完整 URL 或冗长定义，用一两句话概括含义即可。' +
+  '回答简洁直接，不要重复和寒暄。'
+
+/** 提示词 section 的稳定名称（注册层按 order 排序；瀑布里 push 即追加到组装结果末尾）。 */
+const VOICE_SPOKEN_SECTION = 'voice-mode:spoken-format'
+
+/**
+ * dsh-agent 的 assembleContextFor 在 assemble 上下文里运行时注入 agent
+ * （官方 AssembleContext 类型仅声明 scope/signal，属 merge-extensible 未固定字段；
+ * dsh-agent-presets 的 invariant 即同款用法）。此处只声明本插件读取的最小面。
+ */
+type AgentCarriedContext = AssembleContext & { agent?: { id: string } }
+
 export const inject = ['webServer', 'settings']
 
 /**
@@ -52,12 +78,13 @@ const defaultModelCacheDir = (): string =>
     : join(homedir(), '.cache', 'dsh-voice-mode', 'models')
 
 /**
- * Q15 设置命名空间：全部运行时旋钮（音色/语速/打断/静音/超时/镜像/自动发送/模式/唤醒词）。
+ * Q15 设置命名空间：全部运行时旋钮（音色/语速/打断/静音/超时/镜像/自动发送/模式/唤醒词/口语化提示词）。
  *
  * 官方分层（dsh-settings 契约）：resolve = schema(mergeLayers(base, 用户文档))——
  * schema 默认（平台常量）为最底、组合包 config 经 register 的 `base` 为第二顺位、
  * 设置面板（用户文档）最高。因此：本文件 schema 默认全是平台常量；config 子集在
- * apply 期以 `{ base }` 传入。生效范围：voice/rate 即时（TTS 热切换）；其余下次进入生效。
+ * apply 期以 `{ base }` 传入。生效范围：voice/rate 即时（TTS 热切换）；spokenFormat 即时
+ * （每次组装提示词时读取，对当前会话的后续回复生效）；其余下次进入生效。
  */
 export interface VoiceSettingsValue {
   voice: string
@@ -75,6 +102,12 @@ export interface VoiceSettingsValue {
   mode: 'toggle' | 'hold'
   /** 唤醒词（空 = 关；如「你好小D」）：待机态说出后激活，避免误触。 */
   wakeWord: string
+  /**
+   * 语音会话注入口语化提示词（默认关）：开启后，仅当前活跃语音会话的回复被注入
+   * 「口语化短句、不用 Markdown 排版符号」提示词（assemble 时读取，实时生效；
+   * 关掉即对后续回复失效；非语音会话不受影响）。
+   */
+  spokenFormat: boolean
 }
 
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
@@ -88,6 +121,7 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   autoSend: true,
   mode: 'toggle',
   wakeWord: '',
+  spokenFormat: false,
 }
 
 /** 以平台常量默认构造设置 schema。 */
@@ -114,6 +148,10 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .default(d.mode)
       .description('交互模式：toggle 持续聆听 + 静音自动断句（默认）；hold 按住说话、松手发送（短按退出）'),
     wakeWord: z.string().default(d.wakeWord).description('唤醒词：在待机态说出后开始识别（默认关；如「你好小D」）'),
+    spokenFormat: z
+      .boolean()
+      .default(d.spokenFormat)
+      .description('语音会话注入口语化提示词（口语化短句、不用 Markdown 排版符号，朗读更顺；默认关，改动即时生效）'),
   })
 }
 
@@ -215,6 +253,23 @@ export function apply(ctx: Context, config: Config): void {
   const currentRate = (): number => vset.rate
   const currentInterrupt = (): 0 | 1 | 2 => vset.interruptLevel
 
+  // --- 语音口语化提示词：仅活跃语音会话的 system prompt 注入（TTS 朗读听感）。 ---
+  // 设置项 spokenFormat（默认关，实时生效）：开启后仅 activeVoiceSession 的请求被注入；
+  // 关闭后 assemble 直接放行（对当前会话的后续回复立即失效）。不能直接改 llm/stream 的
+  // options：agent-loop 的 request 经 deepFreeze（只读），赋值会抛 TypeError。改用 assembly
+  // 瀑布：dsh-agent 的 assembleContextFor 在 assemble 上下文里注入 agent（官方
+  // AssembleContext 类型未声明，merge-extensible，dsh-agent-presets invariant 同款运行时
+  // 用法）；按 agent.id 精确匹配活跃语音会话，其它会话、子代理、后台任务会话均不注入
+  // （模式隔离，验收点 7 之外的第二道隔离）。
+  ctx.on('system-prompt/assemble', (assembly: PromptAssembly, context: AgentCarriedContext, next) => {
+    if (!config.enabled || !vset.spokenFormat) return next()
+    const agentId = context.agent?.id
+    if (agentId !== undefined && agentId === activeVoiceSession) {
+      assembly.sections.push({ name: VOICE_SPOKEN_SECTION, text: VOICE_SPOKEN_PROMPT })
+    }
+    return next()
+  })
+
   // --- llm/stream 无损 tap：仅活跃语音会话被观察，其余直达（验收点 7）。 ---
   ctx.on('llm/stream', (options: GenerateOptions, next): AsyncIterable<StreamChunk> => {
     const sessionId = options.sessionId
@@ -276,52 +331,6 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() =>
     ctx.webServer.register({
       kind: 'exact',
-      path: `${base}/toggle`,
-      handler: (req: IncomingMessage, res: ServerResponse) => {
-        collectBody(req, res, MAX_JSON_BODY, (body) => {
-          let sessionId: string | undefined
-          let on: boolean | undefined
-          try {
-            const parsed = JSON.parse(body || '{}') as { sessionId?: string; on?: boolean }
-            sessionId = parsed.sessionId
-            on = parsed.on
-          } catch {
-            // ignore malformed body
-          }
-          if (!sessionId) {
-            res.statusCode = 400
-            res.end(JSON.stringify({ error: 'sessionId required' }))
-            return
-          }
-          if (on === true) {
-            // 总开关关闭时拒绝进入（enabled=false 的诚实语义：整功能关停）。
-            if (!config.enabled) {
-              res.statusCode = 403
-              res.end(JSON.stringify({ error: 'voice mode disabled' }))
-              return
-            }
-            // 全局单活：新会话进入即覆盖让出旧会话（Q11 切换会话自动让出）。
-            const previous = activeVoiceSession
-            activeVoiceSession = sessionId
-            if (previous && previous !== sessionId) queue.prune(previous)
-            broadcast('mode', { active: activeVoiceSession })
-          } else {
-            if (activeVoiceSession === sessionId) {
-              activeVoiceSession = null
-              queue.prune(sessionId)
-              broadcast('mode', { active: null })
-            }
-          }
-          res.setHeader('content-type', 'application/json')
-          res.end(JSON.stringify({ active: activeVoiceSession }))
-        })
-      },
-    }),
-  )
-
-  ctx.effect(() =>
-    ctx.webServer.register({
-      kind: 'exact',
       path: `${base}/preview`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
         // 总开关一致语义（同 /toggle 403）：关闭时试听也不发起 Edge 网络调用。
@@ -372,6 +381,52 @@ export function apply(ctx: Context, config: Config): void {
           res.setHeader('content-type', 'audio/mpeg')
           res.setHeader('cache-control', 'no-store')
           res.end(buf)
+        })
+      },
+    }),
+  )
+
+  ctx.effect(() =>
+    ctx.webServer.register({
+      kind: 'exact',
+      path: `${base}/toggle`,
+      handler: (req: IncomingMessage, res: ServerResponse) => {
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
+          let sessionId: string | undefined
+          let on: boolean | undefined
+          try {
+            const parsed = JSON.parse(body || '{}') as { sessionId?: string; on?: boolean }
+            sessionId = parsed.sessionId
+            on = parsed.on
+          } catch {
+            // ignore malformed body
+          }
+          if (!sessionId) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: 'sessionId required' }))
+            return
+          }
+          if (on === true) {
+            // 总开关关闭时拒绝进入（enabled=false 的诚实语义：整功能关停）。
+            if (!config.enabled) {
+              res.statusCode = 403
+              res.end(JSON.stringify({ error: 'voice mode disabled' }))
+              return
+            }
+            // 全局单活：新会话进入即覆盖让出旧会话（Q11 切换会话自动让出）。
+            const previous = activeVoiceSession
+            activeVoiceSession = sessionId
+            if (previous && previous !== sessionId) queue.prune(previous)
+            broadcast('mode', { active: activeVoiceSession })
+          } else {
+            if (activeVoiceSession === sessionId) {
+              activeVoiceSession = null
+              queue.prune(sessionId)
+              broadcast('mode', { active: null })
+            }
+          }
+          res.setHeader('content-type', 'application/json')
+          res.end(JSON.stringify({ active: activeVoiceSession }))
         })
       },
     }),
@@ -499,19 +554,25 @@ async function* tapActiveStream(
   const flushOnce = (): void => {
     if (flushed) return
     flushed = true
-    for (const s of segmenter.flush()) queue.enqueue(sessionId, s)
+    for (const s of segmenter.flush()) {
+      queue.enqueue(sessionId, s)
+    }
   }
   try {
     for await (const chunk of inner) {
       // 只朗读最终答复的 text-delta（Q7）；reasoning/tool-call 不读。
       if (chunk.type === 'text-delta' && chunk.text) {
-        for (const s of segmenter.feed(chunk.text)) queue.enqueue(sessionId, s)
+        for (const s of segmenter.feed(chunk.text)) {
+          queue.enqueue(sessionId, s)
+        }
       }
       // 工具调用事件：提示音（Q7，二期可关）。
       if (chunk.type === 'tool-call-delta' && chunk.name) {
         broadcast('tool', { sessionId, name: chunk.name })
       }
-      if (chunk.type === 'finish') finishReason = chunk.reason
+      if (chunk.type === 'finish') {
+        finishReason = chunk.reason
+      }
       yield chunk
     }
   } finally {

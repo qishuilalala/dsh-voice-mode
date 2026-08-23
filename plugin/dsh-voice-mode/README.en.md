@@ -1,8 +1,8 @@
 # dsh-voice-mode
 
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square)](https://www.npmjs.com/package/dsh-voice-mode)
-[![License](https://img.shields.io/npm/l/dsh-voice-mode?style=flat-square)](LICENSE)
-[![dsh-plugin](https://img.shields.io/badge/dsh-plugin-voice-%232ea043?style=flat-square)](https://github.com/topics/dsh-plugin)
+[![License](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square)](LICENSE)
+[![dsh-plugin](https://img.shields.io/badge/dsh--plugin-voice-brightgreen?style=flat-square)](https://github.com/topics/dsh-plugin)
 
 > Full-duplex voice conversation mode for DeepSeek Harness (dsh): speak, get a
 > spoken answer. Streamed zipformer2 ASR → editable draft → auto send → the

@@ -62,6 +62,12 @@ export function pcmToSamples(buf: Buffer): Float32Array | null {
   return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4)
 }
 
+/**
+ * /asr 单次请求体积上限：段长上限 30s × 16kHz × 4B = 1.92MB，
+ * 余量给重采样/时序抖动；超限 413（防无界内存累积）。
+ */
+const MAX_ASR_BYTES = 4 * 1024 * 1024
+
 export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   const { cacheDir, modelHost, broadcast } = options
   const repoDir = join(cacheDir, MODEL_REPO)
@@ -253,8 +259,21 @@ export function handleAsrRequest(
   res: ServerResponse,
 ): void {
   const chunks: Buffer[] = []
-  req.on('data', (c: Buffer) => chunks.push(c))
+  let received = 0
+  let tooLarge = false
+  req.on('data', (c: Buffer) => {
+    if (tooLarge) return
+    received += c.length
+    if (received > MAX_ASR_BYTES) {
+      tooLarge = true
+      res.statusCode = 413
+      res.end(JSON.stringify({ error: 'pcm payload too large' }))
+      return
+    }
+    chunks.push(c)
+  })
   req.on('end', () => {
+    if (tooLarge) return
     res.setHeader('content-type', 'application/json')
     // 校验会话归属：仅活跃语音会话可识别（防滥用/串流）。
     const url = new URL(req.url ?? '/', 'http://localhost')

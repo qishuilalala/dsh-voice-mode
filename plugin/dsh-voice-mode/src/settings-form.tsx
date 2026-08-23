@@ -430,7 +430,7 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
       <button type="button" aria-expanded={!collapsed} onClick={() => setCollapsed((c) => !c)} style={{ ...setHeader, background: collapsed ? 'transparent' : t.bgOpen }}>
         <span style={setHeadText}>
           <span style={setName}>语音模式</span>
-          <span style={setDesc}>音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词</span>
+          <span style={setDesc}>音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词 / 口语化提示词</span>
         </span>
         <span style={{ ...setChevron, transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)' }} aria-hidden="true">
           <svg viewBox="0 0 16 16" width={14} height={14}>
@@ -478,6 +478,9 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             </Row>
             <Row name="autoSend" desc="识别定稿后自动发送（关=只进草稿；按住 Ctrl / hold 松手仍发送）">
               <input type="checkbox" checked={Boolean(value.autoSend)} onChange={(e) => void scope.set('autoSend', e.target.checked)} />
+            </Row>
+            <Row name="spokenFormat" desc="语音会话注入口语化提示词（回复口语化、不用 Markdown 排版符号，朗读更顺；默认关，改动即时生效）">
+              <input type="checkbox" checked={Boolean(value.spokenFormat)} onChange={(e) => void scope.set('spokenFormat', e.target.checked)} />
             </Row>
             <Row name="mode" desc="交互模式（toggle 持续聆听+静音断句 / hold 按住说话）">
               <SegGroup
