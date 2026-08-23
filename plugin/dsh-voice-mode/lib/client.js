@@ -512,26 +512,36 @@ var theme = {
 };
 var rowStyle = {
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   justifyContent: "space-between",
-  gap: 16,
-  padding: "11px 2px",
+  gap: 20,
+  padding: "13px 2px",
   borderBottom: `1px solid ${theme.border}`
 };
 var nameStyle = {
   color: theme.label,
   fontSize: 13,
-  flexShrink: 0
+  fontWeight: 600,
+  lineHeight: 1.4,
+  width: "48%",
+  minWidth: 220
 };
 var descStyle = {
   color: theme.dimmed,
   fontSize: 11,
   fontWeight: 400,
-  marginTop: 2
+  lineHeight: 1.5,
+  marginTop: 3,
+  maxWidth: "100%",
+  overflowWrap: "break-word"
 };
+var ctrlStyle = { display: "flex", alignItems: "center", flex: "1 1 auto", justifyContent: "flex-end", minWidth: 0 };
 var inputStyle = {
-  width: 230,
-  padding: "6px 10px",
+  width: "100%",
+  minWidth: 180,
+  maxWidth: 320,
+  boxSizing: "border-box",
+  padding: "7px 10px",
   borderRadius: 8,
   border: `1px solid ${theme.border}`,
   background: "var(--dsw-alias-bg-layer-2)",
@@ -545,10 +555,11 @@ var segStyle = (active) => ({
   background: active ? "color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent)" : "transparent",
   color: theme.label,
   cursor: "pointer",
-  padding: "4px 10px",
+  padding: "5px 12px",
   fontSize: 12,
   borderRadius: 6,
-  fontFamily: "inherit"
+  fontFamily: "inherit",
+  whiteSpace: "nowrap"
 });
 var focusVisibleCss = `
 [data-dshvm-settings="card"] input:focus-visible,
@@ -638,7 +649,7 @@ function Row({
       name,
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: descStyle, children: desc })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flexShrink: 0 }, children })
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: ctrlStyle, children })
   ] });
 }
 function SegGroup({
@@ -683,15 +694,15 @@ function VoiceSettingsCard({ scope }) {
         background: theme.bg,
         border: `1px solid ${theme.border}`,
         borderRadius: 12,
-        padding: "14px 18px 10px",
+        padding: "16px 18px 14px",
         color: theme.label
       },
       children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: focusVisibleCss }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 4 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${theme.border}` }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 600 }, children: "\u8BED\u97F3\u6A21\u5F0F" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: theme.dimmed, fontSize: 11, marginLeft: 8 }, children: "dsh-voice-mode" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: theme.secondary, fontSize: 12, marginTop: 4 }, children: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD\uFF1B\u6539\u540E\u5373\u5B58\uFF0C voice \u4E0E rate \u5373\u65F6\u751F\u6548\uFF0C\u5176\u4F59\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u751F\u6548\u3002" })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: theme.secondary, fontSize: 12, marginTop: 5, lineHeight: 1.5 }, children: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD\uFF1B\u6539\u540E\u5373\u5B58\uFF0C voice \u4E0E rate \u5373\u65F6\u751F\u6548\uFF0C\u5176\u4F59\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u751F\u6548\u3002" })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-voice", name: "voice", desc: "Edge TTS \u97F3\u8272\uFF08\u6653\u6653 / \u4E91\u5E0C / \u4E91\u5065 / \u4E91\u626C / \u6653\u4F0A / HiuMaan / Aria\u2026\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { id: "vm-voice", score: scope, field: "voice", value: value.voice ?? "" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { id: "vm-rate", name: "rate", desc: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { id: "vm-rate", score: scope, field: "rate", value: value.rate ?? 1, min: 0.5, max: 2, step: 0.1 }) }),

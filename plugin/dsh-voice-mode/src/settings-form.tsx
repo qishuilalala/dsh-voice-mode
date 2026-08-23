@@ -32,26 +32,36 @@ const theme = {
 
 const rowStyle: React.CSSProperties = {
   display: 'flex',
-  alignItems: 'center',
+  alignItems: 'flex-start',
   justifyContent: 'space-between',
-  gap: 16,
-  padding: '11px 2px',
+  gap: 20,
+  padding: '13px 2px',
   borderBottom: `1px solid ${theme.border}`,
 }
 const nameStyle: React.CSSProperties = {
   color: theme.label,
   fontSize: 13,
-  flexShrink: 0,
+  fontWeight: 600,
+  lineHeight: 1.4,
+  width: '48%',
+  minWidth: 220,
 }
 const descStyle: React.CSSProperties = {
   color: theme.dimmed,
   fontSize: 11,
   fontWeight: 400,
-  marginTop: 2,
+  lineHeight: 1.5,
+  marginTop: 3,
+  maxWidth: '100%',
+  overflowWrap: 'break-word',
 }
+const ctrlStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', flex: '1 1 auto', justifyContent: 'flex-end', minWidth: 0 }
 const inputStyle: React.CSSProperties = {
-  width: 230,
-  padding: '6px 10px',
+  width: '100%',
+  minWidth: 180,
+  maxWidth: 320,
+  boxSizing: 'border-box',
+  padding: '7px 10px',
   borderRadius: 8,
   border: `1px solid ${theme.border}`,
   background: 'var(--dsw-alias-bg-layer-2)',
@@ -65,10 +75,11 @@ const segStyle = (active: boolean): React.CSSProperties => ({
   background: active ? 'color-mix(in srgb, var(--dsw-alias-brand-primary) 16%, transparent)' : 'transparent',
   color: theme.label,
   cursor: 'pointer',
-  padding: '4px 10px',
+  padding: '5px 12px',
   fontSize: 12,
   borderRadius: 6,
   fontFamily: 'inherit',
+  whiteSpace: 'nowrap',
 })
 const focusVisibleCss = `
 [data-dshvm-settings="card"] input:focus-visible,
@@ -184,7 +195,7 @@ function Row({
         {name}
         <div style={descStyle}>{desc}</div>
       </label>
-      <span style={{ flexShrink: 0 }}>{children}</span>
+      <span style={ctrlStyle}>{children}</span>
     </div>
   )
 }
@@ -246,15 +257,15 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
         background: theme.bg,
         border: `1px solid ${theme.border}`,
         borderRadius: 12,
-        padding: '14px 18px 10px',
+        padding: '16px 18px 14px',
         color: theme.label,
       }}
     >
       <style>{focusVisibleCss}</style>
-      <div style={{ marginBottom: 4 }}>
+      <div style={{ marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${theme.border}` }}>
         <span style={{ fontSize: 14, fontWeight: 600 }}>语音模式</span>
         <span style={{ color: theme.dimmed, fontSize: 11, marginLeft: 8 }}>dsh-voice-mode</span>
-        <div style={{ color: theme.secondary, fontSize: 12, marginTop: 4 }}>
+        <div style={{ color: theme.secondary, fontSize: 12, marginTop: 5, lineHeight: 1.5 }}>
           音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词；改后即存，
           voice 与 rate 即时生效，其余下次进入语音模式生效。
         </div>
