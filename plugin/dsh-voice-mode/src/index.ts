@@ -14,6 +14,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 // Type-only: pulls the webServer Context merge (ctx.webServer) into scope.
 import type {} from '@deepseek-ai/dsh-host-webserver'
+// Type-only: pulls the settings Context merge (ctx.settings) into scope.
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 // Type-only: chunk/options shapes for the llm/stream waterfall tap.
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -24,6 +26,12 @@ import { SentenceSegmenter } from './segmenter.ts'
 import { TtsQueue } from './tts-queue.ts'
 
 export const name = 'voice-mode'
+
+/**
+ * 命名空间品牌常量（与官方 settingsNamespace('voice-mode') 等价：其运行时仅做
+ * kebab-case 校验（/^[a-z][a-z0-9-]*$/）后原样返回；此处本地断言避免对宿主包运行时 import）。
+ */
+const NS_VOICE_MODE = 'voice-mode' as SettingsNamespace
 
 export const inject = ['webServer', 'settings']
 
@@ -158,7 +166,7 @@ export function apply(ctx: Context, config: Config): void {
 
   // --- 设置命名空间（官方分层：schema 平台常量默认 ⊕ config base ⊕ 用户文档）。 ---
   const settingsScope = ctx.settings.register(
-    'voice-mode',
+    NS_VOICE_MODE,
     createVoiceSettingsSchema(),
     {
       base: {

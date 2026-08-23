@@ -379,6 +379,7 @@ var TtsQueue = class {
 
 // src/index.ts
 var name = "voice-mode";
+var NS_VOICE_MODE = "voice-mode";
 var inject = ["webServer", "settings"];
 var defaultModelCacheDir = () => process.platform === "win32" ? join2(process.env.LOCALAPPDATA ?? join2(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join2(homedir(), ".cache", "dsh-voice-mode", "models");
 var VOICE_SETTINGS_DEFAULTS = {
@@ -432,7 +433,7 @@ function apply(ctx, config) {
     }
   };
   const settingsScope = ctx.settings.register(
-    "voice-mode",
+    NS_VOICE_MODE,
     createVoiceSettingsSchema(),
     {
       base: {
