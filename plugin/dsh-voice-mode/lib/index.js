@@ -20,6 +20,7 @@ function pcmToSamples(buf) {
   return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
 }
 var MAX_ASR_BYTES = 4 * 1024 * 1024;
+var SEGMENT_IDLE_MS = 9e4;
 var VAD_CONTINUE_RMS = 0.02;
 var CONFIRM_CONJUNCTION_MS = 800;
 var CONFIRM_LONG_SENTENCE_MS = 350;
@@ -154,17 +155,6 @@ function createAsrRuntime(options) {
         senseLoading = null;
       });
     }
-    if (!senseLoading) {
-      senseLoading = (async () => {
-        for (const f of SENSE_FILES) {
-          if (!await ensureFile(senseDir, f, modelHost(), broadcast)) return null;
-        }
-        senseModelReady = true;
-        return join(senseDir, SENSE_FILES[0]);
-      })().finally(() => {
-        senseLoading = null;
-      });
-    }
     return senseLoading;
   };
   const getSenseRecognizer = async () => {
@@ -201,29 +191,47 @@ function createAsrRuntime(options) {
         off += c.length;
       }
       const stream = rec.createStream();
-      stream.acceptWaveform(16e3, buf);
-      rec.decode(stream);
-      const text = rec.getResult(stream).text;
       try {
-        stream.free();
-      } catch {
+        stream.acceptWaveform(16e3, buf);
+        rec.decode(stream);
+        const text = rec.getResult(stream).text;
+        const t = text.trim();
+        return t.length > 0 ? t : null;
+      } finally {
+        try {
+          stream.free();
+        } catch {
+        }
       }
-      const t = text.trim();
-      return t.length > 0 ? t : null;
     } catch (e) {
       console.warn(`[dsh-voice-mode] SenseVoice re-transcribe failed: ${String(e)}`);
       return null;
     }
   };
-  const feed = async (sessionId, samples, final, offset = 0) => {
+  const feed = async (sessionId, samples, final, offset = 0, epoch = 0) => {
     const rec = await getRecognizer();
     if (!rec) return { text: "", loading: true };
-    let seg = segments.get(sessionId);
+    const key = sessionId + "#" + epoch;
+    let seg = segments.get(key);
     if (!seg) {
+      for (const [k, s] of segments) {
+        if (k.startsWith(sessionId + "#")) {
+          try {
+            s.vad?.free?.();
+          } catch {
+          }
+          try {
+            s.stream.free();
+          } catch {
+          }
+          segments.delete(k);
+        }
+      }
       if (samples.length === 0 && final) return { text: "" };
-      seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: "", allSamples: [] };
-      segments.set(sessionId, seg);
+      seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: "", allSamples: [], lastActivity: Date.now() };
+      segments.set(key, seg);
     }
+    seg.lastActivity = Date.now();
     let endpoint = false;
     let text = "";
     if (offset + samples.length > seg.fed) {
@@ -284,25 +292,57 @@ function createAsrRuntime(options) {
     } catch {
     }
     seg.stream.free();
-    segments.delete(sessionId);
+    segments.delete(key);
     const sense = await senseP;
     return { text: sense ?? settled };
   };
+  const sweep = () => {
+    const now = Date.now();
+    for (const [k, s] of segments) {
+      if (now - s.lastActivity > SEGMENT_IDLE_MS) {
+        try {
+          s.vad?.free?.();
+        } catch {
+        }
+        try {
+          s.stream.free();
+        } catch {
+        }
+        segments.delete(k);
+      }
+    }
+  };
+  const sweepTimer = setInterval(sweep, 3e4);
   return {
     feed,
     reset: (sessionId) => {
-      const seg = segments.get(sessionId);
-      if (seg) {
-        try {
-          seg.vad?.free?.();
-        } catch {
+      for (const [k, s] of segments) {
+        if (k.startsWith(sessionId + "#")) {
+          try {
+            s.vad?.free?.();
+          } catch {
+          }
+          try {
+            s.stream.free();
+          } catch {
+          }
+          segments.delete(k);
         }
-        try {
-          seg.stream.free();
-        } catch {
-        }
-        segments.delete(sessionId);
       }
+    },
+    dispose: () => {
+      clearInterval(sweepTimer);
+      for (const [, s] of segments) {
+        try {
+          s.vad?.free?.();
+        } catch {
+        }
+        try {
+          s.stream.free();
+        } catch {
+        }
+      }
+      segments.clear();
     }
   };
 }
@@ -333,10 +373,11 @@ async function download(host, repoDir, file, resumeFrom, broadcast) {
   const url = `${host}/${MODEL_REPO}/resolve/main/${file}`;
   const headers = { "user-agent": "dsh-voice-mode" };
   if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;
-  const res = await fetch(url, { headers });
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(6e4) });
   if (res.status === 416) return true;
   if (res.status !== 200 && res.status !== 206) return false;
-  const total = Number(res.headers.get("content-length") ?? 0) + resumeFrom;
+  const declared = Number(res.headers.get("content-length"));
+  const total = (Number.isFinite(declared) ? declared : 0) + resumeFrom;
   const partPath = join(repoDir, `${file}.part`);
   const sink = createWriteStream(partPath, resumeFrom > 0 ? { flags: "a" } : {});
   const src = res.body;
@@ -345,7 +386,14 @@ async function download(host, repoDir, file, resumeFrom, broadcast) {
   let received = resumeFrom;
   const done = new Promise((resolve, reject) => {
     sink.on("error", (e) => reject(e));
-    sink.on("finish", () => resolve(true));
+    sink.on("finish", () => {
+      if (total > 0 && received < total) {
+        sink.destroy(new Error("download truncated"));
+        reject(new Error("download truncated"));
+      } else {
+        resolve(true);
+      }
+    });
     (async () => {
       try {
         for (; ; ) {
@@ -393,8 +441,11 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
     const sessionId = url.searchParams.get("sessionId") ?? "";
     const final = url.searchParams.get("final") === "1";
     const reset = url.searchParams.get("reset") === "1";
+    const epochN = Number(url.searchParams.get("epoch"));
+    const epoch = Number.isFinite(epochN) && epochN >= 0 ? Math.floor(epochN) : 0;
     const offsetParam = url.searchParams.get("offset");
-    const offset = offsetParam ? Math.max(0, Math.floor(Number(offsetParam)) || 0) : 0;
+    const offsetN = Number(offsetParam);
+    const offset = Number.isFinite(offsetN) && offsetN > 0 ? Math.floor(offsetN) : 0;
     if (!sessionId || sessionId !== activeSessionId) {
       res.statusCode = 403;
       res.end(JSON.stringify({ error: "not the active voice session" }));
@@ -412,7 +463,7 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
       res.end(JSON.stringify({ error: "invalid pcm payload" }));
       return;
     }
-    void asr.feed(sessionId, samples, final, offset).then((out) => {
+    void asr.feed(sessionId, samples, final, offset, epoch).then((out) => {
       if (out.loading) {
         res.statusCode = 202;
         res.end(JSON.stringify({ loading: true }));
@@ -740,6 +791,7 @@ function apply(ctx, config) {
     senseVoice: () => vset.senseVoice,
     broadcast
   });
+  ctx.effect(() => () => asr.dispose());
   const queue = new TtsQueue({
     voice: vset.voice,
     rate: vset.rate,

@@ -105,4 +105,34 @@ t('人声保留：mic 含人声 + 回声，参考仅 TTS → 人声部分不被�
   assert.ok(outSegRms > speechRms * 0.7, `人声被过度消除: speech=${speechRms.toFixed(4)} out=${outSegRms.toFixed(4)}`)
 })
 
+
+t('发散防护：麦大声 + 近零参考反复喂不产 NaN/Inf，且之后仍可收敛', () => {
+  const rng = noise(5)
+  const N2 = 32000 // 2s
+  const ref = new Float32Array(N2)
+  for (let i = 0; i < N2; i++) ref[i] = rng() * 2 - 1
+  const aec = new NlmsAec({ delay: 64 })
+  // 前半段：麦大声、参考近零（最恶劣发散场景）
+  const block = 1024
+  let hadNaN = false
+  for (let off = 0; off < N2 / 2; off += block) {
+    const m = new Float32Array(block).fill(1.0)
+    const r = new Float32Array(block)
+    for (let i = 0; i < block && i < 64; i++) r[i] = 0.001
+    const out = aec.process(m, r)
+    for (let i = 0; i < out.length; i++) if (!Number.isFinite(out[i])) hadNaN = true
+  }
+  assert.ok(!hadNaN, '近零参考产生了 NaN/Inf')
+  // 后半段：正常回声进入，应仍能收敛（权重未被炸毁）
+  for (let off = N2 / 2; off < N2; off += block) {
+    const m = new Float32Array(block)
+    const r = ref.subarray(off, off + block)
+    for (let i = 0; i < block; i++) m[i] = (i - 64 >= 0 ? 0.6 * ref[off + i - 64] : 0) + (rng() * 2 - 1) * 0.02
+    aec.process(m, r)
+  }
+  const out = aec.process(new Float32Array(block).fill(0.5), new Float32Array(block).fill(0.4))
+  assert.ok(Number.isFinite(rms(out)), '收敛后输出非有限')
+  assert.ok(rms(out) < 0.3, `发散防护后无法再收敛: rms=${rms(out).toFixed(3)}`)
+})
+
 console.log(`\naec：${passed} 项通过`)

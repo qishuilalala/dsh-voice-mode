@@ -121,6 +121,8 @@ interface VoiceBus {
   echoForAsr(): EchoRefSource
   /** P3-3：duck 打断（压低 TTS 增益，配合 duck-and-listen 探针）。 */
   duckAudio(): void
+  /** Fix：duck 探针是否可用（等价引擎 canDuck；探针不可用时走硬打断）。 */
+  audioDuckAvailable(): boolean
   /** P3-3：恢复 TTS 增益（无爆音斜坡）。 */
   unduckAudio(): void
   /** 取消当前回合（keepInbox 保新消息，Q2 打断第二层）。 */
@@ -216,6 +218,8 @@ function createAudioEngine(
   setUi: (patch: Partial<VoiceUiState>) => void,
   onPlayed?: () => void,
   onPlaybackRef?: (pcm: Float32Array, sampleRate: number, startWallMs: number) => void,
+  /** Fix：全队列播完回调（参考池据此清空，防旧回合参考漂移）。 */
+  onAllPlayed?: () => void,
 ): {
   push(frame: PlayFrame): void
   skip(): void
@@ -226,6 +230,8 @@ function createAudioEngine(
   duck(): void
   /** P3-3：恢复 TTS 增益（≥30ms 斜坡，无爆音）。 */
   unduck(): void
+  /** Fix：duck 是否可用（Web Audio 路径且未降级；fallback/ctx null 时不可用）。 */
+  canDuck(): boolean
 } {
   // --- 待播放：串行解码，decode 完成即调度（句序天然保持）。 ---
   const pending: PlayFrame[] = []
@@ -309,6 +315,7 @@ function createAudioEngine(
             // 全队列播完才收门面状态（以在播源数为准：多句连播时 pending 会先空）。
             if (activeSrcs.size === 0 && pending.length === 0) {
               setUi({ playing: false, playingCaption: null })
+              onAllPlayed?.()
             }
           }
           src.start(at)
@@ -408,6 +415,9 @@ function createAudioEngine(
       const now = ctx.currentTime
       duckGain.gain.cancelScheduledValues(now)
       duckGain.gain.setTargetAtTime(1, now, 0.035) // ≥30ms 斜坡恢复，无爆音
+    },
+    canDuck() {
+      return !!(ctx && duckGain && !fallback)
     },
   }
 }
@@ -536,6 +546,12 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     },
     () => stampTelemetry('first-audio-played'),
     (pcm, sampleRate, wallMs) => pushRef(pcm, sampleRate, wallMs),
+    // Fix：自然播完（无 TTS 在播）即清参考池——AEC 不再拿旧回合参考适配新语音。
+    () => {
+      refActive = false
+      refChunks.length = 0
+      refTotal = 0
+    },
   )
 
   const notify = (): void => {
@@ -792,6 +808,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     },
     unduckAudio() {
       engine.unduck()
+    },
+    audioDuckAvailable() {
+      return engine.canDuck()
     },
     cancelTurn(sessionId) {
       try {
@@ -1076,38 +1095,50 @@ export function MicButton({
         // 1) 本地播放队列清空 + host TTS 队列 epoch++（静音）
         // 2) 有 running 回合则 session.cancel({keepInbox:true})（取消生成、保新消息）
         // 3) 半截标注由「转录区新消息续入」自然呈现（Q8 标注见 §8.5 收尾）
+        // Fix（对抗性审查）：探针豁免——hold 按住 = 明确打断意图；duck 不可用
+        // （<audio> 降级/ctx 缺失）；无 TTS 在播 = 无回声场景——三种情况直接硬打断。
+        const duckable = bus.audioDuckAvailable() && bus.ui.playing
         resetIdle()
         bus.resetTelemetry() // P1-5：打断 = 上一轮回复作废，链清空（新一轮 utterance-end 重新起算）
-        // I2：levels 滚动条窗口与采集帧率耦合（16k ctx ≈896ms/窗），
-        // 取「尾部 3 条」近似最近电平，避免 300ms 窗口内统计被旧样本主导。
+        const hardBreak = async (): Promise<void> => {
+          // Fix：打断即丢弃本地残余段（与 host asr.reset 对称，防残缺文本被 autoSend 提交）。
+          engineRef.current?.discardSegment()
+          bus.skipAudio()
+          try {
+            await fetch(`${location.origin}${BASE_PATH}/cancel`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ sessionId: sidRef.current }),
+              // Minor：cancel 网络挂起时不让 TTS 长期停在 duck 音量下（AbortSignal.timeout 需 Chrome 103+/Safari 16+）。
+              signal: AbortSignal.timeout(3000),
+            })
+          } catch {
+            // cancel 路由不可达：本地已静音
+          }
+          bus.unduckAudio()
+          if (runningRef.current && sidRef.current) {
+            bus.cancelTurn(sidRef.current!)
+          }
+          bus.setUi({ partial: '…' })
+        }
+        if (!duckable || bootNow().mode === 'hold') {
+          void hardBreak()
+          return
+        }
+        // duck-and-listen：本次前沿先压低 TTS，听确认窗口内电平变化。
         const before = tailAvg(bus.ui.levels, 3)
         bus.duckAudio()
         await new Promise<void>((resolve) => setTimeout(resolve, DUCK_CONFIRM_MS))
         const after = tailAvg(bus.ui.levels, 3)
         if (before > 0 && after < before * DUCK_PROBE_DROP) {
-          // 回声：TTS 压低后 mic 骤降 → 恢复增益、丢弃已录段（防幽灵消息），不打断。
+          // 回声：TTS 压低后 mic 骤降 → 恢复增益、丢弃已录段（防幽灵消息），
+          // 并阻尼打断前沿 2s（防「拉低→恢复→再触发」周期循环）。
           bus.unduckAudio()
           engineRef.current?.discardSegment()
+          engineRef.current?.suppressBargeIn(2000)
           return
         }
-        bus.skipAudio()
-        try {
-          await fetch(`${location.origin}${BASE_PATH}/cancel`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ sessionId: sidRef.current }),
-            // Minor：cancel 网络挂起时不让 TTS 长期停在 duck 音量下（AbortSignal.timeout 需 Chrome 103+/Safari 16+）。
-            signal: AbortSignal.timeout(3000),
-          })
-        } catch {
-          // cancel 路由不可达：本地已静音
-        }
-        // 真打断后注意：新回合的 TTS 需要用正常音量（duck 只服务于这段探针）。
-        bus.unduckAudio()
-        if (runningRef.current && sidRef.current) {
-          bus.cancelTurn(sidRef.current!)
-        }
-        bus.setUi({ partial: '…' })
+        void hardBreak()
       })
 
       bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null })

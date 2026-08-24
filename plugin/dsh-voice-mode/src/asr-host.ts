@@ -86,9 +86,13 @@ export interface AsrRuntime {
     samples: Float32Array,
     final: boolean,
     offset?: number,
+    /** 客户端段身份（epoch = segmentEpoch 快照；旧世代请求被忽略/清理）。 */
+    epoch?: number,
   ): Promise<{ text: string; loading?: boolean; endpoint?: boolean }>
   /** 丢弃某会话的进行中段（语音模式退出/被打断时）。 */
   reset(sessionId: string): void
+  /** 释放 runtime（清定时器 + 全部段）；插件卸载时调用。 */
+  dispose(): void
 }
 
 /** PCM f32 LE 载荷 -> Float32Array（校验长度对齐）。 */
@@ -99,10 +103,12 @@ export function pcmToSamples(buf: Buffer): Float32Array | null {
 }
 
 /**
- * /asr 单次请求体积上限：段长上限 30s × 16kHz × 4B = 1.92MB，
- * 余量给重采样/时序抖动；超限 413（防无界内存累积）。
+ * /asr 单次请求体积上限：4MB 约为 64s f32 PCM；增量语义下单包 ≤300ms≈19KB、
+ * 旧客户端全量 ≤30s 段 1.92MB，均不命中；超限 413（防无界内存累积）。
  */
 const MAX_ASR_BYTES = 4 * 1024 * 1024
+/** host 段空闲回收阈值：页面崩溃/断电后 90s 无活动即清（防 stream/vad 悬挂）。 */
+const SEGMENT_IDLE_MS = 90000
 
 // --- P2-2/P2-3 端点确认窗口（host 语义自适应） ---
 /** 静默期内「又开口」判别的 RMS 阈值（续说 → 取消待确认端点）。 */
@@ -137,7 +143,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   const repoDir = join(cacheDir, MODEL_REPO)
   const vadDir = join(cacheDir, VAD_REPO)
   const senseDir = join(cacheDir, SENSE_REPO)
-  /** 进行中的段：sessionId -> {stream, fed, vad, pendingEndpoint, lastText}。 */
+  /** 进行中的段：`sessionId#epoch` -> 段对象（epoch = 客户端段身份，杀乱序/竞态幽灵段）。 */
   const segments = new Map<
     string,
     {
@@ -150,6 +156,8 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       lastText: string
       /** P4-1：本段全量样本（16k f32；SenseVoice 定稿重译用）。 */
       allSamples: Float32Array[]
+      /** 最近一次 feed 时刻（host 侧超时回收判定）。 */
+      lastActivity: number
     }
   >()
 
@@ -274,17 +282,6 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         senseLoading = null
       })
     }
-    if (!senseLoading) {
-      senseLoading = (async () => {
-        for (const f of SENSE_FILES) {
-          if (!(await ensureFile(senseDir, f, modelHost(), broadcast))) return null
-        }
-        senseModelReady = true
-        return join(senseDir, SENSE_FILES[0])
-      })().finally(() => {
-        senseLoading = null
-      })
-    }
     return senseLoading
   }
   const getSenseRecognizer = async (): Promise<SherpaOfflineRecognizer | null> => {
@@ -321,16 +318,20 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         off += c.length
       }
       const stream = rec.createStream()
-      stream.acceptWaveform(16000, buf)
-      rec.decode(stream)
-      const text = rec.getResult(stream).text
       try {
-        stream.free()
-      } catch {
-        // ignore
+        stream.acceptWaveform(16000, buf)
+        rec.decode(stream)
+        const text = rec.getResult(stream).text
+        const t = text.trim()
+        return t.length > 0 ? t : null
+      } finally {
+        // Fix（对抗性审查）：decode 抛错也必须释放离线流句柄（防失败定稿泄漏）。
+        try {
+          stream.free()
+        } catch {
+          // ignore
+        }
       }
-      const t = text.trim()
-      return t.length > 0 ? t : null
     } catch (e) {
       console.warn(`[dsh-voice-mode] SenseVoice re-transcribe failed: ${String(e)}`)
       return null
@@ -342,16 +343,35 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     samples: Float32Array,
     final: boolean,
     offset = 0,
+    epoch = 0,
   ): Promise<{ text: string; loading?: boolean; endpoint?: boolean }> => {
     const rec = await getRecognizer()
     if (!rec) return { text: '', loading: true }
-    let seg = segments.get(sessionId)
-    // 新段：首帧即建流（含 final=1 的空段——直接返回空）。
+    // epoch = 客户端段身份：key = sessionId#epoch；
+    // 同会话新 epoch 先把旧世代段清理（杀「final 先于在途 partial / reset 与 in-flight 竞态」幽灵段）。
+    const key = sessionId + '#' + epoch
+    let seg = segments.get(key)
     if (!seg) {
+      for (const [k, s] of segments) {
+        if (k.startsWith(sessionId + '#')) {
+          try {
+            s.vad?.free?.()
+          } catch {
+            // ignore
+          }
+          try {
+            s.stream.free()
+          } catch {
+            // ignore
+          }
+          segments.delete(k)
+        }
+      }
       if (samples.length === 0 && final) return { text: '' }
-      seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: '', allSamples: [] }
-      segments.set(sessionId, seg)
+      seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: '', allSamples: [], lastActivity: Date.now() }
+      segments.set(key, seg)
     }
+    seg.lastActivity = Date.now()
     // P1-4 增量上行：samples 为从 offset 开始的段内切片；只喂尚未喂过的部分
     // （兼容旧客户端 offset=0 全量上传；若 final 且无新数据，仅补尾垫）。
     let endpoint = false
@@ -430,29 +450,67 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       // ignore
     }
     seg.stream.free()
-    segments.delete(sessionId)
+    segments.delete(key)
     const sense = await senseP
     return { text: sense ?? settled }
   }
 
+  // host 侧超时回收：无活动超 90s 的段（页面崩溃/断电/kill 后悬挂）清理，每 30s 扫一次。
+  const sweep = (): void => {
+    const now = Date.now()
+    for (const [k, s] of segments) {
+      if (now - s.lastActivity > SEGMENT_IDLE_MS) {
+        try {
+          s.vad?.free?.()
+        } catch {
+          // ignore
+        }
+        try {
+          s.stream.free()
+        } catch {
+          // ignore
+        }
+        segments.delete(k)
+      }
+    }
+  }
+  const sweepTimer = setInterval(sweep, 30000)
+
   return {
     feed,
     reset: (sessionId) => {
-      const seg = segments.get(sessionId)
-      if (seg) {
-        try {
-          seg.vad?.free?.()
-        } catch {
-          // ignore
+      // 清该会话全部世代的段（epoch-key 化后按前缀匹配）。
+      for (const [k, s] of segments) {
+        if (k.startsWith(sessionId + '#')) {
+          try {
+            s.vad?.free?.()
+          } catch {
+            // ignore
+          }
+          try {
+            s.stream.free()
+          } catch {
+            // ignore
+          }
+          segments.delete(k)
         }
-        // B1：显式释放 WASM stream（否则每次 reset/打断泄漏一个流句柄）。
-        try {
-          seg.stream.free()
-        } catch {
-          // ignore
-        }
-        segments.delete(sessionId)
       }
+    },
+    dispose: () => {
+      clearInterval(sweepTimer)
+      for (const [, s] of segments) {
+        try {
+          s.vad?.free?.()
+        } catch {
+          // ignore
+        }
+        try {
+          s.stream.free()
+        } catch {
+          // ignore
+        }
+      }
+      segments.clear()
     },
   }
 }
@@ -503,10 +561,12 @@ async function download(
   const url = `${host}/${MODEL_REPO}/resolve/main/${file}`
   const headers: Record<string, string> = { 'user-agent': 'dsh-voice-mode' }
   if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`
-  const res = await fetch(url, { headers })
+  // Fix（对抗性审查）：下载带 60s 超时（防慢挂死）；content-length 完整性核对。
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(60000) })
   if (res.status === 416) return true // 已完整，直接改名
   if (res.status !== 200 && res.status !== 206) return false
-  const total = Number(res.headers.get('content-length') ?? 0) + resumeFrom
+  const declared = Number(res.headers.get('content-length'))
+  const total = (Number.isFinite(declared) ? declared : 0) + resumeFrom
   const partPath = join(repoDir, `${file}.part`)
   const sink = createWriteStream(partPath, resumeFrom > 0 ? { flags: 'a' } : {})
   const src = res.body
@@ -515,7 +575,16 @@ async function download(
   let received = resumeFrom
   const done = new Promise<boolean>((resolve, reject) => {
     sink.on('error', (e) => reject(e))
-    sink.on('finish', () => resolve(true))
+    // 仅当字节数与声明一致（或服务端未声明长度且收到 EOF）才算成功：
+    // 截断下载不得 rename（否则损坏 onnx 使 createOnlineRecognizer 常驻 500 楔死）。
+    sink.on('finish', () => {
+      if (total > 0 && received < total) {
+        sink.destroy(new Error('download truncated'))
+        reject(new Error('download truncated'))
+      } else {
+        resolve(true)
+      }
+    })
     ;(async () => {
       try {
         for (;;) {
@@ -571,9 +640,13 @@ export function handleAsrRequest(
     const sessionId = url.searchParams.get('sessionId') ?? ''
     const final = url.searchParams.get('final') === '1'
     const reset = url.searchParams.get('reset') === '1'
+    const epochN = Number(url.searchParams.get('epoch'))
+    const epoch = Number.isFinite(epochN) && epochN >= 0 ? Math.floor(epochN) : 0
     // P1-4：本包在段内的绝对样本起始索引（缺省 0 = 全量上传，兼容旧客户端）。
     const offsetParam = url.searchParams.get('offset')
-    const offset = offsetParam ? Math.max(0, Math.floor(Number(offsetParam)) || 0) : 0
+    // Fix：拒绝非有限/负值（"Infinity" 等会毒化 fed 水位导致本段静默丢失）。
+    const offsetN = Number(offsetParam)
+    const offset = Number.isFinite(offsetN) && offsetN > 0 ? Math.floor(offsetN) : 0
     if (!sessionId || sessionId !== activeSessionId) {
       res.statusCode = 403
       res.end(JSON.stringify({ error: 'not the active voice session' }))
@@ -596,7 +669,7 @@ export function handleAsrRequest(
       return
     }
     void asr
-      .feed(sessionId, samples, final, offset)
+      .feed(sessionId, samples, final, offset, epoch)
       .then((out) => {
         if (out.loading) {
           res.statusCode = 202

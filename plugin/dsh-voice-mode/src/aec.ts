@@ -29,6 +29,8 @@ const DEFAULT_FILTER_LENGTH = 256
 const DEFAULT_DELAY = 64
 const DEFAULT_STEP = 0.1
 const DEFAULT_EPSILON = 1e-6
+/** 参考窗均方能量低于此值不更新权重（防近零参考发散，对抗性审查修复）。 */
+const MIN_REF_NORM = 1e-6
 
 export class NlmsAec {
   private readonly w: Float32Array
@@ -79,14 +81,18 @@ export class NlmsAec {
           idx = (idx - 1 + bufLen) % bufLen
         }
         const e = d - y
-        out[i] = e
-        // NLMS 权重更新。
-        const denom = norm + this.eps
-        const gain = (this.mu * e) / denom
-        idx = (cursor - this.delay + bufLen) % bufLen
-        for (let t = 0; t < this.filterLength; t++) {
-          this.w[t] += gain * xBuf[idx]
-          idx = (idx - 1 + bufLen) % bufLen
+        // 发散防护：非有限误差收敛为 0（防 NaN/Inf 传染 RMS/打断/VAD 判定链）。
+        out[i] = Number.isFinite(e) ? e : 0
+        // NLMS 权重更新：仅在参考能量足够时训练（近零参考/未播时不放大权重，
+        // 防「麦大声 + 参考窗近零」导致 gain 爆炸 → 权重失稳发散）。
+        if (norm > MIN_REF_NORM) {
+          const denom = norm + this.eps
+          const gain = (this.mu * e) / denom
+          idx = (cursor - this.delay + bufLen) % bufLen
+          for (let t = 0; t < this.filterLength; t++) {
+            this.w[t] += gain * xBuf[idx]
+            idx = (idx - 1 + bufLen) % bufLen
+          }
         }
       } else {
         // 预热：参考历史不足，透传麦克风。

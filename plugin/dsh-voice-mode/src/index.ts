@@ -93,7 +93,7 @@ export interface VoiceSettingsValue {
   voice: string
   rate: number
   interruptLevel: 0 | 1 | 2
-  /** 静音停顿多少毫秒判定说完一句（Q5，默认 2000 = 2s）。 */
+  /** 静音停顿多少毫秒判定说完一句（Q5，默认 700ms；端点优先由 host Silero VAD 判定）。 */
   silenceMs: number
   /** 空闲多少分钟自动退出语音模式（Q11，默认 10）。 */
   idleTimeoutMinutes: number
@@ -182,7 +182,7 @@ export interface Config {
   rate: number
   /** 打断灵敏度档位：0 高门槛（默认）/ 1 中 / 2 低（Q10）。 */
   interruptLevel: 0 | 1 | 2
-  /** 静音停顿多少毫秒判定为说完一句（Q5，默认 2s）。 */
+  /** 静音停顿多少毫秒判定为说完一句（Q5，默认 700ms）。 */
   silenceMs: number
   /** 空闲多少分钟自动退出语音模式（Q11，默认 10）。 */
   idleTimeoutMinutes: number
@@ -252,6 +252,8 @@ export function apply(ctx: Context, config: Config): void {
     senseVoice: () => vset.senseVoice,
     broadcast,
   })
+  // 卸载/热重载时释放 ASR runtime（清段 + 定时器，防悬挂）。
+  ctx.effect(() => () => asr.dispose())
 
   // --- TTS 队列（§8.4）：逐句合成后经 SSE 广播；epoch 机制支撑打断。 ---
   const queue = new TtsQueue({

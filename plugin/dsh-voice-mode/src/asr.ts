@@ -4,7 +4,7 @@
  * 与参照 dsh-voice 的关键差异：
  *  - 不是 tap/hold，而是「进入语音模式后持续收音」：静音 700ms 自动断句（P1-3，端点优先由 host Silero VAD 判定），
  *    段定稿后提交；按住 Ctrl（≥250ms 语音）强制立即发送兜底；
- *  - partial 轮询（≈900ms）走 host 流式识别增量，实时字幕只在状态条预览，
+ *  - partial 轮询（≈300ms，P1-4 增量上行）走 host 流式识别增量，实时字幕只在状态条预览，
  *    定稿文本才作为结果（Q6/Q13：可编辑草稿 + 自动提交）；
  *  - speechStart = 打断信号（Q10 高门槛：能量阈值 + 持续时长，三档可调）；
  *  - v0.2：hold 模式（按住说话、松手发送，绕过 VAD）与唤醒词待机（wake）；
@@ -38,7 +38,7 @@ export interface TelemetryEvent {
 }
 
 export interface AsrConfig {
-  /** 静音多少 ms 判句结束（Q5，默认 2000）。 */
+  /** 静音多少 ms 判句结束（Q5，默认 700；端点优先由 host Silero VAD 判定）。 */
   silenceMs: number
   /** 打断灵敏度档位 0/1/2（Q10）。 */
   interruptLevel: 0 | 1 | 2
@@ -67,6 +67,8 @@ export interface AsrEngine {
   endHeld(cancel?: boolean): void
   /** P3-3：丢弃当前已录段（duck-and-listen 探针判回声后防幽灵消息），host 流重置。 */
   discardSegment(): void
+  /** Fix：阻尼打断前沿若干毫秒（回声判定后防拉压低循环）。 */
+  suppressBargeIn(ms: number): void
   /** 定稿文本（段结束/强制发送后）。 */
   readonly onSegment: (fn: (text: string, meta?: SegmentMeta) => void) => () => void
   /** 实时字幕（partial，仅预览）。 */
@@ -171,9 +173,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   /** P1-4：本段已上传的样本数（增量水位；partial/定稿只传新增部分）。 */
   let uploadedSamples = 0
 
-  const asrUrl = (final: boolean, offset?: number): string =>
+  const asrUrl = (final: boolean, offset?: number, epoch?: number): string =>
     `${location.origin}${config.basePath.replace(/\/+$/, '')}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` +
-    (offset !== undefined ? `&offset=${offset}` : '')
+    (offset !== undefined ? `&offset=${offset}` : '') +
+    (epoch !== undefined ? `&epoch=${epoch}` : '')
 
   const setState = (s: AsrState): void => {
     state = s
@@ -196,17 +199,6 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         // ignore
       }
     }
-  }
-
-  const concatSegment = (): Float32Array => {
-    const n = segment.reduce((acc, c) => acc + c.length, 0)
-    const out = new Float32Array(n)
-    let off = 0
-    for (const c of segment) {
-      out.set(c, off)
-      off += c.length
-    }
-    return out
   }
 
   /** P1-4：从段内 from 样本起切片（增量上传；不做全量 concat）。 */
@@ -244,7 +236,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     const epoch = segmentEpoch
     partialInFlight = true
     try {
-      let res = await fetch(asrUrl(false, from), {
+      let res = await fetch(asrUrl(false, from, epoch), {
         method: 'POST',
         headers: { 'content-type': 'application/octet-stream' },
         body: samples.buffer as ArrayBuffer,
@@ -255,7 +247,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         const retry = await new Promise<Response>((resolve) => {
           setTimeout(async () => {
             try {
-              const r2 = await fetch(asrUrl(false, from), {
+              const r2 = await fetch(asrUrl(false, from, epoch), {
                 method: 'POST',
                 headers: { 'content-type': 'application/octet-stream' },
                 body: samples.buffer as ArrayBuffer,
@@ -325,7 +317,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // P1-4：定稿 = 最后一个增量包打 final 标记（只传尚未上传的部分；可为空包）。
     const from = uploadedSamples
     const samples = sliceSince(from)
-    const epoch = ++segmentEpoch
+    // 对抗性审查 Fix：epoch 用「本段」世代快照（递增前），响应校验仍按当前世代比。
+    const epochSnapshot = segmentEpoch
+    segmentEpoch++
     const meta: SegmentMeta = { force: forcePending }
     forcePending = false
     speechMs = 0 // P1-3：新段重新起算纯语音时长
@@ -339,7 +333,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     void (async () => {
       try {
         emitTelemetry('submitted') // P1-5：定稿上传发起
-        let res = await fetch(asrUrl(true, from), {
+        let res = await fetch(asrUrl(true, from, epochSnapshot), {
           method: 'POST',
           headers: { 'content-type': 'application/octet-stream' },
           body: samples.buffer as ArrayBuffer,
@@ -350,7 +344,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
             setTimeout(async () => {
               try {
                 resolve(
-                  await fetch(asrUrl(true, from), {
+                  await fetch(asrUrl(true, from, epochSnapshot), {
                     method: 'POST',
                     headers: { 'content-type': 'application/octet-stream' },
                     body: samples.buffer as ArrayBuffer,
@@ -362,11 +356,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
             }, 5000)
           })
         }
-        if (epoch !== segmentEpoch) return // 段已被清（stop/新段），结果作废
+        // 段已被清（stop/新段）时世代变化，结果作废。
         setState(active ? (speechActive ? 'speech' : 'listening') : 'idle')
         if (!res.ok) return
         const out = (await res.json()) as { text?: string }
-        if (epoch !== segmentEpoch) return
+        if (epochSnapshot !== segmentEpoch) return
         if (out.text) emit(transcriptListeners, out.text, meta)
       } catch {
         // 定稿失败：状态条给用户可见提示（文本仍在草稿，可重新说话）
@@ -534,6 +528,13 @@ const startRecorder = async (): Promise<void> => {
         autoGainControl: true,
       },
     })
+    // Fix (对抗性审查): 授权返回时本实例可能已被 stop() (抢占/退出) - active 已 false 则立即释放麦克风
+    // (防无人能停的常开泄漏).
+    if (!active) {
+      stream.getTracks().forEach((t) => t.stop())
+      stream = null
+      return
+    }
     const AC: typeof AudioContext =
       window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
     audioCtx = new AC({ sampleRate: SAMPLE_RATE })
@@ -663,6 +664,9 @@ const startRecorder = async (): Promise<void> => {
       void resetHostStream()
       if (active) setState(wakeWord ? 'wake' : 'listening')
     },
+    suppressBargeIn(ms) {
+      bargeInDampingUntil = Math.max(bargeInDampingUntil, Date.now() + ms)
+    },
     endHeld(cancel = false) {
       if (!active || !holdActive) return
       holdActive = false
@@ -674,6 +678,7 @@ const startRecorder = async (): Promise<void> => {
         silenceMs = 0
         prePad = []
         speechActive = false
+        forcePending = false // 对抗性审查 Fix：取消段不得泄漏 force 标记（否则下段静默绕过 autoSend=false）
         setState(wakeWord ? 'wake' : 'listening')
         return
       }

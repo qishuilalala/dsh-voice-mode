@@ -137,7 +137,7 @@ function createAsrEngine(config, sessionId) {
   let segmentEpoch = 0;
   let forcePending = false;
   let uploadedSamples = 0;
-  const asrUrl = (final, offset) => `${location.origin}${config.basePath.replace(/\/+$/, "")}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` + (offset !== void 0 ? `&offset=${offset}` : "");
+  const asrUrl = (final, offset, epoch) => `${location.origin}${config.basePath.replace(/\/+$/, "")}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` + (offset !== void 0 ? `&offset=${offset}` : "") + (epoch !== void 0 ? `&epoch=${epoch}` : "");
   const setState = (s) => {
     state = s;
     for (const fn of stateListeners) {
@@ -156,16 +156,6 @@ function createAsrEngine(config, sessionId) {
       } catch {
       }
     }
-  };
-  const concatSegment = () => {
-    const n = segment.reduce((acc, c) => acc + c.length, 0);
-    const out = new Float32Array(n);
-    let off = 0;
-    for (const c of segment) {
-      out.set(c, off);
-      off += c.length;
-    }
-    return out;
   };
   const sliceSince = (from) => {
     let total = 0;
@@ -195,7 +185,7 @@ function createAsrEngine(config, sessionId) {
     const epoch = segmentEpoch;
     partialInFlight = true;
     try {
-      let res = await fetch(asrUrl(false, from), {
+      let res = await fetch(asrUrl(false, from, epoch), {
         method: "POST",
         headers: { "content-type": "application/octet-stream" },
         body: samples.buffer
@@ -205,7 +195,7 @@ function createAsrEngine(config, sessionId) {
         const retry = await new Promise((resolve) => {
           setTimeout(async () => {
             try {
-              const r2 = await fetch(asrUrl(false, from), {
+              const r2 = await fetch(asrUrl(false, from, epoch), {
                 method: "POST",
                 headers: { "content-type": "application/octet-stream" },
                 body: samples.buffer
@@ -261,7 +251,8 @@ function createAsrEngine(config, sessionId) {
     emitTelemetry("endpoint-fired");
     const from = uploadedSamples;
     const samples = sliceSince(from);
-    const epoch = ++segmentEpoch;
+    const epochSnapshot = segmentEpoch;
+    segmentEpoch++;
     const meta = { force: forcePending };
     forcePending = false;
     speechMs = 0;
@@ -275,7 +266,7 @@ function createAsrEngine(config, sessionId) {
     void (async () => {
       try {
         emitTelemetry("submitted");
-        let res = await fetch(asrUrl(true, from), {
+        let res = await fetch(asrUrl(true, from, epochSnapshot), {
           method: "POST",
           headers: { "content-type": "application/octet-stream" },
           body: samples.buffer
@@ -286,7 +277,7 @@ function createAsrEngine(config, sessionId) {
             setTimeout(async () => {
               try {
                 resolve(
-                  await fetch(asrUrl(true, from), {
+                  await fetch(asrUrl(true, from, epochSnapshot), {
                     method: "POST",
                     headers: { "content-type": "application/octet-stream" },
                     body: samples.buffer
@@ -298,11 +289,10 @@ function createAsrEngine(config, sessionId) {
             }, 5e3);
           });
         }
-        if (epoch !== segmentEpoch) return;
         setState(active ? speechActive ? "speech" : "listening" : "idle");
         if (!res.ok) return;
         const out = await res.json();
-        if (epoch !== segmentEpoch) return;
+        if (epochSnapshot !== segmentEpoch) return;
         if (out.text) emit(transcriptListeners, out.text, meta);
       } catch {
         setState(active ? speechActive ? "speech" : "listening" : "idle");
@@ -444,6 +434,11 @@ function createAsrEngine(config, sessionId) {
         autoGainControl: true
       }
     });
+    if (!active) {
+      stream.getTracks().forEach((t3) => t3.stop());
+      stream = null;
+      return;
+    }
     const AC = window.AudioContext ?? window.webkitAudioContext;
     audioCtx = new AC({ sampleRate: SAMPLE_RATE });
     try {
@@ -559,6 +554,9 @@ function createAsrEngine(config, sessionId) {
       void resetHostStream();
       if (active) setState(wakeWord ? "wake" : "listening");
     },
+    suppressBargeIn(ms) {
+      bargeInDampingUntil = Math.max(bargeInDampingUntil, Date.now() + ms);
+    },
     endHeld(cancel = false) {
       if (!active || !holdActive) return;
       holdActive = false;
@@ -569,6 +567,7 @@ function createAsrEngine(config, sessionId) {
         silenceMs = 0;
         prePad = [];
         speechActive = false;
+        forcePending = false;
         setState(wakeWord ? "wake" : "listening");
         return;
       }
@@ -627,6 +626,7 @@ var DEFAULT_FILTER_LENGTH = 256;
 var DEFAULT_DELAY = 64;
 var DEFAULT_STEP = 0.1;
 var DEFAULT_EPSILON = 1e-6;
+var MIN_REF_NORM = 1e-6;
 var NlmsAec = class {
   w;
   xBuf;
@@ -673,13 +673,15 @@ var NlmsAec = class {
           idx = (idx - 1 + bufLen) % bufLen;
         }
         const e = d - y;
-        out[i] = e;
-        const denom = norm + this.eps;
-        const gain = this.mu * e / denom;
-        idx = (cursor - this.delay + bufLen) % bufLen;
-        for (let t3 = 0; t3 < this.filterLength; t3++) {
-          this.w[t3] += gain * xBuf[idx];
-          idx = (idx - 1 + bufLen) % bufLen;
+        out[i] = Number.isFinite(e) ? e : 0;
+        if (norm > MIN_REF_NORM) {
+          const denom = norm + this.eps;
+          const gain = this.mu * e / denom;
+          idx = (cursor - this.delay + bufLen) % bufLen;
+          for (let t3 = 0; t3 < this.filterLength; t3++) {
+            this.w[t3] += gain * xBuf[idx];
+            idx = (idx - 1 + bufLen) % bufLen;
+          }
         }
       } else {
         out[i] = d;
@@ -810,7 +812,7 @@ var en = {
   custom: "Custom",
   descVoice: "Edge TTS voice (presets, or a custom ShortName)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.0 normal)",
-  descInterrupt: "Interrupt sensitivity (0 high barrier / 2 low)",
+  descInterrupt: "Interrupt sensitivity (0 high barrier / 1 medium / 2 low)",
   sev0: "0 high",
   sev1: "1 medium",
   sev2: "2 low",
@@ -1308,7 +1310,7 @@ function apply(ctx) {
     );
   }
 }
-function createAudioEngine(setUi, onPlayed, onPlaybackRef) {
+function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
   const pending = [];
   const fallbackAudio = new Audio();
   let fallback = false;
@@ -1378,6 +1380,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef) {
             activeSrcs.delete(src);
             if (activeSrcs.size === 0 && pending.length === 0) {
               setUi({ playing: false, playingCaption: null });
+              onAllPlayed?.();
             }
           };
           src.start(at);
@@ -1464,6 +1467,9 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef) {
       const now = ctx.currentTime;
       duckGain.gain.cancelScheduledValues(now);
       duckGain.gain.setTargetAtTime(1, now, 0.035);
+    },
+    canDuck() {
+      return !!(ctx && duckGain && !fallback);
     }
   };
 }
@@ -1577,7 +1583,13 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       notify();
     },
     () => stampTelemetry("first-audio-played"),
-    (pcm, sampleRate, wallMs) => pushRef(pcm, sampleRate, wallMs)
+    (pcm, sampleRate, wallMs) => pushRef(pcm, sampleRate, wallMs),
+    // Fix：自然播完（无 TTS 在播）即清参考池——AEC 不再拿旧回合参考适配新语音。
+    () => {
+      refActive = false;
+      refChunks.length = 0;
+      refTotal = 0;
+    }
   );
   const notify = () => {
     for (const fn of listeners) {
@@ -1805,6 +1817,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     unduckAudio() {
       engine.unduck();
     },
+    audioDuckAvailable() {
+      return engine.canDuck();
+    },
     cancelTurn(sessionId) {
       try {
         ctx?.sessions?.binding?.(sessionId)?.session.cancel?.();
@@ -2017,8 +2032,32 @@ function MicButton({
         }, 800);
       });
       engine.onSpeechStart(async () => {
+        const duckable = bus.audioDuckAvailable() && bus.ui.playing;
         resetIdle();
         bus.resetTelemetry();
+        const hardBreak = async () => {
+          engineRef.current?.discardSegment();
+          bus.skipAudio();
+          try {
+            await fetch(`${location.origin}${BASE_PATH2}/cancel`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ sessionId: sidRef.current }),
+              // Minor：cancel 网络挂起时不让 TTS 长期停在 duck 音量下（AbortSignal.timeout 需 Chrome 103+/Safari 16+）。
+              signal: AbortSignal.timeout(3e3)
+            });
+          } catch {
+          }
+          bus.unduckAudio();
+          if (runningRef.current && sidRef.current) {
+            bus.cancelTurn(sidRef.current);
+          }
+          bus.setUi({ partial: "\u2026" });
+        };
+        if (!duckable || bootNow().mode === "hold") {
+          void hardBreak();
+          return;
+        }
         const before = tailAvg(bus.ui.levels, 3);
         bus.duckAudio();
         await new Promise((resolve) => setTimeout(resolve, DUCK_CONFIRM_MS));
@@ -2026,24 +2065,10 @@ function MicButton({
         if (before > 0 && after < before * DUCK_PROBE_DROP) {
           bus.unduckAudio();
           engineRef.current?.discardSegment();
+          engineRef.current?.suppressBargeIn(2e3);
           return;
         }
-        bus.skipAudio();
-        try {
-          await fetch(`${location.origin}${BASE_PATH2}/cancel`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ sessionId: sidRef.current }),
-            // Minor：cancel 网络挂起时不让 TTS 长期停在 duck 音量下（AbortSignal.timeout 需 Chrome 103+/Safari 16+）。
-            signal: AbortSignal.timeout(3e3)
-          });
-        } catch {
-        }
-        bus.unduckAudio();
-        if (runningRef.current && sidRef.current) {
-          bus.cancelTurn(sidRef.current);
-        }
-        bus.setUi({ partial: "\u2026" });
+        void hardBreak();
       });
       bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null });
       await engine.start();

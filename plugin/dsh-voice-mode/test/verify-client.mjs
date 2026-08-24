@@ -99,6 +99,12 @@ t('lib/index.js 含 P1-4 增量上行协议（offset 参数）', () => {
   const src = read('lib/index.js')
   assert.ok(src.includes('get("offset")'), 'host bundle missing offset param parsing')
 })
+t('lib/index.js 含段身份/世代协议（epoch 参数 + 超时回收）', () => {
+  const src = read('lib/index.js')
+  assert.ok(src.includes('get("epoch")'), 'host bundle missing epoch param parsing')
+  assert.ok(src.includes('SEGMENT_IDLE_MS'), 'host bundle missing segment sweep')
+  assert.ok(src.includes('dispose'), 'host bundle missing runtime dispose')
+})
 t('lib/index.js 含 P2-1 Silero VAD 端点判定（csukuangfj/vad + createVad）', () => {
   const src = read('lib/index.js')
   assert.ok(src.includes('csukuangfj/vad'), 'host bundle missing VAD repo')
