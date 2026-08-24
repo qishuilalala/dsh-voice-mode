@@ -45,7 +45,8 @@ async function downloadFile(repoDir, file) {
     const resumeFrom = partSt?.size ?? 0
     if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`
     try {
-      const res = await fetch(url, { headers })
+      // 与 src/asr-host.ts 修复一致：60s 超时 + content-length 完整性核对（防截断坏文件）。
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(60000) })
       if (res.status === 416) {
         await rename(partPath, localPath).catch(() => undefined)
         console.log(`  ✓ ${file}（续传完成）`)
@@ -71,8 +72,17 @@ async function downloadFile(repoDir, file) {
         }
       }
       await new Promise((resolve, reject) => {
-        sink.end(resolve)
+        // 仅当字节数与声明一致（或无声明且收到 EOF）才算成功：截断即失败换 host。
+        sink.on('finish', () => {
+          if (total > 0 && received < total) {
+            sink.destroy(new Error('download truncated'))
+            reject(new Error('download truncated'))
+          } else {
+            resolve(true)
+          }
+        })
         sink.on('error', reject)
+        sink.end()
       })
       await rename(partPath, localPath)
       process.stdout.write(`\r  ${file.padEnd(statusMax)} 100%\n`)
