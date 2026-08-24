@@ -37,9 +37,20 @@ interface SherpaVad {
   clear(): void
   free(): void
 }
-const { createOnlineRecognizer, createVad } = sherpa_onnx as unknown as {
+interface SherpaOfflineStream {
+  acceptWaveform(sampleRate: number, samples: Float32Array): void
+  free(): void
+}
+interface SherpaOfflineRecognizer {
+  createStream(): SherpaOfflineStream
+  decode(stream: SherpaOfflineStream): void
+  getResult(stream: SherpaOfflineStream): { text: string }
+  free(): void
+}
+const { createOnlineRecognizer, createVad, createOfflineRecognizer } = sherpa_onnx as unknown as {
   createOnlineRecognizer(config: Record<string, unknown>): SherpaRecognizer
   createVad(config: Record<string, unknown>): SherpaVad
+  createOfflineRecognizer(config: Record<string, unknown>): SherpaOfflineRecognizer
 }
 
 /** 模型仓库与文件清单（大小仅作进度参考）。 */
@@ -49,6 +60,10 @@ const MODEL_FILES = ['encoder.int8.onnx', 'decoder.onnx', 'joiner.int8.onnx', 't
 /** P2-1 Silero VAD 模型：官方 sherpa 文档下载源（csukuangfj/vad，~2MB）。 */
 export const VAD_REPO = 'csukuangfj/vad'
 const VAD_FILES = ['silero_vad.onnx']
+
+/** P4-1 SenseVoice 定稿模型（int8 ~228MB，带标点 + ITN；模型总体积 160+228=388MB ≤500MB 约束）。 */
+export const SENSE_REPO = 'csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17'
+const SENSE_FILES = ['model.int8.onnx']
 
 export interface AsrRuntimeOptions {
   cacheDir: string
@@ -119,6 +134,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   const { cacheDir, modelHost, broadcast } = options
   const repoDir = join(cacheDir, MODEL_REPO)
   const vadDir = join(cacheDir, VAD_REPO)
+  const senseDir = join(cacheDir, SENSE_REPO)
   /** 进行中的段：sessionId -> {stream, fed, vad, pendingEndpoint, lastText}。 */
   const segments = new Map<
     string,
@@ -130,6 +146,8 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       pendingEndpoint: { at: number; confirmMs: number; textAtPending: string } | null
       /** 上次 partial 文本（P2-2 无新实词提前判完判据）。 */
       lastText: string
+      /** P4-1：本段全量样本（16k f32；SenseVoice 定稿重译用）。 */
+      allSamples: Float32Array[]
     }
   >()
 
@@ -231,6 +249,74 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     return seg.vad
   }
 
+  // --- P4-1 SenseVoice 定稿重译：懒下载 + 懒创建（失败自然降级 zipformer 定稿）。 ---
+  let senseModelReady = false
+  let senseLoading: Promise<string | null> | null = null
+  let senseRecognizer: SherpaOfflineRecognizer | null = null
+  const ensureSenseModel = async (): Promise<string | null> => {
+    if (senseModelReady) return join(senseDir, SENSE_FILES[0])
+    if (!senseLoading) {
+      senseLoading = (async () => {
+        for (const f of SENSE_FILES) {
+          if (!(await ensureFile(senseDir, f, modelHost(), broadcast))) return null
+        }
+        senseModelReady = true
+        return join(senseDir, SENSE_FILES[0])
+      })().finally(() => {
+        senseLoading = null
+      })
+    }
+    return senseLoading
+  }
+  const getSenseRecognizer = async (): Promise<SherpaOfflineRecognizer | null> => {
+    if (senseRecognizer) return senseRecognizer
+    const sensePath = await ensureSenseModel()
+    if (!sensePath) return null
+    senseRecognizer = createOfflineRecognizer({
+      featConfig: { sampleRate: 16000, featureDim: 80 },
+      modelConfig: {
+        senseVoice: {
+          model: sensePath,
+          language: 'auto',
+          useInverseTextNormalization: 1, // ITN：数字/标点归一化
+        },
+        provider: 'cpu',
+        numThreads: 4,
+        debug: 0,
+      },
+    })
+    return senseRecognizer
+  }
+  /** P4-1：整段 PCM → SenseVoice 离线定稿（失败返回 null）。 */
+  const senseTranscribe = async (allSamples: Float32Array[]): Promise<string | null> => {
+    try {
+      const rec = await getSenseRecognizer()
+      if (!rec) return null
+      const total = allSamples.reduce((acc, c) => acc + c.length, 0)
+      if (total === 0) return null
+      const buf = new Float32Array(total)
+      let off = 0
+      for (const c of allSamples) {
+        buf.set(c, off)
+        off += c.length
+      }
+      const stream = rec.createStream()
+      stream.acceptWaveform(16000, buf)
+      rec.decode(stream)
+      const text = rec.getResult(stream).text
+      try {
+        stream.free()
+      } catch {
+        // ignore
+      }
+      const t = text.trim()
+      return t.length > 0 ? t : null
+    } catch (e) {
+      console.warn(`[dsh-voice-mode] SenseVoice re-transcribe failed: ${String(e)}`)
+      return null
+    }
+  }
+
   const feed = async (
     sessionId: string,
     samples: Float32Array,
@@ -243,7 +329,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     // 新段：首帧即建流（含 final=1 的空段——直接返回空）。
     if (!seg) {
       if (samples.length === 0 && final) return { text: '' }
-      seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: '' }
+      seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: '', allSamples: [] }
       segments.set(sessionId, seg)
     }
     // P1-4 增量上行：samples 为从 offset 开始的段内切片；只喂尚未喂过的部分
@@ -255,6 +341,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       const inc = samples.subarray(skip)
       seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc)
       seg.fed = offset + samples.length
+      seg.allSamples.push(inc) // P4-1：累积本段全量（SenseVoice 定稿重译输入）
       while (rec.isReady(seg.stream)) rec.decode(seg.stream)
       // 取 ASR 结果（确认窗口的无新实词判据用）。
       text = rec.getResult(seg.stream).text
@@ -302,6 +389,10 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       }
     }
     if (!final) return { text, endpoint }
+    // P4-1：SenseVoice 整段重译与 zipformer 定稿并行（端点等待期后起跑；
+    // 带标点 + ITN 覆盖定稿文本；模型缺失/失败自然降级 zipformer）。
+    const all = seg.allSamples
+    const senseP = all.length > 0 ? senseTranscribe(all) : Promise.resolve(null)
     // 定稿：尾垫 0.5s 静音让尾部字 flush 出来。
     const pad = new Float32Array(rec.config.featConfig.sampleRate / 2)
     seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad)
@@ -314,7 +405,8 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     }
     seg.stream.free()
     segments.delete(sessionId)
-    return { text: settled }
+    const sense = await senseP
+    return { text: sense ?? settled }
   }
 
   return {

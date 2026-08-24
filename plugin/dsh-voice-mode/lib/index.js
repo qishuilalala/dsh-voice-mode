@@ -8,11 +8,13 @@ import { createWriteStream } from "node:fs";
 import { mkdir, rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import sherpa_onnx from "sherpa-onnx";
-var { createOnlineRecognizer, createVad } = sherpa_onnx;
+var { createOnlineRecognizer, createVad, createOfflineRecognizer } = sherpa_onnx;
 var MODEL_REPO = "csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30";
 var MODEL_FILES = ["encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt"];
 var VAD_REPO = "csukuangfj/vad";
 var VAD_FILES = ["silero_vad.onnx"];
+var SENSE_REPO = "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17";
+var SENSE_FILES = ["model.int8.onnx"];
 function pcmToSamples(buf) {
   if (buf.length % 4 !== 0) return null;
   return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
@@ -40,6 +42,7 @@ function createAsrRuntime(options) {
   const { cacheDir, modelHost, broadcast } = options;
   const repoDir = join(cacheDir, MODEL_REPO);
   const vadDir = join(cacheDir, VAD_REPO);
+  const senseDir = join(cacheDir, SENSE_REPO);
   const segments = /* @__PURE__ */ new Map();
   let recognizer = null;
   let modelsReady = false;
@@ -130,13 +133,78 @@ function createAsrRuntime(options) {
     });
     return seg.vad;
   };
+  let senseModelReady = false;
+  let senseLoading = null;
+  let senseRecognizer = null;
+  const ensureSenseModel = async () => {
+    if (senseModelReady) return join(senseDir, SENSE_FILES[0]);
+    if (!senseLoading) {
+      senseLoading = (async () => {
+        for (const f of SENSE_FILES) {
+          if (!await ensureFile(senseDir, f, modelHost(), broadcast)) return null;
+        }
+        senseModelReady = true;
+        return join(senseDir, SENSE_FILES[0]);
+      })().finally(() => {
+        senseLoading = null;
+      });
+    }
+    return senseLoading;
+  };
+  const getSenseRecognizer = async () => {
+    if (senseRecognizer) return senseRecognizer;
+    const sensePath = await ensureSenseModel();
+    if (!sensePath) return null;
+    senseRecognizer = createOfflineRecognizer({
+      featConfig: { sampleRate: 16e3, featureDim: 80 },
+      modelConfig: {
+        senseVoice: {
+          model: sensePath,
+          language: "auto",
+          useInverseTextNormalization: 1
+          // ITN：数字/标点归一化
+        },
+        provider: "cpu",
+        numThreads: 4,
+        debug: 0
+      }
+    });
+    return senseRecognizer;
+  };
+  const senseTranscribe = async (allSamples) => {
+    try {
+      const rec = await getSenseRecognizer();
+      if (!rec) return null;
+      const total = allSamples.reduce((acc, c) => acc + c.length, 0);
+      if (total === 0) return null;
+      const buf = new Float32Array(total);
+      let off = 0;
+      for (const c of allSamples) {
+        buf.set(c, off);
+        off += c.length;
+      }
+      const stream = rec.createStream();
+      stream.acceptWaveform(16e3, buf);
+      rec.decode(stream);
+      const text = rec.getResult(stream).text;
+      try {
+        stream.free();
+      } catch {
+      }
+      const t = text.trim();
+      return t.length > 0 ? t : null;
+    } catch (e) {
+      console.warn(`[dsh-voice-mode] SenseVoice re-transcribe failed: ${String(e)}`);
+      return null;
+    }
+  };
   const feed = async (sessionId, samples, final, offset = 0) => {
     const rec = await getRecognizer();
     if (!rec) return { text: "", loading: true };
     let seg = segments.get(sessionId);
     if (!seg) {
       if (samples.length === 0 && final) return { text: "" };
-      seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: "" };
+      seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: "", allSamples: [] };
       segments.set(sessionId, seg);
     }
     let endpoint = false;
@@ -146,6 +214,7 @@ function createAsrRuntime(options) {
       const inc = samples.subarray(skip);
       seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc);
       seg.fed = offset + samples.length;
+      seg.allSamples.push(inc);
       while (rec.isReady(seg.stream)) rec.decode(seg.stream);
       text = rec.getResult(seg.stream).text;
       seg.lastText = text;
@@ -184,6 +253,8 @@ function createAsrRuntime(options) {
       }
     }
     if (!final) return { text, endpoint };
+    const all = seg.allSamples;
+    const senseP = all.length > 0 ? senseTranscribe(all) : Promise.resolve(null);
     const pad = new Float32Array(rec.config.featConfig.sampleRate / 2);
     seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad);
     while (rec.isReady(seg.stream)) rec.decode(seg.stream);
@@ -194,7 +265,8 @@ function createAsrRuntime(options) {
     }
     seg.stream.free();
     segments.delete(sessionId);
-    return { text: settled };
+    const sense = await senseP;
+    return { text: sense ?? settled };
   };
   return {
     feed,

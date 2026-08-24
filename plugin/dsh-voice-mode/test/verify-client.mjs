@@ -118,6 +118,11 @@ t('lib/index.js 含 P2-4 回合状态机（turn 广播 + agent-speaking）', () 
   assert.ok(src.includes('agent-speaking'), 'host bundle missing turn state')
   assert.ok(src.includes('broadcast("turn"'), 'host bundle missing turn broadcast')
 })
+t('lib/index.js 含 P4-1 SenseVoice 定稿重译（model.int8.onnx + senseVoice 配置）', () => {
+  const src = read('lib/index.js')
+  assert.ok(src.includes('model.int8.onnx'), 'host bundle missing SenseVoice int8 model')
+  assert.ok(src.includes('senseVoice'), 'host bundle missing senseVoice config key')
+})
 t('lib/client.js 含 P2-4 turn 订阅（思考中展示）', () => {
   const src = read('lib/client.js')
   assert.ok(src.includes('agent-speaking'), 'client bundle missing turn state')
