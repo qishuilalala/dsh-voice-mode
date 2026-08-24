@@ -139,6 +139,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let stream: MediaStream | null = null
   let processor: ScriptProcessorNode | null = null
   let active = false
+  /** 麦克风取消请求（Fix8 修正：授权返回时若已被 stop 抢占则释放，防止无人能停的常开泄漏）。 */
+  let stopRequested = false
   let inFlush = false
   /** AudioContext 实际采样率（可能 ≠ 16k，用于重采样守卫）。 */
   let ctxRate: number = SAMPLE_RATE
@@ -528,9 +530,9 @@ const startRecorder = async (): Promise<void> => {
         autoGainControl: true,
       },
     })
-    // Fix (对抗性审查): 授权返回时本实例可能已被 stop() (抢占/退出) - active 已 false 则立即释放麦克风
-    // (防无人能停的常开泄漏).
-    if (!active) {
+    // Fix8 修正：授权返回时若已被 stop() 抢占（stopRequested）则立即释放麦克风
+    // （防无人能停的常开泄漏）。注意不能用 active 判断——它在函数末尾才置 true。
+    if (stopRequested) {
       stream.getTracks().forEach((t) => t.stop())
       stream = null
       return
@@ -601,6 +603,7 @@ const startRecorder = async (): Promise<void> => {
     },
     async start() {
       if (active) return
+      stopRequested = false // Fix8：新一次启动清除取消标记
       segmentEpoch++
       sincePartialMs = 0
       interruptCandidateMs = 0
@@ -615,6 +618,8 @@ const startRecorder = async (): Promise<void> => {
       }
     },
     async stop() {
+      // Fix8：即使 active=false（授权挂起中被抢占）也要标记取消，让授权返回后释放。
+      stopRequested = true
       if (!active) {
         setState('idle')
         return

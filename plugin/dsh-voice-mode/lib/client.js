@@ -118,6 +118,7 @@ function createAsrEngine(config, sessionId) {
   let stream = null;
   let processor = null;
   let active = false;
+  let stopRequested = false;
   let inFlush = false;
   let ctxRate = SAMPLE_RATE;
   let speechActive = false;
@@ -434,7 +435,7 @@ function createAsrEngine(config, sessionId) {
         autoGainControl: true
       }
     });
-    if (!active) {
+    if (stopRequested) {
       stream.getTracks().forEach((t3) => t3.stop());
       stream = null;
       return;
@@ -495,6 +496,7 @@ function createAsrEngine(config, sessionId) {
     },
     async start() {
       if (active) return;
+      stopRequested = false;
       segmentEpoch++;
       sincePartialMs = 0;
       interruptCandidateMs = 0;
@@ -508,6 +510,7 @@ function createAsrEngine(config, sessionId) {
       }
     },
     async stop() {
+      stopRequested = true;
       if (!active) {
         setState("idle");
         return;
@@ -2145,7 +2148,8 @@ function MicButton({
         }, 800);
       });
       engine.onSpeechStart(async () => {
-        const duckable = bus.audioDuckAvailable() && bus.ui.playing;
+        if (!bus.ui.playing) return;
+        const duckable = bus.audioDuckAvailable();
         resetIdle();
         bus.resetTelemetry();
         const hardBreak = async () => {
