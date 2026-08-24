@@ -40,12 +40,28 @@ interface VoiceUiState {
   telemetry: Partial<Record<TelemetryStage, number>> | null
 }
 
-/** 一帧 TTS 音频（host SSE 'audio' 事件载荷）。 */
-interface VoiceFrame {
+/**
+ * host SSE 'audio' 事件载荷（P1-1 分块帧）：同一句 sentenceId 不变、chunkId 递增，
+ * final=true 的帧携带句子文本（text），是客户端拼帧与起播的句级边界。
+ */
+interface TtsChunkFrame {
+  sessionId: string
+  sentenceId: number
+  chunkId: number
+  final: boolean
+  text?: string
+  /** base64 MP3 分片（24kHz 单声道）。 */
+  audio: string
+}
+
+/** 播放引擎的整句帧（客户端按句拼帧后的产物；P1-2 Web Audio 队列的输入）。 */
+interface PlayFrame {
   sessionId: string
   seq: number
+  /** 剥离 markdown 后的句子文本（实时字幕）。 */
   text: string
-  audio: string
+  /** 整句 MP3 字节（24kHz 单声道；自有 ArrayBuffer 缓冲，可直接入 Blob）。 */
+  audio: Uint8Array<ArrayBuffer>
 }
 
 /**
@@ -91,8 +107,8 @@ interface VoiceBus {
   setUi(patch: Partial<VoiceUiState>): void
   enter(sessionId: string): Promise<{ ok: boolean; error?: string }>
   exit(sessionId: string): Promise<void>
-  /** 音频帧推入播放队列（播放引擎消费）。 */
-  onAudioFrame(fn: (frame: VoiceFrame) => void): () => void
+  /** 音频分块帧到达（播放引擎消费前由客户端按句拼帧）。 */
+  onAudioFrame(fn: (frame: TtsChunkFrame) => void): () => void
   /** 工具调用提示音事件。 */
   onToolEvent(fn: (e: { sessionId: string; name: string }) => void): () => void
   /** 清播放队列 + 停当前句（本地 skip，打断第一层）。 */
@@ -174,11 +190,11 @@ function createAudioEngine(
   setUi: (patch: Partial<VoiceUiState>) => void,
   onPlayed?: () => void,
 ): {
-  push(frame: VoiceFrame): void
+  push(frame: PlayFrame): void
   skip(): void
   toolBeep(): void
 } {
-  const queue: VoiceFrame[] = []
+  const queue: PlayFrame[] = []
   const audio = new Audio()
 
   const playNext = (): void => {
@@ -187,10 +203,8 @@ function createAudioEngine(
       setUi({ playing: false, playingCaption: null })
       return
     }
-    const bin = atob(frame.audio)
-    const bytes = new Uint8Array(bin.length)
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }))
+    // P1-1：客户端已按句拼帧，此处直接消费整句字节（无需再经 base64 往返）。
+    const url = URL.createObjectURL(new Blob([frame.audio], { type: 'audio/mpeg' }))
     audio.src = url
     audio.onended = () => {
       URL.revokeObjectURL(url)
@@ -275,7 +289,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     telemetry: null,
   }
   const listeners = new Set<(b: { active: string | null; ui: VoiceUiState }) => void>()
-  const audioListeners = new Set<(frame: VoiceFrame) => void>()
+  const audioListeners = new Set<(frame: TtsChunkFrame) => void>()
   const toolListeners = new Set<(e: { sessionId: string; name: string }) => void>()
   let source: EventSource | null = null
 
@@ -341,7 +355,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     })
     source.addEventListener('audio', (e: MessageEvent<string>) => {
       try {
-        const frame = JSON.parse(e.data) as VoiceFrame
+        const frame = JSON.parse(e.data) as TtsChunkFrame
         frame.sessionId = frame.sessionId ?? ''
         for (const fn of audioListeners) {
           try {
@@ -416,13 +430,47 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     })
   }
   connect()
-  // 音频帧默认路由到播放引擎（只处理属于当前语音会话的帧，模式隔离）。
+  // P1-1 分块帧拼帧：按句缓冲 chunk，final 帧后组装整句字节流入播放引擎
+  // （host 串行逐句合成，句间不交错；新句/打断后自动重建缓冲）。
+  let curSentenceId: number | null = null
+  let curChunks: Uint8Array[] = []
+  let curBytes = 0
   audioListeners.add((frame) => {
-    if (frame.sessionId === activeSessionId) {
-      // P1-5：首帧音频到达 = 首句合成完成（首 chunk 里程碑）。
-      stampTelemetry('first-tts-chunk')
-      engine.push(frame)
+    if (frame.sessionId !== activeSessionId) return
+    // P1-5：首 chunk 到达 = 首句合成产出（延迟埋点链里程碑）。
+    stampTelemetry('first-tts-chunk')
+    if (frame.sentenceId !== curSentenceId) {
+      curSentenceId = frame.sentenceId
+      curChunks = []
+      curBytes = 0
     }
+    if (frame.final) {
+      const buf = new Uint8Array(curBytes)
+      let off = 0
+      for (const c of curChunks) {
+        buf.set(c, off)
+        off += c.length
+      }
+      curSentenceId = null
+      curChunks = []
+      curBytes = 0
+      // 合法性：MP3 帧以同步字开头；空/无效整句丢弃（原 host 侧校验转移至此）。
+      if (buf.length === 0 || buf[0] !== 0xff) return
+      // 组装 base64 前先转（TextDecoder 逐字节不可靠）：直接经 atob→bytes 逆过程太浪费，
+      // PlayFrame 已改为接收 Uint8Array，此处直接传字节。
+      engine.push({
+        sessionId: frame.sessionId,
+        seq: frame.sentenceId,
+        text: frame.text ?? '',
+        audio: buf,
+      })
+      return
+    }
+    const bin = atob(frame.audio)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    curChunks.push(bytes)
+    curBytes += bytes.length
   })
   toolListeners.add(() => engine.toolBeep())
 
@@ -486,6 +534,10 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       }
     },
     skipAudio() {
+      // P1-1：打断/让出时丢弃未完成句的拼帧缓冲（避免残留帧悬挂）。
+      curSentenceId = null
+      curChunks = []
+      curBytes = 0
       engine.skip()
     },
     cancelTurn(sessionId) {

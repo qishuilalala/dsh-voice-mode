@@ -371,25 +371,44 @@ var TtsQueue = class {
       while (q.pending.length > 0) {
         const item = q.pending.shift();
         try {
+          const sentenceId = q.seq++;
           const { audioStream } = this.tts.toStream(item.text, this.prosody);
-          const chunks = [];
+          let chunkId = 0;
+          let bytes = 0;
           for await (const chunk of audioStream) {
-            chunks.push(chunk);
+            const bin = chunk;
+            if (!bin || bin.length === 0) continue;
+            if (item.epoch !== q.epoch) break;
+            bytes += bin.length;
+            const frame = {
+              sessionId,
+              sentenceId,
+              chunkId: chunkId++,
+              final: false,
+              audio: bin.toString("base64")
+            };
+            for (const fn of this.listeners) {
+              try {
+                fn(frame);
+              } catch {
+              }
+            }
           }
-          const buf = Buffer.concat(chunks);
-          if (!isValidMp3(buf)) continue;
-          if (item.epoch !== q.epoch) continue;
-          q.errorNotified = false;
-          const frame = {
-            sessionId,
-            seq: q.seq++,
-            text: item.text,
-            audio: buf.toString("base64")
-          };
-          for (const fn of this.listeners) {
-            try {
-              fn(frame);
-            } catch {
+          if (bytes > 0 && item.epoch === q.epoch) {
+            q.errorNotified = false;
+            const frame = {
+              sessionId,
+              sentenceId,
+              chunkId,
+              final: true,
+              text: item.text,
+              audio: ""
+            };
+            for (const fn of this.listeners) {
+              try {
+                fn(frame);
+              } catch {
+              }
             }
           }
         } catch (e) {

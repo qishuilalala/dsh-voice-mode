@@ -55,7 +55,18 @@ async function main() {
     if (framesN > 0) {
       console.log(`[${i * 5}s] audio 帧 = ${framesN}`)
       const frames = await page.evaluate(() => window.__vframes)
-      for (const f of frames.slice(0, 4)) console.log('  frame:', f.text, `mp3=${f.audio.length}B`)
+      // P1-1：分块帧按句统计（chunk 帧无 text，final 帧携带句文本）
+      const sentences = new Map()
+      for (const fr of frames) {
+        const s = sentences.get(fr.sentenceId) ?? { sentenceId: fr.sentenceId, text: '', chunks: 0, final: false }
+        s.chunks += 1
+        if (fr.text) s.text = fr.text
+        if (fr.final) s.final = true
+        sentences.set(fr.sentenceId, s)
+      }
+      for (const s of [...sentences.values()].slice(0, 4)) {
+        console.log(`  sentence#${s.sentenceId} text="${s.text}" chunks=${s.chunks} final=${s.final}`)
+      }
       break
     }
     if (bodyText.includes('介绍') && i > 2) {

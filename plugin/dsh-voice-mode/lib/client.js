@@ -1165,10 +1165,7 @@ function createAudioEngine(setUi, onPlayed) {
       setUi({ playing: false, playingCaption: null });
       return;
     }
-    const bin = atob(frame.audio);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const url = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
+    const url = URL.createObjectURL(new Blob([frame.audio], { type: "audio/mpeg" }));
     audio.src = url;
     audio.onended = () => {
       URL.revokeObjectURL(url);
@@ -1364,11 +1361,41 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
   };
   connect();
+  let curSentenceId = null;
+  let curChunks = [];
+  let curBytes = 0;
   audioListeners.add((frame) => {
-    if (frame.sessionId === activeSessionId) {
-      stampTelemetry("first-tts-chunk");
-      engine.push(frame);
+    if (frame.sessionId !== activeSessionId) return;
+    stampTelemetry("first-tts-chunk");
+    if (frame.sentenceId !== curSentenceId) {
+      curSentenceId = frame.sentenceId;
+      curChunks = [];
+      curBytes = 0;
     }
+    if (frame.final) {
+      const buf = new Uint8Array(curBytes);
+      let off = 0;
+      for (const c of curChunks) {
+        buf.set(c, off);
+        off += c.length;
+      }
+      curSentenceId = null;
+      curChunks = [];
+      curBytes = 0;
+      if (buf.length === 0 || buf[0] !== 255) return;
+      engine.push({
+        sessionId: frame.sessionId,
+        seq: frame.sentenceId,
+        text: frame.text ?? "",
+        audio: buf
+      });
+      return;
+    }
+    const bin = atob(frame.audio);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    curChunks.push(bytes);
+    curBytes += bytes.length;
   });
   toolListeners.add(() => engine.toolBeep());
   return {
@@ -1430,6 +1457,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       };
     },
     skipAudio() {
+      curSentenceId = null;
+      curChunks = [];
+      curBytes = 0;
       engine.skip();
     },
     cancelTurn(sessionId) {

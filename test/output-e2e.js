@@ -94,17 +94,27 @@ async function main() {
 
   console.log('== 结果 ==')
   console.log('页面错误:', pageErrors.length ? pageErrors : '无')
-  console.log(`SSE audio 帧数: ${audio.length}, tool 事件数: ${tools.length}`)
-  let totalChars = 0
-  for (const f of audio.slice(0, 8)) {
+  // P1-1：分块帧（sentenceId/chunkId/final）→ 按句组装统计。
+  const sentences = new Map()
+  for (const f of audio) {
     const fr = f.frame
-    totalChars += fr.text.length
-    console.log(`  [audio] seq=${fr.seq} text="${fr.text}" mp3Len=${fr.audio.length}B`)
+    const s = sentences.get(fr.sentenceId) ?? { sentenceId: fr.sentenceId, text: '', chunks: 0, bytes: 0, final: false }
+    s.chunks += 1
+    s.bytes += Math.floor((fr.audio.length * 3) / 4)
+    if (fr.text) s.text = fr.text
+    if (fr.final) s.final = true
+    sentences.set(fr.sentenceId, s)
+  }
+  console.log(`SSE audio 帧数: ${audio.length}（句数: ${sentences.size}）, tool 事件数: ${tools.length}`)
+  let totalChars = 0
+  for (const s of [...sentences.values()].slice(0, 8)) {
+    totalChars += s.text.length
+    console.log(`  [audio] sentenceId=${s.sentenceId} text="${s.text}" chunks=${s.chunks} mp3Bytes≈${s.bytes} final=${s.final}`)
   }
   // 校验：最终答复被朗读（text-delta 过滤生效：文本应是最终答复而非 reasoning）
   console.log(
     audio.length > 0
-      ? '✅ 输出链路 OK：text-delta 过滤 + TTS 合成 + SSE 音频帧'
+      ? '✅ 输出链路 OK：text-delta 过滤 + TTS 分块转发 + SSE 音频帧'
       : '❌ 未收到 audio 帧',
   )
   await page.evaluate(() => window.__voiceES?.close())

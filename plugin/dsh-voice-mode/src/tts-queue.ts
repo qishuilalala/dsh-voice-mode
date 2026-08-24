@@ -4,21 +4,35 @@
  * llm/stream tap 无损且同步快：只切句入队；合成跑在后台泵，模型流永不被
  * 网络/音频工作阻塞。
  *
- * 打断（Q2/Q8）：cancel() 提升会话 epoch——积压句子全弃，正在合成的句子
- * 产出后因 epoch 过期被丢弃，实现真正的静音。
+ * P1-1 分块转发：msedge-tts 的 audioStream 本身逐 chunk 推送，pump 不再整句
+ * Buffer.concat 攒帧——chunk 到达即广播（帧带 {sentenceId, chunkId, final}），
+ * 句末补 final 帧携带句子文本；首音提前量 ≈ 整句合成时间 − 首 chunk 到达时间。
+ * 客户端按句拼帧后整句解码起播（句内渐进播放收益在 P1-2 Web Audio 队列）。
+ *
+ * 打断（Q2/Q8）：cancel() 提升会话 epoch——积压句子全弃，合成中句子在下一
+ * chunk 到达时被丢弃，实现真正的静音。
  */
 import { MsEdgeTTS, OUTPUT_FORMAT, type ProsodyOptions } from 'msedge-tts'
 
-export interface VoiceFrame {
+/**
+ * TTS 分块帧（P1-1）：同一句 sentenceId 不变、chunkId 递增；
+ * final=true 的帧为该句最后一个 chunk（text 仅 final 帧携带，作实时字幕）。
+ */
+export interface TtsChunkFrame {
   sessionId: string
-  seq: number
-  /** 剥离 markdown 后的句子文本（作为实时字幕）。 */
-  text: string
-  /** base64 MP3 字节（24kHz 单声道）。 */
+  /** 句序号（句级不变；客户端按句拼帧）。 */
+  sentenceId: number
+  /** chunk 序号（句内递增）。 */
+  chunkId: number
+  /** true = 本句最后一个 chunk，此后客户端拼帧完成可起播。 */
+  final: boolean
+  /** 句子文本（剥离 markdown 后；仅 final 帧携带）。 */
+  text?: string
+  /** base64 MP3 分片（24kHz 单声道）。 */
   audio: string
 }
 
-export type FrameListener = (frame: VoiceFrame) => void
+export type FrameListener = (frame: TtsChunkFrame) => void
 
 const MP3_MAGIC = 0xff
 
@@ -156,28 +170,50 @@ export class TtsQueue {
       while (q.pending.length > 0) {
         const item = q.pending.shift()!
         try {
+          // P1-1 分块转发：按句分配 sentenceId，chunk 到达即广播；句末补 final。
+          const sentenceId = q.seq++
           const { audioStream } = this.tts.toStream(item.text, this.prosody)
-          const chunks: Buffer[] = []
+          let chunkId = 0
+          let bytes = 0
           for await (const chunk of audioStream) {
-            chunks.push(chunk as Buffer)
+            const bin = chunk as Buffer
+            if (!bin || bin.length === 0) continue
+            // 合成期间被打断：立即停止转发（余下 chunk 无意义）。
+            if (item.epoch !== q.epoch) break
+            bytes += bin.length
+            const frame: TtsChunkFrame = {
+              sessionId,
+              sentenceId,
+              chunkId: chunkId++,
+              final: false,
+              audio: bin.toString('base64'),
+            }
+            for (const fn of this.listeners) {
+              try {
+                fn(frame)
+              } catch {
+                // listener 错误不得杀死泵
+              }
+            }
           }
-          const buf = Buffer.concat(chunks)
-          // 合法 MP3 帧以同步字开头；丢弃元数据垃圾。
-          if (!isValidMp3(buf)) continue
-          // 合成期间被打断：丢弃本句。
-          if (item.epoch !== q.epoch) continue
-          q.errorNotified = false // 有帧成功：复位不可达提示
-          const frame: VoiceFrame = {
-            sessionId,
-            seq: q.seq++,
-            text: item.text,
-            audio: buf.toString('base64'),
-          }
-          for (const fn of this.listeners) {
-            try {
-              fn(frame)
-            } catch {
-              // listener 错误不得杀死泵
+          // 句末 final 帧：有音频字节才发（空音频句如「英文音色读中文」整句丢弃；
+          // MP3 合法性（同步字）由客户端拼帧后校验，host 不再整句把关）。
+          if (bytes > 0 && item.epoch === q.epoch) {
+            q.errorNotified = false // 有帧成功：复位不可达提示
+            const frame: TtsChunkFrame = {
+              sessionId,
+              sentenceId,
+              chunkId,
+              final: true,
+              text: item.text,
+              audio: '',
+            }
+            for (const fn of this.listeners) {
+              try {
+                fn(frame)
+              } catch {
+                // listener 错误不得杀死泵
+              }
             }
           }
         } catch (e) {

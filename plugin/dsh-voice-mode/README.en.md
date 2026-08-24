@@ -148,7 +148,7 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 
 | Route | Description |
 | --- | --- |
-| `GET /voice-mode/stream` | SSE: `event: audio` (`{sessionId, seq, text, audio(base64 MP3)}`), `event: mode` (global single-active ownership), `event: tool` (beep), `event: asr-progress / asr-ready / asr-error / tts-error` |
+| `GET /voice-mode/stream` | SSE: `event: audio` (`{sessionId, sentenceId, chunkId, final, text?(only on the final frame), audio(base64 MP3 chunk)}` — P1-1 chunked forwarding, the client reassembles each sentence before playback), `event: latency` (`{sessionId, stage}`: first-llm-token / first-sentence-text, P1-5), `event: mode` (global single-active ownership), `event: tool` (beep), `event: asr-progress / asr-ready / asr-error / tts-error` |
 | `POST /voice-mode/toggle` | `{sessionId, on}` enter/exit voice mode (globally single-active) |
 | `POST /voice-mode/asr` | Raw f32 LE 16k PCM payload → `{text}` (streaming zipformer2); returns `202 {loading}` until the model is ready; `?reset=1` discards the in-flight segment (used on wake-word hit) |
 | `POST /voice-mode/cancel` | `{sessionId}` invalidates the TTS queue and drops the in-flight ASR segment |

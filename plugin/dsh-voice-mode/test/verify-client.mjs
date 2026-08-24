@@ -89,5 +89,14 @@ t('lib/client.js 含 P1-5 开发模式埋点链（完说→首音）', () => {
   assert.ok(src.includes('dsh-voice-mode.telemetry'), 'client bundle missing telemetry flag')
   assert.ok(src.includes('first-audio-played'), 'client bundle missing first-audio-played stage')
 })
+t('lib/index.js 含 P1-1 分块帧协议（sentenceId/chunkId/final 转发）', () => {
+  const src = read('lib/index.js')
+  assert.ok(src.includes('sentenceId'), 'host bundle missing sentenceId')
+  assert.ok(src.includes('chunkId'), 'host bundle missing chunkId')
+})
+t('lib/client.js 含 P1-1 按句拼帧（PlayFrame Uint8Array）', () => {
+  const src = read('lib/client.js')
+  assert.ok(src.includes('curSentenceId') || src.includes('sentenceId'), 'client bundle missing sentence assembler')
+})
 
 console.log(`\nverify-client：${passed} 项通过`)
