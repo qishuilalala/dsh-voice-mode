@@ -130,6 +130,8 @@ systemctl restart dsh         # 本机加载新 host 代码；其他平台重启
 
 > 注意：dsh 安装的是 pnpm `file:` 链接（目录拷贝），改完 `node build.mjs` 后需把 `lib/client.js` 同步到 `<profile>/node_modules/dsh-voice-mode/lib/` 再刷新页面（`lib/index.js` 与工作区为同一文件自动同步）。集成探测脚本（`test/hold-e2e.js`、`test/spoken-prompt-rpc.sh`、`test/spoken-toggle-ui-check.js`）位于仓库根 `test/`，不在 npm 包内。
 
+> 开发模式延迟埋点（P1-5）：浏览器控制台执行 `localStorage.setItem('dsh-voice-mode.telemetry', '1')` 后刷新页面，进入语音模式时状态条会实时显示「说完 → 端点 → 定稿 → 首Token → 首句 → 首chunk → 首音」各段耗时与合计（说完→首音），供 P1 延迟验收测量；`localStorage.removeItem('dsh-voice-mode.telemetry')` 关闭（默认关闭，零采集）。
+
 ```
 src/index.ts      host：单活指针、llm/stream tap、SSE、settings 注册、口语化提示词注入
 src/asr-host.ts   host：zipformer2 流式识别 + 模型懒下载（.part 断点续传）

@@ -66,6 +66,15 @@ const zh = {
   wakePlaceholder: '如：你好小D',
   settingsCardDesc: '音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词 / 口语化提示词',
   configUnavailable: '配置暂不可用',
+  // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
+  telUtteranceEnd: '说完',
+  telEndpoint: '端点',
+  telSubmitted: '定稿',
+  telFirstToken: '首Token',
+  telFirstSentence: '首句',
+  telFirstChunk: '首chunk',
+  telFirstPlayed: '首音',
+  telTotal: '合计',
 } as const
 
 const en: Record<keyof typeof zh, string> = {
@@ -128,6 +137,14 @@ const en: Record<keyof typeof zh, string> = {
   wakePlaceholder: 'e.g. Hey D',
   settingsCardDesc: 'Voice / rate / interrupt / silence / idle / model host / auto-send / mode / wake word / spoken format',
   configUnavailable: 'Configuration unavailable',
+  telUtteranceEnd: 'end',
+  telEndpoint: 'endpoint',
+  telSubmitted: 'submit',
+  telFirstToken: '1st token',
+  telFirstSentence: '1st sentence',
+  telFirstChunk: '1st chunk',
+  telFirstPlayed: '1st audio',
+  telTotal: 'total',
 }
 
 /**
@@ -145,4 +162,7 @@ const guess = (): 'zh' | 'en' =>
     ? 'zh'
     : 'en'
 
-export const t = (key: keyof typeof zh): string => (guess() === 'zh' ? zh[key] : en[key] ?? zh[key])
+/** 文案键类型（供组件侧声明含 t() 键的结构化配置）。 */
+export type TKey = keyof typeof zh
+
+export const t = (key: TKey): string => (guess() === 'zh' ? zh[key] : en[key] ?? zh[key])

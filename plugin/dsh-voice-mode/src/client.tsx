@@ -11,7 +11,7 @@
 import * as React from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { createAsrEngine, type AsrEngine, type AsrState } from './asr.ts'
-import { t } from './strings.ts'
+import { t, type TKey } from './strings.ts'
 
 /** 共享提示音上下文（进入语音模式手势栈内预热；Safari 非手势栈新建会静默）。 */
 let beepCtx: AudioContext | null = null
@@ -36,6 +36,8 @@ interface VoiceUiState {
   /** 便捷速记：交互模式 / 唤醒词（状态条与手势读取）。 */
   mode: 'toggle' | 'hold'
   wakeWord: string
+  /** 延迟埋点链各阶段时刻（开发模式状态条展示；null = 未启用/已清空）。 */
+  telemetry: Partial<Record<TelemetryStage, number>> | null
 }
 
 /** 一帧 TTS 音频（host SSE 'audio' 事件载荷）。 */
@@ -45,6 +47,41 @@ interface VoiceFrame {
   text: string
   audio: string
 }
+
+/**
+ * 延迟埋点链阶段（P1-5）：utterance-end → endpoint-fired → submitted 由 ASR 引擎
+ * 本地上抛；first-llm-token / first-sentence-text 由 host SSE 'latency' 事件下行；
+ * first-tts-chunk 为首帧音频到达；first-audio-played 为真实起播。全部取浏览器端
+ * 接收/发生时刻（localhost 同机同钟，段间差值即端到端耗时）。
+ */
+export type TelemetryStage =
+  | 'utterance-end'
+  | 'endpoint-fired'
+  | 'submitted'
+  | 'first-llm-token'
+  | 'first-sentence-text'
+  | 'first-tts-chunk'
+  | 'first-audio-played'
+
+/** 链顺序与状态条展示标签（每段耗时 = 本阶段时刻 − 上一阶段时刻）。 */
+const TELEMETRY_VIEW: { stage: TelemetryStage; key: TKey }[] = [
+  { stage: 'utterance-end', key: 'telUtteranceEnd' },
+  { stage: 'endpoint-fired', key: 'telEndpoint' },
+  { stage: 'submitted', key: 'telSubmitted' },
+  { stage: 'first-llm-token', key: 'telFirstToken' },
+  { stage: 'first-sentence-text', key: 'telFirstSentence' },
+  { stage: 'first-tts-chunk', key: 'telFirstChunk' },
+  { stage: 'first-audio-played', key: 'telFirstPlayed' },
+]
+
+/**
+ * 开发模式开关：localStorage['dsh-voice-mode.telemetry'] === '1' 时状态条实时显示
+ * 「说完→首音」链路各段耗时（P1-5 延迟验收的测量面）。关闭时零采集零展示
+ * （host 'latency' 事件照常下行，客户端不理会）。
+ */
+const TELEMETRY_FLAG = 'dsh-voice-mode.telemetry'
+const telemetryEnabled =
+  typeof localStorage !== 'undefined' && localStorage.getItem(TELEMETRY_FLAG) === '1'
 
 interface VoiceBus {
   /** host 当前活跃语音会话（全局单活指针）。 */
@@ -62,6 +99,10 @@ interface VoiceBus {
   skipAudio(): void
   /** 取消当前回合（keepInbox 保新消息，Q2 打断第二层）。 */
   cancelTurn(sessionId: string): void
+  /** P1-5 开发埋点：ASR 引擎事件（utterance-end/endpoint-fired/submitted）入链。 */
+  stampTelemetry(stage: TelemetryStage, at?: number): void
+  /** P1-5 开发埋点：打断/退出/让出时清空当前链。 */
+  resetTelemetry(): void
 }
 
 export interface VoiceSlotActions {
@@ -129,7 +170,10 @@ export function apply(ctx: any): void {
 }
 
 /** 播放引擎与 SSE 消费（apply 闭包单例）。 */
-function createAudioEngine(setUi: (patch: Partial<VoiceUiState>) => void): {
+function createAudioEngine(
+  setUi: (patch: Partial<VoiceUiState>) => void,
+  onPlayed?: () => void,
+): {
   push(frame: VoiceFrame): void
   skip(): void
   toolBeep(): void
@@ -155,6 +199,14 @@ function createAudioEngine(setUi: (patch: Partial<VoiceUiState>) => void): {
     audio.onerror = () => {
       URL.revokeObjectURL(url)
       playNext()
+    }
+    // P1-5：真实起播（onplaying = 播放真正发声，非 play() 启动时序）。
+    audio.onplaying = () => {
+      try {
+        onPlayed?.()
+      } catch {
+        // 埋点失败不影响播放
+      }
     }
     setUi({ playing: true, playingCaption: frame.text, ttsNotice: null })
     void audio.play().catch(() => playNext())
@@ -220,17 +272,43 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     boot: DEFAULT_BOOT,
     mode: 'toggle',
     wakeWord: '',
+    telemetry: null,
   }
   const listeners = new Set<(b: { active: string | null; ui: VoiceUiState }) => void>()
   const audioListeners = new Set<(frame: VoiceFrame) => void>()
   const toolListeners = new Set<(e: { sessionId: string; name: string }) => void>()
   let source: EventSource | null = null
-  // 播放引擎与 bus 的生命周期相同（apply 闭包单例）；setUi 闭包延迟解引用，
-  // 事件回调触发时 notify 已就绪。
-  const engine = createAudioEngine((patch) => {
-    Object.assign(ui, patch)
+
+  // --- P1-5 延迟埋点链（开发模式）：一轮「说完→首音」的时间戳收拢。 ---
+  const telemetryStages: Partial<Record<TelemetryStage, number>> = {}
+  const stampTelemetry = (stage: TelemetryStage, at?: number): void => {
+    if (!telemetryEnabled) return
+    if (stage === 'utterance-end') {
+      // 新一轮语音：上一轮的链作废（打断/连续多句均重新起算）。
+      for (const k of Object.keys(telemetryStages)) delete telemetryStages[k as TelemetryStage]
+    }
+    if (telemetryStages[stage] === undefined) {
+      telemetryStages[stage] = at ?? Date.now()
+      ui.telemetry = { ...telemetryStages }
+      notify()
+    }
+  }
+  const resetTelemetry = (): void => {
+    if (!telemetryEnabled) return
+    for (const k of Object.keys(telemetryStages)) delete telemetryStages[k as TelemetryStage]
+    ui.telemetry = null
     notify()
-  })
+  }
+
+  // 播放引擎与 bus 的生命周期相同（apply 闭包单例）；setUi 闭包延迟解引用，
+  // 事件回调触发时 notify 已就绪。onPlayed = P1-5 真实起播埋点。
+  const engine = createAudioEngine(
+    (patch) => {
+      Object.assign(ui, patch)
+      notify()
+    },
+    () => stampTelemetry('first-audio-played'),
+  )
 
   const notify = (): void => {
     for (const fn of listeners) {
@@ -253,6 +331,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
           activeSessionId = active
           // 模式被让出/抢占：本地播放立即静音（Q2 之停 TTS）
           if (active !== null || ui.playing) engine.skip()
+          // P1-5：跨会话让出/抢占时清空未完成的埋点链。
+          resetTelemetry()
           notify()
         }
       } catch {
@@ -284,6 +364,15 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
             // ignore
           }
         }
+      } catch {
+        // ignore malformed frame
+      }
+    })
+    // P1-5：host 侧里程碑（首 token / 首句成型）下行；接收时刻计链。
+    source.addEventListener('latency', (e: MessageEvent<string>) => {
+      try {
+        const ev = JSON.parse(e.data) as { sessionId?: string; stage?: TelemetryStage }
+        if (ev.sessionId === activeSessionId && ev.stage) stampTelemetry(ev.stage)
       } catch {
         // ignore malformed frame
       }
@@ -329,7 +418,11 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   connect()
   // 音频帧默认路由到播放引擎（只处理属于当前语音会话的帧，模式隔离）。
   audioListeners.add((frame) => {
-    if (frame.sessionId === activeSessionId) engine.push(frame)
+    if (frame.sessionId === activeSessionId) {
+      // P1-5：首帧音频到达 = 首句合成完成（首 chunk 里程碑）。
+      stampTelemetry('first-tts-chunk')
+      engine.push(frame)
+    }
   })
   toolListeners.add(() => engine.toolBeep())
 
@@ -366,6 +459,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       }
     },
     async exit(sessionId) {
+      resetTelemetry()
       try {
         const res = await fetch(`${location.origin}${basePath}/toggle`, {
           method: 'POST',
@@ -402,6 +496,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         // cancel 失败不抛到录音循环
       }
     },
+    stampTelemetry,
+    resetTelemetry,
   }
 }
 
@@ -546,6 +642,7 @@ export function MicButton({
     const engine = engineRef.current
     engineRef.current = null
     if (engine) void engine.stop()
+    bus.resetTelemetry() // P1-5：退出清空埋点链
     bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null })
     const sid = sidRef.current
     if (sid) void bus.exit(sid)
@@ -575,6 +672,8 @@ export function MicButton({
       const engine = createAsrEngine({ silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord }, sid)
       bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord })
       engineRef.current = engine
+      // P1-5 延迟埋点链：ASR 侧三枚时间戳（说完/端点/定稿上传）入链。
+      engine.onTelemetry((e) => bus.stampTelemetry(e.stage, e.at))
       // 共享提示音上下文：进入模式处于用户手势栈（点麦克风），此处创建并恢复——
       // Safari/iOS 在非手势栈（如 SSE 回调）新建的 AudioContext 会 suspended 静默。
       try {
@@ -654,6 +753,7 @@ export function MicButton({
         // 2) 有 running 回合则 session.cancel({keepInbox:true})（取消生成、保新消息）
         // 3) 半截标注由「转录区新消息续入」自然呈现（Q8 标注见 §8.5 收尾）
         resetIdle()
+        bus.resetTelemetry() // P1-5：打断 = 上一轮回复作废，链清空（新一轮 utterance-end 重新起算）
         bus.skipAudio()
         try {
           await fetch(`${location.origin}${BASE_PATH}/cancel`, {
@@ -995,12 +1095,28 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
 
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0)
 
+  // P1-5 延迟埋点链展示（开发模式）：各相邻阶段耗时 + 说完→首音合计。
+  const telParts: string[] = []
+  const tel = b.ui.telemetry
+  if (tel) {
+    const fmt = (ms: number): string => (ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`)
+    for (let i = 1; i < TELEMETRY_VIEW.length; i++) {
+      const cur = tel[TELEMETRY_VIEW[i].stage]
+      const prev = tel[TELEMETRY_VIEW[i - 1].stage]
+      if (cur === undefined || prev === undefined) continue
+      telParts.push(`${t(TELEMETRY_VIEW[i].key)} ${fmt(cur - prev)}`)
+    }
+    const begin = tel['utterance-end']
+    const end = tel['first-audio-played']
+    if (begin !== undefined && end !== undefined) telParts.push(`${t('telTotal')} ${fmt(end - begin)}`)
+  }
+
   return (
     <div
       style={{
         display: 'flex',
-        alignItems: 'center',
-        gap: 8,
+        flexDirection: 'column',
+        gap: 2,
         padding: '6px 12px',
         borderRadius: 10,
         fontSize: 12,
@@ -1011,47 +1127,63 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
         animation: 'dshvm-fadein 0.2s ease',
       }}
     >
-      <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 14, flexShrink: 0 }}>
-        {bars.map((v, i) => (
-          <span
-            key={i}
-            className="dshvm-bar"
-            style={{
-              height: `${3 + v * 12}px`,
-              background: '#3fb950',
-              opacity: 0.4 + v * 0.6,
-            }}
-          />
-        ))}
-      </span>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexGrow: 1 }}>
-        {b.ui.error
-          ? b.ui.error
-          : b.ui.state === 'loading-model' || b.ui.model
-            ? b.ui.model
-              ? `${t('loadingModel')} ${b.ui.model.file} ${b.ui.model.percent}%`
-              : stateText
-            : b.ui.partial
-              ? b.ui.partial
-              : b.ui.ttsNotice
-                ? b.ui.ttsNotice
-                : stateText}
-      </span>
-      <button
-        onClick={() => {
-          void bus.exit(sessionId!)
-        }}
-        style={{
-          border: 'none',
-          background: 'transparent',
-          color: '#8b949e',
-          cursor: 'pointer',
-          fontSize: 12,
-          flexShrink: 0,
-        }}
-      >
-        {t('exit')}
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 14, flexShrink: 0 }}>
+          {bars.map((v, i) => (
+            <span
+              key={i}
+              className="dshvm-bar"
+              style={{
+                height: `${3 + v * 12}px`,
+                background: '#3fb950',
+                opacity: 0.4 + v * 0.6,
+              }}
+            />
+          ))}
+        </span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexGrow: 1 }}>
+          {b.ui.error
+            ? b.ui.error
+            : b.ui.state === 'loading-model' || b.ui.model
+              ? b.ui.model
+                ? `${t('loadingModel')} ${b.ui.model.file} ${b.ui.model.percent}%`
+                : stateText
+              : b.ui.partial
+                ? b.ui.partial
+                : b.ui.ttsNotice
+                  ? b.ui.ttsNotice
+                  : stateText}
+        </span>
+        <button
+          onClick={() => {
+            void bus.exit(sessionId!)
+          }}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: '#8b949e',
+            cursor: 'pointer',
+            fontSize: 12,
+            flexShrink: 0,
+          }}
+        >
+          {t('exit')}
+        </button>
+      </div>
+      {telParts.length > 0 && (
+        <div
+          style={{
+            fontSize: 11,
+            color: '#8b949e',
+            fontVariantNumeric: 'tabular-nums',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+            whiteSpace: 'nowrap',
+            overflowX: 'auto',
+          }}
+        >
+          {telParts.join(' · ')}
+        </div>
+      )}
     </div>
   )
 }

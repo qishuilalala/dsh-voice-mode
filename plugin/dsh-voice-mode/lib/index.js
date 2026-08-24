@@ -758,6 +758,8 @@ function collectBody(req, res, maxBytes, onBody) {
 }
 async function* tapActiveStream(sessionId, inner, queue, broadcast) {
   const segmenter = new SentenceSegmenter();
+  let firstTokenBroadcast = false;
+  let firstSentenceBroadcast = false;
   let flushed = false;
   let finishReason = null;
   const flushOnce = () => {
@@ -770,7 +772,15 @@ async function* tapActiveStream(sessionId, inner, queue, broadcast) {
   try {
     for await (const chunk of inner) {
       if (chunk.type === "text-delta" && chunk.text) {
+        if (!firstTokenBroadcast) {
+          firstTokenBroadcast = true;
+          broadcast("latency", { sessionId, stage: "first-llm-token" });
+        }
         for (const s of segmenter.feed(chunk.text)) {
+          if (!firstSentenceBroadcast) {
+            firstSentenceBroadcast = true;
+            broadcast("latency", { sessionId, stage: "first-sentence-text" });
+          }
           queue.enqueue(sessionId, s);
         }
       }

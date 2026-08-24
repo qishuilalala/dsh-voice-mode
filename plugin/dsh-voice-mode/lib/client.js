@@ -86,6 +86,17 @@ function createAsrEngine(config, sessionId) {
   const partialListeners = /* @__PURE__ */ new Set();
   const speechStartListeners = /* @__PURE__ */ new Set();
   const levelListeners = /* @__PURE__ */ new Set();
+  const telemetryListeners = /* @__PURE__ */ new Set();
+  let utteranceEndAt = null;
+  const emitTelemetry = (stage) => {
+    const ev = { stage, at: Date.now() };
+    for (const fn of telemetryListeners) {
+      try {
+        fn(ev);
+      } catch {
+      }
+    }
+  };
   let audioCtx = null;
   let stream = null;
   let processor = null;
@@ -199,6 +210,11 @@ function createAsrEngine(config, sessionId) {
   };
   const finalizeSegment = () => {
     if (segment.length === 0) return;
+    if (utteranceEndAt === null) {
+      utteranceEndAt = Date.now();
+      emitTelemetry("utterance-end");
+    }
+    emitTelemetry("endpoint-fired");
     const samples = concatSegment();
     const epoch = ++segmentEpoch;
     const meta = { force: forcePending };
@@ -211,6 +227,7 @@ function createAsrEngine(config, sessionId) {
     setState("transcribing");
     void (async () => {
       try {
+        emitTelemetry("submitted");
         let res = await fetch(asrUrl(true), {
           method: "POST",
           headers: { "content-type": "application/octet-stream" },
@@ -312,6 +329,7 @@ function createAsrEngine(config, sessionId) {
     } else if (rms > SPEECH_RMS) {
       if (!speechActive) {
         speechActive = true;
+        utteranceEndAt = null;
         setState("speech");
         for (const p of prePad) segment.push(p);
         prePad = [];
@@ -321,6 +339,10 @@ function createAsrEngine(config, sessionId) {
       segment.push(data);
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
     } else if (speechActive) {
+      if (utteranceEndAt === null) {
+        utteranceEndAt = Date.now();
+        emitTelemetry("utterance-end");
+      }
       segmentMs += durationMs;
       silenceMs += durationMs;
       segment.push(data);
@@ -395,6 +417,7 @@ function createAsrEngine(config, sessionId) {
     segmentMs = 0;
     prePad = [];
     interruptCandidateMs = 0;
+    utteranceEndAt = null;
     try {
       processor?.disconnect();
     } catch {
@@ -452,6 +475,7 @@ function createAsrEngine(config, sessionId) {
       holdActive = true;
       forcePending = true;
       segmentEpoch++;
+      utteranceEndAt = null;
       segment = [];
       segmentMs = 0;
       silenceMs = 0;
@@ -513,6 +537,12 @@ function createAsrEngine(config, sessionId) {
       levelListeners.add(fn);
       return () => {
         levelListeners.delete(fn);
+      };
+    },
+    onTelemetry(fn) {
+      telemetryListeners.add(fn);
+      return () => {
+        telemetryListeners.delete(fn);
       };
     }
   };
@@ -580,7 +610,16 @@ var zh = {
   descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09",
   wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
   settingsCardDesc: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
-  configUnavailable: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528"
+  configUnavailable: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528",
+  // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
+  telUtteranceEnd: "\u8BF4\u5B8C",
+  telEndpoint: "\u7AEF\u70B9",
+  telSubmitted: "\u5B9A\u7A3F",
+  telFirstToken: "\u9996Token",
+  telFirstSentence: "\u9996\u53E5",
+  telFirstChunk: "\u9996chunk",
+  telFirstPlayed: "\u9996\u97F3",
+  telTotal: "\u5408\u8BA1"
 };
 var en = {
   stateVoiceMode: "Voice Mode",
@@ -641,7 +680,15 @@ var en = {
   descWakeWord: "Wake word (default off; e.g. Hey D)",
   wakePlaceholder: "e.g. Hey D",
   settingsCardDesc: "Voice / rate / interrupt / silence / idle / model host / auto-send / mode / wake word / spoken format",
-  configUnavailable: "Configuration unavailable"
+  configUnavailable: "Configuration unavailable",
+  telUtteranceEnd: "end",
+  telEndpoint: "endpoint",
+  telSubmitted: "submit",
+  telFirstToken: "1st token",
+  telFirstSentence: "1st sentence",
+  telFirstChunk: "1st chunk",
+  telFirstPlayed: "1st audio",
+  telTotal: "total"
 };
 var guess = () => /^zh\b/i.test(
   typeof document !== "undefined" && document.documentElement.lang || (typeof navigator !== "undefined" ? navigator.language : "") || ""
@@ -1043,6 +1090,17 @@ function VoiceSettingsCard({ scope }) {
 var import_jsx_runtime2 = require("react/jsx-runtime");
 var beepCtx = null;
 var inject = ["slots", "sessions", "settingsScope"];
+var TELEMETRY_VIEW = [
+  { stage: "utterance-end", key: "telUtteranceEnd" },
+  { stage: "endpoint-fired", key: "telEndpoint" },
+  { stage: "submitted", key: "telSubmitted" },
+  { stage: "first-llm-token", key: "telFirstToken" },
+  { stage: "first-sentence-text", key: "telFirstSentence" },
+  { stage: "first-tts-chunk", key: "telFirstChunk" },
+  { stage: "first-audio-played", key: "telFirstPlayed" }
+];
+var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
+var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 var WAVE_BARS = 14;
 var BASE_PATH2 = "/voice-mode";
 function apply(ctx) {
@@ -1098,7 +1156,7 @@ function apply(ctx) {
     );
   }
 }
-function createAudioEngine(setUi) {
+function createAudioEngine(setUi, onPlayed) {
   const queue = [];
   const audio = new Audio();
   const playNext = () => {
@@ -1119,6 +1177,12 @@ function createAudioEngine(setUi) {
     audio.onerror = () => {
       URL.revokeObjectURL(url);
       playNext();
+    };
+    audio.onplaying = () => {
+      try {
+        onPlayed?.();
+      } catch {
+      }
     };
     setUi({ playing: true, playingCaption: frame.text, ttsNotice: null });
     void audio.play().catch(() => playNext());
@@ -1178,16 +1242,38 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     ttsNotice: null,
     boot: DEFAULT_BOOT,
     mode: "toggle",
-    wakeWord: ""
+    wakeWord: "",
+    telemetry: null
   };
   const listeners = /* @__PURE__ */ new Set();
   const audioListeners = /* @__PURE__ */ new Set();
   const toolListeners = /* @__PURE__ */ new Set();
   let source = null;
-  const engine = createAudioEngine((patch) => {
-    Object.assign(ui, patch);
+  const telemetryStages = {};
+  const stampTelemetry = (stage, at) => {
+    if (!telemetryEnabled) return;
+    if (stage === "utterance-end") {
+      for (const k of Object.keys(telemetryStages)) delete telemetryStages[k];
+    }
+    if (telemetryStages[stage] === void 0) {
+      telemetryStages[stage] = at ?? Date.now();
+      ui.telemetry = { ...telemetryStages };
+      notify();
+    }
+  };
+  const resetTelemetry = () => {
+    if (!telemetryEnabled) return;
+    for (const k of Object.keys(telemetryStages)) delete telemetryStages[k];
+    ui.telemetry = null;
     notify();
-  });
+  };
+  const engine = createAudioEngine(
+    (patch) => {
+      Object.assign(ui, patch);
+      notify();
+    },
+    () => stampTelemetry("first-audio-played")
+  );
   const notify = () => {
     for (const fn of listeners) {
       try {
@@ -1205,6 +1291,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         if (active !== activeSessionId) {
           activeSessionId = active;
           if (active !== null || ui.playing) engine.skip();
+          resetTelemetry();
           notify();
         }
       } catch {
@@ -1232,6 +1319,13 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
           } catch {
           }
         }
+      } catch {
+      }
+    });
+    source.addEventListener("latency", (e) => {
+      try {
+        const ev = JSON.parse(e.data);
+        if (ev.sessionId === activeSessionId && ev.stage) stampTelemetry(ev.stage);
       } catch {
       }
     });
@@ -1271,7 +1365,10 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   };
   connect();
   audioListeners.add((frame) => {
-    if (frame.sessionId === activeSessionId) engine.push(frame);
+    if (frame.sessionId === activeSessionId) {
+      stampTelemetry("first-tts-chunk");
+      engine.push(frame);
+    }
   });
   toolListeners.add(() => engine.toolBeep());
   return {
@@ -1307,6 +1404,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       }
     },
     async exit(sessionId) {
+      resetTelemetry();
       try {
         const res = await fetch(`${location.origin}${basePath}/toggle`, {
           method: "POST",
@@ -1339,7 +1437,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         ctx?.sessions?.binding?.(sessionId)?.session.cancel?.();
       } catch {
       }
-    }
+    },
+    stampTelemetry,
+    resetTelemetry
   };
 }
 var styleInjected = false;
@@ -1447,6 +1547,7 @@ function MicButton({
     const engine = engineRef.current;
     engineRef.current = null;
     if (engine) void engine.stop();
+    bus.resetTelemetry();
     bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null });
     const sid = sidRef.current;
     if (sid) void bus.exit(sid);
@@ -1471,6 +1572,7 @@ function MicButton({
       const engine = createAsrEngine({ silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord }, sid);
       bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord });
       engineRef.current = engine;
+      engine.onTelemetry((e) => bus.stampTelemetry(e.stage, e.at));
       try {
         if (!beepCtx) beepCtx = new AudioContext();
         void beepCtx.resume?.();
@@ -1529,6 +1631,7 @@ function MicButton({
       });
       engine.onSpeechStart(async () => {
         resetIdle();
+        bus.resetTelemetry();
         bus.skipAudio();
         try {
           await fetch(`${location.origin}${BASE_PATH2}/cancel`, {
@@ -1792,13 +1895,27 @@ function VoiceStatusBar({ bus, sessionId }) {
   if (!isActive) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
   const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? t("recognizing") : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.mode === "hold" ? t("barHold") : t("barListening");
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0);
+  const telParts = [];
+  const tel = b.ui.telemetry;
+  if (tel) {
+    const fmt = (ms) => ms >= 1e3 ? `${(ms / 1e3).toFixed(2)}s` : `${Math.round(ms)}ms`;
+    for (let i = 1; i < TELEMETRY_VIEW.length; i++) {
+      const cur = tel[TELEMETRY_VIEW[i].stage];
+      const prev = tel[TELEMETRY_VIEW[i - 1].stage];
+      if (cur === void 0 || prev === void 0) continue;
+      telParts.push(`${t(TELEMETRY_VIEW[i].key)} ${fmt(cur - prev)}`);
+    }
+    const begin = tel["utterance-end"];
+    const end = tel["first-audio-played"];
+    if (begin !== void 0 && end !== void 0) telParts.push(`${t("telTotal")} ${fmt(end - begin)}`);
+  }
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",
     {
       style: {
         display: "flex",
-        alignItems: "center",
-        gap: 8,
+        flexDirection: "column",
+        gap: 2,
         padding: "6px 12px",
         borderRadius: 10,
         fontSize: 12,
@@ -1809,34 +1926,50 @@ function VoiceStatusBar({ bus, sessionId }) {
         animation: "dshvm-fadein 0.2s ease"
       },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { display: "inline-flex", alignItems: "flex-end", gap: 2, height: 14, flexShrink: 0 }, children: bars.map((v, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "span",
-          {
-            className: "dshvm-bar",
-            style: {
-              height: `${3 + v * 12}px`,
-              background: "#3fb950",
-              opacity: 0.4 + v * 0.6
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { display: "inline-flex", alignItems: "flex-end", gap: 2, height: 14, flexShrink: 0 }, children: bars.map((v, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "span",
+            {
+              className: "dshvm-bar",
+              style: {
+                height: `${3 + v * 12}px`,
+                background: "#3fb950",
+                opacity: 0.4 + v * 0.6
+              }
+            },
+            i
+          )) }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "button",
+            {
+              onClick: () => {
+                void bus.exit(sessionId);
+              },
+              style: {
+                border: "none",
+                background: "transparent",
+                color: "#8b949e",
+                cursor: "pointer",
+                fontSize: 12,
+                flexShrink: 0
+              },
+              children: t("exit")
             }
-          },
-          i
-        )) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "button",
+          )
+        ] }),
+        telParts.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "div",
           {
-            onClick: () => {
-              void bus.exit(sessionId);
-            },
             style: {
-              border: "none",
-              background: "transparent",
+              fontSize: 11,
               color: "#8b949e",
-              cursor: "pointer",
-              fontSize: 12,
-              flexShrink: 0
+              fontVariantNumeric: "tabular-nums",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+              whiteSpace: "nowrap",
+              overflowX: "auto"
             },
-            children: t("exit")
+            children: telParts.join(" \xB7 ")
           }
         )
       ]

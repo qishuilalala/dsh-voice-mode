@@ -79,5 +79,15 @@ t('build 产物与源码时间戳对齐（lib 不早于 src）', () => {
   }
   void newestSrc
 })
+t('lib/index.js 含 P1-5 延迟埋点链广播（latency 事件）', () => {
+  const src = read('lib/index.js')
+  assert.ok(src.includes('first-llm-token'), 'host bundle missing first-llm-token stage')
+  assert.ok(src.includes('first-sentence-text'), 'host bundle missing first-sentence-text stage')
+})
+t('lib/client.js 含 P1-5 开发模式埋点链（完说→首音）', () => {
+  const src = read('lib/client.js')
+  assert.ok(src.includes('dsh-voice-mode.telemetry'), 'client bundle missing telemetry flag')
+  assert.ok(src.includes('first-audio-played'), 'client bundle missing first-audio-played stage')
+})
 
 console.log(`\nverify-client：${passed} 项通过`)

@@ -7,12 +7,25 @@
  *  - partial 轮询（≈900ms）走 host 流式识别增量，实时字幕只在状态条预览，
  *    定稿文本才作为结果（Q6/Q13：可编辑草稿 + 自动提交）；
  *  - speechStart = 打断信号（Q10 高门槛：能量阈值 + 持续时长，三档可调）；
- *  - v0.2：hold 模式（按住说话、松手发送，绕过 VAD）与唤醒词待机（wake）。
+ *  - v0.2：hold 模式（按住说话、松手发送，绕过 VAD）与唤醒词待机（wake）；
+ *  - v0.3（P1-5）：延迟埋点链的客户端三枚时间戳——utterance-end（说完最后一个字）、
+ *    endpoint-fired（端点判句到点）、submitted（定稿上传发起），经 onTelemetry 上抛，
+ *    由 client.tsx 与 host 下行的 first-llm-token/first-sentence-text/first-tts-chunk/
+ *    first-audio-played 拼接成「说完→首音」全链路（开发模式状态条展示）。
  */
 
 import { matchWakeWord } from './wakeword.ts'
 
 export type AsrState = 'idle' | 'listening' | 'wake' | 'speech' | 'transcribing' | 'loading-model'
+
+/** 延迟埋点链的客户端阶段（P1-5；host 侧阶段与全链顺序见 client.tsx TELEMETRY_VIEW）。 */
+export type TelemetryStage = 'utterance-end' | 'endpoint-fired' | 'submitted'
+
+export interface TelemetryEvent {
+  stage: TelemetryStage
+  /** 客户端时钟毫秒（同一浏览器内各阶段可比；SSE 下行阶段由接收时刻计）。 */
+  at: number
+}
 
 export interface AsrConfig {
   /** 静音多少 ms 判句结束（Q5，默认 2000）。 */
@@ -50,6 +63,8 @@ export interface AsrEngine {
   readonly onError: (fn: (msg: string) => void) => () => void
   /** 归一化电平 0..1（波形条）。 */
   readonly onLevel: (fn: (level: number) => void) => () => void
+  /** 延迟埋点链客户端事件（P1-5：utterance-end / endpoint-fired / submitted）。 */
+  readonly onTelemetry: (fn: (e: TelemetryEvent) => void) => () => void
 }
 
 const SAMPLE_RATE = 16000
@@ -86,6 +101,19 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   const partialListeners = new Set<(text: string) => void>()
   const speechStartListeners = new Set<() => void>()
   const levelListeners = new Set<(level: number) => void>()
+  const telemetryListeners = new Set<(e: TelemetryEvent) => void>()
+  /** 本段「说完」时刻是否已上报（每段至多一次；无静音过渡路径在 finalize 补报）。 */
+  let utteranceEndAt: number | null = null
+  const emitTelemetry = (stage: TelemetryStage): void => {
+    const ev: TelemetryEvent = { stage, at: Date.now() }
+    for (const fn of telemetryListeners) {
+      try {
+        fn(ev)
+      } catch {
+        // ignore
+      }
+    }
+  }
 
   // --- 录音器 ---
   let audioCtx: AudioContext | null = null
@@ -232,6 +260,13 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   /** 定稿当前段：POST final=1（含 0.5s 尾垫由 host 补齐协议侧不需要）。 */
   const finalizeSegment = (): void => {
     if (segment.length === 0) return
+    // P1-5：强制发送 / 段长上限 / hold 松手等无静音过渡的端点路径，
+    // 端点判句到点即「说完」时刻（无静音等待段）。
+    if (utteranceEndAt === null) {
+      utteranceEndAt = Date.now()
+      emitTelemetry('utterance-end')
+    }
+    emitTelemetry('endpoint-fired')
     const samples = concatSegment()
     const epoch = ++segmentEpoch
     const meta: SegmentMeta = { force: forcePending }
@@ -244,6 +279,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     setState('transcribing')
     void (async () => {
       try {
+        emitTelemetry('submitted') // P1-5：定稿上传发起
         let res = await fetch(asrUrl(true), {
           method: 'POST',
           headers: { 'content-type': 'application/octet-stream' },
@@ -360,6 +396,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     } else if (rms > SPEECH_RMS) {
       if (!speechActive) {
         speechActive = true
+        // P1-5：新一轮语音开始，复位「说完」标记（下一轮 chain 重新起算）。
+        utteranceEndAt = null
         setState('speech')
         for (const p of prePad) segment.push(p)
         prePad = []
@@ -369,6 +407,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       segment.push(data)
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment()
     } else if (speechActive) {
+      // P1-5：说完最后一个字 = 语音→静音过渡的首帧（每段只报一次）。
+      if (utteranceEndAt === null) {
+        utteranceEndAt = Date.now()
+        emitTelemetry('utterance-end')
+      }
       segmentMs += durationMs
       silenceMs += durationMs
       segment.push(data)
@@ -454,6 +497,7 @@ const startRecorder = async (): Promise<void> => {
     segmentMs = 0
     prePad = []
     interruptCandidateMs = 0
+    utteranceEndAt = null // P1-5：会话结束清除说完标记
     try {
       processor?.disconnect()
     } catch {
@@ -517,6 +561,7 @@ const startRecorder = async (): Promise<void> => {
       holdActive = true
       forcePending = true // 松手定稿 = 明确发送意图（autoSend=false 也发）
       segmentEpoch++ // 作废迟到的 wake/旧段 partial
+      utteranceEndAt = null // P1-5：新按压段重新起算说完时刻
       segment = []
       segmentMs = 0
       silenceMs = 0
@@ -580,6 +625,12 @@ const startRecorder = async (): Promise<void> => {
       levelListeners.add(fn)
       return () => {
         levelListeners.delete(fn)
+      }
+    },
+    onTelemetry(fn) {
+      telemetryListeners.add(fn)
+      return () => {
+        telemetryListeners.delete(fn)
       }
     },
   }

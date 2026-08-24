@@ -245,6 +245,11 @@ systemctl restart dsh         # Linux; restart the dsh process on other platform
 > Note: dsh installs the plugin as a pnpm `file:` link (directory copy); after `node build.mjs` you
 > must copy `lib/client.js` to `<profile>/node_modules/dsh-voice-mode/lib/` and restart dsh before
 > the browser picks up the new bundle.
+>
+> Dev-mode latency telemetry (P1-5): run `localStorage.setItem('dsh-voice-mode.telemetry', '1')` in the
+> browser console, refresh, and enter voice mode — the status bar shows per-stage latencies of the
+> speech-end → first-audio chain (end → endpoint → submit → 1st token → 1st sentence → 1st chunk →
+> 1st audio, plus the total), for P1 acceptance measurement. Remove the key to disable (off by default, zero collection).
 
 ### Structure
 

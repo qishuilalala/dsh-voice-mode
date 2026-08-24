@@ -549,6 +549,9 @@ async function* tapActiveStream(
   broadcast: (event: string, payload: unknown) => void,
 ): AsyncIterable<StreamChunk> {
   const segmenter = new SentenceSegmenter()
+  // P1-5 延迟埋点链：每回合至多广播一次 host 侧里程碑（首 token / 首句成型）。
+  let firstTokenBroadcast = false
+  let firstSentenceBroadcast = false
   let flushed = false
   let finishReason: unknown = null
   const flushOnce = (): void => {
@@ -562,7 +565,17 @@ async function* tapActiveStream(
     for await (const chunk of inner) {
       // 只朗读最终答复的 text-delta（Q7）；reasoning/tool-call 不读。
       if (chunk.type === 'text-delta' && chunk.text) {
+        // P1-5：首条 text-delta = LLM 首 token 到达（客户端接收时刻计链）。
+        if (!firstTokenBroadcast) {
+          firstTokenBroadcast = true
+          broadcast('latency', { sessionId, stage: 'first-llm-token' })
+        }
         for (const s of segmenter.feed(chunk.text)) {
+          // P1-5：首句成型并入 TTS 队列。
+          if (!firstSentenceBroadcast) {
+            firstSentenceBroadcast = true
+            broadcast('latency', { sessionId, stage: 'first-sentence-text' })
+          }
           queue.enqueue(sessionId, s)
         }
       }
