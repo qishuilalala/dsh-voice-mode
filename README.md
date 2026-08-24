@@ -11,6 +11,7 @@
   <a href="https://www.npmjs.com/package/dsh-voice-mode"><img src="https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square" alt="npm version"></a>
   <a href="https://github.com/qishuilalala/dsh-voice-mode/releases"><img src="https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square" alt="GitHub release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square" alt="License"></a>
+  <a href="https://github.com/awesome-dsh-plugin/awesome-dsh-plugin#plugins"><img src="https://img.shields.io/badge/awesome--dsh--plugin-listed-2ea043?style=flat-square" alt="awesome-dsh-plugin"></a>
 </p>
 
 # dsh-voice-mode

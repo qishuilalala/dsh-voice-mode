@@ -1,7 +1,7 @@
 {
   "name": "dsh-voice-mode",
   "description": "Full-duplex voice mode for DeepSeek Harness: zipformer2 streaming ASR → editable draft, Edge TTS sentence-by-sentence read-aloud with live captions, true barge-in — on-device ASR, no API key. · DSH 语音双工对话：流式识别入草稿、按句朗读+实时字幕、开口即打断，识别本地推理、无需 API Key",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "type": "module",
   "main": "lib/index.js",
   "repository": {

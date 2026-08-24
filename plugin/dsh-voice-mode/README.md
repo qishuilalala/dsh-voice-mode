@@ -3,6 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square)](https://www.npmjs.com/package/dsh-voice-mode)
 [![License](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square)](LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/dsh--plugin-voice-brightgreen?style=flat-square)](https://github.com/topics/dsh-plugin)
+[![awesome-dsh-plugin](https://img.shields.io/badge/awesome--dsh--plugin-listed-2ea043?style=flat-square)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin#plugins)
 
 DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（真 barge-in）。无需 API Key，识别模型在本地宿主端推理。
 
