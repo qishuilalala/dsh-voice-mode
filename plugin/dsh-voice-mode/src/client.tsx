@@ -1095,9 +1095,12 @@ export function MicButton({
         // 1) 本地播放队列清空 + host TTS 队列 epoch++（静音）
         // 2) 有 running 回合则 session.cancel({keepInbox:true})（取消生成、保新消息）
         // 3) 半截标注由「转录区新消息续入」自然呈现（Q8 标注见 §8.5 收尾）
-        // Fix（对抗性审查）：探针豁免——hold 按住 = 明确打断意图；duck 不可用
-        // （<audio> 降级/ctx 缺失）；无 TTS 在播 = 无回声场景——三种情况直接硬打断。
-        const duckable = bus.audioDuckAvailable() && bus.ui.playing
+        // 关键修复：打断前沿只在「AI 正在朗读」时有意义——无 TTS 在播时的开口
+        // 就是正常的说话开始，绝不能走打断/丢弃路径（否则用户语音被反复 discard，
+        // partial 永不发出 —— cap-probe 实测复现「彻底不识别、无提示」）。
+        if (!bus.ui.playing) return
+        // 探针豁免：hold 按住 = 明确打断意图；duck 不可用（<audio> 降级/ctx 缺失）→ 直接硬打断。
+        const duckable = bus.audioDuckAvailable()
         resetIdle()
         bus.resetTelemetry() // P1-5：打断 = 上一轮回复作废，链清空（新一轮 utterance-end 重新起算）
         const hardBreak = async (): Promise<void> => {
