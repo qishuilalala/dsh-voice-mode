@@ -119,6 +119,8 @@ interface VoiceBus {
   stampTelemetry(stage: TelemetryStage, at?: number): void
   /** P1-5 开发埋点：打断/退出/让出时清空当前链。 */
   resetTelemetry(): void
+  /** P1-2：手势栈内预热播放 AudioContext（Safari 非手势栈新建会 suspended）。 */
+  warmAudio(): void
 }
 
 export interface VoiceSlotActions {
@@ -185,7 +187,12 @@ export function apply(ctx: any): void {
   }
 }
 
-/** 播放引擎与 SSE 消费（apply 闭包单例）。 */
+/**
+ * 播放引擎（P1-2 Web Audio 队列）：句级 decodeAudioData → AudioBufferSourceNode
+ * 以 start(max(now+lead, 上一句结束)) 链式调度（音频线程精度，句间缝隙 ≤50ms）；
+ * GainNode 预留 ducking 挂点（P3 打断强化用）；decodeAudioData 失败（如极端帧/老
+ * Safari）整段降级 <audio> 元素，保顺序播放。P1-5 起播埋点 = 首次调度发声时刻。
+ */
 function createAudioEngine(
   setUi: (patch: Partial<VoiceUiState>) => void,
   onPlayed?: () => void,
@@ -193,29 +200,57 @@ function createAudioEngine(
   push(frame: PlayFrame): void
   skip(): void
   toolBeep(): void
+  /** 手势栈内预热 AudioContext（Safari 非手势栈新建会 suspended 静默）。 */
+  warm(): void
 } {
-  const queue: PlayFrame[] = []
-  const audio = new Audio()
+  // --- 待播放：串行解码，decode 完成即调度（句序天然保持）。 ---
+  const pending: PlayFrame[] = []
+  // <audio> 降级路径（decodeAudioData 失败后整段使用，逻辑与原引擎一致）。
+  const fallbackAudio = new Audio()
+  let fallback = false
+  let ctx: AudioContext | null = null
+  let duckGain: GainNode | null = null
+  /** 上一句的调度结束时刻（context.currentTime 对齐；无缝衔接基准）。 */
+  let nextEndAt = 0
+  /** 当前已 start 的源（skip 时全部 stop）。 */
+  const activeSrcs = new Set<AudioBufferSourceNode>()
+  let decoding = false
 
-  const playNext = (): void => {
-    const frame = queue.shift()
+  const warm = (): void => {
+    if (ctx) {
+      void ctx.resume?.()
+      return
+    }
+    try {
+      const AC: typeof AudioContext =
+        window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      ctx = new AC()
+      duckGain = ctx.createGain()
+      duckGain.gain.value = 1 // P3 ducking 挂点：打断时降增益、恢复斜坡
+      duckGain.connect(ctx.destination)
+      void ctx.resume?.()
+    } catch {
+      ctx = null // warm 失败：后续整段走 <audio> 降级
+    }
+  }
+
+  const playFallback = (): void => {
+    const frame = pending.shift() ?? null
     if (!frame) {
       setUi({ playing: false, playingCaption: null })
       return
     }
-    // P1-1：客户端已按句拼帧，此处直接消费整句字节（无需再经 base64 往返）。
     const url = URL.createObjectURL(new Blob([frame.audio], { type: 'audio/mpeg' }))
-    audio.src = url
-    audio.onended = () => {
+    fallbackAudio.src = url
+    fallbackAudio.onended = () => {
       URL.revokeObjectURL(url)
-      playNext()
+      playFallback()
     }
-    audio.onerror = () => {
+    fallbackAudio.onerror = () => {
       URL.revokeObjectURL(url)
-      playNext()
+      playFallback()
     }
-    // P1-5：真实起播（onplaying = 播放真正发声，非 play() 启动时序）。
-    audio.onplaying = () => {
+    fallbackAudio.onplaying = () => {
       try {
         onPlayed?.()
       } catch {
@@ -223,7 +258,61 @@ function createAudioEngine(
       }
     }
     setUi({ playing: true, playingCaption: frame.text, ttsNotice: null })
-    void audio.play().catch(() => playNext())
+    void fallbackAudio.play().catch(() => playFallback())
+  }
+
+  /** 解码串行队列：保持句序，decode 完成即无缝调度（音频线程精度）。 */
+  const drainPending = (): void => {
+    if (decoding || !ctx || !duckGain || pending.length === 0) return
+    decoding = true
+    void (async () => {
+      try {
+        while (pending.length > 0) {
+          const frame = pending[0]
+          // decodeAudioData 会 transfer 掉传入 buffer；传拷贝以保留原字节供降级路径用。
+          const buf = await ctx!.decodeAudioData(frame.audio.buffer.slice(0))
+          // skip/打断防护（Q2 真静音）：解码期间框架被清空则放弃播放。
+          if (pending.length === 0 || pending[0] !== frame) return
+          pending.shift()
+          const t0 = ctx!.currentTime
+          const at = Math.max(t0 + 0.02, nextEndAt)
+          const src = ctx!.createBufferSource()
+          src.buffer = buf
+          src.connect(duckGain!)
+          activeSrcs.add(src)
+          src.onended = () => {
+            activeSrcs.delete(src)
+            // 全队列播完才收门面状态（以在播源数为准：多句连播时 pending 会先空）。
+            if (activeSrcs.size === 0 && pending.length === 0) {
+              setUi({ playing: false, playingCaption: null })
+            }
+          }
+          src.start(at)
+          nextEndAt = at + buf.duration
+          // P1-5：真实起播（Web Audio 调度瞬间即发声；取调度时刻近似）。
+          try {
+            onPlayed?.()
+          } catch {
+            // 埋点失败不影响播放
+          }
+          setUi({ playing: true, playingCaption: frame.text, ttsNotice: null })
+        }
+      } catch {
+        // 解码失败：停掉 Web Audio 在途源（避免与 <audio> 混播），整段降级（保句序）。
+        for (const src of activeSrcs) {
+          try {
+            src.stop()
+          } catch {
+            // ignore
+          }
+        }
+        activeSrcs.clear()
+        fallback = true
+        playFallback()
+      } finally {
+        decoding = false
+      }
+    })()
   }
 
   const toolBeep = (): void => {
@@ -249,17 +338,33 @@ function createAudioEngine(
 
   return {
     push(frame) {
-      queue.push(frame)
-      if (audio.paused) playNext()
+      if (fallback || !ctx) {
+        pending.push(frame)
+        // 已在播则等 onended/onerror 链续播（与原引擎 paused 守卫同语义）。
+        if (fallbackAudio.paused) playFallback()
+        return
+      }
+      pending.push(frame)
+      drainPending()
     },
     skip() {
-      queue.length = 0
-      audio.pause()
-      audio.onended = null
-      audio.onerror = null
+      pending.length = 0
+      nextEndAt = 0 // P1-2/I1：打断后清调度基准，下句从 now 起播（防空窗）
+      fallbackAudio.pause()
+      fallbackAudio.onended = null
+      fallbackAudio.onerror = null
+      for (const src of activeSrcs) {
+        try {
+          src.stop()
+        } catch {
+          // ignore
+        }
+      }
+      activeSrcs.clear()
       setUi({ playing: false, playingCaption: null })
     },
     toolBeep,
+    warm,
   }
 }
 
@@ -267,7 +372,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   let activeSessionId: string | null = null
   const DEFAULT_BOOT: VoiceBootConfig = {
     basePath: BASE_PATH,
-    silenceMs: 2000,
+    silenceMs: 700,
     interruptLevel: 0,
     idleTimeoutMinutes: 10,
     autoSend: true,
@@ -435,6 +540,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   let curSentenceId: number | null = null
   let curChunks: Uint8Array[] = []
   let curBytes = 0
+  /** 本句已收到的 chunk 数（final 时与帧头校验：SSE 断线丢帧则丢弃坏句）。 */
+  let curChunkCount = 0
   audioListeners.add((frame) => {
     if (frame.sessionId !== activeSessionId) return
     // P1-5：首 chunk 到达 = 首句合成产出（延迟埋点链里程碑）。
@@ -443,8 +550,18 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       curSentenceId = frame.sentenceId
       curChunks = []
       curBytes = 0
+      curChunkCount = 0
     }
     if (frame.final) {
+      // P1-1/M1：host final 帧的 chunkId = 已发 chunk 总数；少收说明 SSE 丢帧，
+      // 丢弃坏句（仅凭首字节 0xff 校验可被流内任意帧头蒙混）。
+      if (frame.chunkId !== curChunkCount) {
+        curSentenceId = null
+        curChunks = []
+        curBytes = 0
+        curChunkCount = 0
+        return
+      }
       const buf = new Uint8Array(curBytes)
       let off = 0
       for (const c of curChunks) {
@@ -454,10 +571,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       curSentenceId = null
       curChunks = []
       curBytes = 0
+      curChunkCount = 0
       // 合法性：MP3 帧以同步字开头；空/无效整句丢弃（原 host 侧校验转移至此）。
       if (buf.length === 0 || buf[0] !== 0xff) return
-      // 组装 base64 前先转（TextDecoder 逐字节不可靠）：直接经 atob→bytes 逆过程太浪费，
-      // PlayFrame 已改为接收 Uint8Array，此处直接传字节。
       engine.push({
         sessionId: frame.sessionId,
         seq: frame.sentenceId,
@@ -471,6 +587,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
     curChunks.push(bytes)
     curBytes += bytes.length
+    curChunkCount += 1
   })
   toolListeners.add(() => engine.toolBeep())
 
@@ -550,6 +667,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     },
     stampTelemetry,
     resetTelemetry,
+    warmAudio() {
+      engine.warm()
+    },
   }
 }
 
@@ -607,7 +727,7 @@ export function MicButton({
   /** hold 模式 Ctrl 按住说话中（600ms 阈值后才置真）。 */
   const holdCtrlRef = useRef(false)
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
-  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 2000, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: 'toggle', wakeWord: '' }
+  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: 'toggle', wakeWord: '' }
 
   useVoiceCss()
 
@@ -734,6 +854,8 @@ export function MicButton({
       } catch {
         // 预热失败不阻塞（toolBeep 有兜底）
       }
+      // P1-2：播放引擎 AudioContext 同样需手势栈预热（decode/start 才不会被静音）。
+      bus.warmAudio()
 
       engine.onState((s) => {
         bus.setUi({ state: s })

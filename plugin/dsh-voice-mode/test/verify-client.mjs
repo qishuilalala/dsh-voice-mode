@@ -93,10 +93,15 @@ t('lib/index.js 含 P1-1 分块帧协议（sentenceId/chunkId/final 转发）', 
   const src = read('lib/index.js')
   assert.ok(src.includes('sentenceId'), 'host bundle missing sentenceId')
   assert.ok(src.includes('chunkId'), 'host bundle missing chunkId')
+  assert.ok(src.includes('final: false'), 'host bundle missing non-final frame flag')
 })
-t('lib/client.js 含 P1-1 按句拼帧（PlayFrame Uint8Array）', () => {
+t('lib/index.js 含 P1-4 增量上行协议（offset 参数）', () => {
+  const src = read('lib/index.js')
+  assert.ok(src.includes('get("offset")'), 'host bundle missing offset param parsing')
+})
+t('lib/client.js 含 P1-1 按句拼帧（PlayFrame Uint8Array + 丢帧完整性校验）', () => {
   const src = read('lib/client.js')
-  assert.ok(src.includes('curSentenceId') || src.includes('sentenceId'), 'client bundle missing sentence assembler')
+  assert.ok(src.includes('curChunkCount'), 'client bundle missing chunk-count integrity check')
 })
 
 console.log(`\nverify-client：${passed} 项通过`)

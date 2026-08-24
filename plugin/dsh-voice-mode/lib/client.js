@@ -60,8 +60,9 @@ var SAMPLE_RATE = 16e3;
 var SPEECH_RMS = 0.015;
 var LEVEL_CEILING = 0.25;
 var MAX_SEGMENT_MS = 3e4;
+var MIN_SPEECH_MS = 250;
 var PRE_PAD_MS = 250;
-var PARTIAL_INTERVAL_MS = 900;
+var PARTIAL_INTERVAL_MS = 300;
 var PARTIAL_MIN_S = 0.4;
 var PARTIAL_MAX_S = 30;
 var BUFFER_SIZE = 1024;
@@ -106,6 +107,7 @@ function createAsrEngine(config, sessionId) {
   let speechActive = false;
   let segment = [];
   let segmentMs = 0;
+  let speechMs = 0;
   let silenceMs = 0;
   let prePad = [];
   let holdActive = false;
@@ -117,7 +119,8 @@ function createAsrEngine(config, sessionId) {
   let partialInFlight = false;
   let segmentEpoch = 0;
   let forcePending = false;
-  const asrUrl = (final) => `${location.origin}${config.basePath.replace(/\/+$/, "")}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}`;
+  let uploadedSamples = 0;
+  const asrUrl = (final, offset) => `${location.origin}${config.basePath.replace(/\/+$/, "")}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` + (offset !== void 0 ? `&offset=${offset}` : "");
   const setState = (s) => {
     state = s;
     for (const fn of stateListeners) {
@@ -147,15 +150,35 @@ function createAsrEngine(config, sessionId) {
     }
     return out;
   };
+  const sliceSince = (from) => {
+    let total = 0;
+    for (const c of segment) total += c.length;
+    const out = new Float32Array(Math.max(0, total - from));
+    if (out.length === 0) return out;
+    let off = 0;
+    let acc = 0;
+    for (const c of segment) {
+      if (off >= out.length) break;
+      const sub = c.subarray(Math.max(0, from - acc));
+      const n = Math.min(sub.length, out.length - off);
+      out.set(sub.subarray(0, n), off);
+      off += n;
+      acc += c.length;
+    }
+    return out;
+  };
   const requestPartial = async () => {
     if (partialInFlight || segment.length === 0) return;
-    const seconds = segment.reduce((n, c) => n + c.length, 0) / SAMPLE_RATE;
+    const total = segment.reduce((n, c) => n + c.length, 0);
+    const seconds = total / SAMPLE_RATE;
     if (seconds < PARTIAL_MIN_S || seconds > PARTIAL_MAX_S) return;
-    const samples = concatSegment();
+    const from = uploadedSamples;
+    if (total - from <= 0) return;
+    const samples = sliceSince(from);
     const epoch = segmentEpoch;
     partialInFlight = true;
     try {
-      let res = await fetch(asrUrl(false), {
+      let res = await fetch(asrUrl(false, from), {
         method: "POST",
         headers: { "content-type": "application/octet-stream" },
         body: samples.buffer
@@ -165,7 +188,7 @@ function createAsrEngine(config, sessionId) {
         const retry = await new Promise((resolve) => {
           setTimeout(async () => {
             try {
-              const r2 = await fetch(asrUrl(false), {
+              const r2 = await fetch(asrUrl(false, from), {
                 method: "POST",
                 headers: { "content-type": "application/octet-stream" },
                 body: samples.buffer
@@ -183,14 +206,17 @@ function createAsrEngine(config, sessionId) {
       const out = await res.json();
       if (epoch !== segmentEpoch) return;
       if (state === "loading-model") setState("speech");
+      uploadedSamples = Math.max(uploadedSamples, from + samples.length);
       if (state === "wake" && wakeWord) {
         if (matchWakeWord(out.text ?? "", wakeWord)) {
           segmentEpoch++;
           segment = [];
           segmentMs = 0;
+          speechMs = 0;
           silenceMs = 0;
           prePad = [];
           sincePartialMs = 0;
+          uploadedSamples = 0;
           await resetHostStream();
           if (active) setState("listening");
         }
@@ -215,10 +241,13 @@ function createAsrEngine(config, sessionId) {
       emitTelemetry("utterance-end");
     }
     emitTelemetry("endpoint-fired");
-    const samples = concatSegment();
+    const from = uploadedSamples;
+    const samples = sliceSince(from);
     const epoch = ++segmentEpoch;
     const meta = { force: forcePending };
     forcePending = false;
+    speechMs = 0;
+    uploadedSamples = 0;
     segment = [];
     speechActive = false;
     silenceMs = 0;
@@ -228,7 +257,7 @@ function createAsrEngine(config, sessionId) {
     void (async () => {
       try {
         emitTelemetry("submitted");
-        let res = await fetch(asrUrl(true), {
+        let res = await fetch(asrUrl(true, from), {
           method: "POST",
           headers: { "content-type": "application/octet-stream" },
           body: samples.buffer
@@ -239,7 +268,7 @@ function createAsrEngine(config, sessionId) {
             setTimeout(async () => {
               try {
                 resolve(
-                  await fetch(asrUrl(true), {
+                  await fetch(asrUrl(true, from), {
                     method: "POST",
                     headers: { "content-type": "application/octet-stream" },
                     body: samples.buffer
@@ -311,6 +340,7 @@ function createAsrEngine(config, sessionId) {
           segmentMs = 0;
           silenceMs = 0;
           prePad = [];
+          uploadedSamples = 0;
           void resetHostStream();
         }
       } else {
@@ -334,6 +364,7 @@ function createAsrEngine(config, sessionId) {
         for (const p of prePad) segment.push(p);
         prePad = [];
       }
+      speechMs += durationMs;
       segmentMs += durationMs;
       silenceMs = 0;
       segment.push(data);
@@ -346,7 +377,22 @@ function createAsrEngine(config, sessionId) {
       segmentMs += durationMs;
       silenceMs += durationMs;
       segment.push(data);
-      if (silenceMs > config.silenceMs) finalizeSegment();
+      if (silenceMs > config.silenceMs) {
+        if (speechMs >= MIN_SPEECH_MS) {
+          finalizeSegment();
+        } else {
+          segment = [];
+          speechActive = false;
+          speechMs = 0;
+          silenceMs = 0;
+          segmentMs = 0;
+          prePad = [];
+          utteranceEndAt = null;
+          uploadedSamples = 0;
+          void resetHostStream();
+          setState(wakeWord ? "wake" : "listening");
+        }
+      }
     } else {
       prePad.push(data);
       let total = 0;
@@ -415,6 +461,8 @@ function createAsrEngine(config, sessionId) {
     speechActive = false;
     silenceMs = 0;
     segmentMs = 0;
+    speechMs = 0;
+    uploadedSamples = 0;
     prePad = [];
     interruptCandidateMs = 0;
     utteranceEndAt = null;
@@ -478,6 +526,7 @@ function createAsrEngine(config, sessionId) {
       utteranceEndAt = null;
       segment = [];
       segmentMs = 0;
+      speechMs = 0;
       silenceMs = 0;
       prePad = [];
       speechActive = true;
@@ -599,7 +648,7 @@ var zh = {
   sev0: "0 \u9AD8\u95E8\u69DB",
   sev1: "1 \u4E2D",
   sev2: "2 \u4F4E",
-  descSilence: "\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 2000 = 2 \u79D2\uFF09",
+  descSilence: "\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 700 \u6BEB\u79D2\uFF1B\u81F3\u5C11 250ms \u8BED\u97F3\u624D\u5224\u53E5\uFF0C\u9632\u77ED\u4FC3\u566A\u58F0\u8BEF\u89E6\u53D1\uFF09",
   descIdle: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09",
   descModelHost: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u5B98\u65B9\u6E90 / \u56FD\u5185\u955C\u50CF\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u586B\u4EFB\u610F\u955C\u50CF\uFF09",
   descAutoSend: "\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09",
@@ -669,7 +718,7 @@ var en = {
   sev0: "0 high",
   sev1: "1 medium",
   sev2: "2 low",
-  descSilence: "Silence pause before a sentence is committed (default 2000 ms)",
+  descSilence: "Silence pause before a sentence is committed (default 700 ms; at least 250 ms of speech required, guards against noise triggers)",
   descIdle: "Auto-exit voice mode after idle minutes (default 10)",
   descModelHost: "ASR model download source (official source / mirror, or any custom URL)",
   descAutoSend: "Auto-send after finalized recognition (off = draft only; Ctrl / hold still sends)",
@@ -1064,7 +1113,7 @@ function VoiceSettingsCard({ scope }) {
           ]
         }
       ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 2e3, min: 500, max: 3e4, step: 100 }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 700, min: 500, max: 3e4, step: 100 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoSend), onChange: (e) => void scope.set("autoSend", e.target.checked) }) }),
@@ -1157,32 +1206,99 @@ function apply(ctx) {
   }
 }
 function createAudioEngine(setUi, onPlayed) {
-  const queue = [];
-  const audio = new Audio();
-  const playNext = () => {
-    const frame = queue.shift();
+  const pending = [];
+  const fallbackAudio = new Audio();
+  let fallback = false;
+  let ctx = null;
+  let duckGain = null;
+  let nextEndAt = 0;
+  const activeSrcs = /* @__PURE__ */ new Set();
+  let decoding = false;
+  const warm = () => {
+    if (ctx) {
+      void ctx.resume?.();
+      return;
+    }
+    try {
+      const AC = window.AudioContext ?? window.webkitAudioContext;
+      ctx = new AC();
+      duckGain = ctx.createGain();
+      duckGain.gain.value = 1;
+      duckGain.connect(ctx.destination);
+      void ctx.resume?.();
+    } catch {
+      ctx = null;
+    }
+  };
+  const playFallback = () => {
+    const frame = pending.shift() ?? null;
     if (!frame) {
       setUi({ playing: false, playingCaption: null });
       return;
     }
     const url = URL.createObjectURL(new Blob([frame.audio], { type: "audio/mpeg" }));
-    audio.src = url;
-    audio.onended = () => {
+    fallbackAudio.src = url;
+    fallbackAudio.onended = () => {
       URL.revokeObjectURL(url);
-      playNext();
+      playFallback();
     };
-    audio.onerror = () => {
+    fallbackAudio.onerror = () => {
       URL.revokeObjectURL(url);
-      playNext();
+      playFallback();
     };
-    audio.onplaying = () => {
+    fallbackAudio.onplaying = () => {
       try {
         onPlayed?.();
       } catch {
       }
     };
     setUi({ playing: true, playingCaption: frame.text, ttsNotice: null });
-    void audio.play().catch(() => playNext());
+    void fallbackAudio.play().catch(() => playFallback());
+  };
+  const drainPending = () => {
+    if (decoding || !ctx || !duckGain || pending.length === 0) return;
+    decoding = true;
+    void (async () => {
+      try {
+        while (pending.length > 0) {
+          const frame = pending[0];
+          const buf = await ctx.decodeAudioData(frame.audio.buffer.slice(0));
+          if (pending.length === 0 || pending[0] !== frame) return;
+          pending.shift();
+          const t0 = ctx.currentTime;
+          const at = Math.max(t0 + 0.02, nextEndAt);
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          src.connect(duckGain);
+          activeSrcs.add(src);
+          src.onended = () => {
+            activeSrcs.delete(src);
+            if (activeSrcs.size === 0 && pending.length === 0) {
+              setUi({ playing: false, playingCaption: null });
+            }
+          };
+          src.start(at);
+          nextEndAt = at + buf.duration;
+          try {
+            onPlayed?.();
+          } catch {
+          }
+          setUi({ playing: true, playingCaption: frame.text, ttsNotice: null });
+        }
+      } catch {
+        for (const src of activeSrcs) {
+          try {
+            src.stop();
+          } catch {
+          }
+        }
+        activeSrcs.clear();
+        fallback = true;
+        playFallback();
+      } finally {
+        decoding = false;
+      }
+    })();
   };
   const toolBeep = () => {
     try {
@@ -1204,24 +1320,38 @@ function createAudioEngine(setUi, onPlayed) {
   };
   return {
     push(frame) {
-      queue.push(frame);
-      if (audio.paused) playNext();
+      if (fallback || !ctx) {
+        pending.push(frame);
+        if (fallbackAudio.paused) playFallback();
+        return;
+      }
+      pending.push(frame);
+      drainPending();
     },
     skip() {
-      queue.length = 0;
-      audio.pause();
-      audio.onended = null;
-      audio.onerror = null;
+      pending.length = 0;
+      nextEndAt = 0;
+      fallbackAudio.pause();
+      fallbackAudio.onended = null;
+      fallbackAudio.onerror = null;
+      for (const src of activeSrcs) {
+        try {
+          src.stop();
+        } catch {
+        }
+      }
+      activeSrcs.clear();
       setUi({ playing: false, playingCaption: null });
     },
-    toolBeep
+    toolBeep,
+    warm
   };
 }
 function createVoiceBus(basePath = BASE_PATH2, ctx) {
   let activeSessionId = null;
   const DEFAULT_BOOT = {
     basePath: BASE_PATH2,
-    silenceMs: 2e3,
+    silenceMs: 700,
     interruptLevel: 0,
     idleTimeoutMinutes: 10,
     autoSend: true,
@@ -1364,6 +1494,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   let curSentenceId = null;
   let curChunks = [];
   let curBytes = 0;
+  let curChunkCount = 0;
   audioListeners.add((frame) => {
     if (frame.sessionId !== activeSessionId) return;
     stampTelemetry("first-tts-chunk");
@@ -1371,8 +1502,16 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       curSentenceId = frame.sentenceId;
       curChunks = [];
       curBytes = 0;
+      curChunkCount = 0;
     }
     if (frame.final) {
+      if (frame.chunkId !== curChunkCount) {
+        curSentenceId = null;
+        curChunks = [];
+        curBytes = 0;
+        curChunkCount = 0;
+        return;
+      }
       const buf = new Uint8Array(curBytes);
       let off = 0;
       for (const c of curChunks) {
@@ -1382,6 +1521,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       curSentenceId = null;
       curChunks = [];
       curBytes = 0;
+      curChunkCount = 0;
       if (buf.length === 0 || buf[0] !== 255) return;
       engine.push({
         sessionId: frame.sessionId,
@@ -1396,6 +1536,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     curChunks.push(bytes);
     curBytes += bytes.length;
+    curChunkCount += 1;
   });
   toolListeners.add(() => engine.toolBeep());
   return {
@@ -1469,7 +1610,10 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       }
     },
     stampTelemetry,
-    resetTelemetry
+    resetTelemetry,
+    warmAudio() {
+      engine.warm();
+    }
   };
 }
 var styleInjected = false;
@@ -1503,7 +1647,7 @@ function MicButton({
   const idleTimerRef = (0, import_react2.useRef)(null);
   const runningRef = (0, import_react2.useRef)(false);
   const holdCtrlRef = (0, import_react2.useRef)(false);
-  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 2e3, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: "toggle", wakeWord: "" };
+  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: "toggle", wakeWord: "" };
   useVoiceCss();
   const [, bumpUi] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(
@@ -1608,6 +1752,7 @@ function MicButton({
         void beepCtx.resume?.();
       } catch {
       }
+      bus.warmAudio();
       engine.onState((s) => {
         bus.setUi({ state: s });
         if (s === "idle") resetIdle();
