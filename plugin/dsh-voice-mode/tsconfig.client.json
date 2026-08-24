@@ -24,6 +24,7 @@
     "src/client.tsx",
     "src/settings-form.tsx",
     "src/asr.ts",
+    "src/aec.ts",
     "src/wakeword.ts"
   ],
   "exclude": [
