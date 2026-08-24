@@ -119,6 +119,8 @@ function createAsrEngine(config, sessionId) {
   let processor = null;
   let active = false;
   let stopRequested = false;
+  let startSeq = 0;
+  let curStartSeq = 0;
   let inFlush = false;
   let ctxRate = SAMPLE_RATE;
   let speechActive = false;
@@ -435,7 +437,7 @@ function createAsrEngine(config, sessionId) {
         autoGainControl: true
       }
     });
-    if (stopRequested) {
+    if (stopRequested || curStartSeq !== startSeq) {
       stream.getTracks().forEach((t3) => t3.stop());
       stream = null;
       return;
@@ -497,6 +499,7 @@ function createAsrEngine(config, sessionId) {
     async start() {
       if (active) return;
       stopRequested = false;
+      curStartSeq = ++startSeq;
       segmentEpoch++;
       sincePartialMs = 0;
       interruptCandidateMs = 0;

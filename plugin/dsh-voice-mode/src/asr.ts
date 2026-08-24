@@ -141,6 +141,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let active = false
   /** 麦克风取消请求（Fix8 修正：授权返回时若已被 stop 抢占则释放，防止无人能停的常开泄漏）。 */
   let stopRequested = false
+  /** 启动序号（防授权窗口内快速 start→stop→start 双路开麦：旧启动因序号落后而放弃）。 */
+  let startSeq = 0
+  let curStartSeq = 0
   let inFlush = false
   /** AudioContext 实际采样率（可能 ≠ 16k，用于重采样守卫）。 */
   let ctxRate: number = SAMPLE_RATE
@@ -530,9 +533,10 @@ const startRecorder = async (): Promise<void> => {
         autoGainControl: true,
       },
     })
-    // Fix8 修正：授权返回时若已被 stop() 抢占（stopRequested）则立即释放麦克风
-    // （防无人能停的常开泄漏）。注意不能用 active 判断——它在函数末尾才置 true。
-    if (stopRequested) {
+    // Fix8 修正：授权返回时若已被 stop() 抢占（stopRequested）或已被更新的启动取代
+    // （序号落后 → 双路开麦防呆）则立即释放麦克风。注意不能用 active 判断——
+    // 它在函数末尾才置 true。
+    if (stopRequested || curStartSeq !== startSeq) {
       stream.getTracks().forEach((t) => t.stop())
       stream = null
       return
@@ -604,6 +608,7 @@ const startRecorder = async (): Promise<void> => {
     async start() {
       if (active) return
       stopRequested = false // Fix8：新一次启动清除取消标记
+      curStartSeq = ++startSeq // 防双路开麦：本次启动的序号
       segmentEpoch++
       sincePartialMs = 0
       interruptCandidateMs = 0
