@@ -13,6 +13,7 @@ const root = join(here, '..')
 const tests = [
   ['segmenter 单测', ['node', 'test/segmenter.test.mjs']],
   ['wakeword 单测', ['node', 'test/wakeword.test.mjs']],
+  ['aec 单测', ['node', 'test/aec.test.mjs']],
   ['清单/产物自检', ['node', 'test/verify-client.mjs']],
 ]
 let failed = 0

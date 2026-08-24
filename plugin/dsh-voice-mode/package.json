@@ -29,6 +29,7 @@
     "assets/demo.gif",
     "scripts/prefetch.mjs",
     "scripts/list-voices.mjs",
+    "scripts/bench-asr.mjs",
     "README.md",
     "README.en.md",
     "LICENSE"
@@ -40,6 +41,7 @@
     "verify:client": "node test/verify-client.mjs",
     "prefetch": "node scripts/prefetch.mjs",
     "list-voices": "node scripts/list-voices.mjs",
+    "bench-asr": "node scripts/bench-asr.mjs",
     "verify": "node scripts/verify.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.client.json --noEmit"
   },

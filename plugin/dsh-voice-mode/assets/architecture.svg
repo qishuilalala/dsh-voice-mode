@@ -55,7 +55,7 @@
 
   <rect class="node-blue" x="225" y="137" width="175" height="82"/>
   <text class="node-title" x="312.5" y="160">RMS VAD</text>
-  <text class="node-detail" x="312.5" y="179">持续聆听 2s 静音断句 ·</text>
+  <text class="node-detail" x="312.5" y="179">持续聆听 · VAD 自动断句 ·</text>
   <text class="node-detail" x="312.5" y="197"><tspan class="mono">hold</tspan> 模式按住说话绕过 VAD</text>
 
   <rect class="node-blue" x="430" y="127" width="205" height="102"/>

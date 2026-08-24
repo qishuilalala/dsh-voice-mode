@@ -124,7 +124,7 @@ const en: Record<keyof typeof zh, string> = {
   custom: 'Custom',
   descVoice: 'Edge TTS voice (presets, or a custom ShortName)',
   descRate: 'Speech rate (0.5 slow – 2.0 fast, 1.0 normal)',
-  descInterrupt: 'Interrupt sensitivity (0 high barrier / 2 low)',
+  descInterrupt: 'Interrupt sensitivity (0 high barrier / 1 medium / 2 low)',
   sev0: '0 high',
   sev1: '1 medium',
   sev2: '2 low',

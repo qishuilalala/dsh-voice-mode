@@ -19,10 +19,10 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
   - `hold` 按住说话：短按进入/退出，**按住麦克风按钮说话、松手即发**（滑出取消、`Esc`/失焦放弃本段）；`Ctrl` 按住即录、松开即发
 - **唤醒词（可选，默认关）**：设置 `wakeWord` 后进入待机态，说出唤醒词才开始识别（如「你好小D」）
 - **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式 Edge TTS 朗读 + 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录；可选口语化提示词（设置 `spokenFormat`，默认关）让回复为自然短句、不带 Markdown 排版符号，朗读侧再做一轮标记剥离
-- **开口打断（barge-in）**：三档灵敏度发声前沿检测，**NLMS 回声消除（P3）**以本页 TTS 播放为参考先消掉外放回声，再加 **duck-and-listen**（先压低 TTS 300ms 听：mic 骤降=回声→恢复不打断；维持=人声→真打断）→ 本地静音 + host 合成队列作废 + 正在运行的回合取消（保留半截并自然续入新消息）
-- **模型懒加载与进度**：首次使用自动下载 zipformer2 中文流式模型（约 160MB，`.part` 断点续传），状态条实时显示进度；可用 `npm run prefetch` 预下载
+- **开口打断（barge-in）**：三档灵敏度发声前沿检测，**NLMS 回声消除（P3）**以本页 TTS 播放为参考先消掉外放回声，再加 **duck-and-listen**（先压低 TTS 600ms 听：mic 骤降=回声→恢复不打断；维持=人声→真打断；hold/无 duck 能力/无 TTS 在播时直接打断）→ 本地静音 + host 合成队列作废 + 正在运行的回合取消（保留半截并自然续入新消息）
+- **模型懒加载与进度**：首次使用自动下载 zipformer2 流式模型（~160MB）、Silero VAD（~2MB）与 SenseVoice 定稿模型（~228MB，首次定稿时，可关），全部 `.part` 断点续传、hf-mirror 回退；状态条实时显示进度；`npm run prefetch` 可预下载流式 ASR 模型（VAD/SenseVoice 首次使用时自动下载）
 - **设置**：设置 → Plugins → 插件配置 → 语音模式（voice-mode），可调音色/语速/打断灵敏度/静音停顿/空闲超时/模型镜像/自动发送/交互模式/唤醒词/口语化提示词；**音色可试听**（按当前音色+语速即时合成预览，自定义 ShortName 亦可）
-- **界面语言**：跟随浏览器语言（中文 / English；切换后刷新页面生效）
+- **界面语言**：跟随 dsh 语言设置（网页 `<html lang>`，未设置时回退浏览器语言；切换后刷新页面生效）
 - **容错**：麦克风被拒红点提示、模型下载失败可见提示、TTS 连接失败状态条提示（自动退避重试）、提交失败文字留在草稿、SSE 断线自动重连
 - **空闲退出**：10 分钟无活动自动退出并释放麦克风
 
@@ -57,16 +57,17 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | `idleTimeoutMinutes` | `10` | 无活动自动退出语音模式的分钟数 |
 | `modelHost` | 默认源 | ASR 模型下载源（国内网络填 `https://hf-mirror.com`） |
 | `autoSend` | `true` | 识别定稿后自动发送；关闭则只进草稿（按住 `Ctrl` / hold 松手仍会发送） |
-| `mode` | `toggle` | 交互模式：`toggle` 持续聆听 + 2s 静音断句；`hold` 按住说话、松手发送（短按退出） |
+| `mode` | `toggle` | 交互模式：`toggle` 持续聆听 + 静音自动断句；`hold` 按住说话、松手发送（短按退出） |
 | `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭 |
 | `spokenFormat` | `false` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效** |
+| `senseVoice` | `true` | 定稿用 SenseVoice 重译（带标点 + 数字归一化，识别更准）；关闭可省 228MB 模型、只走流式识别 |
 
-生效范围：`voice`/`rate`/`spokenFormat` **立即生效**；其余设置下次进入语音模式时生效。设置项默认值由插件配置（`base` 层）提供。
+生效范围：`voice`/`rate`/`spokenFormat`/`senseVoice` **立即生效**；其余（`silenceMs`/`interruptLevel`/`idleTimeoutMinutes`/`modelHost`/`autoSend`/`mode`/`wakeWord`）下次进入语音模式时生效。前六个键的平台默认由插件配置（`base` 层）提供，其余由 schema 提供。
 
 ### 开发工具
 
 - `node scripts/list-voices.mjs`：列出 Edge TTS 音色
-- `node scripts/prefetch.mjs`：预下载 ASR/VAD/SenseVoice 模型
+- `node scripts/prefetch.mjs`：预下载流式 ASR zipformer 模型（VAD/SenseVoice 首次使用时自动下载）
 - `node scripts/bench-asr.mjs --dir <测试集目录>`（P4-2）：离线 CER/段延迟/体积对照（现役 zipformer int8 vs xlarge / small-CTC / 在线 Paraformer），测试集 = 16k 单声道 PCM `.wav` + 同名 `.txt` 参考文本
 
 ### 常用音色（完整清单见 `node scripts/list-voices.mjs`）
@@ -102,7 +103,7 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 
 ## 已知限制
 
-- 发声打断依赖浏览器回声消除（`echoCancellation`）；扬声器音量过大时可能漏声到麦克风
+- 打断已内置 NLMS 声学回声消除（P3，参考=本页 TTS 播放）+ duck-and-listen，浏览器 `echoCancellation` 仅兜底；外放极端音量/距离下抑制量需真机标定（`ECHO_DELAY_MS` 等参数）
 - `Ctrl+Shift+V` 会覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍可用 `Ctrl+V`）
 - 识别模型为简体中文优先；识别质量受环境噪声影响
 - 浏览器自动播放策略：朗读需要页面已有用户交互（点击麦克风即满足）；「试听」依赖 `AbortSignal.timeout`（Safari 16+ / Chrome 103+ / Firefox 100+；老浏览器点击试听会立即提示失败，属预期降级）
@@ -114,7 +115,7 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
   - 需 **HTTPS 或 localhost**（iOS/macOS Safari 强制安全上下文；`http://` 局域网 IP 下麦克风不可用）
   - 首次进入需授权麦克风；被拒后到「设置 → Safari → 麦克风」开启（iOS）
   - iOS 后台/锁屏时识别与朗读暂停，回前台自动恢复（可能丢句）；建议语音模式期间保持前台
-- **安全说明**：插件 HTTP 面（`/voice-mode/*`）遵循宿主安全模型——请勿将 dsh 端口直接暴露公网；经反向代理发布时由代理层（如 basic auth）鉴权；插件侧对敏感操作保留会话归属校验
+- **安全说明**：插件 HTTP 面（`/voice-mode/*`）遵循宿主安全模型——请勿将 dsh 端口直接暴露公网；经反向代理发布时由代理层（如 basic auth）鉴权；`/asr` 有活跃会话归属校验（403），`/toggle` `/cancel` `/preview` 为无鉴权可用性面（仅影响语音模式状态/TTS，本机恶意网页可触发让出/停播，无提权或窃听；读侧受 CORS 限制）
 
 ## 故障排查
 
@@ -130,7 +131,7 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 
 ```sh
 pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js（browser）
-pnpm test                     # segmenter/wakeword 单测 + 发布前自检（无需网络）
+pnpm test                     # 单测（segmenter/wakeword/aec + 发布前自检，无需网络；测试直接 import src/*.ts，需 Node ≥22.18，即 type stripping）
 systemctl restart dsh         # 本机加载新 host 代码；其他平台重启 dsh 进程
 ```
 
@@ -139,13 +140,17 @@ systemctl restart dsh         # 本机加载新 host 代码；其他平台重启
 > 开发模式延迟埋点（P1-5）：浏览器控制台执行 `localStorage.setItem('dsh-voice-mode.telemetry', '1')` 后刷新页面，进入语音模式时状态条会实时显示「说完 → 端点 → 定稿 → 首Token → 首句 → 首chunk → 首音」各段耗时与合计（说完→首音），供 P1 延迟验收测量；`localStorage.removeItem('dsh-voice-mode.telemetry')` 关闭（默认关闭，零采集）。
 
 ```
-src/index.ts      host：单活指针、llm/stream tap、SSE、settings 注册、口语化提示词注入
-src/asr-host.ts   host：zipformer2 流式识别 + 模型懒下载（.part 断点续传）
-src/asr.ts        client：音频采集、VAD 分段、增量识别、唤醒词
-src/client.tsx    client：麦克风按钮 + 状态条 + 字幕浮层 + 打断
-src/tts-queue.ts  host：逐会话 TTS 队列 + epoch 打断机制
+src/index.ts      host：单活指针、llm/stream tap、SSE、settings 注册、turn 回合状态机、口语化提示词注入
+src/asr-host.ts   host：zipformer2 流式识别 + Silero VAD 端点 + SenseVoice 定稿 + 模型懒下载（.part 断点续传）
+src/tts-queue.ts  host：逐会话 TTS 队列 + 逐 chunk 转发 + epoch 打断机制
 src/segmenter.ts  host：句子切分（markdown 剥离 + 终止标点）
-src/strings.ts    client：中英文案字典（navigator.language）
+src/asr.ts        client：音频采集、NLMS AEC 注入、VAD 分段、增量识别、端点处理、唤醒词
+src/aec.ts        client：NLMS 声学回声消除（纯模块，可单测）
+src/resample.ts   client：线性重采样（采集/回声参考共用）
+src/wakeword.ts   client：唤醒词归一化匹配
+src/client.tsx    client：麦克风按钮 + 状态条 + 字幕浮层 + 播放引擎（Web Audio 队列）+ 打断
+src/settings-form.tsx client：设置卡片（Plugins → 插件配置）
+src/strings.ts    client：中英文案字典（以 dsh 语言设置 <html lang> 为准）
 ```
 
 ## License
