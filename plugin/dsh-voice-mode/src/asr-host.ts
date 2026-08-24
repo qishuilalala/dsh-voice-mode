@@ -32,6 +32,7 @@ interface SherpaRecognizer {
 interface SherpaVad {
   acceptWaveform(samples: Float32Array): void
   isEmpty(): boolean
+  front(): { samples: Float32Array; start: number }
   pop(): void
   clear(): void
   free(): void
@@ -86,12 +87,51 @@ export function pcmToSamples(buf: Buffer): Float32Array | null {
  */
 const MAX_ASR_BYTES = 4 * 1024 * 1024
 
+// --- P2-2/P2-3 端点确认窗口（host 语义自适应） ---
+/** 静默期内「又开口」判别的 RMS 阈值（续说 → 取消待确认端点）。 */
+const VAD_CONTINUE_RMS = 0.02
+/** 确认窗口：列举连词结尾多等（「然后/还有/以及/并且…」）；长句给缓冲防句内小停顿误切。 */
+const CONFIRM_CONJUNCTION_MS = 800
+const CONFIRM_LONG_SENTENCE_MS = 350
+const CONFIRM_LONG_SENTENCE_S = 8
+const CONFIRM_MIN_MS = 400
+/** 列举连词 / 延续词（结尾匹配 → 升档多等，语义端点提示，本地启发式）。
+ * 疑问/终止收尾无需处理：默认端点路径（VAD 段完成即端点）已是最快，
+ * 语义提示只在「要更慢」的方向上生效（连词/长句）。 */
+const CONJUNCTION_TAIL = /(然后|还有|以及|并且|而且|此外|再说|接着|然后呢|比方说|比如说|比如|例如|等等|或者|或是|还有呢)$/
+
+/** P2-2/P2-3：VAD 段完成后的确认窗口（毫秒）；0 = 立即端点。 */
+function endpointConfirmMs(text: string, spokenMs: number): number {
+  const tail = text.trimEnd()
+  if (CONJUNCTION_TAIL.test(tail)) return CONFIRM_CONJUNCTION_MS
+  if (spokenMs > CONFIRM_LONG_SENTENCE_S * 1000) return CONFIRM_LONG_SENTENCE_MS
+  return 0
+}
+/** 静默增量 RMS（判断是否又开口续说）。 */
+function rmsOf(samples: Float32Array): number {
+  if (samples.length === 0) return 0
+  let sum = 0
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i]
+  return Math.sqrt(sum / samples.length)
+}
+
 export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   const { cacheDir, modelHost, broadcast } = options
   const repoDir = join(cacheDir, MODEL_REPO)
   const vadDir = join(cacheDir, VAD_REPO)
-  /** 进行中的段：sessionId -> {stream, fed, vad}（fed = 已喂样本数）。 */
-  const segments = new Map<string, { stream: SherpaStream; fed: number; vad: SherpaVad | null }>()
+  /** 进行中的段：sessionId -> {stream, fed, vad, pendingEndpoint, lastText}。 */
+  const segments = new Map<
+    string,
+    {
+      stream: SherpaStream
+      fed: number
+      vad: SherpaVad | null
+      /** P2-2：VAD 段完成后的待确认端点（仅语义需升档时存在）。 */
+      pendingEndpoint: { at: number; confirmMs: number; textAtPending: string } | null
+      /** 上次 partial 文本（P2-2 无新实词提前判完判据）。 */
+      lastText: string
+    }
+  >()
 
   let recognizer: SherpaRecognizer | null = null
   let modelsReady = false
@@ -203,32 +243,64 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     // 新段：首帧即建流（含 final=1 的空段——直接返回空）。
     if (!seg) {
       if (samples.length === 0 && final) return { text: '' }
-      seg = { stream: rec.createStream(), fed: 0, vad: null }
+      seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: '' }
       segments.set(sessionId, seg)
     }
     // P1-4 增量上行：samples 为从 offset 开始的段内切片；只喂尚未喂过的部分
     // （兼容旧客户端 offset=0 全量上传；若 final 且无新数据，仅补尾垫）。
     let endpoint = false
+    let text = ''
     if (offset + samples.length > seg.fed) {
       const skip = Math.max(seg.fed - offset, 0)
       const inc = samples.subarray(skip)
       seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc)
       seg.fed = offset + samples.length
       while (rec.isReady(seg.stream)) rec.decode(seg.stream)
-      // P2-1：同一增量喂 Silero VAD；出现完整说话段（静音 ≥ minSilenceDuration）
-      // 即端点已到（仅非定稿路径上报；VAD 缺失时客户端静音计时兜底）。
+      // 取 ASR 结果（确认窗口的无新实词判据用）。
+      text = rec.getResult(seg.stream).text
+      seg.lastText = text
+      // P2-1/P2-2：同一增量喂 Silero VAD；完整说话段（静音 ≥ 0.5s）完成 → 端点判定。
+      // P2-2/P2-3 语义确认窗口：默认立即端点（断句快）；列举连词结尾升档多等
+      // （可能续说）；长句给缓冲；待确认期间「又开口（RMS 续说）」取消端点、
+      // 「无新实词（文本未变化）≥400ms」提前判完。VAD 缺失时客户端静音计时兜底。
       if (!final) {
         const vad = await ensureSessionVad(seg)
         if (vad) {
+          // 1) 确认窗口内的次批增量：先判续说/提前判完/超时。
+          if (seg.pendingEndpoint) {
+            const now = Date.now()
+            const rms = rmsOf(inc)
+            if (rms > VAD_CONTINUE_RMS) {
+              seg.pendingEndpoint = null // 又开口/续说：取消端点
+            } else if (now - seg.pendingEndpoint.at >= CONFIRM_MIN_MS && text === seg.pendingEndpoint.textAtPending) {
+              // 无新实词且 ≥400ms：提前判完（P2-2 拖尾语气词）
+              seg.pendingEndpoint = null
+              endpoint = true
+            } else if (now - seg.pendingEndpoint.at >= seg.pendingEndpoint.confirmMs) {
+              seg.pendingEndpoint = null
+              endpoint = true
+            }
+          }
+          // 2) 喂 VAD，检测新完整段。
           vad.acceptWaveform(inc)
           if (!vad.isEmpty()) {
-            while (!vad.isEmpty()) vad.pop()
-            endpoint = true
+            // 取最后一段的语音时长（确认窗口伸缩依据）。
+            let spokenMs = 0
+            while (!vad.isEmpty()) {
+              const sp = vad.front()
+              spokenMs = (sp.samples.length / 16000) * 1000
+              vad.pop()
+            }
+            const confirmMs = endpointConfirmMs(seg.lastText, spokenMs)
+            if (confirmMs <= 0) {
+              endpoint = true
+            } else {
+              seg.pendingEndpoint = { at: Date.now(), confirmMs, textAtPending: seg.lastText }
+            }
           }
         }
       }
     }
-    const text = rec.getResult(seg.stream).text
     if (!final) return { text, endpoint }
     // 定稿：尾垫 0.5s 静音让尾部字 flush 出来。
     const pad = new Float32Array(rec.config.featConfig.sampleRate / 2)

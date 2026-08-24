@@ -620,6 +620,7 @@ var zh = {
   titleEnter: "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F\uFF08Ctrl+Shift+V\uFF09",
   loadingModel: "\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026",
   listening: "\u8046\u542C\u4E2D\u2026",
+  thinking: "\u601D\u8003\u4E2D\u2026",
   wakeWord: "\u5524\u9192\u8BCD",
   barHold: "\u8BED\u97F3\u6A21\u5F0F \xB7 \u6309\u4F4F\u8BF4\u8BDD\uFF08\u77ED\u6309\u9000\u51FA\uFF09",
   barListening: "\u8BED\u97F3\u6A21\u5F0F \xB7 \u8046\u542C\u4E2D\u2026",
@@ -692,6 +693,7 @@ var en = {
   titleEnter: "Enter voice mode (Ctrl+Shift+V)",
   loadingModel: "Loading model\u2026",
   listening: "Listening\u2026",
+  thinking: "Thinking\u2026",
   wakeWord: "Wake word",
   barHold: "Voice mode \xB7 hold to talk (tap to exit)",
   barListening: "Voice mode \xB7 listening\u2026",
@@ -1371,7 +1373,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     boot: DEFAULT_BOOT,
     mode: "toggle",
     wakeWord: "",
-    telemetry: null
+    telemetry: null,
+    turn: "idle"
   };
   const listeners = /* @__PURE__ */ new Set();
   const audioListeners = /* @__PURE__ */ new Set();
@@ -1418,6 +1421,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         const active = JSON.parse(e.data).active ?? null;
         if (active !== activeSessionId) {
           activeSessionId = active;
+          if (ui.turn !== "idle") ui.turn = "idle";
           if (active !== null || ui.playing) engine.skip();
           resetTelemetry();
           notify();
@@ -1446,6 +1450,16 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
             fn(ev);
           } catch {
           }
+        }
+      } catch {
+      }
+    });
+    source.addEventListener("turn", (e) => {
+      try {
+        const ev = JSON.parse(e.data);
+        if (ev.sessionId === activeSessionId && ev.state) {
+          ui.turn = ev.state;
+          notify();
         }
       } catch {
       }
@@ -1574,6 +1588,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     },
     async exit(sessionId) {
       resetTelemetry();
+      ui.turn = "idle";
       try {
         const res = await fetch(`${location.origin}${basePath}/toggle`, {
           method: "POST",
@@ -2069,7 +2084,7 @@ function VoiceStatusBar({ bus, sessionId }) {
   }, [bus]);
   const isActive = b.active === sessionId;
   if (!isActive) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
-  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? t("recognizing") : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.mode === "hold" ? t("barHold") : t("barListening");
+  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? t("recognizing") : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.turn === "agent-speaking" && !b.ui.playing ? t("thinking") : b.ui.mode === "hold" ? t("barHold") : t("barListening");
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0);
   const telParts = [];
   const tel = b.ui.telemetry;

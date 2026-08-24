@@ -36,6 +36,9 @@ export const name = 'voice-mode'
  */
 const NS_VOICE_MODE = 'voice-mode' as SettingsNamespace
 
+/** P2-4 显式回合状态（host 为准，SSE 'turn' 广播；barge-in = 状态迁移 + 三层清理）。 */
+type TurnState = 'idle' | 'listening' | 'finalizing' | 'agent-speaking'
+
 /**
  * 插件 HTTP 命名空间（固定路径）。client bundle 以静态产物分发，无法感知
  * 宿主侧配置；若 basePath 可配置而客户端硬编码，一旦修改即分叉。故按
@@ -193,6 +196,16 @@ export function apply(ctx: Context, config: Config): void {
   // --- 全局单活指针（Q9）：会话级状态，非全局默认、非独立会话类型（Q1）。 ---
   let activeVoiceSession: string | null = null
 
+  // --- P2-4 显式回合状态机（host 真相源）：idle | listening | finalizing | agent-speaking。 ---
+  // 迁移点：/asr partial → listening；/asr final=1 → finalizing；llm 首 token → agent-speaking；
+  // 回合流结束 → listening（用户可随时开口接管）。barge-in = 状态迁移 + 三层清理（epoch 不动）。
+  const turnStates = new Map<string, TurnState>()
+  const setTurn = (sessionId: string, state: TurnState): void => {
+    if (turnStates.get(sessionId) === state) return
+    turnStates.set(sessionId, state)
+    broadcast('turn', { sessionId, state })
+  }
+
   // --- SSE 客户端表：audio 帧 + mode 状态广播共用一条下行通道。 ---
   type SseSink = (event: string, payload: unknown) => void
   const sseClients = new Set<SseSink>()
@@ -277,7 +290,7 @@ export function apply(ctx: Context, config: Config): void {
     // 若被 tap 会把「会话摘要/标题生成」播出来（官方 GenerateOptions.purpose 契约）。
     if (!config.enabled || sessionId === undefined || options.purpose !== undefined) return next()
     if (activeVoiceSession !== sessionId) return next()
-    return tapActiveStream(sessionId, next(), queue, broadcast)
+    return tapActiveStream(sessionId, next(), queue, broadcast, (state) => setTurn(sessionId, state))
   })
 
   // --- HTTP 面 ---
@@ -422,6 +435,7 @@ export function apply(ctx: Context, config: Config): void {
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null
               queue.prune(sessionId)
+              setTurn(sessionId, 'idle')
               broadcast('mode', { active: null })
             }
           }
@@ -437,6 +451,16 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/asr`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
+        // P2-4：回合状态机 —— partial 到达 = listening；final=1 = finalizing。
+        try {
+          const url = new URL(req.url ?? '/', 'http://localhost')
+          const sid = url.searchParams.get('sessionId') ?? ''
+          if (sid && sid === activeVoiceSession) {
+            setTurn(sid, url.searchParams.get('final') === '1' ? 'finalizing' : 'listening')
+          }
+        } catch {
+          // 忽略畸形 URL
+        }
         handleAsrRequest(asr, activeVoiceSession, req, res)
       },
     }),
@@ -547,6 +571,7 @@ async function* tapActiveStream(
   inner: AsyncIterable<StreamChunk>,
   queue: TtsQueue,
   broadcast: (event: string, payload: unknown) => void,
+  onTurn: (state: 'listening' | 'agent-speaking') => void,
 ): AsyncIterable<StreamChunk> {
   const segmenter = new SentenceSegmenter()
   // P1-5 延迟埋点链：每回合至多广播一次 host 侧里程碑（首 token / 首句成型）。
@@ -569,6 +594,7 @@ async function* tapActiveStream(
         if (!firstTokenBroadcast) {
           firstTokenBroadcast = true
           broadcast('latency', { sessionId, stage: 'first-llm-token' })
+          onTurn('agent-speaking') // P2-4：LLM 开始作答
         }
         for (const s of segmenter.feed(chunk.text)) {
           // P1-5：首句成型并入 TTS 队列。
@@ -594,5 +620,6 @@ async function* tapActiveStream(
       typeof finishReason === 'object' &&
       (finishReason as { kind?: unknown }).kind === 'aborted'
     if (!aborted) flushOnce()
+    onTurn('listening') // P2-4：回合结束 → 回听（用户可随时开口）
   }
 }

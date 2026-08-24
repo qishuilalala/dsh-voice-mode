@@ -109,6 +109,20 @@ t('lib/client.js 含 P2-1 endpoint 处理（host VAD 端点 → 立即定稿）'
   const src = read('lib/client.js')
   assert.ok(src.includes('endpoint'), 'client bundle missing endpoint handling')
 })
+t('lib/index.js 含 P2-2/3 语义确认窗口（连词升档 + 无新词提前判完）', () => {
+  const src = read('lib/index.js')
+  assert.ok(src.includes('CONJUNCTION_TAIL'), 'host bundle missing conjunction rules')
+})
+t('lib/index.js 含 P2-4 回合状态机（turn 广播 + agent-speaking）', () => {
+  const src = read('lib/index.js')
+  assert.ok(src.includes('agent-speaking'), 'host bundle missing turn state')
+  assert.ok(src.includes('broadcast("turn"'), 'host bundle missing turn broadcast')
+})
+t('lib/client.js 含 P2-4 turn 订阅（思考中展示）', () => {
+  const src = read('lib/client.js')
+  assert.ok(src.includes('agent-speaking'), 'client bundle missing turn state')
+  assert.ok(src.includes('thinking'), 'client bundle missing thinking label')
+})
 t('lib/client.js 含 P1-1 按句拼帧（PlayFrame Uint8Array + 丢帧完整性校验）', () => {
   const src = read('lib/client.js')
   assert.ok(src.includes('curChunkCount'), 'client bundle missing chunk-count integrity check')

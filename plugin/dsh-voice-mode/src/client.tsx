@@ -36,6 +36,8 @@ interface VoiceUiState {
   /** 便捷速记：交互模式 / 唤醒词（状态条与手势读取）。 */
   mode: 'toggle' | 'hold'
   wakeWord: string
+  /** P2-4 host 回合状态（SSE 'turn'；状态条展示思考中/朗读中）。 */
+  turn: 'idle' | 'listening' | 'finalizing' | 'agent-speaking'
   /** 延迟埋点链各阶段时刻（开发模式状态条展示；null = 未启用/已清空）。 */
   telemetry: Partial<Record<TelemetryStage, number>> | null
 }
@@ -392,6 +394,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     mode: 'toggle',
     wakeWord: '',
     telemetry: null,
+    turn: 'idle',
   }
   const listeners = new Set<(b: { active: string | null; ui: VoiceUiState }) => void>()
   const audioListeners = new Set<(frame: TtsChunkFrame) => void>()
@@ -449,6 +452,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         if (active !== activeSessionId) {
           activeSessionId = active
           // 模式被让出/抢占：本地播放立即静音（Q2 之停 TTS）
+          if (ui.turn !== 'idle') ui.turn = 'idle' // P2-4：让出复位回合状态
           if (active !== null || ui.playing) engine.skip()
           // P1-5：跨会话让出/抢占时清空未完成的埋点链。
           resetTelemetry()
@@ -482,6 +486,18 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
           } catch {
             // ignore
           }
+        }
+      } catch {
+        // ignore malformed frame
+      }
+    })
+    // P2-4：host 回合状态下行（思考中/朗读中展示）。
+    source.addEventListener('turn', (e: MessageEvent<string>) => {
+      try {
+        const ev = JSON.parse(e.data) as { sessionId?: string; state?: VoiceUiState['turn'] }
+        if (ev.sessionId === activeSessionId && ev.state) {
+          ui.turn = ev.state
+          notify()
         }
       } catch {
         // ignore malformed frame
@@ -625,6 +641,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     },
     async exit(sessionId) {
       resetTelemetry()
+      ui.turn = 'idle' // P2-4：退出复位回合状态
       try {
         const res = await fetch(`${location.origin}${basePath}/toggle`, {
           method: 'POST',
@@ -1263,9 +1280,11 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
             : t('listening')
           : b.ui.state === 'wake'
             ? t('sayWake').replace('{wake}', b.ui.wakeWord || t('wakeWord'))
-            : b.ui.mode === 'hold'
-              ? t('barHold')
-              : t('barListening')
+            : b.ui.turn === 'agent-speaking' && !b.ui.playing
+              ? t('thinking')
+              : b.ui.mode === 'hold'
+                ? t('barHold')
+                : t('barListening')
 
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0)
 

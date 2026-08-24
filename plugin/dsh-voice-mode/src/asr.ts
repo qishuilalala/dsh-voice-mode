@@ -379,6 +379,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
 
     // 打断前沿（高门槛，Q10）：达到即报；阻尼期内不重复报（800ms）。
+    // P2-5：判句端点已由 host Silero VAD 负责，客户端能量路径专职「打断快路径」。
+
     if (Date.now() < bargeInDampingUntil) {
       interruptCandidateMs = 0
     } else if (rms > intLevel.rms) {

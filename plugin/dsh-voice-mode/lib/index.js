@@ -18,6 +18,24 @@ function pcmToSamples(buf) {
   return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
 }
 var MAX_ASR_BYTES = 4 * 1024 * 1024;
+var VAD_CONTINUE_RMS = 0.02;
+var CONFIRM_CONJUNCTION_MS = 800;
+var CONFIRM_LONG_SENTENCE_MS = 350;
+var CONFIRM_LONG_SENTENCE_S = 8;
+var CONFIRM_MIN_MS = 400;
+var CONJUNCTION_TAIL = /(然后|还有|以及|并且|而且|此外|再说|接着|然后呢|比方说|比如说|比如|例如|等等|或者|或是|还有呢)$/;
+function endpointConfirmMs(text, spokenMs) {
+  const tail = text.trimEnd();
+  if (CONJUNCTION_TAIL.test(tail)) return CONFIRM_CONJUNCTION_MS;
+  if (spokenMs > CONFIRM_LONG_SENTENCE_S * 1e3) return CONFIRM_LONG_SENTENCE_MS;
+  return 0;
+}
+function rmsOf(samples) {
+  if (samples.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+  return Math.sqrt(sum / samples.length);
+}
 function createAsrRuntime(options) {
   const { cacheDir, modelHost, broadcast } = options;
   const repoDir = join(cacheDir, MODEL_REPO);
@@ -118,28 +136,53 @@ function createAsrRuntime(options) {
     let seg = segments.get(sessionId);
     if (!seg) {
       if (samples.length === 0 && final) return { text: "" };
-      seg = { stream: rec.createStream(), fed: 0, vad: null };
+      seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: "" };
       segments.set(sessionId, seg);
     }
     let endpoint = false;
+    let text = "";
     if (offset + samples.length > seg.fed) {
       const skip = Math.max(seg.fed - offset, 0);
       const inc = samples.subarray(skip);
       seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc);
       seg.fed = offset + samples.length;
       while (rec.isReady(seg.stream)) rec.decode(seg.stream);
+      text = rec.getResult(seg.stream).text;
+      seg.lastText = text;
       if (!final) {
         const vad = await ensureSessionVad(seg);
         if (vad) {
+          if (seg.pendingEndpoint) {
+            const now = Date.now();
+            const rms = rmsOf(inc);
+            if (rms > VAD_CONTINUE_RMS) {
+              seg.pendingEndpoint = null;
+            } else if (now - seg.pendingEndpoint.at >= CONFIRM_MIN_MS && text === seg.pendingEndpoint.textAtPending) {
+              seg.pendingEndpoint = null;
+              endpoint = true;
+            } else if (now - seg.pendingEndpoint.at >= seg.pendingEndpoint.confirmMs) {
+              seg.pendingEndpoint = null;
+              endpoint = true;
+            }
+          }
           vad.acceptWaveform(inc);
           if (!vad.isEmpty()) {
-            while (!vad.isEmpty()) vad.pop();
-            endpoint = true;
+            let spokenMs = 0;
+            while (!vad.isEmpty()) {
+              const sp = vad.front();
+              spokenMs = sp.samples.length / 16e3 * 1e3;
+              vad.pop();
+            }
+            const confirmMs = endpointConfirmMs(seg.lastText, spokenMs);
+            if (confirmMs <= 0) {
+              endpoint = true;
+            } else {
+              seg.pendingEndpoint = { at: Date.now(), confirmMs, textAtPending: seg.lastText };
+            }
           }
         }
       }
     }
-    const text = rec.getResult(seg.stream).text;
     if (!final) return { text, endpoint };
     const pad = new Float32Array(rec.config.featConfig.sampleRate / 2);
     seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad);
@@ -562,6 +605,12 @@ var Config = z.object({
 });
 function apply(ctx, config) {
   let activeVoiceSession = null;
+  const turnStates = /* @__PURE__ */ new Map();
+  const setTurn = (sessionId, state) => {
+    if (turnStates.get(sessionId) === state) return;
+    turnStates.set(sessionId, state);
+    broadcast("turn", { sessionId, state });
+  };
   const sseClients = /* @__PURE__ */ new Set();
   const broadcast = (event, payload) => {
     for (const send of sseClients) {
@@ -620,7 +669,7 @@ function apply(ctx, config) {
     const sessionId = options.sessionId;
     if (!config.enabled || sessionId === void 0 || options.purpose !== void 0) return next();
     if (activeVoiceSession !== sessionId) return next();
-    return tapActiveStream(sessionId, next(), queue, broadcast);
+    return tapActiveStream(sessionId, next(), queue, broadcast, (state) => setTurn(sessionId, state));
   });
   const base = BASE_PATH;
   ctx.effect(
@@ -752,6 +801,7 @@ function apply(ctx, config) {
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null;
               queue.prune(sessionId);
+              setTurn(sessionId, "idle");
               broadcast("mode", { active: null });
             }
           }
@@ -766,6 +816,14 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/asr`,
       handler: (req, res) => {
+        try {
+          const url = new URL(req.url ?? "/", "http://localhost");
+          const sid = url.searchParams.get("sessionId") ?? "";
+          if (sid && sid === activeVoiceSession) {
+            setTurn(sid, url.searchParams.get("final") === "1" ? "finalizing" : "listening");
+          }
+        } catch {
+        }
         handleAsrRequest(asr, activeVoiceSession, req, res);
       }
     })
@@ -850,7 +908,7 @@ function collectBody(req, res, maxBytes, onBody) {
   req.on("error", () => {
   });
 }
-async function* tapActiveStream(sessionId, inner, queue, broadcast) {
+async function* tapActiveStream(sessionId, inner, queue, broadcast, onTurn) {
   const segmenter = new SentenceSegmenter();
   let firstTokenBroadcast = false;
   let firstSentenceBroadcast = false;
@@ -869,6 +927,7 @@ async function* tapActiveStream(sessionId, inner, queue, broadcast) {
         if (!firstTokenBroadcast) {
           firstTokenBroadcast = true;
           broadcast("latency", { sessionId, stage: "first-llm-token" });
+          onTurn("agent-speaking");
         }
         for (const s of segmenter.feed(chunk.text)) {
           if (!firstSentenceBroadcast) {
@@ -889,6 +948,7 @@ async function* tapActiveStream(sessionId, inner, queue, broadcast) {
   } finally {
     const aborted = finishReason !== null && typeof finishReason === "object" && finishReason.kind === "aborted";
     if (!aborted) flushOnce();
+    onTurn("listening");
   }
 }
 export {
