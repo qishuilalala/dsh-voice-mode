@@ -98,12 +98,17 @@ function createAsrRuntime(options) {
   };
   let vadModelReady = false;
   let vadLoading = null;
+  let vadFailAt = 0;
   const ensureVadModel = async () => {
     if (vadModelReady) return join(vadDir, VAD_FILES[0]);
+    if (Date.now() < vadFailAt) return null;
     if (!vadLoading) {
       vadLoading = (async () => {
         for (const f of VAD_FILES) {
-          if (!await ensureFile(vadDir, f, modelHost(), broadcast)) return null;
+          if (!await ensureFile(vadDir, f, modelHost(), broadcast)) {
+            vadFailAt = Date.now() + 6e4;
+            return null;
+          }
         }
         vadModelReady = true;
         return join(vadDir, VAD_FILES[0]);

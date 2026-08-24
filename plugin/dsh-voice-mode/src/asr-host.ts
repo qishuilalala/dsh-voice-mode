@@ -221,12 +221,18 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   // --- P2-1 Silero VAD：独立懒下载（失败仅降级端点提示，不阻塞 ASR）。 ---
   let vadModelReady = false
   let vadLoading: Promise<string | null> | null = null
+  /** 性能修复：VAD 下载失败退避（60s 内不重试）——否则源不可达时每拍 partial 都重试下载，增量识别被拖慢数百 ms。 */
+  let vadFailAt = 0
   const ensureVadModel = async (): Promise<string | null> => {
     if (vadModelReady) return join(vadDir, VAD_FILES[0])
+    if (Date.now() < vadFailAt) return null
     if (!vadLoading) {
       vadLoading = (async () => {
         for (const f of VAD_FILES) {
-          if (!(await ensureFile(vadDir, f, modelHost(), broadcast))) return null
+          if (!(await ensureFile(vadDir, f, modelHost(), broadcast))) {
+            vadFailAt = Date.now() + 60000
+            return null
+          }
         }
         vadModelReady = true
         return join(vadDir, VAD_FILES[0])

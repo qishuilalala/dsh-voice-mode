@@ -41,6 +41,7 @@ async function main() {
   const chunk = Math.floor(sampleRate * 0.17)
   let acc = new Float32Array(0)
   let partials = []
+  const timings = []
   for (let off = 0; off < samples.length; off += chunk) {
     const piece = samples.slice(off, Math.min(off + chunk, samples.length))
     const merged = new Float32Array(acc.length + piece.length)
@@ -48,12 +49,14 @@ async function main() {
     merged.set(piece, acc.length)
     acc = merged
     const body = Buffer.from(acc.buffer, acc.byteOffset, acc.byteLength)
+    const t0 = performance.now()
     const r = await fetch(`${BASE}/voice-mode/asr?sessionId=${sid}&final=0`, {
       method: 'POST',
       headers: { 'content-type': 'application/octet-stream' },
       body,
     })
     const t = await r.text()
+    timings.push(Math.round(performance.now() - t0))
     if (r.status === 202) {
       console.log('ASR loading (模型下载中)…')
       // 下载中：轮询等就绪（每次 5s）；就绪后重发同一累计快照
@@ -77,15 +80,23 @@ async function main() {
   }
   const last = partials.filter(Boolean).slice(-3)
   console.log('partial 尾段:', JSON.stringify(last))
+  // 性能统计：每拍（170ms 音频）请求→响应耗时；首拍含模型构建耗时。
+  if (timings.length > 0) {
+    const sorted = [...timings].sort((a, b) => a - b)
+    const sum = timings.reduce((a, b) => a + b, 0)
+    console.log(`[perf] partial 请求 ${timings.length} 拍：首拍 ${timings[0]}ms · 中位 ${sorted[Math.floor(sorted.length / 2)]}ms · 末拍 ${timings[timings.length - 1]}ms · 平均 ${Math.round(sum / timings.length)}ms`)
+  }
 
   // 尾垫 0.5s 静音 + final
   const pad = new Float32Array(Math.floor(sampleRate * 0.5))
+  const tf0 = performance.now()
   const r = await fetch(`${BASE}/voice-mode/asr?sessionId=${sid}&final=1`, {
     method: 'POST',
     headers: { 'content-type': 'application/octet-stream' },
     body: Buffer.from(pad.buffer, pad.byteOffset, pad.byteLength),
   })
   const out = await r.json()
+  console.log(`[perf] final 定稿请求延时: ${Math.round(performance.now() - tf0)}ms（含 zipformer 尾垫 + 并发 SenseVoice 重译）`)
   console.log('FINAL TEXT:', JSON.stringify(out.text ?? out))
 
   // 退出
