@@ -263,7 +263,7 @@ test/hold-e2e.js          hold-mode end-to-end acceptance (standalone browser)
 scripts/list-voices.mjs   print all Edge TTS voices (source of the voice table)
 ```
 
-For release and awesome-dsh-plugin submission flow, see `BEST_PRACTICES.md` and `docs/publish/` in the repo root.
+Integration probes (`hold-e2e.js`, `spoken-prompt-rpc.sh`, `spoken-toggle-ui-check.js`) live in the repo root `test/`, outside this npm package.
 
 ## License
 

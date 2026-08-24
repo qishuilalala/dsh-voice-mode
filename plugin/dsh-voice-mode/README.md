@@ -1,98 +1,55 @@
 # dsh-voice-mode
 
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square)](https://www.npmjs.com/package/dsh-voice-mode)
-[![License](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square)](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/LICENSE)
+[![License](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square)](LICENSE)
 [![dsh-plugin](https://img.shields.io/badge/dsh--plugin-voice-brightgreen?style=flat-square)](https://github.com/topics/dsh-plugin)
 
-> Full-duplex voice conversation mode for DeepSeek Harness (dsh): speak, get a
-> spoken answer. Streamed zipformer2 ASR → editable draft → auto send → the
-> final reply is read out sentence-by-sentence via Edge TTS, and your voice
-> interrupts playback and the running turn. No API key.
+DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（真 barge-in）。无需 API Key，识别模型在本地宿主端推理。
 
-DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（barge-in）。无需 API Key，模型在本地宿主端推理。
-
-[English](./README.en.md)
-
-![demo](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo.gif)
-
-## 特性
+> **Full-duplex voice mode for DeepSeek Harness** — streamed ASR to an editable draft, sentence-by-sentence read-aloud with live captions, and speaking interrupts playback and the running turn.
 
 ![语音模式：实时字幕与状态条](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/screenshot-voice.png)
 
+## 功能
 
 - **语音模式**：输入框工具排麦克风按钮或全局快捷键 `Ctrl+Shift+V` 进入/退出；全局单活（同一时刻仅一个会话处于语音模式，切换会话自动让出）
 - **两种交互模式（设置可切换）**：
   - `toggle`（默认）持续聆听：RMS VAD 分段 → zipformer2 流式识别（边说边出字，实时字幕预览）→ 静音 2 秒自动断句进草稿并自动发送；按住 `Ctrl` 强制立即发送
   - `hold` 按住说话：短按进入/退出，**按住麦克风按钮说话、松手即发**（滑出取消、`Esc`/失焦放弃本段）；`Ctrl` 按住即录、松开即发
-- **唤醒词（可选，默认关）**：设置 `wakeWord` 后，进入语音模式处于待机态，说出唤醒词才开始识别（如「你好小D」），避免误触
-- **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式 Edge TTS 朗读 + 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录；可选的口语化提示词（设置 `spokenFormat`，默认关）让语音会话回复为自然短句、不带 Markdown 排版符号，朗读侧再做一轮标记剥离，听感更顺
-- **开口打断（barge-in）**：三档灵敏度的发声前沿检测 → 本地静音 + host 合成队列作废（epoch）+ 正在运行的回合取消（保留半截并自然续入你的新消息）
-- **模型懒加载与进度**：首次使用自动下载 zipformer2 中文流式模型（约 160MB，`.part` 断点续传），状态条实时显示下载进度；可用 `npm run prefetch` 预下载
-- **容错**：麦克风被拒红点提示、模型下载失败可见提示、TTS 连接失败状态条提示（自动重试）、提交失败文字留在草稿、SSE 断线自动重连
-- **设置**：设置 → Plugins → 插件配置 → 语音模式（voice-mode），可调音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词 / 口语化提示词；**音色可试听**（「试听」按钮按当前音色 + 当前语速即时合成预览，无需进入语音模式；自定义 ShortName 同样可试听）
-- **界面语言**：跟随浏览器语言（中文 / English，`navigator.language` 以 zh 开头即中文；切换语言需刷新页面）
+- **唤醒词（可选，默认关）**：设置 `wakeWord` 后进入待机态，说出唤醒词才开始识别（如「你好小D」）
+- **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式 Edge TTS 朗读 + 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录；可选口语化提示词（设置 `spokenFormat`，默认关）让回复为自然短句、不带 Markdown 排版符号，朗读侧再做一轮标记剥离
+- **开口打断（barge-in）**：三档灵敏度发声前沿检测 → 本地静音 + host 合成队列作废 + 正在运行的回合取消（保留半截并自然续入新消息）
+- **模型懒加载与进度**：首次使用自动下载 zipformer2 中文流式模型（约 160MB，`.part` 断点续传），状态条实时显示进度；可用 `npm run prefetch` 预下载
+- **设置**：设置 → Plugins → 插件配置 → 语音模式（voice-mode），可调音色/语速/打断灵敏度/静音停顿/空闲超时/模型镜像/自动发送/交互模式/唤醒词/口语化提示词；**音色可试听**（按当前音色+语速即时合成预览，自定义 ShortName 亦可）
+- **界面语言**：跟随浏览器语言（中文 / English；切换后刷新页面生效）
+- **容错**：麦克风被拒红点提示、模型下载失败可见提示、TTS 连接失败状态条提示（自动退避重试）、提交失败文字留在草稿、SSE 断线自动重连
 - **空闲退出**：10 分钟无活动自动退出并释放麦克风
-
-## 操作手势
-
-| 手势 | 行为 |
-| --- | --- |
-| 点按麦克风按钮 / `Ctrl+Shift+V` | 进入 / 退出语音模式 |
-| 直接说话，停顿 2 秒（toggle） | 自动断句并发送 |
-| 按住 `Ctrl`（toggle，≥250ms 语音） | 强制立即发送当前段 |
-| **按住麦克风按钮（hold）** | 按住说话，松手发送；向上滑出 / `Esc` / 失去焦点放弃本段；<250ms 短按退出模式 |
-| 按住 `Ctrl`（hold，≥600ms） | 键盘按住说话，松开即发 |
-| 先喊一声唤醒词（已配置） | 从待机激活为聆听（其后才识别与发送） |
-| AI 朗读时开口说话 | 打断朗读并取消当前回合 |
-| 在输入框打字 | 自动退出语音模式（草稿保留） |
 
 ## 安装
 
-**要求**：dsh web（Node ≥ 18），现代浏览器（Chrome / Edge / Firefox，需支持 `getUserMedia` 与 Web Audio）。
-
 ```sh
-# 方式一：从 npm 安装（推荐）
 dsh plugin --profile web add dsh-voice-mode
-# 等价形式（本机未装 dsh CLI 时由 npx 临时拉起）：
-npx -y @deepseek-ai/dsh plugin --profile web add dsh-voice-mode
-
-# 方式二：本地 tarball
-dsh plugin --profile web add ./dsh-voice-mode-0.1.0.tgz
-
-# 方式三：从源码安装
-git clone https://github.com/qishuilalala/dsh-voice-mode.git
-cd dsh-voice-mode/plugin/dsh-voice-mode && pnpm install && pnpm build
-dsh plugin --profile web add .
 ```
 
-**bundle 插件需重启 dsh 生效**（不同平台的重启方式）：
+bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；其他平台重启 dsh 进程）。
 
-- **Linux（systemd）**：`systemctl restart dsh`
-- **Windows / macOS / 手动托管**：重启你的 dsh 进程（结束进程后重新 `dsh web`，或在其服务管理器中重启）
+## 操作手势
 
-**可选**：预下载 ASR 模型，减少首次进入语音模式的下载等待：
-
-```sh
-npm run prefetch          # 插件目录内执行；默认写到平台缓存目录
-# 或指定缓存位置：node scripts/prefetch.mjs --cache-dir /where/ever/models
-```
-
-## 使用
-
-1. 点击输入框工具排的麦克风按钮（或按 `Ctrl+Shift+V`）进入语音模式，输入框上方出现状态条
-2. 说话方式二选一：直接说、停顿 2 秒自动发送（toggle）；或按住麦克风按钮、松手发送（hold）
-3. AI 回复逐句朗读，右下角浮层显示字幕；点「跳过」或直接开口打断
-4. 点状态条「退出」（或再按 `Ctrl+Shift+V`）退出语音模式
-
-首次进入会下载识别模型，状态条显示 `正在加载模型… <文件> <百分比>%`。
-
-配置了唤醒词时，进入后会先处于待机态（状态条提示「说『唤醒词』开始」），说完唤醒词即激活。
+| 手势 | 作用 |
+| --- | --- |
+| `Ctrl+Shift+V` | 进入 / 退出语音模式 |
+| 直接说话 | `toggle`：边说边出字，停顿 2 秒自动发送；按住 `Ctrl` 强制立即发送 |
+| 按住麦克风按钮 | `hold`：松手发送；短按退出；滑出 / `Esc` / 失焦放弃本段 |
+| 说唤醒词 | 待机态激活识别（配置后） |
+| AI 朗读时开口说话 | 打断朗读并取消当前回合 |
+| 点状态条「退出」 | 退出语音模式 |
+| 点字幕浮层「跳过」 | 跳过当前句朗读 |
 
 ## 设置（设置 → Plugins → 插件配置 → 语音模式）
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
-| `voice` | `zh-CN-XiaoxiaoNeural` | Edge TTS 音色（见下方常用音色表），**即时生效**；行内「试听」按钮按当前音色 + 当前语速合成预览（下拉常用音色与「自定义」ShortName 均可试听，失败有可见提示） |
+| `voice` | `zh-CN-XiaoxiaoNeural` | Edge TTS 音色（见下方常用音色表），**即时生效**；行内「试听」按钮可即时预览 |
 | `rate` | `1.0` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
 | `interruptLevel` | `0` | 发声打断灵敏度：0 高门槛 / 1 中 / 2 低 |
 | `silenceMs` | `2000` | 说完整一句的静音停顿毫秒数 |
@@ -101,9 +58,9 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 | `autoSend` | `true` | 识别定稿后自动发送；关闭则只进草稿（按住 `Ctrl` / hold 松手仍会发送） |
 | `mode` | `toggle` | 交互模式：`toggle` 持续聆听 + 2s 静音断句；`hold` 按住说话、松手发送（短按退出） |
 | `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭 |
-| `spokenFormat` | `false` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效**（关闭后对后续回复立即失效；默认关） |
+| `spokenFormat` | `false` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效** |
 
-生效范围：`voice`/`rate`/`spokenFormat` 修改后**立即生效**（TTS 热切换 / 提示词组装时实时读取）；其余设置下次进入语音模式时生效。设置项默认值由插件配置（`base` 层）提供——未显式修改时跟随配置。
+生效范围：`voice`/`rate`/`spokenFormat` **立即生效**；其余设置下次进入语音模式时生效。设置项默认值由插件配置（`base` 层）提供。
 
 ### 常用音色（完整清单见 `node scripts/list-voices.mjs`）
 
@@ -116,168 +73,74 @@ npm run prefetch          # 插件目录内执行；默认写到平台缓存目�
 | `zh-CN-YunyangNeural` | 云扬 · 男声 |
 | `zh-CN-YunxiaNeural` | 云夏 · 男声 |
 | `zh-CN-liaoning-XiaobeiNeural` | 小北 · 东北话 · 女声 |
-| `zh-CN-shaanxi-XiaoniNeural` | 小妮 · 陕西话 · 女声 |
 | `zh-HK-HiuMaanNeural` | 晓曼 · 粤语 · 女声 |
-| `zh-HK-WanLungNeural` | 云龙 · 粤语 · 男声 |
 | `zh-TW-HsiaoYuNeural` | 小雨 · 台湾腔 · 女声 |
-| `zh-TW-YunJheNeural` | 云哲 · 台湾腔 · 男声 |
-| `en-US-AriaNeural` | Aria · 英语 · 女声 |
-| `en-US-GuyNeural` | Guy · 英语 · 男声 |
+| `en-US-AriaNeural` | Aria · English · 女声 |
 
-## 配置（bundle patch / settings.yaml）
+### 配置（bundle config / settings.yaml）
 
-也可直接编辑 `~/.dsh/settings.yaml` 的 `voice-mode:` 段（GUI 卡片与 RPC 写入同一文档层）：
-
-```yaml
-- id: voice-mode
-  name: dsh-voice-mode
-  config:
-    enabled: true                 # false = 关闭整个语音模式（无法进入，toggle 拒绝）
-    cacheDir: ~/.cache/dsh-voice-mode/models   # 可覆盖；默认按平台
-    # 以下为设置项的默认播种值（设置面板可覆盖；最终生效值以设置面板为准）：
-    voice: zh-CN-XiaoxiaoNeural
-    rate: 1.0
-    interruptLevel: 0
-    silenceMs: 2000
-    idleTimeoutMinutes: 10
-    modelHost: https://huggingface.co
-```
-
-> 说明：`voice/rate/interruptLevel/silenceMs/idleTimeoutMinutes/modelHost/autoSend`
-> 的最终生效值以**设置面板**为准；bundle 配置仅为这些键提供默认播种值
-> （`enabled/cacheDir` 仍只由 bundle 配置控制）。
-> 插件 HTTP 命名空间固定为 `/voice-mode`（与客户端 bundle 契约一致，不可配置）。
-
-## API
-
-| 路由 | 说明 |
-| --- | --- |
-| `GET /voice-mode/stream` | SSE：`event: audio`（`{sessionId, seq, text, audio(base64 MP3)}`）、`event: mode`（全局单活归属）、`event: tool`（提示音）、`event: asr-progress / asr-ready / asr-error / tts-error` |
-| `POST /voice-mode/toggle` | `{sessionId, on}` 进入/退出语音模式（全局单活） |
-| `POST /voice-mode/asr` | 原始 f32 LE 16k PCM 载荷 → `{text}`（流式 zipformer2）；模型未就绪返回 `202 {loading}`；`?reset=1` 丢弃进行中识别段（唤醒词命中清场用） |
-| `POST /voice-mode/cancel` | `{sessionId}` 作废 TTS 队列并丢弃在途 ASR 段 |
-| `POST /voice-mode/preview` | `{voice, rate?}` 一次性合成试听 → `audio/mpeg`（400 缺 voice / voice 过长；502 合成失败，含非法 ShortName；插件 `enabled=false` 时 403）。不要求语音模式激活，使用独立合成连接，不影响朗读队列 |
-| `GET /voice-mode/config` | 客户端引导参数（静音阈值 / 灵敏度 / 音色语速等） |
-| `GET /voice-mode` | 健康检查 `{ok, name, enabled, active}` |
-
-## 模型与缓存
-
-- 识别模型：`csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30`（encoder ≈154MB / decoder / joiner / tokens，共约 160MB），宿主端 sherpa-onnx（Node WASM，Apache-2.0，天然跨平台）
-- 缓存目录默认值按平台：
-  - **Windows**：`%LOCALAPPDATA%\dsh-voice-mode\models`
-  - **macOS / Linux**：`~/.cache/dsh-voice-mode/models`
-  - 均可通过 `cacheDir` 配置覆盖
-- 下载走 `.part` 断点续传，`huggingface.co` 失败自动回退 `hf-mirror.com`（可配置 `modelHost`）
+`voice-mode` 命名空间配置可直接写入 `~/.dsh/settings.yaml`；插件总开关 `enabled`（默认 `true`）与模型缓存目录 `cacheDir`（默认 `~/.cache/dsh-voice-mode/models/`）在安装配置中设置。
 
 ## 工作原理
 
-![architecture](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/architecture.svg)
-
 ```
-input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f32 PCM，16k，增量解码）
-                                           │ zipformer2 流式识别（宿主端 WASM）
-                                           ▼
-        composer draft ──autoSend──▶ model stream ──llm/stream tap（仅活跃语音会话）
-                                           │ text-delta 过滤 → 句子切分
-                                           ▼
-        browser ◀── SSE /voice-mode/stream ◀── TtsQueue（msedge-tts 逐句合成）
+麦克风(16kHz, AEC) ─▶ 浏览器 VAD 分段 ─▶ HOST zipformer2 流式识别(本地 WASM)
+                                        │
+用户说话 ◀── 打断 ◀── 音箱 ◀── Edge TTS 逐句合成 ◀── 分句(text-delta 过滤)
 ```
 
-- 语音与朗读只发生在全局单活指针 `activeVoiceSession` 指定的会话；普通会话 `llm/stream` 直达、零开销（模式隔离）
-- `llm/stream` tap 无损：每个 chunk 原样透传，切句/合成只旁观，不阻塞模型流
-- zipformer2 在宿主端推理（sherpa-onnx Node WASM），浏览器只负责采集（`getUserMedia` 16k 单声道）与端点检测
-- TTS 队列按会话隔离 + epoch 版本号：打断后旧帧全部作废，真正静音
+- 识别在 **host 端本地运行**（zipformer2 int8 WASM，模型懒下载），音频不上传第三方；
+- 朗读由 **Edge TTS**（微软语音服务，无需 API Key）逐句合成，流式播放；
+- 同一时间仅一个会话处于语音模式（全局单活）；LLM 流被无损观察（不阻塞）。
 
 ## 已知限制
 
-- 发声打断依赖浏览器回声消除（`echoCancellation`）；扬声器音量过大时可能漏声到麦克风（JS 层无法做 AEC）
+- 发声打断依赖浏览器回声消除（`echoCancellation`）；扬声器音量过大时可能漏声到麦克风
 - `Ctrl+Shift+V` 会覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍可用 `Ctrl+V`）
 - 识别模型为简体中文优先；识别质量受环境噪声影响
-- 浏览器自动播放策略：朗读需要页面已有用户交互（点击麦克风即满足）；若浏览器拦截播放且状态条无提示，请确认网页处于前台且非静音状态
-- **唤醒词为轻量实现**（基于流式识别文本匹配，非专用 KWS 引擎）：嘈杂环境可能延迟或误激活；唤醒词本身不会进入聊天（命中即丢弃缓冲）
-- hold 模式按住时如果切换窗口/标签页会**放弃本段**（防持续收音），回来需重新按住
-- hero（新会话空态）没有语音入口：语音模式是会话级功能，请先进入会话使用输入框麦克风按钮
-- 「试听」的请求超时兜底使用 `AbortSignal.timeout`（Chrome 103+ / Firefox 100+ / Safari 16+）；更老的浏览器点击试听会立即显示失败提示，属预期降级
-- `spokenFormat` 提示词经官方 `system-prompt/assemble` 瀑布注入；若当前会话使用**完整提示词**配置（persona `complete: true` 的 agent preset），其提示词会整体替换系统提示词（官方 complete 契约），此时口语化提示词不注入
+- 浏览器自动播放策略：朗读需要页面已有用户交互（点击麦克风即满足）；「试听」依赖 `AbortSignal.timeout`（Safari 16+ / Chrome 103+ / Firefox 100+；老浏览器点击试听会立即提示失败，属预期降级）
+- **唤醒词为轻量实现**（流式文本匹配，非专用 KWS 引擎）：嘈杂环境可能延迟或误激活；唤醒词本身不会进入聊天
+- hold 模式按住时切换窗口/标签页会**放弃本段**（防持续收音）
+- hero（新会话空态）无语音入口：请先进入会话使用麦克风按钮
+- `spokenFormat` 提示词经官方 `system-prompt/assemble` 瀑布注入；若当前会话使用**完整提示词**配置（persona `complete: true` 的 agent preset），提示词不注入（官方 complete 契约优先）
 - **苹果 Safari / iOS**：
   - 需 **HTTPS 或 localhost**（iOS/macOS Safari 强制安全上下文；`http://` 局域网 IP 下麦克风不可用）
   - 首次进入需授权麦克风；被拒后到「设置 → Safari → 麦克风」开启（iOS）
   - iOS 后台/锁屏时识别与朗读暂停，回前台自动恢复（可能丢句）；建议语音模式期间保持前台
-  - 桌面 macOS Safari 若提示音暂无声音，请先点一次麦克风按钮再触发（浏览器音频策略）
-- **安全说明**：插件 HTTP 面（`/voice-mode/*`）遵循宿主安全模型——请勿将 dsh 端口直接暴露公网；经反向代理发布时由代理层（如 basic auth）鉴权；插件侧对敏感操作保留会话归属校验（sessionId 门控）
+- **安全说明**：插件 HTTP 面（`/voice-mode/*`）遵循宿主安全模型——请勿将 dsh 端口直接暴露公网；经反向代理发布时由代理层（如 basic auth）鉴权；插件侧对敏感操作保留会话归属校验
 
 ## 故障排查
 
 | 现象 | 处理 |
 | --- | --- |
-| 点麦克风无反应，状态条提示红字 | 浏览器拒绝了麦克风权限：地址栏允许麦克风后重试 |
-| 状态条显示「正在加载模型… x%」卡住 | 检查网络；模型大（160MB）可先 `npm run prefetch`；国内网络把 `modelHost` 配成 `https://hf-mirror.com` |
-| 状态条显示「语音模型下载失败」 | 两镜像均不可达：检查网络/代理后重新进入语音模式（断点续传） |
-| 有字幕（浮层）但听不到声音 | 检查系统音量/输出设备；浏览器自动播放被拦时点击页面任意处后再试 |
-| 状态条显示「朗读连接失败：正在重试…」 | Edge TTS 服务不可达（境外服务），稍后自动重试；持续失败请检查网络/代理 |
-| 识别不准 | 靠近麦克风、降低环境噪声；还有回声时把「打断灵敏度」调高一档 |
-| hold 模式按住没反应 | 确认切换到了 hold 模式并处于语音模式中（按钮显示「按住说话」）；浏览器窗口需在前台 |
-| 「试听」按钮提示合成失败 | Edge TTS 服务不可达（境外服务）或音色名（ShortName）不存在：核对音色名（`node scripts/list-voices.mjs` 可查全部），稍后重试 |
+| 点麦克风无反应，状态条红字 | 浏览器拒绝麦克风：地址栏（iOS 为 设置 → Safari → 麦克风）开启后重试 |
+| 状态条「正在加载模型… x%」卡住 | 检查网络；模型大（160MB）可先 `npm run prefetch`；国内网络 `modelHost` 配 `https://hf-mirror.com` |
+| 朗读无声音/无字幕 | 查看状态条「朗读连接失败：正在重试…」（Edge TTS 网络问题，自动退避重试）；确认页面前台且未静音 |
+| 语音模式进不去 | 检查插件 `enabled`；多标签页时确认当前会话为活动会话 |
+| 识别到但不是我要说的 | 环境噪声或唤醒词误判：降低音量、提高 `interruptLevel`（高门槛）或启用 `wakeWord` |
 
 ## 开发
 
-### 依赖纪律（重要）
-
-分三类，各有归属：
-
-- **第三方运行依赖**（`msedge-tts` / `sherpa-onnx`）与 **registry 可解析的框架包**
-  （`@deepseek-ai/schemastery`）→ `dependencies`。schemastery 是公开 npm 包且
-  dsh 宿主平台内部不遮蔽它，装进 profile 不会引发版本冲突。
-- **宿主框架包**（`@deepseek-ai/cordis` / `@deepseek-ai/dsh-web` / `react`）→
-  `peerDependencies`。宿主包由 dsh 运行时提供；若进 dependencies 会被 dshmarket
-  判定「遮蔽宿主版本」而拦截插件市场升级。peer 版本须与当前 dsh 运行时一致
-  （本机：cordis `^4.0.1`、dsh-web `^0.1.0-rc.6 || ^0.1.1-rc.0`、react `^18.2.0`），
-  升级 dsh 时同步更新。
-- **仅类型引用**（`@deepseek-ai/dsh-settings` / `dsh-host-webserver` / `dsh-llm` /
-  `dsh-system-prompt`）→ 实例之间没有任何运行时 import（`import type` + esbuild 剔除），
-  无需声明；开发期类型直接**实体化复制**自本机 dsh 发行版 node_modules（勿用指向宿主
-  node_modules 的绝对路径 **symlink**：其内部 `cordis` 解析到宿主实例，与插件 `.pnpm`
-  的 cordis 模块身份分裂，`declare module '@deepseek-ai/cordis'` 类型增强全部失效；
-  registry 的 rc.1 类型快照落后于发行版，发行版类型才是运行时真值）。
-
-`dependencies` 只保留真正的第三方运行依赖，禁止把宿主共享包写进去；改依赖后
-跑 `npm pack --dry-run` 与 `pnpm test` 回归。
-
-### 构建与测试
-
 ```sh
 pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js（browser）
-pnpm test                     # segmenter/wakeword 单测 + 发布前自检（均无需网络）
-node test/hold-e2e.js         # hold 模式验收（独立浏览器，/asr 路由拦截）
-bash test/spoken-prompt-rpc.sh  # 口语化提示词验证（RPC 直发，无需浏览器；需在线 TTS）
-# 注：hold-e2e/spoken-prompt-rpc/spoken-toggle-ui-check 等集成探测脚本位于仓库根 test/
-#（不在 npm 包内）；npm 包内 test/ 仅含无需网络的离线单测。
-systemctl restart dsh         # Linux；其他平台重启 dsh 进程
+pnpm test                     # segmenter/wakeword 单测 + 发布前自检（无需网络）
+systemctl restart dsh         # 本机加载新 host 代码；其他平台重启 dsh 进程
 ```
 
-> 注意：dsh 安装的是 pnpm `file:` 链接（目录拷贝），改完 `node build.mjs` 后需把
-> `lib/client.js` 同步到 `<profile>/node_modules/dsh-voice-mode/lib/` 再重启 dsh，
-> 浏览器才能拿到新 bundle。
-
-### 结构
+> 注意：dsh 安装的是 pnpm `file:` 链接（目录拷贝），改完 `node build.mjs` 后需把 `lib/client.js` 同步到 `<profile>/node_modules/dsh-voice-mode/lib/` 再刷新页面（`lib/index.js` 与工作区为同一文件自动同步）。集成探测脚本（`test/hold-e2e.js`、`test/spoken-prompt-rpc.sh`、`test/spoken-toggle-ui-check.js`）位于仓库根 `test/`，不在 npm 包内。
 
 ```
-src/index.ts      host：单活指针、llm/stream tap、SSE、settings 注册
+src/index.ts      host：单活指针、llm/stream tap、SSE、settings 注册、口语化提示词注入
 src/asr-host.ts   host：zipformer2 流式识别 + 模型懒下载（.part 断点续传）
+src/asr.ts        client：音频采集、VAD 分段、增量识别、唤醒词
+src/client.tsx    client：麦克风按钮 + 状态条 + 字幕浮层 + 打断
 src/tts-queue.ts  host：逐会话 TTS 队列 + epoch 打断机制
 src/segmenter.ts  host：句子切分（markdown 剥离 + 终止标点）
-src/client.tsx    client：麦克风按钮 + 状态条 + 朗读浮层 + 打断
-src/asr.ts        client：getUserMedia + RMS VAD + partial 轮询
-scripts/prefetch.mjs  模型预下载（跨平台缓存目录 + 断点续传）
-test/segmenter.test.mjs 句子切分单元测试
-test/wakeword.test.mjs    唤醒词匹配单元测试
-test/verify-client.mjs   发布前自检（bundle 清单/导出/形状）
-test/hold-e2e.js          hold 模式端到端验收（独立浏览器）
-scripts/list-voices.mjs   打印 Edge TTS 全部音色（音色表来源）
+src/strings.ts    client：中英文案字典（navigator.language）
 ```
 
-发布与精选列表提交流程见仓库根 `BEST_PRACTICES.md` 与 `docs/publish/`。
+## License
 
-## 许可
+[MIT](LICENSE)
 
-MIT
+> 部分实现借鉴 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)（派生声明见子包 LICENSE）。

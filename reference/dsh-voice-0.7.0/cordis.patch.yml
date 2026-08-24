@@ -1,4 +1,0 @@
-# dsh-voice bundle: host voice engine + client voice UI.
-- insert:
-    - id: voice
-      name: '@haoku123/dsh-voice'

@@ -15,18 +15,20 @@
 
 # dsh-voice-mode
 
-DeepSeek Harness（dsh）语音双工对话插件：会话内一键进入语音模式，边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读（Edge TTS）+ 实时字幕，开口即可打断（barge-in）。无需 API Key，模型在本地宿主端推理。
+DeepSeek Harness 语音双工对话插件：会话内一键进入语音模式，流式识别（边说边出字）→ 停顿自动发送 → 回答按句朗读 + 实时字幕，开口即可打断（barge-in）。无需 API Key，识别模型本地推理。
 
-> **Full-duplex voice conversation mode for DeepSeek Harness** — streamed ASR to an editable draft, sentence-by-sentence read-aloud with live captions, and speaking interrupts playback and the running turn.
+> **Full-duplex voice mode for DeepSeek Harness** — streamed ASR to an editable draft, sentence-by-sentence read-aloud with live captions, and speaking interrupts playback and the running turn.
 
-## 功能亮点
+## 功能
 
 - 双交互模式：`toggle` 持续聆听（2 秒自动断句发送）/ `hold` 按住说话（松手即发）
 - zipformer2 流式识别（边说边出字），可选唤醒词，可选自动发送
 - 按句流式朗读 + 实时字幕 + 提示音；音色可试听（支持自定义 ShortName）
 - 打断灵敏度可调，真·开口打断朗读与正在运行的回合
-- 可选口语化提示词（设置 `spokenFormat`，默认关）：语音会话回复口语化短句、无 Markdown 排版符号，朗读更顺
-- 模型懒加载（约 160MB，断点续传 + 镜像回退），全局单活
+- 可选口语化提示词（设置 `spokenFormat`，默认关）：回复口语化短句、无 Markdown 排版符号
+- 模型懒加载（约 160MB，断点续传 + 镜像回退），全局单活，界面语言跟随浏览器（中/英）
+
+![语音模式：实时字幕与状态条](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/screenshot-voice.png)
 
 ## 安装
 
@@ -34,38 +36,26 @@ DeepSeek Harness（dsh）语音双工对话插件：会话内一键进入语音�
 dsh plugin --profile web add dsh-voice-mode
 ```
 
-bundle 插件安装后需重启 dsh 生效；完整使用说明见 [中文文档](plugin/dsh-voice-mode/README.md) / [English docs](plugin/dsh-voice-mode/README.en.md)。
+bundle 插件安装后需重启 dsh 生效。插件代码以宿主权限运行，安装前请了解来源与风险。
 
-## 演示
+## 快速开始
 
-![语音模式：实时字幕与状态条](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/screenshot-voice.png)
+进入会话 → 点输入区麦克风按钮（或 `Ctrl+Shift+V`）→ 说话 → 停顿自动发送 → 回答按句朗读；开口即打断。完整操作手势与设置项见 [详细文档](plugin/dsh-voice-mode/README.md)。
 
-> 完整演示动画（边说边出字 → 停顿发送 → 按句朗读）见 [中文文档](plugin/dsh-voice-mode/README.md)
+| 手势 | 作用 |
+| --- | --- |
+| `Ctrl+Shift+V` | 进入 / 退出语音模式 |
+| 直接说话（toggle 模式） | 边说边出字，停顿 2 秒自动发送 |
+| 按住麦克风按钮（hold 模式） | 松手发送；短按退出；滑出 / `Esc` / 失焦放弃本段 |
+| AI 朗读时开口说话 | 打断朗读并取消当前回合 |
 
 ## 文档
 
 | 文档 | 说明 |
 | --- | --- |
-| [中文 README](plugin/dsh-voice-mode/README.md) | 特性 / 手势 / 设置 / API / 配置 / 故障排查（详细） |
-| [English README](plugin/dsh-voice-mode/README.en.md) | 同上（英文版） |
-| [发布最佳实践](BEST_PRACTICES.md) | 开发与发布沉淀 |
-| [发布检查清单](docs/VERIFICATION.md) | 验证记录 |
-| [插件市场条目](docs/publish/awesome-dsh-plugin-entry.yml) | awesome-dsh-plugin / dshmarket 收录条目 |
-
-## 发布状态
-
-- npm：`dsh-voice-mode` v0.1.0（已发布）
-- GitHub Releases：[v0.1.0](https://github.com/qishuilalala/dsh-voice-mode/releases/tag/v0.1.0)
-- 插件市场：awesome-dsh-plugin 收录后 dshmarket 即见
-
-## 贡献
-
-见 [CONTRIBUTING.md](plugin/dsh-voice-mode/CONTRIBUTING.md) 与 [BEST_PRACTICES.md](BEST_PRACTICES.md)。
+| [完整使用说明（中文）](plugin/dsh-voice-mode/README.md) | 功能 / 手势 / 设置 / 配置 / 已知限制 / 故障排查 |
+| [English docs](plugin/dsh-voice-mode/README.en.md) | Same, in English |
 
 ## License
 
 [MIT](LICENSE)
-
-> 部分实现借鉴 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)（派生声明见子包 LICENSE）。
-
-> 插件代码以宿主权限运行，安装前请了解来源与风险（与官方列表一致的安全提示）。
