@@ -721,7 +721,8 @@ var VOICE_SETTINGS_DEFAULTS = {
   mode: "toggle",
   wakeWord: "",
   spokenFormat: false,
-  senseVoice: true
+  senseVoice: true,
+  toolBeep: true
 };
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
@@ -738,7 +739,8 @@ function createVoiceSettingsSchema(defs) {
     mode: z.union([z.const("toggle"), z.const("hold")]).default(d.mode).description("\u4EA4\u4E92\u6A21\u5F0F\uFF1Atoggle \u6301\u7EED\u8046\u542C + \u9759\u97F3\u81EA\u52A8\u65AD\u53E5\uFF08\u9ED8\u8BA4\uFF09\uFF1Bhold \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF08\u77ED\u6309\u9000\u51FA\uFF09"),
     wakeWord: z.string().default(d.wakeWord).description("\u5524\u9192\u8BCD\uFF1A\u5728\u5F85\u673A\u6001\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF09"),
     spokenFormat: z.boolean().default(d.spokenFormat).description("\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u53E3\u8BED\u5316\u77ED\u53E5\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\uFF1B\u9ED8\u8BA4\u5173\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09"),
-    senseVoice: z.boolean().default(d.senseVoice).description("\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9+\u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09")
+    senseVoice: z.boolean().default(d.senseVoice).description("\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9+\u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09"),
+    toolBeep: z.boolean().default(d.toolBeep).description("\u5DE5\u5177\u6267\u884C\u63D0\u793A\u97F3\uFF08\u9ED8\u8BA4\u5F00\uFF1Aagent \u6BCF\u8C03\u7528\u4E00\u4E2A\u65B0\u5DE5\u5177\u54CD\u4E00\u6B21\uFF1B\u5173\u6389\u540E\u6267\u884C\u5DE5\u5177\u9759\u97F3\uFF09")
   });
 }
 var VoiceSettingsSchema = createVoiceSettingsSchema();
@@ -821,7 +823,17 @@ function apply(ctx, config) {
     const sessionId = options.sessionId;
     if (!config.enabled || sessionId === void 0 || options.purpose !== void 0) return next();
     if (activeVoiceSession !== sessionId) return next();
-    return tapActiveStream(sessionId, next(), queue, broadcast, (state) => setTurn(sessionId, state));
+    return tapActiveStream(
+      sessionId,
+      next(),
+      queue,
+      broadcast,
+      (state) => setTurn(sessionId, state),
+      // 工具提示音开关（设置 toolBeep；关掉后执行工具静音）。
+      (name2) => {
+        if (vset.toolBeep) broadcast("tool", { sessionId, name: name2 });
+      }
+    );
   });
   const base = BASE_PATH;
   ctx.effect(
@@ -1063,8 +1075,9 @@ function collectBody(req, res, maxBytes, onBody) {
   req.on("error", () => {
   });
 }
-async function* tapActiveStream(sessionId, inner, queue, broadcast, onTurn) {
+async function* tapActiveStream(sessionId, inner, queue, broadcast, onTurn, onTool) {
   const segmenter = new SentenceSegmenter();
+  const beepedTools = /* @__PURE__ */ new Set();
   let firstTokenBroadcast = false;
   let firstSentenceBroadcast = false;
   let flushed = false;
@@ -1093,7 +1106,10 @@ async function* tapActiveStream(sessionId, inner, queue, broadcast, onTurn) {
         }
       }
       if (chunk.type === "tool-call-delta" && chunk.name) {
-        broadcast("tool", { sessionId, name: chunk.name });
+        if (!beepedTools.has(chunk.name)) {
+          beepedTools.add(chunk.name);
+          onTool(chunk.name);
+        }
       }
       if (chunk.type === "finish") {
         finishReason = chunk.reason;

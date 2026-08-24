@@ -486,6 +486,9 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             <Row name="senseVoice" desc={tr('descSenseVoice')}>
               <input type="checkbox" checked={Boolean(value.senseVoice)} onChange={(e) => void scope.set('senseVoice', e.target.checked)} />
             </Row>
+            <Row name="toolBeep" desc={tr('descToolBeep')}>
+              <input type="checkbox" checked={Boolean(value.toolBeep)} onChange={(e) => void scope.set('toolBeep', e.target.checked)} />
+            </Row>
             <Row name="mode" desc={tr('descMode')}>
               <SegGroup
                 score={scope}

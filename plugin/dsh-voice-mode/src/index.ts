@@ -113,6 +113,8 @@ export interface VoiceSettingsValue {
   spokenFormat: boolean
   /** P4：SenseVoice 定稿重译（带标点 + ITN；默认开，关=只用流式 zipformer，省 228MB 模型）。 */
   senseVoice: boolean
+  /** 工具执行提示音（默认开；关掉后执行工具时静音，防连续工具链叮叮叮）。 */
+  toolBeep: boolean
 }
 
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
@@ -128,6 +130,7 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   wakeWord: '',
   spokenFormat: false,
   senseVoice: true,
+  toolBeep: true,
 }
 
 /** 以平台常量默认构造设置 schema。 */
@@ -162,6 +165,10 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .boolean()
       .default(d.senseVoice)
       .description('定稿用 SenseVoice 重译（带标点+数字归一化、识别更准；默认开。关闭可省 228MB 模型，只走流式识别）'),
+    toolBeep: z
+      .boolean()
+      .default(d.toolBeep)
+      .description('工具执行提示音（默认开：agent 每调用一个新工具响一次；关掉后执行工具静音）'),
   })
 }
 
@@ -301,7 +308,17 @@ export function apply(ctx: Context, config: Config): void {
     // 若被 tap 会把「会话摘要/标题生成」播出来（官方 GenerateOptions.purpose 契约）。
     if (!config.enabled || sessionId === undefined || options.purpose !== undefined) return next()
     if (activeVoiceSession !== sessionId) return next()
-    return tapActiveStream(sessionId, next(), queue, broadcast, (state) => setTurn(sessionId, state))
+    return tapActiveStream(
+      sessionId,
+      next(),
+      queue,
+      broadcast,
+      (state) => setTurn(sessionId, state),
+      // 工具提示音开关（设置 toolBeep；关掉后执行工具静音）。
+      (name) => {
+        if (vset.toolBeep) broadcast('tool', { sessionId, name })
+      },
+    )
   })
 
   // --- HTTP 面 ---
@@ -589,8 +606,11 @@ async function* tapActiveStream(
   queue: TtsQueue,
   broadcast: (event: string, payload: unknown) => void,
   onTurn: (state: 'listening' | 'agent-speaking') => void,
+  onTool: (name: string) => void,
 ): AsyncIterable<StreamChunk> {
   const segmenter = new SentenceSegmenter()
+  /** 工具提示音去重：每个工具名每回合只响一次（流式 tool-call-delta 每增量 chunk 都带 name，不去重会连续叮叮叮）。 */
+  const beepedTools = new Set<string>()
   // P1-5 延迟埋点链：每回合至多广播一次 host 侧里程碑（首 token / 首句成型）。
   let firstTokenBroadcast = false
   let firstSentenceBroadcast = false
@@ -624,7 +644,11 @@ async function* tapActiveStream(
       }
       // 工具调用事件：提示音（Q7，二期可关）。
       if (chunk.type === 'tool-call-delta' && chunk.name) {
-        broadcast('tool', { sessionId, name: chunk.name })
+        // 同一工具名只提示一次（防流式增量重复叮叮叮；设置 toolBeep 可关）。
+        if (!beepedTools.has(chunk.name)) {
+          beepedTools.add(chunk.name)
+          onTool(chunk.name)
+        }
       }
       if (chunk.type === 'finish') {
         finishReason = chunk.reason
