@@ -643,8 +643,10 @@ var en = {
   settingsCardDesc: "Voice / rate / interrupt / silence / idle / model host / auto-send / mode / wake word / spoken format",
   configUnavailable: "Configuration unavailable"
 };
-var lang = typeof navigator !== "undefined" && /^zh\b/i.test(navigator.language ?? "") ? "zh" : "en";
-var t = (key) => lang === "zh" ? zh[key] : en[key] ?? zh[key];
+var guess = () => /^zh\b/i.test(
+  typeof document !== "undefined" && document.documentElement.lang || (typeof navigator !== "undefined" ? navigator.language : "") || ""
+) ? "zh" : "en";
+var t = (key) => guess() === "zh" ? zh[key] : en[key] ?? zh[key];
 
 // src/settings-form.tsx
 var import_react = require("react");

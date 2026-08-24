@@ -130,6 +130,19 @@ const en: Record<keyof typeof zh, string> = {
   configUnavailable: 'Configuration unavailable',
 }
 
-const lang = typeof navigator !== 'undefined' && /^zh\b/i.test(navigator.language ?? '') ? 'zh' : 'en'
+/**
+ * 语言判定：**以 dsh 为准**——dsh 的语言设置（Settings → General → Language，
+ * locale 命名空间，未设置时回退浏览器）解析后写入 <html lang>，页面加载时即已生效；
+ * 插件不再自行探测浏览器语言。切换语言后按「刷新页面」生效（与 README 一致）。
+ */
+/** 每次调用时解析（组件渲染时 dsh 已写入最终 <html lang>），无缓存/无时序竞态。 */
+const guess = (): 'zh' | 'en' =>
+  /^zh\b/i.test(
+    (typeof document !== 'undefined' && document.documentElement.lang) ||
+      (typeof navigator !== 'undefined' ? navigator.language : '') ||
+      '',
+  )
+    ? 'zh'
+    : 'en'
 
-export const t = (key: keyof typeof zh): string => (lang === 'zh' ? zh[key] : en[key] ?? zh[key])
+export const t = (key: keyof typeof zh): string => (guess() === 'zh' ? zh[key] : en[key] ?? zh[key])
