@@ -73,6 +73,15 @@ var INTERRUPT_LEVELS = {
 function createAsrEngine(config, sessionId) {
   let state = "idle";
   const stateListeners = /* @__PURE__ */ new Set();
+  const errorListeners = /* @__PURE__ */ new Set();
+  const emitError = (msg) => {
+    for (const fn of errorListeners) {
+      try {
+        fn(msg);
+      } catch {
+      }
+    }
+  };
   const transcriptListeners = /* @__PURE__ */ new Set();
   const partialListeners = /* @__PURE__ */ new Set();
   const speechStartListeners = /* @__PURE__ */ new Set();
@@ -108,11 +117,11 @@ function createAsrEngine(config, sessionId) {
     }
   };
   const emit = (listeners, text, meta) => {
-    const t2 = text.trim();
-    if (!t2) return;
+    const t3 = text.trim();
+    if (!t3) return;
     for (const fn of listeners) {
       try {
-        fn(t2, meta);
+        fn(t3, meta);
       } catch {
       }
     }
@@ -138,7 +147,7 @@ function createAsrEngine(config, sessionId) {
       let res = await fetch(asrUrl(false), {
         method: "POST",
         headers: { "content-type": "application/octet-stream" },
-        body: samples.slice().buffer
+        body: samples.buffer
       });
       if (res.status === 202) {
         setState("loading-model");
@@ -148,7 +157,7 @@ function createAsrEngine(config, sessionId) {
               const r2 = await fetch(asrUrl(false), {
                 method: "POST",
                 headers: { "content-type": "application/octet-stream" },
-                body: samples.slice().buffer
+                body: samples.buffer
               });
               resolve(r2);
             } catch {
@@ -205,7 +214,7 @@ function createAsrEngine(config, sessionId) {
         let res = await fetch(asrUrl(true), {
           method: "POST",
           headers: { "content-type": "application/octet-stream" },
-          body: samples.slice().buffer
+          body: samples.buffer
         });
         if (res.status === 202) {
           setState("loading-model");
@@ -216,7 +225,7 @@ function createAsrEngine(config, sessionId) {
                   await fetch(asrUrl(true), {
                     method: "POST",
                     headers: { "content-type": "application/octet-stream" },
-                    body: samples.slice().buffer
+                    body: samples.buffer
                   })
                 );
               } catch {
@@ -233,6 +242,7 @@ function createAsrEngine(config, sessionId) {
         if (out.text) emit(transcriptListeners, out.text, meta);
       } catch {
         setState(active ? speechActive ? "speech" : "listening" : "idle");
+        emitError("recognitionFail");
       }
     })();
   };
@@ -391,7 +401,7 @@ function createAsrEngine(config, sessionId) {
     }
     processor = null;
     try {
-      stream?.getTracks().forEach((t2) => t2.stop());
+      stream?.getTracks().forEach((t3) => t3.stop());
     } catch {
     }
     stream = null;
@@ -474,6 +484,12 @@ function createAsrEngine(config, sessionId) {
         transcriptListeners.delete(fn);
       };
     },
+    onError(fn) {
+      errorListeners.add(fn);
+      return () => {
+        errorListeners.delete(fn);
+      };
+    },
     onPartial(fn) {
       partialListeners.add(fn);
       return () => {
@@ -502,10 +518,138 @@ function createAsrEngine(config, sessionId) {
   };
 }
 
+// src/strings.ts
+var zh = {
+  stateVoiceMode: "\u8BED\u97F3\u6A21\u5F0F",
+  ttsNoticeFail: "\u6717\u8BFB\u8FDE\u63A5\u5931\u8D25\uFF1A\u6B63\u5728\u91CD\u8BD5\u2026",
+  enterFail: "\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5931\u8D25",
+  disabled: "\u8BED\u97F3\u6A21\u5F0F\u5DF2\u7981\u7528\uFF08\u63D2\u4EF6 enabled=false\uFF09",
+  sendFailKept: "\u53D1\u9001\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u5728\u8349\u7A3F",
+  micDenied: "\u9EA6\u514B\u98CE\u88AB\u62D2\u7EDD\uFF1A\u8BF7\u5728\u6D4F\u89C8\u5668\u5730\u5740\u680F\u5141\u8BB8\u9EA6\u514B\u98CE\u6743\u9650",
+  micUnavailable: "\u9EA6\u514B\u98CE\u4E0D\u53EF\u7528",
+  hold: "\u6309\u4F4F",
+  recognizing: "\u8BC6\u522B\u4E2D\u2026",
+  holdToTalk: "\u6309\u4F4F\u8BF4\u8BDD",
+  voiceDetected: "\u8BED\u97F3\u4E2D",
+  entering: "\u8FDB\u5165\u4E2D\u2026",
+  voiceBtn: "\u8BED\u97F3",
+  ariaActive: "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D",
+  ariaEnter: "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F",
+  titleHold: "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF1B\u77ED\u6309\u9000\u51FA\uFF1BEsc/\u5931\u53BB\u7126\u70B9\u653E\u5F03\uFF1BCtrl+Shift+V \u9000\u51FA",
+  titleToggle: "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u70B9\u51FB\u9000\u51FA\uFF08Ctrl+Shift+V\uFF09\xB7 \u6309\u4F4F Ctrl \u7ACB\u5373\u53D1\u9001",
+  titleEnter: "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F\uFF08Ctrl+Shift+V\uFF09",
+  loadingModel: "\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026",
+  listening: "\u8046\u542C\u4E2D\u2026",
+  wakeWord: "\u5524\u9192\u8BCD",
+  barHold: "\u8BED\u97F3\u6A21\u5F0F \xB7 \u6309\u4F4F\u8BF4\u8BDD\uFF08\u77ED\u6309\u9000\u51FA\uFF09",
+  barListening: "\u8BED\u97F3\u6A21\u5F0F \xB7 \u8046\u542C\u4E2D\u2026",
+  reading: "\u6717\u8BFB\u4E2D\u2026",
+  recognitionFail: "\u8BC6\u522B\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
+  modelDownloadFail: "\u8BED\u97F3\u6A21\u578B\u4E0B\u8F7D\u5931\u8D25\uFF08{file}\uFF09\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u65B0\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u91CD\u8BD5",
+  startFail: "\u8BED\u97F3\u6A21\u5F0F\u542F\u52A8\u5931\u8D25\uFF1A{err}",
+  holdDots: "\u6309\u4F4F\u8BF4\u8BDD\u2026",
+  sayWake: "\u8BF4\u300C{wake}\u300D\u5F00\u59CB",
+  exit: "\u9000\u51FA",
+  skip: "\u8DF3\u8FC7",
+  configUnavailableNote: "\uFF08\u8BBE\u7F6E\u6587\u6863\u672A\u5C31\u7EEA\uFF0C\u9762\u677F\u5C31\u7EEA\u540E\u4F1A\u81EA\u52A8\u51FA\u73B0\uFF09\u3002",
+  // settings-form
+  previewNameFirst: "\u8BF7\u5148\u586B\u5199\u97F3\u8272\u540D\uFF08ShortName\uFF09",
+  previewDisabled: "\u8BED\u97F3\u6A21\u5F0F\u5DF2\u7981\u7528\uFF08\u63D2\u4EF6 enabled=false\uFF09\uFF0C\u65E0\u6CD5\u8BD5\u542C",
+  previewPlayFail: "\u8BD5\u542C\u5931\u8D25\uFF1A\u65E0\u6CD5\u64AD\u653E\u8BE5\u97F3\u8272",
+  previewAutoplay: "\u6D4F\u89C8\u5668\u62E6\u622A\u4E86\u81EA\u52A8\u64AD\u653E\uFF0C\u8BF7\u518D\u70B9\u4E00\u6B21\u8BD5\u542C",
+  previewCheck: "\u8BD5\u542C\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u97F3\u8272\u540D\uFF08ShortName\uFF09\u662F\u5426\u6B63\u786E",
+  previewBtnTitle: "\u8BD5\u542C\u5F53\u524D\u97F3\u8272\uFF08\u5F53\u524D\u8BED\u901F\uFF09",
+  synthesizing: "\u5408\u6210\u4E2D\u2026",
+  preview: "\u8BD5\u542C",
+  custom: "\u81EA\u5B9A\u4E49",
+  // settings rows
+  descVoice: "Edge TTS \u97F3\u8272\uFF08\u4E0B\u62C9\u5E38\u7528\uFF0C\u5176\u4F59\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u52A8\u586B ShortName\uFF09",
+  descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09",
+  descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF09",
+  sev0: "0 \u9AD8\u95E8\u69DB",
+  sev1: "1 \u4E2D",
+  sev2: "2 \u4F4E",
+  descSilence: "\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 2000 = 2 \u79D2\uFF09",
+  descIdle: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09",
+  descModelHost: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u5B98\u65B9\u6E90 / \u56FD\u5185\u955C\u50CF\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u586B\u4EFB\u610F\u955C\u50CF\uFF09",
+  descAutoSend: "\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09",
+  descSpokenFormat: "\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u56DE\u590D\u53E3\u8BED\u5316\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\uFF1B\u9ED8\u8BA4\u5173\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09",
+  descMode: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09",
+  modeToggle: "\u6301\u7EED\u8046\u542C",
+  modeHold: "\u6309\u4F4F\u8BF4\u8BDD",
+  descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09",
+  wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
+  settingsCardDesc: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
+  configUnavailable: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528"
+};
+var en = {
+  stateVoiceMode: "Voice Mode",
+  ttsNoticeFail: "Read-aloud connection lost: retrying\u2026",
+  enterFail: "Failed to enter voice mode",
+  disabled: "Voice mode disabled (plugin enabled=false)",
+  sendFailKept: "Send failed; text kept in draft",
+  micDenied: "Microphone denied: allow mic access for this site",
+  micUnavailable: "Microphone unavailable",
+  hold: "Hold",
+  recognizing: "Recognizing\u2026",
+  holdToTalk: "Hold to talk",
+  voiceDetected: "Voice active",
+  entering: "Entering\u2026",
+  voiceBtn: "Voice",
+  ariaActive: "Voice mode active",
+  ariaEnter: "Enter voice mode",
+  titleHold: "Voice mode \xB7 hold to talk, release to send; tap to exit; Esc/blur cancels; Ctrl+Shift+V exits",
+  titleToggle: "Voice mode \xB7 click to exit (Ctrl+Shift+V) \xB7 hold Ctrl to send now",
+  titleEnter: "Enter voice mode (Ctrl+Shift+V)",
+  loadingModel: "Loading model\u2026",
+  listening: "Listening\u2026",
+  wakeWord: "Wake word",
+  barHold: "Voice mode \xB7 hold to talk (tap to exit)",
+  barListening: "Voice mode \xB7 listening\u2026",
+  reading: "Reading\u2026",
+  recognitionFail: "Recognition failed, try again",
+  modelDownloadFail: "Model download failed ({file}): check network and re-enter voice mode",
+  startFail: "Voice mode failed to start: {err}",
+  holdDots: "Hold to talk\u2026",
+  sayWake: 'Say "{wake}" to start',
+  exit: "Exit",
+  skip: "Skip",
+  configUnavailableNote: " (settings document not ready; the panel will appear when it is).",
+  previewNameFirst: "Enter a voice ShortName first",
+  previewDisabled: "Voice mode disabled; preview unavailable",
+  previewPlayFail: "Preview failed: cannot play this voice",
+  previewAutoplay: "Autoplay blocked \u2014 click preview again",
+  previewCheck: "Preview failed: check network or ShortName",
+  previewBtnTitle: "Preview voice (current rate)",
+  synthesizing: "Synthesizing\u2026",
+  preview: "Preview",
+  custom: "Custom",
+  descVoice: "Edge TTS voice (presets, or a custom ShortName)",
+  descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.0 normal)",
+  descInterrupt: "Interrupt sensitivity (0 high barrier / 2 low)",
+  sev0: "0 high",
+  sev1: "1 medium",
+  sev2: "2 low",
+  descSilence: "Silence pause before a sentence is committed (default 2000 ms)",
+  descIdle: "Auto-exit voice mode after idle minutes (default 10)",
+  descModelHost: "ASR model download source (official source / mirror, or any custom URL)",
+  descAutoSend: "Auto-send after finalized recognition (off = draft only; Ctrl / hold still sends)",
+  descSpokenFormat: "Inject spoken-format prompt into voice replies (colloquial, no Markdown; default off, live)",
+  descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)",
+  modeToggle: "Continue listen",
+  modeHold: "Hold to talk",
+  descWakeWord: "Wake word (default off; e.g. Hey D)",
+  wakePlaceholder: "e.g. Hey D",
+  settingsCardDesc: "Voice / rate / interrupt / silence / idle / model host / auto-send / mode / wake word / spoken format",
+  configUnavailable: "Configuration unavailable"
+};
+var lang = typeof navigator !== "undefined" && /^zh\b/i.test(navigator.language ?? "") ? "zh" : "en";
+var t = (key) => lang === "zh" ? zh[key] : en[key] ?? zh[key];
+
 // src/settings-form.tsx
 var import_react = require("react");
 var import_jsx_runtime = require("react/jsx-runtime");
-var t = {
+var t2 = {
   bg: "var(--dsw-alias-bg-layer-3)",
   bgOpen: "var(--dsw-alias-bg-layer-2)",
   border: "var(--dsw-alias-border-l2)",
@@ -515,8 +659,8 @@ var t = {
 };
 var BASE_PATH = "/voice-mode";
 var cardStyle = {
-  border: `1px solid ${t.border}`,
-  background: t.bg,
+  border: `1px solid ${t2.border}`,
+  background: t2.bg,
   borderRadius: 12,
   overflow: "hidden"
 };
@@ -536,18 +680,18 @@ var setHeader = {
   display: "flex"
 };
 var setHeadText = { flexDirection: "column", flex: 1, gap: 4, minWidth: 0, display: "flex" };
-var setName = { color: t.label, fontSize: 15, fontWeight: 600, lineHeight: 1.4 };
-var setDesc = { color: t.term, fontSize: 13, lineHeight: 1.5 };
-var setChevron = { color: t.term, flex: "none", transition: "transform .16s", display: "inline-flex" };
-var setBody = { borderTop: `1px solid ${t.border}`, margin: "0 16px", paddingBottom: 8 };
+var setName = { color: t2.label, fontSize: 15, fontWeight: 600, lineHeight: 1.4 };
+var setDesc = { color: t2.term, fontSize: 13, lineHeight: 1.5 };
+var setChevron = { color: t2.term, flex: "none", transition: "transform .16s", display: "inline-flex" };
+var setBody = { borderTop: `1px solid ${t2.border}`, margin: "0 16px", paddingBottom: 8 };
 var setRow = { alignItems: "center", gap: 12, padding: "12px 0", display: "flex" };
 var setLabelBox = { flexDirection: "column", flex: 1, gap: 3, minWidth: 0, display: "flex" };
 var setLabel = { fontSize: 13, lineHeight: "20px" };
-var setHint = { color: t.term, fontSize: 12, lineHeight: "18px" };
-var setSeg = { border: `1px solid ${t.border}`, borderRadius: 8, flexShrink: 0, gap: 2, padding: 2, display: "inline-flex" };
+var setHint = { color: t2.term, fontSize: 12, lineHeight: "18px" };
+var setSeg = { border: `1px solid ${t2.border}`, borderRadius: 8, flexShrink: 0, gap: 2, padding: 2, display: "inline-flex" };
 var setSegBtn = (on) => ({
   font: "inherit",
-  color: on ? t.label : "var(--dsw-alias-label-secondary)",
+  color: on ? t2.label : "var(--dsw-alias-label-secondary)",
   cursor: "pointer",
   background: on ? "var(--dsw-alias-bg-layer-2)" : "transparent",
   border: "none",
@@ -563,9 +707,9 @@ var inputStyle = {
   maxWidth: "100%",
   padding: "7px 10px",
   borderRadius: 8,
-  border: `1px solid ${t.border}`,
+  border: `1px solid ${t2.border}`,
   background: "var(--dsw-alias-bg-layer-2)",
-  color: t.label,
+  color: t2.label,
   fontSize: 13,
   fontFamily: "inherit",
   outline: "none"
@@ -700,7 +844,10 @@ function SelectField({
         },
         children: [
           options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v)),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "__custom__", children: "\u81EA\u5B9A\u4E49\u2026" })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", { value: "__custom__", children: [
+            t("custom"),
+            "\u2026"
+          ] })
         ]
       }
     ),
@@ -728,7 +875,7 @@ function VoicePreviewButton({ voice, rate }) {
     if (busy) return;
     const v = voice.trim();
     if (!v) {
-      setNote("\u8BF7\u5148\u586B\u5199\u97F3\u8272\u540D\uFF08ShortName\uFF09");
+      setNote(t("previewNameFirst"));
       return;
     }
     setBusy(true);
@@ -749,7 +896,7 @@ function VoicePreviewButton({ voice, rate }) {
           signal: AbortSignal.timeout(15e3)
         });
         if (res.status === 403) {
-          setNote("\u8BED\u97F3\u6A21\u5F0F\u5DF2\u7981\u7528\uFF08\u63D2\u4EF6 enabled=false\uFF09\uFF0C\u65E0\u6CD5\u8BD5\u542C");
+          setNote(t("previewDisabled"));
           return;
         }
         if (!res.ok) throw new Error(`preview http ${res.status}`);
@@ -759,18 +906,18 @@ function VoicePreviewButton({ voice, rate }) {
         audio.onended = () => URL.revokeObjectURL(url);
         audio.onerror = () => {
           URL.revokeObjectURL(url);
-          setNote("\u8BD5\u542C\u5931\u8D25\uFF1A\u65E0\u6CD5\u64AD\u653E\u8BE5\u97F3\u8272");
+          setNote(t("previewPlayFail"));
         };
         try {
           await audio.play();
         } catch (e) {
           URL.revokeObjectURL(url);
           setNote(
-            e instanceof DOMException && e.name === "NotAllowedError" ? "\u6D4F\u89C8\u5668\u62E6\u622A\u4E86\u81EA\u52A8\u64AD\u653E\uFF0C\u8BF7\u518D\u70B9\u4E00\u6B21\u8BD5\u542C" : "\u8BD5\u542C\u5931\u8D25\uFF1A\u65E0\u6CD5\u64AD\u653E\u8BE5\u97F3\u8272"
+            e instanceof DOMException && e.name === "NotAllowedError" ? t("previewAutoplay") : t("previewPlayFail")
           );
         }
       } catch {
-        setNote("\u8BD5\u542C\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u97F3\u8272\u540D\uFF08ShortName\uFF09\u662F\u5426\u6B63\u786E");
+        setNote(t("previewCheck"));
       } finally {
         setBusy(false);
       }
@@ -783,18 +930,18 @@ function VoicePreviewButton({ voice, rate }) {
     gap: 5,
     alignSelf: "flex-start",
     cursor: busy ? "default" : "pointer",
-    color: t.label,
+    color: t2.label,
     background: "var(--dsw-alias-bg-layer-2)",
-    border: `1px solid ${t.border}`,
+    border: `1px solid ${t2.border}`,
     borderRadius: 6,
     padding: "4px 10px",
     fontSize: 12,
     lineHeight: "18px"
   };
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", onClick: play, disabled: busy, style: btnStyle, title: "\u8BD5\u542C\u5F53\u524D\u97F3\u8272\uFF08\u5F53\u524D\u8BED\u901F\uFF09", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", onClick: play, disabled: busy, style: btnStyle, title: t("previewBtnTitle"), children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 11, height: 11, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 3l9 5-9 5z" }) }),
-      busy ? "\u5408\u6210\u4E2D\u2026" : "\u8BD5\u542C"
+      busy ? t("synthesizing") : t("preview")
     ] }),
     note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
   ] });
@@ -828,22 +975,22 @@ function VoiceSettingsCard({ scope }) {
   const value = snap?.value ?? {};
   const unavailable = snap?.status === "unavailable" || snap?.status === "error";
   if (unavailable) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: t.term, fontSize: 12, padding: "14px 16px", ...cardStyle }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)" }, children: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528" }),
-      "\uFF08\u8BBE\u7F6E\u6587\u6863\u672A\u5C31\u7EEA\uFF0C\u9762\u677F\u5C31\u7EEA\u540E\u4F1A\u81EA\u52A8\u51FA\u73B0\uFF09\u3002"
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: t2.term, fontSize: 12, padding: "14px 16px", ...cardStyle }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)" }, children: t("configUnavailable") }),
+      t("configUnavailableNote")
     ] });
   }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: cardStyle, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: focusVisibleCss }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-expanded": !collapsed, onClick: () => setCollapsed((c) => !c), style: { ...setHeader, background: collapsed ? "transparent" : t.bgOpen }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-expanded": !collapsed, onClick: () => setCollapsed((c) => !c), style: { ...setHeader, background: collapsed ? "transparent" : t2.bgOpen }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: setHeadText, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setName, children: "\u8BED\u97F3\u6A21\u5F0F" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setDesc, children: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD" })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setName, children: t("stateVoiceMode") }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setDesc, children: t("settingsCardDesc") })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...setChevron, transform: collapsed ? "rotate(0deg)" : "rotate(180deg)" }, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 14, height: 14, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 6l4 4 4-4z" }) }) })
     ] }),
     !collapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: setBody, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "voice", desc: "Edge TTS \u97F3\u8272\uFF08\u4E0B\u62C9\u5E38\u7528\uFF0C\u5176\u4F59\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u52A8\u586B ShortName\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "voice", desc: t("descVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         SelectField,
         {
           score: scope,
@@ -854,44 +1001,45 @@ function VoiceSettingsCard({ scope }) {
           footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1) })
         }
       ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1, min: 0.5, max: 2, step: 0.1 }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1, min: 0.5, max: 2, step: 0.1 }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: t("descInterrupt"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         SegGroup,
         {
           score: scope,
           field: "interruptLevel",
           value: value.interruptLevel,
           options: [
-            { v: 0, label: "0 \u9AD8\u95E8\u69DB" },
-            { v: 1, label: "1 \u4E2D" },
-            { v: 2, label: "2 \u4F4E" }
+            { v: 0, label: t("sev0") },
+            { v: 1, label: t("sev1") },
+            { v: 2, label: t("sev2") }
           ]
         }
       ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: "\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 2000 = 2 \u79D2\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 2e3, min: 500, max: 3e4, step: 100 }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u5B98\u65B9\u6E90 / \u56FD\u5185\u955C\u50CF\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u586B\u4EFB\u610F\u955C\u50CF\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: "\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoSend), onChange: (e) => void scope.set("autoSend", e.target.checked) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: "\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u56DE\u590D\u53E3\u8BED\u5316\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\uFF1B\u9ED8\u8BA4\u5173\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 2e3, min: 500, max: 3e4, step: 100 }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoSend), onChange: (e) => void scope.set("autoSend", e.target.checked) }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: t("descMode"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         SegGroup,
         {
           score: scope,
           field: "mode",
           value: value.mode,
           options: [
-            { v: "toggle", label: "\u6301\u7EED\u8046\u542C" },
-            { v: "hold", label: "\u6309\u4F4F\u8BF4\u8BDD" }
+            { v: "toggle", label: t("modeToggle") },
+            { v: "hold", label: t("modeHold") }
           ]
         }
       ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD" }) })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) })
     ] }) })
   ] });
 }
 
 // src/client.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
+var beepCtx = null;
 var inject = ["slots", "sessions", "settingsScope"];
 var WAVE_BARS = 14;
 var BASE_PATH2 = "/voice-mode";
@@ -941,7 +1089,7 @@ function apply(ctx) {
           name: "settings.plugin.item",
           key: "voice-mode",
           order: 100,
-          label: "\u8BED\u97F3\u6A21\u5F0F"
+          label: t("stateVoiceMode")
         },
         () => React.createElement(VoiceSettingsCard, { scope: ctx.settingsScope.bind({ namespace: "voice-mode" }) })
       )
@@ -973,10 +1121,12 @@ function createAudioEngine(setUi) {
     setUi({ playing: true, playingCaption: frame.text, ttsNotice: null });
     void audio.play().catch(() => playNext());
   };
-  let beepCtx = null;
   const toolBeep = () => {
     try {
-      if (!beepCtx) beepCtx = new AudioContext();
+      if (!beepCtx) {
+        beepCtx = new AudioContext();
+        void beepCtx.resume?.();
+      }
       const osc = beepCtx.createOscillator();
       const gain = beepCtx.createGain();
       osc.frequency.value = 880;
@@ -1100,7 +1250,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     source.addEventListener("asr-error", (e) => {
       try {
         const p = JSON.parse(e.data);
-        ui.error = `\u8BED\u97F3\u6A21\u578B\u4E0B\u8F7D\u5931\u8D25\uFF08${p.file ?? ""}\uFF09\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u65B0\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u91CD\u8BD5`;
+        ui.error = t("modelDownloadFail").replace("{file}", p.file ?? "");
         ui.model = null;
         notify();
       } catch {
@@ -1110,7 +1260,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       try {
         const p = JSON.parse(e.data);
         if (p.sessionId === activeSessionId) {
-          ui.ttsNotice = "\u6717\u8BFB\u8FDE\u63A5\u5931\u8D25\uFF1A\u6B63\u5728\u91CD\u8BD5\u2026";
+          ui.ttsNotice = t("ttsNoticeFail");
           notify();
         }
       } catch {
@@ -1148,10 +1298,10 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         const out = await res.json();
         activeSessionId = out.active ?? null;
         notify();
-        if (!res.ok) return { ok: false, error: out.error ?? "\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5931\u8D25" };
-        return { ok: out.active === sessionId, error: out.active === sessionId ? void 0 : "\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5931\u8D25" };
+        if (!res.ok) return { ok: false, error: out.error ?? t("enterFail") };
+        return { ok: out.active === sessionId, error: out.active === sessionId ? void 0 : t("enterFail") };
       } catch {
-        return { ok: false, error: "\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5931\u8D25" };
+        return { ok: false, error: t("enterFail") };
       }
     },
     async exit(sessionId) {
@@ -1226,7 +1376,7 @@ function MicButton({
   const [, bumpUi] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(
     () => bus.subscribe(() => {
-      bumpUi((t2) => t2 + 1);
+      bumpUi((t3) => t3 + 1);
     }),
     [bus]
   );
@@ -1308,7 +1458,7 @@ function MicButton({
       if (!entered.ok) {
         setLocalMode("off");
         bus.setUi({
-          error: entered.error === "voice mode disabled" ? "\u8BED\u97F3\u6A21\u5F0F\u5DF2\u7981\u7528\uFF08\u63D2\u4EF6 enabled=false\uFF09" : entered.error ?? "\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5931\u8D25"
+          error: entered.error === "voice mode disabled" ? t("disabled") : entered.error ?? t("enterFail")
         });
         return;
       }
@@ -1319,9 +1469,17 @@ function MicButton({
       const engine = createAsrEngine({ silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord }, sid);
       bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord });
       engineRef.current = engine;
+      try {
+        if (!beepCtx) beepCtx = new AudioContext();
+        void beepCtx.resume?.();
+      } catch {
+      }
       engine.onState((s) => {
         bus.setUi({ state: s });
         if (s === "idle") resetIdle();
+      });
+      engine.onError((key) => {
+        bus.setUi({ error: t(key) });
       });
       engine.onLevel((l) => {
         const cur = bus.ui.levels;
@@ -1353,11 +1511,11 @@ function MicButton({
             const r = actions?.submit?.();
             if (r && typeof r.then === "function") {
               r.catch(() => {
-                bus.setUi({ error: "\u53D1\u9001\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u5728\u8349\u7A3F" });
+                bus.setUi({ error: t("sendFailKept") });
               });
             }
           } catch {
-            bus.setUi({ error: "\u53D1\u9001\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u5728\u8349\u7A3F" });
+            bus.setUi({ error: t("sendFailKept") });
           }
         };
         cancelPendingSubmit();
@@ -1389,7 +1547,7 @@ function MicButton({
       resetIdle();
     } catch (e) {
       setLocalMode("off");
-      const msg = e instanceof DOMException ? e.name === "NotAllowedError" ? "\u9EA6\u514B\u98CE\u88AB\u62D2\u7EDD\uFF1A\u8BF7\u5728\u6D4F\u89C8\u5668\u5730\u5740\u680F\u5141\u8BB8\u9EA6\u514B\u98CE\u6743\u9650" : "\u9EA6\u514B\u98CE\u4E0D\u53EF\u7528" : `\u8BED\u97F3\u6A21\u5F0F\u542F\u52A8\u5931\u8D25\uFF1A${String(e instanceof Error ? e.message : e)}`;
+      const msg = e instanceof DOMException ? e.name === "NotAllowedError" ? t("micDenied") : t("micUnavailable") : t("startFail").replace("{err}", String(e instanceof Error ? e.message : e));
       bus.setUi({ error: msg });
       const sid2 = sidRef.current;
       if (sid2) void bus.exit(sid2);
@@ -1480,8 +1638,8 @@ function MicButton({
   }, []);
   (0, import_react2.useEffect)(() => {
     const onInput = (e) => {
-      const t2 = e.target;
-      if (!(t2 instanceof HTMLTextAreaElement)) return;
+      const t3 = e.target;
+      if (!(t3 instanceof HTMLTextAreaElement)) return;
       if (localRef.current !== "on") return;
       void exitModeRef.current("typing");
     };
@@ -1530,7 +1688,7 @@ function MicButton({
   const livePhase = useInput ? useInput((s) => s?.phase ?? "") : "";
   const phaseRef = (0, import_react2.useRef)("");
   phaseRef.current = livePhase;
-  const label = on ? busy ? "\u8BC6\u522B\u4E2D\u2026" : holdMode ? "\u6309\u4F4F\u8BF4\u8BDD" : "\u8BED\u97F3\u4E2D" : local === "pending" ? "\u8FDB\u5165\u4E2D\u2026" : "\u8BED\u97F3";
+  const label = on ? busy ? t("recognizing") : holdMode ? t("holdToTalk") : t("voiceDetected") : local === "pending" ? t("entering") : t("voiceBtn");
   const holdPtrRef = (0, import_react2.useRef)(null);
   const onPointerDown = (e) => {
     if (bootNow().mode !== "hold") return;
@@ -1581,9 +1739,9 @@ function MicButton({
       onPointerUp,
       onPointerCancel,
       "data-dshvm": "mic",
-      "aria-label": on ? "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D" : "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F",
+      "aria-label": on ? t("ariaActive") : t("ariaEnter"),
       "aria-pressed": on,
-      title: on ? holdMode ? "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF1B\u77ED\u6309\u9000\u51FA\uFF1BEsc/\u5931\u53BB\u7126\u70B9\u653E\u5F03\uFF1BCtrl+Shift+V \u9000\u51FA" : "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u70B9\u51FB\u9000\u51FA\uFF08Ctrl+Shift+V\uFF09\xB7 \u6309\u4F4F Ctrl \u7ACB\u5373\u53D1\u9001" : "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F\uFF08Ctrl+Shift+V\uFF09",
+      title: on ? holdMode ? t("titleHold") : t("titleToggle") : t("titleEnter"),
       style: {
         border: "none",
         background: on ? holdMode ? "rgba(88, 166, 255, 0.16)" : "rgba(63, 185, 80, 0.16)" : local === "pending" ? "rgba(88, 166, 255, 0.14)" : "transparent",
@@ -1630,7 +1788,7 @@ function VoiceStatusBar({ bus, sessionId }) {
   }, [bus]);
   const isActive = b.active === sessionId;
   if (!isActive) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
-  const stateText = b.ui.state === "loading-model" ? "\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026" : b.ui.state === "transcribing" ? "\u8BC6\u522B\u4E2D\u2026" : b.ui.state === "speech" ? b.ui.mode === "hold" ? "\u6309\u4F4F\u8BF4\u8BDD\u2026" : "\u8046\u542C\u4E2D\u2026" : b.ui.state === "wake" ? `\u8BF4\u300C${b.ui.wakeWord || "\u5524\u9192\u8BCD"}\u300D\u5F00\u59CB` : b.ui.mode === "hold" ? "\u8BED\u97F3\u6A21\u5F0F \xB7 \u6309\u4F4F\u8BF4\u8BDD\uFF08\u77ED\u6309\u9000\u51FA\uFF09" : "\u8BED\u97F3\u6A21\u5F0F \xB7 \u8046\u542C\u4E2D\u2026";
+  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? t("recognizing") : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.mode === "hold" ? t("barHold") : t("barListening");
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0);
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",
@@ -1661,7 +1819,7 @@ function VoiceStatusBar({ bus, sessionId }) {
           },
           i
         )) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026 ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
@@ -1676,7 +1834,7 @@ function VoiceStatusBar({ bus, sessionId }) {
               fontSize: 12,
               flexShrink: 0
             },
-            children: "\u9000\u51FA"
+            children: t("exit")
           }
         )
       ]
@@ -1731,7 +1889,7 @@ function VoiceOverlay({ bus }) {
           },
           i
         )) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: b.ui.playingCaption ?? "\u6717\u8BFB\u4E2D\u2026" }, b.ui.playingCaption ?? "idle"),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: b.ui.playingCaption ?? t("reading") }, b.ui.playingCaption ?? "idle"),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
@@ -1746,7 +1904,7 @@ function VoiceOverlay({ bus }) {
               cursor: "pointer",
               flexShrink: 0
             },
-            children: "\u8DF3\u8FC7"
+            children: t("skip")
           }
         )
       ]

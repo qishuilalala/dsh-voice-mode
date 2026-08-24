@@ -47,6 +47,7 @@ export interface AsrEngine {
   /** 语音前沿（高门槛打断信号，Q10）。 */
   readonly onSpeechStart: (fn: () => void) => () => void
   readonly onState: (fn: (s: AsrState) => void) => () => void
+  readonly onError: (fn: (msg: string) => void) => () => void
   /** 归一化电平 0..1（波形条）。 */
   readonly onLevel: (fn: (level: number) => void) => () => void
 }
@@ -75,6 +76,12 @@ const INTERRUPT_LEVELS: Record<0 | 1 | 2, { rms: number; ms: number }> = {
 export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine {
   let state: AsrState = 'idle'
   const stateListeners = new Set<(s: AsrState) => void>()
+  const errorListeners = new Set<(msg: string) => void>()
+  const emitError = (msg: string): void => {
+    for (const fn of errorListeners) {
+      try { fn(msg) } catch { /* ignore */ }
+    }
+  }
   const transcriptListeners = new Set<(text: string, meta?: SegmentMeta) => void>()
   const partialListeners = new Set<(text: string) => void>()
   const speechStartListeners = new Set<() => void>()
@@ -165,7 +172,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       let res = await fetch(asrUrl(false), {
         method: 'POST',
         headers: { 'content-type': 'application/octet-stream' },
-        body: samples.slice().buffer as ArrayBuffer,
+        body: samples.buffer as ArrayBuffer,
       })
       if (res.status === 202) {
         // 模型下载中：5s 后重试同一载荷（Q16 重试提示在状态条展示）
@@ -176,7 +183,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
               const r2 = await fetch(asrUrl(false), {
                 method: 'POST',
                 headers: { 'content-type': 'application/octet-stream' },
-                body: samples.slice().buffer as ArrayBuffer,
+                body: samples.buffer as ArrayBuffer,
               })
               resolve(r2)
             } catch {
@@ -240,7 +247,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         let res = await fetch(asrUrl(true), {
           method: 'POST',
           headers: { 'content-type': 'application/octet-stream' },
-          body: samples.slice().buffer as ArrayBuffer,
+          body: samples.buffer as ArrayBuffer,
         })
         if (res.status === 202) {
           setState('loading-model')
@@ -251,7 +258,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
                   await fetch(asrUrl(true), {
                     method: 'POST',
                     headers: { 'content-type': 'application/octet-stream' },
-                    body: samples.slice().buffer as ArrayBuffer,
+                    body: samples.buffer as ArrayBuffer,
                   }),
                 )
               } catch {
@@ -267,8 +274,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         if (epoch !== segmentEpoch) return
         if (out.text) emit(transcriptListeners, out.text, meta)
       } catch {
-        // 定稿失败：文本留在草稿由 UI 提示（Q16 提交失败不丢文字）
+        // 定稿失败：状态条给用户可见提示（文本仍在草稿，可重新说话）
         setState(active ? (speechActive ? 'speech' : 'listening') : 'idle')
+        emitError('recognitionFail')
       }
     })()
   }
@@ -541,6 +549,12 @@ const startRecorder = async (): Promise<void> => {
       transcriptListeners.add(fn)
       return () => {
         transcriptListeners.delete(fn)
+      }
+    },
+    onError(fn) {
+      errorListeners.add(fn)
+      return () => {
+        errorListeners.delete(fn)
       }
     },
     onPartial(fn) {

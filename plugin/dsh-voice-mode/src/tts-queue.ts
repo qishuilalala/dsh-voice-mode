@@ -48,6 +48,8 @@ interface SessionQueue {
   epoch: number
   /** TTS 不可达已通知过（去重，直到下一帧成功才复位）。 */
   errorNotified: boolean
+  /** 错误退避毫秒（成功后清零）。 */
+  backoff: number
 }
 
 export class TtsQueue {
@@ -122,7 +124,7 @@ export class TtsQueue {
   enqueue(sessionId: string, text: string): void {
     let q = this.queues.get(sessionId)
     if (!q) {
-      q = { pending: [], busy: false, seq: 0, epoch: 0, errorNotified: false }
+      q = { pending: [], busy: false, seq: 0, epoch: 0, errorNotified: false, backoff: 0 }
       this.queues.set(sessionId, q)
     }
     q.pending.push({ text, epoch: q.epoch })
@@ -192,7 +194,13 @@ export class TtsQueue {
       }
     } finally {
       q.busy = false
-      if (q.pending.length > 0) void this.pump(sessionId, q)
+      if (q.pending.length > 0) {
+        // 失败退避（防 Edge TTS 故障忙循环）：1s 指数递增至多 8s；成功/无错误即时。
+        const delay = q.errorNotified ? q.backoff : 0
+        q.backoff = Math.min(8000, delay + 1000)
+        if (delay > 0) setTimeout(() => void this.pump(sessionId, q), delay)
+        else void this.pump(sessionId, q)
+      }
     }
   }
 

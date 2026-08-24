@@ -11,6 +11,10 @@
 import * as React from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { createAsrEngine, type AsrEngine, type AsrState } from './asr.ts'
+import { t } from './strings.ts'
+
+/** 共享提示音上下文（进入语音模式手势栈内预热；Safari 非手势栈新建会静默）。 */
+let beepCtx: AudioContext | null = null
 import { VoiceSettingsCard } from './settings-form.tsx'
 
 export const inject = ['slots', 'sessions', 'settingsScope']
@@ -116,7 +120,7 @@ export function apply(ctx: any): void {
           name: 'settings.plugin.item',
           key: 'voice-mode',
           order: 100,
-          label: '语音模式',
+          label: t('stateVoiceMode'),
         },
         () => React.createElement(VoiceSettingsCard, { scope: ctx.settingsScope.bind({ namespace: 'voice-mode' }) }),
       ),
@@ -156,10 +160,13 @@ function createAudioEngine(setUi: (patch: Partial<VoiceUiState>) => void): {
     void audio.play().catch(() => playNext())
   }
 
-  let beepCtx: AudioContext | null = null
   const toolBeep = (): void => {
     try {
-      if (!beepCtx) beepCtx = new AudioContext()
+      if (!beepCtx) {
+        // 兜底（理论上已被 enterMode 预热；此处避免 SSE 回调新建导致 Safari 静默）
+        beepCtx = new AudioContext()
+        void beepCtx.resume?.()
+      }
       const osc = beepCtx.createOscillator()
       const gain = beepCtx.createGain()
       osc.frequency.value = 880
@@ -300,7 +307,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     source.addEventListener('asr-error', (e: MessageEvent<string>) => {
       try {
         const p = JSON.parse(e.data) as { file?: string }
-        ui.error = `语音模型下载失败（${p.file ?? ''}）：请检查网络后重新进入语音模式重试`
+        ui.error = t('modelDownloadFail').replace('{file}', p.file ?? '')
         ui.model = null
         notify()
       } catch {
@@ -311,7 +318,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       try {
         const p = JSON.parse(e.data) as { sessionId?: string }
         if (p.sessionId === activeSessionId) {
-          ui.ttsNotice = '朗读连接失败：正在重试…'
+          ui.ttsNotice = t('ttsNoticeFail')
           notify()
         }
       } catch {
@@ -352,10 +359,10 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         const out = (await res.json()) as { active?: string | null; error?: string }
         activeSessionId = out.active ?? null
         notify()
-        if (!res.ok) return { ok: false, error: out.error ?? '进入语音模式失败' }
-        return { ok: out.active === sessionId, error: out.active === sessionId ? undefined : '进入语音模式失败' }
+        if (!res.ok) return { ok: false, error: out.error ?? t('enterFail') }
+        return { ok: out.active === sessionId, error: out.active === sessionId ? undefined : t('enterFail') }
       } catch {
-        return { ok: false, error: '进入语音模式失败' }
+        return { ok: false, error: t('enterFail') }
       }
     },
     async exit(sessionId) {
@@ -555,8 +562,8 @@ export function MicButton({
         bus.setUi({
           error:
             entered.error === 'voice mode disabled'
-              ? '语音模式已禁用（插件 enabled=false）'
-              : entered.error ?? '进入语音模式失败',
+              ? t('disabled')
+              : entered.error ?? t('enterFail'),
         })
         return
       }
@@ -568,10 +575,21 @@ export function MicButton({
       const engine = createAsrEngine({ silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord }, sid)
       bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord })
       engineRef.current = engine
+      // 共享提示音上下文：进入模式处于用户手势栈（点麦克风），此处创建并恢复——
+      // Safari/iOS 在非手势栈（如 SSE 回调）新建的 AudioContext 会 suspended 静默。
+      try {
+        if (!beepCtx) beepCtx = new AudioContext()
+        void beepCtx.resume?.()
+      } catch {
+        // 预热失败不阻塞（toolBeep 有兜底）
+      }
 
       engine.onState((s) => {
         bus.setUi({ state: s })
         if (s === 'idle') resetIdle()
+      })
+      engine.onError((key) => {
+        bus.setUi({ error: t(key as 'recognitionFail') })
       })
       engine.onLevel((l) => {
         // 波形：14 根滚动条
@@ -612,11 +630,11 @@ export function MicButton({
             // 兼容 Promise 型 submit
             if (r && typeof r.then === 'function') {
               r.catch(() => {
-                bus.setUi({ error: '发送失败，已保留在草稿' })
+                bus.setUi({ error: t('sendFailKept') })
               })
             }
           } catch {
-            bus.setUi({ error: '发送失败，已保留在草稿' })
+            bus.setUi({ error: t('sendFailKept') })
           }
         }
         cancelPendingSubmit()
@@ -662,9 +680,9 @@ export function MicButton({
       const msg =
         e instanceof DOMException
           ? e.name === 'NotAllowedError'
-            ? '麦克风被拒绝：请在浏览器地址栏允许麦克风权限'
-            : '麦克风不可用'
-          : `语音模式启动失败：${String(e instanceof Error ? e.message : e)}`
+            ? t('micDenied')
+            : t('micUnavailable')
+          : t('startFail').replace('{err}', String(e instanceof Error ? e.message : e))
       bus.setUi({ error: msg })
       const sid2 = sidRef.current
       if (sid2) void bus.exit(sid2)
@@ -831,13 +849,13 @@ export function MicButton({
   phaseRef.current = livePhase
   const label = on
     ? busy
-      ? '识别中…'
+      ? t('recognizing')
       : holdMode
-        ? '按住说话'
-        : '语音中'
+        ? t('holdToTalk')
+        : t('voiceDetected')
     : local === 'pending'
-      ? '进入中…'
-      : '语音'
+      ? t('entering')
+      : t('voiceBtn')
 
   // hold 手势（仅 hold 模式激活后有效）：按下即录；<250ms 视为短按退出；
   // 按住中途向上滑出 ≥40px 放弃本段；松手定稿发送。click 一律不切换
@@ -898,14 +916,14 @@ export function MicButton({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       data-dshvm="mic"
-      aria-label={on ? '语音模式进行中' : '进入语音对话模式'}
+      aria-label={on ? t('ariaActive') : t('ariaEnter')}
       aria-pressed={on}
       title={
         on
           ? holdMode
-            ? '语音模式进行中 · 按住说话、松手发送；短按退出；Esc/失去焦点放弃；Ctrl+Shift+V 退出'
-            : '语音模式进行中 · 点击退出（Ctrl+Shift+V）· 按住 Ctrl 立即发送'
-          : '进入语音对话模式（Ctrl+Shift+V）'
+            ? t('titleHold')
+            : t('titleToggle')
+          : t('titleEnter')
       }
       style={{
         border: 'none',
@@ -962,18 +980,18 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
 
   const stateText =
     b.ui.state === 'loading-model'
-      ? '正在加载模型…'
+      ? t('loadingModel')
       : b.ui.state === 'transcribing'
-        ? '识别中…'
+        ? t('recognizing')
         : b.ui.state === 'speech'
           ? b.ui.mode === 'hold'
-            ? '按住说话…'
-            : '聆听中…'
+            ? t('holdDots')
+            : t('listening')
           : b.ui.state === 'wake'
-            ? `说「${b.ui.wakeWord || '唤醒词'}」开始`
+            ? t('sayWake').replace('{wake}', b.ui.wakeWord || t('wakeWord'))
             : b.ui.mode === 'hold'
-              ? '语音模式 · 按住说话（短按退出）'
-              : '语音模式 · 聆听中…'
+              ? t('barHold')
+              : t('barListening')
 
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0)
 
@@ -1011,7 +1029,7 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
           ? b.ui.error
           : b.ui.state === 'loading-model' || b.ui.model
             ? b.ui.model
-              ? `正在加载模型… ${b.ui.model.file} ${b.ui.model.percent}%`
+              ? `${t('loadingModel')} ${b.ui.model.file} ${b.ui.model.percent}%`
               : stateText
             : b.ui.partial
               ? b.ui.partial
@@ -1032,7 +1050,7 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
           flexShrink: 0,
         }}
       >
-        退出
+        {t('exit')}
       </button>
     </div>
   )
@@ -1096,7 +1114,7 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
         ))}
       </span>
       <span key={b.ui.playingCaption ?? 'idle'} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {b.ui.playingCaption ?? '朗读中…'}
+        {b.ui.playingCaption ?? t('reading')}
       </span>
       <button
         onClick={() => bus.skipAudio()}
@@ -1111,7 +1129,7 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
           flexShrink: 0,
         }}
       >
-        跳过
+        {t('skip')}
       </button>
     </div>
   )

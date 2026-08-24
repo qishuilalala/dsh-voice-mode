@@ -15,6 +15,7 @@
  */
 import * as React from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { t as tr } from './strings.ts'
 
 interface ScopeController {
   getSnapshot(): {
@@ -254,7 +255,7 @@ function SelectField({
             {o.label}
           </option>
         ))}
-        <option value="__custom__">自定义…</option>
+        <option value="__custom__">{tr('custom')}…</option>
       </select>
       {!inOptions && (
         <input
@@ -286,7 +287,7 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
     if (busy) return
     const v = voice.trim()
     if (!v) {
-      setNote('请先填写音色名（ShortName）')
+      setNote(tr('previewNameFirst'))
       return
     }
     setBusy(true)
@@ -309,7 +310,7 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
           signal: AbortSignal.timeout(15000),
         })
         if (res.status === 403) {
-          setNote('语音模式已禁用（插件 enabled=false），无法试听')
+          setNote(tr('previewDisabled'))
           return
         }
         if (!res.ok) throw new Error(`preview http ${res.status}`)
@@ -319,7 +320,7 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
         audio.onended = () => URL.revokeObjectURL(url)
         audio.onerror = () => {
           URL.revokeObjectURL(url)
-          setNote('试听失败：无法播放该音色')
+          setNote(tr('previewPlayFail'))
         }
         try {
           await audio.play()
@@ -327,12 +328,12 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
           URL.revokeObjectURL(url)
           setNote(
             e instanceof DOMException && e.name === 'NotAllowedError'
-              ? '浏览器拦截了自动播放，请再点一次试听'
-              : '试听失败：无法播放该音色',
+              ? tr('previewAutoplay')
+              : tr('previewPlayFail'),
           )
         }
       } catch {
-        setNote('试听失败：请检查网络或音色名（ShortName）是否正确')
+        setNote(tr('previewCheck'))
       } finally {
         setBusy(false)
       }
@@ -356,11 +357,11 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
   }
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-      <button type="button" onClick={play} disabled={busy} style={btnStyle} title="试听当前音色（当前语速）">
+      <button type="button" onClick={play} disabled={busy} style={btnStyle} title={tr('previewBtnTitle')}>
         <svg viewBox="0 0 16 16" width={11} height={11} aria-hidden="true">
           <path fill="currentColor" d="M4 3l9 5-9 5z" />
         </svg>
-        {busy ? '合成中…' : '试听'}
+        {busy ? tr('synthesizing') : tr('preview')}
       </button>
       {note && (
         <span style={{ color: 'var(--dsw-alias-state-error-primary)', fontSize: 12, lineHeight: '18px' }}>{note}</span>
@@ -419,7 +420,7 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
   if (unavailable) {
     return (
       <div data-dshvm-settings="card" style={{ color: t.term, fontSize: 12, padding: '14px 16px', ...cardStyle }}>
-        <span style={{ color: 'var(--dsw-alias-state-error-primary)' }}>配置暂不可用</span>（设置文档未就绪，面板就绪后会自动出现）。
+        <span style={{ color: 'var(--dsw-alias-state-error-primary)' }}>{tr('configUnavailable')}</span>{tr('configUnavailableNote')}
       </div>
     )
   }
@@ -429,8 +430,8 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
       <style>{focusVisibleCss}</style>
       <button type="button" aria-expanded={!collapsed} onClick={() => setCollapsed((c) => !c)} style={{ ...setHeader, background: collapsed ? 'transparent' : t.bgOpen }}>
         <span style={setHeadText}>
-          <span style={setName}>语音模式</span>
-          <span style={setDesc}>音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词 / 口语化提示词</span>
+          <span style={setName}>{tr('stateVoiceMode')}</span>
+          <span style={setDesc}>{tr('settingsCardDesc')}</span>
         </span>
         <span style={{ ...setChevron, transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)' }} aria-hidden="true">
           <svg viewBox="0 0 16 16" width={14} height={14}>
@@ -442,7 +443,7 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
       {!collapsed && (
         <div style={setBody}>
           <div style={{ marginTop: 4 }}>
-            <Row name="voice" desc="Edge TTS 音色（下拉常用，其余选「自定义」手动填 ShortName）">
+            <Row name="voice" desc={tr('descVoice')}>
               <SelectField
                 score={scope}
                 field="voice"
@@ -452,49 +453,49 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
                 footer={(v) => <VoicePreviewButton voice={v} rate={Number(value.rate ?? 1)} />}
               />
             </Row>
-            <Row name="rate" desc="朗读语速倍率（0.5 慢速 ～ 2.0 快速，1.0 正常）">
+            <Row name="rate" desc={tr('descRate')}>
               <NumberField score={scope} field="rate" value={value.rate ?? 1} min={0.5} max={2} step={0.1} />
             </Row>
-            <Row name="interruptLevel" desc="发声打断灵敏度（0 高门槛 / 1 中 / 2 低）">
+            <Row name="interruptLevel" desc={tr('descInterrupt')}>
               <SegGroup
                 score={scope}
                 field="interruptLevel"
                 value={value.interruptLevel}
                 options={[
-                  { v: 0, label: '0 高门槛' },
-                  { v: 1, label: '1 中' },
-                  { v: 2, label: '2 低' },
+                  { v: 0, label: tr('sev0') },
+                  { v: 1, label: tr('sev1') },
+                  { v: 2, label: tr('sev2') },
                 ]}
               />
             </Row>
-            <Row name="silenceMs" desc="说完整一句的静音停顿毫秒数（默认 2000 = 2 秒）">
+            <Row name="silenceMs" desc={tr('descSilence')}>
               <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 2000} min={500} max={30000} step={100} />
             </Row>
-            <Row name="idleTimeoutMinutes" desc="无活动自动退出语音模式的分钟数（默认 10）">
+            <Row name="idleTimeoutMinutes" desc={tr('descIdle')}>
               <NumberField score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 10} min={1} max={120} step={1} />
             </Row>
-            <Row name="modelHost" desc="ASR 模型下载源（官方源 / 国内镜像，或选「自定义」填任意镜像）">
+            <Row name="modelHost" desc={tr('descModelHost')}>
               <SelectField score={scope} field="modelHost" value={value.modelHost ?? ''} options={HOST_OPTIONS} placeholder="https://..." />
             </Row>
-            <Row name="autoSend" desc="识别定稿后自动发送（关=只进草稿；按住 Ctrl / hold 松手仍发送）">
+            <Row name="autoSend" desc={tr('descAutoSend')}>
               <input type="checkbox" checked={Boolean(value.autoSend)} onChange={(e) => void scope.set('autoSend', e.target.checked)} />
             </Row>
-            <Row name="spokenFormat" desc="语音会话注入口语化提示词（回复口语化、不用 Markdown 排版符号，朗读更顺；默认关，改动即时生效）">
+            <Row name="spokenFormat" desc={tr('descSpokenFormat')}>
               <input type="checkbox" checked={Boolean(value.spokenFormat)} onChange={(e) => void scope.set('spokenFormat', e.target.checked)} />
             </Row>
-            <Row name="mode" desc="交互模式（toggle 持续聆听+静音断句 / hold 按住说话）">
+            <Row name="mode" desc={tr('descMode')}>
               <SegGroup
                 score={scope}
                 field="mode"
                 value={value.mode}
                 options={[
-                  { v: 'toggle', label: '持续聆听' },
-                  { v: 'hold', label: '按住说话' },
+                  { v: 'toggle', label: tr('modeToggle') },
+                  { v: 'hold', label: tr('modeHold') },
                 ]}
               />
             </Row>
-            <Row name="wakeWord" desc="唤醒词（默认关；如「你好小D」，说出后开始识别）">
-              <TextField score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder="如：你好小D" />
+            <Row name="wakeWord" desc={tr('descWakeWord')}>
+              <TextField score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder={tr('wakePlaceholder')} />
             </Row>
           </div>
         </div>

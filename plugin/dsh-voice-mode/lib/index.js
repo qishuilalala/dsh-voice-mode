@@ -342,7 +342,7 @@ var TtsQueue = class {
   enqueue(sessionId, text) {
     let q = this.queues.get(sessionId);
     if (!q) {
-      q = { pending: [], busy: false, seq: 0, epoch: 0, errorNotified: false };
+      q = { pending: [], busy: false, seq: 0, epoch: 0, errorNotified: false, backoff: 0 };
       this.queues.set(sessionId, q);
     }
     q.pending.push({ text, epoch: q.epoch });
@@ -404,7 +404,12 @@ var TtsQueue = class {
       }
     } finally {
       q.busy = false;
-      if (q.pending.length > 0) void this.pump(sessionId, q);
+      if (q.pending.length > 0) {
+        const delay = q.errorNotified ? q.backoff : 0;
+        q.backoff = Math.min(8e3, delay + 1e3);
+        if (delay > 0) setTimeout(() => void this.pump(sessionId, q), delay);
+        else void this.pump(sessionId, q);
+      }
     }
   }
   async close() {

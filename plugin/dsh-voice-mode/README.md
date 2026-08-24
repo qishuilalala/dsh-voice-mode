@@ -198,6 +198,12 @@ input:  mic ──RMS VAD（2s 静音切句）──▶ POST /voice-mode/asr（f
 - hero（新会话空态）没有语音入口：语音模式是会话级功能，请先进入会话使用输入框麦克风按钮
 - 「试听」的请求超时兜底使用 `AbortSignal.timeout`（Chrome 103+ / Firefox 100+ / Safari 16+）；更老的浏览器点击试听会立即显示失败提示，属预期降级
 - `spokenFormat` 提示词经官方 `system-prompt/assemble` 瀑布注入；若当前会话使用**完整提示词**配置（persona `complete: true` 的 agent preset），其提示词会整体替换系统提示词（官方 complete 契约），此时口语化提示词不注入
+- **苹果 Safari / iOS**：
+  - 需 **HTTPS 或 localhost**（iOS/macOS Safari 强制安全上下文；`http://` 局域网 IP 下麦克风不可用）
+  - 首次进入需授权麦克风；被拒后到「设置 → Safari → 麦克风」开启（iOS）
+  - iOS 后台/锁屏时识别与朗读暂停，回前台自动恢复（可能丢句）；建议语音模式期间保持前台
+  - 桌面 macOS Safari 若提示音暂无声音，请先点一次麦克风按钮再触发（浏览器音频策略）
+- **安全说明**：插件 HTTP 面（`/voice-mode/*`）遵循宿主安全模型——请勿将 dsh 端口直接暴露公网；经反向代理发布时由代理层（如 basic auth）鉴权；插件侧对敏感操作保留会话归属校验（sessionId 门控）
 
 ## 故障排查
 
