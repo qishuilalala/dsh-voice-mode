@@ -15,8 +15,18 @@
  */
 
 import { matchWakeWord } from './wakeword.ts'
+import { resampleLinear } from './resample.ts'
 
 export type AsrState = 'idle' | 'listening' | 'wake' | 'speech' | 'transcribing' | 'loading-model'
+
+/**
+ * P3-2 回声消除参考源（由 client.tsx 组装注入）：采集每帧以 windowAt(墙钟, 长度)
+ * 取回对应时刻的 TTS 播放参考，process 用 NLMS 减去回声。缺失（null）时原样透传。
+ */
+export interface EchoRefSource {
+  process(mic: Float32Array, ref: Float32Array): Float32Array
+  windowAt(tWallMs: number, n: number): Float32Array
+}
 
 /** 延迟埋点链的客户端阶段（P1-5；host 侧阶段与全链顺序见 client.tsx TELEMETRY_VIEW）。 */
 export type TelemetryStage = 'utterance-end' | 'endpoint-fired' | 'submitted'
@@ -36,6 +46,8 @@ export interface AsrConfig {
   basePath: string
   /** 唤醒词（空 = 关）：进入后先在 wake 待机态，说出唤醒词才正式开口。 */
   wakeWord?: string
+  /** P3-2：回声参考（TTS 播放经 NLMS 消除后，信号再用于打断/VAD/上行）。 */
+  echo?: EchoRefSource
 }
 
 export interface SegmentMeta {
@@ -53,6 +65,8 @@ export interface AsrEngine {
   beginHeld(): void
   /** hold 模式：松手定稿发送（cancel=true 放弃本段）。 */
   endHeld(cancel?: boolean): void
+  /** P3-3：丢弃当前已录段（duck-and-listen 探针判回声后防幽灵消息），host 流重置。 */
+  discardSegment(): void
   /** 定稿文本（段结束/强制发送后）。 */
   readonly onSegment: (fn: (text: string, meta?: SegmentMeta) => void) => () => void
   /** 实时字幕（partial，仅预览）。 */
@@ -139,6 +153,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let holdActive = false
   /** 唤醒词（归一化后；空串 = 关闭）。 */
   const wakeWord = (config.wakeWord ?? '').trim().toLowerCase().replace(/[\s\u3000]+/g, '')
+  /** P3-2 回声参考（可选；缺失时原信号透传）。 */
+  const echo = config.echo
 
   // --- 打断状态机（Q10：首音节强度 + 持续时长） ---
   const intLevel = INTERRUPT_LEVELS[config.interruptLevel] ?? INTERRUPT_LEVELS[0]
@@ -364,7 +380,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // 跨平台守卫：Safari 等浏览器会忽略 AudioContext({sampleRate}) 选项，
     // 实际按 44.1k/48k 输出。非 16k 时先线性重采样，保证 host zipformer2
     // 始终收到 16k PCM（避免识别错乱）。
-    const data = ctxRate !== SAMPLE_RATE ? resampleTo16k(raw, ctxRate) : raw
+    let data = ctxRate !== SAMPLE_RATE ? resampleLinear(raw, ctxRate, SAMPLE_RATE) : raw
+    // P3-2：回声参考（TTS 播放 → NLMS 消除回声）后再做打断/VAD/上行判定。
+    if (echo) {
+      const ref = echo.windowAt(performance.now(), data.length)
+      data = echo.process(data, ref)
+    }
     let sum = 0
     for (let i = 0; i < data.length; i++) sum += data[i] * data[i]
     const rms = Math.sqrt(sum / data.length)
@@ -500,20 +521,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
   }
 
-  /** 线性插值重采样到 16k（跨平台守卫；两倍率差值在可接受范围）。 */
-function resampleTo16k(src: Float32Array, srcRate: number): Float32Array {
-  const ratio = srcRate / SAMPLE_RATE
-  const outLen = Math.max(1, Math.floor(src.length / ratio))
-  const out = new Float32Array(outLen)
-  for (let i = 0; i < outLen; i++) {
-    const pos = i * ratio
-    const i0 = Math.floor(pos)
-    const i1 = Math.min(i0 + 1, src.length - 1)
-    const frac = pos - i0
-    out[i] = src[i0] + (src[i1] - src[i0]) * frac
-  }
-  return out
-}
+
 
 const startRecorder = async (): Promise<void> => {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -636,6 +644,22 @@ const startRecorder = async (): Promise<void> => {
       // 按下首帧注入打断阻尼：避免"录制开始"被误判为打断前沿（Q10）。
       bargeInDampingUntil = Date.now() + 800
       setState('speech')
+    },
+    discardSegment() {
+      // 语义与 P1-3「短语音弃段」一致：清本地段 + 作废迟到 partial + host 流重置。
+      segmentEpoch++
+      segment = []
+      segmentMs = 0
+      speechMs = 0
+      silenceMs = 0
+      speechActive = false
+      prePad = []
+      uploadedSamples = 0
+      utteranceEndAt = null
+      forcePending = false
+      sincePartialMs = 0
+      void resetHostStream()
+      if (active) setState(wakeWord ? 'wake' : 'listening')
     },
     endHeld(cancel = false) {
       if (!active || !holdActive) return

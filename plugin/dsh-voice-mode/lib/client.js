@@ -55,6 +55,22 @@ function matchWakeWord(partial, wakeWord) {
   return false;
 }
 
+// src/resample.ts
+function resampleLinear(src, srcRate, dstRate) {
+  if (srcRate === dstRate) return src;
+  const ratio = srcRate / dstRate;
+  const outLen = Math.max(1, Math.floor(src.length / ratio));
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const pos = i * ratio;
+    const i0 = Math.floor(pos);
+    const i1 = Math.min(i0 + 1, src.length - 1);
+    const frac = pos - i0;
+    out[i] = src[i0] + (src[i1] - src[i0]) * frac;
+  }
+  return out;
+}
+
 // src/asr.ts
 var SAMPLE_RATE = 16e3;
 var SPEECH_RMS = 0.015;
@@ -112,6 +128,7 @@ function createAsrEngine(config, sessionId) {
   let prePad = [];
   let holdActive = false;
   const wakeWord = (config.wakeWord ?? "").trim().toLowerCase().replace(/[\s\u3000]+/g, "");
+  const echo = config.echo;
   const intLevel = INTERRUPT_LEVELS[config.interruptLevel] ?? INTERRUPT_LEVELS[0];
   let interruptCandidateMs = 0;
   let bargeInDampingUntil = 0;
@@ -295,7 +312,11 @@ function createAsrEngine(config, sessionId) {
   };
   const handleAudio = (raw) => {
     if (!active || inFlush) return;
-    const data = ctxRate !== SAMPLE_RATE ? resampleTo16k(raw, ctxRate) : raw;
+    let data = ctxRate !== SAMPLE_RATE ? resampleLinear(raw, ctxRate, SAMPLE_RATE) : raw;
+    if (echo) {
+      const ref = echo.windowAt(performance.now(), data.length);
+      data = echo.process(data, ref);
+    }
     let sum = 0;
     for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
     const rms = Math.sqrt(sum / data.length);
@@ -413,19 +434,6 @@ function createAsrEngine(config, sessionId) {
       void requestPartial();
     }
   };
-  function resampleTo16k(src, srcRate) {
-    const ratio = srcRate / SAMPLE_RATE;
-    const outLen = Math.max(1, Math.floor(src.length / ratio));
-    const out = new Float32Array(outLen);
-    for (let i = 0; i < outLen; i++) {
-      const pos = i * ratio;
-      const i0 = Math.floor(pos);
-      const i1 = Math.min(i0 + 1, src.length - 1);
-      const frac = pos - i0;
-      out[i] = src[i0] + (src[i1] - src[i0]) * frac;
-    }
-    return out;
-  }
   const startRecorder = async () => {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -535,6 +543,21 @@ function createAsrEngine(config, sessionId) {
       bargeInDampingUntil = Date.now() + 800;
       setState("speech");
     },
+    discardSegment() {
+      segmentEpoch++;
+      segment = [];
+      segmentMs = 0;
+      speechMs = 0;
+      silenceMs = 0;
+      speechActive = false;
+      prePad = [];
+      uploadedSamples = 0;
+      utteranceEndAt = null;
+      forcePending = false;
+      sincePartialMs = 0;
+      void resetHostStream();
+      if (active) setState(wakeWord ? "wake" : "listening");
+    },
     endHeld(cancel = false) {
       if (!active || !holdActive) return;
       holdActive = false;
@@ -597,6 +620,74 @@ function createAsrEngine(config, sessionId) {
     }
   };
 }
+
+// src/aec.ts
+var DEFAULT_FILTER_LENGTH = 256;
+var DEFAULT_DELAY = 64;
+var DEFAULT_STEP = 0.1;
+var DEFAULT_EPSILON = 1e-6;
+var NlmsAec = class {
+  w;
+  xBuf;
+  filterLength;
+  delay;
+  mu;
+  eps;
+  /** 参考历史环形游标。 */
+  cursor = 0;
+  /** 已缓冲参考样本数（预热期）。 */
+  filled = 0;
+  constructor(options = {}) {
+    this.filterLength = options.filterLength ?? DEFAULT_FILTER_LENGTH;
+    this.delay = options.delay ?? DEFAULT_DELAY;
+    this.mu = options.step ?? DEFAULT_STEP;
+    this.eps = options.epsilon ?? DEFAULT_EPSILON;
+    this.w = new Float32Array(this.filterLength);
+    this.xBuf = new Float32Array(this.delay + this.filterLength);
+  }
+  /**
+   * 送入下一块麦克风/参考；返回去回声后的麦克风样本（与输入等长）。
+   * 参考可比麦克风块短（如静音填充）——不足部分补零。
+   */
+  process(mic, ref) {
+    const n = mic.length;
+    const out = new Float32Array(n);
+    if (n === 0) return out;
+    const xBuf = this.xBuf;
+    const bufLen = xBuf.length;
+    let cursor = this.cursor;
+    for (let i = 0; i < n; i++) {
+      xBuf[cursor] = i < ref.length ? ref[i] : 0;
+      cursor = (cursor + 1) % bufLen;
+      this.filled = Math.min(this.filled + 1, bufLen);
+      const d = mic[i];
+      if (this.filled >= this.delay + this.filterLength) {
+        let y = 0;
+        let norm = 0;
+        let idx = (cursor - this.delay + bufLen) % bufLen;
+        for (let t3 = 0; t3 < this.filterLength; t3++) {
+          const x = xBuf[idx];
+          y += this.w[t3] * x;
+          norm += x * x;
+          idx = (idx - 1 + bufLen) % bufLen;
+        }
+        const e = d - y;
+        out[i] = e;
+        const denom = norm + this.eps;
+        const gain = this.mu * e / denom;
+        idx = (cursor - this.delay + bufLen) % bufLen;
+        for (let t3 = 0; t3 < this.filterLength; t3++) {
+          this.w[t3] += gain * xBuf[idx];
+          idx = (idx - 1 + bufLen) % bufLen;
+        }
+      } else {
+        out[i] = d;
+      }
+    }
+    this.cursor = cursor;
+    return out;
+  }
+};
 
 // src/strings.ts
 var zh = {
@@ -1153,6 +1244,11 @@ var TELEMETRY_VIEW = [
 ];
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
+var DUCK_LEVEL = 0.3;
+var DUCK_CONFIRM_MS = 600;
+var DUCK_PROBE_DROP = 0.5;
+var SAMPLE_RATE_16K = 16e3;
+var ECHO_DELAY_MS = 40;
 var WAVE_BARS = 14;
 var BASE_PATH2 = "/voice-mode";
 function apply(ctx) {
@@ -1208,7 +1304,7 @@ function apply(ctx) {
     );
   }
 }
-function createAudioEngine(setUi, onPlayed) {
+function createAudioEngine(setUi, onPlayed, onPlaybackRef) {
   const pending = [];
   const fallbackAudio = new Audio();
   let fallback = false;
@@ -1283,6 +1379,11 @@ function createAudioEngine(setUi, onPlayed) {
           src.start(at);
           nextEndAt = at + buf.duration;
           try {
+            const wallMs = performance.now() + (at - ctx.currentTime) * 1e3;
+            onPlaybackRef?.(buf.getChannelData(0), buf.sampleRate, wallMs);
+          } catch {
+          }
+          try {
             onPlayed?.();
           } catch {
           }
@@ -1347,7 +1448,19 @@ function createAudioEngine(setUi, onPlayed) {
       setUi({ playing: false, playingCaption: null });
     },
     toolBeep,
-    warm
+    warm,
+    duck() {
+      if (!ctx || !duckGain) return;
+      const now = ctx.currentTime;
+      duckGain.gain.cancelScheduledValues(now);
+      duckGain.gain.setTargetAtTime(DUCK_LEVEL, now, 0.02);
+    },
+    unduck() {
+      if (!ctx || !duckGain) return;
+      const now = ctx.currentTime;
+      duckGain.gain.cancelScheduledValues(now);
+      duckGain.gain.setTargetAtTime(1, now, 0.035);
+    }
   };
 }
 function createVoiceBus(basePath = BASE_PATH2, ctx) {
@@ -1398,12 +1511,69 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     ui.telemetry = null;
     notify();
   };
+  const refChunks = [];
+  let refTotal = 0;
+  let refStartWall = 0;
+  let refActive = false;
+  const pushRef = (pcmSrc, srcRate, startWallMs) => {
+    const pcm = resampleLinear(pcmSrc, srcRate, SAMPLE_RATE_16K);
+    if (!refActive) {
+      refActive = true;
+      refStartWall = startWallMs;
+      refChunks.length = 0;
+      refTotal = 0;
+    }
+    const tailWall = refStartWall + refTotal / SAMPLE_RATE_16K * 1e3;
+    const gapMs = startWallMs - tailWall;
+    if (gapMs > 250) {
+      refActive = false;
+      refChunks.length = 0;
+      refTotal = 0;
+    } else if (gapMs > 1) {
+      const padN = Math.floor(gapMs / 1e3 * SAMPLE_RATE_16K);
+      refChunks.push(new Float32Array(padN));
+      refTotal += padN;
+    }
+    refChunks.push(pcm);
+    refTotal += pcm.length;
+    const maxTotal = SAMPLE_RATE_16K * 60;
+    while (refTotal - (refChunks[0]?.length ?? 0) > maxTotal) {
+      refTotal -= refChunks.shift().length;
+    }
+  };
+  const refWindowAt = (tWallMs, n) => {
+    const out = new Float32Array(n);
+    if (!refActive || refTotal === 0) return out;
+    const idx = Math.floor((tWallMs - ECHO_DELAY_MS - refStartWall) / 1e3 * SAMPLE_RATE_16K);
+    if (idx < 0 || idx >= refTotal) return out;
+    let acc = 0;
+    let outOff = 0;
+    for (const c of refChunks) {
+      if (outOff >= n) break;
+      if (idx >= acc + c.length) {
+        acc += c.length;
+        continue;
+      }
+      const start = Math.max(0, idx - acc);
+      const cnt = Math.min(c.length - start, n - outOff);
+      out.set(c.subarray(start, start + cnt), outOff);
+      outOff += cnt;
+      acc += c.length;
+    }
+    return out;
+  };
+  const aec = new NlmsAec();
+  const echoSource = {
+    process: (mic, ref) => aec.process(mic, ref),
+    windowAt: refWindowAt
+  };
   const engine = createAudioEngine(
     (patch) => {
       Object.assign(ui, patch);
       notify();
     },
-    () => stampTelemetry("first-audio-played")
+    () => stampTelemetry("first-audio-played"),
+    (pcm, sampleRate, wallMs) => pushRef(pcm, sampleRate, wallMs)
   );
   const notify = () => {
     for (const fn of listeners) {
@@ -1617,7 +1787,19 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       curSentenceId = null;
       curChunks = [];
       curBytes = 0;
+      refActive = false;
+      refChunks.length = 0;
+      refTotal = 0;
       engine.skip();
+    },
+    echoForAsr() {
+      return echoSource;
+    },
+    duckAudio() {
+      engine.duck();
+    },
+    unduckAudio() {
+      engine.unduck();
     },
     cancelTurn(sessionId) {
       try {
@@ -1646,6 +1828,13 @@ function useVoiceCss() {
 `;
     document.head.appendChild(el);
   }, []);
+}
+function tailAvg(levels, n) {
+  if (levels.length === 0) return 0;
+  const tail = levels.slice(-n);
+  let s = 0;
+  for (const v of tail) s += v;
+  return s / tail.length;
 }
 function MicButton({
   bus,
@@ -1759,7 +1948,10 @@ function MicButton({
       const basePath = cfg.basePath;
       const silenceMs = cfg.silenceMs;
       const interruptLevel = cfg.interruptLevel;
-      const engine = createAsrEngine({ silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord }, sid);
+      const engine = createAsrEngine(
+        { silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord, echo: bus.echoForAsr() },
+        sid
+      );
       bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord });
       engineRef.current = engine;
       engine.onTelemetry((e) => bus.stampTelemetry(e.stage, e.at));
@@ -1823,15 +2015,27 @@ function MicButton({
       engine.onSpeechStart(async () => {
         resetIdle();
         bus.resetTelemetry();
+        const before = tailAvg(bus.ui.levels, 3);
+        bus.duckAudio();
+        await new Promise((resolve) => setTimeout(resolve, DUCK_CONFIRM_MS));
+        const after = tailAvg(bus.ui.levels, 3);
+        if (before > 0 && after < before * DUCK_PROBE_DROP) {
+          bus.unduckAudio();
+          engineRef.current?.discardSegment();
+          return;
+        }
         bus.skipAudio();
         try {
           await fetch(`${location.origin}${BASE_PATH2}/cancel`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ sessionId: sidRef.current })
+            body: JSON.stringify({ sessionId: sidRef.current }),
+            // Minor：cancel 网络挂起时不让 TTS 长期停在 duck 音量下（AbortSignal.timeout 需 Chrome 103+/Safari 16+）。
+            signal: AbortSignal.timeout(3e3)
           });
         } catch {
         }
+        bus.unduckAudio();
         if (runningRef.current && sidRef.current) {
           bus.cancelTurn(sidRef.current);
         }

@@ -10,7 +10,9 @@
  */
 import * as React from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { createAsrEngine, type AsrEngine, type AsrState } from './asr.ts'
+import { createAsrEngine, type AsrEngine, type AsrState, type EchoRefSource } from './asr.ts'
+import { NlmsAec } from './aec.ts'
+import { resampleLinear } from './resample.ts'
 import { t, type TKey } from './strings.ts'
 
 /** 共享提示音上下文（进入语音模式手势栈内预热；Safari 非手势栈新建会静默）。 */
@@ -115,6 +117,12 @@ interface VoiceBus {
   onToolEvent(fn: (e: { sessionId: string; name: string }) => void): () => void
   /** 清播放队列 + 停当前句（本地 skip，打断第一层）。 */
   skipAudio(): void
+  /** P3-2：回声消除源（参考窗口 + NLMS），供 ASR 引擎注入。 */
+  echoForAsr(): EchoRefSource
+  /** P3-3：duck 打断（压低 TTS 增益，配合 duck-and-listen 探针）。 */
+  duckAudio(): void
+  /** P3-3：恢复 TTS 增益（无爆音斜坡）。 */
+  unduckAudio(): void
   /** 取消当前回合（keepInbox 保新消息，Q2 打断第二层）。 */
   cancelTurn(sessionId: string): void
   /** P1-5 开发埋点：ASR 引擎事件（utterance-end/endpoint-fired/submitted）入链。 */
@@ -129,6 +137,15 @@ export interface VoiceSlotActions {
   bus: VoiceBus
 }
 
+/** P3-3 ducking 参数：压低电平 / 确认窗口 / 探针判定系数（真机标定起点）。 */
+const DUCK_LEVEL = 0.3
+// I2：600ms 确认窗口（16k ctx 下 levels 滚动 ~896ms/窗，300ms 内统计变化太少；真机标定起点）。
+const DUCK_CONFIRM_MS = 600
+const DUCK_PROBE_DROP = 0.5
+/** P3-2：回声参考采样率（16k mono，与采集一致）。 */
+const SAMPLE_RATE_16K = 16000
+/** P3-2：扬声器→麦克风声学路径前导延迟（真机标定起点）。 */
+const ECHO_DELAY_MS = 40
 const WAVE_BARS = 14
 const SUBMIT_DELAY_MS = 600
 /** 插件 HTTP 命名空间（与 host 侧 BASE_PATH 常量一致，固定不可配置）。 */
@@ -198,12 +215,17 @@ export function apply(ctx: any): void {
 function createAudioEngine(
   setUi: (patch: Partial<VoiceUiState>) => void,
   onPlayed?: () => void,
+  onPlaybackRef?: (pcm: Float32Array, sampleRate: number, startWallMs: number) => void,
 ): {
   push(frame: PlayFrame): void
   skip(): void
   toolBeep(): void
   /** 手势栈内预热 AudioContext（Safari 非手势栈新建会 suspended 静默）。 */
   warm(): void
+  /** P3-3：duck 打断（压低 TTS 增益 <50ms 斜坡），配合 duck-and-listen 探针。 */
+  duck(): void
+  /** P3-3：恢复 TTS 增益（≥30ms 斜坡，无爆音）。 */
+  unduck(): void
 } {
   // --- 待播放：串行解码，decode 完成即调度（句序天然保持）。 ---
   const pending: PlayFrame[] = []
@@ -291,6 +313,14 @@ function createAudioEngine(
           }
           src.start(at)
           nextEndAt = at + buf.duration
+          // P3-2：把播放 PCM（decodeAudioData 输出的 buffer 采样率）+ 调度墙钟
+          // 回传给回声参考池（采集侧经 windowAt 对齐取参考，前导 ECHO_DELAY_MS）。
+          try {
+            const wallMs = performance.now() + (at - ctx!.currentTime) * 1000
+            onPlaybackRef?.(buf.getChannelData(0), buf.sampleRate, wallMs)
+          } catch {
+            // 参考捕获失败不影响播放
+          }
           // P1-5：真实起播（Web Audio 调度瞬间即发声；取调度时刻近似）。
           try {
             onPlayed?.()
@@ -367,6 +397,18 @@ function createAudioEngine(
     },
     toolBeep,
     warm,
+    duck() {
+      if (!ctx || !duckGain) return
+      const now = ctx.currentTime
+      duckGain.gain.cancelScheduledValues(now)
+      duckGain.gain.setTargetAtTime(DUCK_LEVEL, now, 0.02) // <50ms 压低
+    },
+    unduck() {
+      if (!ctx || !duckGain) return
+      const now = ctx.currentTime
+      duckGain.gain.cancelScheduledValues(now)
+      duckGain.gain.setTargetAtTime(1, now, 0.035) // ≥30ms 斜坡恢复，无爆音
+    },
   }
 }
 
@@ -422,14 +464,78 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     notify()
   }
 
+  // --- P3-2 回声参考池（16k mono）：播放引擎回传 PCM + 调度墙钟，
+  // 采集侧按墙钟（减 ECHO_DELAY_MS 前导）取对应对齐的 TTS 参考做 NLMS。 ---
+  const refChunks: Float32Array[] = []
+  let refTotal = 0
+  let refStartWall = 0
+  let refActive = false
+  const pushRef = (pcmSrc: Float32Array, srcRate: number, startWallMs: number): void => {
+    const pcm = resampleLinear(pcmSrc, srcRate, SAMPLE_RATE_16K)
+    if (!refActive) {
+      refActive = true
+      refStartWall = startWallMs
+      refChunks.length = 0
+      refTotal = 0
+    }
+    const tailWall = refStartWall + (refTotal / SAMPLE_RATE_16K) * 1000
+    const gapMs = startWallMs - tailWall
+    if (gapMs > 250) {
+      // I1：播放间断（打断/句间隙 >250ms）→ 重置为「新回合」，缺口即静音，
+      // 但当前块必须作为新回合首块入库（否则每轮首句参考丢失，回声不抑制）。
+      refActive = false
+      refChunks.length = 0
+      refTotal = 0
+    } else if (gapMs > 1) {
+      const padN = Math.floor((gapMs / 1000) * SAMPLE_RATE_16K)
+      refChunks.push(new Float32Array(padN))
+      refTotal += padN
+    }
+    refChunks.push(pcm)
+    refTotal += pcm.length
+    // 上限滚动（防无界累积）：保留最近 60s。
+    const maxTotal = SAMPLE_RATE_16K * 60
+    while (refTotal - (refChunks[0]?.length ?? 0) > maxTotal) {
+      refTotal -= refChunks.shift()!.length
+    }
+  }
+  const refWindowAt = (tWallMs: number, n: number): Float32Array => {
+    const out = new Float32Array(n)
+    if (!refActive || refTotal === 0) return out
+    const idx = Math.floor((((tWallMs - ECHO_DELAY_MS) - refStartWall) / 1000) * SAMPLE_RATE_16K)
+    if (idx < 0 || idx >= refTotal) return out
+    let acc = 0
+    let outOff = 0
+    for (const c of refChunks) {
+      if (outOff >= n) break
+      if (idx >= acc + c.length) {
+        acc += c.length
+        continue
+      }
+      const start = Math.max(0, idx - acc)
+      const cnt = Math.min(c.length - start, n - outOff)
+      out.set(c.subarray(start, start + cnt), outOff)
+      outOff += cnt
+      acc += c.length
+    }
+    return out
+  }
+  const aec = new NlmsAec()
+  const echoSource: EchoRefSource = {
+    process: (mic, ref) => aec.process(mic, ref),
+    windowAt: refWindowAt,
+  }
+
   // 播放引擎与 bus 的生命周期相同（apply 闭包单例）；setUi 闭包延迟解引用，
-  // 事件回调触发时 notify 已就绪。onPlayed = P1-5 真实起播埋点。
+  // 事件回调触发时 notify 已就绪。onPlayed = P1-5 真实起播埋点；
+  // onPlaybackRef = P3-2 回声参考回传。
   const engine = createAudioEngine(
     (patch) => {
       Object.assign(ui, patch)
       notify()
     },
     () => stampTelemetry('first-audio-played'),
+    (pcm, sampleRate, wallMs) => pushRef(pcm, sampleRate, wallMs),
   )
 
   const notify = (): void => {
@@ -672,7 +778,20 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       curSentenceId = null
       curChunks = []
       curBytes = 0
+      // P3-2：打断即播放停——回声参考归零（防旧回合参考污染）。
+      refActive = false
+      refChunks.length = 0
+      refTotal = 0
       engine.skip()
+    },
+    echoForAsr() {
+      return echoSource
+    },
+    duckAudio() {
+      engine.duck()
+    },
+    unduckAudio() {
+      engine.unduck()
     },
     cancelTurn(sessionId) {
       try {
@@ -723,6 +842,15 @@ function useVoiceCss(): void {
 `
     document.head.appendChild(el)
   }, [])
+}
+
+/** P3-3 duck-and-listen 探针：尾部 n 条电平均值（回落代表 recent 窗口，避免被旧样本主导）。 */
+function tailAvg(levels: number[], n: number): number {
+  if (levels.length === 0) return 0
+  const tail = levels.slice(-n)
+  let s = 0
+  for (const v of tail) s += v
+  return s / tail.length
 }
 
 export function MicButton({
@@ -858,7 +986,10 @@ export function MicButton({
       const basePath = cfg.basePath
       const silenceMs = cfg.silenceMs
       const interruptLevel = cfg.interruptLevel
-      const engine = createAsrEngine({ silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord }, sid)
+      const engine = createAsrEngine(
+        { silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord, echo: bus.echoForAsr() },
+        sid,
+      )
       bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord })
       engineRef.current = engine
       // P1-5 延迟埋点链：ASR 侧三枚时间戳（说完/端点/定稿上传）入链。
@@ -939,22 +1070,40 @@ export function MicButton({
         }, 800)
       })
       engine.onSpeechStart(async () => {
-        // barge-in（Q2 硬打断）三层：
+        // barge-in（Q2 硬打断）+ P3-3 duck-and-listen：先压低 TTS（<50ms 降 0.3x），
+        // 听 300ms 确认窗口——mic 电平骤降（TTS 压低→回声减小）⇒ 先前是回声：
+        // 恢复增益、不打断；电平维持（真人声）⇒ 执行真打断三层：
         // 1) 本地播放队列清空 + host TTS 队列 epoch++（静音）
         // 2) 有 running 回合则 session.cancel({keepInbox:true})（取消生成、保新消息）
         // 3) 半截标注由「转录区新消息续入」自然呈现（Q8 标注见 §8.5 收尾）
         resetIdle()
         bus.resetTelemetry() // P1-5：打断 = 上一轮回复作废，链清空（新一轮 utterance-end 重新起算）
+        // I2：levels 滚动条窗口与采集帧率耦合（16k ctx ≈896ms/窗），
+        // 取「尾部 3 条」近似最近电平，避免 300ms 窗口内统计被旧样本主导。
+        const before = tailAvg(bus.ui.levels, 3)
+        bus.duckAudio()
+        await new Promise<void>((resolve) => setTimeout(resolve, DUCK_CONFIRM_MS))
+        const after = tailAvg(bus.ui.levels, 3)
+        if (before > 0 && after < before * DUCK_PROBE_DROP) {
+          // 回声：TTS 压低后 mic 骤降 → 恢复增益、丢弃已录段（防幽灵消息），不打断。
+          bus.unduckAudio()
+          engineRef.current?.discardSegment()
+          return
+        }
         bus.skipAudio()
         try {
           await fetch(`${location.origin}${BASE_PATH}/cancel`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ sessionId: sidRef.current }),
+            // Minor：cancel 网络挂起时不让 TTS 长期停在 duck 音量下（AbortSignal.timeout 需 Chrome 103+/Safari 16+）。
+            signal: AbortSignal.timeout(3000),
           })
         } catch {
           // cancel 路由不可达：本地已静音
         }
+        // 真打断后注意：新回合的 TTS 需要用正常音量（duck 只服务于这段探针）。
+        bus.unduckAudio()
         if (runningRef.current && sidRef.current) {
           bus.cancelTurn(sidRef.current!)
         }

@@ -123,6 +123,15 @@ t('lib/client.js 含 P2-4 turn 订阅（思考中展示）', () => {
   assert.ok(src.includes('agent-speaking'), 'client bundle missing turn state')
   assert.ok(src.includes('thinking'), 'client bundle missing thinking label')
 })
+t('lib/client.js 含 P3 AEC 集成（NlmsAec 参考池 + windowAt 对齐）', () => {
+  const src = read('lib/client.js')
+  assert.ok(src.includes('NlmsAec'), 'client bundle missing NLMS AEC')
+  assert.ok(src.includes('windowAt'), 'client bundle missing ref window lookup')
+})
+t('lib/client.js 含 P3 ducking（duck-and-listen 探针）', () => {
+  const src = read('lib/client.js')
+  assert.ok(src.includes('DUCK_CONFIRM_MS'), 'client bundle missing duck confirm window')
+})
 t('lib/client.js 含 P1-1 按句拼帧（PlayFrame Uint8Array + 丢帧完整性校验）', () => {
   const src = read('lib/client.js')
   assert.ok(src.includes('curChunkCount'), 'client bundle missing chunk-count integrity check')
