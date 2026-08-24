@@ -6,54 +6,32 @@
 
 ## 决策摘要
 
-- 范围：P1 安全（Host fence）→ P2 性能（增量协议升级，**双端同步**）→ P3 体验（失败提示补缺 + 退避）→ P4 功能（i18n + reply-first 确认音），一次迭代 v0.2.0。
-- 非目标：AudioWorklet 迁移、移动端 UI 重排、README 全量翻译、自建 token 体系（见 P1 修订理由）。
+- 范围：P2 性能（增量协议升级，**双端同步**）→ P3 体验（失败提示补缺 + 退避 + 苹果限制声明）→ P4 功能（i18n + reply-first 确认音 + 共享 AudioContext 预热），一次迭代 v0.2.0。
+- **P1（安全 fence）已撤销**：宿主/部署层安全模型负责该边界（见「P1 撤销说明」），不作为插件职责。
+- 非目标：AudioWorklet 迁移、移动端 UI 重排、README 全量翻译、自建 token/fence 体系。
 
 ---
 
-## P1 安全：/voice-mode HTTP 面 Host 校验（非 token）
+## P1 撤销说明（评审裁决：不做的理由）
 
-### 根因（威胁模型重估，证据链）
-1. `webServer.register` 无全局 fence（dsh-host-webserver lib/index.js:128—仅路由表；
-   fence 仅存在于 /api 网关 dsh-client-connection 的 `api-request-trust`）；
-2. 生产拓扑：dsh 绑定 `127.0.0.1:3018`（本机面）+ nginx `location /` 反代（**整站
-   basic auth** + `Host $host` 保留 coding.gunnarli.cn）→ **公网攻击者已被 basic auth 拦**；
-3. **残留真实漏洞**：浏览器 **DNS-rebinding**（恶意域名→127.0.0.1）与“简单请求”
-   `POST text/plain`（无 CORS preflight）→ 可致 `/voice-mode/toggle` 抢占/打断
-   （**低危 DoS**，跨源读取被 CORS 拦截读不到）；/asr 已有 `sessionId === active`
-   归属校验（asr-host.ts:283-287，防串流但非鉴权，rebinding 下 sessionId 可从
-   /stream 的 mode 广播获得）——**dsh /api 用 trustedHosts fence 防的正是 rebinding**，
-   /voice-mode 未纳入同等边界。
-4. **为什么不做 token**：token 需 client 全程携带/同步/轮换（30+ 处改动、多标签、
-   缓存过期 403 体验差），而实际读取面已被 CORS 挡住；fence 成本≈20 行、与 dsh
-   官方语义一致——**最小充分**。
+**裁决**：插件**不**自建 HTTP 面鉴权/fence——安全边界属宿主与部署层职责，理由：
 
-### 方案（v3：复刻官方 api-request-trust 语义）
-- **白名单来源（已验证）**：`ctx.get('connection')?.trustedHosts`——connection 服务实例的
-  **公开字段**（dsh-client-connection lib/index.js:215 HostConnectionService 构造存
-  `this.trustedHosts`；v2 误写 `.config.trustedHosts` 已修正），与 `--trusted-host`
-  单一真相；读不到降级为本机名。
-- **校验语义（本地复刻官方，对照 dsh-client-connection:184-204）**，全部
-  /voice-mode/* handler 最外层，任一失败 403：
-  1. Host 归属：hostname ∈ `{127.0.0.1, localhost, [::1]}` ∪ `trustedHosts`
-     （trustedHosts 条目按官方规则：带端口精确匹配 / 不带端口匹配任意端口）；
-  2. `sec-fetch-site === 'cross-site'` → 拒（防 CSRF（简单请求无 preflight））；
-  3. `origin` 存在时其 host 必须等于 Host（与官方同判定）；无 Origin（curl/本机工具）放行。
-- 附带：/voice-mode 的 `mode` 广播保留（同源可见，无新增泄露面）。
+1. **宿主安全模型**：插件以宿主权限运行（官方 README 声明）；网络边界由 dsh 绑定
+   （127.0.0.1）+ 部署层（nginx basic auth 整站覆盖）负责——**fence 不属插件职责**；
+2. **生态先例一致**：dsh-better-sidebar、@linxin666/dsh-client-ui-aionui-panel、
+   git-graph 等社区插件同样注册 webServer 路由，**均无自建鉴权**（trustedHosts 系
+   /api 网关专属）；官方对"插件面"没有"插件自防"的要求；
+3. **真实攻击面已收敛**：/voice-mode 敏感操作（toggle/asr/cancel）**均依赖
+   sessionId 门控**（asr-host.ts:283 / index.ts；sessionId 为随机 uuid 不可知）→
+   跨站盲发无效；读取面被 CORS 拦；DNS-rebinding 受端口错配限制；
+4. **耦合风险大于收益**：读取 `connection.trustedHosts` 与宿主内部结构耦合（宿主
+   升级可破坏）；自建 fence 20 行却引入跨版本脆弱面——不值得。
 
-### 改动
-- `src/index.ts`：白名单工具 + 每个 handler 前置校验（或统一包装）。
-
-### 验收
-- `curl -H 'Host: evil.com' http://127.0.0.1:3018/voice-mode/` → 403；
-  `Host: 127.0.0.1:3018`（默认）/ `coding.gunnarli.cn`（经 nginx）→ 200；
-- GUI 全链路（进/识别/打断/退出/多标签）不变。
-
-### 回滚点
-- 校验独立函数，出问题可一行注释旁路（README 不承诺）。
+**替代动作（下沉为文档）**：README「已知限制 / 安全说明」新增一句：
+> 插件 HTTP 面（/voice-mode/*）遵循宿主安全模型：请勿将 dsh 端口直接暴露公网；
+> 经反向代理发布时由代理层（如 basic auth）鉴权；插件侧对敏感操作保留会话归属校验。
 
 ---
-
 ## P2 性能：ASR 增量上传（**双端协议升级**）
 
 ### 根因（v1 误判已纠正）
@@ -107,7 +85,9 @@
 2. tts-queue：**错误后** re-pump 退避 1s→2s→4s→8s（cap），成功复位；退避状态挂在
    队列级（`q.backoff`），与既有 `q.errorNotified`（只提示一次）并列；epoch 打断
    仍即时作废（不退避）；
-3. README 新增「苹果 Safari / iOS」限制小节（内容见 v1 已验证清单）。
+3. README 新增「苹果 Safari / iOS」限制小节（内容见 v1 已验证清单）；
+4. README「已知限制 / 安全说明」新增 P1 撤销说明中的安全声明一句（宿主/部署层承担
+   边界，插件侧保留会话归属校验）。
 
 ### 改动
 - `src/tts-queue.ts`、`src/client.tsx`（notice 文案）、`README.md`。
@@ -156,7 +136,6 @@
 | 离线单测 | `pnpm test` | 28 项 |
 | 集成探测 | `test/spoken-prompt-rpc.sh`（开关开/关） | 注入+TTS 帧+恢复 |
 | UI | `spoken-toggle-ui-check.js`/`preview-ui-check.js` | 设置卡/试听正常 |
-| P1 专项 | curl Host 恶意/本机/trusted | 403/200/200 |
 | P2 专项 | 30s 上行对比 + 10s 音频两版识别一致性 | 降幅与逐字一致 |
 | 手动 | macOS Safari（如有）或 README 声明核对 | 进模式有响应 |
 
@@ -164,6 +143,12 @@
 
 - `0.2.0`（minor）；npm publish + tag/release；awesome 条目描述同步（若已合并）。
 - 发布后回归：/voice-mode、settings.describe、一轮语音对话。
+
+## v3→v4 变更记录（评审裁决）
+
+- **P1 撤销**：用户裁决「插件不应考虑该层」——经证据核对成立（宿主安全模型 / 生态先例 /
+  sessionId 门控已收敛攻击面 / fence-宿主耦合风险）；原 P1 降级为 README 一行安全声明，
+  并入 P3 文档项。v3 中 P1 的"三条件复刻"等不再实施，保留作为安全分析记录。
 
 ## v2→v3 变更记录（第二轮第一性复审）
 
