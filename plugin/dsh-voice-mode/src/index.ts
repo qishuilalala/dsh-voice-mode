@@ -130,7 +130,7 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   wakeWord: '',
   spokenFormat: false,
   senseVoice: true,
-  toolBeep: true,
+  toolBeep: false,
 }
 
 /** 以平台常量默认构造设置 schema。 */
@@ -168,7 +168,7 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
     toolBeep: z
       .boolean()
       .default(d.toolBeep)
-      .description('工具执行提示音（默认开：agent 每调用一个新工具响一次；关掉后执行工具静音）'),
+      .description('工具执行提示音（默认关；开启后 agent 每调用一个新工具响一次）'),
   })
 }
 
