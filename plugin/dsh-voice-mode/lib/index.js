@@ -391,11 +391,18 @@ function createAsrRuntime(options) {
         }
       })();
       return {
-        asr: { repo: MODEL_REPO, ready: modelsReady, files: asrFiles },
-        vad: { repo: VAD_REPO, ready: vadModelReady, size: vadSize, failLatchMs: Math.max(0, vadFailAt - Date.now()) },
+        // ready 语义 = 文件可用（exists），而非进程内是否已实例化——
+        // 重启后文件齐全却显示「未下载」会误导用户（体验修复）。
+        asr: { repo: MODEL_REPO, ready: asrFiles.every((f) => f.exists), files: asrFiles },
+        vad: {
+          repo: VAD_REPO,
+          ready: vadSize > 0,
+          size: vadSize,
+          failLatchMs: Math.max(0, vadFailAt - Date.now())
+        },
         sense: {
           repo: SENSE_REPO,
-          ready: senseModelReady,
+          ready: senseSize > 0,
           size: senseSize,
           failLatchMs: Math.max(0, senseFailAt - Date.now()),
           enabled: senseVoice()
