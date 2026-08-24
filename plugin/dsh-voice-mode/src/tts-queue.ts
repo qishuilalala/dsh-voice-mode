@@ -198,6 +198,7 @@ export class TtsQueue {
           }
           // 句末 final 帧：有音频字节才发（空音频句如「英文音色读中文」整句丢弃；
           // MP3 合法性（同步字）由客户端拼帧后校验，host 不再整句把关）。
+          // final 帧携带的 chunkId = 句内已发 chunk 总数，客户端以此做丢帧完整性校验。
           if (bytes > 0 && item.epoch === q.epoch) {
             q.errorNotified = false // 有帧成功：复位不可达提示
             const frame: TtsChunkFrame = {
