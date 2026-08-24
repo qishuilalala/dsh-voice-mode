@@ -254,7 +254,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       }
       if (epoch !== segmentEpoch) return
       if (!res.ok) return
-      const out = (await res.json()) as { text?: string }
+      const out = (await res.json()) as { text?: string; endpoint?: boolean }
       if (epoch !== segmentEpoch) return
       if (state === 'loading-model') setState('speech')
       // P1-4：上传成功后才推进已传水位（失败/重试不推进，下一拍补传）。
@@ -276,6 +276,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         return
       }
       emit(partialListeners, out.text ?? '')
+      // P2-1：host Silero VAD 端点提示（静音 ≥0.5s 判句完成）→ 立即定稿。
+      // 客户端静音计时（silenceMs）保留为 VAD 模型缺失/超时兜底。
+      if (out.endpoint && active && speechActive) finalizeSegment()
     } catch {
       // 预览失败静默（Q16：识别重试由定时轮询自然覆盖）
     } finally {

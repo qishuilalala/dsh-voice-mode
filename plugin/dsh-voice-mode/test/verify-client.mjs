@@ -99,6 +99,16 @@ t('lib/index.js 含 P1-4 增量上行协议（offset 参数）', () => {
   const src = read('lib/index.js')
   assert.ok(src.includes('get("offset")'), 'host bundle missing offset param parsing')
 })
+t('lib/index.js 含 P2-1 Silero VAD 端点判定（csukuangfj/vad + createVad）', () => {
+  const src = read('lib/index.js')
+  assert.ok(src.includes('csukuangfj/vad'), 'host bundle missing VAD repo')
+  assert.ok(src.includes('createVad'), 'host bundle missing createVad')
+  assert.ok(src.includes('silero_vad.onnx'), 'host bundle missing VAD model path')
+})
+t('lib/client.js 含 P2-1 endpoint 处理（host VAD 端点 → 立即定稿）', () => {
+  const src = read('lib/client.js')
+  assert.ok(src.includes('endpoint'), 'client bundle missing endpoint handling')
+})
 t('lib/client.js 含 P1-1 按句拼帧（PlayFrame Uint8Array + 丢帧完整性校验）', () => {
   const src = read('lib/client.js')
   assert.ok(src.includes('curChunkCount'), 'client bundle missing chunk-count integrity check')

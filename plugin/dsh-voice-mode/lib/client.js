@@ -223,6 +223,7 @@ function createAsrEngine(config, sessionId) {
         return;
       }
       emit(partialListeners, out.text ?? "");
+      if (out.endpoint && active && speechActive) finalizeSegment();
     } catch {
     } finally {
       partialInFlight = false;

@@ -29,13 +29,25 @@ interface SherpaRecognizer {
   free(): void
   config: { featConfig: { sampleRate: number } }
 }
-const { createOnlineRecognizer } = sherpa_onnx as unknown as {
+interface SherpaVad {
+  acceptWaveform(samples: Float32Array): void
+  isEmpty(): boolean
+  pop(): void
+  clear(): void
+  free(): void
+}
+const { createOnlineRecognizer, createVad } = sherpa_onnx as unknown as {
   createOnlineRecognizer(config: Record<string, unknown>): SherpaRecognizer
+  createVad(config: Record<string, unknown>): SherpaVad
 }
 
 /** 模型仓库与文件清单（大小仅作进度参考）。 */
 export const MODEL_REPO = 'csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30'
 const MODEL_FILES = ['encoder.int8.onnx', 'decoder.onnx', 'joiner.int8.onnx', 'tokens.txt']
+
+/** P2-1 Silero VAD 模型：官方 sherpa 文档下载源（csukuangfj/vad，~2MB）。 */
+export const VAD_REPO = 'csukuangfj/vad'
+const VAD_FILES = ['silero_vad.onnx']
 
 export interface AsrRuntimeOptions {
   cacheDir: string
@@ -56,7 +68,7 @@ export interface AsrRuntime {
     samples: Float32Array,
     final: boolean,
     offset?: number,
-  ): Promise<{ text: string; loading?: boolean }>
+  ): Promise<{ text: string; loading?: boolean; endpoint?: boolean }>
   /** 丢弃某会话的进行中段（语音模式退出/被打断时）。 */
   reset(sessionId: string): void
 }
@@ -77,8 +89,9 @@ const MAX_ASR_BYTES = 4 * 1024 * 1024
 export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   const { cacheDir, modelHost, broadcast } = options
   const repoDir = join(cacheDir, MODEL_REPO)
-  /** 进行中的段：sessionId -> {stream, fed}（fed = 已喂样本数）。 */
-  const segments = new Map<string, { stream: SherpaStream; fed: number }>()
+  const vadDir = join(cacheDir, VAD_REPO)
+  /** 进行中的段：sessionId -> {stream, fed, vad}（fed = 已喂样本数）。 */
+  const segments = new Map<string, { stream: SherpaStream; fed: number; vad: SherpaVad | null }>()
 
   let recognizer: SherpaRecognizer | null = null
   let modelsReady = false
@@ -137,42 +150,115 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     return recognizer
   }
 
+  // --- P2-1 Silero VAD：独立懒下载（失败仅降级端点提示，不阻塞 ASR）。 ---
+  let vadModelReady = false
+  let vadLoading: Promise<string | null> | null = null
+  const ensureVadModel = async (): Promise<string | null> => {
+    if (vadModelReady) return join(vadDir, VAD_FILES[0])
+    if (!vadLoading) {
+      vadLoading = (async () => {
+        for (const f of VAD_FILES) {
+          if (!(await ensureFile(vadDir, f, modelHost(), broadcast))) return null
+        }
+        vadModelReady = true
+        return join(vadDir, VAD_FILES[0])
+      })().finally(() => {
+        vadLoading = null
+      })
+    }
+    return vadLoading
+  }
+  /** 为会话惰性创建 Silero VAD（每段一次；模型缺失返回 null = 客户端静音兜底）。 */
+  const ensureSessionVad = async (seg: { stream: SherpaStream; fed: number; vad: SherpaVad | null }): Promise<SherpaVad | null> => {
+    if (seg.vad) return seg.vad
+    const vadPath = await ensureVadModel()
+    if (!vadPath) return null
+    seg.vad = createVad({
+      sileroVad: {
+        model: vadPath,
+        threshold: 0.5,
+        minSilenceDuration: 0.5,
+        minSpeechDuration: 0.25,
+        maxSpeechDuration: 20,
+        windowSize: 512,
+      },
+      sampleRate: 16000,
+      numThreads: 1,
+      provider: 'cpu',
+      debug: 0,
+      bufferSizeInSeconds: 30,
+    })
+    return seg.vad
+  }
+
   const feed = async (
     sessionId: string,
     samples: Float32Array,
     final: boolean,
     offset = 0,
-  ): Promise<{ text: string; loading?: boolean }> => {
+  ): Promise<{ text: string; loading?: boolean; endpoint?: boolean }> => {
     const rec = await getRecognizer()
     if (!rec) return { text: '', loading: true }
     let seg = segments.get(sessionId)
     // 新段：首帧即建流（含 final=1 的空段——直接返回空）。
     if (!seg) {
       if (samples.length === 0 && final) return { text: '' }
-      seg = { stream: rec.createStream(), fed: 0 }
+      seg = { stream: rec.createStream(), fed: 0, vad: null }
       segments.set(sessionId, seg)
     }
     // P1-4 增量上行：samples 为从 offset 开始的段内切片；只喂尚未喂过的部分
     // （兼容旧客户端 offset=0 全量上传；若 final 且无新数据，仅补尾垫）。
+    let endpoint = false
     if (offset + samples.length > seg.fed) {
       const skip = Math.max(seg.fed - offset, 0)
-      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, samples.subarray(skip))
+      const inc = samples.subarray(skip)
+      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc)
       seg.fed = offset + samples.length
       while (rec.isReady(seg.stream)) rec.decode(seg.stream)
+      // P2-1：同一增量喂 Silero VAD；出现完整说话段（静音 ≥ minSilenceDuration）
+      // 即端点已到（仅非定稿路径上报；VAD 缺失时客户端静音计时兜底）。
+      if (!final) {
+        const vad = await ensureSessionVad(seg)
+        if (vad) {
+          vad.acceptWaveform(inc)
+          if (!vad.isEmpty()) {
+            while (!vad.isEmpty()) vad.pop()
+            endpoint = true
+          }
+        }
+      }
     }
     const text = rec.getResult(seg.stream).text
-    if (!final) return { text }
+    if (!final) return { text, endpoint }
     // 定稿：尾垫 0.5s 静音让尾部字 flush 出来。
     const pad = new Float32Array(rec.config.featConfig.sampleRate / 2)
     seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad)
     while (rec.isReady(seg.stream)) rec.decode(seg.stream)
     const settled = rec.getResult(seg.stream).text
+    try {
+      seg.vad?.free?.()
+    } catch {
+      // ignore
+    }
     seg.stream.free()
     segments.delete(sessionId)
     return { text: settled }
   }
 
-  return { feed, reset: (sessionId) => segments.delete(sessionId) }
+  return {
+    feed,
+    reset: (sessionId) => {
+      const seg = segments.get(sessionId)
+      if (seg) {
+        try {
+          seg.vad?.free?.()
+        } catch {
+          // ignore
+        }
+        segments.delete(sessionId)
+      }
+    },
+  }
 }
 
 /**
@@ -321,7 +407,10 @@ export function handleAsrRequest(
           res.end(JSON.stringify({ loading: true }))
           return
         }
-        res.end(JSON.stringify({ text: out.text }))
+        // P2-1：透传 Silero VAD 端点提示（客户端收到即定稿）。
+        const body: Record<string, unknown> = { text: out.text }
+        if (out.endpoint) body.endpoint = true
+        res.end(JSON.stringify(body))
       })
       .catch((e: unknown) => {
         res.statusCode = 500

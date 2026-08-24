@@ -8,9 +8,11 @@ import { createWriteStream } from "node:fs";
 import { mkdir, rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import sherpa_onnx from "sherpa-onnx";
-var { createOnlineRecognizer } = sherpa_onnx;
+var { createOnlineRecognizer, createVad } = sherpa_onnx;
 var MODEL_REPO = "csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30";
 var MODEL_FILES = ["encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt"];
+var VAD_REPO = "csukuangfj/vad";
+var VAD_FILES = ["silero_vad.onnx"];
 function pcmToSamples(buf) {
   if (buf.length % 4 !== 0) return null;
   return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
@@ -19,6 +21,7 @@ var MAX_ASR_BYTES = 4 * 1024 * 1024;
 function createAsrRuntime(options) {
   const { cacheDir, modelHost, broadcast } = options;
   const repoDir = join(cacheDir, MODEL_REPO);
+  const vadDir = join(cacheDir, VAD_REPO);
   const segments = /* @__PURE__ */ new Map();
   let recognizer = null;
   let modelsReady = false;
@@ -71,32 +74,98 @@ function createAsrRuntime(options) {
     });
     return recognizer;
   };
+  let vadModelReady = false;
+  let vadLoading = null;
+  const ensureVadModel = async () => {
+    if (vadModelReady) return join(vadDir, VAD_FILES[0]);
+    if (!vadLoading) {
+      vadLoading = (async () => {
+        for (const f of VAD_FILES) {
+          if (!await ensureFile(vadDir, f, modelHost(), broadcast)) return null;
+        }
+        vadModelReady = true;
+        return join(vadDir, VAD_FILES[0]);
+      })().finally(() => {
+        vadLoading = null;
+      });
+    }
+    return vadLoading;
+  };
+  const ensureSessionVad = async (seg) => {
+    if (seg.vad) return seg.vad;
+    const vadPath = await ensureVadModel();
+    if (!vadPath) return null;
+    seg.vad = createVad({
+      sileroVad: {
+        model: vadPath,
+        threshold: 0.5,
+        minSilenceDuration: 0.5,
+        minSpeechDuration: 0.25,
+        maxSpeechDuration: 20,
+        windowSize: 512
+      },
+      sampleRate: 16e3,
+      numThreads: 1,
+      provider: "cpu",
+      debug: 0,
+      bufferSizeInSeconds: 30
+    });
+    return seg.vad;
+  };
   const feed = async (sessionId, samples, final, offset = 0) => {
     const rec = await getRecognizer();
     if (!rec) return { text: "", loading: true };
     let seg = segments.get(sessionId);
     if (!seg) {
       if (samples.length === 0 && final) return { text: "" };
-      seg = { stream: rec.createStream(), fed: 0 };
+      seg = { stream: rec.createStream(), fed: 0, vad: null };
       segments.set(sessionId, seg);
     }
+    let endpoint = false;
     if (offset + samples.length > seg.fed) {
       const skip = Math.max(seg.fed - offset, 0);
-      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, samples.subarray(skip));
+      const inc = samples.subarray(skip);
+      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc);
       seg.fed = offset + samples.length;
       while (rec.isReady(seg.stream)) rec.decode(seg.stream);
+      if (!final) {
+        const vad = await ensureSessionVad(seg);
+        if (vad) {
+          vad.acceptWaveform(inc);
+          if (!vad.isEmpty()) {
+            while (!vad.isEmpty()) vad.pop();
+            endpoint = true;
+          }
+        }
+      }
     }
     const text = rec.getResult(seg.stream).text;
-    if (!final) return { text };
+    if (!final) return { text, endpoint };
     const pad = new Float32Array(rec.config.featConfig.sampleRate / 2);
     seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad);
     while (rec.isReady(seg.stream)) rec.decode(seg.stream);
     const settled = rec.getResult(seg.stream).text;
+    try {
+      seg.vad?.free?.();
+    } catch {
+    }
     seg.stream.free();
     segments.delete(sessionId);
     return { text: settled };
   };
-  return { feed, reset: (sessionId) => segments.delete(sessionId) };
+  return {
+    feed,
+    reset: (sessionId) => {
+      const seg = segments.get(sessionId);
+      if (seg) {
+        try {
+          seg.vad?.free?.();
+        } catch {
+        }
+        segments.delete(sessionId);
+      }
+    }
+  };
 }
 async function ensureFile(repoDir, file, primaryHost, broadcast) {
   const localPath = join(repoDir, file);
@@ -210,7 +279,9 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
         res.end(JSON.stringify({ loading: true }));
         return;
       }
-      res.end(JSON.stringify({ text: out.text }));
+      const body = { text: out.text };
+      if (out.endpoint) body.endpoint = true;
+      res.end(JSON.stringify(body));
     }).catch((e) => {
       res.statusCode = 500;
       res.end(JSON.stringify({ error: String(e) }));
