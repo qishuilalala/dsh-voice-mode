@@ -170,7 +170,11 @@
 - [ ] hold 模式：pointer 驱动进入/退出（trailing click 抑制）、<250ms 短按、滑出/Esc/blur 放弃、
       Ctrl ≥600ms 阈值与失焦作废
 - [ ] 唤醒词：partial 累积匹配 + host 流 reset（定稿不含唤醒词头）、默认关、局限入 README
-- [ ] 跨平台音频：浏览器忽略 sampleRate 选项时（Safari）有重采样守卫
+- [ ] 跨平台音频：浏览器忽略 sampleRate 选项时（Safari）有重采样守卫；
+      提示音/确认音等**不得在 SSE 回调/非手势栈新建 AudioContext**（Safari 会
+      suspended 静默）——进模式手势栈预热共享 ctx 并保持引用
+- [ ] i18n：用户可见文案全部入 `strings.ts` 字典（zh/en，按 `navigator.language`），
+      不硬编码在组件里；字典键类型强制双语对齐（`Record<keyof zh>`）
 - [ ] SSE：心跳、断线重连、多标签页模式广播一致
 - [ ] 单元测试（segmenter 10 项 + verify-client 9 项）+ 集成探测（asr-diag 全链路）
 - [ ] README 完整、命令在 Linux 实测可执行；Windows/macOS 说明不含 systemd 独家假设
