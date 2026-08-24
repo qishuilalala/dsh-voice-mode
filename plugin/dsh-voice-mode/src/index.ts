@@ -483,6 +483,41 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() =>
     ctx.webServer.register({
       kind: 'exact',
+      path: `${base}/models/status`,
+      handler: (_req, res: ServerResponse) => {
+        // 模型实时状态（设置面板轮询；无需语音模式）。
+        res.setHeader('content-type', 'application/json')
+        res.end(JSON.stringify(asr.modelStatus()))
+      },
+    }),
+  )
+
+  ctx.effect(() =>
+    ctx.webServer.register({
+      kind: 'exact',
+      path: `${base}/models/retry`,
+      handler: (req: IncomingMessage, res: ServerResponse) => {
+        // 镜像切换/下载失败后手动重试（设置面板按钮）。
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
+          let kind: 'asr' | 'vad' | 'sense' = 'asr'
+          try {
+            const p = JSON.parse(body || '{}') as { kind?: string }
+            if (p.kind === 'vad' || p.kind === 'sense' || p.kind === 'asr') kind = p.kind
+          } catch {
+            // 缺省 asr
+          }
+          void asr.retryModel(kind).then((done) => {
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify({ ok: done, kind }))
+          })
+        })
+      },
+    }),
+  )
+
+  ctx.effect(() =>
+    ctx.webServer.register({
+      kind: 'exact',
       path: `${base}/asr`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
         // P2-4：回合状态机 —— partial 到达 = listening；final=1 = finalizing。

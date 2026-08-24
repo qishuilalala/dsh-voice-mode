@@ -4,7 +4,7 @@ import { join as join2 } from "node:path";
 import { homedir } from "node:os";
 
 // src/asr-host.ts
-import { createWriteStream } from "node:fs";
+import { createWriteStream, statSync } from "node:fs";
 import { mkdir, rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import sherpa_onnx from "sherpa-onnx";
@@ -41,6 +41,11 @@ function rmsOf(samples) {
 }
 function createAsrRuntime(options) {
   const { cacheDir, modelHost, broadcast, senseVoice } = options;
+  let lastProgress = null;
+  const localBroadcast = (event, payload) => {
+    if (event === "asr-progress") lastProgress = payload;
+    broadcast(event, payload);
+  };
   const repoDir = join(cacheDir, MODEL_REPO);
   const vadDir = join(cacheDir, VAD_REPO);
   const senseDir = join(cacheDir, SENSE_REPO);
@@ -61,7 +66,7 @@ function createAsrRuntime(options) {
       modelsLoading = (async () => {
         if (!await haveAllModels()) {
           for (const f of MODEL_FILES) {
-            if (!await ensureFile(repoDir, f, modelHost(), broadcast)) {
+            if (!await ensureFile(repoDir, f, modelHost(), localBroadcast)) {
               broadcast("asr-error", { file: f });
               return false;
             }
@@ -105,7 +110,7 @@ function createAsrRuntime(options) {
     if (!vadLoading) {
       vadLoading = (async () => {
         for (const f of VAD_FILES) {
-          if (!await ensureFile(vadDir, f, modelHost(), broadcast)) {
+          if (!await ensureFile(vadDir, f, modelHost(), localBroadcast)) {
             vadFailAt = Date.now() + 6e4;
             return null;
           }
@@ -149,7 +154,7 @@ function createAsrRuntime(options) {
     if (!senseLoading) {
       senseLoading = (async () => {
         for (const f of SENSE_FILES) {
-          if (!await ensureFile(senseDir, f, modelHost(), broadcast)) {
+          if (!await ensureFile(senseDir, f, modelHost(), localBroadcast)) {
             senseFailAt = Date.now() + 6e4;
             return null;
           }
@@ -348,6 +353,67 @@ function createAsrRuntime(options) {
         }
       }
       segments.clear();
+    },
+    modelStatus: () => {
+      const statFile = async (dir, repo, name2) => {
+        const st = await stat(join(dir, repo, name2)).catch(() => null);
+        return { exists: !!st?.isFile(), size: st?.size ?? 0 };
+      };
+      const asrFiles = MODEL_FILES.map((n) => ({
+        name: n,
+        exists: (() => {
+          try {
+            return statSync(join(repoDir, n)).isFile();
+          } catch {
+            return false;
+          }
+        })(),
+        size: (() => {
+          try {
+            return statSync(join(repoDir, n)).size;
+          } catch {
+            return 0;
+          }
+        })()
+      }));
+      const vadSize = (() => {
+        try {
+          return statSync(join(vadDir, VAD_FILES[0])).size;
+        } catch {
+          return 0;
+        }
+      })();
+      const senseSize = (() => {
+        try {
+          return statSync(join(senseDir, SENSE_FILES[0])).size;
+        } catch {
+          return 0;
+        }
+      })();
+      return {
+        asr: { repo: MODEL_REPO, ready: modelsReady, files: asrFiles },
+        vad: { repo: VAD_REPO, ready: vadModelReady, size: vadSize, failLatchMs: Math.max(0, vadFailAt - Date.now()) },
+        sense: {
+          repo: SENSE_REPO,
+          ready: senseModelReady,
+          size: senseSize,
+          failLatchMs: Math.max(0, senseFailAt - Date.now()),
+          enabled: senseVoice()
+        },
+        progress: lastProgress
+      };
+    },
+    retryModel: async (kind) => {
+      if (kind === "vad") {
+        vadFailAt = 0;
+        return !!await ensureVadModel();
+      }
+      if (kind === "sense") {
+        senseFailAt = 0;
+        return !!await ensureSenseModel();
+      }
+      if (modelsReady) return true;
+      return await ensureModels();
     }
   };
 }
@@ -979,6 +1045,36 @@ function apply(ctx, config) {
           }
           res.setHeader("content-type", "application/json");
           res.end(JSON.stringify({ active: activeVoiceSession }));
+        });
+      }
+    })
+  );
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: "exact",
+      path: `${base}/models/status`,
+      handler: (_req, res) => {
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify(asr.modelStatus()));
+      }
+    })
+  );
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: "exact",
+      path: `${base}/models/retry`,
+      handler: (req, res) => {
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
+          let kind = "asr";
+          try {
+            const p = JSON.parse(body || "{}");
+            if (p.kind === "vad" || p.kind === "sense" || p.kind === "asr") kind = p.kind;
+          } catch {
+          }
+          void asr.retryModel(kind).then((done) => {
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ ok: done, kind }));
+          });
         });
       }
     })

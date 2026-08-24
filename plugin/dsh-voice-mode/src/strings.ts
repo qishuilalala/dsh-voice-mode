@@ -77,6 +77,19 @@ const zh = {
   telFirstSentence: '首句',
   telFirstChunk: '首chunk',
   telFirstPlayed: '首音',
+  // 模型管理（设置面板实时状态/重试）
+  modelsTitle: '语音模型',
+  modelStreamingAsr: '流式识别',
+  modelVad: '端点 VAD',
+  modelSense: '定稿重译',
+  modelsReady: '就绪',
+  modelsDownloading: '{file} {percent}%',
+  modelsFail: '下载失败（{sec} 秒后自动重试）',
+  modelsMissing: '未下载',
+  modelsRetry: '重试下载',
+  modelsRetrying: '重试中…',
+  modelsRetryHint: '镜像切换或下载失败后点击立即重试',
+  modelsHint: '下载/进度实时跟进；失败自动退避 60s 重试。镜像源切换后点「重试下载」立即生效；也可用 npm run prefetch 预下载。',
   telTotal: '合计',
 } as const
 
@@ -150,6 +163,18 @@ const en: Record<keyof typeof zh, string> = {
   telFirstSentence: '1st sentence',
   telFirstChunk: '1st chunk',
   telFirstPlayed: '1st audio',
+  modelsTitle: 'Voice models',
+  modelStreamingAsr: 'Streaming ASR',
+  modelVad: 'Endpoint VAD',
+  modelSense: 'Finalize',
+  modelsReady: 'Ready',
+  modelsDownloading: '{file} {percent}%',
+  modelsFail: 'Download failed (auto-retry in {sec}s)',
+  modelsMissing: 'not downloaded',
+  modelsRetry: 'Retry',
+  modelsRetrying: 'Retrying…',
+  modelsRetryHint: 'Click to retry now after switching mirror or a failure',
+  modelsHint: 'Live download state; failures auto-backoff 60s. After switching the mirror, click Retry to take effect immediately; npm run prefetch pre-downloads.',
   telTotal: 'total',
 }
 

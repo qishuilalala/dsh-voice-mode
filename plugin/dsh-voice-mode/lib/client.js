@@ -766,6 +766,19 @@ var zh = {
   telFirstSentence: "\u9996\u53E5",
   telFirstChunk: "\u9996chunk",
   telFirstPlayed: "\u9996\u97F3",
+  // 模型管理（设置面板实时状态/重试）
+  modelsTitle: "\u8BED\u97F3\u6A21\u578B",
+  modelStreamingAsr: "\u6D41\u5F0F\u8BC6\u522B",
+  modelVad: "\u7AEF\u70B9 VAD",
+  modelSense: "\u5B9A\u7A3F\u91CD\u8BD1",
+  modelsReady: "\u5C31\u7EEA",
+  modelsDownloading: "{file} {percent}%",
+  modelsFail: "\u4E0B\u8F7D\u5931\u8D25\uFF08{sec} \u79D2\u540E\u81EA\u52A8\u91CD\u8BD5\uFF09",
+  modelsMissing: "\u672A\u4E0B\u8F7D",
+  modelsRetry: "\u91CD\u8BD5\u4E0B\u8F7D",
+  modelsRetrying: "\u91CD\u8BD5\u4E2D\u2026",
+  modelsRetryHint: "\u955C\u50CF\u5207\u6362\u6216\u4E0B\u8F7D\u5931\u8D25\u540E\u70B9\u51FB\u7ACB\u5373\u91CD\u8BD5",
+  modelsHint: "\u4E0B\u8F7D/\u8FDB\u5EA6\u5B9E\u65F6\u8DDF\u8FDB\uFF1B\u5931\u8D25\u81EA\u52A8\u9000\u907F 60s \u91CD\u8BD5\u3002\u955C\u50CF\u6E90\u5207\u6362\u540E\u70B9\u300C\u91CD\u8BD5\u4E0B\u8F7D\u300D\u7ACB\u5373\u751F\u6548\uFF1B\u4E5F\u53EF\u7528 npm run prefetch \u9884\u4E0B\u8F7D\u3002",
   telTotal: "\u5408\u8BA1"
 };
 var en = {
@@ -838,6 +851,18 @@ var en = {
   telFirstSentence: "1st sentence",
   telFirstChunk: "1st chunk",
   telFirstPlayed: "1st audio",
+  modelsTitle: "Voice models",
+  modelStreamingAsr: "Streaming ASR",
+  modelVad: "Endpoint VAD",
+  modelSense: "Finalize",
+  modelsReady: "Ready",
+  modelsDownloading: "{file} {percent}%",
+  modelsFail: "Download failed (auto-retry in {sec}s)",
+  modelsMissing: "not downloaded",
+  modelsRetry: "Retry",
+  modelsRetrying: "Retrying\u2026",
+  modelsRetryHint: "Click to retry now after switching mirror or a failure",
+  modelsHint: "Live download state; failures auto-backoff 60s. After switching the mirror, click Retry to take effect immediately; npm run prefetch pre-downloads.",
   telTotal: "total"
 };
 var guess = () => /^zh\b/i.test(
@@ -1162,6 +1187,90 @@ function SegGroup({
 }) {
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "group", style: setSeg, children: options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { style: setSegBtn(value === o.v), "aria-pressed": value === o.v, onClick: () => void score.set(field, o.v), children: o.label }, String(o.v))) });
 }
+var fmtMB = (b) => b >= 1048576 ? `${(b / 1048576).toFixed(0)}MB` : b > 0 ? `${Math.round(b / 1024)}KB` : "\u2013";
+function ModelStatusView() {
+  const [st, setSt] = (0, import_react.useState)(null);
+  const [retrying, setRetrying] = (0, import_react.useState)(null);
+  (0, import_react.useEffect)(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${location.origin}${BASE_PATH}/models/status`);
+        if (res.ok && alive) setSt(await res.json());
+      } catch {
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 3e3);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+  const retry = (kind) => {
+    setRetrying(kind);
+    void fetch(`${location.origin}${BASE_PATH}/models/retry`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind })
+    }).catch(() => void 0).finally(() => {
+      setTimeout(() => setRetrying(null), 2e3);
+    });
+  };
+  const mkRow = (label, info, key, progressFor) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { width: 92, flexShrink: 0, fontSize: 12, color: t2.label }, children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, minWidth: 0 }, children: info.ready ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: "var(--dsw-alias-state-success-primary)", fontWeight: 600 }, children: t("modelsReady") }) : progressFor && progressFor.file ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
+      t("modelsDownloading").replace("{file}", progressFor.file).replace("{percent}", String(progressFor.percent)),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { display: "block", height: 4, borderRadius: 99, background: t2.border, marginTop: 4, overflow: "hidden" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { display: "block", height: "100%", width: `${progressFor.percent}%`, background: "var(--dsw-alias-brand-primary)", transition: "width .3s" } }) })
+    ] }) : info.failLatchMs !== void 0 && info.failLatchMs > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: "var(--dsw-alias-state-error-primary)" }, children: t("modelsFail").replace("{sec}", String(Math.ceil(info.failLatchMs / 1e3))) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
+      fmtMB(info.size),
+      t("modelsMissing")
+    ] }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        type: "button",
+        disabled: retrying === key || info.ready,
+        onClick: () => retry(key),
+        style: {
+          font: "inherit",
+          fontSize: 12,
+          cursor: info.ready ? "default" : "pointer",
+          color: info.ready ? t2.term : t2.label,
+          background: "var(--dsw-alias-bg-layer-2)",
+          border: `1px solid ${t2.border}`,
+          borderRadius: 8,
+          padding: "3px 10px",
+          opacity: info.ready ? 0.5 : 1,
+          flexShrink: 0
+        },
+        title: t("modelsRetryHint"),
+        children: retrying === key ? t("modelsRetrying") : t("modelsRetry")
+      }
+    )
+  ] });
+  const anyDownloading = !!st?.progress;
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 600, color: t2.label }, children: t("modelsTitle") }),
+      anyDownloading && st?.progress && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
+        st.progress.file,
+        " ",
+        st.progress.percent,
+        "%"
+      ] })
+    ] }),
+    mkRow(t("modelStreamingAsr"), { ready: !!st?.asr.ready, size: st?.asr.files.reduce((a, f) => a + f.size, 0) ?? 0 }, "asr", anyDownloading ? st.progress : null),
+    mkRow(t("modelVad"), { ready: !!st?.vad.ready, size: st?.vad.size ?? 0, failLatchMs: st?.vad.failLatchMs ?? 0 }, "vad", anyDownloading ? st.progress : null),
+    mkRow(
+      t("modelSense"),
+      { ready: !!st?.sense.ready, size: st?.sense.size ?? 0, failLatchMs: st?.sense.enabled ? st?.sense.failLatchMs ?? 0 : 0 },
+      "sense",
+      anyDownloading ? st.progress : null
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("modelsHint") })
+  ] });
+}
 function VoiceSettingsCard({ scope }) {
   const [snap, setSnap] = (0, import_react.useState)(() => scope.getSnapshot());
   const [collapsed, setCollapsed] = (0, import_react.useState)(true);
@@ -1233,7 +1342,8 @@ function VoiceSettingsCard({ scope }) {
           ]
         }
       ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ModelStatusView, {})
     ] }) })
   ] });
 }

@@ -404,6 +404,117 @@ function SegGroup({
   )
 }
 
+/** 模型状态载荷（/voice-mode/models/status 返回）。 */
+interface ModelsStatusPayload {
+  asr: { repo: string; ready: boolean; files: Array<{ name: string; exists: boolean; size: number }> }
+  vad: { repo: string; ready: boolean; size: number; failLatchMs: number }
+  sense: { repo: string; ready: boolean; size: number; failLatchMs: number; enabled: boolean }
+  progress: { file: string; percent: number } | null
+}
+
+const fmtMB = (b: number): string => (b >= 1048576 ? `${(b / 1048576).toFixed(0)}MB` : b > 0 ? `${Math.round(b / 1024)}KB` : '–')
+
+/** 设置面板「语音模型」实时状态：3s 轮询进度/就绪/失败退避 + 重试按钮。 */
+function ModelStatusView(): React.ReactElement {
+  const [st, setSt] = useState<ModelsStatusPayload | null>(null)
+  const [retrying, setRetrying] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    const poll = async (): Promise<void> => {
+      try {
+        const res = await fetch(`${location.origin}${BASE_PATH}/models/status`)
+        if (res.ok && alive) setSt((await res.json()) as ModelsStatusPayload)
+      } catch {
+        // 轮询失败静默（下次再试）
+      }
+    }
+    void poll()
+    const timer = setInterval(() => void poll(), 3000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [])
+  const retry = (kind: string): void => {
+    setRetrying(kind)
+    void fetch(`${location.origin}${BASE_PATH}/models/retry`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind }),
+    })
+      .catch(() => undefined)
+      .finally(() => {
+        setTimeout(() => setRetrying(null), 2000)
+      })
+  }
+  const mkRow = (
+    label: string,
+    info: { ready: boolean; size: number; failLatchMs?: number },
+    key: string,
+    progressFor: ModelsStatusPayload['progress'],
+  ): React.ReactElement => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
+      <span style={{ width: 92, flexShrink: 0, fontSize: 12, color: t.label }}>{label}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        {info.ready ? (
+          <span style={{ fontSize: 12, color: 'var(--dsw-alias-state-success-primary)', fontWeight: 600 }}>{tr('modelsReady')}</span>
+        ) : progressFor && progressFor.file ? (
+          <span style={{ fontSize: 12, color: t.term }}>
+            {tr('modelsDownloading').replace('{file}', progressFor.file).replace('{percent}', String(progressFor.percent))}
+            <span style={{ display: 'block', height: 4, borderRadius: 99, background: t.border, marginTop: 4, overflow: 'hidden' }}>
+              <span style={{ display: 'block', height: '100%', width: `${progressFor.percent}%`, background: 'var(--dsw-alias-brand-primary)', transition: 'width .3s' }} />
+            </span>
+          </span>
+        ) : info.failLatchMs !== undefined && info.failLatchMs > 0 ? (
+          <span style={{ fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' }}>{tr('modelsFail').replace('{sec}', String(Math.ceil(info.failLatchMs / 1000)))}</span>
+        ) : (
+          <span style={{ fontSize: 12, color: t.term }}>{fmtMB(info.size)}{tr('modelsMissing')}</span>
+        )}
+      </span>
+      <button
+        type="button"
+        disabled={retrying === key || info.ready}
+        onClick={() => retry(key)}
+        style={{
+          font: 'inherit',
+          fontSize: 12,
+          cursor: info.ready ? 'default' : 'pointer',
+          color: info.ready ? t.term : t.label,
+          background: 'var(--dsw-alias-bg-layer-2)',
+          border: `1px solid ${t.border}`,
+          borderRadius: 8,
+          padding: '3px 10px',
+          opacity: info.ready ? 0.5 : 1,
+          flexShrink: 0,
+        }}
+        title={tr('modelsRetryHint')}
+      >
+        {retrying === key ? tr('modelsRetrying') : tr('modelsRetry')}
+      </button>
+    </div>
+  )
+  const anyDownloading = !!st?.progress
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: t.label }}>{tr('modelsTitle')}</span>
+        {anyDownloading && st?.progress && (
+          <span style={{ fontSize: 12, color: t.term }}>{st.progress.file} {st.progress.percent}%</span>
+        )}
+      </div>
+      {mkRow(tr('modelStreamingAsr'), { ready: !!st?.asr.ready, size: st?.asr.files.reduce((a, f) => a + f.size, 0) ?? 0 }, 'asr', anyDownloading ? st.progress : null)}
+      {mkRow(tr('modelVad'), { ready: !!st?.vad.ready, size: st?.vad.size ?? 0, failLatchMs: st?.vad.failLatchMs ?? 0 }, 'vad', anyDownloading ? st.progress : null)}
+      {mkRow(
+        tr('modelSense'),
+        { ready: !!st?.sense.ready, size: st?.sense.size ?? 0, failLatchMs: st?.sense.enabled ? (st?.sense.failLatchMs ?? 0) : 0 },
+        'sense',
+        anyDownloading ? st.progress : null,
+      )}
+      <div style={{ fontSize: 12, color: t.term, lineHeight: '18px', padding: '4px 0 8px' }}>{tr('modelsHint')}</div>
+    </div>
+  )
+}
+
 export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.ReactElement {
   const [snap, setSnap] = useState(() => scope.getSnapshot())
   const [collapsed, setCollapsed] = useState(true) // 默认折叠，与其他设置卡一致
@@ -503,6 +614,7 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             <Row name="wakeWord" desc={tr('descWakeWord')}>
               <TextField score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder={tr('wakePlaceholder')} />
             </Row>
+            <ModelStatusView />
           </div>
         </div>
       )}

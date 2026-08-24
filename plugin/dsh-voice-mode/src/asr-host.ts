@@ -9,7 +9,7 @@
  *   host 记录已喂样本数只吃增量；final=1 时补 0.5s 尾垫并返回定稿文本。
  * - 下载进度经 SSE `asr-progress` 广播，完成发 `asr-ready`（client 状态条用）。
  */
-import { createWriteStream } from 'node:fs'
+import { createWriteStream, statSync } from 'node:fs'
 import { mkdir, rename, stat, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -93,6 +93,25 @@ export interface AsrRuntime {
   reset(sessionId: string): void
   /** 释放 runtime（清定时器 + 全部段）；插件卸载时调用。 */
   dispose(): void
+  /** 模型实时状态（设置面板轮询；含下载进度/就绪/失败退避倒计时）。 */
+  modelStatus(): ModelsStatus
+  /** 手动重试下载（镜像切换/失败后）：清失败退避并触发对应模型 ensure。 */
+  retryModel(kind: 'asr' | 'vad' | 'sense'): Promise<boolean>
+}
+
+/** 模型状态返回（/voice-mode/models/status 载荷）。 */
+export interface ModelFileStatus {
+  name: string
+  exists: boolean
+  /** 本地文件字节（存在时）。 */
+  size: number
+}
+export interface ModelsStatus {
+  asr: { repo: string; ready: boolean; files: ModelFileStatus[] }
+  vad: { repo: string; ready: boolean; size: number; failLatchMs: number }
+  sense: { repo: string; ready: boolean; size: number; failLatchMs: number; enabled: boolean }
+  /** 正在下载的文件与百分比（最近一次 asr-progress 值）。 */
+  progress: { file: string; percent: number } | null
 }
 
 /** PCM f32 LE 载荷 -> Float32Array（校验长度对齐）。 */
@@ -140,6 +159,12 @@ function rmsOf(samples: Float32Array): number {
 
 export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   const { cacheDir, modelHost, broadcast, senseVoice } = options
+  /** 设置面板实时进度：记录最近一次 asr-progress（含 VAD/SenseVoice 下载）。 */
+  let lastProgress: { file: string; percent: number } | null = null
+  const localBroadcast = (event: string, payload: unknown): void => {
+    if (event === 'asr-progress') lastProgress = payload as { file: string; percent: number }
+    broadcast(event, payload)
+  }
   const repoDir = join(cacheDir, MODEL_REPO)
   const vadDir = join(cacheDir, VAD_REPO)
   const senseDir = join(cacheDir, SENSE_REPO)
@@ -181,7 +206,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         // 已下载跳过下载；否则逐个懒下载（断点续传）。
         if (!(await haveAllModels())) {
           for (const f of MODEL_FILES) {
-            if (!(await ensureFile(repoDir, f, modelHost(), broadcast))) {
+            if (!(await ensureFile(repoDir, f, modelHost(), localBroadcast))) {
               broadcast('asr-error', { file: f })
               return false
             }
@@ -229,7 +254,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     if (!vadLoading) {
       vadLoading = (async () => {
         for (const f of VAD_FILES) {
-          if (!(await ensureFile(vadDir, f, modelHost(), broadcast))) {
+          if (!(await ensureFile(vadDir, f, modelHost(), localBroadcast))) {
             vadFailAt = Date.now() + 60000
             return null
           }
@@ -277,7 +302,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     if (!senseLoading) {
       senseLoading = (async () => {
         for (const f of SENSE_FILES) {
-          if (!(await ensureFile(senseDir, f, modelHost(), broadcast))) {
+          if (!(await ensureFile(senseDir, f, modelHost(), localBroadcast))) {
             senseFailAt = Date.now() + 60000
             return null
           }
@@ -517,6 +542,70 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         }
       }
       segments.clear()
+    },
+    modelStatus: () => {
+      const statFile = async (dir: string, repo: string, name: string): Promise<{ exists: boolean; size: number }> => {
+        const st = await stat(join(dir, repo, name)).catch(() => null)
+        return { exists: !!st?.isFile(), size: st?.size ?? 0 }
+      }
+      // 同步快照（大小 stat 用已缓存信息：asr 文件逐个 stat 是异步——模型状态为诊断用途，损失精度可接受：
+      // 改为同步收集已存在文件大小并异步顺带）。为接口简单，直接返回收集结果：
+      const asrFiles: ModelFileStatus[] = MODEL_FILES.map((n) => ({
+        name: n,
+        exists: (() => {
+          try {
+            return statSync(join(repoDir, n)).isFile()
+          } catch {
+            return false
+          }
+        })(),
+        size: (() => {
+          try {
+            return statSync(join(repoDir, n)).size
+          } catch {
+            return 0
+          }
+        })(),
+      }))
+      const vadSize = (() => {
+        try {
+          return statSync(join(vadDir, VAD_FILES[0])).size
+        } catch {
+          return 0
+        }
+      })()
+      const senseSize = (() => {
+        try {
+          return statSync(join(senseDir, SENSE_FILES[0])).size
+        } catch {
+          return 0
+        }
+      })()
+      return {
+        asr: { repo: MODEL_REPO, ready: modelsReady, files: asrFiles },
+        vad: { repo: VAD_REPO, ready: vadModelReady, size: vadSize, failLatchMs: Math.max(0, vadFailAt - Date.now()) },
+        sense: {
+          repo: SENSE_REPO,
+          ready: senseModelReady,
+          size: senseSize,
+          failLatchMs: Math.max(0, senseFailAt - Date.now()),
+          enabled: senseVoice(),
+        },
+        progress: lastProgress,
+      }
+    },
+    retryModel: async (kind) => {
+      if (kind === 'vad') {
+        vadFailAt = 0
+        return !!(await ensureVadModel())
+      }
+      if (kind === 'sense') {
+        senseFailAt = 0
+        return !!(await ensureSenseModel())
+      }
+      // asr：已就绪则无需动作；未就绪则触发下载（模型下载失败时点重试补下）。
+      if (modelsReady) return true
+      return await ensureModels()
     },
   }
 }
