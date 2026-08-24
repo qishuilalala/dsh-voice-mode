@@ -1055,6 +1055,8 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       style={{
         position: 'fixed',
         right: 16,

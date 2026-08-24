@@ -152,7 +152,7 @@ function createAsrEngine(config, sessionId) {
               });
               resolve(r2);
             } catch {
-              resolve(new Response(null, { status: 0 }));
+              resolve(new Response(null, { status: 503 }));
             }
           }, 5e3);
         });
@@ -220,7 +220,7 @@ function createAsrEngine(config, sessionId) {
                   })
                 );
               } catch {
-                resolve(new Response(null, { status: 0 }));
+                resolve(new Response(null, { status: 503 }));
               }
             }, 5e3);
           });
@@ -358,6 +358,10 @@ function createAsrEngine(config, sessionId) {
     });
     const AC = window.AudioContext ?? window.webkitAudioContext;
     audioCtx = new AC({ sampleRate: SAMPLE_RATE });
+    try {
+      await audioCtx.resume?.();
+    } catch {
+    }
     ctxRate = audioCtx.sampleRate;
     const source = audioCtx.createMediaStreamSource(stream);
     processor = audioCtx.createScriptProcessor(BUFFER_SIZE, 1, 1);
@@ -1688,6 +1692,8 @@ function VoiceOverlay({ bus }) {
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",
     {
+      role: "status",
+      "aria-live": "polite",
       style: {
         position: "fixed",
         right: 16,

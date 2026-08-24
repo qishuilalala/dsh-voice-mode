@@ -155,12 +155,14 @@
 - [ ] 三平台路径/缓存默认值正确（Windows LOCALAPPDATA；Unix ~/.cache）
 - [ ] 运行时旋钮单一活来源：设置面板为最终生效值，bundle 配置只播种默认
       （防死配置；e.g. modelHost 曾解构未用、idleTimeout 曾不被消费）
-- [ ] **DSH 宿主共享包必须放 peerDependencies（禁止 dependencies）**：dsh-settings /
-      dsh-host-webserver / dsh-llm / schemastery 及 cordis/dsh-web 是宿主提供的框架包，
-      若进 dependencies 会被 dshmarket 判定「遮蔽宿主版本」而拦截插件市场升级，且 pnpm
-      重解析时把具体版装进 profile 引发 webServer 服务缺失崩溃循环（曾两度踩坑）。deps
-      只保留真正的第三方运行依赖（msedge-tts/sherpa-onnx）。peer 版本与 dsh 运行时对齐
-      （当前基准 ^0.1.1-rc.2 / schemastery ^3.18.1），升级 dsh 时同步更新
+- [ ] **DSH 宿主核心包必须放 peerDependencies（禁止 dependencies）**：dsh-settings /
+      dsh-host-webserver / dsh-llm 及 cordis/dsh-web 是宿主提供的框架包，若进 dependencies
+      会被 dshmarket 判定「遮蔽宿主版本」而拦截插件市场升级，且 pnpm 重解析时把具体版装进
+      profile 引发 webServer 服务缺失崩溃循环（曾两度踩坑）。**例外**：schemastery 是
+      registry 可解析的公开包、宿主平台不遮蔽它 → 留在 dependencies 属有意决策
+      （见插件 README「依赖纪律」），质量门此条按该例外执行。deps 只保留真正的第三方
+      运行依赖（msedge-tts/sherpa-onnx/schemastery）。peer 版本与 dsh 运行时对齐
+      （当前基准 ^0.1.1-rc.2），升级 dsh 时同步更新
 - [ ] 模型下载：进度可见、失败可见、断点续传、镜像回退（modelHost 生效）；prefetch 可独立跑
 - [ ] TTS 失败：状态条提示 + 自动重试 + 成功复位
 - [ ] 打断：本地静音 + host epoch + 回合取消三层到位

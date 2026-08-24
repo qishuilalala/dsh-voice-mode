@@ -29,7 +29,7 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 - **开口打断（barge-in）**：三档灵敏度的发声前沿检测 → 本地静音 + host 合成队列作废（epoch）+ 正在运行的回合取消（保留半截并自然续入你的新消息）
 - **模型懒加载与进度**：首次使用自动下载 zipformer2 中文流式模型（约 160MB，`.part` 断点续传），状态条实时显示下载进度；可用 `npm run prefetch` 预下载
 - **容错**：麦克风被拒红点提示、模型下载失败可见提示、TTS 连接失败状态条提示（自动重试）、提交失败文字留在草稿、SSE 断线自动重连
-- **设置**：设置 → 插件配置 → voice-mode，可调音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词 / 口语化提示词；**音色可试听**（「试听」按钮按当前音色 + 当前语速即时合成预览，无需进入语音模式；自定义 ShortName 同样可试听）
+- **设置**：设置 → Plugins → 插件配置 → 语音模式（voice-mode），可调音色 / 语速 / 打断灵敏度 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词 / 口语化提示词；**音色可试听**（「试听」按钮按当前音色 + 当前语速即时合成预览，无需进入语音模式；自定义 ShortName 同样可试听）
 - **空闲退出**：10 分钟无活动自动退出并释放麦克风
 
 ## 操作手势
@@ -243,6 +243,8 @@ pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js�
 pnpm test                     # segmenter/wakeword 单测 + 发布前自检（均无需网络）
 node test/hold-e2e.js         # hold 模式验收（独立浏览器，/asr 路由拦截）
 bash test/spoken-prompt-rpc.sh  # 口语化提示词验证（RPC 直发，无需浏览器；需在线 TTS）
+# 注：hold-e2e/spoken-prompt-rpc/spoken-toggle-ui-check 等集成探测脚本位于仓库根 test/
+#（不在 npm 包内）；npm 包内 test/ 仅含无需网络的离线单测。
 systemctl restart dsh         # Linux；其他平台重启 dsh 进程
 ```
 

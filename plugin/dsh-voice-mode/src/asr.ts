@@ -180,7 +180,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
               })
               resolve(r2)
             } catch {
-              resolve(new Response(null, { status: 0 }))
+              resolve(new Response(null, { status: 503 }))
             }
           }, 5000)
         })
@@ -255,7 +255,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
                   }),
                 )
               } catch {
-                resolve(new Response(null, { status: 0 }))
+                resolve(new Response(null, { status: 503 }))
               }
             }, 5000)
           })
@@ -414,6 +414,13 @@ const startRecorder = async (): Promise<void> => {
     const AC: typeof AudioContext =
       window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
     audioCtx = new AC({ sampleRate: SAMPLE_RATE })
+    // iOS Safari：非手势栈创建的上下文初始为 suspended，不恢复则 onaudioprocess
+    // 永不触发（进入语音模式后静默无反应）——在 getUserMedia 手势栈内尝试恢复。
+    try {
+      await audioCtx.resume?.()
+    } catch {
+      // 恢复失败不阻塞（部分场景仍可用；状态条会提示收音异常）
+    }
     // 浏览器可能忽略 sampleRate 选项（Safari 等）：记录真实采样率供重采样。
     ctxRate = audioCtx.sampleRate
     const source = audioCtx.createMediaStreamSource(stream)
