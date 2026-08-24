@@ -20,7 +20,7 @@
 
 - **Voice mode**: toggle with the microphone button in the input toolbar or the global shortcut `Ctrl+Shift+V`; globally single-active (only one session is in voice mode at a time; switching sessions yields automatically)
 - **Two interaction modes (switchable in settings)**:
-  - `toggle` (default) continuous listening: RMS VAD segmentation → streaming zipformer2 ASR (words appear as you speak, live caption preview) → automatic sentence split and send after 2 s of silence; hold `Ctrl` to force an immediate send
+  - `toggle` (default) continuous listening: RMS VAD segmentation → streaming zipformer2 ASR (words appear as you speak, live caption preview) → automatic sentence split and send after 700 ms of silence (<250 ms utterances are treated as noise); hold `Ctrl` to force an immediate send
   - `hold` push-to-talk: short tap to enter/exit, **hold the mic button to talk, release to send** (swipe up to cancel, `Esc`/blur abandons the segment); hold `Ctrl` to record-by-keyboard, release to send
 - **Wake word (optional, off by default)**: after setting `wakeWord`, entering voice mode starts in standby, and recognition only begins once the wake word is spoken (e.g. `你好小D`), preventing accidental triggers
 - **Output pipeline**: only the final answer's `text-delta` is read (reasoning/tool calls are skipped), streamed sentence-by-sentence via Edge TTS with a live caption overlay at the bottom-right; tool calls trigger a beep; the full text is still written to the chat; in voice mode a spoken-format system prompt is injected (short natural sentences, no Markdown decoration), and the reader side strips markers as well for a smoother listening experience
@@ -92,7 +92,7 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | `voice` | `zh-CN-XiaoxiaoNeural` | Edge TTS voice (see the common voices table below), **applies live**; the inline "试听" button previews it at the current rate (both listed voices and custom ShortNames are previewable; failures show a visible hint) |
 | `rate` | `1.0` | Reading speed multiplier (0.5 slow ～ 2.0 fast), **applies live** |
 | `interruptLevel` | `0` | Barge-in sensitivity: 0 high threshold / 1 medium / 2 low |
-| `silenceMs` | `2000` | Silence pause in ms that marks the end of a complete sentence |
+| `silenceMs` | `700` | Silence pause in ms that marks the end of a complete sentence (at least 250 ms of speech required) |
 | `idleTimeoutMinutes` | `10` | Minutes of inactivity before auto-exiting voice mode |
 | `modelHost` | default | ASR model download host (use `https://hf-mirror.com` on mainland networks) |
 | `autoSend` | `true` | Auto-send after a finalized transcript; when off, text only goes to the draft (hold `Ctrl` / release in hold mode still sends) |
@@ -150,7 +150,7 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 | --- | --- |
 | `GET /voice-mode/stream` | SSE: `event: audio` (`{sessionId, sentenceId, chunkId, final, text?(only on the final frame), audio(base64 MP3 chunk)}` — P1-1 chunked forwarding, the client reassembles each sentence before playback), `event: latency` (`{sessionId, stage}`: first-llm-token / first-sentence-text, P1-5), `event: mode` (global single-active ownership), `event: tool` (beep), `event: asr-progress / asr-ready / asr-error / tts-error` |
 | `POST /voice-mode/toggle` | `{sessionId, on}` enter/exit voice mode (globally single-active) |
-| `POST /voice-mode/asr` | Raw f32 LE 16k PCM payload → `{text}` (streaming zipformer2); returns `202 {loading}` until the model is ready; `?reset=1` discards the in-flight segment (used on wake-word hit) |
+| `POST /voice-mode/asr` | f32 LE 16k PCM payload → `{text}` (streaming zipformer2); returns `202 {loading}` until the model is ready; `?reset=1` discards the in-flight segment (wake-word hit). `?offset=N` (P1-4): this packet is the segment slice starting at sample N — the client uploads only newly-appended samples (P1-4 incremental upload); omit for full-packets (backward compatible) |
 | `POST /voice-mode/cancel` | `{sessionId}` invalidates the TTS queue and drops the in-flight ASR segment |
 | `POST /voice-mode/preview` | `{voice, rate?}` one-shot synthesis preview → `audio/mpeg` (400 missing voice / voice too long; 502 synthesis failure, e.g. invalid ShortName; 403 when the plugin's `enabled=false`). Does not require voice mode to be active; uses an isolated synthesis connection and does not affect the reading queue |
 | `GET /voice-mode/config` | Client bootstrap parameters (silence threshold / sensitivity / voice and rate, etc.) |
@@ -170,7 +170,7 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 ![architecture](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/architecture.svg)
 
 ```
-input:  mic ──RMS VAD (2s silence split)──▶ POST /voice-mode/asr (f32 PCM, 16k, incremental)
+input:  mic ──RMS VAD (700ms silence split)──▶ POST /voice-mode/asr (f32 PCM, 16k, incremental)
                                             │ zipformer2 streaming ASR (host-side WASM)
                                             ▼
         composer draft ──autoSend──▶ model stream ──llm/stream tap (active voice session only)

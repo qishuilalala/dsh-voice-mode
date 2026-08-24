@@ -12,7 +12,7 @@ var { createOnlineRecognizer } = sherpa_onnx;
 var MODEL_REPO = "csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30";
 var MODEL_FILES = ["encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt"];
 function pcmToSamples(buf) {
-  if (buf.length % 4 !== 0 || buf.length === 0) return null;
+  if (buf.length % 4 !== 0) return null;
   return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
 }
 var MAX_ASR_BYTES = 4 * 1024 * 1024;
@@ -71,7 +71,7 @@ function createAsrRuntime(options) {
     });
     return recognizer;
   };
-  const feed = async (sessionId, samples, final) => {
+  const feed = async (sessionId, samples, final, offset = 0) => {
     const rec = await getRecognizer();
     if (!rec) return { text: "", loading: true };
     let seg = segments.get(sessionId);
@@ -80,9 +80,10 @@ function createAsrRuntime(options) {
       seg = { stream: rec.createStream(), fed: 0 };
       segments.set(sessionId, seg);
     }
-    if (samples.length > seg.fed) {
-      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, samples.subarray(seg.fed));
-      seg.fed = samples.length;
+    if (offset + samples.length > seg.fed) {
+      const skip = Math.max(seg.fed - offset, 0);
+      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, samples.subarray(skip));
+      seg.fed = offset + samples.length;
       while (rec.isReady(seg.stream)) rec.decode(seg.stream);
     }
     const text = rec.getResult(seg.stream).text;
@@ -184,6 +185,8 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
     const sessionId = url.searchParams.get("sessionId") ?? "";
     const final = url.searchParams.get("final") === "1";
     const reset = url.searchParams.get("reset") === "1";
+    const offsetParam = url.searchParams.get("offset");
+    const offset = offsetParam ? Math.max(0, Math.floor(Number(offsetParam)) || 0) : 0;
     if (!sessionId || sessionId !== activeSessionId) {
       res.statusCode = 403;
       res.end(JSON.stringify({ error: "not the active voice session" }));
@@ -194,13 +197,14 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
       res.end(JSON.stringify({ ok: true }));
       return;
     }
-    const samples = pcmToSamples(Buffer.concat(chunks));
+    const raw = Buffer.concat(chunks);
+    const samples = raw.length === 0 ? final ? new Float32Array(0) : null : pcmToSamples(raw);
     if (!samples) {
       res.statusCode = 400;
       res.end(JSON.stringify({ error: "invalid pcm payload" }));
       return;
     }
-    void asr.feed(sessionId, samples, final).then((out) => {
+    void asr.feed(sessionId, samples, final, offset).then((out) => {
       if (out.loading) {
         res.statusCode = 202;
         res.end(JSON.stringify({ loading: true }));
@@ -449,7 +453,7 @@ var VOICE_SETTINGS_DEFAULTS = {
   voice: "zh-CN-XiaoxiaoNeural",
   rate: 1,
   interruptLevel: 0,
-  silenceMs: 2e3,
+  silenceMs: 700,
   idleTimeoutMinutes: 10,
   modelHost: "",
   autoSend: true,
@@ -465,7 +469,7 @@ function createVoiceSettingsSchema(defs) {
     ),
     rate: z.number().min(0.5).max(2).default(d.rate).description("\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 = \u6162\u901F\uFF0C2.0 = \u5FEB\u901F\uFF0C1.0 = \u6B63\u5E38\uFF09"),
     interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(d.interruptLevel).description("\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF1A0 \u9AD8\u95E8\u69DB\uFF08\u5B89\u9759\u73AF\u5883\uFF0C\u9ED8\u8BA4\uFF09/ 1 \u4E2D / 2 \u4F4E\uFF08\u5608\u6742\u73AF\u5883\u66F4\u5BB9\u6613\u6253\u65AD\uFF09"),
-    silenceMs: z.number().min(500).max(3e4).default(d.silenceMs).description("\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 2000 = 2 \u79D2\uFF09"),
+    silenceMs: z.number().min(500).max(3e4).default(d.silenceMs).description("\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 700 \u6BEB\u79D2\uFF1B\u81F3\u5C11 250ms \u8BED\u97F3\u624D\u5224\u53E5\uFF0C\u9632\u77ED\u4FC3\u566A\u58F0\u8BEF\u89E6\u53D1\uFF09"),
     idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description("\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09"),
     modelHost: z.string().default(d.modelHost).description("ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u7559\u7A7A\u7528\u9ED8\u8BA4\u6E90\uFF1B\u56FD\u5185\u7F51\u7EDC\u53EF\u586B https://hf-mirror.com\uFF09"),
     autoSend: z.boolean().default(d.autoSend).description("\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173\u95ED\u5219\u53EA\u8FDB\u8349\u7A3F\u4F9B\u7F16\u8F91\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u4F1A\u53D1\u9001\uFF09"),

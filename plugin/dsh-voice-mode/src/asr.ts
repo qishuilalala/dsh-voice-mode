@@ -73,8 +73,11 @@ const SPEECH_RMS = 0.015
 /** RMS 映射满格波形的电平。 */
 const LEVEL_CEILING = 0.25
 const MAX_SEGMENT_MS = 30000
+/** 最小语音时长（P1-3）：不足视为短促噪声，静音到点后放弃本段不发送。 */
+const MIN_SPEECH_MS = 250
 const PRE_PAD_MS = 250
-const PARTIAL_INTERVAL_MS = 900
+/** P1-4：partial 轮询节拍 300ms（配合增量上传，字幕更跟手）。 */
+const PARTIAL_INTERVAL_MS = 300
 /** partial 预览下限/上限（流式模型代价低，上限放宽）。 */
 const PARTIAL_MIN_S = 0.4
 const PARTIAL_MAX_S = 30
@@ -128,6 +131,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let speechActive = false
   let segment: Float32Array[] = []
   let segmentMs = 0
+  /** 纯语音时长（P1-3 最小语音时长门；静音尾巴不计入）。 */
+  let speechMs = 0
   let silenceMs = 0
   let prePad: Float32Array[] = []
   /** hold 模式：按住录制中（绕过 VAD 门控与静音切句，整段按压区间保留）。 */
@@ -147,9 +152,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let segmentEpoch = 0
   /** Ctrl 强制发送标记（随本段定稿的 meta 传递）。 */
   let forcePending = false
+  /** P1-4：本段已上传的样本数（增量水位；partial/定稿只传新增部分）。 */
+  let uploadedSamples = 0
 
-  const asrUrl = (final: boolean): string =>
-    `${location.origin}${config.basePath.replace(/\/+$/, '')}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}`
+  const asrUrl = (final: boolean, offset?: number): string =>
+    `${location.origin}${config.basePath.replace(/\/+$/, '')}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` +
+    (offset !== undefined ? `&offset=${offset}` : '')
 
   const setState = (s: AsrState): void => {
     state = s
@@ -185,19 +193,42 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     return out
   }
 
+  /** P1-4：从段内 from 样本起切片（增量上传；不做全量 concat）。 */
+  const sliceSince = (from: number): Float32Array => {
+    let total = 0
+    for (const c of segment) total += c.length
+    const out = new Float32Array(Math.max(0, total - from))
+    if (out.length === 0) return out
+    let off = 0
+    let acc = 0
+    for (const c of segment) {
+      if (off >= out.length) break
+      const sub = c.subarray(Math.max(0, from - acc))
+      const n = Math.min(sub.length, out.length - off)
+      out.set(sub.subarray(0, n), off)
+      off += n
+      acc += c.length
+    }
+    return out
+  }
+
   /**
-   * partial 轮询：POST 当前段全量 PCM（host 只喂增量），预览字幕。
-   * 202 = 模型下载中；重试。失败静默（预览非结果）。
+   * partial 轮询：P1-4 只 POST 上次末帧后的新增 PCM（host 按 offset 只喂增量），
+   * 预览字幕。202 = 模型下载中；重试。失败静默（预览非结果）。
    */
   const requestPartial = async (): Promise<void> => {
     if (partialInFlight || segment.length === 0) return
-    const seconds = segment.reduce((n, c) => n + c.length, 0) / SAMPLE_RATE
+    const total = segment.reduce((n, c) => n + c.length, 0)
+    const seconds = total / SAMPLE_RATE
     if (seconds < PARTIAL_MIN_S || seconds > PARTIAL_MAX_S) return
-    const samples = concatSegment()
+    // P1-4：只传增量；已上传水位 uploadedSamples 在成功后推进。
+    const from = uploadedSamples
+    if (total - from <= 0) return
+    const samples = sliceSince(from)
     const epoch = segmentEpoch
     partialInFlight = true
     try {
-      let res = await fetch(asrUrl(false), {
+      let res = await fetch(asrUrl(false, from), {
         method: 'POST',
         headers: { 'content-type': 'application/octet-stream' },
         body: samples.buffer as ArrayBuffer,
@@ -208,7 +239,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         const retry = await new Promise<Response>((resolve) => {
           setTimeout(async () => {
             try {
-              const r2 = await fetch(asrUrl(false), {
+              const r2 = await fetch(asrUrl(false, from), {
                 method: 'POST',
                 headers: { 'content-type': 'application/octet-stream' },
                 body: samples.buffer as ArrayBuffer,
@@ -226,15 +257,19 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       const out = (await res.json()) as { text?: string }
       if (epoch !== segmentEpoch) return
       if (state === 'loading-model') setState('speech')
+      // P1-4：上传成功后才推进已传水位（失败/重试不推进，下一拍补传）。
+      uploadedSamples = Math.max(uploadedSamples, from + samples.length)
       // 唤醒词门：wake 待机态下 partial 文本只用于匹配，命中→清本地与 host 流→激活。
       if (state === 'wake' && wakeWord) {
         if (matchWakeWord(out.text ?? '', wakeWord)) {
           segmentEpoch++
           segment = []
           segmentMs = 0
+          speechMs = 0
           silenceMs = 0
           prePad = []
           sincePartialMs = 0
+          uploadedSamples = 0
           await resetHostStream()
           if (active) setState('listening')
         }
@@ -267,10 +302,14 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       emitTelemetry('utterance-end')
     }
     emitTelemetry('endpoint-fired')
-    const samples = concatSegment()
+    // P1-4：定稿 = 最后一个增量包打 final 标记（只传尚未上传的部分；可为空包）。
+    const from = uploadedSamples
+    const samples = sliceSince(from)
     const epoch = ++segmentEpoch
     const meta: SegmentMeta = { force: forcePending }
     forcePending = false
+    speechMs = 0 // P1-3：新段重新起算纯语音时长
+    uploadedSamples = 0
     segment = []
     speechActive = false
     silenceMs = 0
@@ -280,7 +319,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     void (async () => {
       try {
         emitTelemetry('submitted') // P1-5：定稿上传发起
-        let res = await fetch(asrUrl(true), {
+        let res = await fetch(asrUrl(true, from), {
           method: 'POST',
           headers: { 'content-type': 'application/octet-stream' },
           body: samples.buffer as ArrayBuffer,
@@ -291,7 +330,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
             setTimeout(async () => {
               try {
                 resolve(
-                  await fetch(asrUrl(true), {
+                  await fetch(asrUrl(true, from), {
                     method: 'POST',
                     headers: { 'content-type': 'application/octet-stream' },
                     body: samples.buffer as ArrayBuffer,
@@ -378,6 +417,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           segmentMs = 0
           silenceMs = 0
           prePad = []
+          uploadedSamples = 0 // P1-4：滚窗后 host 流重新起算
           void resetHostStream()
         }
       } else {
@@ -402,6 +442,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         for (const p of prePad) segment.push(p)
         prePad = []
       }
+      speechMs += durationMs
       segmentMs += durationMs
       silenceMs = 0
       segment.push(data)
@@ -415,7 +456,23 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       segmentMs += durationMs
       silenceMs += durationMs
       segment.push(data)
-      if (silenceMs > config.silenceMs) finalizeSegment()
+      if (silenceMs > config.silenceMs) {
+        if (speechMs >= MIN_SPEECH_MS) {
+          finalizeSegment()
+        } else {
+          // P1-3：语音不足 250ms（短促噪声/误触）：放弃本段，不发送。
+          segment = []
+          speechActive = false
+          speechMs = 0
+          silenceMs = 0
+          segmentMs = 0
+          prePad = []
+          utteranceEndAt = null
+          uploadedSamples = 0 // P1-4：弃段后 host 流重新起算
+          void resetHostStream()
+          setState(wakeWord ? 'wake' : 'listening')
+        }
+      }
     } else {
       prePad.push(data)
       let total = 0
@@ -495,6 +552,8 @@ const startRecorder = async (): Promise<void> => {
     speechActive = false
     silenceMs = 0
     segmentMs = 0
+    speechMs = 0
+    uploadedSamples = 0 // P1-4：会话结束清除已传水位
     prePad = []
     interruptCandidateMs = 0
     utteranceEndAt = null // P1-5：会话结束清除说完标记
@@ -564,6 +623,7 @@ const startRecorder = async (): Promise<void> => {
       utteranceEndAt = null // P1-5：新按压段重新起算说完时刻
       segment = []
       segmentMs = 0
+      speechMs = 0
       silenceMs = 0
       prePad = []
       speechActive = true

@@ -46,11 +46,16 @@ export interface AsrRuntimeOptions {
 }
 
 export interface AsrRuntime {
-  /** 处理一段 PCM：final=false 返回 partial；final=true 返回定稿并销毁该段流。 */
+  /**
+   * 处理一段 PCM：final=false 返回 partial；final=true 返回定稿并销毁该段流。
+   * offset：本包在段内的绝对样本起始索引（P1-4 增量上行；缺省 0 = 全量上传，
+   * 与旧客户端兼容——host 始终只喂 [offset, offset+len) 中尚未喂过的部分）。
+   */
   feed(
     sessionId: string,
     samples: Float32Array,
     final: boolean,
+    offset?: number,
   ): Promise<{ text: string; loading?: boolean }>
   /** 丢弃某会话的进行中段（语音模式退出/被打断时）。 */
   reset(sessionId: string): void
@@ -58,7 +63,8 @@ export interface AsrRuntime {
 
 /** PCM f32 LE 载荷 -> Float32Array（校验长度对齐）。 */
 export function pcmToSamples(buf: Buffer): Float32Array | null {
-  if (buf.length % 4 !== 0 || buf.length === 0) return null
+  // 0 长度留给增量定稿（final=1 空包）由调用方构造空样本；此处仍拒非法对齐。
+  if (buf.length % 4 !== 0) return null
   return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4)
 }
 
@@ -135,6 +141,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     sessionId: string,
     samples: Float32Array,
     final: boolean,
+    offset = 0,
   ): Promise<{ text: string; loading?: boolean }> => {
     const rec = await getRecognizer()
     if (!rec) return { text: '', loading: true }
@@ -145,10 +152,12 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       seg = { stream: rec.createStream(), fed: 0 }
       segments.set(sessionId, seg)
     }
-    // 只喂增量；若 final 且无新数据，仅补尾垫。
-    if (samples.length > seg.fed) {
-      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, samples.subarray(seg.fed))
-      seg.fed = samples.length
+    // P1-4 增量上行：samples 为从 offset 开始的段内切片；只喂尚未喂过的部分
+    // （兼容旧客户端 offset=0 全量上传；若 final 且无新数据，仅补尾垫）。
+    if (offset + samples.length > seg.fed) {
+      const skip = Math.max(seg.fed - offset, 0)
+      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, samples.subarray(skip))
+      seg.fed = offset + samples.length
       while (rec.isReady(seg.stream)) rec.decode(seg.stream)
     }
     const text = rec.getResult(seg.stream).text
@@ -280,6 +289,9 @@ export function handleAsrRequest(
     const sessionId = url.searchParams.get('sessionId') ?? ''
     const final = url.searchParams.get('final') === '1'
     const reset = url.searchParams.get('reset') === '1'
+    // P1-4：本包在段内的绝对样本起始索引（缺省 0 = 全量上传，兼容旧客户端）。
+    const offsetParam = url.searchParams.get('offset')
+    const offset = offsetParam ? Math.max(0, Math.floor(Number(offsetParam)) || 0) : 0
     if (!sessionId || sessionId !== activeSessionId) {
       res.statusCode = 403
       res.end(JSON.stringify({ error: 'not the active voice session' }))
@@ -292,14 +304,17 @@ export function handleAsrRequest(
       res.end(JSON.stringify({ ok: true }))
       return
     }
-    const samples = pcmToSamples(Buffer.concat(chunks))
+    const raw = Buffer.concat(chunks)
+    // P1-4 增量定稿：全部样本已随 partial 上传时为「空 body + final=1」，
+    // 只补尾垫返回定稿；空 + 非 final 仍按非法载荷 400。
+    const samples = raw.length === 0 ? (final ? new Float32Array(0) : null) : pcmToSamples(raw)
     if (!samples) {
       res.statusCode = 400
       res.end(JSON.stringify({ error: 'invalid pcm payload' }))
       return
     }
     void asr
-      .feed(sessionId, samples, final)
+      .feed(sessionId, samples, final, offset)
       .then((out) => {
         if (out.loading) {
           res.statusCode = 202

@@ -115,7 +115,7 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   voice: 'zh-CN-XiaoxiaoNeural',
   rate: 1.0,
   interruptLevel: 0,
-  silenceMs: 2000,
+  silenceMs: 700,
   idleTimeoutMinutes: 10,
   modelHost: '',
   autoSend: true,
@@ -139,7 +139,7 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .union([z.const(0), z.const(1), z.const(2)])
       .default(d.interruptLevel)
       .description('发声打断灵敏度：0 高门槛（安静环境，默认）/ 1 中 / 2 低（嘈杂环境更容易打断）'),
-    silenceMs: z.number().min(500).max(30000).default(d.silenceMs).description('说完整一句的静音停顿毫秒数（默认 2000 = 2 秒）'),
+    silenceMs: z.number().min(500).max(30000).default(d.silenceMs).description('说完整一句的静音停顿毫秒数（默认 700 毫秒；至少 250ms 语音才判句，防短促噪声误触发）'),
     idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description('无活动自动退出语音模式的分钟数（默认 10）'),
     modelHost: z.string().default(d.modelHost).description('ASR 模型下载源（留空用默认源；国内网络可填 https://hf-mirror.com）'),
     autoSend: z.boolean().default(d.autoSend).description('识别定稿后自动发送（关闭则只进草稿供编辑；按住 Ctrl / hold 松手仍会发送）'),
