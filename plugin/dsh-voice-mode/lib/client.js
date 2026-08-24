@@ -240,7 +240,7 @@ function createAsrEngine(config, sessionId) {
         return;
       }
       emit(partialListeners, out.text ?? "");
-      if (out.endpoint && active && speechActive) finalizeSegment();
+      if (out.endpoint && active && speechActive && !holdActive) finalizeSegment();
     } catch {
     } finally {
       partialInFlight = false;
@@ -403,6 +403,7 @@ function createAsrEngine(config, sessionId) {
         if (speechMs >= MIN_SPEECH_MS) {
           finalizeSegment();
         } else {
+          segmentEpoch++;
           segment = [];
           speechActive = false;
           speechMs = 0;

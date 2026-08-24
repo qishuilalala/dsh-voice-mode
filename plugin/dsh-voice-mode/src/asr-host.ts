@@ -255,8 +255,25 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   let senseModelReady = false
   let senseLoading: Promise<string | null> | null = null
   let senseRecognizer: SherpaOfflineRecognizer | null = null
+  /** I1：SenseVoice 下载失败退避（失败后 60s 内不再尝试，防每句定稿卡 228MB 下载）。 */
+  let senseFailAt = 0
   const ensureSenseModel = async (): Promise<string | null> => {
     if (senseModelReady) return join(senseDir, SENSE_FILES[0])
+    if (Date.now() < senseFailAt) return null
+    if (!senseLoading) {
+      senseLoading = (async () => {
+        for (const f of SENSE_FILES) {
+          if (!(await ensureFile(senseDir, f, modelHost(), broadcast))) {
+            senseFailAt = Date.now() + 60000
+            return null
+          }
+        }
+        senseModelReady = true
+        return join(senseDir, SENSE_FILES[0])
+      })().finally(() => {
+        senseLoading = null
+      })
+    }
     if (!senseLoading) {
       senseLoading = (async () => {
         for (const f of SENSE_FILES) {
@@ -395,7 +412,13 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     // P4-1：SenseVoice 整段重译与 zipformer 定稿并行（端点等待期后起跑；
     // 带标点 + ITN 覆盖定稿文本；模型缺失/失败自然降级 zipformer）。
     const all = seg.allSamples
-    const senseP = all.length > 0 ? senseTranscribe(all) : Promise.resolve(null)
+    // I1：SenseVoice 重译带超时（10s），超时即降级 zipformer 定稿（不阻塞 finalize）。
+    const senseP = all.length > 0
+      ? Promise.race([
+          senseTranscribe(all),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+        ])
+      : Promise.resolve(null)
     // 定稿：尾垫 0.5s 静音让尾部字 flush 出来。
     const pad = new Float32Array(rec.config.featConfig.sampleRate / 2)
     seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad)
@@ -419,6 +442,12 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       if (seg) {
         try {
           seg.vad?.free?.()
+        } catch {
+          // ignore
+        }
+        // B1：显式释放 WASM stream（否则每次 reset/打断泄漏一个流句柄）。
+        try {
+          seg.stream.free()
         } catch {
           // ignore
         }

@@ -195,7 +195,7 @@ export const Config: z<Config> = z.object({
   voice: z.string().default('zh-CN-XiaoxiaoNeural'),
   rate: z.number().default(1.0),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
-  silenceMs: z.number().default(2000),
+  silenceMs: z.number().default(700),
   idleTimeoutMinutes: z.number().default(10),
 })
 
@@ -436,6 +436,9 @@ export function apply(ctx: Context, config: Config): void {
               res.end(JSON.stringify({ error: 'voice mode disabled' }))
               return
             }
+            // B1：进入即清该会话可能残留的 host ASR 段（上次中途退出的旧 stream/旧文本），
+            // 防重入后新句丢失/幽灵提交。
+            asr.reset(sessionId)
             // 全局单活：新会话进入即覆盖让出旧会话（Q11 切换会话自动让出）。
             const previous = activeVoiceSession
             activeVoiceSession = sessionId
@@ -445,6 +448,8 @@ export function apply(ctx: Context, config: Config): void {
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null
               queue.prune(sessionId)
+              // B1：退出即清 host ASR 段（释放 WASM stream，防残留文本/段泄漏）。
+              asr.reset(sessionId)
               setTurn(sessionId, 'idle')
               broadcast('mode', { active: null })
             }

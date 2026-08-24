@@ -136,8 +136,24 @@ function createAsrRuntime(options) {
   let senseModelReady = false;
   let senseLoading = null;
   let senseRecognizer = null;
+  let senseFailAt = 0;
   const ensureSenseModel = async () => {
     if (senseModelReady) return join(senseDir, SENSE_FILES[0]);
+    if (Date.now() < senseFailAt) return null;
+    if (!senseLoading) {
+      senseLoading = (async () => {
+        for (const f of SENSE_FILES) {
+          if (!await ensureFile(senseDir, f, modelHost(), broadcast)) {
+            senseFailAt = Date.now() + 6e4;
+            return null;
+          }
+        }
+        senseModelReady = true;
+        return join(senseDir, SENSE_FILES[0]);
+      })().finally(() => {
+        senseLoading = null;
+      });
+    }
     if (!senseLoading) {
       senseLoading = (async () => {
         for (const f of SENSE_FILES) {
@@ -255,7 +271,10 @@ function createAsrRuntime(options) {
     }
     if (!final) return { text, endpoint };
     const all = seg.allSamples;
-    const senseP = all.length > 0 ? senseTranscribe(all) : Promise.resolve(null);
+    const senseP = all.length > 0 ? Promise.race([
+      senseTranscribe(all),
+      new Promise((resolve) => setTimeout(() => resolve(null), 1e4))
+    ]) : Promise.resolve(null);
     const pad = new Float32Array(rec.config.featConfig.sampleRate / 2);
     seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad);
     while (rec.isReady(seg.stream)) rec.decode(seg.stream);
@@ -276,6 +295,10 @@ function createAsrRuntime(options) {
       if (seg) {
         try {
           seg.vad?.free?.();
+        } catch {
+        }
+        try {
+          seg.stream.free();
         } catch {
         }
         segments.delete(sessionId);
@@ -675,7 +698,7 @@ var Config = z.object({
   voice: z.string().default("zh-CN-XiaoxiaoNeural"),
   rate: z.number().default(1),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
-  silenceMs: z.number().default(2e3),
+  silenceMs: z.number().default(700),
   idleTimeoutMinutes: z.number().default(10)
 });
 function apply(ctx, config) {
@@ -871,6 +894,7 @@ function apply(ctx, config) {
               res.end(JSON.stringify({ error: "voice mode disabled" }));
               return;
             }
+            asr.reset(sessionId);
             const previous = activeVoiceSession;
             activeVoiceSession = sessionId;
             if (previous && previous !== sessionId) queue.prune(previous);
@@ -879,6 +903,7 @@ function apply(ctx, config) {
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null;
               queue.prune(sessionId);
+              asr.reset(sessionId);
               setTurn(sessionId, "idle");
               broadcast("mode", { active: null });
             }

@@ -135,7 +135,7 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
     voice: zh-CN-XiaoxiaoNeural
     rate: 1.0
     interruptLevel: 0
-    silenceMs: 2000
+    silenceMs: 700
     idleTimeoutMinutes: 10
     modelHost: https://huggingface.co
 ```

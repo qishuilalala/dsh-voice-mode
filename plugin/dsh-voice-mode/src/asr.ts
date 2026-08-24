@@ -2,7 +2,7 @@
  * dsh-voice-mode ASR engine（浏览器半）：持续聆听 + VAD 自动分段。
  *
  * 与参照 dsh-voice 的关键差异：
- *  - 不是 tap/hold，而是「进入语音模式后持续收音」：静音 2s 自动断句（Q5），
+ *  - 不是 tap/hold，而是「进入语音模式后持续收音」：静音 700ms 自动断句（P1-3，端点优先由 host Silero VAD 判定），
  *    段定稿后提交；按住 Ctrl（≥250ms 语音）强制立即发送兜底；
  *  - partial 轮询（≈900ms）走 host 流式识别增量，实时字幕只在状态条预览，
  *    定稿文本才作为结果（Q6/Q13：可编辑草稿 + 自动提交）；
@@ -294,7 +294,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       emit(partialListeners, out.text ?? '')
       // P2-1：host Silero VAD 端点提示（静音 ≥0.5s 判句完成）→ 立即定稿。
       // 客户端静音计时（silenceMs）保留为 VAD 模型缺失/超时兜底。
-      if (out.endpoint && active && speechActive) finalizeSegment()
+      // I3：hold 按住期间不判端点（松手才发，防思考停顿被拆句）。
+      if (out.endpoint && active && speechActive && !holdActive) finalizeSegment()
     } catch {
       // 预览失败静默（Q16：识别重试由定时轮询自然覆盖）
     } finally {
@@ -487,6 +488,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           finalizeSegment()
         } else {
           // P1-3：语音不足 250ms（短促噪声/误触）：放弃本段，不发送。
+          segmentEpoch++ // I4：作废在途 partial 响应（防其推进 uploadedSamples 水位错乱）
           segment = []
           speechActive = false
           speechMs = 0

@@ -5,7 +5,7 @@
  * Ctrl+Shift+V；激活后输入框上方常驻状态条（conversation.input.dock）。
  * 全局单活（Q9）：host 为真相源 + SSE mode 广播纠正多标签页漂移；切换会话/
  * 被抢占自动让出（Q11）。打字即退出（Q13 双通道不混入）。
- * 输入链路（§8.3）：持续聆听 -> VAD 分段（静音 2s 断句 Q5）-> partial 轮询
+ * 输入链路（§8.3）：持续聆听 -> 端点判定（host Silero VAD 优先，静音 700ms 兜底）-> partial 轮询
  * 字幕预览 -> 定稿进草稿 + 自动提交；按住 Ctrl 强制立即发送。
  */
 import * as React from 'react'
@@ -1071,7 +1071,7 @@ export function MicButton({
       })
       engine.onSpeechStart(async () => {
         // barge-in（Q2 硬打断）+ P3-3 duck-and-listen：先压低 TTS（<50ms 降 0.3x），
-        // 听 300ms 确认窗口——mic 电平骤降（TTS 压低→回声减小）⇒ 先前是回声：
+        // 听确认窗口（DUCK_CONFIRM_MS=600）——mic 电平骤降（TTS 压低→回声减小）⇒ 先前是回声：
         // 恢复增益、不打断；电平维持（真人声）⇒ 执行真打断三层：
         // 1) 本地播放队列清空 + host TTS 队列 epoch++（静音）
         // 2) 有 running 回合则 session.cancel({keepInbox:true})（取消生成、保新消息）

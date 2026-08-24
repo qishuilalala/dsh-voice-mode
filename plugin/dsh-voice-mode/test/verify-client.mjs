@@ -3,7 +3,7 @@
  * 无网络、无 dsh 依赖。运行：node test/verify-client.mjs（npm test 串联）。
  */
 import assert from 'node:assert/strict'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -71,13 +71,13 @@ t('lib/client.js 是 __ModuleLoader__ 闭包且注入全部三个槽位', () => 
   }
 })
 t('build 产物与源码时间戳对齐（lib 不早于 src）', () => {
-  const newestSrc = ['src/index.ts', 'src/client.tsx', 'src/asr.ts', 'src/asr-host.ts', 'src/tts-queue.ts', 'src/segmenter.ts', 'src/index.ts']
-    .map((f) => existsSync(join(root, f)) ? Date.parse(readFileSync(join(root, f), 'utf8').length ? '0' : '0') || 0 : 0)
-  // 简化：只校验 lib 存在且非空
+  // 修正空断言：真实比较 lib mtime ≥ 最新 src mtime（重建保证）。
+  const srcFiles = ['src/index.ts', 'src/client.tsx', 'src/asr.ts', 'src/asr-host.ts', 'src/tts-queue.ts', 'src/segmenter.ts', 'src/aec.ts', 'src/resample.ts']
+  const newestSrc = Math.max(...srcFiles.map((s) => (existsSync(join(root, s)) ? statSync(join(root, s)).mtimeMs : 0)))
   for (const f of ['lib/index.js', 'lib/client.js']) {
     assert.ok(readFileSync(join(root, f)).length > 10_000, `${f} 疑似未构建`)
+    assert.ok(statSync(join(root, f)).mtimeMs >= newestSrc - 500, `${f} 早于源码（需 node build.mjs）`)
   }
-  void newestSrc
 })
 t('lib/index.js 含 P1-5 延迟埋点链广播（latency 事件）', () => {
   const src = read('lib/index.js')
