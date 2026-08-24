@@ -83,6 +83,21 @@ async function main() {
   const st2 = await page.evaluate(async () => (await (await fetch('/voice-mode')).json()).active)
   console.log('最终 active:', st2)
   await page.evaluate(() => window.__ves?.close())
+  // 卫生：探针结束退出语音模式（防遗留 active 占用全局单活）。
+  await page.evaluate(async () => {
+    try {
+      const st = await (await fetch('/voice-mode')).json()
+      if (st.active) {
+        await fetch('/voice-mode/toggle', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sessionId: st.active, on: false }),
+        })
+      }
+    } catch {
+      // 退出失败不影响结果输出
+    }
+  })
   await browser.close()
 }
 main().catch((e) => {

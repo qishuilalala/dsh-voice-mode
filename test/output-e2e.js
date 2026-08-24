@@ -118,6 +118,21 @@ async function main() {
       : '❌ 未收到 audio 帧',
   )
   await page.evaluate(() => window.__voiceES?.close())
+  // 卫生：探针结束退出语音模式（防遗留 active 占用全局单活，污染后续会话）。
+  await page.evaluate(async () => {
+    try {
+      const st = await (await fetch('/voice-mode')).json()
+      if (st.active) {
+        await fetch('/voice-mode/toggle', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sessionId: st.active, on: false }),
+        })
+      }
+    } catch {
+      // 退出失败不影响结果输出
+    }
+  })
   await browser.close()
 }
 
