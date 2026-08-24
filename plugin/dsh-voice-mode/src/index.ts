@@ -111,6 +111,8 @@ export interface VoiceSettingsValue {
    * 关掉即对后续回复失效；非语音会话不受影响）。
    */
   spokenFormat: boolean
+  /** P4：SenseVoice 定稿重译（带标点 + ITN；默认开，关=只用流式 zipformer，省 228MB 模型）。 */
+  senseVoice: boolean
 }
 
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
@@ -125,6 +127,7 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   mode: 'toggle',
   wakeWord: '',
   spokenFormat: false,
+  senseVoice: true,
 }
 
 /** 以平台常量默认构造设置 schema。 */
@@ -155,6 +158,10 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .boolean()
       .default(d.spokenFormat)
       .description('语音会话注入口语化提示词（口语化短句、不用 Markdown 排版符号，朗读更顺；默认关，改动即时生效）'),
+    senseVoice: z
+      .boolean()
+      .default(d.senseVoice)
+      .description('定稿用 SenseVoice 重译（带标点+数字归一化、识别更准；默认开。关闭可省 228MB 模型，只走流式识别）'),
   })
 }
 
@@ -241,6 +248,8 @@ export function apply(ctx: Context, config: Config): void {
   const asr = createAsrRuntime({
     cacheDir: config.cacheDir,
     modelHost: () => vset.modelHost,
+    // P4：SenseVoice 定稿重译开关（实时读取，关闭则不下载/不创建模型）。
+    senseVoice: () => vset.senseVoice,
     broadcast,
   })
 
@@ -327,6 +336,7 @@ export function apply(ctx: Context, config: Config): void {
             basePath: base,
             rate: currentRate(),
             voice: currentVoice(),
+            senseVoice: vset.senseVoice,
             interruptLevel: currentInterrupt(),
             silenceMs: vset.silenceMs,
             idleTimeoutMinutes: vset.idleTimeoutMinutes,

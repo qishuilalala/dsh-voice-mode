@@ -69,6 +69,8 @@ export interface AsrRuntimeOptions {
   cacheDir: string
   /** 模型上游 host getter（下载期读最新设置；为空用默认源）。 */
   modelHost: () => string
+  /** P4：SenseVoice 定稿重译开关（getter 实时读设置；false 时不下载/不创建模型）。 */
+  senseVoice: () => boolean
   /** 状态广播（SSE）：{kind:'asr-progress'|'asr-ready', ...} */
   broadcast: (event: string, payload: unknown) => void
 }
@@ -131,7 +133,7 @@ function rmsOf(samples: Float32Array): number {
 }
 
 export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
-  const { cacheDir, modelHost, broadcast } = options
+  const { cacheDir, modelHost, broadcast, senseVoice } = options
   const repoDir = join(cacheDir, MODEL_REPO)
   const vadDir = join(cacheDir, VAD_REPO)
   const senseDir = join(cacheDir, SENSE_REPO)
@@ -269,6 +271,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     return senseLoading
   }
   const getSenseRecognizer = async (): Promise<SherpaOfflineRecognizer | null> => {
+    if (!senseVoice()) return null // P4：开关关闭 → 只用流式 zipformer
     if (senseRecognizer) return senseRecognizer
     const sensePath = await ensureSenseModel()
     if (!sensePath) return null
