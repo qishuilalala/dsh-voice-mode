@@ -46,6 +46,12 @@ async function main() {
   const draft = () => page.evaluate(() => { const t = document.querySelector('textarea'); return t ? t.value : '' })
 
   const fail = (msg) => { throw new Error(msg) }
+  // 探针卫生：无论成功/失败都恢复 toggle（防全局设置污染后续探针）
+  const restoreToggle = async () => {
+    try {
+      await setSettings({ mode: 'toggle' })
+    } catch { /* ignore */ }
+  }
 
   // ---- 1. hold 模式进入 ----
   await setSettings({ mode: 'hold' })
@@ -119,4 +125,15 @@ async function main() {
   console.log('pageerrors:', errs.length ? errs : 'none')
   await browser.close()
 }
-main().catch((e) => { console.error('FAILED:', e.message); process.exit(1) })
+main()
+  .catch((e) => { console.error('FAILED:', e.message); process.exit(1) })
+  .finally(async () => {
+    // 探针卫生：无论成败都恢复 toggle（防全局设置污染后续探针/用户环境）
+    try {
+      await fetch('http://127.0.0.1:3018/api/settings.update', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'client-request', rpcId: 'holdx', method: 'settings.update', payload: { ns: 'voice-mode', patch: { mode: 'toggle' } } }),
+      })
+    } catch { /* ignore */ }
+  })
