@@ -8,6 +8,7 @@
 /** 线性插值重采样到目标采样率。 */
 export function resampleLinear(src: Float32Array, srcRate: number, dstRate: number): Float32Array {
   if (srcRate === dstRate) return src
+  if (src.length === 0) return src
   const ratio = srcRate / dstRate
   const outLen = Math.max(1, Math.floor(src.length / ratio))
   const out = new Float32Array(outLen)

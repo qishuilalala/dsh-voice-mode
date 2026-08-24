@@ -58,6 +58,7 @@ function matchWakeWord(partial, wakeWord) {
 // src/resample.ts
 function resampleLinear(src, srcRate, dstRate) {
   if (srcRate === dstRate) return src;
+  if (src.length === 0) return src;
   const ratio = srcRate / dstRate;
   const outLen = Math.max(1, Math.floor(src.length / ratio));
   const out = new Float32Array(outLen);

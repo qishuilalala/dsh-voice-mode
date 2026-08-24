@@ -16,6 +16,7 @@ const tests = [
   ['aec 单测', ['node', 'test/aec.test.mjs']],
   ['下载完整性 单测', ['node', 'test/download.test.mjs']],
   ['语义端点 单测', ['node', 'test/endpoint.test.mjs']],
+  ['重采样 单测', ['node', 'test/resample.test.mjs']],
   ['清单/产物自检', ['node', 'test/verify-client.mjs']],
 ]
 let failed = 0
