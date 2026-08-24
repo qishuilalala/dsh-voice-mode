@@ -449,14 +449,16 @@ function ModelStatusView(): React.ReactElement {
   }
   const mkRow = (
     label: string,
-    info: { ready: boolean; size: number; failLatchMs?: number },
+    info: { ready: boolean; size: number; failLatchMs?: number; disabledText?: string },
     key: string,
     progressFor: ModelsStatusPayload['progress'],
   ): React.ReactElement => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
       <span style={{ width: 92, flexShrink: 0, fontSize: 12, color: t.label }}>{label}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
-        {info.ready ? (
+        {info.disabledText ? (
+          <span style={{ fontSize: 12, color: t.term }}>{info.disabledText}</span>
+        ) : info.ready ? (
           <span style={{ fontSize: 12, color: 'var(--dsw-alias-state-success-primary)', fontWeight: 600 }}>{tr('modelsReady')}</span>
         ) : progressFor && progressFor.file ? (
           <span style={{ fontSize: 12, color: t.term }}>
@@ -506,7 +508,12 @@ function ModelStatusView(): React.ReactElement {
       {mkRow(tr('modelVad'), { ready: !!st?.vad.ready, size: st?.vad.size ?? 0, failLatchMs: st?.vad.failLatchMs ?? 0 }, 'vad', anyDownloading ? st.progress : null)}
       {mkRow(
         tr('modelSense'),
-        { ready: !!st?.sense.ready, size: st?.sense.size ?? 0, failLatchMs: st?.sense.enabled ? (st?.sense.failLatchMs ?? 0) : 0 },
+        {
+          ready: !!st?.sense.ready,
+          size: st?.sense.size ?? 0,
+          failLatchMs: st?.sense.enabled ? (st?.sense.failLatchMs ?? 0) : 0,
+          disabledText: st?.sense.enabled ? undefined : tr('modelsDisabled'),
+        },
         'sense',
         anyDownloading ? st.progress : null,
       )}

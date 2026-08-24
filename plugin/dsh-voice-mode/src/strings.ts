@@ -79,6 +79,7 @@ const zh = {
   telFirstPlayed: '首音',
   // 模型管理（设置面板实时状态/重试）
   modelsTitle: '语音模型',
+  modelsDisabled: '已关闭（设置中开启）',
   modelStreamingAsr: '流式识别',
   modelVad: '端点 VAD',
   modelSense: '定稿重译',
@@ -164,6 +165,7 @@ const en: Record<keyof typeof zh, string> = {
   telFirstChunk: '1st chunk',
   telFirstPlayed: '1st audio',
   modelsTitle: 'Voice models',
+  modelsDisabled: 'off (enable in settings)',
   modelStreamingAsr: 'Streaming ASR',
   modelVad: 'Endpoint VAD',
   modelSense: 'Finalize',

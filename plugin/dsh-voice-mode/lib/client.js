@@ -774,6 +774,7 @@ var zh = {
   telFirstPlayed: "\u9996\u97F3",
   // 模型管理（设置面板实时状态/重试）
   modelsTitle: "\u8BED\u97F3\u6A21\u578B",
+  modelsDisabled: "\u5DF2\u5173\u95ED\uFF08\u8BBE\u7F6E\u4E2D\u5F00\u542F\uFF09",
   modelStreamingAsr: "\u6D41\u5F0F\u8BC6\u522B",
   modelVad: "\u7AEF\u70B9 VAD",
   modelSense: "\u5B9A\u7A3F\u91CD\u8BD1",
@@ -858,6 +859,7 @@ var en = {
   telFirstChunk: "1st chunk",
   telFirstPlayed: "1st audio",
   modelsTitle: "Voice models",
+  modelsDisabled: "off (enable in settings)",
   modelStreamingAsr: "Streaming ASR",
   modelVad: "Endpoint VAD",
   modelSense: "Finalize",
@@ -1225,7 +1227,7 @@ function ModelStatusView() {
   };
   const mkRow = (label, info, key, progressFor) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { width: 92, flexShrink: 0, fontSize: 12, color: t2.label }, children: label }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, minWidth: 0 }, children: info.ready ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: "var(--dsw-alias-state-success-primary)", fontWeight: 600 }, children: t("modelsReady") }) : progressFor && progressFor.file ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, minWidth: 0 }, children: info.disabledText ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.term }, children: info.disabledText }) : info.ready ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: "var(--dsw-alias-state-success-primary)", fontWeight: 600 }, children: t("modelsReady") }) : progressFor && progressFor.file ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
       t("modelsDownloading").replace("{file}", progressFor.file).replace("{percent}", String(progressFor.percent)),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { display: "block", height: 4, borderRadius: 99, background: t2.border, marginTop: 4, overflow: "hidden" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { display: "block", height: "100%", width: `${progressFor.percent}%`, background: "var(--dsw-alias-brand-primary)", transition: "width .3s" } }) })
     ] }) : info.failLatchMs !== void 0 && info.failLatchMs > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: "var(--dsw-alias-state-error-primary)" }, children: t("modelsFail").replace("{sec}", String(Math.ceil(info.failLatchMs / 1e3))) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
@@ -1270,7 +1272,12 @@ function ModelStatusView() {
     mkRow(t("modelVad"), { ready: !!st?.vad.ready, size: st?.vad.size ?? 0, failLatchMs: st?.vad.failLatchMs ?? 0 }, "vad", anyDownloading ? st.progress : null),
     mkRow(
       t("modelSense"),
-      { ready: !!st?.sense.ready, size: st?.sense.size ?? 0, failLatchMs: st?.sense.enabled ? st?.sense.failLatchMs ?? 0 : 0 },
+      {
+        ready: !!st?.sense.ready,
+        size: st?.sense.size ?? 0,
+        failLatchMs: st?.sense.enabled ? st?.sense.failLatchMs ?? 0 : 0,
+        disabledText: st?.sense.enabled ? void 0 : t("modelsDisabled")
+      },
       "sense",
       anyDownloading ? st.progress : null
     ),
