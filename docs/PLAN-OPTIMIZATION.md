@@ -6,9 +6,14 @@
 
 ## 决策摘要
 
-- 范围：P2 性能（增量协议升级，**双端同步**）→ P3 体验（失败提示补缺 + 退避 + 苹果限制声明）→ P4 功能（i18n + reply-first 确认音 + 共享 AudioContext 预热），一次迭代 v0.2.0。
-- **P1（安全 fence）已撤销**：宿主/部署层安全模型负责该边界（见「P1 撤销说明」），不作为插件职责。
-- 非目标：AudioWorklet 迁移、移动端 UI 重排、README 全量翻译、自建 token/fence 体系。
+- **克制裁定（v5）**：只保留**真实缺陷修复**；砍掉无收益/非需求项。
+  保留：P3-a ASR 定稿失败提示、P3-b TTS 失败退避、P3-c README 苹果限制+安全声明、
+  P4-c 共享 AudioContext 预热（修既有 Safari 静默 bug）；
+  **砍掉**：P2（增量协议——收益评估不成立）、P4-a i18n、P4-b ackSignal（非需求）；
+  顺手：asr.ts:168/181 多余 `samples.slice()`（一次性拷贝已存在，去重）。
+- **版本**：`0.1.6`（纯修复+文档，无新功能，不再升 minor）。
+- 非目标：AudioWorklet、移动端 UI 重排、README 全量翻译、token/fence、i18n、确认音
+  （i18n 与确认音列入 backlog 见文末）。
 
 ---
 
@@ -32,43 +37,20 @@
 > 经反向代理发布时由代理层（如 basic auth）鉴权；插件侧对敏感操作保留会话归属校验。
 
 ---
-## P2 性能：ASR 增量上传（**双端协议升级**）
+## P2 撤销说明（克制裁定）
 
-### 根因（v1 误判已纠正）
-- host 的 `feed` 目前是**“累计数组 + seg.fed 切片”语义**（asr-host.ts:148-153：
-  `samples.subarray(seg.fed)`）——client 必须**每次传段首到当前的全部样本**，
-  **并非“只吃增量”**（子代理“host 只吃增量”的说法读反了）；
-- client `concatSegment()`（asr.ts:142）每 ~900ms 全段 POST → 30s 讲话≈30MB 上行。
-
-### 方案（双端同版发布，协议互认）
-1. **host**：`feed()` 改为**增量语义**——传入数组即本轮新增，无条件
-   `acceptWaveform(samples)`、`fed += samples.length`（fed 仅作复位/统计）；
-   final 尾垫逻辑不变（asr-host.ts:156-160）；
-2. **client**：`concatSegment()` 改为**增量视图**——记录 `sentOff`（已成功发送
-   样本数），每次仅发送 `segments.subarray(sentOff)`；**仅在响应成功后推进 sentOff**
-   （重试/503 路径不丢不重）；`reset（asr.ts:219）` 时 `sentOff = 0`；final 帧只发
-   最后增量（host 补尾垫）；
-3. **`sentOff` 归零点（全部枚举，已核对 asr.ts:112/189-229）**：① 唤醒词清场
-   `reset=1`（asr.ts:219）；② 自然切段 `finalizeSegment` 的 `++segmentEpoch`
-   （asr.ts:229）；③ 打断/停止路径的 `segmentEpoch++`（asr.ts:197）——三处归零，
-   缺一处将导致新段补发旧数据；
-4. 单帧上限（asr.ts:161 的 213ms 窗口）不变，增量后每帧≈34KB；上限 MAX_ASR_BYTES
-   （asr-host.ts:69,4MB）不变（段长 30s 累计仍受其约束，增量不改变段上限语义）。
-
-### 改动
-- `src/asr-host.ts`（feed 增量语义）、`src/asr.ts`（sentOff 增量发送 + reset 联动）。
-
-### 验收
-- 30s 连续讲话：上行总量对比基线降 ≥85%（network 面板）；
-- 识别文本与 v1 结果**逐字一致**（回归脚本：固定 10s 音频两版对照）；
-- 打断/唤醒词清场后继续识别不串字（reset 联动）。
-
-### 回滚点
-- host 保留旧语义分支（`protocol=legacy` 开关）不必要——**双端同包发布**，
-  回滚=整版回滚（0.1.5 已在 npm）。
+**砍掉增量协议升级**，理由（first-principle 重估）：
+1. **ASR 是回环流量**：client→host 走 127.0.0.1（dsh 绑定本机），"30s 讲话 30MB
+   上行"**不产生任何网络成本**（loopback 内存级拷贝）；"省带宽"在本架构下不成立；
+2. host 端已用 `samples.subarray(seg.fed)` 只 decode 增量（asr-host.ts:150）——
+   **计算侧无浪费**；浪费仅 client 侧**每次 POST 的重复分配**（33 次/30s，累积
+   63MB 分配——GC 压力轻微）；
+3. **风险不成比例**：双端协议变更 + `sentOff` 三处归零 + 逐字回归——复杂度和回归
+   面远超收益。
+**保留的顺手项**：asr.ts:168/181 的 `samples.slice()` 为第二次拷贝（concatSegment
+返回即是新 buffer）→ 去掉（2 行，纯减负，随 P3 提交）。
 
 ---
-
 ## P3 体验：ASR 定稿失败提示 + TTS 退避 + 苹果限制声明
 
 ### 根因（v1 修正）
@@ -98,25 +80,24 @@
 
 ---
 
-## P4 功能：i18n + reply-first 确认音（**含 /config 下发链路**）
+## P4（瘦身）：共享 AudioContext 预热（修复而非新功能）
 
-### 根因
-- UI 全硬编码中文（client.tsx ~30 处、settings-form.tsx 全部行名/hint）；
-- 确认音设置**必须在 host schema**（设置面板统一入口）→ **client 读取依赖
-  `/voice-mode/config` 下发**（v1 计划漏了该链路）。
+### 根因（克制裁定后）
+- **i18n / ackSignal 砍掉**：非用户需求（ackSignal 源自同类插件借鉴）、i18n 非当前
+  痛点——列 backlog，不做；
+- 保留：**toolBeep 在 Safari/iOS 静默**（client.tsx:159-175：SSE 回调内新建
+  AudioContext，非手势栈 → suspended）——**既有功能在苹果上损坏，属 bug**。
 
-### 方案
-1. **i18n 最小实现**：`src/strings.ts` 字典（zh/en，`navigator.language` 选择，
-   缺省 zh）；替换 client.tsx 与 settings-form.tsx 用户可见文案（保留代码注释中文）；
-2. **ackSignal 确认音**：host schema 加 `ackSignal: boolean`（默认 false）+
-   `/config` 下发（client 引导链路，v2 已补）+ 设置卡 checkbox；client 定稿后播
-   短促音（850Hz，约 120ms）；
-3. **共享 AudioContext 预热（Safari 根因修复）**：现有 toolBeep 在 SSE 回调内新建
-   `AudioContext`（client.tsx:159-175）——Safari/iOS 非手势栈创建的上下文默认
-   suspended → **提示音/确认音在 macOS/iOS Safari 上静默**；修复：进语音模式
-   （点麦克风手势栈，getUserMedia 回调内）创建并 `resume` 一个**共享 ctx** 保持
-   引用，beep/确认音全部复用；该 ctx 同时兜底 P2/P3 的无声问题。
+### 方案（最小）
+- 将共享 `beepCtx` 的创建点**移到进入语音模式的手势栈**（enterMode：getUserMedia
+  成功后 `beepCtx = new AudioContext(); await beepCtx.resume()`，保持引用）；
+- toolBeep 改为**复用**该 ctx（不存在/已关闭才现建，Safari 下即由预热 ctx 发声）。
 
+### 改动
+- `src/client.tsx`（创建点迁移 + toolBeep 复用）。
+
+### 验收
+- Safari/iOS：工具提示音可闻（预热 ctx 生效）；桌面行为不变（无回调内新建）。
 ### 改动
 - `src/strings.ts`（新）、`src/client.tsx`、`src/settings-form.tsx`、`src/index.ts`
   （schema + /config 字段）。
@@ -136,8 +117,7 @@
 | 离线单测 | `pnpm test` | 28 项 |
 | 集成探测 | `test/spoken-prompt-rpc.sh`（开关开/关） | 注入+TTS 帧+恢复 |
 | UI | `spoken-toggle-ui-check.js`/`preview-ui-check.js` | 设置卡/试听正常 |
-| P2 专项 | 30s 上行对比 + 10s 音频两版识别一致性 | 降幅与逐字一致 |
-| 手动 | macOS Safari（如有）或 README 声明核对 | 进模式有响应 |
+| 手动 | macOS Safari（如有）：工具提示音可闻；README 声明核对 | 进模式有响应 |
 
 ## 发布
 
@@ -167,3 +147,20 @@
 | P2 | client 单侧去重 | **双端协议改**（host 增量语义 + client 增量发送 + reset 联动） | asr-host.ts:148-153 实为切片语义；单侧改必致识别全空 |
 | P3 | 「TTS 无提示」 | TTS 已有提示链；补 ASR 定稿提示 + 退避 | client.tsx:310-314 |
 | P4 | 仅 client 侧 | + schema/`/config` 下发/设置卡三项 | client 配置引导链路 |
+
+## v4→v5 变更记录（克制裁定）
+
+| 项 | 裁定 | 理由 |
+| --- | --- | --- |
+| P2 增量协议 | **砍** | ASR 走回环（无网络成本）；host 已按增量 decode；协议变更风险不成比例；仅保留去重复拷贝（2 行） |
+| P4-i18n | **砍（backlog）** | 非当前痛点；工作量与收益不匹配；记录待有英文用户诉求再做 |
+| P4-ackSignal 确认音 | **砍（backlog）** | 非用户需求（同类插件借鉴而来）；克制原则不引入未要求功能 |
+| P4-共享 AudioContext 预热 | **保留** | 既有 toolBeep 在 Safari 静默（bug 修复）；最小改动（创建点迁移） |
+| P3-a/b/c | **保留（瘦身）** | 均为真实缺陷/诚实性缺口；较小改动 |
+
+## Backlog（本迭代不做）
+
+- i18n（中英字典，`navigator.language`）
+- reply-first 确认音（用户诉求时再做，含共享 ctx 全链路）
+- AudioWorklet 迁移（ScriptProcessor 在 Safari 17/18 仍受支持）
+- 移动端 UI 重排
