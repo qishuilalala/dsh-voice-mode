@@ -30,6 +30,7 @@
     "scripts/prefetch.mjs",
     "scripts/list-voices.mjs",
     "scripts/bench-asr.mjs",
+    "scripts/verify.mjs",
     "README.md",
     "README.en.md",
     "LICENSE"
