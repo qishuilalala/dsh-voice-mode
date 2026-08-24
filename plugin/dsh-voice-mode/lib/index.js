@@ -249,7 +249,7 @@ function createAsrRuntime(options) {
       const inc = samples.subarray(skip);
       seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc);
       seg.fed = offset + samples.length;
-      seg.allSamples.push(inc);
+      if (seg.fed <= rec.config.featConfig.sampleRate * 60) seg.allSamples.push(inc);
       while (rec.isReady(seg.stream)) rec.decode(seg.stream);
       text = rec.getResult(seg.stream).text;
       seg.lastText = text;

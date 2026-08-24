@@ -413,7 +413,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       const inc = samples.subarray(skip)
       seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc)
       seg.fed = offset + samples.length
-      seg.allSamples.push(inc) // P4-1：累积本段全量（SenseVoice 定稿重译输入）
+      // P4-1：累积本段全量（SenseVoice 定稿重译输入）；有界防御——异常客户端绕过
+      // 前端 30s 段上限时，超 60s 不再累积（防无界内存；zipformer 流不受影响）。
+      if (seg.fed <= rec.config.featConfig.sampleRate * 60) seg.allSamples.push(inc) 
       while (rec.isReady(seg.stream)) rec.decode(seg.stream)
       // 取 ASR 结果（确认窗口的无新实词判据用）。
       text = rec.getResult(seg.stream).text

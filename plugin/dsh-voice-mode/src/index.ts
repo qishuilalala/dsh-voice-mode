@@ -100,9 +100,8 @@ export interface VoiceSettingsValue {
   /** 模型上游 host（空 = 默认源；国内网络可配 hf-mirror.com）。 */
   modelHost: string
   /** 定稿后是否自动发送（关 = 只进草稿，按住 Ctrl/松手仍可强制发送）。 */
+  autoSend: boolean
   /** 交互模式：toggle 持续聆听+自动端点断句；hold 按住说话、松手发送。 */
-
-  /** 交互模式：toggle 持续聆听+2s 静音断句；hold 按住说话、松手发送。 */
   mode: 'toggle' | 'hold'
   /** 唤醒词（空 = 关；如「你好小D」）：待机态说出后激活，避免误触。 */
   wakeWord: string
