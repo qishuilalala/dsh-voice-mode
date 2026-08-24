@@ -136,7 +136,7 @@ pnpm test                     # 单测（segmenter/wakeword/aec + 发布前自�
 systemctl restart dsh         # 本机加载新 host 代码；其他平台重启 dsh 进程
 ```
 
-> 注意：dsh 安装的是 pnpm `file:` 链接（目录拷贝），改完 `node build.mjs` 后需把 `lib/client.js` 同步到 `<profile>/node_modules/dsh-voice-mode/lib/` 再刷新页面（`lib/index.js` 与工作区为同一文件自动同步）。集成探测脚本（`test/hold-e2e.js`、`test/spoken-prompt-rpc.sh`、`test/spoken-toggle-ui-check.js`）位于仓库根 `test/`，不在 npm 包内。
+> 注意：dsh 安装的是 pnpm `file:` 链接（目录拷贝），改完 `node build.mjs` 后需把 `lib/client.js` 同步到 `<profile>/node_modules/dsh-voice-mode/lib/` 再刷新页面（`lib/index.js` 与工作区为同一文件自动同步）。集成探测脚本（`test/hold-e2e.js`、`test/capture-e2e.js`、`test/asr-e2e.js`、`test/output-e2e.js`、`test/race-probe` 类）位于仓库根 `test/`，不在 npm 包内；`capture-e2e.js` 用 fake 麦克风做「采集→partial→final」闭环自检。
 
 > 开发模式延迟埋点（P1-5）：浏览器控制台执行 `localStorage.setItem('dsh-voice-mode.telemetry', '1')` 后刷新页面，进入语音模式时状态条会实时显示「说完 → 端点 → 定稿 → 首Token → 首句 → 首chunk → 首音」各段耗时与合计（说完→首音），供 P1 延迟验收测量；`localStorage.removeItem('dsh-voice-mode.telemetry')` 关闭（默认关闭，零采集）。
 
