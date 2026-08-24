@@ -280,7 +280,7 @@ test/hold-e2e.js          hold-mode end-to-end acceptance (standalone browser)
 scripts/list-voices.mjs   print all Edge TTS voices (source of the voice table)
 ```
 
-Integration probes (`hold-e2e.js`, `spoken-prompt-rpc.sh`, `spoken-toggle-ui-check.js`) live in the repo root `test/`, outside this npm package.
+Integration probes (`hold-e2e.js`, `capture-e2e.js`, `asr-e2e.js`, `output-e2e.js`, …) live in the repo root `test/`, outside this npm package; `capture-e2e.js` self-checks the capture→partial→final loop with a fake mic.
 
 ## License
 
