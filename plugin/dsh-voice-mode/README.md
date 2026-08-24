@@ -63,6 +63,12 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 
 生效范围：`voice`/`rate`/`spokenFormat` **立即生效**；其余设置下次进入语音模式时生效。设置项默认值由插件配置（`base` 层）提供。
 
+### 开发工具
+
+- `node scripts/list-voices.mjs`：列出 Edge TTS 音色
+- `node scripts/prefetch.mjs`：预下载 ASR/VAD/SenseVoice 模型
+- `node scripts/bench-asr.mjs --dir <测试集目录>`（P4-2）：离线 CER/段延迟/体积对照（现役 zipformer int8 vs xlarge / small-CTC / 在线 Paraformer），测试集 = 16k 单声道 PCM `.wav` + 同名 `.txt` 参考文本
+
 ### 常用音色（完整清单见 `node scripts/list-voices.mjs`）
 
 | ShortName | 说明 |

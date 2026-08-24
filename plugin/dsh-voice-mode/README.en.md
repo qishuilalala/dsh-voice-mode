@@ -72,6 +72,7 @@ dsh plugin --profile web add .
 ```sh
 npm run prefetch          # run inside the plugin dir; writes to the platform cache dir
 # or specify the cache location: node scripts/prefetch.mjs --cache-dir /where/ever/models
+node scripts/bench-asr.mjs --dir <test-set-dir>   # P4-2 offline CER/latency/size comparison (zipformer int8 vs xlarge / small-CTC / paraformer; needs 16k mono PCM wav + same-name .txt)
 ```
 
 ## Usage
