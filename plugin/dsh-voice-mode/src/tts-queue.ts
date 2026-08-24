@@ -231,6 +231,9 @@ export class TtsQueue {
       }
     } finally {
       q.busy = false
+      // 防御：prune 后同会话立即重入时，孤儿泵不得带着残余 pending 重启
+      // （否则与新的 SessionQueue 双泵并行合成，共享 msedge 连接会冲突）。
+      if (this.queues.get(sessionId) !== q) return
       if (q.pending.length > 0) {
         // 失败退避（防 Edge TTS 故障忙循环）：1s 指数递增至多 8s；成功/无错误即时。
         const delay = q.errorNotified ? q.backoff : 0

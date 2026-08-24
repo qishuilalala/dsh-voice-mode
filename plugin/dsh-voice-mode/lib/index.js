@@ -766,6 +766,7 @@ var TtsQueue = class {
       }
     } finally {
       q.busy = false;
+      if (this.queues.get(sessionId) !== q) return;
       if (q.pending.length > 0) {
         const delay = q.errorNotified ? q.backoff : 0;
         q.backoff = Math.min(8e3, delay + 1e3);
