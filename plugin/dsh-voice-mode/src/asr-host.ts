@@ -140,17 +140,18 @@ const CONFIRM_MIN_MS = 400
 /** 列举连词 / 延续词（结尾匹配 → 升档多等，语义端点提示，本地启发式）。
  * 疑问/终止收尾无需处理：默认端点路径（VAD 段完成即端点）已是最快，
  * 语义提示只在「要更慢」的方向上生效（连词/长句）。 */
-const CONJUNCTION_TAIL = /(然后|还有|以及|并且|而且|此外|再说|接着|然后呢|比方说|比如说|比如|例如|等等|或者|或是|还有呢)$/
+export const CONJUNCTION_TAIL = /(然后|还有|以及|并且|而且|此外|再说|接着|然后呢|比方说|比如说|比如|例如|等等|或者|或是|还有呢)$/
 
-/** P2-2/P2-3：VAD 段完成后的确认窗口（毫秒）；0 = 立即端点。 */
-function endpointConfirmMs(text: string, spokenMs: number): number {
+/** P2-2/P2-3：VAD 段完成后的确认窗口（毫秒）；0 = 立即端点。
+ * 导出供单测（语义判定）：连词结尾升档多等；长句给缓冲防句内小停顿误切。 */
+export function endpointConfirmMs(text: string, spokenMs: number): number {
   const tail = text.trimEnd()
   if (CONJUNCTION_TAIL.test(tail)) return CONFIRM_CONJUNCTION_MS
   if (spokenMs > CONFIRM_LONG_SENTENCE_S * 1000) return CONFIRM_LONG_SENTENCE_MS
   return 0
 }
-/** 静默增量 RMS（判断是否又开口续说）。 */
-function rmsOf(samples: Float32Array): number {
+/** 静默增量 RMS（判断是否又开口续说）；导出供单测。 */
+export function rmsOf(samples: Float32Array): number {
   if (samples.length === 0) return 0
   let sum = 0
   for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i]
