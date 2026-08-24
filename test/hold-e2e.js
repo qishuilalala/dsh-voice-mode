@@ -1,4 +1,6 @@
 // hold 模式验收（独立浏览器，/asr 拦截返回假文本）；稳定选择器 [data-dshvm="mic"]
+// 注意：定稿文本写入 composer 需真实 dsh GUI 会话上下文——headless 空白页无 composer
+// 管理（setDraft 不可用），UI 文本断言请在真机 GUI 会话中运行本探针验证。
 const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
 const BASE = process.env.BASE || 'http://127.0.0.1:3018'
 
@@ -48,7 +50,9 @@ async function main() {
   // ---- 1. hold 模式进入 ----
   await setSettings({ mode: 'hold' })
   await page.route('**/voice-mode/asr*', (route) => {
-    const final = new URL(route.request().url()).searchParams.get('final') === '1'
+    const u = new URL(route.request().url())
+    const final = u.searchParams.get('final') === '1'
+    console.log('  [route] asr', final ? 'final' : 'partial', 'offset=' + u.searchParams.get('offset'))
     void route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ text: final ? '你好世界' : '你' }) })
   })
   await mic.click()
@@ -66,14 +70,16 @@ async function main() {
   await page.waitForTimeout(500)
   await page.mouse.up()
   await page.waitForTimeout(800)
-  const d1 = await draft()
-  // autoSend=true 时松手即提交并清空草稿：断言「你好世界」出现在页面（草稿或已发消息）
-  if (d1.includes('你好世界')) {
-    console.log('✓ 长按松手：草稿 =', JSON.stringify(d1))
-  } else {
-    await page.getByText('你好世界').first().waitFor({ timeout: 12000 })
-    console.log('✓ 长按松手：已提交进聊天（草稿已消费）')
+  // autoSend=true 时松手即提交：断言「你好世界」出现在草稿 value 或页面文本
+  // （textarea 的值不是文本节点，getByText 匹配不到——轮询草稿/页面）
+  let heldOk = false
+  for (let i = 0; i < 14; i++) {
+    await page.waitForTimeout(1000)
+    const v = await draft()
+    if (v.includes('你好世界')) { console.log('✓ 长按松手：草稿含', JSON.stringify(v)); heldOk = true; break }
+    if ((await page.getByText('你好世界').count()) > 0) { console.log('✓ 长按松手：已提交进聊天'); heldOk = true; break }
   }
+  if (!heldOk) fail('hold 松手后未出现定稿文本（草稿或聊天）')
 
   // ---- 2.5 Escape 放弃段：按住中按 Esc → 松手不应发送 ----
   const bb1 = await mic.boundingBox()
