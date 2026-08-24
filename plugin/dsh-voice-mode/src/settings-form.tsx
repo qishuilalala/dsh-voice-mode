@@ -475,7 +475,7 @@ function ModelStatusView(): React.ReactElement {
       </span>
       <button
         type="button"
-        disabled={retrying === key || info.ready}
+        disabled={retrying === key || info.ready || !!info.disabledText}
         onClick={() => retry(key)}
         style={{
           font: 'inherit',
@@ -486,7 +486,7 @@ function ModelStatusView(): React.ReactElement {
           border: `1px solid ${t.border}`,
           borderRadius: 8,
           padding: '3px 10px',
-          opacity: info.ready ? 0.5 : 1,
+          opacity: info.ready || info.disabledText ? 0.5 : 1,
           flexShrink: 0,
         }}
         title={tr('modelsRetryHint')}
