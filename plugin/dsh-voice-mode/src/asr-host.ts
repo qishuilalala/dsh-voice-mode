@@ -12,7 +12,10 @@
 import { createWriteStream, statSync } from 'node:fs'
 import { mkdir, rename, stat, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { Worker } from 'node:worker_threads'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createSenseWorkerClient, type SenseWorkerClient } from './sense-worker.ts'
 
 // sherpa-onnx 无 TS 声明，定义我们用到的极小面。
 import sherpa_onnx from 'sherpa-onnx'
@@ -37,20 +40,9 @@ interface SherpaVad {
   clear(): void
   free(): void
 }
-interface SherpaOfflineStream {
-  acceptWaveform(sampleRate: number, samples: Float32Array): void
-  free(): void
-}
-interface SherpaOfflineRecognizer {
-  createStream(): SherpaOfflineStream
-  decode(stream: SherpaOfflineStream): void
-  getResult(stream: SherpaOfflineStream): { text: string }
-  free(): void
-}
-const { createOnlineRecognizer, createVad, createOfflineRecognizer } = sherpa_onnx as unknown as {
+const { createOnlineRecognizer, createVad } = sherpa_onnx as unknown as {
   createOnlineRecognizer(config: Record<string, unknown>): SherpaRecognizer
   createVad(config: Record<string, unknown>): SherpaVad
-  createOfflineRecognizer(config: Record<string, unknown>): SherpaOfflineRecognizer
 }
 
 /** 模型仓库与文件清单（大小仅作进度参考）。 */
@@ -301,9 +293,6 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   // --- P4-1 SenseVoice 定稿重译：懒下载 + 懒创建（失败自然降级 zipformer 定稿）。 ---
   let senseModelReady = false
   let senseLoading: Promise<string | null> | null = null
-  let senseRecognizer: SherpaOfflineRecognizer | null = null
-  /** 创建中的 recognizer promise：首个 partial 预热与首个 finalize 竞态时只建一次（防双建泄漏）。 */
-  let senseSyncing: Promise<SherpaOfflineRecognizer | null> | null = null
   /** I1：SenseVoice 下载失败退避（失败后 60s 内不再尝试，防每句定稿卡 228MB 下载）。 */
   let senseFailAt = 0
   const ensureSenseModel = async (): Promise<string | null> => {
@@ -325,41 +314,46 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     }
     return senseLoading
   }
-  const getSenseRecognizer = async (): Promise<SherpaOfflineRecognizer | null> => {
+  // —P4-1（离主线程）SenseVoice 解码跑在 worker 线程：主线程只做消息 RPC。—
+  // worker 崩溃/退出/终止后置 null，下次调用懒重建（期间降级 zipformer）。
+  let senseWorker: SenseWorkerClient | null = null
+  let senseWorkerSyncing: Promise<SenseWorkerClient | null> | null = null
+  const getSenseWorker = async (): Promise<SenseWorkerClient | null> => {
     if (!senseVoice()) return null // P4：开关关闭 → 只用流式 zipformer
-    if (senseRecognizer) return senseRecognizer
-    // 并发防呆：已有创建在途则共享它，避免预热与定稿各自 create 双建泄漏 228MB 模型实例。
-    if (senseSyncing) return senseSyncing
-    senseSyncing = (async () => {
+    if (senseWorker) return senseWorker
+    if (senseWorkerSyncing) return senseWorkerSyncing
+    senseWorkerSyncing = (async () => {
       const sensePath = await ensureSenseModel()
       if (!sensePath) return null
-      senseRecognizer = createOfflineRecognizer({
-      featConfig: { sampleRate: 16000, featureDim: 80 },
-      modelConfig: {
-        senseVoice: {
-          model: sensePath,
-          language: 'auto',
-          useInverseTextNormalization: 1, // ITN：数字/标点归一化
-        },
-        tokens: join(senseDir, 'tokens.txt'),
-        provider: 'cpu',
-        numThreads: 4,
-        debug: 0,
-      },
+      try {
+        // worker 文件与 lib/index.js 同级：相对 bundle 所在目录解析，转绝对路径（Node 拒绝 file:// 字符串）。
+        const workerPath = fileURLToPath(new URL('./sense-worker.mjs', import.meta.url))
+        const w = new Worker(workerPath, {
+          workerData: { sherpaModule: 'sherpa-onnx', modelDir: senseDir },
+        })
+        const client = createSenseWorkerClient(w)
+        // 建 recognizer（worker 内 create；主线程只等回执，不阻塞事件循环）。
+        if (!(await client.request('create'))) {
+          await client.terminate()
+          return null
+        }
+        senseWorker = client
+        return client
+      } catch (e) {
+        console.warn('[dsh-voice-mode] SenseVoice worker init failed: ' + String(e))
+        return null
+      }
+    })().finally(() => {
+      // 未产出时清空同步位，令下次调用可重建（否则恒 null）。
+      if (!senseWorker) senseWorkerSyncing = null
     })
-    return senseRecognizer
-      })()
-      // 未产出 recognizer（无模型/关闭）即清空缓存，令下次调用可重试（否则恒返回 null）。
-      .finally(() => {
-        if (!senseRecognizer) senseSyncing = null
-      })
-    return senseSyncing
+    return senseWorkerSyncing
   }
-  /** P4-1：整段 PCM → SenseVoice 离线定稿（失败返回 null）。 */
+  /** P4-1：整段 PCM → worker 内 SenseVoice 离线定稿（失败返回 null，上层降级 zipformer）。 */
   const senseTranscribe = async (allSamples: Float32Array[]): Promise<string | null> => {
     try {
-      const rec = await getSenseRecognizer()
-      if (!rec) return null
+      const worker = await getSenseWorker()
+      if (!worker) return null
       const total = allSamples.reduce((acc, c) => acc + c.length, 0)
       if (total === 0) return null
       const buf = new Float32Array(total)
@@ -368,23 +362,10 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         buf.set(c, off)
         off += c.length
       }
-      const stream = rec.createStream()
-      try {
-        stream.acceptWaveform(16000, buf)
-        rec.decode(stream)
-        const text = rec.getResult(stream).text
-        const t = text.trim()
-        return t.length > 0 ? t : null
-      } finally {
-        // Fix（对抗性审查）：decode 抛错也必须释放离线流句柄（防失败定稿泄漏）。
-        try {
-          stream.free()
-        } catch {
-          // ignore
-        }
-      }
+      // fetch 侧 Promise.race(10s) 在 worker 异步回执下真正可触发（主线程不被 decode 占住）。
+      return await worker.request('decode', buf)
     } catch (e) {
-      console.warn(`[dsh-voice-mode] SenseVoice re-transcribe failed: ${String(e)}`)
+      console.warn('[dsh-voice-mode] SenseVoice re-transcribe failed: ' + String(e))
       return null
     }
   }
@@ -404,9 +385,8 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     // 修复：仅在 senseVoice 开启时预热/下载——关闭时不得下载 228MB 大模型
     // （否则与设置语义「关闭可省模型只走流式识别」矛盾，且冲破总体积预算）。
     if (!final && senseVoice()) {
-      void ensureSenseModel()
-        .then((path) => (path ? getSenseRecognizer() : null))
-        .catch(() => {})
+      // 预热 worker（模型下载 + worker 内 create）：阻塞在 worker 线程，主线程只等回执。
+      void getSenseWorker().catch(() => {})
     }
     // epoch = 客户端段身份：key = sessionId#epoch；
     // 同会话新 epoch 先把旧世代段清理（杀「final 先于在途 partial / reset 与 in-flight 竞态」幽灵段）。

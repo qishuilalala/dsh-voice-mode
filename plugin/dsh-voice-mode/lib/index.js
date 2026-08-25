@@ -7,8 +7,123 @@ import { homedir } from "node:os";
 import { createWriteStream, statSync } from "node:fs";
 import { mkdir, rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { Worker } from "node:worker_threads";
+
+// src/sense-worker.ts
+import { parentPort, workerData } from "node:worker_threads";
+function createSenseWorkerClient(worker) {
+  let counter = 0;
+  const pending = /* @__PURE__ */ new Map();
+  let dead = false;
+  worker.on?.("message", (msg) => {
+    const p = pending.get(msg?.id);
+    if (!p) return;
+    pending.delete(msg.id);
+    if (!msg.ok) {
+      p.resolve(null);
+      return;
+    }
+    p.resolve(p.op === "create" ? true : msg.text ?? "");
+  });
+  worker.on?.("error", (e) => {
+    dead = true;
+    const err = new Error("sense worker error: " + String(e?.message ?? e));
+    for (const [, p] of pending) p.reject(err);
+    pending.clear();
+  });
+  worker.on?.("exit", () => {
+    dead = true;
+    const err = new Error("sense worker exited");
+    for (const [, p] of pending) p.reject(err);
+    pending.clear();
+  });
+  const request = (op, samples) => {
+    if (dead) return Promise.reject(new Error("sense worker dead"));
+    const id = counter++;
+    return new Promise((resolve, reject) => {
+      pending.set(id, { op, resolve, reject });
+      const msg = { id, op };
+      if (samples) msg.samples = samples;
+      try {
+        worker.postMessage(msg);
+      } catch (e) {
+        pending.delete(id);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+  };
+  return {
+    request,
+    terminate: async () => {
+      dead = true;
+      const err = new Error("sense worker terminated");
+      for (const [, p] of pending) p.reject(err);
+      pending.clear();
+      try {
+        await worker.terminate?.();
+      } catch {
+      }
+    }
+  };
+}
+function startSenseWorker(data) {
+  const port = parentPort;
+  if (!port) return;
+  let recognizer = null;
+  let sherpa = null;
+  port.on("message", async (msg) => {
+    try {
+      if (msg.op === "create" || msg.op === "decode") {
+        if (!sherpa) {
+          sherpa = await import(data.sherpaModule);
+        }
+        if (!recognizer) {
+          recognizer = sherpa.createOfflineRecognizer({
+            featConfig: { sampleRate: 16e3, featureDim: 80 },
+            modelConfig: {
+              senseVoice: {
+                model: data.modelDir + "/model.int8.onnx",
+                language: "auto",
+                useInverseTextNormalization: 1
+              },
+              tokens: data.modelDir + "/tokens.txt",
+              provider: "cpu",
+              debug: 0
+            }
+          });
+        }
+        if (msg.op === "decode" && msg.samples) {
+          const stream = recognizer.createStream();
+          try {
+            stream.acceptWaveform(16e3, msg.samples);
+            recognizer.decode(stream);
+            const text = recognizer.getResult(stream).text.trim();
+            port.postMessage({ id: msg.id, ok: true, text });
+          } finally {
+            try {
+              stream.free();
+            } catch {
+            }
+          }
+          return;
+        }
+        port.postMessage({ id: msg.id, ok: true, text: "" });
+        return;
+      }
+      port.postMessage({ id: msg.id, ok: false, error: "unknown op: " + msg.op });
+    } catch (e) {
+      port.postMessage({ id: msg.id, ok: false, error: String(e) });
+    }
+  });
+}
+if (parentPort) {
+  startSenseWorker(workerData);
+}
+
+// src/asr-host.ts
 import sherpa_onnx from "sherpa-onnx";
-var { createOnlineRecognizer, createVad, createOfflineRecognizer } = sherpa_onnx;
+var { createOnlineRecognizer, createVad } = sherpa_onnx;
 var MODEL_REPO = "csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30";
 var MODEL_FILES = ["encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt"];
 var VAD_REPO = "csukuangfj/vad";
@@ -149,8 +264,6 @@ function createAsrRuntime(options) {
   };
   let senseModelReady = false;
   let senseLoading = null;
-  let senseRecognizer = null;
-  let senseSyncing = null;
   let senseFailAt = 0;
   const ensureSenseModel = async () => {
     if (senseModelReady) return join(senseDir, SENSE_FILES[0]);
@@ -171,38 +284,40 @@ function createAsrRuntime(options) {
     }
     return senseLoading;
   };
-  const getSenseRecognizer = async () => {
+  let senseWorker = null;
+  let senseWorkerSyncing = null;
+  const getSenseWorker = async () => {
     if (!senseVoice()) return null;
-    if (senseRecognizer) return senseRecognizer;
-    if (senseSyncing) return senseSyncing;
-    senseSyncing = (async () => {
+    if (senseWorker) return senseWorker;
+    if (senseWorkerSyncing) return senseWorkerSyncing;
+    senseWorkerSyncing = (async () => {
       const sensePath = await ensureSenseModel();
       if (!sensePath) return null;
-      senseRecognizer = createOfflineRecognizer({
-        featConfig: { sampleRate: 16e3, featureDim: 80 },
-        modelConfig: {
-          senseVoice: {
-            model: sensePath,
-            language: "auto",
-            useInverseTextNormalization: 1
-            // ITN：数字/标点归一化
-          },
-          tokens: join(senseDir, "tokens.txt"),
-          provider: "cpu",
-          numThreads: 4,
-          debug: 0
+      try {
+        const workerPath = fileURLToPath(new URL("./sense-worker.mjs", import.meta.url));
+        const w = new Worker(workerPath, {
+          workerData: { sherpaModule: "sherpa-onnx", modelDir: senseDir }
+        });
+        const client = createSenseWorkerClient(w);
+        if (!await client.request("create")) {
+          await client.terminate();
+          return null;
         }
-      });
-      return senseRecognizer;
+        senseWorker = client;
+        return client;
+      } catch (e) {
+        console.warn("[dsh-voice-mode] SenseVoice worker init failed: " + String(e));
+        return null;
+      }
     })().finally(() => {
-      if (!senseRecognizer) senseSyncing = null;
+      if (!senseWorker) senseWorkerSyncing = null;
     });
-    return senseSyncing;
+    return senseWorkerSyncing;
   };
   const senseTranscribe = async (allSamples) => {
     try {
-      const rec = await getSenseRecognizer();
-      if (!rec) return null;
+      const worker = await getSenseWorker();
+      if (!worker) return null;
       const total = allSamples.reduce((acc, c) => acc + c.length, 0);
       if (total === 0) return null;
       const buf = new Float32Array(total);
@@ -211,21 +326,9 @@ function createAsrRuntime(options) {
         buf.set(c, off);
         off += c.length;
       }
-      const stream = rec.createStream();
-      try {
-        stream.acceptWaveform(16e3, buf);
-        rec.decode(stream);
-        const text = rec.getResult(stream).text;
-        const t = text.trim();
-        return t.length > 0 ? t : null;
-      } finally {
-        try {
-          stream.free();
-        } catch {
-        }
-      }
+      return await worker.request("decode", buf);
     } catch (e) {
-      console.warn(`[dsh-voice-mode] SenseVoice re-transcribe failed: ${String(e)}`);
+      console.warn("[dsh-voice-mode] SenseVoice re-transcribe failed: " + String(e));
       return null;
     }
   };
@@ -233,7 +336,7 @@ function createAsrRuntime(options) {
     const rec = await getRecognizer();
     if (!rec) return { text: "", loading: true };
     if (!final && senseVoice()) {
-      void ensureSenseModel().then((path) => path ? getSenseRecognizer() : null).catch(() => {
+      void getSenseWorker().catch(() => {
       });
     }
     const key = sessionId + "#" + epoch;
