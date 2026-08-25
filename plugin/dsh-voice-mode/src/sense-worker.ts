@@ -55,6 +55,8 @@ export interface SenseWorkerClient {
   /** 请求一次 decode（整段 PCM）；失败返回 null。 */
   request(op: 'decode', samples: Float32Array): Promise<string | null>
   request(op: 'create'): Promise<boolean>
+  /** 监听 worker 崩溃/退出（供持有方清引用以便重建）。 */
+  onDeath(fn: () => void): void
   terminate(): Promise<void>
 }
 
@@ -69,6 +71,18 @@ export function createSenseWorkerClient(worker: WorkerLike): SenseWorkerClient {
     { op: 'decode' | 'create'; resolve: (v: string | null | boolean) => void; reject: (e: Error) => void }
   >()
   let dead = false
+  const deathFns = new Set<() => void>()
+  const die = (): void => {
+    if (dead) return
+    dead = true
+    for (const fn of deathFns) {
+      try {
+        fn()
+      } catch {
+        // ignore
+      }
+    }
+  }
 
   worker.on?.('message', (msg: { id: number; ok?: boolean; text?: string; error?: string }) => {
     const p = pending.get(msg?.id)
@@ -82,13 +96,13 @@ export function createSenseWorkerClient(worker: WorkerLike): SenseWorkerClient {
     p.resolve(p.op === 'create' ? true : (msg.text ?? ''))
   })
   worker.on?.('error', (e: Error) => {
-    dead = true
+    die()
     const err = new Error('sense worker error: ' + String(e?.message ?? e))
     for (const [, p] of pending) p.reject(err)
     pending.clear()
   })
   worker.on?.('exit', () => {
-    dead = true
+    die()
     const err = new Error('sense worker exited')
     for (const [, p] of pending) p.reject(err)
     pending.clear()
@@ -112,6 +126,9 @@ export function createSenseWorkerClient(worker: WorkerLike): SenseWorkerClient {
 
   return {
     request: request as SenseWorkerClient['request'],
+    onDeath(fn: () => void) {
+      deathFns.add(fn)
+    },
     terminate: async () => {
       dead = true
       const err = new Error('sense worker terminated')

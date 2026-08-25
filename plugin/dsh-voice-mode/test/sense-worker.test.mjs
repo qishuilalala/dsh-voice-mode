@@ -86,4 +86,31 @@ t('create 请求回执 true（worker 内 recognizer 建好）', async () => {
   assert.equal(await p, true)
 })
 
+t('onDeath：worker 崩溃时通知持有方（清引用以便重建）', async () => {
+  const w = mockWorker()
+  const c = createSenseWorkerClient(w)
+  let died = false
+  c.onDeath(() => { died = true })
+  w.emit('error', new Error('crashed'))
+  assert.ok(died, 'onDeath 应触发')
+  // 崩溃后 request 直接 reject（dead）
+  await assert.rejects(c.request('decode', new Float32Array(4)), /dead/)
+})
+
+t('崩溃后重建：新 client 可正常解码', async () => {
+  // 模拟 asr-host 的 crash-rebuild：old client dead → 建 new client 复用 mockWorker
+  const w1 = mockWorker()
+  const c1 = createSenseWorkerClient(w1)
+  c1.onDeath(() => { /* asr-host 置 senseWorker=null */ })
+  const p = c1.request('decode', new Float32Array(8))
+  w1.emit('exit')
+  await assert.rejects(p, /exited/)
+
+  const w2 = mockWorker()
+  const c2 = createSenseWorkerClient(w2)
+  const p2 = c2.request('decode', new Float32Array(8))
+  w2.resolve(w2.sent[0].id, true, '重建成功')
+  assert.equal(await p2, '重建成功')
+})
+
 console.log('\nsense-worker：' + passed + ' 项通过')

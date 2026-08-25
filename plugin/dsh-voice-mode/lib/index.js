@@ -16,6 +16,17 @@ function createSenseWorkerClient(worker) {
   let counter = 0;
   const pending = /* @__PURE__ */ new Map();
   let dead = false;
+  const deathFns = /* @__PURE__ */ new Set();
+  const die = () => {
+    if (dead) return;
+    dead = true;
+    for (const fn of deathFns) {
+      try {
+        fn();
+      } catch {
+      }
+    }
+  };
   worker.on?.("message", (msg) => {
     const p = pending.get(msg?.id);
     if (!p) return;
@@ -27,13 +38,13 @@ function createSenseWorkerClient(worker) {
     p.resolve(p.op === "create" ? true : msg.text ?? "");
   });
   worker.on?.("error", (e) => {
-    dead = true;
+    die();
     const err = new Error("sense worker error: " + String(e?.message ?? e));
     for (const [, p] of pending) p.reject(err);
     pending.clear();
   });
   worker.on?.("exit", () => {
-    dead = true;
+    die();
     const err = new Error("sense worker exited");
     for (const [, p] of pending) p.reject(err);
     pending.clear();
@@ -55,6 +66,9 @@ function createSenseWorkerClient(worker) {
   };
   return {
     request,
+    onDeath(fn) {
+      deathFns.add(fn);
+    },
     terminate: async () => {
       dead = true;
       const err = new Error("sense worker terminated");
@@ -299,6 +313,9 @@ function createAsrRuntime(options) {
           workerData: { sherpaModule: "sherpa-onnx", modelDir: senseDir }
         });
         const client = createSenseWorkerClient(w);
+        client.onDeath(() => {
+          senseWorker = null;
+        });
         if (!await client.request("create")) {
           await client.terminate();
           return null;
@@ -460,6 +477,10 @@ function createAsrRuntime(options) {
     },
     dispose: () => {
       clearInterval(sweepTimer);
+      let w = senseWorker;
+      senseWorker = null;
+      senseWorkerSyncing = null;
+      if (w) void w.terminate();
       for (const [, s] of segments) {
         try {
           s.vad?.free?.();

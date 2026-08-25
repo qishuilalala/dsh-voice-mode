@@ -332,6 +332,10 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
           workerData: { sherpaModule: 'sherpa-onnx', modelDir: senseDir },
         })
         const client = createSenseWorkerClient(w)
+        // 崩溃/退出自动重建：清引用后下次 getSenseWorker 懒重建（防永久降级 zipformer）。
+        client.onDeath(() => {
+          senseWorker = null
+        })
         // 建 recognizer（worker 内 create；主线程只等回执，不阻塞事件循环）。
         if (!(await client.request('create'))) {
           await client.terminate()
@@ -541,6 +545,11 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     },
     dispose: () => {
       clearInterval(sweepTimer)
+      // 释放 SenseVoice worker（terminate 常驻线程，防热重载后线程泄漏）。
+      let w = senseWorker
+      senseWorker = null
+      senseWorkerSyncing = null
+      if (w) void w.terminate()
       for (const [, s] of segments) {
         try {
           s.vad?.free?.()
