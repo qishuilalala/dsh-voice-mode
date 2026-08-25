@@ -271,6 +271,7 @@ function createAsrEngine(config, sessionId) {
       try {
         emitTelemetry("submitted");
         let res = await fetch(asrUrl(true, from, epochSnapshot), {
+          signal: AbortSignal.timeout(1e4),
           method: "POST",
           headers: { "content-type": "application/octet-stream" },
           body: samples.buffer
@@ -282,6 +283,7 @@ function createAsrEngine(config, sessionId) {
               try {
                 resolve(
                   await fetch(asrUrl(true, from, epochSnapshot), {
+                    signal: AbortSignal.timeout(1e4),
                     method: "POST",
                     headers: { "content-type": "application/octet-stream" },
                     body: samples.buffer
@@ -296,7 +298,7 @@ function createAsrEngine(config, sessionId) {
         setState(active ? speechActive ? "speech" : "listening" : "idle");
         if (!res.ok) return;
         const out = await res.json();
-        if (epochSnapshot !== segmentEpoch) return;
+        if (segmentEpoch !== epochSnapshot + 1) return;
         if (out.text) emit(transcriptListeners, out.text, meta);
       } catch {
         setState(active ? speechActive ? "speech" : "listening" : "idle");
