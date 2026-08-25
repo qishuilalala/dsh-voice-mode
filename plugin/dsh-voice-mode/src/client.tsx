@@ -147,7 +147,7 @@ const DUCK_PROBE_DROP = 0.5
 /** P3-2：回声参考采样率（16k mono，与采集一致）。 */
 const SAMPLE_RATE_16K = 16000
 /** P3-2：扬声器→麦克风声学路径前导延迟（真机标定起点）。 */
-const ECHO_DELAY_MS = 40
+const ECHO_DELAY_MS = 80
 const WAVE_BARS = 14
 const SUBMIT_DELAY_MS = 600
 /** 插件 HTTP 命名空间（与 host 侧 BASE_PATH 常量一致，固定不可配置）。 */
@@ -285,6 +285,20 @@ function createAudioEngine(
         onPlayed?.()
       } catch {
         // 埋点失败不影响播放
+      }
+      // AEC 参考完整性：降级 <audio> 播放也喂参考池（尽力解码，失败则依赖浏览器原生 AEC）。
+      // 缺此路时外放/半开放耳机的 TTS 会被麦克风采到 → 回声被识别成新语音（复述回环）。
+      try {
+        if (ctx && frame.audio.length) {
+          void ctx
+            .decodeAudioData(frame.audio.buffer.slice(0))
+            .then((buf) => {
+              onPlaybackRef?.(buf.getChannelData(0), buf.sampleRate, performance.now())
+            })
+            .catch(() => {})
+        }
+      } catch {
+        // 忽略：无 ctx（全面降级）时由浏览器原生 echoCancellation 兜底
       }
     }
     setUi({ playing: true, playingCaption: frame.text, ttsNotice: null })
@@ -530,7 +544,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     }
     return out
   }
-  const aec = new NlmsAec()
+  // AEC 覆盖增强（复述回环修复）：FIR 256→1024 taps（64ms@16k）+ delay 128，
+  // 结合 80ms 前导对齐覆盖 80-150ms 的声学路径（蓝牙/外放/OS 缓冲差异大）。
+  const aec = new NlmsAec({ filterLength: 1024, delay: 128 })
   const echoSource: EchoRefSource = {
     process: (mic, ref) => aec.process(mic, ref),
     windowAt: refWindowAt,

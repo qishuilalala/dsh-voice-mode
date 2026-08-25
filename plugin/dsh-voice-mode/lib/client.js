@@ -1383,7 +1383,7 @@ var DUCK_LEVEL = 0.3;
 var DUCK_CONFIRM_MS = 600;
 var DUCK_PROBE_DROP = 0.5;
 var SAMPLE_RATE_16K = 16e3;
-var ECHO_DELAY_MS = 40;
+var ECHO_DELAY_MS = 80;
 var WAVE_BARS = 14;
 var BASE_PATH2 = "/voice-mode";
 function apply(ctx) {
@@ -1483,6 +1483,15 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
     fallbackAudio.onplaying = () => {
       try {
         onPlayed?.();
+      } catch {
+      }
+      try {
+        if (ctx && frame.audio.length) {
+          void ctx.decodeAudioData(frame.audio.buffer.slice(0)).then((buf) => {
+            onPlaybackRef?.(buf.getChannelData(0), buf.sampleRate, performance.now());
+          }).catch(() => {
+          });
+        }
       } catch {
       }
     };
@@ -1701,7 +1710,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     }
     return out;
   };
-  const aec = new NlmsAec();
+  const aec = new NlmsAec({ filterLength: 1024, delay: 128 });
   const echoSource = {
     process: (mic, ref) => aec.process(mic, ref),
     windowAt: refWindowAt
