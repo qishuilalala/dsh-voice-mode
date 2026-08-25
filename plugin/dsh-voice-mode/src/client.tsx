@@ -144,10 +144,19 @@ const DUCK_LEVEL = 0.3
 // I2：600ms 确认窗口（16k ctx 下 levels 滚动 ~896ms/窗，300ms 内统计变化太少；真机标定起点）。
 const DUCK_CONFIRM_MS = 600
 const DUCK_PROBE_DROP = 0.5
+/** duck 后「mic 近乎静音」的绝对电平下限（levels 归一化 0..1；≈rms 0.02）。
+ *  静音回声判据：TTS 压低后 mic 只剩（近零）回声 → 判回声；
+ *  反之 duck 后仍有能量 = 真人声仍在 → 立即打断（防响亮 TTS 下真实打断被误判吞掉）。 */
+const DUCK_SILENCE_LEVEL = 0.06
 /** P3-2：回声参考采样率（16k mono，与采集一致）。 */
 const SAMPLE_RATE_16K = 16000
-/** P3-2：扬声器→麦克风声学路径前导延迟（真机标定起点）。 */
-const ECHO_DELAY_MS = 80
+/**
+ * P3-2：扬声器→麦克风声学路径前导延迟。
+ * 修复（耳机自回声）：固定 80ms 预移位使 NLMS 只能消除 >80ms 的长路径回声，
+ * 耳机/近距耦合（5-10ms）落在窗口外回声全残留 → 被识别人声自动发送 + 打断误判。
+ * 归零后由 NLMS 的 160ms 全窗口自适应学习任意路径延迟（合成模型：2~150ms 全路径一致消除）。
+ */
+const ECHO_DELAY_MS = 0
 const WAVE_BARS = 14
 const SUBMIT_DELAY_MS = 600
 /** 插件 HTTP 命名空间（与 host 侧 BASE_PATH 常量一致，固定不可配置）。 */
@@ -544,9 +553,10 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     }
     return out
   }
-  // AEC 覆盖增强（复述回环修复）：FIR 256→1024 taps（64ms@16k）+ delay 128，
-  // 结合 80ms 前导对齐覆盖 80-150ms 的声学路径（蓝牙/外放/OS 缓冲差异大）。
-  const aec = new NlmsAec({ filterLength: 1024, delay: 128 })
+  // AEC 覆盖增强 + 耳机短路径修复：FIR 2560 taps（160ms@16k）+ delay 0，
+  // 不再依赖固定前导对齐——NLMS 在 0..160ms 全窗口内自适应学习声学路径，
+  // 同时覆盖耳机（5-10ms 耦合）与外放/蓝牙（80-150ms）回声（合成模型全路径一致消除）。
+  const aec = new NlmsAec({ filterLength: 2560, delay: 0 })
   const echoSource: EchoRefSource = {
     process: (mic, ref) => aec.process(mic, ref),
     windowAt: refWindowAt,
@@ -1149,8 +1159,12 @@ export function MicButton({
         bus.duckAudio()
         await new Promise<void>((resolve) => setTimeout(resolve, DUCK_CONFIRM_MS))
         const after = tailAvg(bus.ui.levels, 3)
-        if (before > 0 && after < before * DUCK_PROBE_DROP) {
-          // 回声：TTS 压低后 mic 骤降 → 恢复增益、丢弃已录段（防幽灵消息），
+        const echoLowered = before > 0 && after < before * DUCK_PROBE_DROP
+        // 静音判据：duck 后 mic 是否近乎静音（仅回声消失）。若仍有能量（>下限）则说明人声
+        // 仍在 → 即使相对比例骤降（响亮 TTS 把相对基准抬高）也判为真人声，立即硬打断。
+        const silenceAfterDuck = after < DUCK_SILENCE_LEVEL
+        if (echoLowered && silenceAfterDuck) {
+          // 回声：TTS 压低后 mic 骤降且近乎静音 → 恢复增益、丢弃已录段（防幽灵消息），
           // 并阻尼打断前沿 2s（防「拉低→恢复→再触发」周期循环）。
           bus.unduckAudio()
           engineRef.current?.discardSegment()

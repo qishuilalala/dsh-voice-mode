@@ -1393,8 +1393,9 @@ var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getIt
 var DUCK_LEVEL = 0.3;
 var DUCK_CONFIRM_MS = 600;
 var DUCK_PROBE_DROP = 0.5;
+var DUCK_SILENCE_LEVEL = 0.06;
 var SAMPLE_RATE_16K = 16e3;
-var ECHO_DELAY_MS = 80;
+var ECHO_DELAY_MS = 0;
 var WAVE_BARS = 14;
 var BASE_PATH2 = "/voice-mode";
 function apply(ctx) {
@@ -1721,7 +1722,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     }
     return out;
   };
-  const aec = new NlmsAec({ filterLength: 1024, delay: 128 });
+  const aec = new NlmsAec({ filterLength: 2560, delay: 0 });
   const echoSource = {
     process: (mic, ref) => aec.process(mic, ref),
     windowAt: refWindowAt
@@ -2212,7 +2213,9 @@ function MicButton({
         bus.duckAudio();
         await new Promise((resolve) => setTimeout(resolve, DUCK_CONFIRM_MS));
         const after = tailAvg(bus.ui.levels, 3);
-        if (before > 0 && after < before * DUCK_PROBE_DROP) {
+        const echoLowered = before > 0 && after < before * DUCK_PROBE_DROP;
+        const silenceAfterDuck = after < DUCK_SILENCE_LEVEL;
+        if (echoLowered && silenceAfterDuck) {
           bus.unduckAudio();
           engineRef.current?.discardSegment();
           engineRef.current?.suppressBargeIn(2e3);

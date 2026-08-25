@@ -135,4 +135,47 @@ t('发散防护：麦大声 + 近零参考反复喂不产 NaN/Inf，且之后仍
   assert.ok(rms(out) < 0.3, `发散防护后无法再收敛: rms=${rms(out).toFixed(3)}`)
 })
 
+t('短路径（耳机 5ms=80 samples）回声被消除——模拟真实 windowAt 预移位语义', () => {
+  const rng = noise(5)
+  const N = 32000 // 2s
+  const ref = new Float32Array(N)
+  for (let i = 0; i < N; i++) ref[i] = rng() * 2 - 1
+  // mic = 5ms(80 samples) 延迟的回声
+  const D = 80
+  const mic = new Float32Array(N)
+  for (let i = 0; i < N; i++) mic[i] = (i >= D ? 0.6 * ref[i - D] : 0) + (rng() * 2 - 1) * 0.02
+  // 真实 client：refWindowAt 归零后，NLMS 在全窗口自适应；这里把 ref 直接喂（同基准对齐即模拟 pre=0）。
+  const aec = new NlmsAec({ filterLength: 2560, delay: 0 })
+  const block = 1024
+  const out = new Float32Array(N)
+  for (let off = 0; off < N; off += block) {
+    out.set(aec.process(mic.subarray(off, off + block), ref.subarray(off, off + block)), off)
+  }
+  const a = Math.floor(N * 0.6)
+  const echoRms = rms(mic.subarray(a))
+  const outRms = rms(out.subarray(a))
+  // 期望 10ms 内被显著削弱（合成模型约 11.3dB ≈ ×0.27）
+  assert.ok(outRms < echoRms * 0.5, `耳机短路径回声未消除: echo=${echoRms.toFixed(4)} out=${outRms.toFixed(4)}`)
+})
+
+t('长路径（外放 120ms=1920 samples）与短路径同一滤波器内共存消除', () => {
+  const rng = noise(9)
+  const N = 32000
+  const ref = new Float32Array(N)
+  for (let i = 0; i < N; i++) ref[i] = rng() * 2 - 1
+  const D = 1920
+  const mic = new Float32Array(N)
+  for (let i = 0; i < N; i++) mic[i] = (i >= D ? 0.6 * ref[i - D] : 0) + (rng() * 2 - 1) * 0.02
+  const aec = new NlmsAec({ filterLength: 2560, delay: 0 })
+  const block = 1024
+  const out = new Float32Array(N)
+  for (let off = 0; off < N; off += block) {
+    out.set(aec.process(mic.subarray(off, off + block), ref.subarray(off, off + block)), off)
+  }
+  const a = Math.floor(N * 0.6)
+  const echoRms = rms(mic.subarray(a))
+  const outRms = rms(out.subarray(a))
+  assert.ok(outRms < echoRms * 0.5, `长路径回声未消除: echo=${echoRms.toFixed(4)} out=${outRms.toFixed(4)}`)
+})
+
 console.log(`\naec：${passed} 项通过`)
