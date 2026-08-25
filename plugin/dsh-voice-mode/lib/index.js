@@ -222,6 +222,10 @@ function createAsrRuntime(options) {
   const feed = async (sessionId, samples, final, offset = 0, epoch = 0) => {
     const rec = await getRecognizer();
     if (!rec) return { text: "", loading: true };
+    if (!final) {
+      void ensureSenseModel().then((path) => path ? getSenseRecognizer() : null).catch(() => {
+      });
+    }
     const key = sessionId + "#" + epoch;
     let seg = segments.get(key);
     if (!seg) {

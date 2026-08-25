@@ -381,6 +381,14 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   ): Promise<{ text: string; loading?: boolean; endpoint?: boolean }> => {
     const rec = await getRecognizer()
     if (!rec) return { text: '', loading: true }
+    // 预热 SenseVoice recognizer：说话早期即并行创建（228MB 加载 2-5s 阻塞事件循环，
+    // 若拖到 final 同步等待会阻塞宿主响应 → 浏览器链路上游超时兜底 502）。
+    // 预热失败静默（final 时如仍未就绪则走 Promise.race 10s 降级 zipformer）。
+    if (!final) {
+      void ensureSenseModel()
+        .then((path) => (path ? getSenseRecognizer() : null))
+        .catch(() => {})
+    }
     // epoch = 客户端段身份：key = sessionId#epoch；
     // 同会话新 epoch 先把旧世代段清理（杀「final 先于在途 partial / reset 与 in-flight 竞态」幽灵段）。
     const key = sessionId + '#' + epoch
