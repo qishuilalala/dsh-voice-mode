@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 // 用 esbuild 把 TS 原样转译到临时文件再导入（引擎 >=18 无 type-strip 依赖）。
 const here = fileURLToPath(new URL('.', import.meta.url))
@@ -21,7 +21,7 @@ await build({
   platform: 'node',
   logLevel: 'silent',
 })
-const { SentenceSegmenter, plainText, splitSentences } = await import(out)
+const { SentenceSegmenter, plainText, splitSentences, sanitizeForTts } = await import(pathToFileURL(out).href)
 
 let passed = 0
 const t = (name, fn) => {
@@ -41,6 +41,21 @@ t('剥离代码块/行内代码/链接/行首标题/行首列表', () => {
 t('剥离图片与 HTML', () => {
   const out = plainText('![图](a.png) <b>粗</b>').replace(/\s+/g, ' ').trim()
   assert.equal(out, '粗')
+})
+
+console.log('sanitizeForTts')
+t('剔除会被英文念出的 markdown 噪声字符', () => {
+  assert.equal(sanitizeForTts('**加粗** _斜体_ ~~删除~~ > 引用 | 表格'), '加粗斜体删除引用表格')
+  assert.equal(sanitizeForTts('a*b#c`d~e^f=g+h'), 'a b c d e f g h')
+  assert.equal(sanitizeForTts('你好，世界。'), '你好，世界。')
+  assert.equal(sanitizeForTts('你好 world 世界'), '你好 world 世界')
+})
+t('流式截断的配对符经分句器后不再残留', () => {
+  const s = new SentenceSegmenter()
+  s.feed('**这是')
+  const out = s.feed('加粗**的内容。')
+  assert.deepEqual(out, ['这是加粗的内容。'])
+  assert.equal(s.flush().join('').includes('*'), false)
 })
 
 console.log('splitSentences')

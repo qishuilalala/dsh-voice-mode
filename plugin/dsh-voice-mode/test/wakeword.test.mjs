@@ -6,7 +6,7 @@ import { build } from 'esbuild'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const tmp = mkdtempSync(join(tmpdir(), 'dsh-vm-wake-'))
@@ -19,7 +19,7 @@ await build({
   platform: 'node',
   logLevel: 'silent',
 })
-const { matchWakeWord, normalizeWake } = await import(out)
+const { matchWakeWord, normalizeWake } = await import(pathToFileURL(out).href)
 
 let passed = 0
 const t = (name, fn) => {

@@ -42,8 +42,12 @@ interface VoiceUiState {
 interface VoiceFrame {
   sessionId: string
   seq: number
+  /** host 打断纪元：skip 后 ≤ 已见 epoch 的帧为「打断前在途旧帧」，直接丢弃。 */
+  epoch?: number
   text: string
   audio: string
+  /** fork：音频 MIME（audio/mpeg = Edge；audio/wav = 本地 VITS）。 */
+  mime?: string
 }
 
 interface VoiceBus {
@@ -73,8 +77,15 @@ const SUBMIT_DELAY_MS = 600
 /** 插件 HTTP 命名空间（与 host 侧 BASE_PATH 常量一致，固定不可配置）。 */
 const BASE_PATH = '/voice-mode'
 
+/**
+ * 同 realm 单例守卫：插件 client 包被重复加载/重复 apply 时（设置页往返、
+ * loader 重挂载），只保留一个 VoiceBus——否则会有两套 Audio 播放器同时消费
+ * SSE 帧，造成「上一段还没读完、下一段并行开读」的双声叠加。
+ */
+let sharedBus: VoiceBus | null = null
+
 export function apply(ctx: any): void {
-  const bus = createVoiceBus(undefined, ctx)
+  const bus = sharedBus ?? (sharedBus = createVoiceBus(undefined, ctx))
 
   ctx.slots.inject('conversation.input.right', () =>
     ctx.slots.register(
@@ -136,28 +147,39 @@ function createAudioEngine(setUi: (patch: Partial<VoiceUiState>) => void): {
 } {
   const queue: VoiceFrame[] = []
   const audio = new Audio()
+  /** 播放链世代：skip 时 +1，使旧链的 onended/onerror/play().catch 回调全部失效
+   * （否则打断后残留回调会与新建播放链交错消费队列 → 两段朗读重叠）。 */
+  let chainGen = 0
+  /** 已见最大 epoch / 接受下限：skip 后丢弃 ≤ 已见 epoch 的在途旧帧。 */
+  let lastEpoch = 0
+  let minEpoch = 0
 
   const playNext = (): void => {
+    const gen = chainGen
     const frame = queue.shift()
     if (!frame) {
-      setUi({ playing: false, playingCaption: null })
+      if (gen === chainGen) setUi({ playing: false, playingCaption: null })
       return
     }
     const bin = atob(frame.audio)
     const bytes = new Uint8Array(bin.length)
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }))
+    // fork：按帧携带的 MIME 播放（本地 VITS 为 audio/wav，Edge 为 audio/mpeg）。
+    const mime = frame.mime === 'audio/wav' ? 'audio/wav' : 'audio/mpeg'
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime }))
     audio.src = url
     audio.onended = () => {
       URL.revokeObjectURL(url)
-      playNext()
+      if (gen === chainGen) playNext()
     }
     audio.onerror = () => {
       URL.revokeObjectURL(url)
-      playNext()
+      if (gen === chainGen) playNext()
     }
-    setUi({ playing: true, playingCaption: frame.text, ttsNotice: null })
-    void audio.play().catch(() => playNext())
+    if (gen === chainGen) setUi({ playing: true, playingCaption: frame.text, ttsNotice: null })
+    void audio.play().catch(() => {
+      if (gen === chainGen) playNext()
+    })
   }
 
   const toolBeep = (): void => {
@@ -183,14 +205,28 @@ function createAudioEngine(setUi: (patch: Partial<VoiceUiState>) => void): {
 
   return {
     push(frame) {
+      const ep = typeof frame.epoch === 'number' ? frame.epoch : 0
+      if (ep < minEpoch) return // 打断前在途旧帧：丢弃（否则打断后旧句重播）
+      if (ep > lastEpoch) lastEpoch = ep
       queue.push(frame)
       if (audio.paused) playNext()
     },
     skip() {
+      // 打断第一层：旧链失效 + 旧帧拒绝 + 队列清空 + 当前句立即停。
+      chainGen++
+      if (lastEpoch > 0) minEpoch = lastEpoch + 1
       queue.length = 0
       audio.pause()
       audio.onended = null
       audio.onerror = null
+      const src = audio.src
+      if (src.startsWith('blob:')) URL.revokeObjectURL(src)
+      audio.removeAttribute('src')
+      try {
+        audio.load()
+      } catch {
+        // ignore
+      }
       setUi({ playing: false, playingCaption: null })
     },
     toolBeep,
@@ -201,12 +237,13 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   let activeSessionId: string | null = null
   const DEFAULT_BOOT: VoiceBootConfig = {
     basePath: BASE_PATH,
-    silenceMs: 2000,
+    silenceMs: 5000,
     interruptLevel: 0,
     idleTimeoutMinutes: 10,
     autoSend: true,
     mode: 'toggle',
     wakeWord: '',
+    toolBeep: false,
   }
   const ui: VoiceUiState = {
     state: 'idle',
@@ -331,7 +368,10 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   audioListeners.add((frame) => {
     if (frame.sessionId === activeSessionId) engine.push(frame)
   })
-  toolListeners.add(() => engine.toolBeep())
+  toolListeners.add(() => {
+    // fork：工具提示音可开关（默认关）——AI 思考/调工具时"滴"声仅在开启时播放。
+    if (ui.boot?.toolBeep === true) engine.toolBeep()
+  })
 
   return {
     get activeSessionId() {
@@ -421,6 +461,8 @@ interface VoiceBootConfig {
   autoSend: boolean
   mode: 'toggle' | 'hold'
   wakeWord: string
+  /** fork：工具调用提示音开关（默认关）。 */
+  toolBeep: boolean
 }
 
 let styleInjected = false
@@ -455,11 +497,40 @@ export function MicButton({
   const actionsRef = useRef(inputActions)
   const submitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 当前是否正在朗读（空闲计时豁免用：听也算活动，长朗读不得被强制下线）。 */
+  const playingRef = useRef(false)
   const runningRef = useRef(false)
+  /** 二级打断：上一次一级打断的触发时刻（1.5s 内再次发声 → 取消整轮）。 */
+  const heavyBargeRef = useRef(0)
   /** hold 模式 Ctrl 按住说话中（600ms 阈值后才置真）。 */
   const holdCtrlRef = useRef(false)
+  /**
+   * 按住开始的一次性打断：暂停朗读 + 作废 TTS 积压 + 重建识别流（游标清零）。
+   * 只在按住开始那一刻执行一次——按住期间自己的说话不再触发打断检测
+   * （asr.ts 已门控），避免每 800ms 一次 /cancel 导致整段重传重解码。
+   */
+  const holdBargeOnceRef = useRef<() => void>(() => {})
+  holdBargeOnceRef.current = (): void => {
+    bus.skipAudio()
+    void fetch(`${location.origin}${BASE_PATH}/cancel`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: sidRef.current }),
+    })
+      .then((r) => {
+        if (r.ok) engineRef.current?.markHostReset()
+      })
+      .catch(() => {
+        // cancel 路由不可达：本地已静音
+      })
+  }
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
-  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 2000, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: 'toggle', wakeWord: '' }
+  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 5000, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: 'toggle', wakeWord: '', toolBeep: false }
+  /**
+   * 当前交互模式（活值）：设置面板与模式切换按钮写入 bus.ui.mode。
+   * 注意勿读 bootNow().mode——boot 快照的 mode 从不更新（历史 bug 的根源）。
+   */
+  const curMode = (): 'toggle' | 'hold' => (bus.ui.mode === 'hold' ? 'hold' : 'toggle')
 
   useVoiceCss()
 
@@ -493,6 +564,7 @@ export function MicButton({
         autoSend: c.autoSend ?? cur.autoSend,
         mode: c.mode === 'hold' ? 'hold' : 'toggle',
         wakeWord: c.wakeWord ?? cur.wakeWord,
+        toolBeep: c.toolBeep === true,
       }
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord })
       return next
@@ -512,7 +584,13 @@ export function MicButton({
     const idleMs = (bootNow().idleTimeoutMinutes > 0 ? bootNow().idleTimeoutMinutes : 10) * 60 * 1000
     idleTimerRef.current = setTimeout(() => {
       const sid = sidRef.current
-      if (localRef.current === 'on' && sid) void exitModeRef.current('idle')
+      if (localRef.current !== 'on' || !sid) return
+      // 正在朗读 = 活动：重新计时而非下线（此前长朗读会被误判空闲，整机强制退出）。
+      if (playingRef.current) {
+        resetIdle()
+        return
+      }
+      void exitModeRef.current('idle')
     }, idleMs)
   }
 
@@ -530,6 +608,17 @@ export function MicButton({
     })
   }, [bus])
 
+  // fork：朗读状态同步给识别引擎——播放中打断切超灵敏档（回声残留会抬高底噪）。
+  // 同时把「正在朗读」计入活动：每句开播重置空闲计时（听与说同权）。
+  useEffect(() => {
+    return bus.subscribe((b) => {
+      const playing = b.ui.playing === true
+      playingRef.current = playing
+      engineRef.current?.setPlaybackActive(playing)
+      if (playing) resetIdle()
+    })
+  }, [bus])
+
   /** 取消草稿提交（打字打断提交窗口）。 */
   const cancelPendingSubmit = (): void => {
     if (submitTimerRef.current) {
@@ -542,6 +631,7 @@ export function MicButton({
     if (localRef.current === 'off') return
     setLocalMode('off')
     clearIdle()
+    playingRef.current = false
     cancelPendingSubmit()
     const engine = engineRef.current
     engineRef.current = null
@@ -572,7 +662,10 @@ export function MicButton({
       const basePath = cfg.basePath
       const silenceMs = cfg.silenceMs
       const interruptLevel = cfg.interruptLevel
-      const engine = createAsrEngine({ silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord }, sid)
+      const engine = createAsrEngine(
+        { silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord, holdOnly: curMode() === 'hold' },
+        sid,
+      )
       bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord })
       engineRef.current = engine
       // 共享提示音上下文：进入模式处于用户手势栈（点麦克风），此处创建并恢复——
@@ -649,10 +742,10 @@ export function MicButton({
         }, 800)
       })
       engine.onSpeechStart(async () => {
-        // barge-in（Q2 硬打断）三层：
-        // 1) 本地播放队列清空 + host TTS 队列 epoch++（静音）
-        // 2) 有 running 回合则 session.cancel({keepInbox:true})（取消生成、保新消息）
-        // 3) 半截标注由「转录区新消息续入」自然呈现（Q8 标注见 §8.5 收尾）
+        // barge-in（fork 二级打断）：
+        // 一级（本次发声）：本地播放队列清空 + host TTS 队列 epoch++（静音），
+        //   模型回合继续静默生成——咳嗽/短促声音只暂停朗读、不废整轮。
+        // 二级（1.5s 内再次触发 = 持续说话）：session.cancel（取消生成、保新消息）。
         resetIdle()
         bus.skipAudio()
         try {
@@ -664,8 +757,20 @@ export function MicButton({
         } catch {
           // cancel 路由不可达：本地已静音
         }
+        // host /cancel 会重建识别流（asr.reset）：本地增量游标清零，
+        // 下次 partial 从段首重传完整前缀（host 新流需要）。
+        engineRef.current?.markHostReset()
+        const now = Date.now()
         if (runningRef.current && sidRef.current) {
-          bus.cancelTurn(sidRef.current!)
+          if (now - heavyBargeRef.current < 1500) {
+            // 二级：持续说话 → 取消整个回合
+            bus.cancelTurn(sidRef.current!)
+            heavyBargeRef.current = 0
+          } else {
+            heavyBargeRef.current = now
+          }
+        } else {
+          heavyBargeRef.current = 0
         }
         bus.setUi({ partial: '…' })
       })
@@ -755,12 +860,13 @@ export function MicButton({
       }
       const eng = engineRef.current
       if (e.key !== 'Control' || e.shiftKey || e.altKey || e.metaKey || e.repeat || !eng) return
-      if (bootNow().mode === 'hold') {
+      if (curMode() === 'hold') {
         // hold：600ms 阈值后视为按住说话（避免组合快捷键按下时序误触发）
         ctrlTimer = setTimeout(() => {
           ctrlTimer = null
           holdCtrlRef.current = true
           eng.beginHeld()
+          holdBargeOnceRef.current()
         }, 600)
       } else {
         // toggle：≥250ms 语音才强制发送（Q5 兜底）
@@ -773,7 +879,7 @@ export function MicButton({
     const onBlur = (): void => {
       // 失焦即取消：blur 收不到 keyup 时不能把"按住"留在收音态（AGENTS 契约）。
       cancelCtrl()
-      if (localRef.current === 'on' && bootNow().mode === 'hold') engineRef.current?.endHeld(true)
+      if (localRef.current === 'on' && curMode() === 'hold') engineRef.current?.endHeld(true)
     }
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
@@ -802,13 +908,13 @@ export function MicButton({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
-      if (localRef.current !== 'on' || bootNow().mode !== 'hold') return
+      if (localRef.current !== 'on' || curMode() !== 'hold') return
       engineRef.current?.endHeld(true)
       holdCtrlRef.current = false
       bus.setUi({ partial: '' })
     }
     const onVisibility = (): void => {
-      if (document.hidden && bootNow().mode === 'hold') {
+      if (document.hidden && curMode() === 'hold') {
         engineRef.current?.endHeld(true)
         holdCtrlRef.current = false
       }
@@ -837,7 +943,7 @@ export function MicButton({
 
   const on = local === 'on'
   const busy = bus.ui.state === 'transcribing' || bus.ui.state === 'loading-model'
-  const holdMode = bootNow().mode === 'hold'
+  const holdMode = curMode() === 'hold'
   // 当前草稿：官方 InputActions 无 getDraft（仅 setDraft/submit），草稿与机器
   // phase 的事实源为 useInput 标准 prop；值变化即重渲染，draftRef/phaseRef 在
   // 事件回调里读最新值（phase 用于提交重试门控：避免把「提交在途」当失败重发）。
@@ -855,7 +961,9 @@ export function MicButton({
         : t('voiceDetected')
     : local === 'pending'
       ? t('entering')
-      : t('voiceBtn')
+      : holdMode
+        ? t('holdToTalk')
+        : t('voiceBtn')
 
   // hold 手势（仅 hold 模式激活后有效）：按下即录；<250ms 视为短按退出；
   // 按住中途向上滑出 ≥40px 放弃本段；松手定稿发送。click 一律不切换
@@ -863,10 +971,13 @@ export function MicButton({
   const holdPtrRef = useRef<{ t: number; y: number; id: number } | null>(null)
   const onPointerDown = (e: React.PointerEvent): void => {
     // hold 模式全程 pointer 驱动：on=按住说话，off=短按进入；click 事件不参与
-    if (bootNow().mode !== 'hold') return
+    if (curMode() !== 'hold') return
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId }
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
-    if (localRef.current === 'on') engineRef.current?.beginHeld()
+    if (localRef.current === 'on') {
+      engineRef.current?.beginHeld()
+      holdBargeOnceRef.current()
+    }
   }
   const onPointerMove = (e: React.PointerEvent): void => {
     const p = holdPtrRef.current
@@ -900,7 +1011,23 @@ export function MicButton({
     engineRef.current?.endHeld(true)
   }
 
+  // --- 交互模式切换按钮（持续聆听 ⇄ 按住说话，保存到设置） ---
+  const switchMode = (): void => {
+    const next: 'toggle' | 'hold' = curMode() === 'hold' ? 'toggle' : 'hold'
+    // 本地立即生效（主按钮行为实时切换 + 按住说门控），host 持久化失败则下次进入恢复。
+    bus.setUi({ mode: next })
+    engineRef.current?.setHoldOnly(next === 'hold')
+    void fetch(`${location.origin}${BASE_PATH}/mode`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: sidRef.current, mode: next }),
+    }).catch(() => {
+      // 路由不可达：本地已切换
+    })
+  }
+
   return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
     <button
       onClick={(e: React.MouseEvent) => {
         if (holdMode) {
@@ -960,6 +1087,28 @@ export function MicButton({
       </svg>
       {label}
     </button>
+      <button
+        onClick={() => switchMode()}
+        data-dshvm="mode"
+        aria-label={t('modeBtnTitle')}
+        title={t('modeBtnTitle')}
+        style={{
+          border: 'none',
+          background: 'transparent',
+          cursor: 'pointer',
+          padding: '4px 8px',
+          borderRadius: 8,
+          fontSize: 11,
+          fontFamily: 'system-ui, sans-serif',
+          color: holdMode ? '#58a6ff' : '#8b949e',
+          transition: 'background 0.15s ease, color 0.2s ease',
+          userSelect: 'none',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {holdMode ? t('modeBtnHold') : t('modeBtnToggle')}
+      </button>
+    </span>
   )
 }
 

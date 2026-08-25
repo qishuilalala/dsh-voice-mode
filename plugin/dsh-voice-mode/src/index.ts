@@ -26,7 +26,10 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { createAsrRuntime, handleAsrRequest } from './asr-host.ts'
 import { SentenceSegmenter } from './segmenter.ts'
-import { TtsQueue } from './tts-queue.ts'
+import { EdgeTtsEngine, TtsQueue, type TtsEngine } from './tts-queue.ts'
+import { createSherpaVitsEngine, createSherpaKokoroEngine } from './tts-local.ts'
+import { HOST_PRIMARY, validateModelHost } from './models.ts'
+import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts'
 
 export const name = 'voice-mode'
 
@@ -66,7 +69,7 @@ const VOICE_SPOKEN_SECTION = 'voice-mode:spoken-format'
  */
 type AgentCarriedContext = AssembleContext & { agent?: { id: string } }
 
-export const inject = ['webServer', 'settings']
+export const inject = ['webServer', 'settings', 'sessions']
 
 /**
  * 模型缓存目录平台默认值：Windows 用 LOCALAPPDATA，类 Unix 用 ~/.cache。
@@ -87,6 +90,8 @@ const defaultModelCacheDir = (): string =>
  * （每次组装提示词时读取，对当前会话的后续回复生效）；其余下次进入生效。
  */
 export interface VoiceSettingsValue {
+  /** 朗读引擎：vits 本地中文（默认）/ kokoro 本地中英 / edge 微软云端；设置面板即时切换。 */
+  ttsEngine: 'edge' | 'vits' | 'kokoro'
   voice: string
   rate: number
   interruptLevel: 0 | 1 | 2
@@ -108,26 +113,36 @@ export interface VoiceSettingsValue {
    * 关掉即对后续回复失效；非语音会话不受影响）。
    */
   spokenFormat: boolean
+  /** 工具调用提示音（默认关）：开启后 AI 调用工具时"滴"一声（fork 新增设置）。 */
+  toolBeep: boolean
 }
 
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
 const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
+  ttsEngine: 'vits',
   voice: 'zh-CN-XiaoxiaoNeural',
   rate: 1.0,
   interruptLevel: 0,
-  silenceMs: 2000,
+  silenceMs: 5000,
   idleTimeoutMinutes: 10,
   modelHost: '',
   autoSend: true,
   mode: 'toggle',
   wakeWord: '',
   spokenFormat: false,
+  toolBeep: false,
 }
 
 /** 以平台常量默认构造设置 schema。 */
 export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z<VoiceSettingsValue> {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs }
   return z.object({
+    ttsEngine: z
+      .union([z.const('vits'), z.const('kokoro'), z.const('edge')])
+      .default(d.ttsEngine)
+      .description(
+        '朗读引擎：vits 本地合成（默认，回复文本不出本机）/ edge 微软云端（音质更自然，被朗读文本会发送到微软）；切换即时生效',
+      ),
     voice: z
       .string()
       .default(d.voice)
@@ -138,8 +153,8 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
     interruptLevel: z
       .union([z.const(0), z.const(1), z.const(2)])
       .default(d.interruptLevel)
-      .description('发声打断灵敏度：0 高门槛（安静环境，默认）/ 1 中 / 2 低（嘈杂环境更容易打断）'),
-    silenceMs: z.number().min(500).max(30000).default(d.silenceMs).description('说完整一句的静音停顿毫秒数（默认 2000 = 2 秒）'),
+      .description('发声打断灵敏度（fork 自适应：阈值随麦克风增益/环境噪声自动标定）：0 高门槛（默认，需清晰持续说话）/ 1 中 / 2 低（更灵敏；打断不了就往下调一档）'),
+    silenceMs: z.number().min(500).max(30000).default(d.silenceMs).description('说完整一句的静音停顿毫秒数（默认 5000 = 5 秒，慢速口述不误断句）'),
     idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description('无活动自动退出语音模式的分钟数（默认 10）'),
     modelHost: z.string().default(d.modelHost).description('ASR 模型下载源（留空用默认源；国内网络可填 https://hf-mirror.com）'),
     autoSend: z.boolean().default(d.autoSend).description('识别定稿后自动发送（关闭则只进草稿供编辑；按住 Ctrl / hold 松手仍会发送）'),
@@ -152,6 +167,10 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .boolean()
       .default(d.spokenFormat)
       .description('语音会话注入口语化提示词（口语化短句、不用 Markdown 排版符号，朗读更顺；默认关，改动即时生效）'),
+    toolBeep: z
+      .boolean()
+      .default(d.toolBeep)
+      .description('工具调用提示音（默认关）：开启后 AI 调用工具时"滴"一声，关闭则全程静默（fork 新增）'),
   })
 }
 
@@ -166,6 +185,14 @@ export interface Config {
   cacheDir: string
   /** 模型上游 host；huggingface.co / hf-mirror.com 均可达（§4 已验证）。 */
   modelHost: string
+  /** 识别模型：zh（纯中文 zipformer）/ paraformer-zh-en（双语 Paraformer，错误率低）。 */
+  asrModel: 'zh' | 'paraformer-zh-en'
+  /** 朗读引擎：edge（微软云端）/ vits（本地中文）/ kokoro（本地中英，回复文本不出本机）。默认 vits。 */
+  ttsEngine: 'edge' | 'vits' | 'kokoro'
+  /** 允许局域网访问 /voice-mode/*（默认仅回环；开启后建议前置认证门）。 */
+  allowLan: boolean
+  /** 允许白名单之外的模型下载源（默认关；仅 https）。 */
+  allowCustomModelHost: boolean
   /** Edge TTS 音色（Q15 设置可改）。 */
   voice: string
   /** Edge TTS 语速倍率（Q15 设置可改）。 */
@@ -176,22 +203,61 @@ export interface Config {
   silenceMs: number
   /** 空闲多少分钟自动退出语音模式（Q11，默认 10）。 */
   idleTimeoutMinutes: number
+  /** 识别定稿后自动补标点（神经标点模型，默认开；关掉则输出无标点原文）。 */
+  punctuate: boolean
 }
 
 export const Config: z<Config> = z.object({
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default('https://huggingface.co'),
+  asrModel: z.union([z.const('zh'), z.const('paraformer-zh-en')]).default('zh'),
+  ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro')]).default('vits'),
+  allowLan: z.boolean().default(false),
+  allowCustomModelHost: z.boolean().default(false),
   voice: z.string().default('zh-CN-XiaoxiaoNeural'),
   rate: z.number().default(1.0),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(2000),
   idleTimeoutMinutes: z.number().default(10),
+  punctuate: z.boolean().default(true),
 })
 
 export function apply(ctx: Context, config: Config): void {
   // --- 全局单活指针（Q9）：会话级状态，非全局默认、非独立会话类型（Q1）。 ---
   let activeVoiceSession: string | null = null
+
+  // --- fork 加固：会话存在性校验（第 0 层）。 ---
+  // dsh-web 提供 host sessions 服务（in-memory 会话存储）；toggle 只接受
+  // 真实存在的会话，拒绝凭空指定任意 sessionId。
+  const sessions = ctx.get('sessions') as { get(id: string): unknown } | undefined
+
+  // --- fork 加固：限流器（第 4 层）。 ---
+  const limiter = new RateLimiter()
+
+  /** 规范化模型源（下载期读最新设置；非法值回退官方源）。 */
+  const normalizedModelHost = (): string =>
+    validateModelHost(vset.modelHost, config.allowCustomModelHost) ?? HOST_PRIMARY
+
+  // --- fork 加固：回环校验（第 2 层，allowLan=false 默认）与 Origin 校验（第 1 层）。 ---
+  const denyNonLoopback = (req: IncomingMessage, res: ServerResponse): boolean => {
+    if (!config.allowLan && !isLoopbackRequest(req)) {
+      res.statusCode = 403
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify({ error: 'loopback only (allowLan=false)' }))
+      return true
+    }
+    return false
+  }
+  const denyCrossOrigin = (req: IncomingMessage, res: ServerResponse): boolean => {
+    if (!sameOriginRequest(req)) {
+      res.statusCode = 403
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify({ error: 'cross-origin request denied' }))
+      return true
+    }
+    return false
+  }
 
   // --- SSE 客户端表：audio 帧 + mode 状态广播共用一条下行通道。 ---
   type SseSink = (event: string, payload: unknown) => void
@@ -212,6 +278,7 @@ export function apply(ctx: Context, config: Config): void {
     createVoiceSettingsSchema(),
     {
       base: {
+        ttsEngine: config.ttsEngine,
         voice: config.voice,
         rate: config.rate,
         interruptLevel: config.interruptLevel,
@@ -223,28 +290,58 @@ export function apply(ctx: Context, config: Config): void {
   )
   let vset: VoiceSettingsValue = settingsScope.get()
 
-  // --- zipformer2 流式 ASR runtime（模型懒下载，§8.3）。 ---
+  // --- zipformer2 流式 ASR runtime（模型懒下载 + SHA256 校验，§8.3）。 ---
   // modelHost 用 getter：下载期读取最新设置（国内可切 hf-mirror，无需改 YAML）。
   const asr = createAsrRuntime({
     cacheDir: config.cacheDir,
-    modelHost: () => vset.modelHost,
+    asrModel: config.asrModel,
+    modelHost: normalizedModelHost,
+    allowCustomHost: config.allowCustomModelHost,
+    punctuate: config.punctuate !== false,
     broadcast,
   })
 
+  // --- TTS 引擎工厂（fork：edge 云端 / vits 本地中文 / kokoro 本地中英；设置面板即时切换）。 ---
+  const makeEngine = (kind: 'edge' | 'vits' | 'kokoro'): TtsEngine => {
+    if (kind === 'edge') return new EdgeTtsEngine(config.voice, config.rate)
+    if (kind === 'kokoro') {
+      return createSherpaKokoroEngine({
+        cacheDir: config.cacheDir,
+        modelHost: normalizedModelHost,
+        allowCustomHost: config.allowCustomModelHost,
+        broadcast,
+      })
+    }
+    return createSherpaVitsEngine({
+      cacheDir: config.cacheDir,
+      modelHost: normalizedModelHost,
+      allowCustomHost: config.allowCustomModelHost,
+      broadcast,
+    })
+  }
+  let engineKind: 'edge' | 'vits' | 'kokoro' = vset.ttsEngine ?? config.ttsEngine
+
   // --- TTS 队列（§8.4）：逐句合成后经 SSE 广播；epoch 机制支撑打断。 ---
   const queue = new TtsQueue({
-    voice: vset.voice,
-    rate: vset.rate,
+    engine: makeEngine(engineKind),
     onError: (sessionId) => broadcast('tts-error', { sessionId }),
   })
+  // fork 修复：启动时把当前设置的音色/语速应用到引擎——
+  // 此前引擎默认硬编码为素映雪，朗读直到"设置变化"才更新（重启后朗读一直女声的根因）。
+  queue.updateVoice(vset.voice, vset.rate)
   const unsubscribe = queue.subscribe((frame) => broadcast('audio', frame))
   ctx.effect(() => unsubscribe)
   // 生命周期收尾：插件卸载/热重载时关闭 TTS WebSocket（否则连接悬挂泄漏）。
   ctx.effect(() => () => void queue.close())
-  // 设置变化即时生效（applies 'live'）：音色/语速直接热更换；其余在下次进入生效。
+  // 设置变化即时生效（applies 'live'）：音色/语速直接热更换；引擎切换重建引擎并
+  // 清空在途队列（fork 新增）；其余在下次进入生效。
   ctx.effect(() =>
     settingsScope.watch((next) => {
       vset = next
+      if (next.ttsEngine !== engineKind) {
+        engineKind = next.ttsEngine
+        queue.setEngine(makeEngine(engineKind))
+      }
       queue.updateVoice(next.voice, next.rate)
     }),
   )
@@ -252,6 +349,7 @@ export function apply(ctx: Context, config: Config): void {
   const currentVoice = (): string => vset.voice
   const currentRate = (): number => vset.rate
   const currentInterrupt = (): 0 | 1 | 2 => vset.interruptLevel
+  const currentEngine = (): 'edge' | 'vits' | 'kokoro' => engineKind
 
   // --- 语音口语化提示词：仅活跃语音会话的 system prompt 注入（TTS 朗读听感）。 ---
   // 设置项 spokenFormat（默认关，实时生效）：开启后仅 activeVoiceSession 的请求被注入；
@@ -287,7 +385,8 @@ export function apply(ctx: Context, config: Config): void {
     ctx.webServer.register({
       kind: 'prefix',
       path: base,
-      handler: (_req, res: ServerResponse) => {
+      handler: (req, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
         res.statusCode = 200
         res.setHeader('content-type', 'application/json')
         res.end(
@@ -306,7 +405,8 @@ export function apply(ctx: Context, config: Config): void {
     ctx.webServer.register({
       kind: 'exact',
       path: `${base}/config`,
-      handler: (_req, res: ServerResponse) => {
+      handler: (req, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
         res.statusCode = 200
         res.setHeader('content-type', 'application/json')
         res.end(
@@ -321,7 +421,12 @@ export function apply(ctx: Context, config: Config): void {
             autoSend: vset.autoSend,
             mode: vset.mode,
             wakeWord: vset.wakeWord,
+            toolBeep: vset.toolBeep,
             cacheDir: config.cacheDir,
+            ttsEngine: currentEngine(),
+            asrModel: config.asrModel,
+            audioMime: queue.mime,
+            allowLan: config.allowLan,
           }),
         )
       },
@@ -333,7 +438,17 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/preview`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
-        // 总开关一致语义（同 /toggle 403）：关闭时试听也不发起 Edge 网络调用。
+        if (denyNonLoopback(req, res)) return
+        if (denyCrossOrigin(req, res)) return
+        // fork 加固：试听限流（每来源 IP 20 次/分钟——设置面板对比音色
+        // 会连续点击，3 次/分钟误伤正常使用；20 次/分钟仍能防滥用打爆 TTS）。
+        if (!limiter.hit(`preview:${req.socket.remoteAddress ?? 'unknown'}`, 20, 60000)) {
+          res.statusCode = 429
+          res.setHeader('content-type', 'application/json')
+          res.end(JSON.stringify({ error: 'rate limited' }))
+          return
+        }
+        // 总开关一致语义（同 /toggle 403）：关闭时试听也不发起合成调用。
         if (!config.enabled) {
           res.statusCode = 403
           res.setHeader('content-type', 'application/json')
@@ -365,8 +480,14 @@ export function apply(ctx: Context, config: Config): void {
             res.end(JSON.stringify({ error: 'voice required' }))
             return
           }
-          // 试听例句按音色区域选：中文音色读中文，其余读英文（英文音色读中文会产出空音频）。
-          const sample = voice.startsWith('zh-') ? '你好，欢迎使用语音模式。' : 'Hello, welcome to voice mode.'
+          // 试听例句：kokoro 中英都能读 → 混例句；VITS 只支持中文 → 中文句；
+          // Edge 按音色区域选（英文音色读中文会产出空音频）。
+          const sample =
+            currentEngine() === 'kokoro'
+              ? '你好，欢迎使用语音模式。Hello, welcome to voice mode.'
+              : currentEngine() === 'vits' || voice.startsWith('zh-')
+                ? '你好，欢迎使用语音模式。'
+                : 'Hello, welcome to voice mode.'
           let buf: Buffer
           try {
             buf = await queue.synthesize(sample, { voice, rate })
@@ -378,7 +499,7 @@ export function apply(ctx: Context, config: Config): void {
             return
           }
           res.statusCode = 200
-          res.setHeader('content-type', 'audio/mpeg')
+          res.setHeader('content-type', queue.mime)
           res.setHeader('cache-control', 'no-store')
           res.end(buf)
         })
@@ -391,6 +512,8 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/toggle`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
+        if (denyCrossOrigin(req, res)) return
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let sessionId: string | undefined
           let on: boolean | undefined
@@ -406,11 +529,25 @@ export function apply(ctx: Context, config: Config): void {
             res.end(JSON.stringify({ error: 'sessionId required' }))
             return
           }
+          // fork 加固：切换限流（每会话 1 次/2 秒，防状态抖动攻击）。
+          if (!limiter.hit(`toggle:${sessionId}`, 1, 2000)) {
+            res.statusCode = 429
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify({ error: 'rate limited' }))
+            return
+          }
           if (on === true) {
             // 总开关关闭时拒绝进入（enabled=false 的诚实语义：整功能关停）。
             if (!config.enabled) {
               res.statusCode = 403
               res.end(JSON.stringify({ error: 'voice mode disabled' }))
+              return
+            }
+            // fork 加固：会话存在性校验（第 0 层）——只接受真实存在的会话。
+            if (sessions && !sessions.get(sessionId)) {
+              res.statusCode = 403
+              res.setHeader('content-type', 'application/json')
+              res.end(JSON.stringify({ error: 'unknown session' }))
               return
             }
             // 全局单活：新会话进入即覆盖让出旧会话（Q11 切换会话自动让出）。
@@ -437,7 +574,8 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/asr`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
-        handleAsrRequest(asr, activeVoiceSession, req, res)
+        if (denyNonLoopback(req, res)) return
+        handleAsrRequest(asr, activeVoiceSession, req, res, limiter)
       },
     }),
   )
@@ -447,6 +585,8 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/cancel`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
+        if (denyCrossOrigin(req, res)) return
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let sessionId: string | undefined
           try {
@@ -456,6 +596,13 @@ export function apply(ctx: Context, config: Config): void {
             // ignore malformed body
           }
           if (sessionId) {
+            // fork 加固：打断限流（每会话 2 次/秒）。
+            if (!limiter.hit(`cancel:${sessionId}`, 2, 1000)) {
+              res.statusCode = 429
+              res.setHeader('content-type', 'application/json')
+              res.end(JSON.stringify({ error: 'rate limited' }))
+              return
+            }
             // 停 TTS（epoch++，积压与在途全弃）+ 丢弃在途 ASR 段
             queue.cancel(sessionId)
             asr.reset(sessionId)
@@ -470,8 +617,56 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() =>
     ctx.webServer.register({
       kind: 'exact',
+      path: `${base}/mode`,
+      handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
+        if (denyCrossOrigin(req, res)) return
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
+          let mode: string | undefined
+          try {
+            const parsed = JSON.parse(body || '{}') as { mode?: unknown }
+            mode = parsed.mode === 'toggle' || parsed.mode === 'hold' ? parsed.mode : undefined
+          } catch {
+            // malformed body → 400 below
+          }
+          if (!mode) {
+            res.statusCode = 400
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify({ error: 'mode must be toggle or hold' }))
+            return
+          }
+          // 输入框旁的模式切换按钮：写用户层设置（持久化），watch 会同步 vset。
+          void settingsScope
+            .update({ mode })
+            .then(() => {
+              res.statusCode = 200
+              res.setHeader('content-type', 'application/json')
+              res.end(JSON.stringify({ ok: true, mode }))
+            })
+            .catch((e) => {
+              console.warn(`[dsh-voice-mode] mode update failed: ${String(e)}`)
+              res.statusCode = 500
+              res.setHeader('content-type', 'application/json')
+              res.end(JSON.stringify({ error: 'mode update failed' }))
+            })
+        })
+      },
+    }),
+  )
+
+  ctx.effect(() =>
+    ctx.webServer.register({
+      kind: 'exact',
       path: `${base}/stream`,
-      handler: (_req, res: ServerResponse) => {
+      handler: (req, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
+        // fork 加固：SSE 连接上限（防连接耗尽）。
+        if (sseClients.size >= 4) {
+          res.statusCode = 429
+          res.setHeader('content-type', 'application/json')
+          res.end(JSON.stringify({ error: 'too many streams' }))
+          return
+        }
         res.writeHead(200, {
           'content-type': 'text/event-stream; charset=utf-8',
           'cache-control': 'no-cache, no-transform',
@@ -491,7 +686,7 @@ export function apply(ctx: Context, config: Config): void {
           clearInterval(heartbeat)
           sseClients.delete(send)
         }
-        _req.on('close', cleanup)
+        req.on('close', cleanup)
         res.on('close', cleanup)
       },
     }),

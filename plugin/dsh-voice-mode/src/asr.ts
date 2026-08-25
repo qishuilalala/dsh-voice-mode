@@ -23,6 +23,8 @@ export interface AsrConfig {
   basePath: string
   /** 唤醒词（空 = 关）：进入后先在 wake 待机态，说出唤醒词才正式开口。 */
   wakeWord?: string
+  /** 按住说模式门控：未按住时不录音、不触发打断（按住才录）。 */
+  holdOnly?: boolean
 }
 
 export interface SegmentMeta {
@@ -50,6 +52,12 @@ export interface AsrEngine {
   readonly onError: (fn: (msg: string) => void) => () => void
   /** 归一化电平 0..1（波形条）。 */
   readonly onLevel: (fn: (level: number) => void) => () => void
+  /** fork：告知引擎"AI 正在朗读"——朗读中打断切换到超灵敏档（回声残留会抬高底噪）。 */
+  setPlaybackActive(playing: boolean): void
+  /** fork：按住说门控开关——开启后未按住不录音、不触发打断。 */
+  setHoldOnly(on: boolean): void
+  /** fork：host 识别流被重建（打断 /cancel）时清零增量游标。 */
+  markHostReset(): void
 }
 
 const SAMPLE_RATE = 16000
@@ -58,20 +66,40 @@ const SPEECH_RMS = 0.015
 /** RMS 映射满格波形的电平。 */
 const LEVEL_CEILING = 0.25
 const MAX_SEGMENT_MS = 30000
+/** 持续聆听单句上限（3 分钟，用户钦定）：无停顿连续说话的段长兜底。 */
+const TOGGLE_MAX_SEGMENT_MS = 180000
+/** 按住模式段长上限（10 分钟，用户钦定）：停顿不计断句，仅防内存/极端时长兜底。 */
+const HOLD_MAX_SEGMENT_MS = 600000
 const PRE_PAD_MS = 250
 const PARTIAL_INTERVAL_MS = 900
-/** partial 预览下限/上限（流式模型代价低，上限放宽）。 */
+/** partial 预览下限（流式模型代价低）。 */
 const PARTIAL_MIN_S = 0.4
-const PARTIAL_MAX_S = 30
+/**
+ * partial 喂料上限：覆盖按住说 10 分钟段长上限——超长段持续增量解码，
+ * 定稿只剩尾料，消除「松手后等待与长度成正比」（2026-08 实测本机可承受）。
+ */
+const PARTIAL_MAX_S = 600
 /** ScriptProcessor 缓冲必须为 2 的幂（已知坑）。 */
 const BUFFER_SIZE = 1024
 
-/** 打断灵敏度三档：{能量阈值, 持续毫秒}（初始标定，§7.3 实测后可调）。 */
-const INTERRUPT_LEVELS: Record<0 | 1 | 2, { rms: number; ms: number }> = {
-  0: { rms: 0.10, ms: 500 },
-  1: { rms: 0.06, ms: 400 },
-  2: { rms: 0.035, ms: 300 },
+/** 打断灵敏度三档（fork 自适应）：{相对噪声地板的余量, 持续毫秒}。
+ *  阈值 = 滚动噪声地板 + 余量——随麦克风增益/环境噪声/朗读残响自动标定，
+ *  解决固定绝对阈值在不同设备与距离下"断断续续"的问题。 */
+const INTERRUPT_LEVELS: Record<0 | 1 | 2, { add: number; ms: number }> = {
+  0: { add: 0.025, ms: 280 },
+  1: { add: 0.02, ms: 200 },
+  2: { add: 0.015, ms: 150 },
 }
+/** fork：朗读中的打断档——扬声器回声会抬高噪声地板，故用更小余量 + 更短
+ *  判定时间，保证"朗读时打断"与"思考时打断"同样跟手。 */
+const INTERRUPT_PLAYBACK: Record<0 | 1 | 2, { add: number; ms: number }> = {
+  0: { add: 0.012, ms: 130 },
+  1: { add: 0.01, ms: 110 },
+  2: { add: 0.008, ms: 90 },
+}
+/** 噪声地板上下限（低于下限按静音处理，高于上限视为非噪声帧不再吸收）。 */
+const NOISE_FLOOR_MIN = 0.01
+const NOISE_FLOOR_MAX = 0.06
 
 export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine {
   let state: AsrState = 'idle'
@@ -102,15 +130,25 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let segmentMs = 0
   let silenceMs = 0
   let prePad: Float32Array[] = []
+  /** 已成功送达 host 的样本数（增量传输游标；段重建时归零）。 */
+  let sentSamples = 0
   /** hold 模式：按住录制中（绕过 VAD 门控与静音切句，整段按压区间保留）。 */
   let holdActive = false
+  /** 按住说门控：开启后未按住不录音、不打断（按住才录）。 */
+  let holdOnly = config.holdOnly === true
   /** 唤醒词（归一化后；空串 = 关闭）。 */
   const wakeWord = (config.wakeWord ?? '').trim().toLowerCase().replace(/[\s\u3000]+/g, '')
 
-  // --- 打断状态机（Q10：首音节强度 + 持续时长） ---
+  // --- 打断状态机（fork 自适应：滚动噪声地板 + 衰减累计 + 阻尼） ---
   const intLevel = INTERRUPT_LEVELS[config.interruptLevel] ?? INTERRUPT_LEVELS[0]
   let interruptCandidateMs = 0
   let bargeInDampingUntil = 0
+  /** 滚动噪声地板：快降慢升，吸收朗读残响等底噪，使阈值始终压在底噪之上。 */
+  let noiseFloor = NOISE_FLOOR_MIN
+  /** 当前打断阈值（每帧重算；供噪声地板更新判断是否属于"非语音帧"）。 */
+  let interruptThreshold = NOISE_FLOOR_MIN + intLevel.add
+  /** fork：AI 正在朗读（TTS 播放中）→ 打断用超灵敏档。 */
+  let playbackActive = false
 
   // --- partial 轮询 ---
   let sincePartialMs = 0
@@ -158,24 +196,29 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   }
 
   /**
-   * partial 轮询：POST 当前段全量 PCM（host 只喂增量），预览字幕。
-   * 202 = 模型下载中；重试。失败静默（预览非结果）。
+   * partial 轮询：只 POST 自上次成功以来的增量 PCM（长段下全量重传会
+   * 形成每 0.9s 传数 MB 的传输洪水，定稿请求被堵在队列后——实测 60 秒等待）。
+   * 202 = 模型下载中；重试同一增量。失败静默（预览非结果）。
    */
   const requestPartial = async (): Promise<void> => {
     if (partialInFlight || segment.length === 0) return
     const seconds = segment.reduce((n, c) => n + c.length, 0) / SAMPLE_RATE
     if (seconds < PARTIAL_MIN_S || seconds > PARTIAL_MAX_S) return
     const samples = concatSegment()
+    if (sentSamples >= samples.length) return
+    // 精确拷贝增量（subarray 共享底 buffer，直接传会带上全量）。
+    const delta = samples.slice(sentSamples)
+    const body = delta.buffer as ArrayBuffer
     const epoch = segmentEpoch
     partialInFlight = true
     try {
       let res = await fetch(asrUrl(false), {
         method: 'POST',
         headers: { 'content-type': 'application/octet-stream' },
-        body: samples.buffer as ArrayBuffer,
+        body,
       })
       if (res.status === 202) {
-        // 模型下载中：5s 后重试同一载荷（Q16 重试提示在状态条展示）
+        // 模型下载中：5s 后重试同一增量（Q16 重试提示在状态条展示）
         setState('loading-model')
         const retry = await new Promise<Response>((resolve) => {
           setTimeout(async () => {
@@ -183,7 +226,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
               const r2 = await fetch(asrUrl(false), {
                 method: 'POST',
                 headers: { 'content-type': 'application/octet-stream' },
-                body: samples.buffer as ArrayBuffer,
+                body,
               })
               resolve(r2)
             } catch {
@@ -195,6 +238,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       }
       if (epoch !== segmentEpoch) return
       if (!res.ok) return
+      // 成功送达才推进游标；失败下次重传同一增量（host 若已喂会少量重复，可接受）。
+      sentSamples = samples.length
       const out = (await res.json()) as { text?: string }
       if (epoch !== segmentEpoch) return
       if (state === 'loading-model') setState('speech')
@@ -207,6 +252,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           silenceMs = 0
           prePad = []
           sincePartialMs = 0
+          sentSamples = 0
           await resetHostStream()
           if (active) setState('listening')
         }
@@ -229,14 +275,17 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
   }
 
-  /** 定稿当前段：POST final=1（含 0.5s 尾垫由 host 补齐协议侧不需要）。 */
+  /** 定稿当前段：POST final=1（只传未送达增量；含 0.5s 尾垫由 host 补齐协议侧不需要）。 */
   const finalizeSegment = (): void => {
     if (segment.length === 0) return
     const samples = concatSegment()
+    const delta = sentSamples < samples.length ? samples.slice(sentSamples) : new Float32Array(0)
+    const body = delta.buffer as ArrayBuffer
     const epoch = ++segmentEpoch
     const meta: SegmentMeta = { force: forcePending }
     forcePending = false
     segment = []
+    sentSamples = 0
     speechActive = false
     silenceMs = 0
     segmentMs = 0
@@ -244,10 +293,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     setState('transcribing')
     void (async () => {
       try {
+        const tFetch0 = Date.now()
         let res = await fetch(asrUrl(true), {
           method: 'POST',
           headers: { 'content-type': 'application/octet-stream' },
-          body: samples.buffer as ArrayBuffer,
+          body,
         })
         if (res.status === 202) {
           setState('loading-model')
@@ -258,7 +308,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
                   await fetch(asrUrl(true), {
                     method: 'POST',
                     headers: { 'content-type': 'application/octet-stream' },
-                    body: samples.buffer as ArrayBuffer,
+                    body,
                   }),
                 )
               } catch {
@@ -269,6 +319,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         }
         if (epoch !== segmentEpoch) return // 段已被清（stop/新段），结果作废
         setState(active ? (speechActive ? 'speech' : 'listening') : 'idle')
+        const fetchMs = Date.now() - tFetch0
+        if (fetchMs > 1500) {
+          // 定稿慢速诊断（浏览器控制台可见）：t0 为客户端发出时刻（本机时钟，
+          // 与 host 日志同机可比，用于拆分上传/处理/回传三段耗时）。
+          console.warn(`[dsh-voice-mode] finalize fetch: ${fetchMs}ms status=${res.status} t0=${tFetch0} bodyKB=${(body.byteLength / 1024).toFixed(0)} samples=${(samples.length / SAMPLE_RATE).toFixed(1)}s`)
+        }
         if (!res.ok) return
         const out = (await res.json()) as { text?: string }
         if (epoch !== segmentEpoch) return
@@ -300,28 +356,64 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       }
     }
 
-    // 打断前沿（高门槛，Q10）：达到即报；阻尼期内不重复报（800ms）。
-    if (Date.now() < bargeInDampingUntil) {
+    // 打断前沿（fork 自适应）：阈值 = 噪声地板 + 余量，随底噪自动浮动。
+    // 累计按"衰减"而非"清零"——语音帧间微小波动不再重置进度（解决断断续续）。
+    // 按住录制期间完全跳过：自己的说话是输入不是打断（否则每 800ms 阻尼周期
+    // 触发一次 /cancel → host 重建识别流 → 增量游标清零 → 定稿整段重传重解码）。
+    if (holdActive) {
       interruptCandidateMs = 0
-    } else if (rms > intLevel.rms) {
-      interruptCandidateMs += durationMs
-      if (interruptCandidateMs >= intLevel.ms) {
-        interruptCandidateMs = 0
-        bargeInDampingUntil = Date.now() + 800
-        for (const fn of speechStartListeners) {
-          try {
-            fn()
-          } catch {
-            // ignore
+    } else if (Date.now() < bargeInDampingUntil) {
+      interruptCandidateMs = 0
+    } else {
+      // fork：朗读中切超灵敏档（回声残响抬高底噪时仍能捕捉语音增量）。
+      const effLevel = playbackActive ? INTERRUPT_PLAYBACK[config.interruptLevel] ?? INTERRUPT_PLAYBACK[0] : intLevel
+      interruptThreshold = noiseFloor + effLevel.add
+      if (rms > interruptThreshold) {
+        interruptCandidateMs += durationMs
+        if (interruptCandidateMs >= effLevel.ms) {
+          interruptCandidateMs = 0
+          bargeInDampingUntil = Date.now() + 800
+          // 按住说模式待命（未按住）：说话不打断朗读。
+          if (!(holdOnly && !holdActive)) {
+            for (const fn of speechStartListeners) {
+              try {
+                fn()
+              } catch {
+                // ignore
+              }
+            }
           }
         }
+      } else {
+        // 非语音帧：快降慢升地跟踪底噪（含朗读残响；上限 NOISE_FLOOR_MAX）。
+        if (rms <= noiseFloor) {
+          noiseFloor = rms
+        } else {
+          noiseFloor += (rms - noiseFloor) * 0.03
+        }
+        if (noiseFloor < NOISE_FLOOR_MIN) noiseFloor = NOISE_FLOOR_MIN
+        if (noiseFloor > NOISE_FLOOR_MAX) noiseFloor = NOISE_FLOOR_MAX
+        // 衰减 2 倍速率：短暂掉阈值不立即清零。
+        interruptCandidateMs = Math.max(0, interruptCandidateMs - durationMs * 2)
       }
-    } else {
-      interruptCandidateMs = 0
     }
 
-    if (holdActive) {
-      // hold：按压区间全部保留（绕过 VAD 门控与静音切句），仅段长上限兜底。
+    if (holdOnly && !holdActive && state !== 'wake') {
+      // 按住说待命：不按住不录音（环境说话不累积、不切句、不误发）。
+      // 仅电平随声音走；打断探测同样被门控（见上）。
+      silenceMs = 0
+      if (speechActive) {
+        // 切到按住说前若有残留段：丢弃（不做定稿）。
+        speechActive = false
+        segment = []
+        segmentMs = 0
+        sentSamples = 0
+        prePad = []
+        if (state === 'speech') setState('listening')
+      }
+    } else if (holdActive) {
+      // hold：按压区间全部保留（绕过 VAD 门控与静音切句），
+      // 仅 5 分钟总时长上限兜底（停顿不计断句）。
       if (!speechActive) {
         speechActive = true
         if (state !== 'speech') setState('speech')
@@ -329,7 +421,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       segmentMs += durationMs
       silenceMs = 0
       segment.push(data)
-      if (segmentMs > MAX_SEGMENT_MS) finalizeSegment()
+      if (segmentMs > HOLD_MAX_SEGMENT_MS) finalizeSegment()
     } else if (state === 'wake') {
       // wake 待机：有人声才累积（满足 partial 门槛），但不置 speech、不 finalize；
       // 唤醒词匹配在 requestPartial 结果上做，命中后由它重置。
@@ -342,6 +434,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           segmentMs = 0
           silenceMs = 0
           prePad = []
+          sentSamples = 0
           void resetHostStream()
         }
       } else {
@@ -367,7 +460,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       segmentMs += durationMs
       silenceMs = 0
       segment.push(data)
-      if (segmentMs > MAX_SEGMENT_MS) finalizeSegment()
+      if (segmentMs > TOGGLE_MAX_SEGMENT_MS) finalizeSegment()
     } else if (speechActive) {
       segmentMs += durationMs
       silenceMs += durationMs
@@ -449,6 +542,7 @@ const startRecorder = async (): Promise<void> => {
     forcePending = false
     holdActive = false
     segment = []
+    sentSamples = 0
     speechActive = false
     silenceMs = 0
     segmentMs = 0
@@ -521,6 +615,7 @@ const startRecorder = async (): Promise<void> => {
       segmentMs = 0
       silenceMs = 0
       prePad = []
+      sentSamples = 0
       speechActive = true
       sincePartialMs = 0
       // 按下首帧注入打断阻尼：避免"录制开始"被误判为打断前沿（Q10）。
@@ -537,6 +632,7 @@ const startRecorder = async (): Promise<void> => {
         segmentMs = 0
         silenceMs = 0
         prePad = []
+        sentSamples = 0
         speechActive = false
         setState(wakeWord ? 'wake' : 'listening')
         return
@@ -544,6 +640,11 @@ const startRecorder = async (): Promise<void> => {
       forcePending = true
       sincePartialMs = 0
       finalizeSegment()
+    },
+    markHostReset() {
+      // host 识别流被重建（打断 /cancel 触发）：已送达游标作废，
+      // 下次 partial 从段首重传（host 新流需要完整前缀）。
+      sentSamples = 0
     },
     onSegment(fn) {
       transcriptListeners.add(fn)
@@ -581,6 +682,12 @@ const startRecorder = async (): Promise<void> => {
       return () => {
         levelListeners.delete(fn)
       }
+    },
+    setPlaybackActive(playing) {
+      playbackActive = playing
+    },
+    setHoldOnly(on) {
+      holdOnly = on
     },
   }
 }

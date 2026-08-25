@@ -3,9 +3,21 @@
 // with runtime deps (msedge-tts, sherpa-onnx) external.
 
 import { build } from 'esbuild'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, renameSync } from 'node:fs'
+import { join } from 'node:path'
 
 const PKG_ID = 'dsh-voice-mode'
+
+/**
+ * 原子构建：先写 `lib/.tmp-*` 再 rename 覆盖成品。
+ * 直接覆盖成品文件存在窗口：运行中的 dsh 若恰在此时重建合成子进程（崩溃重试/
+ * 引擎切换）会 fork 到写了一半的脚本；用户刷新网页也可能拿到半成品 client.js。
+ */
+async function buildAtomically(opts) {
+  const tmp = join('lib', `.tmp-${opts.outfile.split('/').pop()}-${process.pid}`)
+  await build({ ...opts, outfile: tmp })
+  renameSync(tmp, opts.outfile)
+}
 
 const PLATFORM_EXTERNALS = [
   'react',
@@ -23,7 +35,7 @@ const PLATFORM_EXTERNALS = [
 mkdirSync('lib', { recursive: true })
 
 // --- host half: plain ESM cordis plugin; runtime deps stay external ---
-await build({
+await buildAtomically({
   entryPoints: ['src/index.ts'],
   outfile: 'lib/index.js',
   bundle: true,
@@ -37,13 +49,25 @@ await build({
     '@deepseek-ai/dsh-settings',
     'msedge-tts',
     'sherpa-onnx',
+    'sherpa-onnx-node',
     'node:*',
   ],
   logLevel: 'info',
 })
 
+// --- fork: TTS 合成子进程（child_process.fork，CJS 以获得 IPC 通道）---
+await buildAtomically({
+  entryPoints: ['src/tts-vits-worker.ts'],
+  outfile: 'lib/tts-vits-worker.cjs',
+  bundle: true,
+  format: 'cjs',
+  platform: 'node',
+  external: ['sherpa-onnx', 'sherpa-onnx-node', 'node:*'],
+  logLevel: 'info',
+})
+
 // --- client half: module-loader closure artifact ---
-await build({
+await buildAtomically({
   entryPoints: ['src/client.tsx'],
   outfile: 'lib/client.js',
   bundle: true,
@@ -64,4 +88,4 @@ await build({
   logLevel: 'info',
 })
 
-console.log('[dsh-voice-mode] build done: lib/index.js (host) + lib/client.js (browser)')
+console.log('[dsh-voice-mode] build done: lib/index.js (host) + lib/tts-vits-worker.mjs + lib/client.js (browser)')

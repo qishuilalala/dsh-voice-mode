@@ -27,6 +27,21 @@ export function plainText(text: string): string {
     .replace(/<\/?[a-zA-Z][^>]*>/g, ' ')
 }
 
+/**
+ * 单字符级 TTS 消毒：剔除会被 espeak 按英文念出的噪声字符
+ * （asterisk/underscore/greater than/vertical bar…）。
+ * plainText 是配对式剥离，流式增量下配对符可能被 chunk 截断（如 `**` 劈成
+ * 两半），残留字符会被逐字念出——故对成句文本再做一遍单字符兜底。
+ */
+export function sanitizeForTts(text: string): string {
+  return String(text)
+    .replace(/[*_#>`|^=+~]/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    // 汉字之间的空格对中文合成无意义（噪声字符剔除的副产品），塌掉避免怪停顿。
+    .replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g, '$1')
+    .trim()
+}
+
 /** 按终止标点切分一段文本，保留句尾在句子内、尾部悬挂在 tail。 */
 export function splitSentences(chunk: string): { sentences: string[]; tail: string } {
   const sentences: string[] = []
@@ -62,14 +77,14 @@ export class SentenceSegmenter {
     this.buffer = tail
     const out: string[] = []
     for (const s of sentences) {
-      const t = s.trim()
+      const t = sanitizeForTts(s).trim()
       if (t && !SKIP_PREFIX.test(t)) out.push(t)
     }
     // 安全阀：一堵没有标点的文字墙。
     if (this.buffer.length > this.maxChars) {
       const cut = this.buffer.search(/[，,、\s]/)
       const idx = cut > 0 ? cut : Math.floor(this.maxChars / 2)
-      const head = this.buffer.slice(0, idx).trim()
+      const head = sanitizeForTts(this.buffer.slice(0, idx)).trim()
       this.buffer = this.buffer.slice(idx)
       if (head) out.push(head)
     }
@@ -78,7 +93,7 @@ export class SentenceSegmenter {
 
   /** 收尾：flush 剩余缓冲（流结束）。 */
   flush(): string[] {
-    const t = this.buffer.trim()
+    const t = sanitizeForTts(this.buffer).trim()
     this.buffer = ''
     if (t && !SKIP_PREFIX.test(t)) return [t]
     return []
