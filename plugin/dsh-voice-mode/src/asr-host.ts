@@ -384,7 +384,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     // 预热 SenseVoice recognizer：说话早期即并行创建（228MB 加载 2-5s 阻塞事件循环，
     // 若拖到 final 同步等待会阻塞宿主响应 → 浏览器链路上游超时兜底 502）。
     // 预热失败静默（final 时如仍未就绪则走 Promise.race 10s 降级 zipformer）。
-    if (!final) {
+    // 修复：仅在 senseVoice 开启时预热/下载——关闭时不得下载 228MB 大模型
+    // （否则与设置语义「关闭可省模型只走流式识别」矛盾，且冲破总体积预算）。
+    if (!final && senseVoice()) {
       void ensureSenseModel()
         .then((path) => (path ? getSenseRecognizer() : null))
         .catch(() => {})
@@ -620,6 +622,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         return !!(await ensureVadModel())
       }
       if (kind === 'sense') {
+        if (!senseVoice()) return false // 关闭时不下载 228MB（与设置语义一致）
         senseFailAt = 0
         return !!(await ensureSenseModel())
       }
@@ -648,10 +651,12 @@ export async function ensureFile(
   if (st?.isFile()) return true
   await mkdir(repoDir, { recursive: true }).catch(() => undefined)
   const partPath = `${localPath}.part`
-  const partSt = await stat(partPath).catch(() => null)
   for (const host of hosts) {
     try {
-      const ok = await download(host, repoDir, repo, file, partSt?.size ?? 0, broadcast)
+      // 修复：续传基准在每次尝试前重读——前一 host 可能已在 .part 追加过字节，
+      // 若复用开始检出的过期大小，多个 host 会以同一错误水位拼写坏同一 .part。
+      const cur = (await stat(partPath).catch(() => null))?.size ?? 0
+      const ok = await download(host, repoDir, repo, file, cur, broadcast)
       if (ok) {
         await rename(partPath, localPath).catch(() => undefined)
         if ((await stat(localPath).catch(() => null))?.isFile()) return true
@@ -683,14 +688,17 @@ async function download(
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(900000) })
   if (res.status === 416) return true // 已完整，直接改名
   if (res.status !== 200 && res.status !== 206) return false
+  // 续传只在服务端返回 206 时成立；若带已有 .part 却返回 200 全量（部分镜像/CDN
+  // 忽略 Range），必须从头重写，否则在旧字节上追加全量 → 半旧半新损坏模型。
+  const resume = res.status === 206 ? resumeFrom : 0
   const declared = Number(res.headers.get('content-length'))
-  const total = (Number.isFinite(declared) ? declared : 0) + resumeFrom
+  const total = (Number.isFinite(declared) ? declared : 0) + resume
   const partPath = join(repoDir, `${file}.part`)
-  const sink = createWriteStream(partPath, resumeFrom > 0 ? { flags: 'a' } : {})
+  const sink = createWriteStream(partPath, resume > 0 ? { flags: 'a' } : {})
   const src = res.body
   if (!src) return false
   const reader = src.getReader()
-  let received = resumeFrom
+  let received = resume
   const done = new Promise<boolean>((resolve, reject) => {
     sink.on('error', (e) => reject(e))
     // 仅当字节数与声明一致（或服务端未声明长度且收到 EOF）才算成功：

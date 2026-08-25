@@ -222,7 +222,7 @@ function createAsrRuntime(options) {
   const feed = async (sessionId, samples, final, offset = 0, epoch = 0) => {
     const rec = await getRecognizer();
     if (!rec) return { text: "", loading: true };
-    if (!final) {
+    if (!final && senseVoice()) {
       void ensureSenseModel().then((path) => path ? getSenseRecognizer() : null).catch(() => {
       });
     }
@@ -421,6 +421,7 @@ function createAsrRuntime(options) {
         return !!await ensureVadModel();
       }
       if (kind === "sense") {
+        if (!senseVoice()) return false;
         senseFailAt = 0;
         return !!await ensureSenseModel();
       }
@@ -435,10 +436,10 @@ async function ensureFile(repoDir, repo, file, hosts, broadcast) {
   if (st?.isFile()) return true;
   await mkdir(repoDir, { recursive: true }).catch(() => void 0);
   const partPath = `${localPath}.part`;
-  const partSt = await stat(partPath).catch(() => null);
   for (const host of hosts) {
     try {
-      const ok = await download(host, repoDir, repo, file, partSt?.size ?? 0, broadcast);
+      const cur = (await stat(partPath).catch(() => null))?.size ?? 0;
+      const ok = await download(host, repoDir, repo, file, cur, broadcast);
       if (ok) {
         await rename(partPath, localPath).catch(() => void 0);
         if ((await stat(localPath).catch(() => null))?.isFile()) return true;
@@ -458,14 +459,15 @@ async function download(host, repoDir, repo, file, resumeFrom, broadcast) {
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(9e5) });
   if (res.status === 416) return true;
   if (res.status !== 200 && res.status !== 206) return false;
+  const resume = res.status === 206 ? resumeFrom : 0;
   const declared = Number(res.headers.get("content-length"));
-  const total = (Number.isFinite(declared) ? declared : 0) + resumeFrom;
+  const total = (Number.isFinite(declared) ? declared : 0) + resume;
   const partPath = join(repoDir, `${file}.part`);
-  const sink = createWriteStream(partPath, resumeFrom > 0 ? { flags: "a" } : {});
+  const sink = createWriteStream(partPath, resume > 0 ? { flags: "a" } : {});
   const src = res.body;
   if (!src) return false;
   const reader = src.getReader();
-  let received = resumeFrom;
+  let received = resume;
   const done = new Promise((resolve, reject) => {
     sink.on("error", (e) => reject(e));
     sink.on("finish", () => {

@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, statSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, statSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ensureFile } from '../src/asr-host.ts'
@@ -26,12 +26,24 @@ const routes = {
       res.end()
     }
   },
+  // 模拟忽略 Range、对续传请求也返回 200 全量的镜像/CDN。
+  resume200: (req, res) => {
+    const b = Buffer.alloc(1000, 7)
+    res.writeHead(200, { 'content-length': 1000 })
+    res.end(b)
+  },
 }
 const server = createServer((req, res) => {
   // repo 名带前缀约定：ok-repo / trunc-repo / resume-repo → 对应行为。
   const m = /^\/([^/]+)\/resolve\/main\/.+/.exec(req.url ?? '')
   const key = m ? m[1] : 'ok'
-  const hit = key.startsWith('trunc') ? routes.trunc : key.startsWith('resume') ? routes.resume : routes.ok
+  const hit = key.startsWith('trunc')
+    ? routes.trunc
+    : key.startsWith('resume200')
+      ? routes.resume200
+      : key.startsWith('resume')
+        ? routes.resume
+        : routes.ok
   hit(req, res)
 })
 await new Promise((r) => server.listen(0, '127.0.0.1', r))
@@ -65,6 +77,18 @@ await t('Range 续传：已有 200 字节 .part → 206 续 800 → true 且总�
   const ok = await ensureFile(repo, 'resume-repo', 'a.bin', [local], () => {})
   assert.ok(ok)
   assert.equal(statSync(join(repo, 'a.bin')).size, 1000)
+  rmSync(dir, { recursive: true, force: true })
+})
+
+await t('续传时服务端返回 200 全量（忽略 Range）→ 从头重写，不产出损坏文件', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dt-r200-'))
+  const repo = join(dir, 'resume200-repo')
+  mkdirSync(repo, { recursive: true })
+  writeFileSync(join(repo, 'a.bin.part'), Buffer.alloc(200, 3), { flag: 'ax' })
+  const ok = await ensureFile(repo, 'resume200-repo', 'a.bin', [local], () => {})
+  assert.ok(ok)
+  assert.equal(statSync(join(repo, 'a.bin')).size, 1000, '结果应为 1000 字节（从头重写），不得叠加旧 .part')
+  assert.equal(readFileSync(join(repo, 'a.bin'))[0], 7, '头字节应为新全量内容（7），而非残留旧 .part 字节（3）')
   rmSync(dir, { recursive: true, force: true })
 })
 
