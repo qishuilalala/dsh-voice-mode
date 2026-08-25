@@ -338,7 +338,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     void (async () => {
       try {
         emitTelemetry('submitted') // P1-5：定稿上传发起
-        let res = await fetch(asrUrl(true, from, epochSnapshot), {
+        let res = await fetch(asrUrl(true, from, epochSnapshot), { signal: AbortSignal.timeout(10000),
           method: 'POST',
           headers: { 'content-type': 'application/octet-stream' },
           body: samples.buffer as ArrayBuffer,
@@ -349,7 +349,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
             setTimeout(async () => {
               try {
                 resolve(
-                  await fetch(asrUrl(true, from, epochSnapshot), {
+                  await fetch(asrUrl(true, from, epochSnapshot), { signal: AbortSignal.timeout(10000),
                     method: 'POST',
                     headers: { 'content-type': 'application/octet-stream' },
                     body: samples.buffer as ArrayBuffer,
@@ -365,7 +365,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         setState(active ? (speechActive ? 'speech' : 'listening') : 'idle')
         if (!res.ok) return
         const out = (await res.json()) as { text?: string }
-        if (epochSnapshot !== segmentEpoch) return
+        // 校验本段世代（快照+1）：仅当定稿期间又推进（新段/打断/stop）时作废；
+        // 历史 bug：比较快照本身（snap!==now）必然不等 → 定稿恒被丢弃 → onSegment 永不触发。
+        if (segmentEpoch !== epochSnapshot + 1) return
         if (out.text) emit(transcriptListeners, out.text, meta)
       } catch {
         // 定稿失败：状态条给用户可见提示（文本仍在草稿，可重新说话）

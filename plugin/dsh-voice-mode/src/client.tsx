@@ -1041,6 +1041,7 @@ export function MicButton({
       engine.onSegment((text, meta) => {
         // 定稿进草稿（可编辑 Q13）+ 自动发送（Q5 停顿已等过；autoSend=false 只进草稿，
         // 按住 Ctrl 强制发送仍提交）
+        console.error('VMACT setDraft?=' + (typeof actionsRef.current?.setDraft) + ' submit?=' + (typeof actionsRef.current?.submit) + ' final=' + JSON.stringify(text))
         resetIdle()
         const actions = actionsRef.current
         const trimmed = text.trim()
