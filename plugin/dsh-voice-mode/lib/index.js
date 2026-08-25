@@ -450,7 +450,7 @@ async function download(host, repoDir, repo, file, resumeFrom, broadcast) {
   const url = `${host}/${repo}/resolve/main/${file}`;
   const headers = { "user-agent": "dsh-voice-mode" };
   if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(6e4) });
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(9e5) });
   if (res.status === 416) return true;
   if (res.status !== 200 && res.status !== 206) return false;
   const declared = Number(res.headers.get("content-length"));

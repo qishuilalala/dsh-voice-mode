@@ -669,8 +669,8 @@ async function download(
   const url = `${host}/${repo}/resolve/main/${file}`
   const headers: Record<string, string> = { 'user-agent': 'dsh-voice-mode' }
   if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`
-  // Fix（对抗性审查）：下载带 60s 超时（防慢挂死）；content-length 完整性核对。
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(60000) })
+  // Fix（对抗性审查）：下载带 15 分钟超时（防悬挂；60s 会掐断 228MB 大模型下载）；content-length 完整性核对。
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(900000) })
   if (res.status === 416) return true // 已完整，直接改名
   if (res.status !== 200 && res.status !== 206) return false
   const declared = Number(res.headers.get('content-length'))
