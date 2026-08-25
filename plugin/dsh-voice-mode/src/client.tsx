@@ -133,6 +133,8 @@ interface VoiceBus {
   resetTelemetry(): void
   /** P1-2：手势栈内预热播放 AudioContext（Safari 非手势栈新建会 suspended）。 */
   warmAudio(): void
+  /** isPlaying 尾音截止墙钟：playing 或回声尾音宽限期内均视为「AI 正在朗读」。 */
+  playingTailUntil(): number
 }
 
 export interface VoiceSlotActions {
@@ -157,6 +159,9 @@ const SAMPLE_RATE_16K = 16000
  * 归零后由 NLMS 的 160ms 全窗口自适应学习任意路径延迟（合成模型：2~150ms 全路径一致消除）。
  */
 const ECHO_DELAY_MS = 0
+/** playing 从 true→false 后的回声尾音宽限（扬声器残响/硬件缓冲仍会被麦克风采到）。
+ *  此窗口内 isPlaying 仍判 true，防「句播完瞬间的残响」漏入 ASR → 自聊/多重声音。 */
+const ECHO_TAIL_MS = 400
 const WAVE_BARS = 14
 const SUBMIT_DELAY_MS = 600
 /** 插件 HTTP 命名空间（与 host 侧 BASE_PATH 常量一致，固定不可配置）。 */
@@ -475,6 +480,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   const audioListeners = new Set<(frame: TtsChunkFrame) => void>()
   const toolListeners = new Set<(e: { sessionId: string; name: string }) => void>()
   let source: EventSource | null = null
+  /** playing 从 true→false 的墙钟时刻（回声尾音宽限起点，见 ECHO_TAIL_MS）。 */
+  let playingEndAt = 0
 
   // --- P1-5 延迟埋点链（开发模式）：一轮「说完→首音」的时间戳收拢。 ---
   const telemetryStages: Partial<Record<TelemetryStage, number>> = {}
@@ -514,11 +521,13 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     const tailWall = refStartWall + (refTotal / SAMPLE_RATE_16K) * 1000
     const gapMs = startWallMs - tailWall
     if (gapMs > 250) {
-      // I1：播放间断（打断/句间隙 >250ms）→ 重置为「新回合」，缺口即静音，
-      // 但当前块必须作为新回合首块入库（否则每轮首句参考丢失，回声不抑制）。
-      refActive = false
+      // I1：播放间断（打断/句间隙 >250ms）→ 重置为「新回合」，缺口即静音。
+      // 修复：必须更新 refStartWall 并保持 refActive=true，当前块作为新回合首块入库。
+      // 原实现设 refActive=false，导致 refWindowAt 返回零数组（AEC 透传，回声不消除），
+      // 且下一个 pushRef 又清掉刚入库的首块——句间隙后新句回声完全漏入 → 自聊。
       refChunks.length = 0
       refTotal = 0
+      refStartWall = startWallMs
     } else if (gapMs > 1) {
       const padN = Math.floor((gapMs / 1000) * SAMPLE_RATE_16K)
       refChunks.push(new Float32Array(padN))
@@ -594,14 +603,25 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   const connect = (): void => {
     if (source) return
     source = new EventSource(`${location.origin}${basePath}/stream`)
+    // host 重启/断线重连时清拒绝线：拒绝线基于 host 的 sentenceId 单调递增，但 host
+    // 重启后 TtsQueue 重新实例化、seq 归零——客户端残留的旧线会让「新句 seq=0 ≤ 旧线」
+    // 全被拒（静音）。SSE 断开 = 在途帧已随 TCP 断开丢失，此时清线安全；exit→enter
+    // 场景 SSE 不断、线保留（继续防护在途旧帧）。首次连接 open 清空 Map 是 no-op。
+    source.addEventListener('open', () => {
+      rejectSeqUpTo.clear()
+      lastFinalSeq.clear()
+    })
     source.addEventListener('mode', (e: MessageEvent<string>) => {
       try {
         const active = (JSON.parse(e.data) as { active?: string | null }).active ?? null
         if (active !== activeSessionId) {
+          const prev = activeSessionId
           activeSessionId = active
-          // 模式被让出/抢占：本地播放立即静音（Q2 之停 TTS）
+          // 模式被让出/抢占：本地播放立即静音（Q2 之停 TTS）。
+          // 双重奏根治：无条件 doSkipAudio(prev)——停播 + 清拼帧缓冲（防 prev 未 final
+          // 的缓冲句与新会话同序号句混帧）+ 对 prev 设拒绝线（activeSessionId 已切走）。
           if (ui.turn !== 'idle') ui.turn = 'idle' // P2-4：让出复位回合状态
-          if (active !== null || ui.playing) engine.skip()
+          doSkipAudio(prev)
           // P1-5：跨会话让出/抢占时清空未完成的埋点链。
           resetTelemetry()
           notify()
@@ -701,6 +721,12 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   connect()
   // P1-1 分块帧拼帧：按句缓冲 chunk，final 帧后组装整句字节流入播放引擎
   // （host 串行逐句合成，句间不交错；新句/打断后自动重建缓冲）。
+  // 双重奏根治：skip/打断/退出后，SSE 在途的旧回合帧（已发出无法撤回）会在拼帧缓冲
+  // 重建后重新入队播放。以 sentenceId 记拒绝线：≤ 线的帧一律丢弃；host 的 sentenceId
+  // 跨回合单调递增（cancel 不清 seq），新回合必然 > 线；enter 重入成功后清线。
+  const rejectSeqUpTo = new Map<string, number>()
+  /** 各会话最后完整入队（final）的 sentenceId（skip 取线用）。 */
+  const lastFinalSeq = new Map<string, number>()
   let curSentenceId: number | null = null
   let curChunks: Uint8Array[] = []
   let curBytes = 0
@@ -708,6 +734,10 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   let curChunkCount = 0
   audioListeners.add((frame) => {
     if (frame.sessionId !== activeSessionId) return
+    // 双重奏根治：拒绝线内的旧句帧（skip 时已开始传输、SSE 在途）→ 丢弃，
+    // 防「残余 chunk 重建整句 → 重新入队播放」与新一轮回复叠加。
+    const rejectLine = rejectSeqUpTo.get(frame.sessionId)
+    if (rejectLine !== undefined && frame.sentenceId <= rejectLine) return
     // P1-5：首 chunk 到达 = 首句合成产出（延迟埋点链里程碑）。
     stampTelemetry('first-tts-chunk')
     if (frame.sentenceId !== curSentenceId) {
@@ -744,6 +774,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         text: frame.text ?? '',
         audio: buf,
       })
+      lastFinalSeq.set(frame.sessionId, frame.sentenceId)
       return
     }
     const bin = atob(frame.audio)
@@ -754,6 +785,27 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     curChunkCount += 1
   })
   toolListeners.add(() => engine.toolBeep())
+
+  /** 双重奏根治：停播 + 记拒绝线（skip 时在途/已入队句的最大 sentenceId，其后 ≤ 线帧丢弃）。
+   *  sidArg：模式让出/抢占时传被让出会话 id（此时 activeSessionId 已切到新会话）。 */
+  const doSkipAudio = (sidArg?: string | null): void => {
+    const sid = sidArg ?? activeSessionId
+    if (sid) {
+      rejectSeqUpTo.set(sid, Math.max(lastFinalSeq.get(sid) ?? -1, curSentenceId ?? -1))
+    }
+    // P1-1：打断/让出时丢弃未完成句的拼帧缓冲（避免残留帧悬挂）。
+    curSentenceId = null
+    curChunks = []
+    curBytes = 0
+    // P3-2：打断即播放停——回声参考归零（防旧回合参考污染）。
+    refActive = false
+    refChunks.length = 0
+    refTotal = 0
+    engine.skip()
+    // skip 是硬停（stop/pause 立即静音），无自然播完的残响——清除 ECHO_TAIL 宽限起点，
+    // 否则 skip 后 400ms 内开口的 VAD 入段会被 isPlaying 误拦（丢首 400ms 语音）。
+    playingEndAt = 0
+  }
 
   return {
     get activeSessionId() {
@@ -768,8 +820,14 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       }
     },
     setUi(patch) {
+      // 记录 playing 降沿（true→false），供 isPlaying 回声尾音宽限判定。
+      if (patch.playing === false && ui.playing === true) playingEndAt = Date.now()
       Object.assign(ui, patch)
       notify()
+    },
+    /** isPlaying 尾音截止墙钟：playing 或尾音宽限期内均视为「AI 正在朗读」。 */
+    playingTailUntil() {
+      return playingEndAt + ECHO_TAIL_MS
     },
     async enter(sessionId) {
       try {
@@ -782,6 +840,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         activeSessionId = out.active ?? null
         notify()
         if (!res.ok) return { ok: false, error: out.error ?? t('enterFail') }
+        // 双重奏根治：拒绝线保留（host toggle 用 cancel 保 seq 连续递增）——
+        // 重入/403 恢复后新句 seq 必然 > 线（旧帧 ≤ 线仍被拒），不清线消除
+        // 「exit→enter 在途旧帧重入」窗口。
         return { ok: out.active === sessionId, error: out.active === sessionId ? undefined : t('enterFail') }
       } catch {
         return { ok: false, error: t('enterFail') }
@@ -790,6 +851,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     async exit(sessionId) {
       resetTelemetry()
       ui.turn = 'idle' // P2-4：退出复位回合状态
+      // 双重奏根治：退出即停 TTS，拒绝线保留（host toggle off 用 cancel 停推且 seq 连续，
+      // 重入后新句 seq > 线、旧帧 ≤ 线仍被拒）。
+      doSkipAudio()
       try {
         const res = await fetch(`${location.origin}${basePath}/toggle`, {
           method: 'POST',
@@ -816,15 +880,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       }
     },
     skipAudio() {
-      // P1-1：打断/让出时丢弃未完成句的拼帧缓冲（避免残留帧悬挂）。
-      curSentenceId = null
-      curChunks = []
-      curBytes = 0
-      // P3-2：打断即播放停——回声参考归零（防旧回合参考污染）。
-      refActive = false
-      refChunks.length = 0
-      refTotal = 0
-      engine.skip()
+      doSkipAudio()
     },
     echoForAsr() {
       return echoSource
@@ -982,8 +1038,10 @@ export function MicButton({
       if (bus.activeSessionId !== sid) {
         setLocalMode('off')
         clearIdle()
-        void engineRef.current?.stop()
+        const engine = engineRef.current
         engineRef.current = null
+        // Fix：先置 null 防重入，再异步 stop（stop 内部会阻止 handleAudio）
+        if (engine) void engine.stop()
       }
     })
   }, [bus])
@@ -991,7 +1049,7 @@ export function MicButton({
   /** 取消草稿提交（打字打断提交窗口）。 */
   const cancelPendingSubmit = (): void => {
     if (submitTimerRef.current) {
-      clearTimeout(submitTimerRef.current)
+      clearInterval(submitTimerRef.current) // Fix：setInterval 需要 clearInterval，不是 clearTimeout
       submitTimerRef.current = null
     }
   }
@@ -1003,11 +1061,11 @@ export function MicButton({
     cancelPendingSubmit()
     const engine = engineRef.current
     engineRef.current = null
-    if (engine) void engine.stop()
+    if (engine) await engine.stop() // Fix：等待 stop 完成，确保 handleAudio 停止
     bus.resetTelemetry() // P1-5：退出清空埋点链
     bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null })
     const sid = sidRef.current
-    if (sid) void bus.exit(sid)
+    if (sid) await bus.exit(sid) // Fix：等待 host 退出完成，防 ASR 请求 403
   }
 
   const enterMode = async (): Promise<void> => {
@@ -1032,7 +1090,26 @@ export function MicButton({
       const silenceMs = cfg.silenceMs
       const interruptLevel = cfg.interruptLevel
       const engine = createAsrEngine(
-        { silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord, echo: bus.echoForAsr() },
+        {
+          silenceMs,
+          interruptLevel,
+          basePath,
+          wakeWord: cfg.wakeWord,
+          echo: bus.echoForAsr(),
+          // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
+          isPlaying: () => bus.ui.playing || Date.now() < bus.playingTailUntil(),
+          onSessionExpired: async () => {
+            // 403 恢复：host 端活跃会话已变更（如被抢占/让出），尝试重新进入。
+            bus.setUi({ error: t('sessionExpired') })
+            const reentered = await bus.enter(sid)
+            if (!reentered.ok) {
+              bus.setUi({ error: t('sessionExpiredFail') })
+            } else {
+              bus.setUi({ error: null })
+            }
+            return reentered.ok
+          },
+        },
         sid,
       )
       bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord })
@@ -1071,7 +1148,7 @@ export function MicButton({
         const actions = actionsRef.current
         const trimmed = text.trim()
         if (!trimmed) return
-        // 追加式写入：保留已有草稿内容，避免覆盖用户正在编辑的文本（读取 useInput 镜像）
+        // 追加式写入：保留已有草稿内容（绝对不改第一真文）：
         try {
           const curText = draftRef.current
           const nextDraft = curText ? `${curText} ${trimmed}` : trimmed
@@ -1087,6 +1164,9 @@ export function MicButton({
             // 提交失败：文字已留在草稿（Q16）
           }
         }
+        // AI 自聊修复：TTS 在播（bus.ui.playing）时不得自动发送非强制段——
+        // 因 TTS 回声定稿后若无 gate 会经 onSegment 发出，进入 AI 回复→TTS→回声 → 自循环。
+        if (bus.ui.playing && !meta?.force) return
         // 自动提交门控：设置关闭或未强制时只留草稿，等待用户编辑/发送
         if (bootNow().autoSend === false && !meta?.force) return
         // 自动提交：增加重试与可见降级（Q16 提交失败→留在草稿+错误提示）
@@ -1104,15 +1184,18 @@ export function MicButton({
           }
         }
         cancelPendingSubmit()
-        // 立即尝试一次，失败则 800ms 后重试一次
+        // 立即尝试一次，失败则 500ms 后重试（最多 3 次防无限循环）
         doSubmit()
-        submitTimerRef.current = setTimeout(() => {
-          // 首发未消费的兜底重试：仅当输入机器未处于 submitting/adjudicating
-          // （提交在途/裁决中，草稿未清是正常情形）且草稿仍有我们的文本时重试，
-          // 否则会重复发送同一句话。
+        let retryCount = 0
+        submitTimerRef.current = setInterval(() => {
+          retryCount++
           const phase = phaseRef.current
-          if (phase !== 'submitting' && phase !== 'adjudicating' && draftRef.current.trim()) doSubmit()
-        }, 800)
+          if (retryCount > 3 || phase === 'submitting' || phase === 'adjudicating' || draftRef.current.trim() !== trimmed) {
+            cancelPendingSubmit()
+            return
+          }
+          doSubmit()
+        }, 500)
       })
       engine.onSpeechStart(async () => {
         // barge-in（Q2 硬打断）+ P3-3 duck-and-listen：先压低 TTS（<50ms 降 0.3x），
@@ -1130,21 +1213,23 @@ export function MicButton({
         resetIdle()
         bus.resetTelemetry() // P1-5：打断 = 上一轮回复作废，链清空（新一轮 utterance-end 重新起算）
         const hardBreak = async (): Promise<void> => {
-          // Fix：打断即丢弃本地残余段（与 host asr.reset 对称，防残缺文本被 autoSend 提交）。
-          engineRef.current?.discardSegment()
+          // 立即停播 + 恢复音量：不等待慢操作（discardSegment 最多 5s、cancel 最多 3s），
+          // 否则打断后新回复的音量长期卡在 duck 0.3x，听感像「没语音」。
           bus.skipAudio()
-          try {
-            await fetch(`${location.origin}${BASE_PATH}/cancel`, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ sessionId: sidRef.current }),
-              // Minor：cancel 网络挂起时不让 TTS 长期停在 duck 音量下（AbortSignal.timeout 需 Chrome 103+/Safari 16+）。
-              signal: AbortSignal.timeout(3000),
-            })
-          } catch {
-            // cancel 路由不可达：本地已静音
-          }
           bus.unduckAudio()
+          // 双重奏根治：cancel 立即发出（不等 discardSegment）→ host epoch++ 停推，
+          // 缩短「skip 后旧回合帧继续到达」的窗口（在途旧帧由 client 拒绝线兜底丢弃）。
+          const cancelP = fetch(`${location.origin}${BASE_PATH}/cancel`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sessionId: sidRef.current }),
+            signal: AbortSignal.timeout(3000),
+          }).catch(() => {
+            // cancel 路由不可达：本地已静音
+          })
+          // 异步清理：丢弃残余段（防残缺文本 autoSend）+ host 静音 + 取消回合。
+          if (engineRef.current) await engineRef.current.discardSegment()
+          await cancelP
           if (runningRef.current && sidRef.current) {
             bus.cancelTurn(sidRef.current!)
           }
@@ -1167,7 +1252,7 @@ export function MicButton({
           // 回声：TTS 压低后 mic 骤降且近乎静音 → 恢复增益、丢弃已录段（防幽灵消息），
           // 并阻尼打断前沿 2s（防「拉低→恢复→再触发」周期循环）。
           bus.unduckAudio()
-          engineRef.current?.discardSegment()
+          if (engineRef.current) await engineRef.current.discardSegment()
           engineRef.current?.suppressBargeIn(2000)
           return
         }
@@ -1493,11 +1578,13 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
             : t('listening')
           : b.ui.state === 'wake'
             ? t('sayWake').replace('{wake}', b.ui.wakeWord || t('wakeWord'))
-            : b.ui.turn === 'agent-speaking' && !b.ui.playing
-              ? t('thinking')
-              : b.ui.mode === 'hold'
-                ? t('barHold')
-                : t('barListening')
+            : b.ui.playing // Fix：TTS 播放時顯示「朗讀中…」，防用戶誤以為系統無響應
+              ? t('reading')
+              : b.ui.turn === 'agent-speaking'
+                ? t('thinking')
+                : b.ui.mode === 'hold'
+                  ? t('barHold')
+                  : t('barListening')
 
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0)
 

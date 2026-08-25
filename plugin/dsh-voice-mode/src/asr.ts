@@ -48,6 +48,10 @@ export interface AsrConfig {
   wakeWord?: string
   /** P3-2：回声参考（TTS 播放经 NLMS 消除后，信号再用于打断/VAD/上行）。 */
   echo?: EchoRefSource
+  /** AI 朗读中（TTS 在播）：根治「TTS→回声→ASR→自聊」。为 true 时只走打断快路径、不入段。 */
+  isPlaying?: () => boolean
+  /** 403 会话过期回调：host 端活跃会话已变更（如被抢占/让出），返回 true 表示已恢复。 */
+  onSessionExpired?: () => Promise<boolean>
 }
 
 export interface SegmentMeta {
@@ -65,8 +69,8 @@ export interface AsrEngine {
   beginHeld(): void
   /** hold 模式：松手定稿发送（cancel=true 放弃本段）。 */
   endHeld(cancel?: boolean): void
-  /** P3-3：丢弃当前已录段（duck-and-listen 探针判回声后防幽灵消息），host 流重置。 */
-  discardSegment(): void
+  /** P3-3：丢弃当前已录段（duck-and-listen 探针判回声后防幽灵消息），host 流重置。返回 Promise 供调用方等待。 */
+  discardSegment(): Promise<void>
   /** Fix：阻尼打断前沿若干毫秒（回声判定后防拉压低循环）。 */
   suppressBargeIn(ms: number): void
   /** 定稿文本（段结束/强制发送后）。 */
@@ -167,6 +171,15 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   const intLevel = INTERRUPT_LEVELS[config.interruptLevel] ?? INTERRUPT_LEVELS[0]
   let interruptCandidateMs = 0
   let bargeInDampingUntil = 0
+  // P1 噪声自适应：噪声底估计（只在静音/低噪时下降跟踪最小值，语音/突发时冻结，
+  // 防语音抬高噪声底导致阈值虚高漏打断）。
+  let noiseFloor = 0.01
+  // P0 瞬态抑制：冲击噪声（咳嗽/拍桌/关门/键盘）onset 后能量快速回落；人声 onset 后持续。
+  // 以「onset 后 N 帧内回落到峰值 35% 以下」判瞬态，回落后进入冷却期阻断连续瞬态累积。
+  let prevRms = 0
+  let transientPeak = 0
+  let transientAge = -1
+  let transientCooldownUntil = 0
 
   // --- partial 轮询 ---
   let sincePartialMs = 0
@@ -265,6 +278,21 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         })
         res = retry
       }
+      // 403 会话过期：host 端活跃会话已变更（如被抢占/让出），尝试恢复后重试一次。
+      if (res.status === 403 && config.onSessionExpired) {
+        const recovered = await config.onSessionExpired()
+        if (recovered && epoch === segmentEpoch) {
+          try {
+            res = await fetch(asrUrl(false, from, epoch), {
+              method: 'POST',
+              headers: { 'content-type': 'application/octet-stream' },
+              body: samples.buffer as ArrayBuffer,
+            })
+          } catch {
+            // 重试失败：静默（下轮 partial 自动覆盖）
+          }
+        }
+      }
       if (epoch !== segmentEpoch) return
       if (!res.ok) return
       const out = (await res.json()) as { text?: string; endpoint?: boolean }
@@ -303,7 +331,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   /** 清 host 识别流（唤醒词命中 / wake 滚窗）。 */
   const resetHostStream = async (): Promise<void> => {
     try {
-      await fetch(`${asrUrl(false)}&reset=1`, { method: 'POST' })
+      // 超时防挂起：reset 是 fire-and-forget 语义，挂起不得阻塞 discardSegment/hardBreak。
+      await fetch(`${asrUrl(false)}&reset=1`, { method: 'POST', signal: AbortSignal.timeout(5000) })
     } catch {
       // 重置失败：下次 partial 走增量仍可续（host 流健壮）
     }
@@ -312,6 +341,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   /** 定稿当前段：POST final=1（含 0.5s 尾垫由 host 补齐协议侧不需要）。 */
   const finalizeSegment = (): void => {
     if (segment.length === 0) return
+    // 根治自聊：AI 朗读中的 finalize（由 VAD/上限/强制非 hold 触发）一律丢弃，
+    // 防「TTS→回声→入段→autoSend」路径下的绕后发送。hold 松手（forcePending）明确
+    // 发送意图放行；wake 分支本就不调用 finalize（滚窗重置），无需额外判。
+    if (config.isPlaying?.() && !forcePending) return
     // P1-5：强制发送 / 段长上限 / hold 松手等无静音过渡的端点路径，
     // 端点判句到点即「说完」时刻（无静音等待段）。
     if (utteranceEndAt === null) {
@@ -360,6 +393,21 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
               }
             }, 5000)
           })
+        }
+        // 403 会话过期：host 端活跃会话已变更（如被抢占/让出），尝试恢复后重试一次。
+        if (res.status === 403 && config.onSessionExpired) {
+          const recovered = await config.onSessionExpired()
+          if (recovered && segmentEpoch === epochSnapshot + 1) {
+            try {
+              res = await fetch(asrUrl(true, from, epochSnapshot), { signal: AbortSignal.timeout(10000),
+                method: 'POST',
+                headers: { 'content-type': 'application/octet-stream' },
+                body: samples.buffer as ArrayBuffer,
+              })
+            } catch {
+              // 重试失败：静默（下轮 finalize 自动重试）
+            }
+          }
         }
         // 段已被清（stop/新段）时世代变化，结果作废。
         setState(active ? (speechActive || holdActive ? 'speech' : 'listening') : 'idle')
@@ -411,10 +459,37 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
 
     // 打断前沿（高门槛，Q10）：达到即报；阻尼期内不重复报（800ms）。
     // P2-5：判句端点已由 host Silero VAD 负责，客户端能量路径专职「打断快路径」。
+    // P1 噪声自适应：静音/低噪时噪声底下降跟踪；有效阈值 = max(写死档位, 噪声底×2+偏移)，
+    // 嘈杂环境（空调/风扇/环境底噪）阈值自动抬高，防持续噪声误打断。
+    if (rms < noiseFloor * 2.5) {
+      noiseFloor = noiseFloor * 0.9 + rms * 0.1
+    }
+    const effectiveThreshold = Math.max(intLevel.rms, noiseFloor * 2 + 0.015)
+    // P0 瞬态抑制：onset（能量从噪声底陡升 ≥4×）后若 2 帧（128ms）内回落到峰值 35% 以下
+    // 即判冲击瞬态（咳嗽/拍桌/关门/键盘），进入 300ms 冷却期阻断其累积；持续 ≥4 帧（256ms）
+    // 判人声（辅音-元音的能量波动 ≥0.35 不回落，不会误伤语音 onset）。
+    if (rms > prevRms * 4 && rms > effectiveThreshold) {
+      transientPeak = rms
+      transientAge = 0
+    } else if (transientAge >= 0) {
+      transientAge++
+      if (rms > transientPeak) transientPeak = rms
+      if (transientAge >= 2 && rms < transientPeak * 0.35) {
+        transientCooldownUntil = Date.now() + 300
+        transientAge = -1
+        interruptCandidateMs = 0
+      } else if (transientAge >= 4) {
+        transientAge = -1
+      }
+    }
+    prevRms = rms
 
     if (Date.now() < bargeInDampingUntil) {
       interruptCandidateMs = 0
-    } else if (rms > intLevel.rms) {
+    } else if (Date.now() < transientCooldownUntil) {
+      // P0：瞬态冷却期内不累积（键盘连击等连续瞬态也不打断）。
+      interruptCandidateMs = 0
+    } else if (rms > effectiveThreshold) {
       interruptCandidateMs += durationMs
       if (interruptCandidateMs >= intLevel.ms) {
         interruptCandidateMs = 0
@@ -470,6 +545,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         if (cut > 0) prePad = prePad.slice(cut)
       }
     } else if (rms > SPEECH_RMS) {
+      // 根治自聊：AI 朗读期间 VAD 入段丢弃（回声经 AEC 残留仍超 threshold 会被误识为语音）。
+      // 此分支已天然排除 hold（前 if(holdActive)）与 wake（前 else-if(state==='wake')），
+      // 故无需再判——hold/wake 是明确意图，走各自分支不受影响。
+      if (config.isPlaying?.()) return
       if (!speechActive) {
         speechActive = true
         // P1-5：新一轮语音开始，复位「说完」标记（下一轮 chain 重新起算）。
@@ -574,8 +653,7 @@ const startRecorder = async (): Promise<void> => {
   }
 
   const stopRecorder = async (): Promise<void> => {
-    if (!active) return
-    active = false
+    // 根治 403：active 已在 stop() 中置 false，此处不再检查（否则清理逻辑被跳过）。
     inFlush = true
     segmentEpoch++ // 迟到的请求结果全部作废
     forcePending = false
@@ -635,7 +713,10 @@ const startRecorder = async (): Promise<void> => {
     async stop() {
       // Fix8：即使 active=false（授权挂起中被抢占）也要标记取消，让授权返回后释放。
       stopRequested = true
-      if (!active) {
+      // 根治 403：stop 立即置 active=false，阻止 handleAudio 在 stopRecorder 异步完成前继续发请求。
+      const wasActive = active
+      active = false
+      if (!wasActive) {
         setState('idle')
         return
       }
@@ -662,6 +743,7 @@ const startRecorder = async (): Promise<void> => {
       speechMs = 0
       silenceMs = 0
       prePad = []
+      uploadedSamples = 0 // Fix：hold 新段重置上传水位，防旧段水位污染
       speechActive = true
       sincePartialMs = 0
       // 按下首帧注入打断阻尼：避免"录制开始"被误判为打断前沿（Q10）。
@@ -681,8 +763,10 @@ const startRecorder = async (): Promise<void> => {
       utteranceEndAt = null
       forcePending = false
       sincePartialMs = 0
-      void resetHostStream()
-      if (active) setState(wakeWord ? 'wake' : 'listening')
+      // Fix：等待 host 流重置完成后再恢复状态（防新段使用旧流）
+      return resetHostStream().then(() => {
+        if (active) setState(wakeWord ? 'wake' : 'listening')
+      })
     },
     suppressBargeIn(ms) {
       bargeInDampingUntil = Math.max(bargeInDampingUntil, Date.now() + ms)
@@ -702,9 +786,15 @@ const startRecorder = async (): Promise<void> => {
         setState(wakeWord ? 'wake' : 'listening')
         return
       }
-      forcePending = true
-      sincePartialMs = 0
-      finalizeSegment()
+      // Fix：segment 为空时不设置 forcePending（防 finalizeSegment 早退后 force 标记泄漏到下段）
+      if (segment.length > 0) {
+        forcePending = true
+        sincePartialMs = 0
+        finalizeSegment()
+      } else {
+        forcePending = false
+        setState(wakeWord ? 'wake' : 'listening')
+      }
     },
     onSegment(fn) {
       transcriptListeners.add(fn)

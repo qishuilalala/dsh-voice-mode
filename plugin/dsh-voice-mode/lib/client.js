@@ -136,6 +136,11 @@ function createAsrEngine(config, sessionId) {
   const intLevel = INTERRUPT_LEVELS[config.interruptLevel] ?? INTERRUPT_LEVELS[0];
   let interruptCandidateMs = 0;
   let bargeInDampingUntil = 0;
+  let noiseFloor = 0.01;
+  let prevRms = 0;
+  let transientPeak = 0;
+  let transientAge = -1;
+  let transientCooldownUntil = 0;
   let sincePartialMs = 0;
   let partialInFlight = false;
   let segmentEpoch = 0;
@@ -212,6 +217,19 @@ function createAsrEngine(config, sessionId) {
         });
         res = retry;
       }
+      if (res.status === 403 && config.onSessionExpired) {
+        const recovered = await config.onSessionExpired();
+        if (recovered && epoch === segmentEpoch) {
+          try {
+            res = await fetch(asrUrl(false, from, epoch), {
+              method: "POST",
+              headers: { "content-type": "application/octet-stream" },
+              body: samples.buffer
+            });
+          } catch {
+          }
+        }
+      }
       if (epoch !== segmentEpoch) return;
       if (!res.ok) return;
       const out = await res.json();
@@ -242,12 +260,13 @@ function createAsrEngine(config, sessionId) {
   };
   const resetHostStream = async () => {
     try {
-      await fetch(`${asrUrl(false)}&reset=1`, { method: "POST" });
+      await fetch(`${asrUrl(false)}&reset=1`, { method: "POST", signal: AbortSignal.timeout(5e3) });
     } catch {
     }
   };
   const finalizeSegment = () => {
     if (segment.length === 0) return;
+    if (config.isPlaying?.() && !forcePending) return;
     if (utteranceEndAt === null) {
       utteranceEndAt = Date.now();
       emitTelemetry("utterance-end");
@@ -295,6 +314,20 @@ function createAsrEngine(config, sessionId) {
             }, 5e3);
           });
         }
+        if (res.status === 403 && config.onSessionExpired) {
+          const recovered = await config.onSessionExpired();
+          if (recovered && segmentEpoch === epochSnapshot + 1) {
+            try {
+              res = await fetch(asrUrl(true, from, epochSnapshot), {
+                signal: AbortSignal.timeout(1e4),
+                method: "POST",
+                headers: { "content-type": "application/octet-stream" },
+                body: samples.buffer
+              });
+            } catch {
+            }
+          }
+        }
         setState(active ? speechActive || holdActive ? "speech" : "listening" : "idle");
         if (!res.ok) return;
         let out;
@@ -329,9 +362,30 @@ function createAsrEngine(config, sessionId) {
       } catch {
       }
     }
+    if (rms < noiseFloor * 2.5) {
+      noiseFloor = noiseFloor * 0.9 + rms * 0.1;
+    }
+    const effectiveThreshold = Math.max(intLevel.rms, noiseFloor * 2 + 0.015);
+    if (rms > prevRms * 4 && rms > effectiveThreshold) {
+      transientPeak = rms;
+      transientAge = 0;
+    } else if (transientAge >= 0) {
+      transientAge++;
+      if (rms > transientPeak) transientPeak = rms;
+      if (transientAge >= 2 && rms < transientPeak * 0.35) {
+        transientCooldownUntil = Date.now() + 300;
+        transientAge = -1;
+        interruptCandidateMs = 0;
+      } else if (transientAge >= 4) {
+        transientAge = -1;
+      }
+    }
+    prevRms = rms;
     if (Date.now() < bargeInDampingUntil) {
       interruptCandidateMs = 0;
-    } else if (rms > intLevel.rms) {
+    } else if (Date.now() < transientCooldownUntil) {
+      interruptCandidateMs = 0;
+    } else if (rms > effectiveThreshold) {
       interruptCandidateMs += durationMs;
       if (interruptCandidateMs >= intLevel.ms) {
         interruptCandidateMs = 0;
@@ -381,6 +435,7 @@ function createAsrEngine(config, sessionId) {
         if (cut > 0) prePad = prePad.slice(cut);
       }
     } else if (rms > SPEECH_RMS) {
+      if (config.isPlaying?.()) return;
       if (!speechActive) {
         speechActive = true;
         utteranceEndAt = null;
@@ -468,8 +523,6 @@ function createAsrEngine(config, sessionId) {
     active = true;
   };
   const stopRecorder = async () => {
-    if (!active) return;
-    active = false;
     inFlush = true;
     segmentEpoch++;
     forcePending = false;
@@ -523,7 +576,9 @@ function createAsrEngine(config, sessionId) {
     },
     async stop() {
       stopRequested = true;
-      if (!active) {
+      const wasActive = active;
+      active = false;
+      if (!wasActive) {
         setState("idle");
         return;
       }
@@ -549,6 +604,7 @@ function createAsrEngine(config, sessionId) {
       speechMs = 0;
       silenceMs = 0;
       prePad = [];
+      uploadedSamples = 0;
       speechActive = true;
       sincePartialMs = 0;
       bargeInDampingUntil = Date.now() + 800;
@@ -566,8 +622,9 @@ function createAsrEngine(config, sessionId) {
       utteranceEndAt = null;
       forcePending = false;
       sincePartialMs = 0;
-      void resetHostStream();
-      if (active) setState(wakeWord ? "wake" : "listening");
+      return resetHostStream().then(() => {
+        if (active) setState(wakeWord ? "wake" : "listening");
+      });
     },
     suppressBargeIn(ms) {
       bargeInDampingUntil = Math.max(bargeInDampingUntil, Date.now() + ms);
@@ -586,9 +643,14 @@ function createAsrEngine(config, sessionId) {
         setState(wakeWord ? "wake" : "listening");
         return;
       }
-      forcePending = true;
-      sincePartialMs = 0;
-      finalizeSegment();
+      if (segment.length > 0) {
+        forcePending = true;
+        sincePartialMs = 0;
+        finalizeSegment();
+      } else {
+        forcePending = false;
+        setState(wakeWord ? "wake" : "listening");
+      }
     },
     onSegment(fn) {
       transcriptListeners.add(fn);
@@ -735,6 +797,8 @@ var zh = {
   barListening: "\u8BED\u97F3\u6A21\u5F0F \xB7 \u8046\u542C\u4E2D\u2026",
   reading: "\u6717\u8BFB\u4E2D\u2026",
   recognitionFail: "\u8BC6\u522B\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
+  sessionExpired: "\u8BED\u97F3\u4F1A\u8BDD\u5DF2\u65AD\u5F00\uFF0C\u6B63\u5728\u91CD\u8FDE\u2026",
+  sessionExpiredFail: "\u8BED\u97F3\u4F1A\u8BDD\u91CD\u8FDE\u5931\u8D25\uFF0C\u8BF7\u91CD\u65B0\u5F00\u542F\u8BED\u97F3\u6A21\u5F0F",
   modelDownloadFail: "\u8BED\u97F3\u6A21\u578B\u4E0B\u8F7D\u5931\u8D25\uFF08{file}\uFF09\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u65B0\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u91CD\u8BD5",
   startFail: "\u8BED\u97F3\u6A21\u5F0F\u542F\u52A8\u5931\u8D25\uFF1A{err}",
   holdDots: "\u6309\u4F4F\u8BF4\u8BDD\u2026",
@@ -824,6 +888,8 @@ var en = {
   barListening: "Voice mode \xB7 listening\u2026",
   reading: "Reading\u2026",
   recognitionFail: "Recognition failed, try again",
+  sessionExpired: "Voice session expired, reconnecting\u2026",
+  sessionExpiredFail: "Voice session reconnect failed; please re-enter voice mode",
   modelDownloadFail: "Model download failed ({file}): check network and re-enter voice mode",
   startFail: "Voice mode failed to start: {err}",
   holdDots: "Hold to talk\u2026",
@@ -1396,6 +1462,7 @@ var DUCK_PROBE_DROP = 0.5;
 var DUCK_SILENCE_LEVEL = 0.06;
 var SAMPLE_RATE_16K = 16e3;
 var ECHO_DELAY_MS = 0;
+var ECHO_TAIL_MS = 400;
 var WAVE_BARS = 14;
 var BASE_PATH2 = "/voice-mode";
 function apply(ctx) {
@@ -1653,6 +1720,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   const audioListeners = /* @__PURE__ */ new Set();
   const toolListeners = /* @__PURE__ */ new Set();
   let source = null;
+  let playingEndAt = 0;
   const telemetryStages = {};
   const stampTelemetry = (stage, at) => {
     if (!telemetryEnabled) return;
@@ -1686,9 +1754,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     const tailWall = refStartWall + refTotal / SAMPLE_RATE_16K * 1e3;
     const gapMs = startWallMs - tailWall;
     if (gapMs > 250) {
-      refActive = false;
       refChunks.length = 0;
       refTotal = 0;
+      refStartWall = startWallMs;
     } else if (gapMs > 1) {
       const padN = Math.floor(gapMs / 1e3 * SAMPLE_RATE_16K);
       refChunks.push(new Float32Array(padN));
@@ -1752,13 +1820,18 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   const connect = () => {
     if (source) return;
     source = new EventSource(`${location.origin}${basePath}/stream`);
+    source.addEventListener("open", () => {
+      rejectSeqUpTo.clear();
+      lastFinalSeq.clear();
+    });
     source.addEventListener("mode", (e) => {
       try {
         const active = JSON.parse(e.data).active ?? null;
         if (active !== activeSessionId) {
+          const prev = activeSessionId;
           activeSessionId = active;
           if (ui.turn !== "idle") ui.turn = "idle";
-          if (active !== null || ui.playing) engine.skip();
+          doSkipAudio(prev);
           resetTelemetry();
           notify();
         }
@@ -1842,12 +1915,16 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
   };
   connect();
+  const rejectSeqUpTo = /* @__PURE__ */ new Map();
+  const lastFinalSeq = /* @__PURE__ */ new Map();
   let curSentenceId = null;
   let curChunks = [];
   let curBytes = 0;
   let curChunkCount = 0;
   audioListeners.add((frame) => {
     if (frame.sessionId !== activeSessionId) return;
+    const rejectLine = rejectSeqUpTo.get(frame.sessionId);
+    if (rejectLine !== void 0 && frame.sentenceId <= rejectLine) return;
     stampTelemetry("first-tts-chunk");
     if (frame.sentenceId !== curSentenceId) {
       curSentenceId = frame.sentenceId;
@@ -1880,6 +1957,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         text: frame.text ?? "",
         audio: buf
       });
+      lastFinalSeq.set(frame.sessionId, frame.sentenceId);
       return;
     }
     const bin = atob(frame.audio);
@@ -1890,6 +1968,20 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     curChunkCount += 1;
   });
   toolListeners.add(() => engine.toolBeep());
+  const doSkipAudio = (sidArg) => {
+    const sid = sidArg ?? activeSessionId;
+    if (sid) {
+      rejectSeqUpTo.set(sid, Math.max(lastFinalSeq.get(sid) ?? -1, curSentenceId ?? -1));
+    }
+    curSentenceId = null;
+    curChunks = [];
+    curBytes = 0;
+    refActive = false;
+    refChunks.length = 0;
+    refTotal = 0;
+    engine.skip();
+    playingEndAt = 0;
+  };
   return {
     get activeSessionId() {
       return activeSessionId;
@@ -1903,8 +1995,13 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       };
     },
     setUi(patch) {
+      if (patch.playing === false && ui.playing === true) playingEndAt = Date.now();
       Object.assign(ui, patch);
       notify();
+    },
+    /** isPlaying 尾音截止墙钟：playing 或尾音宽限期内均视为「AI 正在朗读」。 */
+    playingTailUntil() {
+      return playingEndAt + ECHO_TAIL_MS;
     },
     async enter(sessionId) {
       try {
@@ -1925,6 +2022,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     async exit(sessionId) {
       resetTelemetry();
       ui.turn = "idle";
+      doSkipAudio();
       try {
         const res = await fetch(`${location.origin}${basePath}/toggle`, {
           method: "POST",
@@ -1950,13 +2048,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       };
     },
     skipAudio() {
-      curSentenceId = null;
-      curChunks = [];
-      curBytes = 0;
-      refActive = false;
-      refChunks.length = 0;
-      refTotal = 0;
-      engine.skip();
+      doSkipAudio();
     },
     echoForAsr() {
       return echoSource;
@@ -2076,14 +2168,15 @@ function MicButton({
       if (bus.activeSessionId !== sid) {
         setLocalMode("off");
         clearIdle();
-        void engineRef.current?.stop();
+        const engine = engineRef.current;
         engineRef.current = null;
+        if (engine) void engine.stop();
       }
     });
   }, [bus]);
   const cancelPendingSubmit = () => {
     if (submitTimerRef.current) {
-      clearTimeout(submitTimerRef.current);
+      clearInterval(submitTimerRef.current);
       submitTimerRef.current = null;
     }
   };
@@ -2094,11 +2187,11 @@ function MicButton({
     cancelPendingSubmit();
     const engine = engineRef.current;
     engineRef.current = null;
-    if (engine) void engine.stop();
+    if (engine) await engine.stop();
     bus.resetTelemetry();
     bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null });
     const sid = sidRef.current;
-    if (sid) void bus.exit(sid);
+    if (sid) await bus.exit(sid);
   };
   const enterMode = async () => {
     const sid = sidRef.current;
@@ -2118,7 +2211,25 @@ function MicButton({
       const silenceMs = cfg.silenceMs;
       const interruptLevel = cfg.interruptLevel;
       const engine = createAsrEngine(
-        { silenceMs, interruptLevel, basePath, wakeWord: cfg.wakeWord, echo: bus.echoForAsr() },
+        {
+          silenceMs,
+          interruptLevel,
+          basePath,
+          wakeWord: cfg.wakeWord,
+          echo: bus.echoForAsr(),
+          // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
+          isPlaying: () => bus.ui.playing || Date.now() < bus.playingTailUntil(),
+          onSessionExpired: async () => {
+            bus.setUi({ error: t("sessionExpired") });
+            const reentered = await bus.enter(sid);
+            if (!reentered.ok) {
+              bus.setUi({ error: t("sessionExpiredFail") });
+            } else {
+              bus.setUi({ error: null });
+            }
+            return reentered.ok;
+          }
+        },
         sid
       );
       bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord });
@@ -2161,6 +2272,7 @@ function MicButton({
           } catch {
           }
         }
+        if (bus.ui.playing && !meta?.force) return;
         if (bootNow().autoSend === false && !meta?.force) return;
         const doSubmit = () => {
           try {
@@ -2176,10 +2288,16 @@ function MicButton({
         };
         cancelPendingSubmit();
         doSubmit();
-        submitTimerRef.current = setTimeout(() => {
+        let retryCount = 0;
+        submitTimerRef.current = setInterval(() => {
+          retryCount++;
           const phase = phaseRef.current;
-          if (phase !== "submitting" && phase !== "adjudicating" && draftRef.current.trim()) doSubmit();
-        }, 800);
+          if (retryCount > 3 || phase === "submitting" || phase === "adjudicating" || draftRef.current.trim() !== trimmed) {
+            cancelPendingSubmit();
+            return;
+          }
+          doSubmit();
+        }, 500);
       });
       engine.onSpeechStart(async () => {
         if (!bus.ui.playing) return;
@@ -2187,19 +2305,17 @@ function MicButton({
         resetIdle();
         bus.resetTelemetry();
         const hardBreak = async () => {
-          engineRef.current?.discardSegment();
           bus.skipAudio();
-          try {
-            await fetch(`${location.origin}${BASE_PATH2}/cancel`, {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ sessionId: sidRef.current }),
-              // Minor：cancel 网络挂起时不让 TTS 长期停在 duck 音量下（AbortSignal.timeout 需 Chrome 103+/Safari 16+）。
-              signal: AbortSignal.timeout(3e3)
-            });
-          } catch {
-          }
           bus.unduckAudio();
+          const cancelP = fetch(`${location.origin}${BASE_PATH2}/cancel`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ sessionId: sidRef.current }),
+            signal: AbortSignal.timeout(3e3)
+          }).catch(() => {
+          });
+          if (engineRef.current) await engineRef.current.discardSegment();
+          await cancelP;
           if (runningRef.current && sidRef.current) {
             bus.cancelTurn(sidRef.current);
           }
@@ -2217,7 +2333,7 @@ function MicButton({
         const silenceAfterDuck = after < DUCK_SILENCE_LEVEL;
         if (echoLowered && silenceAfterDuck) {
           bus.unduckAudio();
-          engineRef.current?.discardSegment();
+          if (engineRef.current) await engineRef.current.discardSegment();
           engineRef.current?.suppressBargeIn(2e3);
           return;
         }
@@ -2470,7 +2586,7 @@ function VoiceStatusBar({ bus, sessionId }) {
   }, [bus]);
   const isActive = b.active === sessionId;
   if (!isActive) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
-  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? t("recognizing") : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.turn === "agent-speaking" && !b.ui.playing ? t("thinking") : b.ui.mode === "hold" ? t("barHold") : t("barListening");
+  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? t("recognizing") : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.playing ? t("reading") : b.ui.turn === "agent-speaking" ? t("thinking") : b.ui.mode === "hold" ? t("barHold") : t("barListening");
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0);
   const telParts = [];
   const tel = b.ui.telemetry;

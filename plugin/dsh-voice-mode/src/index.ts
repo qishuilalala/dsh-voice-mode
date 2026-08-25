@@ -464,18 +464,28 @@ export function apply(ctx: Context, config: Config): void {
             // B1：进入即清该会话可能残留的 host ASR 段（上次中途退出的旧 stream/旧文本），
             // 防重入后新句丢失/幽灵提交。
             asr.reset(sessionId)
+            // 双重奏根治：进入即 cancel 本会话旧 TTS 回合（epoch++ 杀孤儿泵 + 清积压；
+            // seq 保留递增 → client 拒绝线在重入/403 恢复后仍有效，旧帧 ≤ 线被拒）。
+            queue.cancel(sessionId)
             // 全局单活：新会话进入即覆盖让出旧会话（Q11 切换会话自动让出）。
+            // 让出用 cancel 而非 prune：保留 seq 递增，避免让出会话重入后 seq 归零
+            // 撞上 client 残留拒绝线导致新句全被拒（静音）。
             const previous = activeVoiceSession
             activeVoiceSession = sessionId
-            if (previous && previous !== sessionId) queue.prune(previous)
+            if (previous && previous !== sessionId) queue.cancel(previous)
             broadcast('mode', { active: activeVoiceSession })
           } else {
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null
-              queue.prune(sessionId)
+              // 双重奏根治：退出用 cancel（epoch++ 杀孤儿泵 + 清积压）而非 prune——
+              // queue 保留使重入后 seq 连续递增 > client 拒绝线；prune 让 seq 归零
+              // 会撞上残留拒绝线导致新句全被拒（静音）。
+              queue.cancel(sessionId)
               // B1：退出即清 host ASR 段（释放 WASM stream，防残留文本/段泄漏）。
               asr.reset(sessionId)
               setTurn(sessionId, 'idle')
+              // Fix：清理回合状态，防 turnStates Map 随会话数量无限增长。
+              turnStates.delete(sessionId)
               broadcast('mode', { active: null })
             }
           }

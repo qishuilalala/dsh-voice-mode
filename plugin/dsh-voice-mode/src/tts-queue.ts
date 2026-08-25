@@ -148,6 +148,11 @@ export class TtsQueue {
   /**
    * 弃掉某会话的所有积压并作废正在合成的句子（打断）。之后入队的句子
    * 获得新 epoch 正常播放。
+   *
+   * 打断同时重置 WebSocket 连接：pump 的 break 会 destroy 当前 audioStream（删
+   * requestId），但服务端仍在发该句残留数据——msedge-tts 的 onmessage 访问已删
+   * stream 抛 TypeError，且复用同一条 ws 会累积脏状态导致后续合成静音/失败。
+   * close 后下次 ensureReady 重建连接，干净恢复。
    */
   cancel(sessionId: string): void {
     const q = this.queues.get(sessionId)
@@ -155,10 +160,25 @@ export class TtsQueue {
       q.epoch++
       q.pending.length = 0
     }
+    this.ready = null
+    try {
+      this.tts.close()
+    } catch {
+      // ignore：连接重建由下次 ensureReady 负责
+    }
   }
 
   /** 会话退出/被抢占时彻底清理其队列（防止 Map 长期累积）。 */
   prune(sessionId: string): void {
+    const q = this.queues.get(sessionId)
+    if (q) {
+      // 双重奏根治：孤儿泵不死——prune 只 delete queue 不提升 epoch 时，旧 q 的 pump
+      // 继续合成并广播旧回合句子（item.epoch === q.epoch 对旧 q 永真），与新泵并行 →
+      // 客户端同时收到旧/新两套句子（双重奏）。提升 epoch 让孤儿泵在下一 chunk 检查
+      // 时 break，停止广播；重入的新回合用新 queue（seq/epoch 从头）。
+      q.epoch++
+      q.pending.length = 0
+    }
     this.queues.delete(sessionId)
   }
 
@@ -201,6 +221,7 @@ export class TtsQueue {
           // final 帧携带的 chunkId = 句内已发 chunk 总数，客户端以此做丢帧完整性校验。
           if (bytes > 0 && item.epoch === q.epoch) {
             q.errorNotified = false // 有帧成功：复位不可达提示
+            q.backoff = 0 // Fix：成功后退避清零，防下次失败时退避窗口无限递增
             const frame: TtsChunkFrame = {
               sessionId,
               sentenceId,
@@ -218,8 +239,16 @@ export class TtsQueue {
             }
           }
         } catch (e) {
-          // 单句失败不阻塞队列（Q16：连续失败由上层降级）
+          // 单句失败不阻塞队列（Q16：连续失败由上层降级）。
+          // 重置连接：toStream/for-await 抛异常通常意味 ws 断开或 stream 被 destroy，
+          // 不重建则后续句子复用坏连接连续失败 →「后面没语音」。
           console.warn(`[dsh-voice-mode] synthesis failed: ${String(e)}`)
+          this.ready = null
+          try {
+            this.tts.close()
+          } catch {
+            // ignore：重建由下次 ensureReady 负责
+          }
         }
       }
     } catch (e) {

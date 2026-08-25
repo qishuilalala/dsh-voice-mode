@@ -852,6 +852,11 @@ var TtsQueue = class {
   /**
    * 弃掉某会话的所有积压并作废正在合成的句子（打断）。之后入队的句子
    * 获得新 epoch 正常播放。
+   *
+   * 打断同时重置 WebSocket 连接：pump 的 break 会 destroy 当前 audioStream（删
+   * requestId），但服务端仍在发该句残留数据——msedge-tts 的 onmessage 访问已删
+   * stream 抛 TypeError，且复用同一条 ws 会累积脏状态导致后续合成静音/失败。
+   * close 后下次 ensureReady 重建连接，干净恢复。
    */
   cancel(sessionId) {
     const q = this.queues.get(sessionId);
@@ -859,9 +864,19 @@ var TtsQueue = class {
       q.epoch++;
       q.pending.length = 0;
     }
+    this.ready = null;
+    try {
+      this.tts.close();
+    } catch {
+    }
   }
   /** 会话退出/被抢占时彻底清理其队列（防止 Map 长期累积）。 */
   prune(sessionId) {
+    const q = this.queues.get(sessionId);
+    if (q) {
+      q.epoch++;
+      q.pending.length = 0;
+    }
     this.queues.delete(sessionId);
   }
   async pump(sessionId, q) {
@@ -897,6 +912,7 @@ var TtsQueue = class {
           }
           if (bytes > 0 && item.epoch === q.epoch) {
             q.errorNotified = false;
+            q.backoff = 0;
             const frame = {
               sessionId,
               sentenceId,
@@ -914,6 +930,11 @@ var TtsQueue = class {
           }
         } catch (e) {
           console.warn(`[dsh-voice-mode] synthesis failed: ${String(e)}`);
+          this.ready = null;
+          try {
+            this.tts.close();
+          } catch {
+          }
         }
       }
     } catch (e) {
@@ -1201,16 +1222,18 @@ function apply(ctx, config) {
               return;
             }
             asr.reset(sessionId);
+            queue.cancel(sessionId);
             const previous = activeVoiceSession;
             activeVoiceSession = sessionId;
-            if (previous && previous !== sessionId) queue.prune(previous);
+            if (previous && previous !== sessionId) queue.cancel(previous);
             broadcast("mode", { active: activeVoiceSession });
           } else {
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null;
-              queue.prune(sessionId);
+              queue.cancel(sessionId);
               asr.reset(sessionId);
               setTurn(sessionId, "idle");
+              turnStates.delete(sessionId);
               broadcast("mode", { active: null });
             }
           }
