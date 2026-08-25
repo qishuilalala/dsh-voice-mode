@@ -501,10 +501,22 @@ export function apply(ctx: Context, config: Config): void {
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let kind: 'asr' | 'vad' | 'sense' = 'asr'
           try {
-            const p = JSON.parse(body || '{}') as { kind?: string }
-            if (p.kind === 'vad' || p.kind === 'sense' || p.kind === 'asr') kind = p.kind
+            const p = JSON.parse(body || '{}') as { kind?: unknown }
+            if (p.kind === undefined) {
+              // 缺省 asr（兼容设置面板旧调用）；显式非法 kind → 400（fuzz：数组/非法不再静默默认）。
+            } else if (p.kind === 'vad' || p.kind === 'sense' || p.kind === 'asr') {
+              kind = p.kind
+            } else {
+              res.statusCode = 400
+              res.setHeader('content-type', 'application/json')
+              res.end(JSON.stringify({ error: 'invalid kind' }))
+              return
+            }
           } catch {
-            // 缺省 asr
+            res.statusCode = 400
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify({ error: 'invalid json' }))
+            return
           }
           void asr.retryModel(kind).then((done) => {
             res.setHeader('content-type', 'application/json')

@@ -1088,8 +1088,20 @@ function apply(ctx, config) {
           let kind = "asr";
           try {
             const p = JSON.parse(body || "{}");
-            if (p.kind === "vad" || p.kind === "sense" || p.kind === "asr") kind = p.kind;
+            if (p.kind === void 0) {
+            } else if (p.kind === "vad" || p.kind === "sense" || p.kind === "asr") {
+              kind = p.kind;
+            } else {
+              res.statusCode = 400;
+              res.setHeader("content-type", "application/json");
+              res.end(JSON.stringify({ error: "invalid kind" }));
+              return;
+            }
           } catch {
+            res.statusCode = 400;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ error: "invalid json" }));
+            return;
           }
           void asr.retryModel(kind).then((done) => {
             res.setHeader("content-type", "application/json");
