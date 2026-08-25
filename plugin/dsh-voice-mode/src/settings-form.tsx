@@ -406,7 +406,7 @@ function SegGroup({
 
 /** 模型状态载荷（/voice-mode/models/status 返回）。 */
 interface ModelsStatusPayload {
-  asr: { repo: string; ready: boolean; files: Array<{ name: string; exists: boolean; size: number }> }
+  asr: { repo: string; ready: boolean; files: Array<{ name: string; exists: boolean; size: number }>; failLatchMs: number }
   vad: { repo: string; ready: boolean; size: number; failLatchMs: number }
   sense: { repo: string; ready: boolean; size: number; failLatchMs: number; enabled: boolean }
   progress: { file: string; percent: number } | null
@@ -504,7 +504,12 @@ function ModelStatusView(): React.ReactElement {
           <span style={{ fontSize: 12, color: t.term }}>{st.progress.file} {st.progress.percent}%</span>
         )}
       </div>
-      {mkRow(tr('modelStreamingAsr'), { ready: !!st?.asr.ready, size: st?.asr.files.reduce((a, f) => a + f.size, 0) ?? 0 }, 'asr', anyDownloading ? st.progress : null)}
+      {mkRow(
+        tr('modelStreamingAsr'),
+        { ready: !!st?.asr.ready, size: st?.asr.files.reduce((a, f) => a + f.size, 0) ?? 0, failLatchMs: st?.asr.failLatchMs ?? 0 },
+        'asr',
+        anyDownloading ? st.progress : null,
+      )}
       {mkRow(tr('modelVad'), { ready: !!st?.vad.ready, size: st?.vad.size ?? 0, failLatchMs: st?.vad.failLatchMs ?? 0 }, 'vad', anyDownloading ? st.progress : null)}
       {mkRow(
         tr('modelSense'),

@@ -38,27 +38,30 @@ async function downloadFile(repoDir, file) {
     return true
   }
   const partPath = `${localPath}.part`
-  const partSt = await stat(partPath).catch(() => null)
   for (const host of [HOST_PRIMARY, HOST_FALLBACK]) {
     const url = `${host}/${MODEL_REPO}/resolve/main/${file}`
     const headers = { 'user-agent': 'dsh-voice-mode/prefetch' }
-    const resumeFrom = partSt?.size ?? 0
+    // 续传基准每 host 重读：前一 host 可能已追加过 .part，复用过期大小会拼坏文件。
+    const resumeFrom = (await stat(partPath).catch(() => null))?.size ?? 0
     if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`
     try {
-      // 与 src/asr-host.ts 修复一致：60s 超时 + content-length 完整性核对（防截断坏文件）。
-      const res = await fetch(url, { headers, signal: AbortSignal.timeout(60000) })
+      // 与 src/asr-host.ts 一致：15 分钟超时（60s 会掐断 161MB encoder 大模型）+ 完整性核对。
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(900000) })
       if (res.status === 416) {
         await rename(partPath, localPath).catch(() => undefined)
         console.log(`  ✓ ${file}（续传完成）`)
         return true
       }
       if (res.status !== 200 && res.status !== 206) continue
-      const total = Number(res.headers.get('content-length') ?? 0) + resumeFrom
+      // 仅 206 才续传；带 .part 却回 200 全量（CDN 忽略 Range）必须从头重写，
+      // 否则在旧字节上追加全量 → 半旧半新损坏（与 asr-host.ts 同款修复）。
+      const resume = res.status === 206 ? resumeFrom : 0
+      const total = Number(res.headers.get('content-length') ?? 0) + resume
       const statusMax = file.length + 18
-      const sink = createWriteStream(partPath, resumeFrom > 0 ? { flags: 'a' } : {})
+      const sink = createWriteStream(partPath, resume > 0 ? { flags: 'a' } : {})
       const reader = res.body
       if (!reader) continue
-      let received = resumeFrom
+      let received = resume
       let lastPct = -1
       for (;;) {
         const { done, value } = await reader.read()

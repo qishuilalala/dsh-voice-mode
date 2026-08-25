@@ -108,7 +108,7 @@ export interface ModelFileStatus {
   size: number
 }
 export interface ModelsStatus {
-  asr: { repo: string; ready: boolean; files: ModelFileStatus[] }
+  asr: { repo: string; ready: boolean; files: ModelFileStatus[]; failLatchMs: number }
   vad: { repo: string; ready: boolean; size: number; failLatchMs: number }
   sense: { repo: string; ready: boolean; size: number; failLatchMs: number; enabled: boolean }
   /** 正在下载的文件与百分比（最近一次 asr-progress 值）。 */
@@ -191,6 +191,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   let recognizer: SherpaRecognizer | null = null
   let modelsReady = false
   let modelsLoading: Promise<boolean> | null = null
+  /** ASR 模型下载失败退避（与 vad/sense 一致）：源不可达时 60s 内不重试，
+   *  否则每拍 partial 都触发一轮下载尝试，增量识别被拉垮数百 ms。 */
+  let asrFailAt = 0
 
   /** 本地模型是否齐备（快速检查）。 */
   const haveAllModels = async (): Promise<boolean> => {
@@ -203,12 +206,15 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
 
   const ensureModels = async (): Promise<boolean> => {
     if (modelsReady) return true
+    // 下载失败退避：60s 内不重试（与 VAD/SenseVoice 语义一致；期间作 loading）。
+    if (Date.now() < asrFailAt) return false
     if (!modelsLoading) {
       modelsLoading = (async () => {
         // 已下载跳过下载；否则逐个懒下载（断点续传）。
         if (!(await haveAllModels())) {
           for (const f of MODEL_FILES) {
             if (!(await ensureFile(repoDir, MODEL_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast))) {
+              asrFailAt = Date.now() + 60000
               broadcast('asr-error', { file: f })
               return false
             }
@@ -610,7 +616,12 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       return {
         // ready 语义 = 文件可用（exists），而非进程内是否已实例化——
         // 重启后文件齐全却显示「未下载」会误导用户（体验修复）。
-        asr: { repo: MODEL_REPO, ready: asrFiles.every((f) => f.exists), files: asrFiles },
+        asr: {
+          repo: MODEL_REPO,
+          ready: asrFiles.every((f) => f.exists),
+          files: asrFiles,
+          failLatchMs: Math.max(0, asrFailAt - Date.now()),
+        },
         vad: {
           repo: VAD_REPO,
           ready: vadSize > 0,
@@ -639,6 +650,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       }
       // asr：已就绪则无需动作；未就绪则触发下载（模型下载失败时点重试补下）。
       if (modelsReady) return true
+      asrFailAt = 0
       return await ensureModels()
     },
   }

@@ -53,6 +53,7 @@ function createAsrRuntime(options) {
   let recognizer = null;
   let modelsReady = false;
   let modelsLoading = null;
+  let asrFailAt = 0;
   const haveAllModels = async () => {
     for (const f of MODEL_FILES) {
       const st = await stat(join(repoDir, f)).catch(() => null);
@@ -62,11 +63,13 @@ function createAsrRuntime(options) {
   };
   const ensureModels = async () => {
     if (modelsReady) return true;
+    if (Date.now() < asrFailAt) return false;
     if (!modelsLoading) {
       modelsLoading = (async () => {
         if (!await haveAllModels()) {
           for (const f of MODEL_FILES) {
             if (!await ensureFile(repoDir, MODEL_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast)) {
+              asrFailAt = Date.now() + 6e4;
               broadcast("asr-error", { file: f });
               return false;
             }
@@ -405,7 +408,12 @@ function createAsrRuntime(options) {
       return {
         // ready 语义 = 文件可用（exists），而非进程内是否已实例化——
         // 重启后文件齐全却显示「未下载」会误导用户（体验修复）。
-        asr: { repo: MODEL_REPO, ready: asrFiles.every((f) => f.exists), files: asrFiles },
+        asr: {
+          repo: MODEL_REPO,
+          ready: asrFiles.every((f) => f.exists),
+          files: asrFiles,
+          failLatchMs: Math.max(0, asrFailAt - Date.now())
+        },
         vad: {
           repo: VAD_REPO,
           ready: vadSize > 0,
@@ -433,6 +441,7 @@ function createAsrRuntime(options) {
         return !!await ensureSenseModel();
       }
       if (modelsReady) return true;
+      asrFailAt = 0;
       return await ensureModels();
     }
   };

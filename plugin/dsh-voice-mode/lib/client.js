@@ -1277,7 +1277,12 @@ function ModelStatusView() {
         "%"
       ] })
     ] }),
-    mkRow(t("modelStreamingAsr"), { ready: !!st?.asr.ready, size: st?.asr.files.reduce((a, f) => a + f.size, 0) ?? 0 }, "asr", anyDownloading ? st.progress : null),
+    mkRow(
+      t("modelStreamingAsr"),
+      { ready: !!st?.asr.ready, size: st?.asr.files.reduce((a, f) => a + f.size, 0) ?? 0, failLatchMs: st?.asr.failLatchMs ?? 0 },
+      "asr",
+      anyDownloading ? st.progress : null
+    ),
     mkRow(t("modelVad"), { ready: !!st?.vad.ready, size: st?.vad.size ?? 0, failLatchMs: st?.vad.failLatchMs ?? 0 }, "vad", anyDownloading ? st.progress : null),
     mkRow(
       t("modelSense"),
