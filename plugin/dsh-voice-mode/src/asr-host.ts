@@ -296,6 +296,8 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   let senseModelReady = false
   let senseLoading: Promise<string | null> | null = null
   let senseRecognizer: SherpaOfflineRecognizer | null = null
+  /** 创建中的 recognizer promise：首个 partial 预热与首个 finalize 竞态时只建一次（防双建泄漏）。 */
+  let senseSyncing: Promise<SherpaOfflineRecognizer | null> | null = null
   /** I1：SenseVoice 下载失败退避（失败后 60s 内不再尝试，防每句定稿卡 228MB 下载）。 */
   let senseFailAt = 0
   const ensureSenseModel = async (): Promise<string | null> => {
@@ -320,9 +322,12 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   const getSenseRecognizer = async (): Promise<SherpaOfflineRecognizer | null> => {
     if (!senseVoice()) return null // P4：开关关闭 → 只用流式 zipformer
     if (senseRecognizer) return senseRecognizer
-    const sensePath = await ensureSenseModel()
-    if (!sensePath) return null
-    senseRecognizer = createOfflineRecognizer({
+    // 并发防呆：已有创建在途则共享它，避免预热与定稿各自 create 双建泄漏 228MB 模型实例。
+    if (senseSyncing) return senseSyncing
+    senseSyncing = (async () => {
+      const sensePath = await ensureSenseModel()
+      if (!sensePath) return null
+      senseRecognizer = createOfflineRecognizer({
       featConfig: { sampleRate: 16000, featureDim: 80 },
       modelConfig: {
         senseVoice: {
@@ -337,6 +342,12 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       },
     })
     return senseRecognizer
+      })()
+      // 未产出 recognizer（无模型/关闭）即清空缓存，令下次调用可重试（否则恒返回 null）。
+      .finally(() => {
+        if (!senseRecognizer) senseSyncing = null
+      })
+    return senseSyncing
   }
   /** P4-1：整段 PCM → SenseVoice 离线定稿（失败返回 null）。 */
   const senseTranscribe = async (allSamples: Float32Array[]): Promise<string | null> => {

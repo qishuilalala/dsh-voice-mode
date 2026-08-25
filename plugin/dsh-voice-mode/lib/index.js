@@ -147,6 +147,7 @@ function createAsrRuntime(options) {
   let senseModelReady = false;
   let senseLoading = null;
   let senseRecognizer = null;
+  let senseSyncing = null;
   let senseFailAt = 0;
   const ensureSenseModel = async () => {
     if (senseModelReady) return join(senseDir, SENSE_FILES[0]);
@@ -170,24 +171,30 @@ function createAsrRuntime(options) {
   const getSenseRecognizer = async () => {
     if (!senseVoice()) return null;
     if (senseRecognizer) return senseRecognizer;
-    const sensePath = await ensureSenseModel();
-    if (!sensePath) return null;
-    senseRecognizer = createOfflineRecognizer({
-      featConfig: { sampleRate: 16e3, featureDim: 80 },
-      modelConfig: {
-        senseVoice: {
-          model: sensePath,
-          language: "auto",
-          useInverseTextNormalization: 1
-          // ITN：数字/标点归一化
-        },
-        tokens: join(senseDir, "tokens.txt"),
-        provider: "cpu",
-        numThreads: 4,
-        debug: 0
-      }
+    if (senseSyncing) return senseSyncing;
+    senseSyncing = (async () => {
+      const sensePath = await ensureSenseModel();
+      if (!sensePath) return null;
+      senseRecognizer = createOfflineRecognizer({
+        featConfig: { sampleRate: 16e3, featureDim: 80 },
+        modelConfig: {
+          senseVoice: {
+            model: sensePath,
+            language: "auto",
+            useInverseTextNormalization: 1
+            // ITN：数字/标点归一化
+          },
+          tokens: join(senseDir, "tokens.txt"),
+          provider: "cpu",
+          numThreads: 4,
+          debug: 0
+        }
+      });
+      return senseRecognizer;
+    })().finally(() => {
+      if (!senseRecognizer) senseSyncing = null;
     });
-    return senseRecognizer;
+    return senseSyncing;
   };
   const senseTranscribe = async (allSamples) => {
     try {
@@ -1047,6 +1054,11 @@ function apply(ctx, config) {
           if (!sessionId) {
             res.statusCode = 400;
             res.end(JSON.stringify({ error: "sessionId required" }));
+            return;
+          }
+          if (on !== void 0 && typeof on !== "boolean") {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: "invalid on" }));
             return;
           }
           if (on === true) {

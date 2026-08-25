@@ -448,6 +448,12 @@ export function apply(ctx: Context, config: Config): void {
             res.end(JSON.stringify({ error: 'sessionId required' }))
             return
           }
+          // strict: on 非布尔显式 400，防误落退出分支
+          if (on !== undefined && typeof on !== 'boolean') {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: 'invalid on' }))
+            return
+          }
           if (on === true) {
             // 总开关关闭时拒绝进入（enabled=false 的诚实语义：整功能关停）。
             if (!config.enabled) {

@@ -362,7 +362,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           })
         }
         // 段已被清（stop/新段）时世代变化，结果作废。
-        setState(active ? (speechActive ? 'speech' : 'listening') : 'idle')
+        setState(active ? (speechActive || holdActive ? 'speech' : 'listening') : 'idle')
         if (!res.ok) return
         // 容错：网关/宿主偶发 5xx（如 502）或响应非 JSON 时，不打断状态机也不误报——
         // 下轮 finalize 自动重提单段；一段话多轮尝试总会成功（epoch 修复后）。
@@ -380,7 +380,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       } catch {
         // 网络中断等偶发失败：静默（下轮 finalize 自动重试），不打扰用户。
         console.warn('[dsh-voice-mode] finalize fetch 异常被捕获（下轮重试）')
-        setState(active ? (speechActive ? 'speech' : 'listening') : 'idle')
+        setState(active ? (speechActive || holdActive ? 'speech' : 'listening') : 'idle')
       }
     })()
   }

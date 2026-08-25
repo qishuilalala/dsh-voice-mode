@@ -295,7 +295,7 @@ function createAsrEngine(config, sessionId) {
             }, 5e3);
           });
         }
-        setState(active ? speechActive ? "speech" : "listening" : "idle");
+        setState(active ? speechActive || holdActive ? "speech" : "listening" : "idle");
         if (!res.ok) return;
         let out;
         try {
@@ -308,7 +308,7 @@ function createAsrEngine(config, sessionId) {
         if (out.text) emit(transcriptListeners, out.text, meta);
       } catch {
         console.warn("[dsh-voice-mode] finalize fetch \u5F02\u5E38\u88AB\u6355\u83B7\uFF08\u4E0B\u8F6E\u91CD\u8BD5\uFF09");
-        setState(active ? speechActive ? "speech" : "listening" : "idle");
+        setState(active ? speechActive || holdActive ? "speech" : "listening" : "idle");
       }
     })();
   };
