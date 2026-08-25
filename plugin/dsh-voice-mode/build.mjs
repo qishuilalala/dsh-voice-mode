@@ -42,6 +42,20 @@ await build({
   logLevel: 'info',
 })
 
+// --- SenseVoice 定稿解码 worker（P4-1 离主线程）：独立 ESM，主线程 new Worker 加载 ---
+await build({
+  entryPoints: ['src/sense-worker.ts'],
+  outfile: 'lib/sense-worker.mjs',
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  external: [
+    'sherpa-onnx',
+    'node:*',
+  ],
+  logLevel: 'info',
+})
+
 // --- client half: module-loader closure artifact ---
 await build({
   entryPoints: ['src/client.tsx'],

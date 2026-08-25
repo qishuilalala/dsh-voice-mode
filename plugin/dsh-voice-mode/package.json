@@ -24,6 +24,7 @@
   "files": [
     "lib/index.js",
     "lib/client.js",
+    "lib/sense-worker.mjs",
     "cordis.patch.yml",
     "assets/architecture.svg",
     "assets/demo.gif",
