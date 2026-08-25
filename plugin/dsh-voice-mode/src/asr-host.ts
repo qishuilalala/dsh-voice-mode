@@ -63,7 +63,8 @@ const VAD_FILES = ['silero_vad.onnx']
 
 /** P4-1 SenseVoice 定稿模型（int8 ~228MB，带标点 + ITN；模型总体积 160+228=388MB ≤500MB 约束）。 */
 export const SENSE_REPO = 'csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17'
-const SENSE_FILES = ['model.int8.onnx']
+// 修复：SenseVoice 词表 tokens.txt 必须一并下载（缺则 createOfflineRecognizer 报 length 错误，定稿永远降级 zipformer）。
+const SENSE_FILES = ['model.int8.onnx', 'tokens.txt']
 
 export interface AsrRuntimeOptions {
   cacheDir: string
@@ -329,6 +330,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
           language: 'auto',
           useInverseTextNormalization: 1, // ITN：数字/标点归一化
         },
+        tokens: join(senseDir, 'tokens.txt'),
         provider: 'cpu',
         numThreads: 4,
         debug: 0,

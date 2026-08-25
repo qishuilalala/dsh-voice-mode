@@ -14,7 +14,7 @@ var MODEL_FILES = ["encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tok
 var VAD_REPO = "csukuangfj/vad";
 var VAD_FILES = ["silero_vad.onnx"];
 var SENSE_REPO = "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17";
-var SENSE_FILES = ["model.int8.onnx"];
+var SENSE_FILES = ["model.int8.onnx", "tokens.txt"];
 function pcmToSamples(buf) {
   if (buf.length % 4 !== 0) return null;
   return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
@@ -181,6 +181,7 @@ function createAsrRuntime(options) {
           useInverseTextNormalization: 1
           // ITN：数字/标点归一化
         },
+        tokens: join(senseDir, "tokens.txt"),
         provider: "cpu",
         numThreads: 4,
         debug: 0
