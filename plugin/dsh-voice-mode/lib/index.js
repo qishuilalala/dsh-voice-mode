@@ -66,7 +66,7 @@ function createAsrRuntime(options) {
       modelsLoading = (async () => {
         if (!await haveAllModels()) {
           for (const f of MODEL_FILES) {
-            if (!await ensureFile(repoDir, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast)) {
+            if (!await ensureFile(repoDir, MODEL_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast)) {
               broadcast("asr-error", { file: f });
               return false;
             }
@@ -110,7 +110,7 @@ function createAsrRuntime(options) {
     if (!vadLoading) {
       vadLoading = (async () => {
         for (const f of VAD_FILES) {
-          if (!await ensureFile(vadDir, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast)) {
+          if (!await ensureFile(vadDir, VAD_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast)) {
             vadFailAt = Date.now() + 6e4;
             return null;
           }
@@ -154,7 +154,7 @@ function createAsrRuntime(options) {
     if (!senseLoading) {
       senseLoading = (async () => {
         for (const f of SENSE_FILES) {
-          if (!await ensureFile(senseDir, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast)) {
+          if (!await ensureFile(senseDir, SENSE_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast)) {
             senseFailAt = Date.now() + 6e4;
             return null;
           }
@@ -424,7 +424,7 @@ function createAsrRuntime(options) {
     }
   };
 }
-async function ensureFile(repoDir, file, hosts, broadcast) {
+async function ensureFile(repoDir, repo, file, hosts, broadcast) {
   const localPath = join(repoDir, file);
   const st = await stat(localPath).catch(() => null);
   if (st?.isFile()) return true;
@@ -433,7 +433,7 @@ async function ensureFile(repoDir, file, hosts, broadcast) {
   const partSt = await stat(partPath).catch(() => null);
   for (const host of hosts) {
     try {
-      const ok = await download(host, repoDir, file, partSt?.size ?? 0, broadcast);
+      const ok = await download(host, repoDir, repo, file, partSt?.size ?? 0, broadcast);
       if (ok) {
         await rename(partPath, localPath).catch(() => void 0);
         if ((await stat(localPath).catch(() => null))?.isFile()) return true;
@@ -446,8 +446,7 @@ async function ensureFile(repoDir, file, hosts, broadcast) {
 }
 var HOST_PRIMARY = "https://huggingface.co";
 var HOST_FALLBACK = "https://hf-mirror.com";
-async function download(host, repoDir, file, resumeFrom, broadcast) {
-  const repo = repoDir.split(/[\\/]/).pop();
+async function download(host, repoDir, repo, file, resumeFrom, broadcast) {
   const url = `${host}/${repo}/resolve/main/${file}`;
   const headers = { "user-agent": "dsh-voice-mode" };
   if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;

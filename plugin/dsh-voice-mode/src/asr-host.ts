@@ -207,7 +207,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         // 已下载跳过下载；否则逐个懒下载（断点续传）。
         if (!(await haveAllModels())) {
           for (const f of MODEL_FILES) {
-            if (!(await ensureFile(repoDir, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast))) {
+            if (!(await ensureFile(repoDir, MODEL_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast))) {
               broadcast('asr-error', { file: f })
               return false
             }
@@ -255,7 +255,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     if (!vadLoading) {
       vadLoading = (async () => {
         for (const f of VAD_FILES) {
-          if (!(await ensureFile(vadDir, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast))) {
+          if (!(await ensureFile(vadDir, VAD_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast))) {
             vadFailAt = Date.now() + 60000
             return null
           }
@@ -303,7 +303,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     if (!senseLoading) {
       senseLoading = (async () => {
         for (const f of SENSE_FILES) {
-          if (!(await ensureFile(senseDir, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast))) {
+          if (!(await ensureFile(senseDir, SENSE_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast))) {
             senseFailAt = Date.now() + 60000
             return null
           }
@@ -627,6 +627,8 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
  */
 export async function ensureFile(
   repoDir: string,
+  /** URL 的 repo 段（完整上级路径，如 csukuangfj/vad——多级 repo 不可用尾段截断，否则 404）。 */
+  repo: string,
   file: string,
   hosts: string[],
   broadcast: (event: string, payload: unknown) => void,
@@ -639,7 +641,7 @@ export async function ensureFile(
   const partSt = await stat(partPath).catch(() => null)
   for (const host of hosts) {
     try {
-      const ok = await download(host, repoDir, file, partSt?.size ?? 0, broadcast)
+      const ok = await download(host, repoDir, repo, file, partSt?.size ?? 0, broadcast)
       if (ok) {
         await rename(partPath, localPath).catch(() => undefined)
         if ((await stat(localPath).catch(() => null))?.isFile()) return true
@@ -659,12 +661,11 @@ const HOST_FALLBACK = 'https://hf-mirror.com'
 async function download(
   host: string,
   repoDir: string,
+  repo: string,
   file: string,
   resumeFrom: number,
   broadcast: (event: string, payload: unknown) => void,
 ): Promise<boolean> {
-  // 修复：URL 的 repo 段取 repoDir 尾段（VAD/SenseVoice 复用本下载器时曾误用 MODEL_REPO → 404）。
-  const repo = repoDir.split(/[\\/]/).pop()
   const url = `${host}/${repo}/resolve/main/${file}`
   const headers: Record<string, string> = { 'user-agent': 'dsh-voice-mode' }
   if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`
