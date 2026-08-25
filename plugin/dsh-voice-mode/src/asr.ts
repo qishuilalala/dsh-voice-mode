@@ -364,15 +364,23 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         // 段已被清（stop/新段）时世代变化，结果作废。
         setState(active ? (speechActive ? 'speech' : 'listening') : 'idle')
         if (!res.ok) return
-        const out = (await res.json()) as { text?: string }
+        // 容错：网关/宿主偶发 5xx（如 502）或响应非 JSON 时，不打断状态机也不误报——
+        // 下轮 finalize 自动重提单段；一段话多轮尝试总会成功（epoch 修复后）。
+        let out: { text?: string }
+        try {
+          out = (await res.json()) as { text?: string }
+        } catch {
+          console.warn('[dsh-voice-mode] finalize 响应非 JSON，静默忽略（下轮重试）')
+          return
+        }
         // 校验本段世代（快照+1）：仅当定稿期间又推进（新段/打断/stop）时作废；
         // 历史 bug：比较快照本身（snap!==now）必然不等 → 定稿恒被丢弃 → onSegment 永不触发。
         if (segmentEpoch !== epochSnapshot + 1) return
         if (out.text) emit(transcriptListeners, out.text, meta)
       } catch {
-        // 定稿失败：状态条给用户可见提示（文本仍在草稿，可重新说话）
+        // 网络中断等偶发失败：静默（下轮 finalize 自动重试），不打扰用户。
+        console.warn('[dsh-voice-mode] finalize fetch 异常被捕获（下轮重试）')
         setState(active ? (speechActive ? 'speech' : 'listening') : 'idle')
-        emitError('recognitionFail')
       }
     })()
   }

@@ -297,12 +297,18 @@ function createAsrEngine(config, sessionId) {
         }
         setState(active ? speechActive ? "speech" : "listening" : "idle");
         if (!res.ok) return;
-        const out = await res.json();
+        let out;
+        try {
+          out = await res.json();
+        } catch {
+          console.warn("[dsh-voice-mode] finalize \u54CD\u5E94\u975E JSON\uFF0C\u9759\u9ED8\u5FFD\u7565\uFF08\u4E0B\u8F6E\u91CD\u8BD5\uFF09");
+          return;
+        }
         if (segmentEpoch !== epochSnapshot + 1) return;
         if (out.text) emit(transcriptListeners, out.text, meta);
       } catch {
+        console.warn("[dsh-voice-mode] finalize fetch \u5F02\u5E38\u88AB\u6355\u83B7\uFF08\u4E0B\u8F6E\u91CD\u8BD5\uFF09");
         setState(active ? speechActive ? "speech" : "listening" : "idle");
-        emitError("recognitionFail");
       }
     })();
   };
