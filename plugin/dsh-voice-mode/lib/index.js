@@ -519,11 +519,23 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
     const sessionId = url.searchParams.get("sessionId") ?? "";
     const final = url.searchParams.get("final") === "1";
     const reset = url.searchParams.get("reset") === "1";
-    const epochN = Number(url.searchParams.get("epoch"));
-    const epoch = Number.isFinite(epochN) && epochN >= 0 ? Math.floor(epochN) : 0;
+    const epochParam = url.searchParams.get("epoch");
+    const epochN = Number(epochParam);
+    const epochOK = epochParam === null || Number.isFinite(epochN) && epochN >= 0 && Number.isInteger(epochN);
     const offsetParam = url.searchParams.get("offset");
-    const offsetN = Number(offsetParam);
-    const offset = Number.isFinite(offsetN) && offsetN > 0 ? Math.floor(offsetN) : 0;
+    const offsetOK = offsetParam === null || Number.isFinite(Number(offsetParam)) && Number(offsetParam) >= 0 && Number(offsetParam) <= MAX_ASR_BYTES / 4;
+    if (!offsetOK) {
+      res.statusCode = 400;
+      res.end(JSON.stringify({ error: "invalid offset" }));
+      return;
+    }
+    if (!epochOK) {
+      res.statusCode = 400;
+      res.end(JSON.stringify({ error: "invalid epoch" }));
+      return;
+    }
+    const epoch = epochParam === null ? 0 : Math.floor(epochN);
+    const offset = offsetParam === null ? 0 : Math.floor(Number(offsetParam));
     if (!sessionId || sessionId !== activeSessionId) {
       res.statusCode = 403;
       res.end(JSON.stringify({ error: "not the active voice session" }));

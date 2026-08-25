@@ -750,13 +750,28 @@ export function handleAsrRequest(
     const sessionId = url.searchParams.get('sessionId') ?? ''
     const final = url.searchParams.get('final') === '1'
     const reset = url.searchParams.get('reset') === '1'
-    const epochN = Number(url.searchParams.get('epoch'))
-    const epoch = Number.isFinite(epochN) && epochN >= 0 ? Math.floor(epochN) : 0
+    const epochParam = url.searchParams.get('epoch')
+    const epochN = Number(epochParam)
+    const epochOK = epochParam === null || (Number.isFinite(epochN) && epochN >= 0 && Number.isInteger(epochN))
     // P1-4：本包在段内的绝对样本起始索引（缺省 0 = 全量上传，兼容旧客户端）。
     const offsetParam = url.searchParams.get('offset')
-    // Fix：拒绝非有限/负值（"Infinity" 等会毒化 fed 水位导致本段静默丢失）。
-    const offsetN = Number(offsetParam)
-    const offset = Number.isFinite(offsetN) && offsetN > 0 ? Math.floor(offsetN) : 0
+    // 修复：显式 offset 必须 有限 && >=0 && ≤ 段长逻辑上限（64s）。
+    // 否则 1e300/Infinity 会把数位水位毒化：fed 被抬到天文数 → 本段后续增量永不喂入。
+    const offsetOK =
+      offsetParam === null ||
+      (Number.isFinite(Number(offsetParam)) && Number(offsetParam) >= 0 && Number(offsetParam) <= MAX_ASR_BYTES / 4)
+    if (!offsetOK) {
+      res.statusCode = 400
+      res.end(JSON.stringify({ error: 'invalid offset' }))
+      return
+    }
+    if (!epochOK) {
+      res.statusCode = 400
+      res.end(JSON.stringify({ error: 'invalid epoch' }))
+      return
+    }
+    const epoch = epochParam === null ? 0 : Math.floor(epochN)
+    const offset = offsetParam === null ? 0 : Math.floor(Number(offsetParam))
     if (!sessionId || sessionId !== activeSessionId) {
       res.statusCode = 403
       res.end(JSON.stringify({ error: 'not the active voice session' }))
