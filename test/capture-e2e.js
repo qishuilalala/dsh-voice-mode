@@ -44,7 +44,8 @@ async function main() {
     await page.keyboard.press('Control+Shift+V')
     await page.waitForTimeout(2500)
     let p = 0
-    for (let i = 0; i < 6; i++) { await page.waitForTimeout(1000); p = partials.length; if (p > 0) break }
+    // 窗口 15s（模型冷启动构建 ~5s 需覆盖在该窗口内，防偶发误判）
+    for (let i = 0; i < 15; i++) { await page.waitForTimeout(1000); p = partials.length; if (p > 0) break }
     console.log('partial 请求数:', p)
     if (p === 0) { console.log('❌ 无 partial 请求（采集链断）'); process.exitCode = 1; return }
     // 诊断：页面级按键日志（确认 Control 键真实到达监听器）
