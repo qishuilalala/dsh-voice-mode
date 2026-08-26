@@ -1076,6 +1076,8 @@ var Config = z.object({
 });
 function apply(ctx, config) {
   let activeVoiceSession = null;
+  let activeTabId = null;
+  let ownerYieldTimer = null;
   const turnStates = /* @__PURE__ */ new Map();
   const setTurn = (sessionId, state) => {
     if (turnStates.get(sessionId) === state) return;
@@ -1084,9 +1086,9 @@ function apply(ctx, config) {
   };
   const sseClients = /* @__PURE__ */ new Set();
   const broadcast = (event, payload) => {
-    for (const send of sseClients) {
+    for (const c of sseClients) {
       try {
-        send(event, payload);
+        c.send(event, payload);
       } catch {
       }
     }
@@ -1131,6 +1133,18 @@ function apply(ctx, config) {
   const currentVoice = () => vset.voice;
   const currentRate = () => vset.rate;
   const currentInterrupt = () => vset.interruptLevel;
+  const yieldActiveSession = () => {
+    ownerYieldTimer = null;
+    const sid = activeVoiceSession;
+    if (!sid) return;
+    activeVoiceSession = null;
+    activeTabId = null;
+    queue.cancel(sid);
+    asr.reset(sid);
+    setTurn(sid, "idle");
+    turnStates.delete(sid);
+    broadcast("mode", { active: null });
+  };
   ctx.on("system-prompt/assemble", (assembly, context, next) => {
     if (!config.enabled || !vset.spokenFormat) return next();
     const agentId = context.agent?.id;
@@ -1262,10 +1276,12 @@ function apply(ctx, config) {
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let sessionId;
           let on;
+          let tabId;
           try {
             const parsed = JSON.parse(body || "{}");
             sessionId = parsed.sessionId;
             on = parsed.on;
+            tabId = typeof parsed.tabId === "string" && parsed.tabId.length <= 64 ? parsed.tabId : void 0;
           } catch {
           }
           if (!sessionId) {
@@ -1288,6 +1304,11 @@ function apply(ctx, config) {
             queue.cancel(sessionId);
             const previous = activeVoiceSession;
             activeVoiceSession = sessionId;
+            activeTabId = tabId ?? null;
+            if (ownerYieldTimer) {
+              clearTimeout(ownerYieldTimer);
+              ownerYieldTimer = null;
+            }
             if (previous && previous !== sessionId) {
               queue.cancel(previous);
               asr.reset(previous);
@@ -1296,6 +1317,11 @@ function apply(ctx, config) {
           } else {
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null;
+              activeTabId = null;
+              if (ownerYieldTimer) {
+                clearTimeout(ownerYieldTimer);
+                ownerYieldTimer = null;
+              }
               queue.cancel(sessionId);
               asr.reset(sessionId);
               setTurn(sessionId, "idle");
@@ -1396,7 +1422,13 @@ function apply(ctx, config) {
     () => ctx.webServer.register({
       kind: "exact",
       path: `${base}/stream`,
-      handler: (_req, res) => {
+      handler: (req, res) => {
+        let tabId = null;
+        try {
+          const u = new URL(req.url ?? "/", "http://localhost");
+          tabId = u.searchParams.get("tabId");
+        } catch {
+        }
         res.writeHead(200, {
           "content-type": "text/event-stream; charset=utf-8",
           "cache-control": "no-cache, no-transform",
@@ -1409,16 +1441,28 @@ data: ${JSON.stringify(payload)}
 
 `);
         };
-        sseClients.add(send);
+        const client = { tabId, send };
+        sseClients.add(client);
+        if (tabId !== null && tabId === activeTabId && ownerYieldTimer) {
+          clearTimeout(ownerYieldTimer);
+          ownerYieldTimer = null;
+        }
         send("mode", { active: activeVoiceSession });
         const heartbeat = setInterval(() => {
           res.write(": hb\n");
         }, 25e3);
+        let cleaned = false;
         const cleanup = () => {
+          if (cleaned) return;
+          cleaned = true;
           clearInterval(heartbeat);
-          sseClients.delete(send);
+          sseClients.delete(client);
+          if (tabId !== null && tabId === activeTabId) {
+            if (ownerYieldTimer) clearTimeout(ownerYieldTimer);
+            ownerYieldTimer = setTimeout(yieldActiveSession, 8e3);
+          }
         };
-        _req.on("close", cleanup);
+        req.on("close", cleanup);
         res.on("close", cleanup);
       }
     })

@@ -168,6 +168,26 @@ const SUBMIT_DELAY_MS = 600
 /** 插件 HTTP 命名空间（与 host 侧 BASE_PATH 常量一致，固定不可配置）。 */
 const BASE_PATH = '/voice-mode'
 
+/** B2：每 tab 稳定唯一 ID（sessionStorage 跨刷新保持、关 tab 清除；host 据此探活 owner）。 */
+function getTabId(): string {
+  try {
+    const KEY = 'dshvm-tabId'
+    let id = sessionStorage.getItem(KEY)
+    if (!id) {
+      id =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2) + Date.now().toString(36)
+      sessionStorage.setItem(KEY, id)
+    }
+    return id
+  } catch {
+    return Math.random().toString(36).slice(2) + Date.now().toString(36)
+  }
+}
+/** 本 tab 的稳定标识（模块加载时生成一次）。 */
+const TAB_ID = getTabId()
+
 export function apply(ctx: any): void {
   const bus = createVoiceBus(undefined, ctx)
 
@@ -593,7 +613,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   // 页面加载即订阅广播（EventSource 自带断线重连，Q16）。
   const connect = (): void => {
     if (source) return
-    source = new EventSource(`${location.origin}${basePath}/stream`)
+    source = new EventSource(`${location.origin}${basePath}/stream?tabId=${encodeURIComponent(TAB_ID)}`)
     // host 重启/断线重连时清拒绝线：拒绝线基于 host 的 sentenceId 单调递增，但 host
     // 重启后 TtsQueue 重新实例化、seq 归零——客户端残留的旧线会让「新句 seq=0 ≤ 旧线」
     // 全被拒（静音）。SSE 断开 = 在途帧已随 TCP 断开丢失，此时清线安全；exit→enter
@@ -832,7 +852,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         const res = await fetch(`${location.origin}${basePath}/toggle`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ sessionId, on: true }),
+          body: JSON.stringify({ sessionId, on: true, tabId: TAB_ID }),
         })
         const out = (await res.json()) as { active?: string | null; error?: string }
         // B1 修复：仅当本 tab 真正成为活跃会话才认领 owner；否则保持非 owner（null），
@@ -858,7 +878,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         const res = await fetch(`${location.origin}${basePath}/toggle`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ sessionId, on: false }),
+          body: JSON.stringify({ sessionId, on: false, tabId: TAB_ID }),
         })
         await res.json()
         // B1 修复：退出后本 tab 不再是 owner；全局 active 可能是别的 tab 的会话，
@@ -1313,7 +1333,7 @@ export function MicButton({
         void fetch(`${location.origin}${BASE_PATH}/toggle`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ sessionId: sid, on: false }),
+          body: JSON.stringify({ sessionId: sid, on: false, tabId: TAB_ID }),
           keepalive: true,
         }).catch(() => {
           // best-effort

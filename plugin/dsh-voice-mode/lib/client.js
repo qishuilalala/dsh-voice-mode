@@ -1496,6 +1496,20 @@ var ECHO_DELAY_MS = 0;
 var ECHO_TAIL_MS = 400;
 var WAVE_BARS = 14;
 var BASE_PATH2 = "/voice-mode";
+function getTabId() {
+  try {
+    const KEY = "dshvm-tabId";
+    let id = sessionStorage.getItem(KEY);
+    if (!id) {
+      id = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36);
+      sessionStorage.setItem(KEY, id);
+    }
+    return id;
+  } catch {
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+}
+var TAB_ID = getTabId();
 function apply(ctx) {
   const bus = createVoiceBus(void 0, ctx);
   ctx.slots.inject(
@@ -1843,7 +1857,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   };
   const connect = () => {
     if (source) return;
-    source = new EventSource(`${location.origin}${basePath}/stream`);
+    source = new EventSource(`${location.origin}${basePath}/stream?tabId=${encodeURIComponent(TAB_ID)}`);
     source.addEventListener("open", () => {
       rejectSeqUpTo.clear();
       lastFinalSeq.clear();
@@ -2034,7 +2048,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         const res = await fetch(`${location.origin}${basePath}/toggle`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sessionId, on: true })
+          body: JSON.stringify({ sessionId, on: true, tabId: TAB_ID })
         });
         const out = await res.json();
         activeSessionId = out.active === sessionId ? sessionId : null;
@@ -2053,7 +2067,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         const res = await fetch(`${location.origin}${basePath}/toggle`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sessionId, on: false })
+          body: JSON.stringify({ sessionId, on: false, tabId: TAB_ID })
         });
         await res.json();
         activeSessionId = null;
@@ -2404,7 +2418,7 @@ function MicButton({
         void fetch(`${location.origin}${BASE_PATH2}/toggle`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sessionId: sid, on: false }),
+          body: JSON.stringify({ sessionId: sid, on: false, tabId: TAB_ID }),
           keepalive: true
         }).catch(() => {
         });

@@ -162,6 +162,13 @@ t('lib/client.js 含快捷键误触/劫持修复（编辑态放行 + Ctrl 组合
   assert.ok(c.includes('isContentEditable'), 'client bundle missing editable guard for Ctrl+Shift+V')
   assert.ok(c.includes('otherKeyDuringCtrl'), 'client bundle missing other-key-during-Ctrl cancellation')
 })
+t('lib 含 B2 宿主存活探活（owner tabId + 失联让出）', () => {
+  const h = read('lib/index.js')
+  assert.ok(h.includes('activeTabId'), 'host bundle missing activeTabId')
+  assert.ok(h.includes('ownerYieldTimer'), 'host bundle missing owner yield timer')
+  const c = read('lib/client.js')
+  assert.ok(c.includes('dshvm-tabId'), 'client bundle missing per-tab id storage key')
+})
 t('lib/index.js 序列化 isSpeech 下行（打断根治：HTTP 层透传 VAD 帧级检测）', () => {
   const src = read('lib/index.js')
   assert.ok(src.includes('body.isSpeech'), 'host bundle missing isSpeech serialization')

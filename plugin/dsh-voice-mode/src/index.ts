@@ -216,6 +216,9 @@ export const Config: z<Config> = z.object({
 export function apply(ctx: Context, config: Config): void {
   // --- 全局单活指针（Q9）：会话级状态，非全局默认、非独立会话类型（Q1）。 ---
   let activeVoiceSession: string | null = null
+  /** B2：owner tab 标识 + 存活探活（关 tab 后自动让出，防 activeVoiceSession 悬挂）。 */
+  let activeTabId: string | null = null
+  let ownerYieldTimer: ReturnType<typeof setTimeout> | null = null
 
   // --- P2-4 显式回合状态机（host 真相源）：idle | listening | finalizing | agent-speaking。 ---
   // 迁移点：/asr partial → listening；/asr final=1 → finalizing；llm 首 token → agent-speaking；
@@ -229,11 +232,13 @@ export function apply(ctx: Context, config: Config): void {
 
   // --- SSE 客户端表：audio 帧 + mode 状态广播共用一条下行通道。 ---
   type SseSink = (event: string, payload: unknown) => void
-  const sseClients = new Set<SseSink>()
+  /** B2：客户端带 tabId 连接，供 owner 探活（关 tab 检测让出）。 */
+  type SseClient = { tabId: string | null; send: SseSink }
+  const sseClients = new Set<SseClient>()
   const broadcast = (event: string, payload: unknown): void => {
-    for (const send of sseClients) {
+    for (const c of sseClients) {
       try {
-        send(event, payload)
+        c.send(event, payload)
       } catch {
         // dead socket: the close handler removes it
       }
@@ -290,6 +295,20 @@ export function apply(ctx: Context, config: Config): void {
   const currentVoice = (): string => vset.voice
   const currentRate = (): number => vset.rate
   const currentInterrupt = (): 0 | 1 | 2 => vset.interruptLevel
+
+  /** B2：host 侧让出活跃会话（等价 /toggle off 的清理）。owner tab 失联超时调用。 */
+  const yieldActiveSession = (): void => {
+    ownerYieldTimer = null
+    const sid = activeVoiceSession
+    if (!sid) return
+    activeVoiceSession = null
+    activeTabId = null
+    queue.cancel(sid)
+    asr.reset(sid)
+    setTurn(sid, 'idle')
+    turnStates.delete(sid)
+    broadcast('mode', { active: null })
+  }
 
   // --- 语音口语化提示词：仅活跃语音会话的 system prompt 注入（TTS 朗读听感）。 ---
   // 设置项 spokenFormat（默认关，实时生效）：开启后仅 activeVoiceSession 的请求被注入；
@@ -444,10 +463,12 @@ export function apply(ctx: Context, config: Config): void {
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let sessionId: string | undefined
           let on: boolean | undefined
+          let tabId: string | undefined
           try {
-            const parsed = JSON.parse(body || '{}') as { sessionId?: string; on?: boolean }
+            const parsed = JSON.parse(body || '{}') as { sessionId?: string; on?: boolean; tabId?: string }
             sessionId = parsed.sessionId
             on = parsed.on
+            tabId = typeof parsed.tabId === 'string' && parsed.tabId.length <= 64 ? parsed.tabId : undefined
           } catch {
             // ignore malformed body
           }
@@ -480,6 +501,12 @@ export function apply(ctx: Context, config: Config): void {
             // 撞上 client 残留拒绝线导致新句全被拒（静音）。
             const previous = activeVoiceSession
             activeVoiceSession = sessionId
+            // B2：记录 owner tab；新 tab 进入即接管探活归属。
+            activeTabId = tabId ?? null
+            if (ownerYieldTimer) {
+              clearTimeout(ownerYieldTimer)
+              ownerYieldTimer = null
+            }
             if (previous && previous !== sessionId) {
               queue.cancel(previous)
               // 打断根治：让出旧会话时一并释放其检测 VAD（对抗审查 Important#4）。
@@ -489,6 +516,11 @@ export function apply(ctx: Context, config: Config): void {
           } else {
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null
+              activeTabId = null
+              if (ownerYieldTimer) {
+                clearTimeout(ownerYieldTimer)
+                ownerYieldTimer = null
+              }
               // 双重奏根治：退出用 cancel（epoch++ 杀孤儿泵 + 清积压）而非 prune——
               // queue 保留使重入后 seq 连续递增 > client 拒绝线；prune 让 seq 归零
               // 会撞上残留拒绝线导致新句全被拒（静音）。
@@ -608,7 +640,15 @@ export function apply(ctx: Context, config: Config): void {
     ctx.webServer.register({
       kind: 'exact',
       path: `${base}/stream`,
-      handler: (_req, res: ServerResponse) => {
+      handler: (req: IncomingMessage, res: ServerResponse) => {
+        // B2：从查询串取 tabId（owner 探活归属）。
+        let tabId: string | null = null
+        try {
+          const u = new URL(req.url ?? '/', 'http://localhost')
+          tabId = u.searchParams.get('tabId')
+        } catch {
+          // ignore malformed url
+        }
         res.writeHead(200, {
           'content-type': 'text/event-stream; charset=utf-8',
           'cache-control': 'no-cache, no-transform',
@@ -618,17 +658,31 @@ export function apply(ctx: Context, config: Config): void {
         const send: SseSink = (event, payload) => {
           res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)
         }
-        sseClients.add(send)
+        const client: SseClient = { tabId, send }
+        sseClients.add(client)
+        // B2：owner tab 重连成功 → 取消待执行的让出计时。
+        if (tabId !== null && tabId === activeTabId && ownerYieldTimer) {
+          clearTimeout(ownerYieldTimer)
+          ownerYieldTimer = null
+        }
         // 上线即告知当前模式归属（纠正多标签页/多会话漂移）。
         send('mode', { active: activeVoiceSession })
         const heartbeat = setInterval(() => {
           res.write(': hb\n')
         }, 25000)
+        let cleaned = false
         const cleanup = (): void => {
+          if (cleaned) return
+          cleaned = true
           clearInterval(heartbeat)
-          sseClients.delete(send)
+          sseClients.delete(client)
+          // B2：owner tab 的 SSE 断开 → 8s 宽限内没重连则让出（防 transient blip 误让出）。
+          if (tabId !== null && tabId === activeTabId) {
+            if (ownerYieldTimer) clearTimeout(ownerYieldTimer)
+            ownerYieldTimer = setTimeout(yieldActiveSession, 8000)
+          }
         }
-        _req.on('close', cleanup)
+        req.on('close', cleanup)
         res.on('close', cleanup)
       },
     }),
