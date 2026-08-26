@@ -54,6 +54,8 @@ interface VoiceUiState {
   isSpeech?: boolean
   /** 打断确认耗时（ms）：VAD 首次判真 → 确认帧数达标触发 hardBreak；真机标定 C-3 用。 */
   interruptConfirmMs?: number
+  /** A1：浏览器原生回声消除是否生效（false 时外放易自打断，状态条提示）。 */
+  aecOff?: boolean
   /** 延迟埋点链各阶段时刻（开发模式状态条展示；null = 未启用/已清空）。 */
   telemetry: Partial<Record<TelemetryStage, number>> | null
 }
@@ -1191,6 +1193,8 @@ export function MicButton({
             }
             return reentered.ok
           },
+          // A1：原生 AEC 生效状态 → 状态条提示（外放且原生 AEC 失效时引导用耳机/手动打断）。
+          onAecState: (on) => bus.setUi({ aecOff: !on }),
         },
         sid,
       )
@@ -1741,6 +1745,23 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
             }}
           >
             {t('vadDetected')}
+          </span>
+        )}
+        {b.ui.aecOff === true && (
+          <span
+            title={t('aecOffHint')}
+            style={{
+              flexShrink: 0,
+              padding: '0 6px',
+              borderRadius: 8,
+              fontSize: 10,
+              lineHeight: '16px',
+              color: '#ffa657',
+              background: 'rgba(255, 166, 87, 0.15)',
+              border: '1px solid rgba(255, 166, 87, 0.35)',
+            }}
+          >
+            {t('aecOff')}
           </span>
         )}
         <button

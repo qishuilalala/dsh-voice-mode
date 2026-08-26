@@ -53,6 +53,8 @@ export interface AsrConfig {
   onIsSpeech?: (speech: boolean | undefined) => void
   /** 403 会话过期回调：host 端活跃会话已变更（如被抢占/让出），返回 true 表示已恢复。 */
   onSessionExpired?: () => Promise<boolean>
+  /** A1：原生 AEC 生效状态回调（getUserMedia 后 track.getSettings().echoCancellation）。 */
+  onAecState?: (on: boolean) => void
 }
 
 export interface SegmentMeta {
@@ -658,6 +660,13 @@ const startRecorder = async (): Promise<void> => {
       stream = null
       return
     }
+    // A1：验证浏览器原生 AEC 是否真正生效。约束在首次 getUserMedia 建立处理链时生效，
+    // track.getSettings() 是唯一可见信号；false 时外放回声几乎必然漏进 → 自打断。
+    const aecOn = stream.getAudioTracks()[0]?.getSettings().echoCancellation === true
+    if (!aecOn) {
+      console.warn('[dsh-voice-mode] 浏览器原生 echoCancellation 未生效（外放可能自打断），建议用耳机或「手动打断」')
+    }
+    config.onAecState?.(aecOn)
     const AC: typeof AudioContext =
       window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
     audioCtx = new AC({ sampleRate: SAMPLE_RATE })

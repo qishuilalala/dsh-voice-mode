@@ -513,6 +513,11 @@ function createAsrEngine(config, sessionId) {
       stream = null;
       return;
     }
+    const aecOn = stream.getAudioTracks()[0]?.getSettings().echoCancellation === true;
+    if (!aecOn) {
+      console.warn("[dsh-voice-mode] \u6D4F\u89C8\u5668\u539F\u751F echoCancellation \u672A\u751F\u6548\uFF08\u5916\u653E\u53EF\u80FD\u81EA\u6253\u65AD\uFF09\uFF0C\u5EFA\u8BAE\u7528\u8033\u673A\u6216\u300C\u624B\u52A8\u6253\u65AD\u300D");
+    }
+    config.onAecState?.(aecOn);
     const AC = window.AudioContext ?? window.webkitAudioContext;
     audioCtx = new AC({ sampleRate: SAMPLE_RATE });
     try {
@@ -834,6 +839,8 @@ var zh = {
   bargeInAuto: "\u81EA\u52A8",
   bargeInManual: "\u624B\u52A8",
   vadDetected: "VAD \u68C0\u6D4B\u5230\u8BED\u97F3",
+  aecOff: "\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548",
+  aecOffHint: "\u6D4F\u89C8\u5668\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548\uFF08\u5916\u653E\u53EF\u80FD\u81EA\u6253\u65AD\uFF09\uFF0C\u5EFA\u8BAE\u7528\u8033\u673A\u6216\u5207\u6362\u300C\u624B\u52A8\u6253\u65AD\u300D",
   interruptConfirm: "\u6253\u65AD\u786E\u8BA4",
   sev0: "0 \u9AD8\u95E8\u69DB",
   sev1: "1 \u4E2D",
@@ -928,6 +935,8 @@ var en = {
   bargeInAuto: "Auto",
   bargeInManual: "Manual",
   vadDetected: "VAD speech",
+  aecOff: "Native AEC off",
+  aecOffHint: "Native echo cancellation is not active (speaker echo may self-interrupt); use headphones or Manual barge-in",
   interruptConfirm: "interrupt confirm",
   sev0: "0 high",
   sev1: "1 medium",
@@ -2306,7 +2315,9 @@ function MicButton({
               bus.setUi({ error: null });
             }
             return reentered.ok;
-          }
+          },
+          // A1：原生 AEC 生效状态 → 状态条提示（外放且原生 AEC 失效时引导用耳机/手动打断）。
+          onAecState: (on2) => bus.setUi({ aecOff: !on2 })
         },
         sid
       );
@@ -2729,6 +2740,23 @@ function VoiceStatusBar({ bus, sessionId }) {
                 border: "1px solid rgba(255, 166, 87, 0.35)"
               },
               children: t("vadDetected")
+            }
+          ),
+          b.ui.aecOff === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "span",
+            {
+              title: t("aecOffHint"),
+              style: {
+                flexShrink: 0,
+                padding: "0 6px",
+                borderRadius: 8,
+                fontSize: 10,
+                lineHeight: "16px",
+                color: "#ffa657",
+                background: "rgba(255, 166, 87, 0.15)",
+                border: "1px solid rgba(255, 166, 87, 0.35)"
+              },
+              children: t("aecOff")
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
