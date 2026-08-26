@@ -20,7 +20,7 @@
 
 - **Voice mode**: toggle with the microphone button in the input toolbar or the global shortcut `Ctrl+Shift+V`; globally single-active (only one session is in voice mode at a time; switching sessions yields automatically)
 - **Two interaction modes (switchable in settings)**:
-  - `toggle` (default) continuous listening: RMS VAD segmentation → streaming zipformer2 ASR (words appear as you speak, live caption preview) → automatic sentence split and send after 700 ms of silence (<250 ms utterances are treated as noise); hold `Ctrl` to force an immediate send
+  - `toggle` (default) continuous listening: local RMS gate opens segments → streaming zipformer2 ASR (words appear as you speak, live caption preview) → automatic sentence split and send after 700 ms of silence (<250 ms utterances are treated as noise; endpoints are decided by the host-side Silero VAD, with a client-side silence timer as fallback); hold `Ctrl` to force an immediate send
   - `hold` push-to-talk: short tap to enter/exit, **hold the mic button to talk, release to send** (swipe up to cancel, `Esc`/blur abandons the segment); hold `Ctrl` to record-by-keyboard, release to send
 - **Wake word (optional, off by default)**: after setting `wakeWord`, entering voice mode starts in standby, and recognition only begins once the wake word is spoken (e.g. `你好小D`), preventing accidental triggers
 - **Output pipeline**: only the final answer's `text-delta` is read (reasoning/tool calls are skipped), streamed sentence-by-sentence via Edge TTS with a live caption overlay at the bottom-right; tool calls can trigger a beep (`toolBeep` setting, off by default); the full text is still written to the chat; in voice mode a spoken-format system prompt is injected (short natural sentences, no Markdown decoration), and the reader side strips markers as well for a smoother listening experience
@@ -174,7 +174,7 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 ![architecture](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/architecture.svg)
 
 ```
-input:  mic ──RMS VAD (700ms silence split)──▶ POST /voice-mode/asr (f32 PCM, 16k, incremental)
+input:  mic ──local RMS gate──▶ POST /voice-mode/asr (f32 PCM, 16k, incremental; host Silero VAD endpoints + isSpeech interrupt)
                                             │ zipformer2 streaming ASR (host-side WASM)
                                             ▼
         composer draft ──autoSend──▶ model stream ──llm/stream tap (active voice session only)
