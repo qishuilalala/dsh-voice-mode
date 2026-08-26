@@ -17,6 +17,8 @@ const tests = [
   ['下载完整性 单测', ['node', 'test/download.test.mjs']],
   ['语义端点 单测', ['node', 'test/endpoint.test.mjs']],
   ['重采样 单测', ['node', 'test/resample.test.mjs']],
+  ['SenseVoice worker 协议 单测', ['node', 'test/sense-worker.test.mjs']],
+  ['打断检测路由 单测', ['node', 'test/detect-route.test.mjs']],
   ['清单/产物自检', ['node', 'test/verify-client.mjs']],
 ]
 let failed = 0

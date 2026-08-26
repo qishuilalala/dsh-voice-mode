@@ -1608,6 +1608,23 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
                   ? b.ui.ttsNotice
                   : stateText}
         </span>
+        {b.ui.isSpeech === true && (
+          <span
+            title={t('vadDetected')}
+            style={{
+              flexShrink: 0,
+              padding: '0 6px',
+              borderRadius: 8,
+              fontSize: 10,
+              lineHeight: '16px',
+              color: '#ffa657',
+              background: 'rgba(255, 166, 87, 0.15)',
+              border: '1px solid rgba(255, 166, 87, 0.35)',
+            }}
+          >
+            {t('vadDetected')}
+          </span>
+        )}
         <button
           onClick={() => {
             void bus.exit(sessionId!)

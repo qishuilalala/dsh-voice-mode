@@ -831,6 +831,7 @@ var zh = {
   descVoice: "Edge TTS \u97F3\u8272\uFF08\u4E0B\u62C9\u5E38\u7528\uFF0C\u5176\u4F59\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u52A8\u586B ShortName\uFF09",
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09",
   descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF1B\u53D1\u58F0\u786E\u8BA4\u7EA6 0.3/0.2/0.1 \u79D2\uFF09",
+  vadDetected: "VAD \u68C0\u6D4B\u5230\u8BED\u97F3",
   sev0: "0 \u9AD8\u95E8\u69DB",
   sev1: "1 \u4E2D",
   sev2: "2 \u4F4E",
@@ -920,6 +921,7 @@ var en = {
   descVoice: "Edge TTS voice (presets, or a custom ShortName)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.0 normal)",
   descInterrupt: "Interrupt sensitivity (0 high barrier / 1 medium / 2 low; ~0.3/0.2/0.1 s speech confirmation)",
+  vadDetected: "VAD speech",
   sev0: "0 high",
   sev1: "1 medium",
   sev2: "2 low",
@@ -2618,6 +2620,23 @@ function VoiceStatusBar({ bus, sessionId }) {
             i
           )) }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
+          b.ui.isSpeech === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "span",
+            {
+              title: t("vadDetected"),
+              style: {
+                flexShrink: 0,
+                padding: "0 6px",
+                borderRadius: 8,
+                fontSize: 10,
+                lineHeight: "16px",
+                color: "#ffa657",
+                background: "rgba(255, 166, 87, 0.15)",
+                border: "1px solid rgba(255, 166, 87, 0.35)"
+              },
+              children: t("vadDetected")
+            }
+          ),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "button",
             {
