@@ -640,6 +640,9 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             <Row name="wakeWord" desc={tr('descWakeWord')}>
               <TextField score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder={tr('wakePlaceholder')} />
             </Row>
+            <div style={{ fontSize: 12, color: t.term, lineHeight: '18px', padding: '4px 0 8px' }}>
+              {tr('settingsEffectiveNote')}
+            </div>
             <ModelStatusView />
           </div>
         </div>

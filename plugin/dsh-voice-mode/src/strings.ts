@@ -78,6 +78,7 @@ const zh = {
   descWakeWord: '唤醒词（默认关；如「你好小D」，说出后开始识别）',
   wakePlaceholder: '如：你好小D',
   settingsCardDesc: '音色 / 语速 / 打断灵敏度 / 打断方式 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 交互模式 / 唤醒词 / 口语化提示词',
+  settingsEffectiveNote: '音色 / 语速 / 口语化提示词 / 重译 / 提示音 即时生效；其余（打断灵敏度 / 打断方式 / 静音 / 空闲 / 镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词）下次进入语音模式时生效。',
   configUnavailable: '配置暂不可用',
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: '说完',
@@ -176,6 +177,7 @@ const en: Record<keyof typeof zh, string> = {
   descWakeWord: 'Wake word (default off; e.g. Hey D)',
   wakePlaceholder: 'e.g. Hey D',
   settingsCardDesc: 'Voice / rate / interrupt / barge-in / silence / idle / model host / auto-send / mode / wake word / spoken format',
+  settingsEffectiveNote: 'Voice / rate / spoken format / re-transcribe / beep apply immediately; the rest (interrupt / barge-in / silence / idle / mirror / auto-send / auto-resume / mode / wake word) apply next time you enter voice mode.',
   configUnavailable: 'Configuration unavailable',
   telUtteranceEnd: 'end',
   telEndpoint: 'endpoint',
