@@ -2751,6 +2751,7 @@ function MicButton({
       onPointerMove,
       onPointerUp,
       onPointerCancel,
+      onContextMenu: (e) => e.preventDefault(),
       "data-dshvm": "mic",
       "aria-label": on ? t("ariaActive") : t("ariaEnter"),
       "aria-pressed": on,
@@ -2770,7 +2771,11 @@ function MicButton({
         transition: "background 0.15s ease, color 0.2s ease",
         touchAction: "none",
         // 触摸设备上让 pointer 事件独占（滑出取消可用）
-        userSelect: "none"
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        // iOS Safari 前缀，防长按选中文字
+        WebkitTouchCallout: "none"
+        // iOS 长按弹出「拷贝/选择」菜单
       },
       children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 24 24", width: 14, height: 14, "aria-hidden": "true", children: [
