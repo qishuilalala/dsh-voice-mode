@@ -395,7 +395,7 @@ function createAsrEngine(config, sessionId) {
       }
     }
     const playingNow = config.isPlaying?.() ?? false;
-    if (playingNow && !holdActive) detectChunks.push(data);
+    if (playingNow && !holdActive && config.mode !== "hold") detectChunks.push(data);
     if (holdActive) {
       if (!speechActive) {
         speechActive = true;
@@ -405,6 +405,7 @@ function createAsrEngine(config, sessionId) {
       silenceMs = 0;
       segment.push(data);
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
+    } else if (config.mode === "hold") {
     } else if (state === "wake") {
       if (rms > SPEECH_RMS && !config.isPlaying?.()) {
         segmentMs += durationMs;
@@ -2382,6 +2383,7 @@ function MicButton({
         {
           silenceMs,
           basePath,
+          mode: cfg.mode,
           wakeWord: cfg.wakeWord,
           echo: bus.echoForAsr(),
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。

@@ -43,6 +43,8 @@ export interface AsrConfig {
   silenceMs: number
   /** host 路由前缀。 */
   basePath: string
+  /** 交互模式：hold 按住说话（未按住不持续聆听）；toggle 持续聆听（默认）。 */
+  mode?: 'hold' | 'toggle'
   /** 唤醒词（空 = 关）：进入后先在 wake 待机态，说出唤醒词才正式开口。 */
   wakeWord?: string
   /** P3-2：回声参考（TTS 播放经 NLMS 消除后，信号再用于打断/VAD/上行）。 */
@@ -511,7 +513,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // hold 有明确意图路径（segment 正常累积、partial 上行）；wake 待机在播放期同样
     // 经检测通道（其入段路径被下方播放门截断，防 TTS 回声污染唤醒匹配）。
     const playingNow = config.isPlaying?.() ?? false
-    if (playingNow && !holdActive) detectChunks.push(data)
+    // hold 模式打断走显式手势（按住），不走 VAD 检测通道；toggle 模式保留检测通道。
+    if (playingNow && !holdActive && config.mode !== 'hold') detectChunks.push(data)
 
     if (holdActive) {
       // hold：按压区间全部保留（绕过 VAD 门控与静音切句），仅段长上限兜底。
@@ -523,6 +526,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       silenceMs = 0
       segment.push(data)
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment()
+    } else if (config.mode === 'hold') {
+      // hold 模式且未按住：不持续聆听（不建段、不 auto-send），底部 ticker 照跑（无数据自然跳过）。
     } else if (state === 'wake') {
       // wake 待机：有人声才累积（满足 partial 门槛），但不置 speech、不 finalize；
       // 唤醒词匹配在 requestPartial 结果上做，命中后由它重置。

@@ -1225,6 +1225,7 @@ export function MicButton({
         {
           silenceMs,
           basePath,
+          mode: cfg.mode,
           wakeWord: cfg.wakeWord,
           echo: bus.echoForAsr(),
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
