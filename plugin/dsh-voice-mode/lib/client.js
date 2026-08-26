@@ -421,6 +421,8 @@ function createAsrEngine(config, sessionId) {
       if (config.isPlaying?.()) return;
       if (!speechActive) {
         speechActive = true;
+        detectChunks = [];
+        detectSent = 0;
         utteranceEndAt = null;
         setState("speech");
         for (const p of prePad) segment.push(p);

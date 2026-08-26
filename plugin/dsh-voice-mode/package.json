@@ -39,7 +39,7 @@
   "scripts": {
     "build": "node build.mjs",
     "prepack": "node build.mjs",
-    "test": "node test/segmenter.test.mjs && node test/wakeword.test.mjs && node test/aec.test.mjs && node test/download.test.mjs && node test/endpoint.test.mjs && node test/resample.test.mjs && node test/verify-client.mjs",
+    "test": "node test/segmenter.test.mjs && node test/wakeword.test.mjs && node test/aec.test.mjs && node test/download.test.mjs && node test/endpoint.test.mjs && node test/resample.test.mjs && node test/detect-route.test.mjs && node test/verify-client.mjs",
     "verify:client": "node test/verify-client.mjs",
     "prefetch": "node scripts/prefetch.mjs",
     "list-voices": "node scripts/list-voices.mjs",

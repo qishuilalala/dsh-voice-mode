@@ -533,6 +533,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       if (config.isPlaying?.()) return
       if (!speechActive) {
         speechActive = true
+        // 打断根治：新一轮人声开始，清残留检测帧（上一播放窗口未发送的尾部已无意义）。
+        detectChunks = []
+        detectSent = 0
         // P1-5：新一轮语音开始，复位「说完」标记（下一轮 chain 重新起算）。
         utteranceEndAt = null
         setState('speech')
