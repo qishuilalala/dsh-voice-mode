@@ -516,6 +516,9 @@ export function apply(ctx: Context, config: Config): void {
               queue.cancel(previous)
               // 打断根治：让出旧会话时一并释放其检测 VAD（对抗审查 Important#4）。
               asr.reset(previous)
+              // M4：显式复位旧会话回合状态 + 清 turnStates 残留（防 Map 增长 + 重入后首帧被去重）。
+              setTurn(previous, 'idle')
+              turnStates.delete(previous)
             }
             broadcast('mode', { active: activeVoiceSession })
           } else {

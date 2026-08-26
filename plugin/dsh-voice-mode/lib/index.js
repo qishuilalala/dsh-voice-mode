@@ -1315,6 +1315,8 @@ function apply(ctx, config) {
             if (previous && previous !== sessionId) {
               queue.cancel(previous);
               asr.reset(previous);
+              setTurn(previous, "idle");
+              turnStates.delete(previous);
             }
             broadcast("mode", { active: activeVoiceSession });
           } else {
