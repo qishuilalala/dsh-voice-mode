@@ -139,9 +139,14 @@ t('lib/client.js 含 P3 AEC 集成（NlmsAec 参考池 + windowAt 对齐）', ()
   assert.ok(src.includes('NlmsAec'), 'client bundle missing NLMS AEC')
   assert.ok(src.includes('windowAt'), 'client bundle missing ref window lookup')
 })
-t('lib/client.js 含 P3 ducking（duck-and-listen 探针）', () => {
+t('lib/client.js 含 P3 打断（服务端 isSpeech 驱动，取代 duck 探针）', () => {
   const src = read('lib/client.js')
-  assert.ok(src.includes('DUCK_CONFIRM_MS'), 'client bundle missing duck confirm window')
+  assert.ok(src.includes('onIsSpeech'), 'client bundle missing isSpeech interrupt')
+  assert.ok(src.includes('isSpeechTrueCount'), 'client bundle missing isSpeech debounce')
+})
+t('lib/index.js 序列化 isSpeech 下行（打断根治：HTTP 层透传 VAD 帧级检测）', () => {
+  const src = read('lib/index.js')
+  assert.ok(src.includes('body.isSpeech'), 'host bundle missing isSpeech serialization')
 })
 t('lib/client.js 含 P1-1 按句拼帧（PlayFrame Uint8Array + 丢帧完整性校验）', () => {
   const src = read('lib/client.js')

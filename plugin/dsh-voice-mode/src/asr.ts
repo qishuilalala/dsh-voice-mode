@@ -4,9 +4,9 @@
  * 与参照 dsh-voice 的关键差异：
  *  - 不是 tap/hold，而是「进入语音模式后持续收音」：静音 700ms 自动断句（P1-3，端点优先由 host Silero VAD 判定），
  *    段定稿后提交；按住 Ctrl（≥250ms 语音）强制立即发送兜底；
- *  - partial 轮询（≈300ms，P1-4 增量上行）走 host 流式识别增量，实时字幕只在状态条预览，
- *    定稿文本才作为结果（Q6/Q13：可编辑草稿 + 自动提交）；
- *  - speechStart = 打断信号（Q10 高门槛：能量阈值 + 持续时长，三档可调）；
+ *  - partial 轮询（100ms，P1-4 增量上行）走 host 流式识别增量，实时字幕只在状态条预览，
+ *    定稿文本才作为结果（Q6/Q13：可编辑草稿 + 自动提交）；服务端 Silero VAD 帧级
+ *    isSpeech 随 partial 响应下行，驱动打断（阶段二，取代 RMS 能量快路径）；
  *  - v0.2：hold 模式（按住说话、松手发送，绕过 VAD）与唤醒词待机（wake）；
  *  - v0.3（P1-5）：延迟埋点链的客户端三枚时间戳——utterance-end（说完最后一个字）、
  *    endpoint-fired（端点判句到点）、submitted（定稿上传发起），经 onTelemetry 上抛，
@@ -40,8 +40,6 @@ export interface TelemetryEvent {
 export interface AsrConfig {
   /** 静音多少 ms 判句结束（Q5，默认 700；端点优先由 host Silero VAD 判定）。 */
   silenceMs: number
-  /** 打断灵敏度档位 0/1/2（Q10）。 */
-  interruptLevel: 0 | 1 | 2
   /** host 路由前缀。 */
   basePath: string
   /** 唤醒词（空 = 关）：进入后先在 wake 待机态，说出唤醒词才正式开口。 */
@@ -50,6 +48,8 @@ export interface AsrConfig {
   echo?: EchoRefSource
   /** AI 朗读中（TTS 在播）：根治「TTS→回声→ASR→自聊」。为 true 时只走打断快路径、不入段。 */
   isPlaying?: () => boolean
+  /** 服务端 Silero VAD 帧级语音检测（partial 响应下行；打断根治阶段二：客户端据此驱动打断，替代 RMS 能量快路径）。 */
+  onIsSpeech?: (speech: boolean | undefined) => void
   /** 403 会话过期回调：host 端活跃会话已变更（如被抢占/让出），返回 true 表示已恢复。 */
   onSessionExpired?: () => Promise<boolean>
 }
@@ -69,16 +69,12 @@ export interface AsrEngine {
   beginHeld(): void
   /** hold 模式：松手定稿发送（cancel=true 放弃本段）。 */
   endHeld(cancel?: boolean): void
-  /** P3-3：丢弃当前已录段（duck-and-listen 探针判回声后防幽灵消息），host 流重置。返回 Promise 供调用方等待。 */
+  /** 丢弃当前已录段（打断后防幽灵消息），host 流重置。返回 Promise 供调用方等待。 */
   discardSegment(): Promise<void>
-  /** Fix：阻尼打断前沿若干毫秒（回声判定后防拉压低循环）。 */
-  suppressBargeIn(ms: number): void
   /** 定稿文本（段结束/强制发送后）。 */
   readonly onSegment: (fn: (text: string, meta?: SegmentMeta) => void) => () => void
   /** 实时字幕（partial，仅预览）。 */
   readonly onPartial: (fn: (text: string) => void) => () => void
-  /** 语音前沿（高门槛打断信号，Q10）。 */
-  readonly onSpeechStart: (fn: () => void) => () => void
   readonly onState: (fn: (s: AsrState) => void) => () => void
   readonly onError: (fn: (msg: string) => void) => () => void
   /** 归一化电平 0..1（波形条）。 */
@@ -96,20 +92,13 @@ const MAX_SEGMENT_MS = 30000
 /** 最小语音时长（P1-3）：不足视为短促噪声，静音到点后放弃本段不发送。 */
 const MIN_SPEECH_MS = 250
 const PRE_PAD_MS = 250
-/** P1-4：partial 轮询节拍 300ms（配合增量上传，字幕更跟手）。 */
-const PARTIAL_INTERVAL_MS = 300
+/** P1-4：partial 轮询节拍 100ms（配合增量上传，字幕更跟手；阶段二降低 isSpeech 帧级检测延迟）。 */
+const PARTIAL_INTERVAL_MS = 100
 /** partial 预览下限/上限（流式模型代价低，上限放宽）。 */
 const PARTIAL_MIN_S = 0.4
 const PARTIAL_MAX_S = 30
 /** ScriptProcessor 缓冲必须为 2 的幂（已知坑）。 */
 const BUFFER_SIZE = 1024
-
-/** 打断灵敏度三档：{能量阈值, 持续毫秒}（初始标定，§7.3 实测后可调）。 */
-const INTERRUPT_LEVELS: Record<0 | 1 | 2, { rms: number; ms: number }> = {
-  0: { rms: 0.10, ms: 500 },
-  1: { rms: 0.06, ms: 400 },
-  2: { rms: 0.035, ms: 300 },
-}
 
 export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine {
   let state: AsrState = 'idle'
@@ -122,7 +111,6 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   }
   const transcriptListeners = new Set<(text: string, meta?: SegmentMeta) => void>()
   const partialListeners = new Set<(text: string) => void>()
-  const speechStartListeners = new Set<() => void>()
   const levelListeners = new Set<(level: number) => void>()
   const telemetryListeners = new Set<(e: TelemetryEvent) => void>()
   /** 本段「说完」时刻是否已上报（每段至多一次；无静音过渡路径在 finalize 补报）。 */
@@ -166,20 +154,6 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   const wakeWord = (config.wakeWord ?? '').trim().toLowerCase().replace(/[\s\u3000]+/g, '')
   /** P3-2 回声参考（可选；缺失时原信号透传）。 */
   const echo = config.echo
-
-  // --- 打断状态机（Q10：首音节强度 + 持续时长） ---
-  const intLevel = INTERRUPT_LEVELS[config.interruptLevel] ?? INTERRUPT_LEVELS[0]
-  let interruptCandidateMs = 0
-  let bargeInDampingUntil = 0
-  // P1 噪声自适应：噪声底估计（只在静音/低噪时下降跟踪最小值，语音/突发时冻结，
-  // 防语音抬高噪声底导致阈值虚高漏打断）。
-  let noiseFloor = 0.01
-  // P0 瞬态抑制：冲击噪声（咳嗽/拍桌/关门/键盘）onset 后能量快速回落；人声 onset 后持续。
-  // 以「onset 后 N 帧内回落到峰值 35% 以下」判瞬态，回落后进入冷却期阻断连续瞬态累积。
-  let prevRms = 0
-  let transientPeak = 0
-  let transientAge = -1
-  let transientCooldownUntil = 0
 
   // --- partial 轮询 ---
   let sincePartialMs = 0
@@ -295,8 +269,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       }
       if (epoch !== segmentEpoch) return
       if (!res.ok) return
-      const out = (await res.json()) as { text?: string; endpoint?: boolean }
+      const out = (await res.json()) as { text?: string; endpoint?: boolean; isSpeech?: boolean }
       if (epoch !== segmentEpoch) return
+      // 打断根治阶段一：服务端 Silero VAD 帧级检测结果下行到 bus.ui（可读存储，
+      // 供下一阶段接入打断；仅非 final 响应携带，undefined 表示本次无 VAD 信息）。
+      if (out.isSpeech !== undefined) config.onIsSpeech?.(out.isSpeech)
       if (state === 'loading-model') setState('speech')
       // P1-4：上传成功后才推进已传水位（失败/重试不推进，下一拍补传）。
       uploadedSamples = Math.max(uploadedSamples, from + samples.length)
@@ -457,54 +434,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       }
     }
 
-    // 打断前沿（高门槛，Q10）：达到即报；阻尼期内不重复报（800ms）。
-    // P2-5：判句端点已由 host Silero VAD 负责，客户端能量路径专职「打断快路径」。
-    // P1 噪声自适应：静音/低噪时噪声底下降跟踪；有效阈值 = max(写死档位, 噪声底×2+偏移)，
-    // 嘈杂环境（空调/风扇/环境底噪）阈值自动抬高，防持续噪声误打断。
-    if (rms < noiseFloor * 2.5) {
-      noiseFloor = noiseFloor * 0.9 + rms * 0.1
-    }
-    const effectiveThreshold = Math.max(intLevel.rms, noiseFloor * 2 + 0.015)
-    // P0 瞬态抑制：onset（能量从噪声底陡升 ≥4×）后若 2 帧（128ms）内回落到峰值 35% 以下
-    // 即判冲击瞬态（咳嗽/拍桌/关门/键盘），进入 300ms 冷却期阻断其累积；持续 ≥4 帧（256ms）
-    // 判人声（辅音-元音的能量波动 ≥0.35 不回落，不会误伤语音 onset）。
-    if (rms > prevRms * 4 && rms > effectiveThreshold) {
-      transientPeak = rms
-      transientAge = 0
-    } else if (transientAge >= 0) {
-      transientAge++
-      if (rms > transientPeak) transientPeak = rms
-      if (transientAge >= 2 && rms < transientPeak * 0.35) {
-        transientCooldownUntil = Date.now() + 300
-        transientAge = -1
-        interruptCandidateMs = 0
-      } else if (transientAge >= 4) {
-        transientAge = -1
-      }
-    }
-    prevRms = rms
-
-    if (Date.now() < bargeInDampingUntil) {
-      interruptCandidateMs = 0
-    } else if (Date.now() < transientCooldownUntil) {
-      // P0：瞬态冷却期内不累积（键盘连击等连续瞬态也不打断）。
-      interruptCandidateMs = 0
-    } else if (rms > effectiveThreshold) {
-      interruptCandidateMs += durationMs
-      if (interruptCandidateMs >= intLevel.ms) {
-        interruptCandidateMs = 0
-        bargeInDampingUntil = Date.now() + 800
-        for (const fn of speechStartListeners) {
-          try {
-            fn()
-          } catch {
-            // ignore
-          }
-        }
-      }
-    } else {
-      interruptCandidateMs = 0
-    }
+    // 打断前沿：已由服务端 Silero VAD 帧级 isSpeech 驱动（阶段二，取代原 RMS 能量
+    // 快路径 + P0 瞬态抑制 + P1 噪声自适应）；此处不再做能量域打断判定。
 
     if (holdActive) {
       // hold：按压区间全部保留（绕过 VAD 门控与静音切句），仅段长上限兜底。
@@ -665,7 +596,6 @@ const startRecorder = async (): Promise<void> => {
     speechMs = 0
     uploadedSamples = 0 // P1-4：会话结束清除已传水位
     prePad = []
-    interruptCandidateMs = 0
     utteranceEndAt = null // P1-5：会话结束清除说完标记
     try {
       processor?.disconnect()
@@ -699,7 +629,6 @@ const startRecorder = async (): Promise<void> => {
       curStartSeq = ++startSeq // 防双路开麦：本次启动的序号
       segmentEpoch++
       sincePartialMs = 0
-      interruptCandidateMs = 0
       holdActive = false
       // 配置了唤醒词 → 先进 wake 待机态（说出唤醒词才正式开口）；否则直接聆听。
       setState(wakeWord ? 'wake' : 'listening')
@@ -746,8 +675,6 @@ const startRecorder = async (): Promise<void> => {
       uploadedSamples = 0 // Fix：hold 新段重置上传水位，防旧段水位污染
       speechActive = true
       sincePartialMs = 0
-      // 按下首帧注入打断阻尼：避免"录制开始"被误判为打断前沿（Q10）。
-      bargeInDampingUntil = Date.now() + 800
       setState('speech')
     },
     discardSegment() {
@@ -767,9 +694,6 @@ const startRecorder = async (): Promise<void> => {
       return resetHostStream().then(() => {
         if (active) setState(wakeWord ? 'wake' : 'listening')
       })
-    },
-    suppressBargeIn(ms) {
-      bargeInDampingUntil = Math.max(bargeInDampingUntil, Date.now() + ms)
     },
     endHeld(cancel = false) {
       if (!active || !holdActive) return
@@ -812,12 +736,6 @@ const startRecorder = async (): Promise<void> => {
       partialListeners.add(fn)
       return () => {
         partialListeners.delete(fn)
-      }
-    },
-    onSpeechStart(fn) {
-      speechStartListeners.add(fn)
-      return () => {
-        speechStartListeners.delete(fn)
       }
     },
     onState(fn) {

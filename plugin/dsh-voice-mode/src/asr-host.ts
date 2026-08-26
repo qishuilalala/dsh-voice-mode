@@ -34,6 +34,8 @@ interface SherpaRecognizer {
 }
 interface SherpaVad {
   acceptWaveform(samples: Float32Array): void
+  /** 帧级实时检测状态：当前是否正在检测到语音（打断根治用，比 RMS 能量能区分语音/噪声）。 */
+  isDetected(): boolean
   isEmpty(): boolean
   front(): { samples: Float32Array; start: number }
   pop(): void
@@ -81,7 +83,7 @@ export interface AsrRuntime {
     offset?: number,
     /** 客户端段身份（epoch = segmentEpoch 快照；旧世代请求被忽略/清理）。 */
     epoch?: number,
-  ): Promise<{ text: string; loading?: boolean; endpoint?: boolean }>
+  ): Promise<{ text: string; loading?: boolean; endpoint?: boolean; isSpeech?: boolean }>
   /** 丢弃某会话的进行中段（语音模式退出/被打断时）。 */
   reset(sessionId: string): void
   /** 释放 runtime（清定时器 + 全部段）；插件卸载时调用。 */
@@ -380,7 +382,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     final: boolean,
     offset = 0,
     epoch = 0,
-  ): Promise<{ text: string; loading?: boolean; endpoint?: boolean }> => {
+  ): Promise<{ text: string; loading?: boolean; endpoint?: boolean; isSpeech?: boolean }> => {
     const rec = await getRecognizer()
     if (!rec) return { text: '', loading: true }
     // 预热 SenseVoice recognizer：说话早期即并行创建（228MB 加载 2-5s 阻塞事件循环，
@@ -421,6 +423,8 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     // （兼容旧客户端 offset=0 全量上传；若 final 且无新数据，仅补尾垫）。
     let endpoint = false
     let text = ''
+    // 打断根治阶段一：Silero VAD 帧级检测结果（仅非 final 时有意义，VAD 缺失时为 undefined）。
+    let isSpeech: boolean | undefined
     if (offset + samples.length > seg.fed) {
       const skip = Math.max(seg.fed - offset, 0)
       const inc = samples.subarray(skip)
@@ -457,6 +461,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
           }
           // 2) 喂 VAD，检测新完整段。
           vad.acceptWaveform(inc)
+          // 打断根治：isDetected() 为帧级实时「当前是否正在检测到语音」，
+          // 随 partial 响应下行，客户端据此驱动打断（已取代 RMS 能量快路径）。
+          isSpeech = vad.isDetected()
           if (!vad.isEmpty()) {
             // 取最后一段的语音时长（确认窗口伸缩依据）。
             let spokenMs = 0
@@ -475,7 +482,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         }
       }
     }
-    if (!final) return { text, endpoint }
+    if (!final) return { text, endpoint, isSpeech }
     // P4-1：SenseVoice 整段重译与 zipformer 定稿并行（端点等待期后起跑；
     // 带标点 + ITN 覆盖定稿文本；模型缺失/失败自然降级 zipformer）。
     const all = seg.allSamples
@@ -830,8 +837,10 @@ export function handleAsrRequest(
           return
         }
         // P2-1：透传 Silero VAD 端点提示（客户端收到即定稿）。
+        // 打断根治阶段一：透传 VAD 帧级 isSpeech（undefined 不序列化，兼容旧客户端与无 VAD 信息路径）。
         const body: Record<string, unknown> = { text: out.text }
         if (out.endpoint) body.endpoint = true
+        if (out.isSpeech !== undefined) body.isSpeech = out.isSpeech
         res.end(JSON.stringify(body))
       })
       .catch((e: unknown) => {

@@ -379,6 +379,7 @@ function createAsrRuntime(options) {
     seg.lastActivity = Date.now();
     let endpoint = false;
     let text = "";
+    let isSpeech;
     if (offset + samples.length > seg.fed) {
       const skip = Math.max(seg.fed - offset, 0);
       const inc = samples.subarray(skip);
@@ -405,6 +406,7 @@ function createAsrRuntime(options) {
             }
           }
           vad.acceptWaveform(inc);
+          isSpeech = vad.isDetected();
           if (!vad.isEmpty()) {
             let spokenMs = 0;
             while (!vad.isEmpty()) {
@@ -422,7 +424,7 @@ function createAsrRuntime(options) {
         }
       }
     }
-    if (!final) return { text, endpoint };
+    if (!final) return { text, endpoint, isSpeech };
     const all = seg.allSamples;
     const senseP = all.length > 0 ? Promise.race([
       senseTranscribe(all),
@@ -707,6 +709,7 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
       }
       const body = { text: out.text };
       if (out.endpoint) body.endpoint = true;
+      if (out.isSpeech !== void 0) body.isSpeech = out.isSpeech;
       res.end(JSON.stringify(body));
     }).catch((e) => {
       res.statusCode = 500;

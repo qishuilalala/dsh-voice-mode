@@ -24,7 +24,7 @@
   - `hold` push-to-talk: short tap to enter/exit, **hold the mic button to talk, release to send** (swipe up to cancel, `Esc`/blur abandons the segment); hold `Ctrl` to record-by-keyboard, release to send
 - **Wake word (optional, off by default)**: after setting `wakeWord`, entering voice mode starts in standby, and recognition only begins once the wake word is spoken (e.g. `你好小D`), preventing accidental triggers
 - **Output pipeline**: only the final answer's `text-delta` is read (reasoning/tool calls are skipped), streamed sentence-by-sentence via Edge TTS with a live caption overlay at the bottom-right; tool calls can trigger a beep (`toolBeep` setting, off by default); the full text is still written to the chat; in voice mode a spoken-format system prompt is injected (short natural sentences, no Markdown decoration), and the reader side strips markers as well for a smoother listening experience
-- **Barge-in**: three sensitivity levels of voice-onset detection, with **NLMS acoustic echo cancellation (P3)** using the page's own TTS playback as the reference, plus **duck-and-listen** (duck the TTS for 600 ms and listen: mic level drops = echo → recover without interrupting; stays high = real speech → interrupt; hold mode / no duck capability / no TTS playing bypass the probe) → local mute + host synth queue invalidation (epoch) + running turn cancellation (the half-finished part is kept and naturally flows into your new message)
+- **Barge-in**: **NLMS acoustic echo cancellation (P3, 512 ms window)** using the page's own TTS playback as the reference, then **host-side Silero VAD frame-level detection (isSpeech, sent down with partial responses) drives the interrupt** — three sensitivity levels map to speech-confirmation time (0 high barrier ~300 ms / 1 medium 200 ms / 2 low 100 ms), triggered only while the AI is speaking → local mute + host synth queue invalidation (epoch) + running turn cancellation (the half-finished part is kept and naturally flows into your new message)
 - **Lazy model download with progress**: the zipformer2 streaming model (~160 MB), Silero VAD (~2 MB) and the SenseVoice finalization model (~228 MB, first finalize; can be disabled) are downloaded on first use — all `.part` resumable with hf-mirror fallback; live progress in the status bar; `npm run prefetch` pre-downloads them
 - **Resilience**: mic-denied red hint, visible model-download failure, TTS unreachable status hint (auto retry), failed submit keeps the text in the draft, SSE auto-reconnect
 - **Settings**: Settings → Plugins → voice-mode, with voice / rate / interrupt sensitivity / silence pause / idle timeout / model mirror / auto send / interaction mode / wake word; **voices are previewable** (the "试听/Preview" button synthesizes and plays the current voice at the current rate instantly, no need to enter voice mode; custom ShortNames are previewable too)
@@ -92,7 +92,7 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | --- | --- | --- |
 | `voice` | `zh-CN-XiaoxiaoNeural` | Edge TTS voice (see the common voices table below), **applies live**; the inline "试听" button previews it at the current rate (both listed voices and custom ShortNames are previewable; failures show a visible hint) |
 | `rate` | `1.0` | Reading speed multiplier (0.5 slow ～ 2.0 fast), **applies live** |
-| `interruptLevel` | `0` | Barge-in sensitivity: 0 high threshold / 1 medium / 2 low |
+| `interruptLevel` | `0` | Barge-in sensitivity: 0 high barrier / 1 medium / 2 low (~300/200/100 ms speech confirmation) |
 | `silenceMs` | `700` | Silence pause in ms that marks the end of a complete sentence (at least 250 ms of speech required) |
 | `idleTimeoutMinutes` | `10` | Minutes of inactivity before auto-exiting voice mode |
 | `modelHost` | default | ASR model download host (use `https://hf-mirror.com` on mainland networks) |
@@ -190,7 +190,7 @@ input:  mic ──RMS VAD (700ms silence split)──▶ POST /voice-mode/asr (f
 
 ## Known limitations
 
-- Barge-in now includes NLMS acoustic echo cancellation (P3, reference = this page's TTS playback) plus duck-and-listen; browser `echoCancellation` is only a fallback. Under extreme speaker volume/distance the suppression needs on-device calibration (`ECHO_DELAY_MS` etc.)
+- Barge-in now includes NLMS acoustic echo cancellation (P3, reference = this page's TTS playback, 512 ms window) plus host-side Silero VAD frame-level detection; browser `echoCancellation` is only a fallback. Under extreme speaker volume/distance the suppression needs on-device calibration (`ECHO_DELAY_MS` etc.)
 - `Ctrl+Shift+V` overrides the browser's "paste as plain text" shortcut (normal `Ctrl+V` paste still works)
 - The recognition model prioritizes Simplified Chinese; recognition quality is affected by ambient noise
 - Browser autoplay policy: reading requires prior user interaction on the page (clicking the mic satisfies it); if the browser blocks playback and the status bar shows no hint, make sure the page is foregrounded and not muted

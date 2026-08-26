@@ -17,6 +17,14 @@ import { t, type TKey } from './strings.ts'
 
 /** 共享提示音上下文（进入语音模式手势栈内预热；Safari 非手势栈新建会静默）。 */
 let beepCtx: AudioContext | null = null
+/**
+ * 打断根治阶段二：isSpeech 连续 true 计数（模块级；全局单活架构下 createVoiceBus
+ * 仅一个实例、语音模式同时至多一个会话在播，模块级与闭包级等价且无并发串扰）。
+ * partial 轮询 100ms/拍；达到 INT_CONFIRM_FRAMES 即判真实人声前沿。
+ */
+let isSpeechTrueCount = 0
+/** 打断灵敏度三档 → isSpeech 连续确认帧数（100ms/拍 → 约 300/200/100ms；语义对齐旧能量持续时长档位）。 */
+const INT_CONFIRM_FRAMES: Record<0 | 1 | 2, number> = { 0: 3, 1: 2, 2: 1 }
 import { VoiceSettingsCard } from './settings-form.tsx'
 
 export const inject = ['slots', 'sessions', 'settingsScope']
@@ -40,6 +48,8 @@ interface VoiceUiState {
   wakeWord: string
   /** P2-4 host 回合状态（SSE 'turn'；状态条展示思考中/朗读中）。 */
   turn: 'idle' | 'listening' | 'finalizing' | 'agent-speaking'
+  /** 打断根治阶段一：服务端 Silero VAD 帧级语音检测（partial 响应下行；可读存储，供下一阶段接入打断；undefined=无 VAD 信息）。 */
+  isSpeech?: boolean
   /** 延迟埋点链各阶段时刻（开发模式状态条展示；null = 未启用/已清空）。 */
   telemetry: Partial<Record<TelemetryStage, number>> | null
 }
@@ -119,11 +129,7 @@ interface VoiceBus {
   skipAudio(): void
   /** P3-2：回声消除源（参考窗口 + NLMS），供 ASR 引擎注入。 */
   echoForAsr(): EchoRefSource
-  /** P3-3：duck 打断（压低 TTS 增益，配合 duck-and-listen 探针）。 */
-  duckAudio(): void
-  /** Fix：duck 探针是否可用（等价引擎 canDuck；探针不可用时走硬打断）。 */
-  audioDuckAvailable(): boolean
-  /** P3-3：恢复 TTS 增益（无爆音斜坡）。 */
+  /** P3-3：恢复 TTS 增益（无爆音斜坡；hardBreak 打断后调用，确保音量不残留压低态）。 */
   unduckAudio(): void
   /** 取消当前回合（keepInbox 保新消息，Q2 打断第二层）。 */
   cancelTurn(sessionId: string): void
@@ -141,15 +147,6 @@ export interface VoiceSlotActions {
   bus: VoiceBus
 }
 
-/** P3-3 ducking 参数：压低电平 / 确认窗口 / 探针判定系数（真机标定起点）。 */
-const DUCK_LEVEL = 0.3
-// I2：600ms 确认窗口（16k ctx 下 levels 滚动 ~896ms/窗，300ms 内统计变化太少；真机标定起点）。
-const DUCK_CONFIRM_MS = 600
-const DUCK_PROBE_DROP = 0.5
-/** duck 后「mic 近乎静音」的绝对电平下限（levels 归一化 0..1；≈rms 0.02）。
- *  静音回声判据：TTS 压低后 mic 只剩（近零）回声 → 判回声；
- *  反之 duck 后仍有能量 = 真人声仍在 → 立即打断（防响亮 TTS 下真实打断被误判吞掉）。 */
-const DUCK_SILENCE_LEVEL = 0.06
 /** P3-2：回声参考采样率（16k mono，与采集一致）。 */
 const SAMPLE_RATE_16K = 16000
 /**
@@ -240,12 +237,8 @@ function createAudioEngine(
   toolBeep(): void
   /** 手势栈内预热 AudioContext（Safari 非手势栈新建会 suspended 静默）。 */
   warm(): void
-  /** P3-3：duck 打断（压低 TTS 增益 <50ms 斜坡），配合 duck-and-listen 探针。 */
-  duck(): void
-  /** P3-3：恢复 TTS 增益（≥30ms 斜坡，无爆音）。 */
+  /** P3-3：恢复 TTS 增益（≥30ms 斜坡，无爆音；打断后调用）。 */
   unduck(): void
-  /** Fix：duck 是否可用（Web Audio 路径且未降级；fallback/ctx null 时不可用）。 */
-  canDuck(): boolean
 } {
   // --- 待播放：串行解码，decode 完成即调度（句序天然保持）。 ---
   const pending: PlayFrame[] = []
@@ -432,20 +425,11 @@ function createAudioEngine(
     },
     toolBeep,
     warm,
-    duck() {
-      if (!ctx || !duckGain) return
-      const now = ctx.currentTime
-      duckGain.gain.cancelScheduledValues(now)
-      duckGain.gain.setTargetAtTime(DUCK_LEVEL, now, 0.02) // <50ms 压低
-    },
     unduck() {
       if (!ctx || !duckGain) return
       const now = ctx.currentTime
       duckGain.gain.cancelScheduledValues(now)
       duckGain.gain.setTargetAtTime(1, now, 0.035) // ≥30ms 斜坡恢复，无爆音
-    },
-    canDuck() {
-      return !!(ctx && duckGain && !fallback)
     },
   }
 }
@@ -562,10 +546,11 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     }
     return out
   }
-  // AEC 覆盖增强 + 耳机短路径修复：FIR 2560 taps（160ms@16k）+ delay 0，
-  // 不再依赖固定前导对齐——NLMS 在 0..160ms 全窗口内自适应学习声学路径，
-  // 同时覆盖耳机（5-10ms 耦合）与外放/蓝牙（80-150ms）回声（合成模型全路径一致消除）。
-  const aec = new NlmsAec({ filterLength: 2560, delay: 0 })
+  // AEC 覆盖增强 + 耳机短路径修复：FIR 8192 taps（512ms@16k）+ delay 0，
+  // 不再依赖固定前导对齐——NLMS 在 0..512ms 全窗口内自适应学习声学路径，
+  // 覆盖耳机（5-10ms 耦合）、外放/蓝牙（80-150ms）回声以及外放长混响
+  // （房间混响尾音可达数百 ms，512ms 窗口可完整包住声学路径）。
+  const aec = new NlmsAec({ filterLength: 8192, delay: 0 })
   const echoSource: EchoRefSource = {
     process: (mic, ref) => aec.process(mic, ref),
     windowAt: refWindowAt,
@@ -885,14 +870,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     echoForAsr() {
       return echoSource
     },
-    duckAudio() {
-      engine.duck()
-    },
     unduckAudio() {
       engine.unduck()
-    },
-    audioDuckAvailable() {
-      return engine.canDuck()
     },
     cancelTurn(sessionId) {
       try {
@@ -943,15 +922,6 @@ function useVoiceCss(): void {
 `
     document.head.appendChild(el)
   }, [])
-}
-
-/** P3-3 duck-and-listen 探针：尾部 n 条电平均值（回落代表 recent 窗口，避免被旧样本主导）。 */
-function tailAvg(levels: number[], n: number): number {
-  if (levels.length === 0) return 0
-  const tail = levels.slice(-n)
-  let s = 0
-  for (const v of tail) s += v
-  return s / tail.length
 }
 
 export function MicButton({
@@ -1071,6 +1041,9 @@ export function MicButton({
   const enterMode = async (): Promise<void> => {
     const sid = sidRef.current
     if (!sid || localRef.current !== 'off') return
+    // 健壮性：每次进入语音模式重置 isSpeech 计数（模块级变量跨 enterMode 持久，
+    // 残留计数会让新会话首帧误判「连续 2 次 true」而误打断）。
+    isSpeechTrueCount = 0
     setLocalMode('pending')
     try {
       const entered = await bus.enter(sid)
@@ -1089,15 +1062,61 @@ export function MicButton({
       const basePath = cfg.basePath
       const silenceMs = cfg.silenceMs
       const interruptLevel = cfg.interruptLevel
+      const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2
+      // 打断根治阶段二：hardBreak 由 isSpeech 连续前沿触发（RMS 快路径 + duck 探针
+      // 移除后提炼为独立函数；行为保持不变）：
+      // （RMS 快路径 + duck 探针移除后，由 isSpeech 连续前沿触发；行为保持不变）：
+      // 1) 本地播放队列清空 + host TTS 队列 epoch++（静音）
+      // 2) 有 running 回合则 session.cancel({keepInbox:true})（取消生成、保新消息）
+      // 3) 半截标注由「转录区新消息续入」自然呈现（Q8 标注见 §8.5 收尾）
+      const hardBreak = async (): Promise<void> => {
+        // 立即停播 + 恢复音量：不等待慢操作（discardSegment 最多 5s、cancel 最多 3s）。
+        bus.skipAudio()
+        bus.unduckAudio()
+        // 双重奏根治：cancel 立即发出（不等 discardSegment）→ host epoch++ 停推，
+        // 缩短「skip 后旧回合帧继续到达」的窗口（在途旧帧由 client 拒绝线兜底丢弃）。
+        const cancelP = fetch(`${location.origin}${BASE_PATH}/cancel`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sessionId: sidRef.current }),
+          signal: AbortSignal.timeout(3000),
+        }).catch(() => {
+          // cancel 路由不可达：本地已静音
+        })
+        // 异步清理：丢弃残余段（防残缺文本 autoSend）+ host 静音 + 取消回合。
+        if (engineRef.current) await engineRef.current.discardSegment()
+        await cancelP
+        if (runningRef.current && sidRef.current) {
+          bus.cancelTurn(sidRef.current!)
+        }
+        bus.setUi({ partial: '…' })
+      }
       const engine = createAsrEngine(
         {
           silenceMs,
-          interruptLevel,
           basePath,
           wakeWord: cfg.wakeWord,
           echo: bus.echoForAsr(),
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
           isPlaying: () => bus.ui.playing || Date.now() < bus.playingTailUntil(),
+          // 打断根治阶段二：服务端 Silero VAD 帧级检测下行 → 驱动打断（替代 RMS 能量快
+          // 路径）。连续 confirmFrames 次 true（partial 轮询 100ms/拍，三档约 300/200/100ms）
+          // 判真实人声前沿；仅 AI 朗读中（bus.ui.playing）触发 hardBreak，
+          // 防 TTS 回声被 VAD 误判为语音而自打断。
+          onIsSpeech: (speech) => {
+            if (speech === true) {
+              isSpeechTrueCount++
+              if (isSpeechTrueCount >= confirmFrames && bus.ui.playing) {
+                isSpeechTrueCount = 0 // 重置计数防重复触发
+                resetIdle()
+                bus.resetTelemetry() // P1-5：打断 = 上一轮回复作废，链清空
+                void hardBreak()
+              }
+            } else {
+              isSpeechTrueCount = 0
+            }
+            bus.setUi({ isSpeech: speech }) // 仍存 ui 供状态条展示
+          },
           onSessionExpired: async () => {
             // 403 恢复：host 端活跃会话已变更（如被抢占/让出），尝试重新进入。
             bus.setUi({ error: t('sessionExpired') })
@@ -1197,68 +1216,6 @@ export function MicButton({
           doSubmit()
         }, 500)
       })
-      engine.onSpeechStart(async () => {
-        // barge-in（Q2 硬打断）+ P3-3 duck-and-listen：先压低 TTS（<50ms 降 0.3x），
-        // 听确认窗口（DUCK_CONFIRM_MS=600）——mic 电平骤降（TTS 压低→回声减小）⇒ 先前是回声：
-        // 恢复增益、不打断；电平维持（真人声）⇒ 执行真打断三层：
-        // 1) 本地播放队列清空 + host TTS 队列 epoch++（静音）
-        // 2) 有 running 回合则 session.cancel({keepInbox:true})（取消生成、保新消息）
-        // 3) 半截标注由「转录区新消息续入」自然呈现（Q8 标注见 §8.5 收尾）
-        // 关键修复：打断前沿只在「AI 正在朗读」时有意义——无 TTS 在播时的开口
-        // 就是正常的说话开始，绝不能走打断/丢弃路径（否则用户语音被反复 discard，
-        // partial 永不发出 —— cap-probe 实测复现「彻底不识别、无提示」）。
-        if (!bus.ui.playing) return
-        // 探针豁免：hold 按住 = 明确打断意图；duck 不可用（<audio> 降级/ctx 缺失）→ 直接硬打断。
-        const duckable = bus.audioDuckAvailable()
-        resetIdle()
-        bus.resetTelemetry() // P1-5：打断 = 上一轮回复作废，链清空（新一轮 utterance-end 重新起算）
-        const hardBreak = async (): Promise<void> => {
-          // 立即停播 + 恢复音量：不等待慢操作（discardSegment 最多 5s、cancel 最多 3s），
-          // 否则打断后新回复的音量长期卡在 duck 0.3x，听感像「没语音」。
-          bus.skipAudio()
-          bus.unduckAudio()
-          // 双重奏根治：cancel 立即发出（不等 discardSegment）→ host epoch++ 停推，
-          // 缩短「skip 后旧回合帧继续到达」的窗口（在途旧帧由 client 拒绝线兜底丢弃）。
-          const cancelP = fetch(`${location.origin}${BASE_PATH}/cancel`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ sessionId: sidRef.current }),
-            signal: AbortSignal.timeout(3000),
-          }).catch(() => {
-            // cancel 路由不可达：本地已静音
-          })
-          // 异步清理：丢弃残余段（防残缺文本 autoSend）+ host 静音 + 取消回合。
-          if (engineRef.current) await engineRef.current.discardSegment()
-          await cancelP
-          if (runningRef.current && sidRef.current) {
-            bus.cancelTurn(sidRef.current!)
-          }
-          bus.setUi({ partial: '…' })
-        }
-        if (!duckable || bootNow().mode === 'hold') {
-          void hardBreak()
-          return
-        }
-        // duck-and-listen：本次前沿先压低 TTS，听确认窗口内电平变化。
-        const before = tailAvg(bus.ui.levels, 3)
-        bus.duckAudio()
-        await new Promise<void>((resolve) => setTimeout(resolve, DUCK_CONFIRM_MS))
-        const after = tailAvg(bus.ui.levels, 3)
-        const echoLowered = before > 0 && after < before * DUCK_PROBE_DROP
-        // 静音判据：duck 后 mic 是否近乎静音（仅回声消失）。若仍有能量（>下限）则说明人声
-        // 仍在 → 即使相对比例骤降（响亮 TTS 把相对基准抬高）也判为真人声，立即硬打断。
-        const silenceAfterDuck = after < DUCK_SILENCE_LEVEL
-        if (echoLowered && silenceAfterDuck) {
-          // 回声：TTS 压低后 mic 骤降且近乎静音 → 恢复增益、丢弃已录段（防幽灵消息），
-          // 并阻尼打断前沿 2s（防「拉低→恢复→再触发」周期循环）。
-          bus.unduckAudio()
-          if (engineRef.current) await engineRef.current.discardSegment()
-          engineRef.current?.suppressBargeIn(2000)
-          return
-        }
-        void hardBreak()
-      })
-
       bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null })
       await engine.start()
       setLocalMode('on')

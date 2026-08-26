@@ -79,15 +79,10 @@ var LEVEL_CEILING = 0.25;
 var MAX_SEGMENT_MS = 3e4;
 var MIN_SPEECH_MS = 250;
 var PRE_PAD_MS = 250;
-var PARTIAL_INTERVAL_MS = 300;
+var PARTIAL_INTERVAL_MS = 100;
 var PARTIAL_MIN_S = 0.4;
 var PARTIAL_MAX_S = 30;
 var BUFFER_SIZE = 1024;
-var INTERRUPT_LEVELS = {
-  0: { rms: 0.1, ms: 500 },
-  1: { rms: 0.06, ms: 400 },
-  2: { rms: 0.035, ms: 300 }
-};
 function createAsrEngine(config, sessionId) {
   let state = "idle";
   const stateListeners = /* @__PURE__ */ new Set();
@@ -102,7 +97,6 @@ function createAsrEngine(config, sessionId) {
   };
   const transcriptListeners = /* @__PURE__ */ new Set();
   const partialListeners = /* @__PURE__ */ new Set();
-  const speechStartListeners = /* @__PURE__ */ new Set();
   const levelListeners = /* @__PURE__ */ new Set();
   const telemetryListeners = /* @__PURE__ */ new Set();
   let utteranceEndAt = null;
@@ -133,14 +127,6 @@ function createAsrEngine(config, sessionId) {
   let holdActive = false;
   const wakeWord = (config.wakeWord ?? "").trim().toLowerCase().replace(/[\s\u3000]+/g, "");
   const echo = config.echo;
-  const intLevel = INTERRUPT_LEVELS[config.interruptLevel] ?? INTERRUPT_LEVELS[0];
-  let interruptCandidateMs = 0;
-  let bargeInDampingUntil = 0;
-  let noiseFloor = 0.01;
-  let prevRms = 0;
-  let transientPeak = 0;
-  let transientAge = -1;
-  let transientCooldownUntil = 0;
   let sincePartialMs = 0;
   let partialInFlight = false;
   let segmentEpoch = 0;
@@ -234,6 +220,7 @@ function createAsrEngine(config, sessionId) {
       if (!res.ok) return;
       const out = await res.json();
       if (epoch !== segmentEpoch) return;
+      if (out.isSpeech !== void 0) config.onIsSpeech?.(out.isSpeech);
       if (state === "loading-model") setState("speech");
       uploadedSamples = Math.max(uploadedSamples, from + samples.length);
       if (state === "wake" && wakeWord) {
@@ -361,44 +348,6 @@ function createAsrEngine(config, sessionId) {
         fn(Math.min(1, rms / LEVEL_CEILING));
       } catch {
       }
-    }
-    if (rms < noiseFloor * 2.5) {
-      noiseFloor = noiseFloor * 0.9 + rms * 0.1;
-    }
-    const effectiveThreshold = Math.max(intLevel.rms, noiseFloor * 2 + 0.015);
-    if (rms > prevRms * 4 && rms > effectiveThreshold) {
-      transientPeak = rms;
-      transientAge = 0;
-    } else if (transientAge >= 0) {
-      transientAge++;
-      if (rms > transientPeak) transientPeak = rms;
-      if (transientAge >= 2 && rms < transientPeak * 0.35) {
-        transientCooldownUntil = Date.now() + 300;
-        transientAge = -1;
-        interruptCandidateMs = 0;
-      } else if (transientAge >= 4) {
-        transientAge = -1;
-      }
-    }
-    prevRms = rms;
-    if (Date.now() < bargeInDampingUntil) {
-      interruptCandidateMs = 0;
-    } else if (Date.now() < transientCooldownUntil) {
-      interruptCandidateMs = 0;
-    } else if (rms > effectiveThreshold) {
-      interruptCandidateMs += durationMs;
-      if (interruptCandidateMs >= intLevel.ms) {
-        interruptCandidateMs = 0;
-        bargeInDampingUntil = Date.now() + 800;
-        for (const fn of speechStartListeners) {
-          try {
-            fn();
-          } catch {
-          }
-        }
-      }
-    } else {
-      interruptCandidateMs = 0;
     }
     if (holdActive) {
       if (!speechActive) {
@@ -534,7 +483,6 @@ function createAsrEngine(config, sessionId) {
     speechMs = 0;
     uploadedSamples = 0;
     prePad = [];
-    interruptCandidateMs = 0;
     utteranceEndAt = null;
     try {
       processor?.disconnect();
@@ -564,7 +512,6 @@ function createAsrEngine(config, sessionId) {
       curStartSeq = ++startSeq;
       segmentEpoch++;
       sincePartialMs = 0;
-      interruptCandidateMs = 0;
       holdActive = false;
       setState(wakeWord ? "wake" : "listening");
       try {
@@ -607,7 +554,6 @@ function createAsrEngine(config, sessionId) {
       uploadedSamples = 0;
       speechActive = true;
       sincePartialMs = 0;
-      bargeInDampingUntil = Date.now() + 800;
       setState("speech");
     },
     discardSegment() {
@@ -625,9 +571,6 @@ function createAsrEngine(config, sessionId) {
       return resetHostStream().then(() => {
         if (active) setState(wakeWord ? "wake" : "listening");
       });
-    },
-    suppressBargeIn(ms) {
-      bargeInDampingUntil = Math.max(bargeInDampingUntil, Date.now() + ms);
     },
     endHeld(cancel = false) {
       if (!active || !holdActive) return;
@@ -668,12 +611,6 @@ function createAsrEngine(config, sessionId) {
       partialListeners.add(fn);
       return () => {
         partialListeners.delete(fn);
-      };
-    },
-    onSpeechStart(fn) {
-      speechStartListeners.add(fn);
-      return () => {
-        speechStartListeners.delete(fn);
       };
     },
     onState(fn) {
@@ -819,7 +756,7 @@ var zh = {
   // settings rows
   descVoice: "Edge TTS \u97F3\u8272\uFF08\u4E0B\u62C9\u5E38\u7528\uFF0C\u5176\u4F59\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u52A8\u586B ShortName\uFF09",
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09",
-  descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF09",
+  descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF1B\u53D1\u58F0\u786E\u8BA4\u7EA6 300/200/100 \u6BEB\u79D2\uFF09",
   sev0: "0 \u9AD8\u95E8\u69DB",
   sev1: "1 \u4E2D",
   sev2: "2 \u4F4E",
@@ -908,7 +845,7 @@ var en = {
   custom: "Custom",
   descVoice: "Edge TTS voice (presets, or a custom ShortName)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.0 normal)",
-  descInterrupt: "Interrupt sensitivity (0 high barrier / 1 medium / 2 low)",
+  descInterrupt: "Interrupt sensitivity (0 high barrier / 1 medium / 2 low; ~300/200/100 ms speech confirmation)",
   sev0: "0 high",
   sev1: "1 medium",
   sev2: "2 low",
@@ -1444,6 +1381,8 @@ function VoiceSettingsCard({ scope }) {
 // src/client.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
 var beepCtx = null;
+var isSpeechTrueCount = 0;
+var INT_CONFIRM_FRAMES = { 0: 3, 1: 2, 2: 1 };
 var inject = ["slots", "sessions", "settingsScope"];
 var TELEMETRY_VIEW = [
   { stage: "utterance-end", key: "telUtteranceEnd" },
@@ -1456,10 +1395,6 @@ var TELEMETRY_VIEW = [
 ];
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
-var DUCK_LEVEL = 0.3;
-var DUCK_CONFIRM_MS = 600;
-var DUCK_PROBE_DROP = 0.5;
-var DUCK_SILENCE_LEVEL = 0.06;
 var SAMPLE_RATE_16K = 16e3;
 var ECHO_DELAY_MS = 0;
 var ECHO_TAIL_MS = 400;
@@ -1673,20 +1608,11 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
     },
     toolBeep,
     warm,
-    duck() {
-      if (!ctx || !duckGain) return;
-      const now = ctx.currentTime;
-      duckGain.gain.cancelScheduledValues(now);
-      duckGain.gain.setTargetAtTime(DUCK_LEVEL, now, 0.02);
-    },
     unduck() {
       if (!ctx || !duckGain) return;
       const now = ctx.currentTime;
       duckGain.gain.cancelScheduledValues(now);
       duckGain.gain.setTargetAtTime(1, now, 0.035);
-    },
-    canDuck() {
-      return !!(ctx && duckGain && !fallback);
     }
   };
 }
@@ -1790,7 +1716,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     }
     return out;
   };
-  const aec = new NlmsAec({ filterLength: 2560, delay: 0 });
+  const aec = new NlmsAec({ filterLength: 8192, delay: 0 });
   const echoSource = {
     process: (mic, ref) => aec.process(mic, ref),
     windowAt: refWindowAt
@@ -2053,14 +1979,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     echoForAsr() {
       return echoSource;
     },
-    duckAudio() {
-      engine.duck();
-    },
     unduckAudio() {
       engine.unduck();
-    },
-    audioDuckAvailable() {
-      return engine.canDuck();
     },
     cancelTurn(sessionId) {
       try {
@@ -2089,13 +2009,6 @@ function useVoiceCss() {
 `;
     document.head.appendChild(el);
   }, []);
-}
-function tailAvg(levels, n) {
-  if (levels.length === 0) return 0;
-  const tail = levels.slice(-n);
-  let s = 0;
-  for (const v of tail) s += v;
-  return s / tail.length;
 }
 function MicButton({
   bus,
@@ -2196,6 +2109,7 @@ function MicButton({
   const enterMode = async () => {
     const sid = sidRef.current;
     if (!sid || localRef.current !== "off") return;
+    isSpeechTrueCount = 0;
     setLocalMode("pending");
     try {
       const entered = await bus.enter(sid);
@@ -2210,15 +2124,50 @@ function MicButton({
       const basePath = cfg.basePath;
       const silenceMs = cfg.silenceMs;
       const interruptLevel = cfg.interruptLevel;
+      const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2;
+      const hardBreak = async () => {
+        bus.skipAudio();
+        bus.unduckAudio();
+        const cancelP = fetch(`${location.origin}${BASE_PATH2}/cancel`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionId: sidRef.current }),
+          signal: AbortSignal.timeout(3e3)
+        }).catch(() => {
+        });
+        if (engineRef.current) await engineRef.current.discardSegment();
+        await cancelP;
+        if (runningRef.current && sidRef.current) {
+          bus.cancelTurn(sidRef.current);
+        }
+        bus.setUi({ partial: "\u2026" });
+      };
       const engine = createAsrEngine(
         {
           silenceMs,
-          interruptLevel,
           basePath,
           wakeWord: cfg.wakeWord,
           echo: bus.echoForAsr(),
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
           isPlaying: () => bus.ui.playing || Date.now() < bus.playingTailUntil(),
+          // 打断根治阶段二：服务端 Silero VAD 帧级检测下行 → 驱动打断（替代 RMS 能量快
+          // 路径）。连续 confirmFrames 次 true（partial 轮询 100ms/拍，三档约 300/200/100ms）
+          // 判真实人声前沿；仅 AI 朗读中（bus.ui.playing）触发 hardBreak，
+          // 防 TTS 回声被 VAD 误判为语音而自打断。
+          onIsSpeech: (speech) => {
+            if (speech === true) {
+              isSpeechTrueCount++;
+              if (isSpeechTrueCount >= confirmFrames && bus.ui.playing) {
+                isSpeechTrueCount = 0;
+                resetIdle();
+                bus.resetTelemetry();
+                void hardBreak();
+              }
+            } else {
+              isSpeechTrueCount = 0;
+            }
+            bus.setUi({ isSpeech: speech });
+          },
           onSessionExpired: async () => {
             bus.setUi({ error: t("sessionExpired") });
             const reentered = await bus.enter(sid);
@@ -2298,46 +2247,6 @@ function MicButton({
           }
           doSubmit();
         }, 500);
-      });
-      engine.onSpeechStart(async () => {
-        if (!bus.ui.playing) return;
-        const duckable = bus.audioDuckAvailable();
-        resetIdle();
-        bus.resetTelemetry();
-        const hardBreak = async () => {
-          bus.skipAudio();
-          bus.unduckAudio();
-          const cancelP = fetch(`${location.origin}${BASE_PATH2}/cancel`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ sessionId: sidRef.current }),
-            signal: AbortSignal.timeout(3e3)
-          }).catch(() => {
-          });
-          if (engineRef.current) await engineRef.current.discardSegment();
-          await cancelP;
-          if (runningRef.current && sidRef.current) {
-            bus.cancelTurn(sidRef.current);
-          }
-          bus.setUi({ partial: "\u2026" });
-        };
-        if (!duckable || bootNow().mode === "hold") {
-          void hardBreak();
-          return;
-        }
-        const before = tailAvg(bus.ui.levels, 3);
-        bus.duckAudio();
-        await new Promise((resolve) => setTimeout(resolve, DUCK_CONFIRM_MS));
-        const after = tailAvg(bus.ui.levels, 3);
-        const echoLowered = before > 0 && after < before * DUCK_PROBE_DROP;
-        const silenceAfterDuck = after < DUCK_SILENCE_LEVEL;
-        if (echoLowered && silenceAfterDuck) {
-          bus.unduckAudio();
-          if (engineRef.current) await engineRef.current.discardSegment();
-          engineRef.current?.suppressBargeIn(2e3);
-          return;
-        }
-        void hardBreak();
       });
       bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null });
       await engine.start();
