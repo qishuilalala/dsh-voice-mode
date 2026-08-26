@@ -152,6 +152,10 @@ t('lib/index.js 含播放期 vadOnly 检测通道（独立检测 VAD 不进 ASR 
   const src = read('lib/index.js')
   assert.ok(src.includes('vadOnly'), 'host bundle missing vadOnly detect channel')
 })
+t('lib/index.js /cancel 支持 keepAsr（hold 打断保留在途 ASR 段）', () => {
+  const src = read('lib/index.js')
+  assert.ok(src.includes('keepAsr'), 'host bundle missing keepAsr cancel flag')
+})
 t('lib/client.js 含播放期检测上行（detectChunks 通道）', () => {
   const src = read('lib/client.js')
   assert.ok(src.includes('detectChunks'), 'client bundle missing detect channel')

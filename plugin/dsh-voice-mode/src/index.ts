@@ -574,16 +574,20 @@ export function apply(ctx: Context, config: Config): void {
       handler: (req: IncomingMessage, res: ServerResponse) => {
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let sessionId: string | undefined
+          let keepAsr = false
           try {
-            const parsed = JSON.parse(body || '{}') as { sessionId?: string }
+            const parsed = JSON.parse(body || '{}') as { sessionId?: string; keepAsr?: unknown }
             sessionId = parsed.sessionId
+            keepAsr = parsed.keepAsr === true
           } catch {
             // ignore malformed body
           }
           if (sessionId) {
-            // 停 TTS（epoch++，积压与在途全弃）+ 丢弃在途 ASR 段
+            // 停 TTS（epoch++，积压与在途全弃）；hold 打断带 keepAsr=1 时保留在途
+            // ASR 段（按住说的前半句已上行，松手定稿以同一 epoch 增量续传，
+            // 若 reset 会把 host 流清空导致定稿缺前半句——对抗审查第三轮 Blocker）。
             queue.cancel(sessionId)
-            asr.reset(sessionId)
+            if (!keepAsr) asr.reset(sessionId)
           }
           res.setHeader('content-type', 'application/json')
           res.end(JSON.stringify({ ok: true }))

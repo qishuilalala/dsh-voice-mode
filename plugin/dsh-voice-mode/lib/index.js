@@ -1372,14 +1372,16 @@ function apply(ctx, config) {
       handler: (req, res) => {
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let sessionId;
+          let keepAsr = false;
           try {
             const parsed = JSON.parse(body || "{}");
             sessionId = parsed.sessionId;
+            keepAsr = parsed.keepAsr === true;
           } catch {
           }
           if (sessionId) {
             queue.cancel(sessionId);
-            asr.reset(sessionId);
+            if (!keepAsr) asr.reset(sessionId);
           }
           res.setHeader("content-type", "application/json");
           res.end(JSON.stringify({ ok: true }));

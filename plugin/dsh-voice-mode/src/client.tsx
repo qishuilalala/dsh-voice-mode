@@ -1084,7 +1084,8 @@ export function MicButton({
         const cancelP = fetch(`${location.origin}${BASE_PATH}/cancel`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ sessionId: sidRef.current }),
+          // hold 按压中保留 host ASR 段（松手定稿续传前半句，防吃句）。
+          body: JSON.stringify({ sessionId: sidRef.current, keepAsr: engineRef.current?.holding === true }),
           signal: AbortSignal.timeout(3000),
         }).catch(() => {
           // cancel 路由不可达：本地已静音

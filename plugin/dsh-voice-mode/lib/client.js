@@ -406,8 +406,7 @@ function createAsrEngine(config, sessionId) {
       segment.push(data);
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
     } else if (state === "wake") {
-      if (rms > SPEECH_RMS) {
-        if (config.isPlaying?.()) return;
+      if (rms > SPEECH_RMS && !config.isPlaying?.()) {
         segmentMs += durationMs;
         segment.push(data);
         if (segmentMs > MAX_SEGMENT_MS) {
@@ -418,7 +417,7 @@ function createAsrEngine(config, sessionId) {
           uploadedSamples = 0;
           void resetHostStream();
         }
-      } else {
+      } else if (rms <= SPEECH_RMS) {
         prePad.push(data);
         let total = 0;
         let cut = 0;
@@ -2212,7 +2211,8 @@ function MicButton({
         const cancelP = fetch(`${location.origin}${BASE_PATH2}/cancel`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sessionId: sidRef.current }),
+          // hold 按压中保留 host ASR 段（松手定稿续传前半句，防吃句）。
+          body: JSON.stringify({ sessionId: sidRef.current, keepAsr: engineRef.current?.holding === true }),
           signal: AbortSignal.timeout(3e3)
         }).catch(() => {
         });

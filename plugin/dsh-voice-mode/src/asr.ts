@@ -524,10 +524,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     } else if (state === 'wake') {
       // wake 待机：有人声才累积（满足 partial 门槛），但不置 speech、不 finalize；
       // 唤醒词匹配在 requestPartial 结果上做，命中后由它重置。
-      if (rms > SPEECH_RMS) {
-        // 打断根治：AI 朗读中不把语音帧入 wake 段（会话进行中无需唤醒，且防 TTS
-        // 回声污染唤醒匹配/主通道 isSpeech 误判）；这些帧已进入顶部检测通道。
-        if (config.isPlaying?.()) return
+      // 打断根治：AI 朗读中不把语音帧入 wake 段（会话进行中无需唤醒，且防 TTS
+      // 回声污染唤醒匹配）；这些帧已进入顶部检测通道。注意此处不做裸 return——
+      // 必须落到底部 ticker 让 requestDetect 按节拍 flush，否则持续人声时检测
+      // 通道饿死（对抗审查第三轮 Important）。
+      if (rms > SPEECH_RMS && !config.isPlaying?.()) {
         segmentMs += durationMs
         segment.push(data)
         // 上限兜底：滚窗重置（防无唤醒词时空累积无界）。
@@ -539,7 +540,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           uploadedSamples = 0 // P1-4：滚窗后 host 流重新起算
           void resetHostStream()
         }
-      } else {
+      } else if (rms <= SPEECH_RMS) {
         prePad.push(data)
         let total = 0
         let cut = 0
