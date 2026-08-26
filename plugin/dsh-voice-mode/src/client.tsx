@@ -23,6 +23,8 @@ let beepCtx: AudioContext | null = null
  * partial / 检测通道轮询墙钟节拍 100ms；达到 INT_CONFIRM_FRAMES 即判真实人声前沿。
  */
 let isSpeechTrueCount = 0
+/** 打断确认测量：VAD 首次判真时刻（播放中）；触发 hardBreak 时计算确认耗时。 */
+let interruptFirstAt = 0
 /** 打断灵敏度三档 → isSpeech 连续确认帧数（墙钟节拍 100ms/拍 + 上行往返 → 确认阶段约 0.3/0.2/0.1s；语义对齐旧能量持续时长档位）。 */
 const INT_CONFIRM_FRAMES: Record<0 | 1 | 2, number> = { 0: 3, 1: 2, 2: 1 }
 import { VoiceSettingsCard } from './settings-form.tsx'
@@ -50,6 +52,8 @@ interface VoiceUiState {
   turn: 'idle' | 'listening' | 'finalizing' | 'agent-speaking'
   /** 打断根治阶段一：服务端 Silero VAD 帧级语音检测（partial 响应下行；可读存储，供下一阶段接入打断；undefined=无 VAD 信息）。 */
   isSpeech?: boolean
+  /** 打断确认耗时（ms）：VAD 首次判真 → 确认帧数达标触发 hardBreak；真机标定 C-3 用。 */
+  interruptConfirmMs?: number
   /** 延迟埋点链各阶段时刻（开发模式状态条展示；null = 未启用/已清空）。 */
   telemetry: Partial<Record<TelemetryStage, number>> | null
 }
@@ -485,6 +489,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     if (!telemetryEnabled) return
     for (const k of Object.keys(telemetryStages)) delete telemetryStages[k as TelemetryStage]
     ui.telemetry = null
+    ui.interruptConfirmMs = undefined
     notify()
   }
 
@@ -1109,14 +1114,20 @@ export function MicButton({
           onIsSpeech: (speech) => {
             if (speech === true) {
               isSpeechTrueCount++
+              if (isSpeechTrueCount === 1 && bus.ui.playing) interruptFirstAt = Date.now()
               if (isSpeechTrueCount >= confirmFrames && bus.ui.playing) {
+                // 打断确认耗时 = VAD 首次判真 → 触发（真机标定 C-3 数据）。
+                const confirmMs = interruptFirstAt > 0 ? Date.now() - interruptFirstAt : 0
+                interruptFirstAt = 0
                 isSpeechTrueCount = 0 // 重置计数防重复触发
                 resetIdle()
                 bus.resetTelemetry() // P1-5：打断 = 上一轮回复作废，链清空
+                bus.setUi({ interruptConfirmMs: confirmMs })
                 void hardBreak()
               }
             } else {
               isSpeechTrueCount = 0
+              interruptFirstAt = 0
             }
             bus.setUi({ isSpeech: speech }) // 仍存 ui 供状态条展示
           },
@@ -1551,9 +1562,9 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
 
   // P1-5 延迟埋点链展示（开发模式）：各相邻阶段耗时 + 说完→首音合计。
   const telParts: string[] = []
+  const fmt = (ms: number): string => (ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`)
   const tel = b.ui.telemetry
   if (tel) {
-    const fmt = (ms: number): string => (ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`)
     for (let i = 1; i < TELEMETRY_VIEW.length; i++) {
       const cur = tel[TELEMETRY_VIEW[i].stage]
       const prev = tel[TELEMETRY_VIEW[i - 1].stage]
@@ -1563,6 +1574,10 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
     const begin = tel['utterance-end']
     const end = tel['first-audio-played']
     if (begin !== undefined && end !== undefined) telParts.push(`${t('telTotal')} ${fmt(end - begin)}`)
+  }
+  // 打断确认耗时（打断后独立展示；埋点链已被打断清空，此处单列）。
+  if (b.ui.interruptConfirmMs !== undefined) {
+    telParts.push(`${t('interruptConfirm')} ${fmt(b.ui.interruptConfirmMs)}`)
   }
 
   return (

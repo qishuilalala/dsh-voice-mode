@@ -832,6 +832,7 @@ var zh = {
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09",
   descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF1B\u53D1\u58F0\u786E\u8BA4\u7EA6 0.3/0.2/0.1 \u79D2\uFF09",
   vadDetected: "VAD \u68C0\u6D4B\u5230\u8BED\u97F3",
+  interruptConfirm: "\u6253\u65AD\u786E\u8BA4",
   sev0: "0 \u9AD8\u95E8\u69DB",
   sev1: "1 \u4E2D",
   sev2: "2 \u4F4E",
@@ -922,6 +923,7 @@ var en = {
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.0 normal)",
   descInterrupt: "Interrupt sensitivity (0 high barrier / 1 medium / 2 low; ~0.3/0.2/0.1 s speech confirmation)",
   vadDetected: "VAD speech",
+  interruptConfirm: "interrupt confirm",
   sev0: "0 high",
   sev1: "1 medium",
   sev2: "2 low",
@@ -1458,6 +1460,7 @@ function VoiceSettingsCard({ scope }) {
 var import_jsx_runtime2 = require("react/jsx-runtime");
 var beepCtx = null;
 var isSpeechTrueCount = 0;
+var interruptFirstAt = 0;
 var INT_CONFIRM_FRAMES = { 0: 3, 1: 2, 2: 1 };
 var inject = ["slots", "sessions", "settingsScope"];
 var TELEMETRY_VIEW = [
@@ -1739,6 +1742,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     if (!telemetryEnabled) return;
     for (const k of Object.keys(telemetryStages)) delete telemetryStages[k];
     ui.telemetry = null;
+    ui.interruptConfirmMs = void 0;
     notify();
   };
   const refChunks = [];
@@ -2234,14 +2238,19 @@ function MicButton({
           onIsSpeech: (speech) => {
             if (speech === true) {
               isSpeechTrueCount++;
+              if (isSpeechTrueCount === 1 && bus.ui.playing) interruptFirstAt = Date.now();
               if (isSpeechTrueCount >= confirmFrames && bus.ui.playing) {
+                const confirmMs = interruptFirstAt > 0 ? Date.now() - interruptFirstAt : 0;
+                interruptFirstAt = 0;
                 isSpeechTrueCount = 0;
                 resetIdle();
                 bus.resetTelemetry();
+                bus.setUi({ interruptConfirmMs: confirmMs });
                 void hardBreak();
               }
             } else {
               isSpeechTrueCount = 0;
+              interruptFirstAt = 0;
             }
             bus.setUi({ isSpeech: speech });
           },
@@ -2576,9 +2585,9 @@ function VoiceStatusBar({ bus, sessionId }) {
   const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? t("recognizing") : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.playing ? t("reading") : b.ui.turn === "agent-speaking" ? t("thinking") : b.ui.mode === "hold" ? t("barHold") : t("barListening");
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0);
   const telParts = [];
+  const fmt = (ms) => ms >= 1e3 ? `${(ms / 1e3).toFixed(2)}s` : `${Math.round(ms)}ms`;
   const tel = b.ui.telemetry;
   if (tel) {
-    const fmt = (ms) => ms >= 1e3 ? `${(ms / 1e3).toFixed(2)}s` : `${Math.round(ms)}ms`;
     for (let i = 1; i < TELEMETRY_VIEW.length; i++) {
       const cur = tel[TELEMETRY_VIEW[i].stage];
       const prev = tel[TELEMETRY_VIEW[i - 1].stage];
@@ -2588,6 +2597,9 @@ function VoiceStatusBar({ bus, sessionId }) {
     const begin = tel["utterance-end"];
     const end = tel["first-audio-played"];
     if (begin !== void 0 && end !== void 0) telParts.push(`${t("telTotal")} ${fmt(end - begin)}`);
+  }
+  if (b.ui.interruptConfirmMs !== void 0) {
+    telParts.push(`${t("interruptConfirm")} ${fmt(b.ui.interruptConfirmMs)}`);
   }
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",
