@@ -5,7 +5,7 @@
  *  3) 人声保留：mic 含人声 + 回声，参考只有 TTS → 人声分量基本完整。
  */
 import assert from 'node:assert/strict'
-import { NlmsAec } from '../src/aec.ts'
+import { NlmsAec, estimateBulkDelay } from '../src/aec.ts'
 
 let passed = 0
 const t = (name, fn) => {
@@ -176,6 +176,43 @@ t('长路径（外放 120ms=1920 samples）与短路径同一滤波器内共存�
   const echoRms = rms(mic.subarray(a))
   const outRms = rms(out.subarray(a))
   assert.ok(outRms < echoRms * 0.5, `长路径回声未消除: echo=${echoRms.toFixed(4)} out=${outRms.toFixed(4)}`)
+})
+
+t('bulk delay：检测 80ms 延迟回声（合成，允许下采样误差）', () => {
+  const rng = noise(42)
+  const N = 16000
+  const ref = new Float32Array(N)
+  for (let i = 0; i < N; i++) ref[i] = rng() * 2 - 1
+  const D = Math.floor(0.08 * SAMPLE_RATE)
+  const mic = new Float32Array(N)
+  for (let i = 0; i < N; i++) mic[i] = (i >= D ? 0.6 * ref[i - D] : 0) + (rng() * 2 - 1) * 0.01
+  const { lag, peak } = estimateBulkDelay(mic, ref, { sampleRate: SAMPLE_RATE })
+  assert.ok(Math.abs(lag - D) <= 8, `延迟估计偏差过大: 期望 ${D} 得 ${lag}`)
+  assert.ok(peak > 0.5, `峰值过低（无清晰回声）: ${peak.toFixed(3)}`)
+})
+
+t('bulk delay：无参考（静音）→ peak=0', () => {
+  const rng = noise(7)
+  const N = 16000
+  const mic = new Float32Array(N)
+  for (let i = 0; i < N; i++) mic[i] = rng() * 2 - 1
+  const { lag, peak } = estimateBulkDelay(mic, new Float32Array(N), { sampleRate: SAMPLE_RATE })
+  assert.equal(peak, 0)
+  assert.equal(lag, 0)
+})
+
+t('bulk delay：无回声（mic/ref 不相关）→ peak 低', () => {
+  const r1 = noise(1)
+  const r2 = noise(2)
+  const N = 16000
+  const mic = new Float32Array(N)
+  const ref = new Float32Array(N)
+  for (let i = 0; i < N; i++) {
+    mic[i] = r1() * 2 - 1
+    ref[i] = r2() * 2 - 1
+  }
+  const { peak } = estimateBulkDelay(mic, ref, { sampleRate: SAMPLE_RATE })
+  assert.ok(peak < 0.3, `不相关信号峰值应低: ${peak.toFixed(3)}`)
 })
 
 console.log(`\naec：${passed} 项通过`)

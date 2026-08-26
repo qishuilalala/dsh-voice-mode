@@ -103,3 +103,70 @@ export class NlmsAec {
     return out
   }
 }
+
+export interface DelayEstimateOptions {
+  /** 采样率（默认 16000）。 */
+  sampleRate?: number
+  /** 最小滞后（样本，默认 0）。 */
+  minLag?: number
+  /** 最大滞后（样本，默认 300ms @ sampleRate）。 */
+  maxLag?: number
+  /** 相关窗下采样因子（默认 4；降计算量，16k 下分辨率 0.25ms）。 */
+  downsample?: number
+}
+
+/**
+ * 估计 mic 相对 ref 的 bulk delay（样本数，未下采样口径）。
+ *
+ * 用互相关在 [minLag, maxLag] 内找峰值（A2-1）：外放回声路径含 AudioContext 输出延迟 +
+ * 系统混音 + 采集延迟（数十 ms 量级），NLMS 若 delay=0 靠长滤波器自行建模 bulk delay，
+ * 收敛极慢、稳态失调大。此函数先量出 bulk delay，调用方据此平移参考、把滤波器缩短到
+ * 只建模残余房间冲激响应，收敛速度与 ERLE 大幅提升。
+ *
+ * 返回 { lag, peak }：lag = 最佳滞后样本；peak = 归一化互相关峰值（0..1，接近 0 表示
+ * 无清晰回声/无参考，调用方应据此拒绝应用）。
+ */
+export function estimateBulkDelay(
+  mic: Float32Array,
+  ref: Float32Array,
+  opts: DelayEstimateOptions = {},
+): { lag: number; peak: number } {
+  const sr = opts.sampleRate ?? 16000
+  const ds = Math.max(1, Math.floor(opts.downsample ?? 4))
+  const minLag = Math.max(0, opts.minLag ?? 0)
+  const maxLag = opts.maxLag ?? Math.floor((300 * sr) / 1000)
+  const n = Math.min(mic.length, ref.length)
+  if (n < ds * 64) return { lag: 0, peak: 0 } // 数据太短，不可靠
+  const N = Math.floor(n / ds)
+  const maxLagD = Math.floor(maxLag / ds)
+  const minLagD = Math.floor(minLag / ds)
+  if (maxLagD >= N) return { lag: 0, peak: 0 }
+
+  // 下采样 + 能量。
+  const m = new Float32Array(N)
+  const r = new Float32Array(N)
+  let mE = 0
+  let rE = 0
+  for (let i = 0; i < N; i++) {
+    const mv = mic[i * ds]
+    m[i] = mv
+    mE += mv * mv
+    const rv = ref[i * ds]
+    r[i] = rv
+    rE += rv * rv
+  }
+  const denom = Math.sqrt(mE * rE)
+  if (denom < 1e-9) return { lag: 0, peak: 0 }
+
+  let bestLag = 0
+  let bestCorr = -Infinity
+  for (let d = minLagD; d <= maxLagD; d++) {
+    let corr = 0
+    for (let i = d; i < N; i++) corr += m[i] * r[i - d]
+    if (corr > bestCorr) {
+      bestCorr = corr
+      bestLag = d
+    }
+  }
+  return { lag: bestLag * ds, peak: bestCorr / denom }
+}
