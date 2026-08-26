@@ -1051,6 +1051,8 @@ export function MicButton({
   const manualHoldRef = useRef(false)
   /** 手动打断入口：enterMode 内定义 hardBreak 后写入，供手势直接调用（外放可靠打断）。 */
   const breakRef = useRef<(() => Promise<void>) | null>(null)
+  /** M2：隐藏 tab 时已暂停收音（可见时恢复）；隐私——避免后台持续录音。 */
+  const pausedForHiddenRef = useRef(false)
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
   const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', wakeWord: '' }
 
@@ -1551,9 +1553,21 @@ export function MicButton({
       bus.setUi({ partial: '' })
     }
     const onVisibility = (): void => {
-      if (document.hidden && bootNow().mode === 'hold') {
-        engineRef.current?.endHeld(true)
-        holdCtrlRef.current = false
+      if (document.hidden) {
+        if (bootNow().mode === 'hold') {
+          engineRef.current?.endHeld(true)
+          holdCtrlRef.current = false
+        } else if (localRef.current === 'on' && engineRef.current) {
+          // M2：toggle 隐藏 tab 暂停收音（隐私），可见时恢复。
+          pausedForHiddenRef.current = true
+          void engineRef.current.stop()
+        }
+      } else if (pausedForHiddenRef.current && localRef.current === 'on') {
+        pausedForHiddenRef.current = false
+        void engineRef.current?.start().catch(() => {
+          // 无手势恢复失败（Safari/iOS）→ 静默降级为退出，用户重新点麦克风。
+          setLocalMode('off')
+        })
       }
     }
     window.addEventListener('keydown', onKeyDown)

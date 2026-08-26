@@ -2242,6 +2242,7 @@ function MicButton({
   const holdCtrlRef = (0, import_react2.useRef)(false);
   const manualHoldRef = (0, import_react2.useRef)(false);
   const breakRef = (0, import_react2.useRef)(null);
+  const pausedForHiddenRef = (0, import_react2.useRef)(false);
   const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", wakeWord: "" };
   useVoiceCss();
   const [, bumpUi] = (0, import_react2.useState)(0);
@@ -2640,9 +2641,19 @@ function MicButton({
       bus.setUi({ partial: "" });
     };
     const onVisibility = () => {
-      if (document.hidden && bootNow().mode === "hold") {
-        engineRef.current?.endHeld(true);
-        holdCtrlRef.current = false;
+      if (document.hidden) {
+        if (bootNow().mode === "hold") {
+          engineRef.current?.endHeld(true);
+          holdCtrlRef.current = false;
+        } else if (localRef.current === "on" && engineRef.current) {
+          pausedForHiddenRef.current = true;
+          void engineRef.current.stop();
+        }
+      } else if (pausedForHiddenRef.current && localRef.current === "on") {
+        pausedForHiddenRef.current = false;
+        void engineRef.current?.start().catch(() => {
+          setLocalMode("off");
+        });
       }
     };
     window.addEventListener("keydown", onKeyDown);
