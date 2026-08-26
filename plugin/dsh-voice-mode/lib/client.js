@@ -2157,7 +2157,11 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         notify();
         if (!res.ok) return { ok: false, error: out.error ?? t("enterFail") };
         if (out.active === sessionId) setLastVoiceSession(sessionId);
-        return { ok: out.active === sessionId, error: out.active === sessionId ? void 0 : t("enterFail") };
+        return {
+          ok: out.active === sessionId,
+          preempted: out.active !== null && out.active !== sessionId,
+          error: out.active === sessionId ? void 0 : t("enterFail")
+        };
       } catch {
         return { ok: false, error: t("enterFail") };
       }
@@ -2340,9 +2344,11 @@ function MicButton({
       const entered = await bus.enter(sid);
       if (!entered.ok) {
         setLocalMode("off");
-        bus.setUi({
-          error: entered.error === "voice mode disabled" ? t("disabled") : entered.error ?? t("enterFail")
-        });
+        if (!entered.preempted) {
+          bus.setUi({
+            error: entered.error === "voice mode disabled" ? t("disabled") : entered.error ?? t("enterFail")
+          });
+        }
         return;
       }
       const cfg = await fetchConfig();

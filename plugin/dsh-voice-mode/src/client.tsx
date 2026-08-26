@@ -125,7 +125,7 @@ interface VoiceBus {
   ui: VoiceUiState
   subscribe(fn: (b: { active: string | null; ui: VoiceUiState }) => void): () => void
   setUi(patch: Partial<VoiceUiState>): void
-  enter(sessionId: string): Promise<{ ok: boolean; error?: string }>
+  enter(sessionId: string): Promise<{ ok: boolean; error?: string; preempted?: boolean }>
   exit(sessionId: string): Promise<void>
   /** 音频分块帧到达（播放引擎消费前由客户端按句拼帧）。 */
   onAudioFrame(fn: (frame: TtsChunkFrame) => void): () => void
@@ -927,7 +927,12 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         // 双重奏根治：拒绝线保留（host toggle 用 cancel 保 seq 连续递增）——
         // 重入/403 恢复后新句 seq 必然 > 线（旧帧 ≤ 线仍被拒），不清线消除
         // 「exit→enter 在途旧帧重入」窗口。
-        return { ok: out.active === sessionId, error: out.active === sessionId ? undefined : t('enterFail') }
+        // M5：区分「被抢占」（另一会话已活跃）与「真失败」——抢占时不误闪失败提示。
+        return {
+          ok: out.active === sessionId,
+          preempted: out.active !== null && out.active !== sessionId,
+          error: out.active === sessionId ? undefined : t('enterFail'),
+        }
       } catch {
         return { ok: false, error: t('enterFail') }
       }
@@ -1165,12 +1170,15 @@ export function MicButton({
       const entered = await bus.enter(sid)
       if (!entered.ok) {
         setLocalMode('off')
-        bus.setUi({
-          error:
-            entered.error === 'voice mode disabled'
-              ? t('disabled')
-              : entered.error ?? t('enterFail'),
-        })
+        // M5：被抢占（另一会话已活跃）时静默跟随 mode 广播，不误闪「进入失败」。
+        if (!entered.preempted) {
+          bus.setUi({
+            error:
+              entered.error === 'voice mode disabled'
+                ? t('disabled')
+                : entered.error ?? t('enterFail'),
+          })
+        }
         return
       }
       // 每次进入重新拉取 host 引导参数（静音/打断档位/自动发送/空闲超时/模式/唤醒词）
