@@ -1933,7 +1933,7 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
       style={{
         position: 'fixed',
         right: 16,
-        bottom: 16,
+        bottom: 96, // 上移，避免盖住底部输入框/麦克风按钮
         zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
@@ -1942,7 +1942,7 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
         borderRadius: 999,
         fontSize: 12,
         fontFamily: 'system-ui, sans-serif',
-        pointerEvents: 'auto',
+        pointerEvents: 'none', // 浮层不挡输入框/麦克风按钮的点击（仅内部「跳过」按钮可点）
         background: 'rgba(22, 24, 28, 0.85)',
         backdropFilter: 'blur(14px)',
         WebkitBackdropFilter: 'blur(14px)',
@@ -1982,6 +1982,7 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
           fontSize: 11,
           cursor: 'pointer',
           flexShrink: 0,
+          pointerEvents: 'auto', // 仅此按钮可点
         }}
       >
         {t('skip')}
