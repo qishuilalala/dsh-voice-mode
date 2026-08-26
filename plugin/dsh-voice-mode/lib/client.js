@@ -127,7 +127,7 @@ function createAsrEngine(config, sessionId) {
   let holdActive = false;
   const wakeWord = (config.wakeWord ?? "").trim().toLowerCase().replace(/[\s\u3000]+/g, "");
   const echo = config.echo;
-  let sincePartialMs = 0;
+  let lastPollAt = 0;
   let partialInFlight = false;
   let segmentEpoch = 0;
   let forcePending = false;
@@ -235,7 +235,7 @@ function createAsrEngine(config, sessionId) {
           speechMs = 0;
           silenceMs = 0;
           prePad = [];
-          sincePartialMs = 0;
+          lastPollAt = 0;
           uploadedSamples = 0;
           await resetHostStream();
           if (active) setState("listening");
@@ -471,12 +471,13 @@ function createAsrEngine(config, sessionId) {
       }
       if (cut > 0) prePad = prePad.slice(cut);
     }
-    sincePartialMs += durationMs;
-    if (sincePartialMs >= PARTIAL_INTERVAL_MS) {
-      sincePartialMs = 0;
+    const nowMs = Date.now();
+    if (nowMs - lastPollAt >= PARTIAL_INTERVAL_MS) {
       if (speechActive || holdActive || state === "wake") {
+        lastPollAt = nowMs;
         void requestPartial();
       } else if (playingNow && detectChunks.length > 0) {
+        lastPollAt = nowMs;
         void requestDetect();
       }
     }
@@ -553,7 +554,7 @@ function createAsrEngine(config, sessionId) {
       stopRequested = false;
       curStartSeq = ++startSeq;
       segmentEpoch++;
-      sincePartialMs = 0;
+      lastPollAt = 0;
       holdActive = false;
       detectChunks = [];
       detectSent = 0;
@@ -580,7 +581,7 @@ function createAsrEngine(config, sessionId) {
       const speechS = segment.reduce((n, c) => n + c.length, 0) / SAMPLE_RATE;
       if (speechActive && speechS >= 0.25) {
         forcePending = true;
-        sincePartialMs = 0;
+        lastPollAt = 0;
         finalizeSegment();
       }
     },
@@ -599,7 +600,7 @@ function createAsrEngine(config, sessionId) {
       detectChunks = [];
       detectSent = 0;
       speechActive = true;
-      sincePartialMs = 0;
+      lastPollAt = 0;
       setState("speech");
     },
     discardSegment() {
@@ -615,7 +616,7 @@ function createAsrEngine(config, sessionId) {
       detectSent = 0;
       utteranceEndAt = null;
       forcePending = false;
-      sincePartialMs = 0;
+      lastPollAt = 0;
       return resetHostStream().then(() => {
         if (active) setState(wakeWord ? "wake" : "listening");
       });
@@ -636,7 +637,7 @@ function createAsrEngine(config, sessionId) {
       }
       if (segment.length > 0) {
         forcePending = true;
-        sincePartialMs = 0;
+        lastPollAt = 0;
         finalizeSegment();
       } else {
         forcePending = false;
@@ -804,7 +805,7 @@ var zh = {
   // settings rows
   descVoice: "Edge TTS \u97F3\u8272\uFF08\u4E0B\u62C9\u5E38\u7528\uFF0C\u5176\u4F59\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u52A8\u586B ShortName\uFF09",
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09",
-  descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF1B\u53D1\u58F0\u786E\u8BA4\u7EA6 300/200/100 \u6BEB\u79D2\uFF09",
+  descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF1B\u53D1\u58F0\u786E\u8BA4\u7EA6 0.3/0.2/0.1 \u79D2\uFF09",
   sev0: "0 \u9AD8\u95E8\u69DB",
   sev1: "1 \u4E2D",
   sev2: "2 \u4F4E",
@@ -893,7 +894,7 @@ var en = {
   custom: "Custom",
   descVoice: "Edge TTS voice (presets, or a custom ShortName)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.0 normal)",
-  descInterrupt: "Interrupt sensitivity (0 high barrier / 1 medium / 2 low; ~300/200/100 ms speech confirmation)",
+  descInterrupt: "Interrupt sensitivity (0 high barrier / 1 medium / 2 low; ~0.3/0.2/0.1 s speech confirmation)",
   sev0: "0 high",
   sev1: "1 medium",
   sev2: "2 low",
@@ -2200,7 +2201,7 @@ function MicButton({
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
           isPlaying: () => bus.ui.playing || Date.now() < bus.playingTailUntil(),
           // 打断根治阶段二：服务端 Silero VAD 帧级检测下行 → 驱动打断（替代 RMS 能量快
-          // 路径）。连续 confirmFrames 次 true（partial 轮询 100ms/拍，三档约 300/200/100ms）
+          // 路径）。连续 confirmFrames 次 true（墙钟节拍 100ms/拍，三档确认约 0.3/0.2/0.1s）
           // 判真实人声前沿；仅 AI 朗读中（bus.ui.playing）触发 hardBreak，
           // 防 TTS 回声被 VAD 误判为语音而自打断。
           onIsSpeech: (speech) => {

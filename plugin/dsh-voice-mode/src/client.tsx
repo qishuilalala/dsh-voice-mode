@@ -20,10 +20,10 @@ let beepCtx: AudioContext | null = null
 /**
  * 打断根治阶段二：isSpeech 连续 true 计数（模块级；全局单活架构下 createVoiceBus
  * 仅一个实例、语音模式同时至多一个会话在播，模块级与闭包级等价且无并发串扰）。
- * partial 轮询 100ms/拍；达到 INT_CONFIRM_FRAMES 即判真实人声前沿。
+ * partial / 检测通道轮询墙钟节拍 100ms；达到 INT_CONFIRM_FRAMES 即判真实人声前沿。
  */
 let isSpeechTrueCount = 0
-/** 打断灵敏度三档 → isSpeech 连续确认帧数（100ms/拍 → 约 300/200/100ms；语义对齐旧能量持续时长档位）。 */
+/** 打断灵敏度三档 → isSpeech 连续确认帧数（墙钟节拍 100ms/拍 + 上行往返 → 确认阶段约 0.3/0.2/0.1s；语义对齐旧能量持续时长档位）。 */
 const INT_CONFIRM_FRAMES: Record<0 | 1 | 2, number> = { 0: 3, 1: 2, 2: 1 }
 import { VoiceSettingsCard } from './settings-form.tsx'
 
@@ -1101,7 +1101,7 @@ export function MicButton({
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
           isPlaying: () => bus.ui.playing || Date.now() < bus.playingTailUntil(),
           // 打断根治阶段二：服务端 Silero VAD 帧级检测下行 → 驱动打断（替代 RMS 能量快
-          // 路径）。连续 confirmFrames 次 true（partial 轮询 100ms/拍，三档约 300/200/100ms）
+          // 路径）。连续 confirmFrames 次 true（墙钟节拍 100ms/拍，三档确认约 0.3/0.2/0.1s）
           // 判真实人声前沿；仅 AI 朗读中（bus.ui.playing）触发 hardBreak，
           // 防 TTS 回声被 VAD 误判为语音而自打断。
           onIsSpeech: (speech) => {

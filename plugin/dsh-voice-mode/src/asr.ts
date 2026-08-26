@@ -93,7 +93,7 @@ const MAX_SEGMENT_MS = 30000
 /** 最小语音时长（P1-3）：不足视为短促噪声，静音到点后放弃本段不发送。 */
 const MIN_SPEECH_MS = 250
 const PRE_PAD_MS = 250
-/** P1-4：partial 轮询节拍 100ms（配合增量上传，字幕更跟手；阶段二降低 isSpeech 帧级检测延迟）。 */
+/** P1-4：partial / 检测通道轮询节拍 100ms（墙钟衡量，帧长无关；阶段二降低 isSpeech 帧级检测延迟）。 */
 const PARTIAL_INTERVAL_MS = 100
 /** partial 预览下限/上限（流式模型代价低，上限放宽）。 */
 const PARTIAL_MIN_S = 0.4
@@ -156,8 +156,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   /** P3-2 回声参考（可选；缺失时原信号透传）。 */
   const echo = config.echo
 
-  // --- partial 轮询 ---
-  let sincePartialMs = 0
+  // --- partial / 检测通道轮询（墙钟节拍：帧长随设备采样率 21-64ms 波动，
+  // 帧驱动的 durationMs 累加会把名义 100ms 节拍量化到 107/128ms；墙钟版本与帧长无关，
+  // 确认帧时长口径（约 0.3/0.2/0.1s）得以精确成立） ---
+  let lastPollAt = 0
   let partialInFlight = false
   /** 段纪元：finalize/stop 后迟到的 partial 丢弃。 */
   let segmentEpoch = 0
@@ -295,7 +297,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           speechMs = 0
           silenceMs = 0
           prePad = []
-          sincePartialMs = 0
+          lastPollAt = 0
           uploadedSamples = 0
           await resetHostStream()
           if (active) setState('listening')
@@ -588,14 +590,16 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       if (cut > 0) prePad = prePad.slice(cut)
     }
 
-    // partial / 检测通道轮询：段内节拍驱动（无独立 timer，随音频帧推进）
-    sincePartialMs += durationMs
-    if (sincePartialMs >= PARTIAL_INTERVAL_MS) {
-      sincePartialMs = 0
+    // partial / 检测通道轮询：墙钟节拍（名义 100ms；条件不满足时不清节拍，
+    // 条件转为满足的下一帧立即补发，语义与原「帧时长累加」一致）。
+    const nowMs = Date.now()
+    if (nowMs - lastPollAt >= PARTIAL_INTERVAL_MS) {
       if (speechActive || holdActive || state === 'wake') {
+        lastPollAt = nowMs
         void requestPartial()
       } else if (playingNow && detectChunks.length > 0) {
         // 打断根治：朗读中（非 speech/wake/hold）走 vadOnly 检测通道。
+        lastPollAt = nowMs
         void requestDetect()
       }
     }
@@ -689,7 +693,7 @@ const startRecorder = async (): Promise<void> => {
       stopRequested = false // Fix8：新一次启动清除取消标记
       curStartSeq = ++startSeq // 防双路开麦：本次启动的序号
       segmentEpoch++
-      sincePartialMs = 0
+      lastPollAt = 0
       holdActive = false
       detectChunks = [] // 打断根治：进入清检测通道
       detectSent = 0
@@ -720,7 +724,7 @@ const startRecorder = async (): Promise<void> => {
       const speechS = segment.reduce((n, c) => n + c.length, 0) / SAMPLE_RATE
       if (speechActive && speechS >= 0.25) {
         forcePending = true
-        sincePartialMs = 0
+        lastPollAt = 0
         finalizeSegment()
       }
     },
@@ -739,7 +743,7 @@ const startRecorder = async (): Promise<void> => {
       detectChunks = [] // 打断根治：hold 按压期间走 segment 路径，清残留检测帧
       detectSent = 0
       speechActive = true
-      sincePartialMs = 0
+      lastPollAt = 0
       setState('speech')
     },
     discardSegment() {
@@ -756,7 +760,7 @@ const startRecorder = async (): Promise<void> => {
       detectSent = 0
       utteranceEndAt = null
       forcePending = false
-      sincePartialMs = 0
+      lastPollAt = 0
       // Fix：等待 host 流重置完成后再恢复状态（防新段使用旧流）
       return resetHostStream().then(() => {
         if (active) setState(wakeWord ? 'wake' : 'listening')
@@ -780,7 +784,7 @@ const startRecorder = async (): Promise<void> => {
       // Fix：segment 为空时不设置 forcePending（防 finalizeSegment 早退后 force 标记泄漏到下段）
       if (segment.length > 0) {
         forcePending = true
-        sincePartialMs = 0
+        lastPollAt = 0
         finalizeSegment()
       } else {
         forcePending = false

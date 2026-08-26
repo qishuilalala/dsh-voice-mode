@@ -53,7 +53,7 @@ const zh = {
   // settings rows
   descVoice: 'Edge TTS 音色（下拉常用，其余选「自定义」手动填 ShortName）',
   descRate: '朗读语速倍率（0.5 慢速 ～ 2.0 快速，1.0 正常）',
-  descInterrupt: '发声打断灵敏度（0 高门槛 / 1 中 / 2 低；发声确认约 300/200/100 毫秒）',
+  descInterrupt: '发声打断灵敏度（0 高门槛 / 1 中 / 2 低；发声确认约 0.3/0.2/0.1 秒）',
   sev0: '0 高门槛',
   sev1: '1 中',
   sev2: '2 低',
@@ -143,7 +143,7 @@ const en: Record<keyof typeof zh, string> = {
   custom: 'Custom',
   descVoice: 'Edge TTS voice (presets, or a custom ShortName)',
   descRate: 'Speech rate (0.5 slow – 2.0 fast, 1.0 normal)',
-  descInterrupt: 'Interrupt sensitivity (0 high barrier / 1 medium / 2 low; ~300/200/100 ms speech confirmation)',
+  descInterrupt: 'Interrupt sensitivity (0 high barrier / 1 medium / 2 low; ~0.3/0.2/0.1 s speech confirmation)',
   sev0: '0 high',
   sev1: '1 medium',
   sev2: '2 low',
