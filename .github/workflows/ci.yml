@@ -18,6 +18,8 @@ jobs:
           node-version: 22  # tests import src/*.ts directly (Node type stripping ≥22.18); runtime engines stays >=18
       - name: Install
         run: npm install --no-audit --no-fund
+      - name: Typecheck (host + client)
+        run: npm run typecheck
       - name: Unit tests & manifest self-check
         run: npm test
       - name: Build
