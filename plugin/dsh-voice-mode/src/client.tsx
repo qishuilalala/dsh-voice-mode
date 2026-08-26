@@ -11,7 +11,7 @@
 import * as React from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { createAsrEngine, type AsrEngine, type AsrState, type EchoRefSource } from './asr.ts'
-import { NlmsAec } from './aec.ts'
+import { NlmsAec, estimateBulkDelay } from './aec.ts'
 import { resampleLinear } from './resample.ts'
 import { t, type TKey } from './strings.ts'
 
@@ -592,13 +592,55 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     }
     return out
   }
-  // AEC 覆盖增强 + 耳机短路径修复：FIR 8192 taps（512ms@16k）+ delay 0，
-  // 不再依赖固定前导对齐——NLMS 在 0..512ms 全窗口内自适应学习声学路径，
-  // 覆盖耳机（5-10ms 耦合）、外放/蓝牙（80-150ms）回声以及外放长混响
-  // （房间混响尾音可达数百 ms，512ms 窗口可完整包住声学路径）。
-  const aec = new NlmsAec({ filterLength: 8192, delay: 0 })
+  // A2：bulk delay 估计 + 参考平移 + 短滤波器（1024 taps=64ms）。
+  // 8192 taps 靠长滤波器自行建模 bulk delay，收敛极慢（0~300ms 几乎不消回声）；
+  // 先用 estimateBulkDelay 量出 bulk delay（互相关），把参考平移 D 样本后再交给短滤波器
+  // 只建模残余房间冲激响应——早期 ERLE 从 0dB 提到 ~11dB（打断确认窗关键）。
+  const aec = new NlmsAec({ filterLength: 1024, delay: 0 })
+  /** A2：估计出的 bulk delay（样本，指数平滑）。 */
+  let refDelaySamples = 0
+  /** A2：估计用历史（raw ref 与 mic，各 ~1s；周期估计后清空）。 */
+  let estMic: number[] = []
+  let estRef: number[] = []
+  const EST_CAP = SAMPLE_RATE_16K // 1s
+  let lastEstimateAt = 0
+
   const echoSource: EchoRefSource = {
-    process: (mic, ref) => aec.process(mic, ref),
+    process: (mic, ref) => {
+      // 累积估计历史（raw ref + mic）。
+      for (let i = 0; i < mic.length; i++) estMic.push(mic[i])
+      for (let i = 0; i < ref.length; i++) estRef.push(ref[i])
+      if (estMic.length > EST_CAP) {
+        const drop = estMic.length - EST_CAP
+        estMic.splice(0, drop)
+        estRef.splice(0, drop)
+      }
+      // 周期估计 bulk delay（每 2s；需 ≥0.5s 历史）。
+      const now = performance.now()
+      if (now - lastEstimateAt > 2000 && estMic.length > SAMPLE_RATE_16K * 0.5) {
+        lastEstimateAt = now
+        const est = estimateBulkDelay(
+          Float32Array.from(estMic),
+          Float32Array.from(estRef),
+          { sampleRate: SAMPLE_RATE_16K, maxLag: Math.floor(0.25 * SAMPLE_RATE_16K) },
+        )
+        // 置信门控（peak>0.5 才采信）+ 指数平滑（防跳变）。
+        if (est.peak > 0.5) {
+          refDelaySamples = refDelaySamples === 0 ? est.lag : Math.round(refDelaySamples * 0.8 + est.lag * 0.2)
+        } else {
+          refDelaySamples = 0
+        }
+        estMic.length = 0
+        estRef.length = 0
+      }
+      // 平移参考（从 refChunks 取 D 样本前的原始参考）。
+      let refForAec = ref
+      if (refDelaySamples > 0 && refActive && refTotal > refDelaySamples) {
+        const shiftMs = (refDelaySamples / SAMPLE_RATE_16K) * 1000
+        refForAec = refWindowAt(now - shiftMs, ref.length)
+      }
+      return aec.process(mic, refForAec)
+    },
     windowAt: refWindowAt,
   }
 

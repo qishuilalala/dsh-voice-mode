@@ -783,6 +783,43 @@ var NlmsAec = class {
     return out;
   }
 };
+function estimateBulkDelay(mic, ref, opts = {}) {
+  const sr = opts.sampleRate ?? 16e3;
+  const ds = Math.max(1, Math.floor(opts.downsample ?? 4));
+  const minLag = Math.max(0, opts.minLag ?? 0);
+  const maxLag = opts.maxLag ?? Math.floor(300 * sr / 1e3);
+  const n = Math.min(mic.length, ref.length);
+  if (n < ds * 64) return { lag: 0, peak: 0 };
+  const N = Math.floor(n / ds);
+  const maxLagD = Math.floor(maxLag / ds);
+  const minLagD = Math.floor(minLag / ds);
+  if (maxLagD >= N) return { lag: 0, peak: 0 };
+  const m = new Float32Array(N);
+  const r = new Float32Array(N);
+  let mE = 0;
+  let rE = 0;
+  for (let i = 0; i < N; i++) {
+    const mv = mic[i * ds];
+    m[i] = mv;
+    mE += mv * mv;
+    const rv = ref[i * ds];
+    r[i] = rv;
+    rE += rv * rv;
+  }
+  const denom = Math.sqrt(mE * rE);
+  if (denom < 1e-9) return { lag: 0, peak: 0 };
+  let bestLag = 0;
+  let bestCorr = -Infinity;
+  for (let d = minLagD; d <= maxLagD; d++) {
+    let corr = 0;
+    for (let i = d; i < N; i++) corr += m[i] * r[i - d];
+    if (corr > bestCorr) {
+      bestCorr = corr;
+      bestLag = d;
+    }
+  }
+  return { lag: bestLag * ds, peak: bestCorr / denom };
+}
 
 // src/strings.ts
 var zh = {
@@ -1855,9 +1892,44 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     }
     return out;
   };
-  const aec = new NlmsAec({ filterLength: 8192, delay: 0 });
+  const aec = new NlmsAec({ filterLength: 1024, delay: 0 });
+  let refDelaySamples = 0;
+  let estMic = [];
+  let estRef = [];
+  const EST_CAP = SAMPLE_RATE_16K;
+  let lastEstimateAt = 0;
   const echoSource = {
-    process: (mic, ref) => aec.process(mic, ref),
+    process: (mic, ref) => {
+      for (let i = 0; i < mic.length; i++) estMic.push(mic[i]);
+      for (let i = 0; i < ref.length; i++) estRef.push(ref[i]);
+      if (estMic.length > EST_CAP) {
+        const drop = estMic.length - EST_CAP;
+        estMic.splice(0, drop);
+        estRef.splice(0, drop);
+      }
+      const now = performance.now();
+      if (now - lastEstimateAt > 2e3 && estMic.length > SAMPLE_RATE_16K * 0.5) {
+        lastEstimateAt = now;
+        const est = estimateBulkDelay(
+          Float32Array.from(estMic),
+          Float32Array.from(estRef),
+          { sampleRate: SAMPLE_RATE_16K, maxLag: Math.floor(0.25 * SAMPLE_RATE_16K) }
+        );
+        if (est.peak > 0.5) {
+          refDelaySamples = refDelaySamples === 0 ? est.lag : Math.round(refDelaySamples * 0.8 + est.lag * 0.2);
+        } else {
+          refDelaySamples = 0;
+        }
+        estMic.length = 0;
+        estRef.length = 0;
+      }
+      let refForAec = ref;
+      if (refDelaySamples > 0 && refActive && refTotal > refDelaySamples) {
+        const shiftMs = refDelaySamples / SAMPLE_RATE_16K * 1e3;
+        refForAec = refWindowAt(now - shiftMs, ref.length);
+      }
+      return aec.process(mic, refForAec);
+    },
     windowAt: refWindowAt
   };
   const engine = createAudioEngine(

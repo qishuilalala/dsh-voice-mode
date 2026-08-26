@@ -180,6 +180,11 @@ t('lib 含 I4 403 乒乓守卫 + I5 autoResume 记忆', () => {
   const h = read('lib/index.js')
   assert.ok(h.includes('autoResume'), 'host bundle missing autoResume setting')
 })
+t('lib/client.js 含 A2 bulk delay 估计 + 参考平移接线', () => {
+  const c = read('lib/client.js')
+  assert.ok(c.includes('estimateBulkDelay'), 'client bundle missing bulk delay estimation')
+  assert.ok(c.includes('refDelaySamples'), 'client bundle missing reference delay shift')
+})
 t('lib/index.js 序列化 isSpeech 下行（打断根治：HTTP 层透传 VAD 帧级检测）', () => {
   const src = read('lib/index.js')
   assert.ok(src.includes('body.isSpeech'), 'host bundle missing isSpeech serialization')
