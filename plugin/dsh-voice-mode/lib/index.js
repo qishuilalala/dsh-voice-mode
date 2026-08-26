@@ -278,6 +278,7 @@ function createAsrRuntime(options) {
     return seg.vad;
   };
   const detectVads = /* @__PURE__ */ new Map();
+  const detectVadLastUse = /* @__PURE__ */ new Map();
   const ensureDetectVad = async (sessionId) => {
     const existing = detectVads.get(sessionId);
     if (existing) return existing;
@@ -469,6 +470,16 @@ function createAsrRuntime(options) {
         segments.delete(k);
       }
     }
+    for (const [sid, at] of detectVadLastUse) {
+      if (now - at > SEGMENT_IDLE_MS) {
+        try {
+          detectVads.get(sid)?.free?.();
+        } catch {
+        }
+        detectVads.delete(sid);
+        detectVadLastUse.delete(sid);
+      }
+    }
   };
   const sweepTimer = setInterval(sweep, 3e4);
   return {
@@ -476,8 +487,11 @@ function createAsrRuntime(options) {
     detect: async (sessionId, samples) => {
       const vad = await ensureDetectVad(sessionId);
       if (!vad) return { isSpeech: false };
+      detectVadLastUse.set(sessionId, Date.now());
       if (samples.length > 0) vad.acceptWaveform(samples);
-      return { isSpeech: vad.isDetected() };
+      const speech = vad.isDetected();
+      while (!vad.isEmpty()) vad.pop();
+      return { isSpeech: speech };
     },
     reset: (sessionId) => {
       for (const [k, s] of segments) {
@@ -501,6 +515,7 @@ function createAsrRuntime(options) {
         }
         detectVads.delete(sessionId);
       }
+      detectVadLastUse.delete(sessionId);
     },
     dispose: () => {
       clearInterval(sweepTimer);
@@ -526,6 +541,7 @@ function createAsrRuntime(options) {
         }
       }
       detectVads.clear();
+      detectVadLastUse.clear();
     },
     modelStatus: () => {
       const statFile = async (dir, repo, name2) => {
@@ -1269,7 +1285,10 @@ function apply(ctx, config) {
             queue.cancel(sessionId);
             const previous = activeVoiceSession;
             activeVoiceSession = sessionId;
-            if (previous && previous !== sessionId) queue.cancel(previous);
+            if (previous && previous !== sessionId) {
+              queue.cancel(previous);
+              asr.reset(previous);
+            }
             broadcast("mode", { active: activeVoiceSession });
           } else {
             if (activeVoiceSession === sessionId) {

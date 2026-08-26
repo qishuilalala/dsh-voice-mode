@@ -70,6 +70,8 @@ export interface AsrEngine {
   beginHeld(): void
   /** hold 模式：松手定稿发送（cancel=true 放弃本段）。 */
   endHeld(cancel?: boolean): void
+  /** hold 按压中（含 toggle 模式按住 Ctrl）：打断时不丢弃本段（明确说话意图）。 */
+  readonly holding: boolean
   /** 丢弃当前已录段（打断后防幽灵消息），host 流重置。返回 Promise 供调用方等待。 */
   discardSegment(): Promise<void>
   /** 定稿文本（段结束/强制发送后）。 */
@@ -172,6 +174,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let detectChunks: Float32Array[] = []
   let detectSent = 0
   let detectInFlight = false
+  /** 检测通道代际：每次重置（弃段/退出/进入/新段开始）递增，作废在途 vadOnly 响应，
+   *  防「重置后旧响应推进 detectSent 水位」的毒化竞态（对抗审查 Important#1）。 */
+  let detectGeneration = 0
 
   const asrUrl = (final: boolean, offset?: number, epoch?: number): string =>
     `${location.origin}${config.basePath.replace(/\/+$/, '')}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` +
@@ -324,21 +329,34 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
    */
   const requestDetect = async (): Promise<void> => {
     if (detectInFlight) return
-    const total = detectChunks.reduce((n, c) => n + c.length, 0)
+    // 积压上界（30s 音频）：网络持续失败时丢弃最旧帧——检测只关心「当前是否在说话」，
+    // 陈旧音频无价值；防无界增长与超 64s（4MB）后每包必被 host 413 的死锁。
+    let total = detectChunks.reduce((n, c) => n + c.length, 0)
+    const MAX_DETECT_PENDING = 30 * SAMPLE_RATE
+    if (total - detectSent > MAX_DETECT_PENDING) {
+      detectSent = Math.max(0, total - MAX_DETECT_PENDING)
+    }
+    while (detectChunks.length > 0 && detectSent >= detectChunks[0].length) {
+      detectSent -= detectChunks[0].length
+      detectChunks.shift()
+    }
+    total = detectChunks.reduce((n, c) => n + c.length, 0)
     if (total - detectSent <= 0) return
     const samples = sliceChunks(detectChunks, detectSent)
     const epoch = segmentEpoch
+    const gen = detectGeneration
     detectInFlight = true
     try {
       const res = await fetch(asrUrl(false, detectSent, epoch) + '&vadOnly=1', {
         method: 'POST',
         headers: { 'content-type': 'application/octet-stream' },
         body: samples.buffer as ArrayBuffer,
+        signal: AbortSignal.timeout(5000), // 防服务端挂起长期锁死 detectInFlight（Important#2）
       })
-      if (epoch !== segmentEpoch) return // 打断/弃段后迟到的检测响应作废
+      if (epoch !== segmentEpoch || gen !== detectGeneration) return // 弃段/重置后迟到响应作废
       if (!res.ok) return
       const out = (await res.json()) as { isSpeech?: boolean }
-      if (epoch !== segmentEpoch) return
+      if (epoch !== segmentEpoch || gen !== detectGeneration) return
       if (out.isSpeech !== undefined) config.onIsSpeech?.(out.isSpeech)
       detectSent += samples.length
       // 释放已消费帧（长朗读下防缓冲无界增长）。
@@ -347,7 +365,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         detectChunks.shift()
       }
     } catch {
-      // 网络波动静默：未推进水位，下一拍重传
+      // 超时/网络波动静默：未推进水位，下一拍重传
     } finally {
       detectInFlight = false
     }
@@ -486,9 +504,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // 快路径 + P0 瞬态抑制 + P1 噪声自适应）；此处不再做能量域打断判定。
 
     // 打断根治：播放窗口（含尾音宽限）内，AEC 后帧同时进入检测通道（vadOnly 上行）。
-    // hold/wake 有各自明确意图路径（segment 正常累积、partial 上行），无需检测通道。
+    // hold 有明确意图路径（segment 正常累积、partial 上行）；wake 待机在播放期同样
+    // 经检测通道（其入段路径被下方播放门截断，防 TTS 回声污染唤醒匹配）。
     const playingNow = config.isPlaying?.() ?? false
-    if (playingNow && !holdActive && state !== 'wake') detectChunks.push(data)
+    if (playingNow && !holdActive) detectChunks.push(data)
 
     if (holdActive) {
       // hold：按压区间全部保留（绕过 VAD 门控与静音切句），仅段长上限兜底。
@@ -504,6 +523,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       // wake 待机：有人声才累积（满足 partial 门槛），但不置 speech、不 finalize；
       // 唤醒词匹配在 requestPartial 结果上做，命中后由它重置。
       if (rms > SPEECH_RMS) {
+        // 打断根治：AI 朗读中不把语音帧入 wake 段（会话进行中无需唤醒，且防 TTS
+        // 回声污染唤醒匹配/主通道 isSpeech 误判）；这些帧已进入顶部检测通道。
+        if (config.isPlaying?.()) return
         segmentMs += durationMs
         segment.push(data)
         // 上限兜底：滚窗重置（防无唤醒词时空累积无界）。
@@ -535,9 +557,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       if (config.isPlaying?.()) return
       if (!speechActive) {
         speechActive = true
-        // 打断根治：新一轮人声开始，清残留检测帧（上一播放窗口未发送的尾部已无意义）。
+        // 打断根治：新一轮人声开始，清残留检测帧（上一播放窗口未发送的尾部已无意义）；
+        // 代际递增作废跨边界在途响应（防 detectSent 水位毒化）。
         detectChunks = []
         detectSent = 0
+        detectGeneration++
         // P1-5：新一轮语音开始，复位「说完」标记（下一轮 chain 重新起算）。
         utteranceEndAt = null
         setState('speech')
@@ -594,13 +618,14 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // 条件转为满足的下一帧立即补发，语义与原「帧时长累加」一致）。
     const nowMs = Date.now()
     if (nowMs - lastPollAt >= PARTIAL_INTERVAL_MS) {
-      if (speechActive || holdActive || state === 'wake') {
-        lastPollAt = nowMs
-        void requestPartial()
-      } else if (playingNow && detectChunks.length > 0) {
-        // 打断根治：朗读中（非 speech/wake/hold）走 vadOnly 检测通道。
+      if (playingNow && !speechActive && !holdActive) {
+        // 打断根治：朗读中优先检测通道（含 wake 待机——播放期 wake 段被门截断，
+        // partial 无数据可传，只有检测通道能驱动打断）。
         lastPollAt = nowMs
         void requestDetect()
+      } else if (speechActive || holdActive || state === 'wake') {
+        lastPollAt = nowMs
+        void requestPartial()
       }
     }
   }
@@ -661,6 +686,7 @@ const startRecorder = async (): Promise<void> => {
     prePad = []
     detectChunks = [] // 打断根治：退出清检测通道
     detectSent = 0
+    detectGeneration++
     utteranceEndAt = null // P1-5：会话结束清除说完标记
     try {
       processor?.disconnect()
@@ -688,6 +714,9 @@ const startRecorder = async (): Promise<void> => {
     get state() {
       return state
     },
+    get holding() {
+      return holdActive
+    },
     async start() {
       if (active) return
       stopRequested = false // Fix8：新一次启动清除取消标记
@@ -697,6 +726,7 @@ const startRecorder = async (): Promise<void> => {
       holdActive = false
       detectChunks = [] // 打断根治：进入清检测通道
       detectSent = 0
+      detectGeneration++
       // 配置了唤醒词 → 先进 wake 待机态（说出唤醒词才正式开口）；否则直接聆听。
       setState(wakeWord ? 'wake' : 'listening')
       try {
@@ -742,6 +772,7 @@ const startRecorder = async (): Promise<void> => {
       uploadedSamples = 0 // Fix：hold 新段重置上传水位，防旧段水位污染
       detectChunks = [] // 打断根治：hold 按压期间走 segment 路径，清残留检测帧
       detectSent = 0
+      detectGeneration++
       speechActive = true
       lastPollAt = 0
       setState('speech')
@@ -758,6 +789,7 @@ const startRecorder = async (): Promise<void> => {
       uploadedSamples = 0
       detectChunks = [] // 打断根治：打断弃段同时清检测通道（残留帧已无意义）
       detectSent = 0
+      detectGeneration++
       utteranceEndAt = null
       forcePending = false
       lastPollAt = 0

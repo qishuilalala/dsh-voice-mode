@@ -300,6 +300,8 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   /** 播放期检测通道 VAD 池：按会话独立实例（跨段纪元存活）。只喂 vadOnly 音频，
    *  不与端点 VAD 共享状态——朗读期回声/人声若混入端点 VAD 会污染断句判定。 */
   const detectVads = new Map<string, SherpaVad>()
+  /** 检测 VAD 最近使用时刻（90s 清扫依据；reset/dispose 之外的生命周期兜底）。 */
+  const detectVadLastUse = new Map<string, number>()
   const ensureDetectVad = async (sessionId: string): Promise<SherpaVad | null> => {
     const existing = detectVads.get(sessionId)
     if (existing) return existing
@@ -545,6 +547,19 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         segments.delete(k)
       }
     }
+    // 检测 VAD 清扫：会话 90s 无检测活动即释放（reset/dispose 之外的兜底，
+    // 防切换会话/异常退出后旧会话检测 VAD 常驻——对抗审查 Important#4）。
+    for (const [sid, at] of detectVadLastUse) {
+      if (now - at > SEGMENT_IDLE_MS) {
+        try {
+          detectVads.get(sid)?.free?.()
+        } catch {
+          // ignore
+        }
+        detectVads.delete(sid)
+        detectVadLastUse.delete(sid)
+      }
+    }
   }
   const sweepTimer = setInterval(sweep, 30000)
 
@@ -555,8 +570,13 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       // 客户端计数随之清零，防残留累计误触发）。
       const vad = await ensureDetectVad(sessionId)
       if (!vad) return { isSpeech: false }
+      detectVadLastUse.set(sessionId, Date.now())
       if (samples.length > 0) vad.acceptWaveform(samples)
-      return { isSpeech: vad.isDetected() }
+      const speech = vad.isDetected()
+      // 检测 VAD 只消费帧级状态：排空已完成段队列（sherpa 内部按段 malloc，
+      // 不排空会随打断次数累积泄漏——对抗审查 Important#3）。
+      while (!vad.isEmpty()) vad.pop()
+      return { isSpeech: speech }
     },
     reset: (sessionId) => {
       // 清该会话全部世代的段（epoch-key 化后按前缀匹配）。
@@ -585,6 +605,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         }
         detectVads.delete(sessionId)
       }
+      detectVadLastUse.delete(sessionId)
     },
     dispose: () => {
       clearInterval(sweepTimer)
@@ -614,6 +635,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         }
       }
       detectVads.clear()
+      detectVadLastUse.clear()
     },
     modelStatus: () => {
       const statFile = async (dir: string, repo: string, name: string): Promise<{ exists: boolean; size: number }> => {

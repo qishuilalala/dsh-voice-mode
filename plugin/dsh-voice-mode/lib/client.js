@@ -135,6 +135,7 @@ function createAsrEngine(config, sessionId) {
   let detectChunks = [];
   let detectSent = 0;
   let detectInFlight = false;
+  let detectGeneration = 0;
   const asrUrl = (final, offset, epoch) => `${location.origin}${config.basePath.replace(/\/+$/, "")}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` + (offset !== void 0 ? `&offset=${offset}` : "") + (epoch !== void 0 ? `&epoch=${epoch}` : "");
   const setState = (s) => {
     state = s;
@@ -251,21 +252,33 @@ function createAsrEngine(config, sessionId) {
   };
   const requestDetect = async () => {
     if (detectInFlight) return;
-    const total = detectChunks.reduce((n, c) => n + c.length, 0);
+    let total = detectChunks.reduce((n, c) => n + c.length, 0);
+    const MAX_DETECT_PENDING = 30 * SAMPLE_RATE;
+    if (total - detectSent > MAX_DETECT_PENDING) {
+      detectSent = Math.max(0, total - MAX_DETECT_PENDING);
+    }
+    while (detectChunks.length > 0 && detectSent >= detectChunks[0].length) {
+      detectSent -= detectChunks[0].length;
+      detectChunks.shift();
+    }
+    total = detectChunks.reduce((n, c) => n + c.length, 0);
     if (total - detectSent <= 0) return;
     const samples = sliceChunks(detectChunks, detectSent);
     const epoch = segmentEpoch;
+    const gen = detectGeneration;
     detectInFlight = true;
     try {
       const res = await fetch(asrUrl(false, detectSent, epoch) + "&vadOnly=1", {
         method: "POST",
         headers: { "content-type": "application/octet-stream" },
-        body: samples.buffer
+        body: samples.buffer,
+        signal: AbortSignal.timeout(5e3)
+        // 防服务端挂起长期锁死 detectInFlight（Important#2）
       });
-      if (epoch !== segmentEpoch) return;
+      if (epoch !== segmentEpoch || gen !== detectGeneration) return;
       if (!res.ok) return;
       const out = await res.json();
-      if (epoch !== segmentEpoch) return;
+      if (epoch !== segmentEpoch || gen !== detectGeneration) return;
       if (out.isSpeech !== void 0) config.onIsSpeech?.(out.isSpeech);
       detectSent += samples.length;
       while (detectChunks.length > 0 && detectSent >= detectChunks[0].length) {
@@ -382,7 +395,7 @@ function createAsrEngine(config, sessionId) {
       }
     }
     const playingNow = config.isPlaying?.() ?? false;
-    if (playingNow && !holdActive && state !== "wake") detectChunks.push(data);
+    if (playingNow && !holdActive) detectChunks.push(data);
     if (holdActive) {
       if (!speechActive) {
         speechActive = true;
@@ -394,6 +407,7 @@ function createAsrEngine(config, sessionId) {
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
     } else if (state === "wake") {
       if (rms > SPEECH_RMS) {
+        if (config.isPlaying?.()) return;
         segmentMs += durationMs;
         segment.push(data);
         if (segmentMs > MAX_SEGMENT_MS) {
@@ -423,6 +437,7 @@ function createAsrEngine(config, sessionId) {
         speechActive = true;
         detectChunks = [];
         detectSent = 0;
+        detectGeneration++;
         utteranceEndAt = null;
         setState("speech");
         for (const p of prePad) segment.push(p);
@@ -473,12 +488,12 @@ function createAsrEngine(config, sessionId) {
     }
     const nowMs = Date.now();
     if (nowMs - lastPollAt >= PARTIAL_INTERVAL_MS) {
-      if (speechActive || holdActive || state === "wake") {
-        lastPollAt = nowMs;
-        void requestPartial();
-      } else if (playingNow && detectChunks.length > 0) {
+      if (playingNow && !speechActive && !holdActive) {
         lastPollAt = nowMs;
         void requestDetect();
+      } else if (speechActive || holdActive || state === "wake") {
+        lastPollAt = nowMs;
+        void requestPartial();
       }
     }
   };
@@ -526,6 +541,7 @@ function createAsrEngine(config, sessionId) {
     prePad = [];
     detectChunks = [];
     detectSent = 0;
+    detectGeneration++;
     utteranceEndAt = null;
     try {
       processor?.disconnect();
@@ -549,6 +565,9 @@ function createAsrEngine(config, sessionId) {
     get state() {
       return state;
     },
+    get holding() {
+      return holdActive;
+    },
     async start() {
       if (active) return;
       stopRequested = false;
@@ -558,6 +577,7 @@ function createAsrEngine(config, sessionId) {
       holdActive = false;
       detectChunks = [];
       detectSent = 0;
+      detectGeneration++;
       setState(wakeWord ? "wake" : "listening");
       try {
         await startRecorder();
@@ -599,6 +619,7 @@ function createAsrEngine(config, sessionId) {
       uploadedSamples = 0;
       detectChunks = [];
       detectSent = 0;
+      detectGeneration++;
       speechActive = true;
       lastPollAt = 0;
       setState("speech");
@@ -614,6 +635,7 @@ function createAsrEngine(config, sessionId) {
       uploadedSamples = 0;
       detectChunks = [];
       detectSent = 0;
+      detectGeneration++;
       utteranceEndAt = null;
       forcePending = false;
       lastPollAt = 0;
@@ -2185,7 +2207,7 @@ function MicButton({
           signal: AbortSignal.timeout(3e3)
         }).catch(() => {
         });
-        if (engineRef.current) await engineRef.current.discardSegment();
+        if (engineRef.current && !engineRef.current.holding) await engineRef.current.discardSegment();
         await cancelP;
         if (runningRef.current && sidRef.current) {
           bus.cancelTurn(sidRef.current);

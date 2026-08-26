@@ -1085,7 +1085,9 @@ export function MicButton({
           // cancel 路由不可达：本地已静音
         })
         // 异步清理：丢弃残余段（防残缺文本 autoSend）+ host 静音 + 取消回合。
-        if (engineRef.current) await engineRef.current.discardSegment()
+        // hold 按压中（含 toggle 模式按住 Ctrl）不丢弃：本段是用户明确要说的内容，
+        // 打断只停 AI——否则按住说的前半句会被吃掉。
+        if (engineRef.current && !engineRef.current.holding) await engineRef.current.discardSegment()
         await cancelP
         if (runningRef.current && sidRef.current) {
           bus.cancelTurn(sidRef.current!)

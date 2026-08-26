@@ -472,7 +472,11 @@ export function apply(ctx: Context, config: Config): void {
             // 撞上 client 残留拒绝线导致新句全被拒（静音）。
             const previous = activeVoiceSession
             activeVoiceSession = sessionId
-            if (previous && previous !== sessionId) queue.cancel(previous)
+            if (previous && previous !== sessionId) {
+              queue.cancel(previous)
+              // 打断根治：让出旧会话时一并释放其检测 VAD（对抗审查 Important#4）。
+              asr.reset(previous)
+            }
             broadcast('mode', { active: activeVoiceSession })
           } else {
             if (activeVoiceSession === sessionId) {
