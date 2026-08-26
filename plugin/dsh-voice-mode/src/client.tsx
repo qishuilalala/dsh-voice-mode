@@ -1612,11 +1612,15 @@ export function MicButton({
   const livePhase = useInput ? useInput((s: any) => (s?.phase as string) ?? '') : ''
   const phaseRef = useRef('')
   phaseRef.current = livePhase
+  /** 按住说话中（录音态视觉反馈）。 */
+  const [holding, setHolding] = useState(false)
   const label = on
     ? busy
       ? t('recognizing')
       : holdMode
-        ? t('holdToTalk')
+        ? holding
+          ? t('releaseToSend')
+          : t('holdToTalk')
         : t('voiceDetected')
     : local === 'pending'
       ? t('entering')
@@ -1632,6 +1636,7 @@ export function MicButton({
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId }
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
     if (localRef.current === 'on') {
+      setHolding(true)
       const eng = engineRef.current
       if (eng && bootNow().bargeInMode === 'manual' && bus.ui.playing) {
         // 手动打断（外放）：按住麦克风立即停 AI + 接管收音（不依赖 VAD，回声无关）。
@@ -1655,6 +1660,7 @@ export function MicButton({
   const onPointerUp = (e: React.PointerEvent): void => {
     const p = holdPtrRef.current
     holdPtrRef.current = null
+    setHolding(false)
     if (!p || p.id !== e.pointerId) return
     const ms = Date.now() - p.t
     if (ms < 250) {
@@ -1671,6 +1677,7 @@ export function MicButton({
   }
   const onPointerCancel = (): void => {
     holdPtrRef.current = null
+    setHolding(false)
     engineRef.current?.endHeld(true)
   }
 
@@ -1701,18 +1708,22 @@ export function MicButton({
           : t('titleEnter')
       }
       style={{
-        border: on
-          ? holdMode
-            ? '1px solid rgba(88, 166, 255, 0.45)'
-            : '1px solid rgba(63, 185, 80, 0.45)'
-          : '1px solid rgba(139, 148, 158, 0.35)',
-        background: on
-          ? holdMode
-            ? 'rgba(88, 166, 255, 0.16)'
-            : 'rgba(63, 185, 80, 0.16)'
-          : local === 'pending'
-            ? 'rgba(88, 166, 255, 0.14)'
-            : 'rgba(139, 148, 158, 0.08)',
+        border: holding
+          ? '1px solid rgba(248, 81, 73, 0.6)'
+          : on
+            ? holdMode
+              ? '1px solid rgba(88, 166, 255, 0.45)'
+              : '1px solid rgba(63, 185, 80, 0.45)'
+            : '1px solid rgba(139, 148, 158, 0.35)',
+        background: holding
+          ? 'rgba(248, 81, 73, 0.2)'
+          : on
+            ? holdMode
+              ? 'rgba(88, 166, 255, 0.16)'
+              : 'rgba(63, 185, 80, 0.16)'
+            : local === 'pending'
+              ? 'rgba(88, 166, 255, 0.14)'
+              : 'rgba(139, 148, 158, 0.08)',
         cursor: 'pointer',
         padding: '5px 10px',
         borderRadius: 8,
@@ -1721,7 +1732,7 @@ export function MicButton({
         gap: 6,
         fontSize: 12,
         fontFamily: 'system-ui, sans-serif',
-        color: on ? (holdMode ? '#58a6ff' : '#3fb950') : local === 'pending' ? '#58a6ff' : '#8b949e',
+        color: holding ? '#f85149' : on ? (holdMode ? '#58a6ff' : '#3fb950') : local === 'pending' ? '#58a6ff' : '#8b949e',
         transition: 'background 0.15s ease, color 0.2s ease, border-color 0.15s ease',
         touchAction: 'none', // 触摸设备上让 pointer 事件独占（滑出取消可用）
         userSelect: 'none',

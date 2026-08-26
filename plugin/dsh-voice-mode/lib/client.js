@@ -833,6 +833,7 @@ var zh = {
   hold: "\u6309\u4F4F",
   recognizing: "\u8BC6\u522B\u4E2D\u2026",
   holdToTalk: "\u6309\u4F4F\u8BF4\u8BDD",
+  releaseToSend: "\u677E\u5F00\u53D1\u9001",
   voiceDetected: "\u8BED\u97F3\u4E2D",
   entering: "\u8FDB\u5165\u4E2D\u2026",
   voiceBtn: "\u8BED\u97F3",
@@ -933,6 +934,7 @@ var en = {
   hold: "Hold",
   recognizing: "Recognizing\u2026",
   holdToTalk: "Hold to talk",
+  releaseToSend: "Release to send",
   voiceDetected: "Voice active",
   entering: "Entering\u2026",
   voiceBtn: "Voice",
@@ -2693,13 +2695,15 @@ function MicButton({
   const livePhase = useInput ? useInput((s) => s?.phase ?? "") : "";
   const phaseRef = (0, import_react2.useRef)("");
   phaseRef.current = livePhase;
-  const label = on ? busy ? t("recognizing") : holdMode ? t("holdToTalk") : t("voiceDetected") : local === "pending" ? t("entering") : t("voiceBtn");
+  const [holding, setHolding] = (0, import_react2.useState)(false);
+  const label = on ? busy ? t("recognizing") : holdMode ? holding ? t("releaseToSend") : t("holdToTalk") : t("voiceDetected") : local === "pending" ? t("entering") : t("voiceBtn");
   const holdPtrRef = (0, import_react2.useRef)(null);
   const onPointerDown = (e) => {
     if (bootNow().mode !== "hold") return;
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId };
     e.currentTarget.setPointerCapture?.(e.pointerId);
     if (localRef.current === "on") {
+      setHolding(true);
       const eng = engineRef.current;
       if (eng && bootNow().bargeInMode === "manual" && bus.ui.playing) {
         eng.beginHeld();
@@ -2721,6 +2725,7 @@ function MicButton({
   const onPointerUp = (e) => {
     const p = holdPtrRef.current;
     holdPtrRef.current = null;
+    setHolding(false);
     if (!p || p.id !== e.pointerId) return;
     const ms = Date.now() - p.t;
     if (ms < 250) {
@@ -2736,6 +2741,7 @@ function MicButton({
   };
   const onPointerCancel = () => {
     holdPtrRef.current = null;
+    setHolding(false);
     engineRef.current?.endHeld(true);
   };
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
@@ -2757,8 +2763,8 @@ function MicButton({
       "aria-pressed": on,
       title: on ? holdMode ? t("titleHold") : t("titleToggle") : t("titleEnter"),
       style: {
-        border: on ? holdMode ? "1px solid rgba(88, 166, 255, 0.45)" : "1px solid rgba(63, 185, 80, 0.45)" : "1px solid rgba(139, 148, 158, 0.35)",
-        background: on ? holdMode ? "rgba(88, 166, 255, 0.16)" : "rgba(63, 185, 80, 0.16)" : local === "pending" ? "rgba(88, 166, 255, 0.14)" : "rgba(139, 148, 158, 0.08)",
+        border: holding ? "1px solid rgba(248, 81, 73, 0.6)" : on ? holdMode ? "1px solid rgba(88, 166, 255, 0.45)" : "1px solid rgba(63, 185, 80, 0.45)" : "1px solid rgba(139, 148, 158, 0.35)",
+        background: holding ? "rgba(248, 81, 73, 0.2)" : on ? holdMode ? "rgba(88, 166, 255, 0.16)" : "rgba(63, 185, 80, 0.16)" : local === "pending" ? "rgba(88, 166, 255, 0.14)" : "rgba(139, 148, 158, 0.08)",
         cursor: "pointer",
         padding: "5px 10px",
         borderRadius: 8,
@@ -2767,7 +2773,7 @@ function MicButton({
         gap: 6,
         fontSize: 12,
         fontFamily: "system-ui, sans-serif",
-        color: on ? holdMode ? "#58a6ff" : "#3fb950" : local === "pending" ? "#58a6ff" : "#8b949e",
+        color: holding ? "#f85149" : on ? holdMode ? "#58a6ff" : "#3fb950" : local === "pending" ? "#58a6ff" : "#8b949e",
         transition: "background 0.15s ease, color 0.2s ease, border-color 0.15s ease",
         touchAction: "none",
         // 触摸设备上让 pointer 事件独占（滑出取消可用）
