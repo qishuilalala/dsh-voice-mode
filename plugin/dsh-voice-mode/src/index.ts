@@ -101,6 +101,8 @@ export interface VoiceSettingsValue {
   modelHost: string
   /** 定稿后是否自动发送（关 = 只进草稿，按住 Ctrl/松手仍可强制发送）。 */
   autoSend: boolean
+  /** 切换回上次语音会话时自动恢复语音模式（默认关；省去每次切换会话后重新点麦克风）。 */
+  autoResume: boolean
   /** 交互模式：toggle 持续聆听+自动端点断句；hold 按住说话、松手发送。 */
   mode: 'toggle' | 'hold'
   /** 打断方式：auto 自动打断（开口即打断，耳机/安静环境）；manual 手动打断（外放推荐——外放回声会误触发自动打断，改显式手势打断）。 */
@@ -128,6 +130,7 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   idleTimeoutMinutes: 10,
   modelHost: '',
   autoSend: true,
+  autoResume: false,
   mode: 'toggle',
   bargeInMode: 'auto',
   wakeWord: '',
@@ -155,6 +158,7 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
     idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description('无活动自动退出语音模式的分钟数（默认 10）'),
     modelHost: z.string().default(d.modelHost).description('ASR 模型下载源（留空用默认源；国内网络可填 https://hf-mirror.com）'),
     autoSend: z.boolean().default(d.autoSend).description('识别定稿后自动发送（关闭则只进草稿供编辑；按住 Ctrl / hold 松手仍会发送）'),
+    autoResume: z.boolean().default(d.autoResume).description('切换回上次语音会话时自动恢复语音模式（默认关，需麦克风权限已授予；关闭则每次切换会话后需重新点麦克风）'),
     mode: z
       .union([z.const('toggle'), z.const('hold')])
       .default(d.mode)
@@ -387,6 +391,7 @@ export function apply(ctx: Context, config: Config): void {
             idleTimeoutMinutes: vset.idleTimeoutMinutes,
             modelHost: vset.modelHost,
             autoSend: vset.autoSend,
+            autoResume: vset.autoResume,
             mode: vset.mode,
             bargeInMode: vset.bargeInMode,
             wakeWord: vset.wakeWord,

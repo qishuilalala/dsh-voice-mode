@@ -849,6 +849,7 @@ var zh = {
   descIdle: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09",
   descModelHost: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u5B98\u65B9\u6E90 / \u56FD\u5185\u955C\u50CF\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u586B\u4EFB\u610F\u955C\u50CF\uFF09",
   descAutoSend: "\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09",
+  descAutoResume: "\u5207\u6362\u56DE\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD\u65F6\u81EA\u52A8\u6062\u590D\u8BED\u97F3\u6A21\u5F0F\uFF08\u9ED8\u8BA4\u5173\uFF0C\u9700\u9EA6\u514B\u98CE\u6743\u9650\u5DF2\u6388\u4E88\uFF1B\u7701\u53BB\u6BCF\u6B21\u5207\u6362\u4F1A\u8BDD\u540E\u91CD\u65B0\u70B9\u9EA6\u514B\u98CE\uFF09",
   descSpokenFormat: "\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u56DE\u590D\u53E3\u8BED\u5316\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\uFF1B\u9ED8\u8BA4\u5173\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09",
   descSenseVoice: "\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9 + \u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09",
   descToolBeep: "\u5DE5\u5177\u6267\u884C\u63D0\u793A\u97F3\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5F00\u542F\u540E\u6BCF\u4E2A\u65B0\u5DE5\u5177\u54CD\u4E00\u6B21\uFF0C\u9632\u8FDE\u7EED\u5DE5\u5177\u94FE\u53EE\u53EE\u53EE\uFF09",
@@ -945,6 +946,7 @@ var en = {
   descIdle: "Auto-exit voice mode after idle minutes (default 10)",
   descModelHost: "ASR model download source (official source / mirror, or any custom URL)",
   descAutoSend: "Auto-send after finalized recognition (off = draft only; Ctrl / hold still sends)",
+  descAutoResume: "Auto-resume voice mode when switching back to the last voice session (default off, requires granted mic permission)",
   descSpokenFormat: "Inject spoken-format prompt into voice replies (colloquial, no Markdown; default off, live)",
   descSenseVoice: "Re-transcribe the finalized utterance with SenseVoice (punctuation + ITN, more accurate; default on \u2014 turn off to skip the 228 MB model and keep streaming only)",
   descToolBeep: "Tool-call beep (default off; when enabled, one short beep per new tool)",
@@ -1461,6 +1463,7 @@ function VoiceSettingsCard({ scope }) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoSend), onChange: (e) => void scope.set("autoSend", e.target.checked) }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoResume), onChange: (e) => void scope.set("autoResume", e.target.checked) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.toolBeep), onChange: (e) => void scope.set("toolBeep", e.target.checked) }) }),
@@ -1519,6 +1522,20 @@ function getTabId() {
   }
 }
 var TAB_ID = getTabId();
+function getLastVoiceSession() {
+  try {
+    return localStorage.getItem("dshvm-last-voice");
+  } catch {
+    return null;
+  }
+}
+function setLastVoiceSession(id) {
+  try {
+    if (id) localStorage.setItem("dshvm-last-voice", id);
+    else localStorage.removeItem("dshvm-last-voice");
+  } catch {
+  }
+}
 function apply(ctx) {
   const bus = createVoiceBus(void 0, ctx);
   ctx.slots.inject(
@@ -1743,6 +1760,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     interruptLevel: 0,
     idleTimeoutMinutes: 10,
     autoSend: true,
+    autoResume: false,
     mode: "toggle",
     bargeInMode: "auto",
     wakeWord: ""
@@ -2063,6 +2081,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         activeSessionId = out.active === sessionId ? sessionId : null;
         notify();
         if (!res.ok) return { ok: false, error: out.error ?? t("enterFail") };
+        if (out.active === sessionId) setLastVoiceSession(sessionId);
         return { ok: out.active === sessionId, error: out.active === sessionId ? void 0 : t("enterFail") };
       } catch {
         return { ok: false, error: t("enterFail") };
@@ -2151,7 +2170,7 @@ function MicButton({
   const holdCtrlRef = (0, import_react2.useRef)(false);
   const manualHoldRef = (0, import_react2.useRef)(false);
   const breakRef = (0, import_react2.useRef)(null);
-  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: "toggle", bargeInMode: "auto", wakeWord: "" };
+  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", wakeWord: "" };
   useVoiceCss();
   const [, bumpUi] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(
@@ -2176,6 +2195,7 @@ function MicButton({
         interruptLevel: c.interruptLevel ?? cur.interruptLevel,
         idleTimeoutMinutes: c.idleTimeoutMinutes ?? cur.idleTimeoutMinutes,
         autoSend: c.autoSend ?? cur.autoSend,
+        autoResume: c.autoResume === true,
         mode: c.mode === "hold" ? "hold" : "toggle",
         bargeInMode: c.bargeInMode === "manual" ? "manual" : "auto",
         wakeWord: c.wakeWord ?? cur.wakeWord
@@ -2307,6 +2327,7 @@ function MicButton({
             bus.setUi({ isSpeech: speech });
           },
           onSessionExpired: async () => {
+            if (localRef.current !== "on") return false;
             bus.setUi({ error: t("sessionExpired") });
             const reentered = await bus.enter(sid);
             if (!reentered.ok) {
@@ -2414,6 +2435,19 @@ function MicButton({
   (0, import_react2.useEffect)(() => {
     sidRef.current = sessionId;
   }, [sessionId]);
+  const autoResumeTriedRef = (0, import_react2.useRef)(false);
+  (0, import_react2.useEffect)(() => {
+    if (autoResumeTriedRef.current) return;
+    autoResumeTriedRef.current = true;
+    const sid = sidRef.current;
+    if (!sid) return;
+    if (!bootNow().autoResume) return;
+    if (getLastVoiceSession() !== sid) return;
+    if (bus.activeSessionId !== null) return;
+    void enterMode().catch(() => {
+      setLocalMode("off");
+    });
+  }, []);
   const runningSel = useSession ? useSession((s) => s === void 0 ? void 0 : s.running) : void 0;
   (0, import_react2.useEffect)(() => {
     runningRef.current = runningSel === true;

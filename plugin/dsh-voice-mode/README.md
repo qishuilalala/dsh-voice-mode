@@ -68,13 +68,14 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | `idleTimeoutMinutes` | `10` | 无活动自动退出语音模式的分钟数 |
 | `modelHost` | 默认源 | ASR 模型下载源（国内网络填 `https://hf-mirror.com`） |
 | `autoSend` | `true` | 识别定稿后自动发送；关闭则只进草稿（按住 `Ctrl` / hold 松手仍会发送） |
+| `autoResume` | `false` | 切换回上次语音会话时自动恢复语音模式（需麦克风权限已授予；省去每次切换会话后重新点麦克风） |
 | `mode` | `toggle` | 交互模式：`toggle` 持续聆听 + 静音自动断句；`hold` 按住说话、松手发送（短按退出） |
 | `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭 |
 | `spokenFormat` | `false` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效** |
 | `senseVoice` | `true` | 定稿用 SenseVoice 重译（带标点 + 数字归一化，识别更准）；关闭可省 228MB 模型、只走流式识别 |
 | `toolBeep` | `false` | 工具执行提示音（默认关；开启后每个新工具响一次，防连续工具链叮叮叮） |
 
-生效范围：`voice`/`rate`/`spokenFormat`/`senseVoice` **立即生效**；其余（`silenceMs`/`interruptLevel`/`bargeInMode`/`idleTimeoutMinutes`/`modelHost`/`autoSend`/`mode`/`wakeWord`）下次进入语音模式时生效。前六个键的平台默认由插件配置（`base` 层）提供，其余由 schema 提供。
+生效范围：`voice`/`rate`/`spokenFormat`/`senseVoice` **立即生效**；其余（`silenceMs`/`interruptLevel`/`bargeInMode`/`idleTimeoutMinutes`/`modelHost`/`autoSend`/`autoResume`/`mode`/`wakeWord`）下次进入语音模式时生效。前六个键的平台默认由插件配置（`base` 层）提供，其余由 schema 提供。
 
 ### 开发工具
 

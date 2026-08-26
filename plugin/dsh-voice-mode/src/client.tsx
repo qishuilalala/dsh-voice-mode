@@ -190,6 +190,23 @@ function getTabId(): string {
 /** 本 tab 的稳定标识（模块加载时生成一次）。 */
 const TAB_ID = getTabId()
 
+/** I5：上次语音会话记忆（localStorage 持久，autoResume 切回时自动恢复）。 */
+function getLastVoiceSession(): string | null {
+  try {
+    return localStorage.getItem('dshvm-last-voice')
+  } catch {
+    return null
+  }
+}
+function setLastVoiceSession(id: string | null): void {
+  try {
+    if (id) localStorage.setItem('dshvm-last-voice', id)
+    else localStorage.removeItem('dshvm-last-voice')
+  } catch {
+    // ignore（隐私模式等 localStorage 不可用）
+  }
+}
+
 export function apply(ctx: any): void {
   const bus = createVoiceBus(undefined, ctx)
 
@@ -468,6 +485,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     interruptLevel: 0,
     idleTimeoutMinutes: 10,
     autoSend: true,
+    autoResume: false,
     mode: 'toggle',
     bargeInMode: 'auto',
     wakeWord: '',
@@ -862,6 +880,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         activeSessionId = out.active === sessionId ? sessionId : null
         notify()
         if (!res.ok) return { ok: false, error: out.error ?? t('enterFail') }
+        // I5：记住本次语音会话（autoResume 切回时自动恢复）。
+        if (out.active === sessionId) setLastVoiceSession(sessionId)
         // 双重奏根治：拒绝线保留（host toggle 用 cancel 保 seq 连续递增）——
         // 重入/403 恢复后新句 seq 必然 > 线（旧帧 ≤ 线仍被拒），不清线消除
         // 「exit→enter 在途旧帧重入」窗口。
@@ -942,6 +962,8 @@ interface VoiceBootConfig {
   interruptLevel: 0 | 1 | 2
   idleTimeoutMinutes: number
   autoSend: boolean
+  /** 切换回上次语音会话时自动恢复（默认关）。 */
+  autoResume: boolean
   mode: 'toggle' | 'hold'
   /** 打断方式：auto 自动（VAD 开口打断）；manual 手动（外放推荐，回声不误触发自打断）。 */
   bargeInMode: 'auto' | 'manual'
@@ -988,7 +1010,7 @@ export function MicButton({
   /** 手动打断入口：enterMode 内定义 hardBreak 后写入，供手势直接调用（外放可靠打断）。 */
   const breakRef = useRef<(() => Promise<void>) | null>(null)
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
-  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: 'toggle', bargeInMode: 'auto', wakeWord: '' }
+  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', wakeWord: '' }
 
   useVoiceCss()
 
@@ -1020,6 +1042,7 @@ export function MicButton({
         interruptLevel: c.interruptLevel ?? cur.interruptLevel,
         idleTimeoutMinutes: c.idleTimeoutMinutes ?? cur.idleTimeoutMinutes,
         autoSend: c.autoSend ?? cur.autoSend,
+        autoResume: c.autoResume === true,
         mode: c.mode === 'hold' ? 'hold' : 'toggle',
         bargeInMode: c.bargeInMode === 'manual' ? 'manual' : 'auto',
         wakeWord: c.wakeWord ?? cur.wakeWord,
@@ -1183,6 +1206,9 @@ export function MicButton({
             bus.setUi({ isSpeech: speech }) // 仍存 ui 供状态条展示
           },
           onSessionExpired: async () => {
+            // I4：仅当本 tab 仍处语音模式（local=on）才反抢；已被让出/退出时跟随 mode 广播
+            // 静默退出，防多 tab 下 403→重入→403 乒乓抖振（TTS 反复被掐）。
+            if (localRef.current !== 'on') return false
             // 403 恢复：host 端活跃会话已变更（如被抢占/让出），尝试重新进入。
             bus.setUi({ error: t('sessionExpired') })
             const reentered = await bus.enter(sid)
@@ -1317,6 +1343,22 @@ export function MicButton({
   useEffect(() => {
     sidRef.current = sessionId
   }, [sessionId])
+  // I5：autoResume——切回上次语音会话时自动恢复（默认关；需麦克风权限已授予，失败静默降级）。
+  const autoResumeTriedRef = useRef(false)
+  useEffect(() => {
+    if (autoResumeTriedRef.current) return
+    autoResumeTriedRef.current = true
+    const sid = sidRef.current
+    if (!sid) return
+    if (!bootNow().autoResume) return
+    if (getLastVoiceSession() !== sid) return
+    if (bus.activeSessionId !== null) return // 已有别的会话在语音模式，不抢
+    void enterMode().catch(() => {
+      // 无手势 getUserMedia 可能失败（Safari/iOS），静默降级为手动点麦克风。
+      setLocalMode('off')
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // 宿主 selector hook 必须组件顶层调用（不能在 effect 内——React #321）。
   const runningSel = useSession
     ? useSession((s: any) => (s === undefined ? undefined : s.running))

@@ -614,6 +614,9 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             <Row name="autoSend" desc={tr('descAutoSend')}>
               <input type="checkbox" checked={Boolean(value.autoSend)} onChange={(e) => void scope.set('autoSend', e.target.checked)} />
             </Row>
+            <Row name="autoResume" desc={tr('descAutoResume')}>
+              <input type="checkbox" checked={Boolean(value.autoResume)} onChange={(e) => void scope.set('autoResume', e.target.checked)} />
+            </Row>
             <Row name="spokenFormat" desc={tr('descSpokenFormat')}>
               <input type="checkbox" checked={Boolean(value.spokenFormat)} onChange={(e) => void scope.set('spokenFormat', e.target.checked)} />
             </Row>

@@ -174,6 +174,12 @@ t('lib/client.js 含 A1 原生 AEC 生效验证', () => {
   assert.ok(c.includes('onAecState'), 'client bundle missing onAecState callback')
   assert.ok(c.includes('aecOff'), 'client bundle missing aecOff warning flag')
 })
+t('lib 含 I4 403 乒乓守卫 + I5 autoResume 记忆', () => {
+  const c = read('lib/client.js')
+  assert.ok(c.includes('dshvm-last-voice'), 'client bundle missing last-voice memory')
+  const h = read('lib/index.js')
+  assert.ok(h.includes('autoResume'), 'host bundle missing autoResume setting')
+})
 t('lib/index.js 序列化 isSpeech 下行（打断根治：HTTP 层透传 VAD 帧级检测）', () => {
   const src = read('lib/index.js')
   assert.ok(src.includes('body.isSpeech'), 'host bundle missing isSpeech serialization')
