@@ -1851,9 +1851,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     source.addEventListener("mode", (e) => {
       try {
         const active = JSON.parse(e.data).active ?? null;
-        if (active !== activeSessionId) {
+        if (activeSessionId !== null && active !== activeSessionId) {
           const prev = activeSessionId;
-          activeSessionId = active;
+          activeSessionId = null;
           if (ui.turn !== "idle") ui.turn = "idle";
           doSkipAudio(prev);
           resetTelemetry();
@@ -1991,7 +1991,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     curBytes += bytes.length;
     curChunkCount += 1;
   });
-  toolListeners.add(() => engine.toolBeep());
+  toolListeners.add((ev) => {
+    if (ev.sessionId === activeSessionId) engine.toolBeep();
+  });
   const doSkipAudio = (sidArg) => {
     const sid = sidArg ?? activeSessionId;
     if (sid) {
@@ -2035,7 +2037,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
           body: JSON.stringify({ sessionId, on: true })
         });
         const out = await res.json();
-        activeSessionId = out.active ?? null;
+        activeSessionId = out.active === sessionId ? sessionId : null;
         notify();
         if (!res.ok) return { ok: false, error: out.error ?? t("enterFail") };
         return { ok: out.active === sessionId, error: out.active === sessionId ? void 0 : t("enterFail") };
@@ -2053,8 +2055,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ sessionId, on: false })
         });
-        const out = await res.json();
-        activeSessionId = out.active ?? null;
+        await res.json();
+        activeSessionId = null;
         notify();
       } catch {
       }

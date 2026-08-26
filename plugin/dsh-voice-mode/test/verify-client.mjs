@@ -152,6 +152,11 @@ t('lib 含打断方式 bargeInMode（auto 自动 / manual 手动——外放自�
   assert.ok(h.includes('bargeInMode'), 'host bundle missing bargeInMode setting')
   assert.ok(h.includes('vset.bargeInMode'), 'host /config missing bargeInMode output')
 })
+t('lib/client.js 含 B1 owner 语义（多 tab 不重复播放：仅本 tab 认领活跃会话）', () => {
+  const c = read('lib/client.js')
+  assert.ok(c.includes('activeSessionId !== null &&'), 'client bundle missing preempt-only mode gate')
+  assert.ok(c.includes('out.active === sessionId ? sessionId : null'), 'client bundle missing owner claim on enter')
+})
 t('lib/index.js 序列化 isSpeech 下行（打断根治：HTTP 层透传 VAD 帧级检测）', () => {
   const src = read('lib/index.js')
   assert.ok(src.includes('body.isSpeech'), 'host bundle missing isSpeech serialization')

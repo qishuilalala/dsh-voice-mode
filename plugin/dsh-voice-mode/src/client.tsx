@@ -605,9 +605,13 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     source.addEventListener('mode', (e: MessageEvent<string>) => {
       try {
         const active = (JSON.parse(e.data) as { active?: string | null }).active ?? null
-        if (active !== activeSessionId) {
+        // B1 修复：activeSessionId 语义 = 「本 tab 正在跑的语音会话」（owner），只在本地
+        // enter/exit 设置，绝不从全局 mode 广播「收养」——否则多 tab 每个 tab 都把
+        // activeSessionId 同步成同一值，同一句 TTS 在 N 个 tab 叠加播放、字幕浮层重复。
+        // 此处仅做「被抢占」检测：我是 owner 且全局 active 已切走 → 让出。
+        if (activeSessionId !== null && active !== activeSessionId) {
           const prev = activeSessionId
-          activeSessionId = active
+          activeSessionId = null
           // 模式被让出/抢占：本地播放立即静音（Q2 之停 TTS）。
           // 双重奏根治：无条件 doSkipAudio(prev)——停播 + 清拼帧缓冲（防 prev 未 final
           // 的缓冲句与新会话同序号句混帧）+ 对 prev 设拒绝线（activeSessionId 已切走）。
@@ -775,7 +779,10 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     curBytes += bytes.length
     curChunkCount += 1
   })
-  toolListeners.add(() => engine.toolBeep())
+  // B1 修复：工具提示音也只在 owner tab 响（非 owner 不重复）。
+  toolListeners.add((ev) => {
+    if (ev.sessionId === activeSessionId) engine.toolBeep()
+  })
 
   /** 双重奏根治：停播 + 记拒绝线（skip 时在途/已入队句的最大 sentenceId，其后 ≤ 线帧丢弃）。
    *  sidArg：模式让出/抢占时传被让出会话 id（此时 activeSessionId 已切到新会话）。 */
@@ -828,7 +835,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
           body: JSON.stringify({ sessionId, on: true }),
         })
         const out = (await res.json()) as { active?: string | null; error?: string }
-        activeSessionId = out.active ?? null
+        // B1 修复：仅当本 tab 真正成为活跃会话才认领 owner；否则保持非 owner（null），
+        // 防止多 tab 下「out.active 是别的会话」时本 tab 误收养别人会话 → 重复播放。
+        activeSessionId = out.active === sessionId ? sessionId : null
         notify()
         if (!res.ok) return { ok: false, error: out.error ?? t('enterFail') }
         // 双重奏根治：拒绝线保留（host toggle 用 cancel 保 seq 连续递增）——
@@ -851,8 +860,10 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ sessionId, on: false }),
         })
-        const out = (await res.json()) as { active?: string | null }
-        activeSessionId = out.active ?? null
+        await res.json()
+        // B1 修复：退出后本 tab 不再是 owner；全局 active 可能是别的 tab 的会话，
+        // 不能收养（否则本 tab 会重复播放别人会话的音频）。
+        activeSessionId = null
         notify()
       } catch {
         // SSE 广播最终会纠正
