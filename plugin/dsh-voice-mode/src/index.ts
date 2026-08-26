@@ -103,6 +103,8 @@ export interface VoiceSettingsValue {
   autoSend: boolean
   /** 交互模式：toggle 持续聆听+自动端点断句；hold 按住说话、松手发送。 */
   mode: 'toggle' | 'hold'
+  /** 打断方式：auto 自动打断（开口即打断，耳机/安静环境）；manual 手动打断（外放推荐——外放回声会误触发自动打断，改显式手势打断）。 */
+  bargeInMode: 'auto' | 'manual'
   /** 唤醒词（空 = 关；如「你好小D」）：待机态说出后激活，避免误触。 */
   wakeWord: string
   /**
@@ -127,6 +129,7 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   modelHost: '',
   autoSend: true,
   mode: 'toggle',
+  bargeInMode: 'auto',
   wakeWord: '',
   spokenFormat: false,
   senseVoice: true,
@@ -156,6 +159,10 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .union([z.const('toggle'), z.const('hold')])
       .default(d.mode)
       .description('交互模式：toggle 持续聆听 + 静音自动断句（默认）；hold 按住说话、松手发送（短按退出）'),
+    bargeInMode: z
+      .union([z.const('auto'), z.const('manual')])
+      .default(d.bargeInMode)
+      .description('打断方式：auto 自动打断（开口即打断，耳机/安静环境推荐）；manual 手动打断（外放推荐——外放回声会误触发自动打断，改按住麦克风/Ctrl 显式打断，永不自打断）'),
     wakeWord: z.string().default(d.wakeWord).description('唤醒词：在待机态说出后开始识别（默认关；如「你好小D」）'),
     spokenFormat: z
       .boolean()
@@ -362,6 +369,7 @@ export function apply(ctx: Context, config: Config): void {
             modelHost: vset.modelHost,
             autoSend: vset.autoSend,
             mode: vset.mode,
+            bargeInMode: vset.bargeInMode,
             wakeWord: vset.wakeWord,
             cacheDir: config.cacheDir,
           }),

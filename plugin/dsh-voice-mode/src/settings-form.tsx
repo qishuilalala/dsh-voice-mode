@@ -591,6 +591,17 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
                 ]}
               />
             </Row>
+            <Row name="bargeInMode" desc={tr('descBargeIn')}>
+              <SegGroup
+                score={scope}
+                field="bargeInMode"
+                value={value.bargeInMode}
+                options={[
+                  { v: 'auto', label: tr('bargeInAuto') },
+                  { v: 'manual', label: tr('bargeInManual') },
+                ]}
+              />
+            </Row>
             <Row name="silenceMs" desc={tr('descSilence')}>
               <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 700} min={500} max={30000} step={100} />
             </Row>

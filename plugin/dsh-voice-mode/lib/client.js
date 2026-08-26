@@ -830,6 +830,9 @@ var zh = {
   descVoice: "Edge TTS \u97F3\u8272\uFF08\u4E0B\u62C9\u5E38\u7528\uFF0C\u5176\u4F59\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u52A8\u586B ShortName\uFF09",
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09",
   descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF1B\u53D1\u58F0\u786E\u8BA4\u7EA6 0.3/0.2/0.1 \u79D2\uFF09",
+  descBargeIn: "\u6253\u65AD\u65B9\u5F0F\uFF08auto \u81EA\u52A8\u6253\u65AD\uFF1A\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u8033\u673A/\u5B89\u9759\u73AF\u5883\u63A8\u8350\uFF1Bmanual \u624B\u52A8\u6253\u65AD\uFF1A\u5916\u653E\u63A8\u8350\u2014\u2014\u56DE\u58F0\u4E0D\u4F1A\u8BEF\u89E6\u53D1\u81EA\u6253\u65AD\uFF0C\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u663E\u5F0F\u6253\u65AD\uFF09",
+  bargeInAuto: "\u81EA\u52A8",
+  bargeInManual: "\u624B\u52A8",
   vadDetected: "VAD \u68C0\u6D4B\u5230\u8BED\u97F3",
   interruptConfirm: "\u6253\u65AD\u786E\u8BA4",
   sev0: "0 \u9AD8\u95E8\u69DB",
@@ -847,7 +850,7 @@ var zh = {
   modeHold: "\u6309\u4F4F\u8BF4\u8BDD",
   descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09",
   wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
-  settingsCardDesc: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
+  settingsCardDesc: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
   configUnavailable: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528",
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: "\u8BF4\u5B8C",
@@ -921,6 +924,9 @@ var en = {
   descVoice: "Edge TTS voice (presets, or a custom ShortName)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.0 normal)",
   descInterrupt: "Interrupt sensitivity (0 high barrier / 1 medium / 2 low; ~0.3/0.2/0.1 s speech confirmation)",
+  descBargeIn: "Barge-in mode (auto: interrupt by speaking \u2014 headphones/quiet; manual: for loudspeaker, no echo-triggered self-interrupt \u2014 hold mic/Ctrl to interrupt)",
+  bargeInAuto: "Auto",
+  bargeInManual: "Manual",
   vadDetected: "VAD speech",
   interruptConfirm: "interrupt confirm",
   sev0: "0 high",
@@ -938,7 +944,7 @@ var en = {
   modeHold: "Hold to talk",
   descWakeWord: "Wake word (default off; e.g. Hey D)",
   wakePlaceholder: "e.g. Hey D",
-  settingsCardDesc: "Voice / rate / interrupt / silence / idle / model host / auto-send / mode / wake word / spoken format",
+  settingsCardDesc: "Voice / rate / interrupt / barge-in / silence / idle / model host / auto-send / mode / wake word / spoken format",
   configUnavailable: "Configuration unavailable",
   telUtteranceEnd: "end",
   telEndpoint: "endpoint",
@@ -1430,6 +1436,18 @@ function VoiceSettingsCard({ scope }) {
           ]
         }
       ) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "bargeInMode", desc: t("descBargeIn"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        SegGroup,
+        {
+          score: scope,
+          field: "bargeInMode",
+          value: value.bargeInMode,
+          options: [
+            { v: "auto", label: t("bargeInAuto") },
+            { v: "manual", label: t("bargeInManual") }
+          ]
+        }
+      ) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 700, min: 500, max: 3e4, step: 100 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }),
@@ -1703,6 +1721,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     idleTimeoutMinutes: 10,
     autoSend: true,
     mode: "toggle",
+    bargeInMode: "auto",
     wakeWord: ""
   };
   const ui = {
@@ -2105,7 +2124,9 @@ function MicButton({
   const idleTimerRef = (0, import_react2.useRef)(null);
   const runningRef = (0, import_react2.useRef)(false);
   const holdCtrlRef = (0, import_react2.useRef)(false);
-  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: "toggle", wakeWord: "" };
+  const manualHoldRef = (0, import_react2.useRef)(false);
+  const breakRef = (0, import_react2.useRef)(null);
+  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: "toggle", bargeInMode: "auto", wakeWord: "" };
   useVoiceCss();
   const [, bumpUi] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(
@@ -2131,6 +2152,7 @@ function MicButton({
         idleTimeoutMinutes: c.idleTimeoutMinutes ?? cur.idleTimeoutMinutes,
         autoSend: c.autoSend ?? cur.autoSend,
         mode: c.mode === "hold" ? "hold" : "toggle",
+        bargeInMode: c.bargeInMode === "manual" ? "manual" : "auto",
         wakeWord: c.wakeWord ?? cur.wakeWord
       };
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord });
@@ -2178,6 +2200,8 @@ function MicButton({
     clearIdle();
     cancelPendingSubmit();
     isSpeechTrueCount = 0;
+    breakRef.current = null;
+    manualHoldRef.current = false;
     const engine = engineRef.current;
     engineRef.current = null;
     if (engine) await engine.stop();
@@ -2205,6 +2229,7 @@ function MicButton({
       const silenceMs = cfg.silenceMs;
       const interruptLevel = cfg.interruptLevel;
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2;
+      const bargeInMode = cfg.bargeInMode;
       const hardBreak = async () => {
         bus.skipAudio();
         bus.unduckAudio();
@@ -2223,6 +2248,7 @@ function MicButton({
         }
         bus.setUi({ partial: "\u2026" });
       };
+      breakRef.current = hardBreak;
       const engine = createAsrEngine(
         {
           silenceMs,
@@ -2236,6 +2262,7 @@ function MicButton({
           // 判真实人声前沿；仅 AI 朗读中（bus.ui.playing）触发 hardBreak，
           // 防 TTS 回声被 VAD 误判为语音而自打断。
           onIsSpeech: (speech) => {
+            if (bargeInMode === "manual") return;
             if (speech === true) {
               isSpeechTrueCount++;
               if (isSpeechTrueCount === 1 && bus.ui.playing) interruptFirstAt = Date.now();
@@ -2393,6 +2420,10 @@ function MicButton({
         holdCtrlRef.current = false;
         engineRef.current?.endHeld(false);
       }
+      if (manualHoldRef.current) {
+        manualHoldRef.current = false;
+        engineRef.current?.endHeld(false);
+      }
     };
     const onKeyDown = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "v" && !e.repeat) {
@@ -2409,6 +2440,10 @@ function MicButton({
           holdCtrlRef.current = true;
           eng.beginHeld();
         }, 600);
+      } else if (bootNow().bargeInMode === "manual" && bus.ui.playing) {
+        manualHoldRef.current = true;
+        eng.beginHeld();
+        void breakRef.current?.();
       } else {
         eng.forceSend();
       }
@@ -2488,7 +2523,15 @@ function MicButton({
     if (bootNow().mode !== "hold") return;
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId };
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    if (localRef.current === "on") engineRef.current?.beginHeld();
+    if (localRef.current === "on") {
+      const eng = engineRef.current;
+      if (eng && bootNow().bargeInMode === "manual" && bus.ui.playing) {
+        eng.beginHeld();
+        void breakRef.current?.();
+      } else {
+        eng?.beginHeld();
+      }
+    }
   };
   const onPointerMove = (e) => {
     const p = holdPtrRef.current;

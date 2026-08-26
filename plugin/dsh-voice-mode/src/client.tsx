@@ -447,6 +447,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     idleTimeoutMinutes: 10,
     autoSend: true,
     mode: 'toggle',
+    bargeInMode: 'auto',
     wakeWord: '',
   }
   const ui: VoiceUiState = {
@@ -909,6 +910,8 @@ interface VoiceBootConfig {
   idleTimeoutMinutes: number
   autoSend: boolean
   mode: 'toggle' | 'hold'
+  /** 打断方式：auto 自动（VAD 开口打断）；manual 手动（外放推荐，回声不误触发自打断）。 */
+  bargeInMode: 'auto' | 'manual'
   wakeWord: string
 }
 
@@ -947,8 +950,12 @@ export function MicButton({
   const runningRef = useRef(false)
   /** hold 模式 Ctrl 按住说话中（600ms 阈值后才置真）。 */
   const holdCtrlRef = useRef(false)
+  /** 手动打断（bargeInMode=manual）时 toggle 模式按住 Ctrl 接管中。 */
+  const manualHoldRef = useRef(false)
+  /** 手动打断入口：enterMode 内定义 hardBreak 后写入，供手势直接调用（外放可靠打断）。 */
+  const breakRef = useRef<(() => Promise<void>) | null>(null)
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
-  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: 'toggle', wakeWord: '' }
+  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, mode: 'toggle', bargeInMode: 'auto', wakeWord: '' }
 
   useVoiceCss()
 
@@ -981,6 +988,7 @@ export function MicButton({
         idleTimeoutMinutes: c.idleTimeoutMinutes ?? cur.idleTimeoutMinutes,
         autoSend: c.autoSend ?? cur.autoSend,
         mode: c.mode === 'hold' ? 'hold' : 'toggle',
+        bargeInMode: c.bargeInMode === 'manual' ? 'manual' : 'auto',
         wakeWord: c.wakeWord ?? cur.wakeWord,
       }
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord })
@@ -1035,6 +1043,8 @@ export function MicButton({
     clearIdle()
     cancelPendingSubmit()
     isSpeechTrueCount = 0 // 打断根治：退出重置 isSpeech 计数（防残留）
+    breakRef.current = null // 手动打断入口：退出即失效
+    manualHoldRef.current = false
     const engine = engineRef.current
     engineRef.current = null
     if (engine) await engine.stop() // Fix：等待 stop 完成，确保 handleAudio 停止
@@ -1069,6 +1079,7 @@ export function MicButton({
       const silenceMs = cfg.silenceMs
       const interruptLevel = cfg.interruptLevel
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2
+      const bargeInMode = cfg.bargeInMode
       // 打断根治阶段二：hardBreak 由 isSpeech 连续前沿触发（RMS 快路径 + duck 探针
       // 移除后提炼为独立函数；行为保持不变）：
       // （RMS 快路径 + duck 探针移除后，由 isSpeech 连续前沿触发；行为保持不变）：
@@ -1100,6 +1111,8 @@ export function MicButton({
         }
         bus.setUi({ partial: '…' })
       }
+      // 手动打断入口：显式手势（按住麦克风/Ctrl）在播放中调用，回声无关、100% 可靠。
+      breakRef.current = hardBreak
       const engine = createAsrEngine(
         {
           silenceMs,
@@ -1113,6 +1126,10 @@ export function MicButton({
           // 判真实人声前沿；仅 AI 朗读中（bus.ui.playing）触发 hardBreak，
           // 防 TTS 回声被 VAD 误判为语音而自打断。
           onIsSpeech: (speech) => {
+            // 手动打断模式（外放推荐）：不依赖 VAD 自动打断——外放回声会被 Silero VAD
+            // 误判为语音导致自打断静音；打断改由显式手势触发。也不更新 isSpeech 徽标，
+            // 避免回声造成「一直检测到语音」的假象。
+            if (bargeInMode === 'manual') return
             if (speech === true) {
               isSpeechTrueCount++
               if (isSpeechTrueCount === 1 && bus.ui.playing) interruptFirstAt = Date.now()
@@ -1307,6 +1324,10 @@ export function MicButton({
         holdCtrlRef.current = false
         engineRef.current?.endHeld(false)
       }
+      if (manualHoldRef.current) {
+        manualHoldRef.current = false
+        engineRef.current?.endHeld(false)
+      }
     }
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v' && !e.repeat) {
@@ -1324,6 +1345,11 @@ export function MicButton({
           holdCtrlRef.current = true
           eng.beginHeld()
         }, 600)
+      } else if (bootNow().bargeInMode === 'manual' && bus.ui.playing) {
+        // 手动打断（外放）：按住 Ctrl 立即停 AI + 接管收音（不依赖 VAD，回声无关）。
+        manualHoldRef.current = true
+        eng.beginHeld()
+        void breakRef.current?.()
       } else {
         // toggle：≥250ms 语音才强制发送（Q5 兜底）
         eng.forceSend()
@@ -1428,7 +1454,16 @@ export function MicButton({
     if (bootNow().mode !== 'hold') return
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId }
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
-    if (localRef.current === 'on') engineRef.current?.beginHeld()
+    if (localRef.current === 'on') {
+      const eng = engineRef.current
+      if (eng && bootNow().bargeInMode === 'manual' && bus.ui.playing) {
+        // 手动打断（外放）：按住麦克风立即停 AI + 接管收音（不依赖 VAD，回声无关）。
+        eng.beginHeld()
+        void breakRef.current?.()
+      } else {
+        eng?.beginHeld()
+      }
+    }
   }
   const onPointerMove = (e: React.PointerEvent): void => {
     const p = holdPtrRef.current

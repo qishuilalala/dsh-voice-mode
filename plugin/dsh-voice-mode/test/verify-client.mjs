@@ -144,6 +144,14 @@ t('lib/client.js 含 P3 打断（服务端 isSpeech 驱动，取代 duck 探针�
   assert.ok(src.includes('onIsSpeech'), 'client bundle missing isSpeech interrupt')
   assert.ok(src.includes('isSpeechTrueCount'), 'client bundle missing isSpeech debounce')
 })
+t('lib 含打断方式 bargeInMode（auto 自动 / manual 手动——外放自打断根治）', () => {
+  const c = read('lib/client.js')
+  assert.ok(c.includes('bargeInMode'), 'client bundle missing bargeInMode')
+  assert.ok(c.includes('breakRef'), 'client bundle missing manual break entry')
+  const h = read('lib/index.js')
+  assert.ok(h.includes('bargeInMode'), 'host bundle missing bargeInMode setting')
+  assert.ok(h.includes('vset.bargeInMode'), 'host /config missing bargeInMode output')
+})
 t('lib/index.js 序列化 isSpeech 下行（打断根治：HTTP 层透传 VAD 帧级检测）', () => {
   const src = read('lib/index.js')
   assert.ok(src.includes('body.isSpeech'), 'host bundle missing isSpeech serialization')
