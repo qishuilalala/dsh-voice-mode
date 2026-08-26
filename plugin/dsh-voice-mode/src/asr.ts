@@ -381,13 +381,15 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
   }
 
-  /** 定稿当前段：POST final=1（含 0.5s 尾垫由 host 补齐协议侧不需要）。 */
-  const finalizeSegment = (): void => {
+  /** 定稿当前段：POST final=1（含 0.5s 尾垫由 host 补齐协议侧不需要）。
+   *  force=true：绕过播放门（仅用于「播放前开着的真人声段在播放开始后收口」——
+   *  段内全是播放前语音，无回声风险；见 handleAudio 播放门分支）。 */
+  const finalizeSegment = (force = false): void => {
     if (segment.length === 0) return
     // 根治自聊：AI 朗读中的 finalize（由 VAD/上限/强制非 hold 触发）一律丢弃，
     // 防「TTS→回声→入段→autoSend」路径下的绕后发送。hold 松手（forcePending）明确
     // 发送意图放行；wake 分支本就不调用 finalize（滚窗重置），无需额外判。
-    if (config.isPlaying?.() && !forcePending) return
+    if (config.isPlaying?.() && !forcePending && !force) return
     // P1-5：强制发送 / 段长上限 / hold 松手等无静音过渡的端点路径，
     // 端点判句到点即「说完」时刻（无静音等待段）。
     if (utteranceEndAt === null) {
@@ -554,7 +556,13 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       // 根治自聊：AI 朗读期间 VAD 入段丢弃（回声经 AEC 残留仍超 threshold 会被误识为语音）。
       // 此分支已天然排除 hold（前 if(holdActive)）与 wake（前 else-if(state==='wake')），
       // 故无需再判——hold/wake 是明确意图，走各自分支不受影响。
-      if (config.isPlaying?.()) return
+      if (config.isPlaying?.()) {
+        // 播放已开始：若播放前开着的段仍在（用户边说 AI 边开播），立即强制收口——
+        // 段内全是播放前真人声（播放期语音帧不进段）；释放 speechActive 后本帧起
+        // 检测通道接管打断，防「陈旧 speechActive 饿死检测通道」致整段回复无法打断。
+        if (speechActive) finalizeSegment(true)
+        return
+      }
       if (!speechActive) {
         speechActive = true
         // 打断根治：新一轮人声开始，清残留检测帧（上一播放窗口未发送的尾部已无意义）；

@@ -296,9 +296,9 @@ function createAsrEngine(config, sessionId) {
     } catch {
     }
   };
-  const finalizeSegment = () => {
+  const finalizeSegment = (force = false) => {
     if (segment.length === 0) return;
-    if (config.isPlaying?.() && !forcePending) return;
+    if (config.isPlaying?.() && !forcePending && !force) return;
     if (utteranceEndAt === null) {
       utteranceEndAt = Date.now();
       emitTelemetry("utterance-end");
@@ -432,7 +432,10 @@ function createAsrEngine(config, sessionId) {
         if (cut > 0) prePad = prePad.slice(cut);
       }
     } else if (rms > SPEECH_RMS) {
-      if (config.isPlaying?.()) return;
+      if (config.isPlaying?.()) {
+        if (speechActive) finalizeSegment(true);
+        return;
+      }
       if (!speechActive) {
         speechActive = true;
         detectChunks = [];
