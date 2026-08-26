@@ -1326,6 +1326,9 @@ export function MicButton({
   // hold：按住即录、松开即发（≥600ms 阈值 + 他键/失焦作废，防 Ctrl+Shift+V 误触）。
   useEffect(() => {
     let ctrlTimer: ReturnType<typeof setTimeout> | null = null
+    /** I1：Ctrl 按住起点墙钟 + 按住期间是否按过其它键（防 Ctrl+组合误触发）。 */
+    let ctrlHoldStart = 0
+    let otherKeyDuringCtrl = false
     const cancelCtrl = (): void => {
       if (ctrlTimer) {
         clearTimeout(ctrlTimer)
@@ -1342,36 +1345,69 @@ export function MicButton({
     }
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v' && !e.repeat) {
-        e.preventDefault()
-        cancelCtrl()
-        toggleRef.current()
+        // I2：编辑态（输入框/contenteditable）或输入法合成中，Ctrl+Shift+V 是「粘贴纯文本」，
+        // 不劫持——交给浏览器；语音切换在非输入上下文照常（输入框里用麦克风按钮）。
+        const el = e.target
+        const editable =
+          el instanceof HTMLElement && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable)
+        if (!editable && !e.isComposing) {
+          e.preventDefault()
+          cancelCtrl()
+          toggleRef.current()
+        }
         return
       }
       const eng = engineRef.current
-      if (e.key !== 'Control' || e.shiftKey || e.altKey || e.metaKey || e.repeat || !eng) return
-      if (bootNow().mode === 'hold') {
-        // hold：600ms 阈值后视为按住说话（避免组合快捷键按下时序误触发）
-        ctrlTimer = setTimeout(() => {
-          ctrlTimer = null
-          holdCtrlRef.current = true
+      if (e.key === 'Control' && !e.shiftKey && !e.altKey && !e.metaKey && !e.repeat && eng) {
+        // 单独 Ctrl 按下：记录起点；hold 模式起 600ms 定时器，toggle 模式延迟到 keyup 判定。
+        ctrlHoldStart = Date.now()
+        otherKeyDuringCtrl = false
+        if (bootNow().mode === 'hold') {
+          // hold：600ms 阈值后视为按住说话（避免组合快捷键按下时序误触发）
+          ctrlTimer = setTimeout(() => {
+            ctrlTimer = null
+            holdCtrlRef.current = true
+            eng.beginHeld()
+          }, 600)
+        } else if (bootNow().bargeInMode === 'manual' && bus.ui.playing) {
+          // 手动打断（外放）：按住 Ctrl 立即停 AI + 接管收音（不依赖 VAD，回声无关）。
+          manualHoldRef.current = true
           eng.beginHeld()
-        }, 600)
-      } else if (bootNow().bargeInMode === 'manual' && bus.ui.playing) {
-        // 手动打断（外放）：按住 Ctrl 立即停 AI + 接管收音（不依赖 VAD，回声无关）。
-        manualHoldRef.current = true
-        eng.beginHeld()
-        void breakRef.current?.()
-      } else {
-        // toggle：≥250ms 语音才强制发送（Q5 兜底）
-        eng.forceSend()
+          void breakRef.current?.()
+        }
+        return
+      }
+      // I1：Ctrl 按住期间按下任何其它键 → 标记并作废 hold 定时器（防 Ctrl+C/V/W 误触发）。
+      if (ctrlHoldStart > 0 && e.key !== 'Control') {
+        otherKeyDuringCtrl = true
+        if (ctrlTimer) {
+          clearTimeout(ctrlTimer)
+          ctrlTimer = null
+        }
       }
     }
     const onKeyUp = (e: KeyboardEvent): void => {
-      if (e.key === 'Control') cancelCtrl()
+      if (e.key !== 'Control') return
+      // I1：toggle 模式 forceSend 延迟到松开，要求「无其它键 + 按住 ≥250ms」
+      // （原 keydown 立即 forceSend 会让 Ctrl+C/V/W 等组合误发半句）。
+      if (
+        bootNow().mode !== 'hold' &&
+        !manualHoldRef.current &&
+        !otherKeyDuringCtrl &&
+        ctrlHoldStart > 0 &&
+        Date.now() - ctrlHoldStart >= 250
+      ) {
+        engineRef.current?.forceSend()
+      }
+      cancelCtrl()
+      ctrlHoldStart = 0
+      otherKeyDuringCtrl = false
     }
     const onBlur = (): void => {
       // 失焦即取消：blur 收不到 keyup 时不能把"按住"留在收音态（AGENTS 契约）。
       cancelCtrl()
+      ctrlHoldStart = 0
+      otherKeyDuringCtrl = false
       if (localRef.current === 'on' && bootNow().mode === 'hold') engineRef.current?.endHeld(true)
     }
     window.addEventListener('keydown', onKeyDown)

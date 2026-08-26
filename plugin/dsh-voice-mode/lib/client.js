@@ -2413,6 +2413,8 @@ function MicButton({
   }, []);
   (0, import_react2.useEffect)(() => {
     let ctrlTimer = null;
+    let ctrlHoldStart = 0;
+    let otherKeyDuringCtrl = false;
     const cancelCtrl = () => {
       if (ctrlTimer) {
         clearTimeout(ctrlTimer);
@@ -2429,32 +2431,53 @@ function MicButton({
     };
     const onKeyDown = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "v" && !e.repeat) {
-        e.preventDefault();
-        cancelCtrl();
-        toggleRef.current();
+        const el = e.target;
+        const editable = el instanceof HTMLElement && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable);
+        if (!editable && !e.isComposing) {
+          e.preventDefault();
+          cancelCtrl();
+          toggleRef.current();
+        }
         return;
       }
       const eng = engineRef.current;
-      if (e.key !== "Control" || e.shiftKey || e.altKey || e.metaKey || e.repeat || !eng) return;
-      if (bootNow().mode === "hold") {
-        ctrlTimer = setTimeout(() => {
-          ctrlTimer = null;
-          holdCtrlRef.current = true;
+      if (e.key === "Control" && !e.shiftKey && !e.altKey && !e.metaKey && !e.repeat && eng) {
+        ctrlHoldStart = Date.now();
+        otherKeyDuringCtrl = false;
+        if (bootNow().mode === "hold") {
+          ctrlTimer = setTimeout(() => {
+            ctrlTimer = null;
+            holdCtrlRef.current = true;
+            eng.beginHeld();
+          }, 600);
+        } else if (bootNow().bargeInMode === "manual" && bus.ui.playing) {
+          manualHoldRef.current = true;
           eng.beginHeld();
-        }, 600);
-      } else if (bootNow().bargeInMode === "manual" && bus.ui.playing) {
-        manualHoldRef.current = true;
-        eng.beginHeld();
-        void breakRef.current?.();
-      } else {
-        eng.forceSend();
+          void breakRef.current?.();
+        }
+        return;
+      }
+      if (ctrlHoldStart > 0 && e.key !== "Control") {
+        otherKeyDuringCtrl = true;
+        if (ctrlTimer) {
+          clearTimeout(ctrlTimer);
+          ctrlTimer = null;
+        }
       }
     };
     const onKeyUp = (e) => {
-      if (e.key === "Control") cancelCtrl();
+      if (e.key !== "Control") return;
+      if (bootNow().mode !== "hold" && !manualHoldRef.current && !otherKeyDuringCtrl && ctrlHoldStart > 0 && Date.now() - ctrlHoldStart >= 250) {
+        engineRef.current?.forceSend();
+      }
+      cancelCtrl();
+      ctrlHoldStart = 0;
+      otherKeyDuringCtrl = false;
     };
     const onBlur = () => {
       cancelCtrl();
+      ctrlHoldStart = 0;
+      otherKeyDuringCtrl = false;
       if (localRef.current === "on" && bootNow().mode === "hold") engineRef.current?.endHeld(true);
     };
     window.addEventListener("keydown", onKeyDown);

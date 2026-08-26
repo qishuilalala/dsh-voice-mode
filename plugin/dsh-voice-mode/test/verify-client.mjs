@@ -157,6 +157,11 @@ t('lib/client.js 含 B1 owner 语义（多 tab 不重复播放：仅本 tab 认�
   assert.ok(c.includes('activeSessionId !== null &&'), 'client bundle missing preempt-only mode gate')
   assert.ok(c.includes('out.active === sessionId ? sessionId : null'), 'client bundle missing owner claim on enter')
 })
+t('lib/client.js 含快捷键误触/劫持修复（编辑态放行 + Ctrl 组合作废 + keyup 判定）', () => {
+  const c = read('lib/client.js')
+  assert.ok(c.includes('isContentEditable'), 'client bundle missing editable guard for Ctrl+Shift+V')
+  assert.ok(c.includes('otherKeyDuringCtrl'), 'client bundle missing other-key-during-Ctrl cancellation')
+})
 t('lib/index.js 序列化 isSpeech 下行（打断根治：HTTP 层透传 VAD 帧级检测）', () => {
   const src = read('lib/index.js')
   assert.ok(src.includes('body.isSpeech'), 'host bundle missing isSpeech serialization')
