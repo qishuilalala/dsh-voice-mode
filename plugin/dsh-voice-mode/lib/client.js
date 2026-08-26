@@ -132,6 +132,9 @@ function createAsrEngine(config, sessionId) {
   let segmentEpoch = 0;
   let forcePending = false;
   let uploadedSamples = 0;
+  let detectChunks = [];
+  let detectSent = 0;
+  let detectInFlight = false;
   const asrUrl = (final, offset, epoch) => `${location.origin}${config.basePath.replace(/\/+$/, "")}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` + (offset !== void 0 ? `&offset=${offset}` : "") + (epoch !== void 0 ? `&epoch=${epoch}` : "");
   const setState = (s) => {
     state = s;
@@ -152,14 +155,14 @@ function createAsrEngine(config, sessionId) {
       }
     }
   };
-  const sliceSince = (from) => {
+  const sliceChunks = (chunks, from) => {
     let total = 0;
-    for (const c of segment) total += c.length;
+    for (const c of chunks) total += c.length;
     const out = new Float32Array(Math.max(0, total - from));
     if (out.length === 0) return out;
     let off = 0;
     let acc = 0;
-    for (const c of segment) {
+    for (const c of chunks) {
       if (off >= out.length) break;
       const sub = c.subarray(Math.max(0, from - acc));
       const n = Math.min(sub.length, out.length - off);
@@ -169,6 +172,7 @@ function createAsrEngine(config, sessionId) {
     }
     return out;
   };
+  const sliceSince = (from) => sliceChunks(segment, from);
   const requestPartial = async () => {
     if (partialInFlight || segment.length === 0) return;
     const total = segment.reduce((n, c) => n + c.length, 0);
@@ -243,6 +247,34 @@ function createAsrEngine(config, sessionId) {
     } catch {
     } finally {
       partialInFlight = false;
+    }
+  };
+  const requestDetect = async () => {
+    if (detectInFlight) return;
+    const total = detectChunks.reduce((n, c) => n + c.length, 0);
+    if (total - detectSent <= 0) return;
+    const samples = sliceChunks(detectChunks, detectSent);
+    const epoch = segmentEpoch;
+    detectInFlight = true;
+    try {
+      const res = await fetch(asrUrl(false, detectSent, epoch) + "&vadOnly=1", {
+        method: "POST",
+        headers: { "content-type": "application/octet-stream" },
+        body: samples.buffer
+      });
+      if (epoch !== segmentEpoch) return;
+      if (!res.ok) return;
+      const out = await res.json();
+      if (epoch !== segmentEpoch) return;
+      if (out.isSpeech !== void 0) config.onIsSpeech?.(out.isSpeech);
+      detectSent += samples.length;
+      while (detectChunks.length > 0 && detectSent >= detectChunks[0].length) {
+        detectSent -= detectChunks[0].length;
+        detectChunks.shift();
+      }
+    } catch {
+    } finally {
+      detectInFlight = false;
     }
   };
   const resetHostStream = async () => {
@@ -349,6 +381,8 @@ function createAsrEngine(config, sessionId) {
       } catch {
       }
     }
+    const playingNow = config.isPlaying?.() ?? false;
+    if (playingNow && !holdActive && state !== "wake") detectChunks.push(data);
     if (holdActive) {
       if (!speechActive) {
         speechActive = true;
@@ -436,9 +470,13 @@ function createAsrEngine(config, sessionId) {
       if (cut > 0) prePad = prePad.slice(cut);
     }
     sincePartialMs += durationMs;
-    if ((speechActive || holdActive || state === "wake") && sincePartialMs >= PARTIAL_INTERVAL_MS) {
+    if (sincePartialMs >= PARTIAL_INTERVAL_MS) {
       sincePartialMs = 0;
-      void requestPartial();
+      if (speechActive || holdActive || state === "wake") {
+        void requestPartial();
+      } else if (playingNow && detectChunks.length > 0) {
+        void requestDetect();
+      }
     }
   };
   const startRecorder = async () => {
@@ -483,6 +521,8 @@ function createAsrEngine(config, sessionId) {
     speechMs = 0;
     uploadedSamples = 0;
     prePad = [];
+    detectChunks = [];
+    detectSent = 0;
     utteranceEndAt = null;
     try {
       processor?.disconnect();
@@ -513,6 +553,8 @@ function createAsrEngine(config, sessionId) {
       segmentEpoch++;
       sincePartialMs = 0;
       holdActive = false;
+      detectChunks = [];
+      detectSent = 0;
       setState(wakeWord ? "wake" : "listening");
       try {
         await startRecorder();
@@ -552,6 +594,8 @@ function createAsrEngine(config, sessionId) {
       silenceMs = 0;
       prePad = [];
       uploadedSamples = 0;
+      detectChunks = [];
+      detectSent = 0;
       speechActive = true;
       sincePartialMs = 0;
       setState("speech");
@@ -565,6 +609,8 @@ function createAsrEngine(config, sessionId) {
       speechActive = false;
       prePad = [];
       uploadedSamples = 0;
+      detectChunks = [];
+      detectSent = 0;
       utteranceEndAt = null;
       forcePending = false;
       sincePartialMs = 0;
@@ -2098,6 +2144,7 @@ function MicButton({
     setLocalMode("off");
     clearIdle();
     cancelPendingSubmit();
+    isSpeechTrueCount = 0;
     const engine = engineRef.current;
     engineRef.current = null;
     if (engine) await engine.stop();
@@ -2282,6 +2329,7 @@ function MicButton({
     return () => {
       clearIdle();
       cancelPendingSubmit();
+      isSpeechTrueCount = 0;
       const sid = sidRef.current;
       if (localRef.current === "on" && sid) {
         void engineRef.current?.stop();

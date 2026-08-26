@@ -255,26 +255,37 @@ function createAsrRuntime(options) {
     }
     return vadLoading;
   };
+  const newVad = (vadPath) => createVad({
+    sileroVad: {
+      model: vadPath,
+      threshold: 0.5,
+      minSilenceDuration: 0.5,
+      minSpeechDuration: 0.25,
+      maxSpeechDuration: 20,
+      windowSize: 512
+    },
+    sampleRate: 16e3,
+    numThreads: 1,
+    provider: "cpu",
+    debug: 0,
+    bufferSizeInSeconds: 30
+  });
   const ensureSessionVad = async (seg) => {
     if (seg.vad) return seg.vad;
     const vadPath = await ensureVadModel();
     if (!vadPath) return null;
-    seg.vad = createVad({
-      sileroVad: {
-        model: vadPath,
-        threshold: 0.5,
-        minSilenceDuration: 0.5,
-        minSpeechDuration: 0.25,
-        maxSpeechDuration: 20,
-        windowSize: 512
-      },
-      sampleRate: 16e3,
-      numThreads: 1,
-      provider: "cpu",
-      debug: 0,
-      bufferSizeInSeconds: 30
-    });
+    seg.vad = newVad(vadPath);
     return seg.vad;
+  };
+  const detectVads = /* @__PURE__ */ new Map();
+  const ensureDetectVad = async (sessionId) => {
+    const existing = detectVads.get(sessionId);
+    if (existing) return existing;
+    const vadPath = await ensureVadModel();
+    if (!vadPath) return null;
+    const vad = newVad(vadPath);
+    detectVads.set(sessionId, vad);
+    return vad;
   };
   let senseModelReady = false;
   let senseLoading = null;
@@ -462,6 +473,12 @@ function createAsrRuntime(options) {
   const sweepTimer = setInterval(sweep, 3e4);
   return {
     feed,
+    detect: async (sessionId, samples) => {
+      const vad = await ensureDetectVad(sessionId);
+      if (!vad) return { isSpeech: false };
+      if (samples.length > 0) vad.acceptWaveform(samples);
+      return { isSpeech: vad.isDetected() };
+    },
     reset: (sessionId) => {
       for (const [k, s] of segments) {
         if (k.startsWith(sessionId + "#")) {
@@ -475,6 +492,14 @@ function createAsrRuntime(options) {
           }
           segments.delete(k);
         }
+      }
+      const dv = detectVads.get(sessionId);
+      if (dv) {
+        try {
+          dv.free?.();
+        } catch {
+        }
+        detectVads.delete(sessionId);
       }
     },
     dispose: () => {
@@ -494,6 +519,13 @@ function createAsrRuntime(options) {
         }
       }
       segments.clear();
+      for (const [, dv] of detectVads) {
+        try {
+          dv.free?.();
+        } catch {
+        }
+      }
+      detectVads.clear();
     },
     modelStatus: () => {
       const statFile = async (dir, repo, name2) => {
@@ -699,6 +731,15 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
     if (!samples) {
       res.statusCode = 400;
       res.end(JSON.stringify({ error: "invalid pcm payload" }));
+      return;
+    }
+    if (url.searchParams.get("vadOnly") === "1") {
+      void asr.detect(sessionId, samples).then((out) => {
+        res.end(JSON.stringify({ isSpeech: out.isSpeech }));
+      }).catch((e) => {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: String(e) }));
+      });
       return;
     }
     void asr.feed(sessionId, samples, final, offset, epoch).then((out) => {

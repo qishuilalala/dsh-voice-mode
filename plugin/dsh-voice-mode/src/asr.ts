@@ -6,7 +6,8 @@
  *    段定稿后提交；按住 Ctrl（≥250ms 语音）强制立即发送兜底；
  *  - partial 轮询（100ms，P1-4 增量上行）走 host 流式识别增量，实时字幕只在状态条预览，
  *    定稿文本才作为结果（Q6/Q13：可编辑草稿 + 自动提交）；服务端 Silero VAD 帧级
- *    isSpeech 随 partial 响应下行，驱动打断（阶段二，取代 RMS 能量快路径）；
+ *    isSpeech 随 partial / 播放期 vadOnly 检测响应下行，驱动打断（阶段二，取代 RMS
+ *    能量快路径；朗读期常规 partial 因自聊防护断流，检测通道补齐这条链路）；
  *  - v0.2：hold 模式（按住说话、松手发送，绕过 VAD）与唤醒词待机（wake）；
  *  - v0.3（P1-5）：延迟埋点链的客户端三枚时间戳——utterance-end（说完最后一个字）、
  *    endpoint-fired（端点判句到点）、submitted（定稿上传发起），经 onTelemetry 上抛，
@@ -48,7 +49,7 @@ export interface AsrConfig {
   echo?: EchoRefSource
   /** AI 朗读中（TTS 在播）：根治「TTS→回声→ASR→自聊」。为 true 时只走打断快路径、不入段。 */
   isPlaying?: () => boolean
-  /** 服务端 Silero VAD 帧级语音检测（partial 响应下行；打断根治阶段二：客户端据此驱动打断，替代 RMS 能量快路径）。 */
+  /** 服务端 Silero VAD 帧级语音检测（partial 与播放期 vadOnly 检测响应下行；打断根治：客户端据此驱动打断，替代 RMS 能量快路径）。 */
   onIsSpeech?: (speech: boolean | undefined) => void
   /** 403 会话过期回调：host 端活跃会话已变更（如被抢占/让出），返回 true 表示已恢复。 */
   onSessionExpired?: () => Promise<boolean>
@@ -164,6 +165,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let forcePending = false
   /** P1-4：本段已上传的样本数（增量水位；partial/定稿只传新增部分）。 */
   let uploadedSamples = 0
+  // --- 打断根治：播放期检测通道（AI 朗读中 AEC 后帧持续上行 vadOnly，供 host
+  // 检测 VAD 判打断；朗读期常规 partial 因自聊防护断流，无此通道 isSpeech 恒 false） ---
+  let detectChunks: Float32Array[] = []
+  let detectSent = 0
+  let detectInFlight = false
 
   const asrUrl = (final: boolean, offset?: number, epoch?: number): string =>
     `${location.origin}${config.basePath.replace(/\/+$/, '')}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` +
@@ -193,15 +199,15 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
   }
 
-  /** P1-4：从段内 from 样本起切片（增量上传；不做全量 concat）。 */
-  const sliceSince = (from: number): Float32Array => {
+  /** 从分块缓冲的 from 样本起切片（增量上传；不做全量 concat）。 */
+  const sliceChunks = (chunks: Float32Array[], from: number): Float32Array => {
     let total = 0
-    for (const c of segment) total += c.length
+    for (const c of chunks) total += c.length
     const out = new Float32Array(Math.max(0, total - from))
     if (out.length === 0) return out
     let off = 0
     let acc = 0
-    for (const c of segment) {
+    for (const c of chunks) {
       if (off >= out.length) break
       const sub = c.subarray(Math.max(0, from - acc))
       const n = Math.min(sub.length, out.length - off)
@@ -211,6 +217,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
     return out
   }
+
+  /** P1-4：从段内 from 样本起切片（增量上传；不做全量 concat）。 */
+  const sliceSince = (from: number): Float32Array => sliceChunks(segment, from)
 
   /**
    * partial 轮询：P1-4 只 POST 上次末帧后的新增 PCM（host 按 offset 只喂增量），
@@ -271,8 +280,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       if (!res.ok) return
       const out = (await res.json()) as { text?: string; endpoint?: boolean; isSpeech?: boolean }
       if (epoch !== segmentEpoch) return
-      // 打断根治阶段一：服务端 Silero VAD 帧级检测结果下行到 bus.ui（可读存储，
-      // 供下一阶段接入打断；仅非 final 响应携带，undefined 表示本次无 VAD 信息）。
+      // 打断根治：服务端 Silero VAD 帧级检测结果下行，客户端据此驱动打断
+      // （替代 RMS 能量快路径）；仅非 final 响应携带，undefined 表示本次无 VAD 信息。
       if (out.isSpeech !== undefined) config.onIsSpeech?.(out.isSpeech)
       if (state === 'loading-model') setState('speech')
       // P1-4：上传成功后才推进已传水位（失败/重试不推进，下一拍补传）。
@@ -302,6 +311,43 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       // 预览失败静默（Q16：识别重试由定时轮询自然覆盖）
     } finally {
       partialInFlight = false
+    }
+  }
+
+  /**
+   * 打断根治：播放期检测上行（vadOnly=1）。AI 朗读中段内无语音帧（自聊防护），
+   * 常规 partial 断流 → host VAD 看不到用户语音 → isSpeech 恒 false → 打断失效。
+   * 此通道把 AEC 后 mic 帧持续送 host 独立检测 VAD（不进 ASR 流、不碰端点 VAD），
+   * 使「开口打断」在朗读中真实可用。失败静默（下一拍自动补传未发送部分）。
+   */
+  const requestDetect = async (): Promise<void> => {
+    if (detectInFlight) return
+    const total = detectChunks.reduce((n, c) => n + c.length, 0)
+    if (total - detectSent <= 0) return
+    const samples = sliceChunks(detectChunks, detectSent)
+    const epoch = segmentEpoch
+    detectInFlight = true
+    try {
+      const res = await fetch(asrUrl(false, detectSent, epoch) + '&vadOnly=1', {
+        method: 'POST',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: samples.buffer as ArrayBuffer,
+      })
+      if (epoch !== segmentEpoch) return // 打断/弃段后迟到的检测响应作废
+      if (!res.ok) return
+      const out = (await res.json()) as { isSpeech?: boolean }
+      if (epoch !== segmentEpoch) return
+      if (out.isSpeech !== undefined) config.onIsSpeech?.(out.isSpeech)
+      detectSent += samples.length
+      // 释放已消费帧（长朗读下防缓冲无界增长）。
+      while (detectChunks.length > 0 && detectSent >= detectChunks[0].length) {
+        detectSent -= detectChunks[0].length
+        detectChunks.shift()
+      }
+    } catch {
+      // 网络波动静默：未推进水位，下一拍重传
+    } finally {
+      detectInFlight = false
     }
   }
 
@@ -437,6 +483,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // 打断前沿：已由服务端 Silero VAD 帧级 isSpeech 驱动（阶段二，取代原 RMS 能量
     // 快路径 + P0 瞬态抑制 + P1 噪声自适应）；此处不再做能量域打断判定。
 
+    // 打断根治：播放窗口（含尾音宽限）内，AEC 后帧同时进入检测通道（vadOnly 上行）。
+    // hold/wake 有各自明确意图路径（segment 正常累积、partial 上行），无需检测通道。
+    const playingNow = config.isPlaying?.() ?? false
+    if (playingNow && !holdActive && state !== 'wake') detectChunks.push(data)
+
     if (holdActive) {
       // hold：按压区间全部保留（绕过 VAD 门控与静音切句），仅段长上限兜底。
       if (!speechActive) {
@@ -534,11 +585,16 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       if (cut > 0) prePad = prePad.slice(cut)
     }
 
-    // partial 轮询：段内节拍驱动（无独立 timer，随音频帧推进）
+    // partial / 检测通道轮询：段内节拍驱动（无独立 timer，随音频帧推进）
     sincePartialMs += durationMs
-    if ((speechActive || holdActive || state === 'wake') && sincePartialMs >= PARTIAL_INTERVAL_MS) {
+    if (sincePartialMs >= PARTIAL_INTERVAL_MS) {
       sincePartialMs = 0
-      void requestPartial()
+      if (speechActive || holdActive || state === 'wake') {
+        void requestPartial()
+      } else if (playingNow && detectChunks.length > 0) {
+        // 打断根治：朗读中（非 speech/wake/hold）走 vadOnly 检测通道。
+        void requestDetect()
+      }
     }
   }
 
@@ -596,6 +652,8 @@ const startRecorder = async (): Promise<void> => {
     speechMs = 0
     uploadedSamples = 0 // P1-4：会话结束清除已传水位
     prePad = []
+    detectChunks = [] // 打断根治：退出清检测通道
+    detectSent = 0
     utteranceEndAt = null // P1-5：会话结束清除说完标记
     try {
       processor?.disconnect()
@@ -630,6 +688,8 @@ const startRecorder = async (): Promise<void> => {
       segmentEpoch++
       sincePartialMs = 0
       holdActive = false
+      detectChunks = [] // 打断根治：进入清检测通道
+      detectSent = 0
       // 配置了唤醒词 → 先进 wake 待机态（说出唤醒词才正式开口）；否则直接聆听。
       setState(wakeWord ? 'wake' : 'listening')
       try {
@@ -673,6 +733,8 @@ const startRecorder = async (): Promise<void> => {
       silenceMs = 0
       prePad = []
       uploadedSamples = 0 // Fix：hold 新段重置上传水位，防旧段水位污染
+      detectChunks = [] // 打断根治：hold 按压期间走 segment 路径，清残留检测帧
+      detectSent = 0
       speechActive = true
       sincePartialMs = 0
       setState('speech')
@@ -687,6 +749,8 @@ const startRecorder = async (): Promise<void> => {
       speechActive = false
       prePad = []
       uploadedSamples = 0
+      detectChunks = [] // 打断根治：打断弃段同时清检测通道（残留帧已无意义）
+      detectSent = 0
       utteranceEndAt = null
       forcePending = false
       sincePartialMs = 0

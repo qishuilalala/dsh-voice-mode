@@ -1029,6 +1029,7 @@ export function MicButton({
     setLocalMode('off')
     clearIdle()
     cancelPendingSubmit()
+    isSpeechTrueCount = 0 // 打断根治：退出重置 isSpeech 计数（防残留）
     const engine = engineRef.current
     engineRef.current = null
     if (engine) await engine.stop() // Fix：等待 stop 完成，确保 handleAudio 停止
@@ -1263,6 +1264,7 @@ export function MicButton({
     return () => {
       clearIdle()
       cancelPendingSubmit()
+      isSpeechTrueCount = 0 // 打断根治：卸载重置 isSpeech 计数（防残留）
       const sid = sidRef.current
       if (localRef.current === 'on' && sid) {
         void engineRef.current?.stop()

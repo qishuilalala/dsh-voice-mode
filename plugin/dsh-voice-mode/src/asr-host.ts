@@ -84,6 +84,9 @@ export interface AsrRuntime {
     /** 客户端段身份（epoch = segmentEpoch 快照；旧世代请求被忽略/清理）。 */
     epoch?: number,
   ): Promise<{ text: string; loading?: boolean; endpoint?: boolean; isSpeech?: boolean }>
+  /** 播放期打断检测通道（vadOnly）：AI 朗读中客户端常规 partial 断流，
+   *  此方法只喂独立检测 VAD（不进 ASR 流、不碰端点 VAD），返回帧级 isSpeech。 */
+  detect(sessionId: string, samples: Float32Array): Promise<{ isSpeech: boolean }>
   /** 丢弃某会话的进行中段（语音模式退出/被打断时）。 */
   reset(sessionId: string): void
   /** 释放 runtime（清定时器 + 全部段）；插件卸载时调用。 */
@@ -269,12 +272,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     }
     return vadLoading
   }
-  /** 为会话惰性创建 Silero VAD（每段一次；模型缺失返回 null = 客户端静音兜底）。 */
-  const ensureSessionVad = async (seg: { stream: SherpaStream; fed: number; vad: SherpaVad | null }): Promise<SherpaVad | null> => {
-    if (seg.vad) return seg.vad
-    const vadPath = await ensureVadModel()
-    if (!vadPath) return null
-    seg.vad = createVad({
+  /** Silero VAD 实例工厂（端点 VAD 与检测 VAD 共用同一套参数，防参数分叉）。 */
+  const newVad = (vadPath: string): SherpaVad =>
+    createVad({
       sileroVad: {
         model: vadPath,
         threshold: 0.5,
@@ -289,7 +289,25 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       debug: 0,
       bufferSizeInSeconds: 30,
     })
+  /** 为会话惰性创建 Silero VAD（每段一次；模型缺失返回 null = 客户端静音兜底）。 */
+  const ensureSessionVad = async (seg: { stream: SherpaStream; fed: number; vad: SherpaVad | null }): Promise<SherpaVad | null> => {
+    if (seg.vad) return seg.vad
+    const vadPath = await ensureVadModel()
+    if (!vadPath) return null
+    seg.vad = newVad(vadPath)
     return seg.vad
+  }
+  /** 播放期检测通道 VAD 池：按会话独立实例（跨段纪元存活）。只喂 vadOnly 音频，
+   *  不与端点 VAD 共享状态——朗读期回声/人声若混入端点 VAD 会污染断句判定。 */
+  const detectVads = new Map<string, SherpaVad>()
+  const ensureDetectVad = async (sessionId: string): Promise<SherpaVad | null> => {
+    const existing = detectVads.get(sessionId)
+    if (existing) return existing
+    const vadPath = await ensureVadModel()
+    if (!vadPath) return null
+    const vad = newVad(vadPath)
+    detectVads.set(sessionId, vad)
+    return vad
   }
 
   // --- P4-1 SenseVoice 定稿重译：懒下载 + 懒创建（失败自然降级 zipformer 定稿）。 ---
@@ -532,6 +550,14 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
 
   return {
     feed,
+    detect: async (sessionId, samples) => {
+      // 打断根治：检测通道 fail-closed——VAD 模型缺失返回 false（不打断，
+      // 客户端计数随之清零，防残留累计误触发）。
+      const vad = await ensureDetectVad(sessionId)
+      if (!vad) return { isSpeech: false }
+      if (samples.length > 0) vad.acceptWaveform(samples)
+      return { isSpeech: vad.isDetected() }
+    },
     reset: (sessionId) => {
       // 清该会话全部世代的段（epoch-key 化后按前缀匹配）。
       for (const [k, s] of segments) {
@@ -548,6 +574,16 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
           }
           segments.delete(k)
         }
+      }
+      // 打断根治：释放该会话检测通道 VAD（下次需要时惰性重建）。
+      const dv = detectVads.get(sessionId)
+      if (dv) {
+        try {
+          dv.free?.()
+        } catch {
+          // ignore
+        }
+        detectVads.delete(sessionId)
       }
     },
     dispose: () => {
@@ -570,6 +606,14 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         }
       }
       segments.clear()
+      for (const [, dv] of detectVads) {
+        try {
+          dv.free?.()
+        } catch {
+          // ignore
+        }
+      }
+      detectVads.clear()
     },
     modelStatus: () => {
       const statFile = async (dir: string, repo: string, name: string): Promise<{ exists: boolean; size: number }> => {
@@ -826,6 +870,21 @@ export function handleAsrRequest(
     if (!samples) {
       res.statusCode = 400
       res.end(JSON.stringify({ error: 'invalid pcm payload' }))
+      return
+    }
+    // 打断根治：播放期检测通道（vadOnly=1）。AI 朗读中客户端常规 partial 断流
+    // （自聊防护丢弃语音帧入段），此通道只喂独立检测 VAD 返回 isSpeech，
+    // 不进 ASR 流、不碰端点 VAD——让「开口打断」在朗读中真实可用。
+    if (url.searchParams.get('vadOnly') === '1') {
+      void asr
+        .detect(sessionId, samples)
+        .then((out) => {
+          res.end(JSON.stringify({ isSpeech: out.isSpeech }))
+        })
+        .catch((e: unknown) => {
+          res.statusCode = 500
+          res.end(JSON.stringify({ error: String(e) }))
+        })
       return
     }
     void asr

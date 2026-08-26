@@ -148,6 +148,14 @@ t('lib/index.js 序列化 isSpeech 下行（打断根治：HTTP 层透传 VAD �
   const src = read('lib/index.js')
   assert.ok(src.includes('body.isSpeech'), 'host bundle missing isSpeech serialization')
 })
+t('lib/index.js 含播放期 vadOnly 检测通道（独立检测 VAD 不进 ASR 流）', () => {
+  const src = read('lib/index.js')
+  assert.ok(src.includes('vadOnly'), 'host bundle missing vadOnly detect channel')
+})
+t('lib/client.js 含播放期检测上行（detectChunks 通道）', () => {
+  const src = read('lib/client.js')
+  assert.ok(src.includes('detectChunks'), 'client bundle missing detect channel')
+})
 t('lib/client.js 含 P1-1 按句拼帧（PlayFrame Uint8Array + 丢帧完整性校验）', () => {
   const src = read('lib/client.js')
   assert.ok(src.includes('curChunkCount'), 'client bundle missing chunk-count integrity check')
