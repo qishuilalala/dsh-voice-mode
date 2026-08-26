@@ -1701,31 +1701,35 @@ export function MicButton({
           : t('titleEnter')
       }
       style={{
-        border: 'none',
+        border: on
+          ? holdMode
+            ? '1px solid rgba(88, 166, 255, 0.45)'
+            : '1px solid rgba(63, 185, 80, 0.45)'
+          : '1px solid rgba(139, 148, 158, 0.35)',
         background: on
           ? holdMode
             ? 'rgba(88, 166, 255, 0.16)'
             : 'rgba(63, 185, 80, 0.16)'
           : local === 'pending'
             ? 'rgba(88, 166, 255, 0.14)'
-            : 'transparent',
+            : 'rgba(139, 148, 158, 0.08)',
         cursor: 'pointer',
-        padding: '4px 8px',
+        padding: '5px 10px',
         borderRadius: 8,
         display: 'flex',
         alignItems: 'center',
         gap: 6,
-        fontSize: 11,
+        fontSize: 12,
         fontFamily: 'system-ui, sans-serif',
         color: on ? (holdMode ? '#58a6ff' : '#3fb950') : local === 'pending' ? '#58a6ff' : '#8b949e',
-        transition: 'background 0.15s ease, color 0.2s ease',
+        transition: 'background 0.15s ease, color 0.2s ease, border-color 0.15s ease',
         touchAction: 'none', // 触摸设备上让 pointer 事件独占（滑出取消可用）
         userSelect: 'none',
         WebkitUserSelect: 'none', // iOS Safari 前缀，防长按选中文字
         WebkitTouchCallout: 'none', // iOS 长按弹出「拷贝/选择」菜单
       }}
     >
-      <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden="true">
+      <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden="true">
         <path
           fill="currentColor"
           d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"
