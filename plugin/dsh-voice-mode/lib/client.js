@@ -402,6 +402,9 @@ function createAsrEngine(config, sessionId) {
       if (echoFloorRms === 0) echoFloorRms = rms;
       else echoFloorRms = echoFloorRms * 0.98 + rms * 0.02;
     }
+    if (echo) {
+      echo.setFrozen(playingNow && echoFloorRms > 0 && latestResidualRms > echoFloorRms * Math.pow(10, 6 / 20));
+    }
     if (playingNow && !holdActive && config.mode !== "hold") detectChunks.push(data);
     if (holdActive) {
       if (!speechActive) {
@@ -743,6 +746,8 @@ var NlmsAec = class {
   cursor = 0;
   /** 已缓冲参考样本数（预热期）。 */
   filled = 0;
+  /** A2.5 双讲冻结：用户说话时暂停权重更新，防滤波器被用户语音带偏。 */
+  frozen = false;
   constructor(options = {}) {
     this.filterLength = options.filterLength ?? DEFAULT_FILTER_LENGTH;
     this.delay = options.delay ?? DEFAULT_DELAY;
@@ -750,6 +755,10 @@ var NlmsAec = class {
     this.eps = options.epsilon ?? DEFAULT_EPSILON;
     this.w = new Float32Array(this.filterLength);
     this.xBuf = new Float32Array(this.delay + this.filterLength);
+  }
+  /** A2.5 双讲冻结：true 时暂停权重更新（回声相减照常，仅停止自适应）。 */
+  setFrozen(frozen) {
+    this.frozen = frozen;
   }
   /**
    * 送入下一块麦克风/参考；返回去回声后的麦克风样本（与输入等长）。
@@ -779,7 +788,7 @@ var NlmsAec = class {
         }
         const e = d - y;
         out[i] = Number.isFinite(e) ? e : 0;
-        if (norm > MIN_REF_NORM) {
+        if (norm > MIN_REF_NORM && !this.frozen) {
           const denom = norm + this.eps;
           const gain = this.mu * e / denom;
           idx = (cursor - this.delay + bufLen) % bufLen;
@@ -1948,7 +1957,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       }
       return aec.process(mic, refForAec);
     },
-    windowAt: refWindowAt
+    windowAt: refWindowAt,
+    // A2.5 双讲冻结：用户说话时暂停 NLMS 自适应。
+    setFrozen: (frozen) => aec.setFrozen(frozen)
   };
   const engine = createAudioEngine(
     (patch) => {

@@ -43,6 +43,8 @@ export class NlmsAec {
   private cursor = 0
   /** 已缓冲参考样本数（预热期）。 */
   private filled = 0
+  /** A2.5 双讲冻结：用户说话时暂停权重更新，防滤波器被用户语音带偏。 */
+  private frozen = false
 
   constructor(options: AecOptions = {}) {
     this.filterLength = options.filterLength ?? DEFAULT_FILTER_LENGTH
@@ -51,6 +53,11 @@ export class NlmsAec {
     this.eps = options.epsilon ?? DEFAULT_EPSILON
     this.w = new Float32Array(this.filterLength)
     this.xBuf = new Float32Array(this.delay + this.filterLength)
+  }
+
+  /** A2.5 双讲冻结：true 时暂停权重更新（回声相减照常，仅停止自适应）。 */
+  setFrozen(frozen: boolean): void {
+    this.frozen = frozen
   }
 
   /**
@@ -85,7 +92,8 @@ export class NlmsAec {
         out[i] = Number.isFinite(e) ? e : 0
         // NLMS 权重更新：仅在参考能量足够时训练（近零参考/未播时不放大权重，
         // 防「麦大声 + 参考窗近零」导致 gain 爆炸 → 权重失稳发散）。
-        if (norm > MIN_REF_NORM) {
+        // A2.5 双讲冻结：用户说话时暂停更新，防滤波器被带偏。
+        if (norm > MIN_REF_NORM && !this.frozen) {
           const denom = norm + this.eps
           const gain = (this.mu * e) / denom
           idx = (cursor - this.delay + bufLen) % bufLen

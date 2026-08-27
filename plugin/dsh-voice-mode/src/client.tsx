@@ -642,6 +642,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       return aec.process(mic, refForAec)
     },
     windowAt: refWindowAt,
+    // A2.5 双讲冻结：用户说话时暂停 NLMS 自适应。
+    setFrozen: (frozen) => aec.setFrozen(frozen),
   }
 
   // 播放引擎与 bus 的生命周期相同（apply 闭包单例）；setUi 闭包延迟解引用，

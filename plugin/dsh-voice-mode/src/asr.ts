@@ -27,6 +27,8 @@ export type AsrState = 'idle' | 'listening' | 'wake' | 'speech' | 'transcribing'
 export interface EchoRefSource {
   process(mic: Float32Array, ref: Float32Array): Float32Array
   windowAt(tWallMs: number, n: number): Float32Array
+  /** A2.5 双讲冻结：用户说话时暂停 NLMS 自适应（防滤波器带偏）。 */
+  setFrozen(frozen: boolean): void
 }
 
 /** 延迟埋点链的客户端阶段（P1-5；host 侧阶段与全链顺序见 client.tsx TELEMETRY_VIEW）。 */
@@ -524,6 +526,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       latestResidualRms = rms
       if (echoFloorRms === 0) echoFloorRms = rms
       else echoFloorRms = echoFloorRms * 0.98 + rms * 0.02 // 对称慢速平滑（~3s），跟踪回声残差平均水平
+    }
+    // A2.5 双讲冻结：地板已建立且残差明显高于地板（用户说话）→ 冻结 NLMS 自适应。
+    if (echo) {
+      echo.setFrozen(playingNow && echoFloorRms > 0 && latestResidualRms > echoFloorRms * Math.pow(10, 6 / 20))
     }
     // hold 模式打断走显式手势（按住），不走 VAD 检测通道；toggle 模式保留检测通道。
     if (playingNow && !holdActive && config.mode !== 'hold') detectChunks.push(data)

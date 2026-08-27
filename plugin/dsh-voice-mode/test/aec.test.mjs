@@ -215,4 +215,26 @@ t('bulk delay：无回声（mic/ref 不相关）→ peak 低', () => {
   assert.ok(peak < 0.3, `不相关信号峰值应低: ${peak.toFixed(3)}`)
 })
 
+t('双讲冻结：frozen 时权重不更新（回声不被消除，输出≈输入）', () => {
+  const rng = noise(42)
+  const N = 32000
+  const ref = new Float32Array(N)
+  for (let i = 0; i < N; i++) ref[i] = rng() * 2 - 1
+  const D = 64
+  const mic = new Float32Array(N)
+  for (let i = 0; i < N; i++) mic[i] = (i >= D ? 0.6 * ref[i - D] : 0) + (rng() * 2 - 1) * 0.02
+  const aec = new NlmsAec({ delay: 64 })
+  aec.setFrozen(true)
+  const block = 1024
+  const out = new Float32Array(N)
+  for (let off = 0; off < N; off += block) {
+    out.set(aec.process(mic.subarray(off, off + block), ref.subarray(off, off + block)), off)
+  }
+  const a = Math.floor(N * 0.6)
+  assert.ok(
+    rms(out.subarray(a)) > rms(mic.subarray(a)) * 0.7,
+    `frozen 时不应消除回声: out=${rms(out.subarray(a)).toFixed(4)} mic=${rms(mic.subarray(a)).toFixed(4)}`,
+  )
+})
+
 console.log(`\naec：${passed} 项通过`)
