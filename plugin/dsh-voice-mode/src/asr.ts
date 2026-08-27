@@ -76,6 +76,8 @@ export interface AsrEngine {
   endHeld(cancel?: boolean): void
   /** hold 按压中（含 toggle 模式按住 Ctrl）：打断时不丢弃本段（明确说话意图）。 */
   readonly holding: boolean
+  /** A2.5 回声门控：当前残差是否明显高于回声地板（默认 6dB）——判用户人声而非回声。 */
+  aboveEchoFloor(marginDb?: number): boolean
   /** 丢弃当前已录段（打断后防幽灵消息），host 流重置。返回 Promise 供调用方等待。 */
   discardSegment(): Promise<void>
   /** 定稿文本（段结束/强制发送后）。 */
@@ -482,6 +484,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     })()
   }
 
+  /** A2.5 回声门控：播放期残差 RMS 与回声地板（纯回声残差水平），自动打断区分人声与回声。 */
+  let latestResidualRms = 0
+  let echoFloorRms = 0
+
   const handleAudio = (raw: Float32Array): void => {
     if (!active || inFlush) return
     // 跨平台守卫：Safari 等浏览器会忽略 AudioContext({sampleRate}) 选项，
@@ -513,6 +519,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // hold 有明确意图路径（segment 正常累积、partial 上行）；wake 待机在播放期同样
     // 经检测通道（其入段路径被下方播放门截断，防 TTS 回声污染唤醒匹配）。
     const playingNow = config.isPlaying?.() ?? false
+    // A2.5 回声门控：播放期跟踪残差 RMS 与回声地板（纯回声残差水平）。
+    if (playingNow) {
+      latestResidualRms = rms
+      if (echoFloorRms === 0) echoFloorRms = rms
+      else echoFloorRms = echoFloorRms * 0.98 + rms * 0.02 // 对称慢速平滑（~3s），跟踪回声残差平均水平
+    }
     // hold 模式打断走显式手势（按住），不走 VAD 检测通道；toggle 模式保留检测通道。
     if (playingNow && !holdActive && config.mode !== 'hold') detectChunks.push(data)
 
@@ -739,6 +751,11 @@ const startRecorder = async (): Promise<void> => {
     },
     get holding() {
       return holdActive
+    },
+    /** A2.5 回声门控：当前残差是否明显高于回声地板（marginDb 默认 6dB）——判用户人声而非回声。 */
+    aboveEchoFloor(marginDb = 6) {
+      if (echoFloorRms === 0) return true // 无地板（刚开播），保守放行
+      return latestResidualRms > echoFloorRms * Math.pow(10, marginDb / 20)
     },
     async start() {
       if (active) return

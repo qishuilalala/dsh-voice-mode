@@ -1243,6 +1243,13 @@ export function MicButton({
               isSpeechTrueCount++
               if (isSpeechTrueCount === 1 && bus.ui.playing) interruptFirstAt = Date.now()
               if (isSpeechTrueCount >= confirmFrames && bus.ui.playing) {
+                // A2.5 回声门控：残差未明显高于回声地板 → 判回声，不打断（防外放回声自打断）。
+                // 仅自动模式到此处（manual 模式已提前 return）。
+                if (engineRef.current && !engineRef.current.aboveEchoFloor(6)) {
+                  isSpeechTrueCount = 0
+                  interruptFirstAt = 0
+                  return
+                }
                 // 打断确认耗时 = VAD 首次判真 → 触发（真机标定 C-3 数据）。
                 const confirmMs = interruptFirstAt > 0 ? Date.now() - interruptFirstAt : 0
                 interruptFirstAt = 0

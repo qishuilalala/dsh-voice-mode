@@ -169,6 +169,11 @@ t('lib 含 B2 宿主存活探活（owner tabId + 失联让出）', () => {
   const c = read('lib/client.js')
   assert.ok(c.includes('dshvm-tabId'), 'client bundle missing per-tab id storage key')
 })
+t('lib/client.js 含 A2.5 回声门控（aboveEchoFloor，自动打断防回声自打断）', () => {
+  const c = read('lib/client.js')
+  assert.ok(c.includes('aboveEchoFloor'), 'client bundle missing echo gate')
+  assert.ok(c.includes('echoFloorRms'), 'client bundle missing echo floor tracking')
+})
 t('lib/client.js 含 A1 原生 AEC 生效验证', () => {
   const c = read('lib/client.js')
   assert.ok(c.includes('onAecState'), 'client bundle missing onAecState callback')

@@ -377,6 +377,8 @@ function createAsrEngine(config, sessionId) {
       }
     })();
   };
+  let latestResidualRms = 0;
+  let echoFloorRms = 0;
   const handleAudio = (raw) => {
     if (!active || inFlush) return;
     let data = ctxRate !== SAMPLE_RATE ? resampleLinear(raw, ctxRate, SAMPLE_RATE) : raw;
@@ -395,6 +397,11 @@ function createAsrEngine(config, sessionId) {
       }
     }
     const playingNow = config.isPlaying?.() ?? false;
+    if (playingNow) {
+      latestResidualRms = rms;
+      if (echoFloorRms === 0) echoFloorRms = rms;
+      else echoFloorRms = echoFloorRms * 0.98 + rms * 0.02;
+    }
     if (playingNow && !holdActive && config.mode !== "hold") detectChunks.push(data);
     if (holdActive) {
       if (!speechActive) {
@@ -575,6 +582,11 @@ function createAsrEngine(config, sessionId) {
     },
     get holding() {
       return holdActive;
+    },
+    /** A2.5 回声门控：当前残差是否明显高于回声地板（marginDb 默认 6dB）——判用户人声而非回声。 */
+    aboveEchoFloor(marginDb = 6) {
+      if (echoFloorRms === 0) return true;
+      return latestResidualRms > echoFloorRms * Math.pow(10, marginDb / 20);
     },
     async start() {
       if (active) return;
@@ -2398,6 +2410,11 @@ function MicButton({
               isSpeechTrueCount++;
               if (isSpeechTrueCount === 1 && bus.ui.playing) interruptFirstAt = Date.now();
               if (isSpeechTrueCount >= confirmFrames && bus.ui.playing) {
+                if (engineRef.current && !engineRef.current.aboveEchoFloor(6)) {
+                  isSpeechTrueCount = 0;
+                  interruptFirstAt = 0;
+                  return;
+                }
                 const confirmMs = interruptFirstAt > 0 ? Date.now() - interruptFirstAt : 0;
                 interruptFirstAt = 0;
                 isSpeechTrueCount = 0;
