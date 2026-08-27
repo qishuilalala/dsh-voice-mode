@@ -1645,20 +1645,34 @@ export function MicButton({
   // 按住中途向上滑出 ≥40px 放弃本段；松手定稿发送。click 一律不切换
   // （Blocker-1：pointerup 合成的 click 会自毁退出）。
   const holdPtrRef = useRef<{ t: number; y: number; id: number } | null>(null)
+  /** toggle 模式播放中按住（长按打断 + 接管）。 */
+  const toggleHoldRef = useRef(false)
+  /** 长按打断松手后抑制合成 click 的时间戳（防误触发 tap-to-exit）。 */
+  const suppressClickUntilRef = useRef(0)
   const onPointerDown = (e: React.PointerEvent): void => {
-    // hold 模式全程 pointer 驱动：on=按住说话，off=短按进入；click 事件不参与
-    if (bootNow().mode !== 'hold') return
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId }
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
-    if (localRef.current === 'on') {
+    if (bootNow().mode === 'hold') {
+      // hold 模式全程 pointer 驱动：on=按住说话，off=短按进入；click 事件不参与
+      if (localRef.current === 'on') {
+        setHolding(true)
+        const eng = engineRef.current
+        if (eng && bootNow().bargeInMode === 'manual' && bus.ui.playing) {
+          // 手动打断（外放）：按住麦克风立即停 AI + 接管收音（不依赖 VAD，回声无关）。
+          eng.beginHeld()
+          void breakRef.current?.()
+        } else {
+          eng?.beginHeld()
+        }
+      }
+    } else if (localRef.current === 'on' && bus.ui.playing) {
+      // toggle 模式（持续聆听）：播放中按住 = 长按打断 + 接管收音（与 hold 手势统一）。
+      toggleHoldRef.current = true
       setHolding(true)
       const eng = engineRef.current
-      if (eng && bootNow().bargeInMode === 'manual' && bus.ui.playing) {
-        // 手动打断（外放）：按住麦克风立即停 AI + 接管收音（不依赖 VAD，回声无关）。
+      if (eng) {
         eng.beginHeld()
         void breakRef.current?.()
-      } else {
-        eng?.beginHeld()
       }
     }
   }
@@ -1668,6 +1682,8 @@ export function MicButton({
     // 向上滑出 ≥40px → 放弃本段（保留在语音模式）
     if (p.y - e.clientY >= 40) {
       holdPtrRef.current = null
+      toggleHoldRef.current = false
+      setHolding(false)
       engineRef.current?.endHeld(true)
       bus.setUi({ partial: '' })
     }
@@ -1678,6 +1694,19 @@ export function MicButton({
     setHolding(false)
     if (!p || p.id !== e.pointerId) return
     const ms = Date.now() - p.t
+    if (bootNow().mode !== 'hold') {
+      // toggle 模式：播放中长按打断 → 松开发送 + 抑制合成 click；短按交给 click（退出）。
+      if (toggleHoldRef.current) {
+        toggleHoldRef.current = false
+        if (ms >= 250) {
+          suppressClickUntilRef.current = Date.now() + 500
+          engineRef.current?.endHeld(false)
+        } else {
+          engineRef.current?.endHeld(true) // 短按取消录音，click 会退出
+        }
+      }
+      return
+    }
     if (ms < 250) {
       // 短按：on → 退出语音模式（tap-to-exit）；off → 进入（hold 模式全程 pointer 驱动）
       if (localRef.current === 'on') {
@@ -1692,6 +1721,7 @@ export function MicButton({
   }
   const onPointerCancel = (): void => {
     holdPtrRef.current = null
+    toggleHoldRef.current = false
     setHolding(false)
     engineRef.current?.endHeld(true)
   }
@@ -1699,6 +1729,8 @@ export function MicButton({
   return (
     <button
       onClick={(e: React.MouseEvent) => {
+        // toggle 模式长按打断松手后，抑制合成的 click（防误触发 tap-to-exit）。
+        if (Date.now() < suppressClickUntilRef.current) return
         if (holdMode) {
           // pointer/触摸合成的 click 一律忽略（tap 进入/退出走 pointer 路径，
           // 否则 tap-exit 的 trailing click 会再次触发 toggle 重进 —— Blocker-1 反面）

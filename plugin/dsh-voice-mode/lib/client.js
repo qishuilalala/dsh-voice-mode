@@ -2734,18 +2734,29 @@ function MicButton({
   const [holding, setHolding] = (0, import_react2.useState)(false);
   const label = on ? busy ? t("recognizing") : holdMode ? holding ? t("releaseToSend") : t("holdToTalk") : t("voiceDetected") : local === "pending" ? t("entering") : t("voiceBtn");
   const holdPtrRef = (0, import_react2.useRef)(null);
+  const toggleHoldRef = (0, import_react2.useRef)(false);
+  const suppressClickUntilRef = (0, import_react2.useRef)(0);
   const onPointerDown = (e) => {
-    if (bootNow().mode !== "hold") return;
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId };
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    if (localRef.current === "on") {
+    if (bootNow().mode === "hold") {
+      if (localRef.current === "on") {
+        setHolding(true);
+        const eng = engineRef.current;
+        if (eng && bootNow().bargeInMode === "manual" && bus.ui.playing) {
+          eng.beginHeld();
+          void breakRef.current?.();
+        } else {
+          eng?.beginHeld();
+        }
+      }
+    } else if (localRef.current === "on" && bus.ui.playing) {
+      toggleHoldRef.current = true;
       setHolding(true);
       const eng = engineRef.current;
-      if (eng && bootNow().bargeInMode === "manual" && bus.ui.playing) {
+      if (eng) {
         eng.beginHeld();
         void breakRef.current?.();
-      } else {
-        eng?.beginHeld();
       }
     }
   };
@@ -2754,6 +2765,8 @@ function MicButton({
     if (!p || p.id !== e.pointerId) return;
     if (p.y - e.clientY >= 40) {
       holdPtrRef.current = null;
+      toggleHoldRef.current = false;
+      setHolding(false);
       engineRef.current?.endHeld(true);
       bus.setUi({ partial: "" });
     }
@@ -2764,6 +2777,18 @@ function MicButton({
     setHolding(false);
     if (!p || p.id !== e.pointerId) return;
     const ms = Date.now() - p.t;
+    if (bootNow().mode !== "hold") {
+      if (toggleHoldRef.current) {
+        toggleHoldRef.current = false;
+        if (ms >= 250) {
+          suppressClickUntilRef.current = Date.now() + 500;
+          engineRef.current?.endHeld(false);
+        } else {
+          engineRef.current?.endHeld(true);
+        }
+      }
+      return;
+    }
     if (ms < 250) {
       if (localRef.current === "on") {
         engineRef.current?.endHeld(true);
@@ -2777,6 +2802,7 @@ function MicButton({
   };
   const onPointerCancel = () => {
     holdPtrRef.current = null;
+    toggleHoldRef.current = false;
     setHolding(false);
     engineRef.current?.endHeld(true);
   };
@@ -2784,6 +2810,7 @@ function MicButton({
     "button",
     {
       onClick: (e) => {
+        if (Date.now() < suppressClickUntilRef.current) return;
         if (holdMode) {
           if (e.detail !== 0) return;
         }
