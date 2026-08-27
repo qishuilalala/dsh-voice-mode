@@ -47,6 +47,8 @@ export interface AsrConfig {
   basePath: string
   /** 交互模式：hold 按住说话（未按住不持续聆听）；toggle 持续聆听（默认）。 */
   mode?: 'hold' | 'toggle'
+  /** 回声门控阈值（dB，默认 6）：残差高于回声地板此值才判用户人声。 */
+  echoGateDb?: number
   /** 唤醒词（空 = 关）：进入后先在 wake 待机态，说出唤醒词才正式开口。 */
   wakeWord?: string
   /** P3-2：回声参考（TTS 播放经 NLMS 消除后，信号再用于打断/VAD/上行）。 */
@@ -529,7 +531,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
     // A2.5 双讲冻结：地板已建立且残差明显高于地板（用户说话）→ 冻结 NLMS 自适应。
     if (echo) {
-      echo.setFrozen(playingNow && echoFloorRms > 0 && latestResidualRms > echoFloorRms * Math.pow(10, 6 / 20))
+      echo.setFrozen(playingNow && echoFloorRms > 0 && latestResidualRms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20))
     }
     // hold 模式打断走显式手势（按住），不走 VAD 检测通道；toggle 模式保留检测通道。
     if (playingNow && !holdActive && config.mode !== 'hold') detectChunks.push(data)

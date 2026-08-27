@@ -403,7 +403,7 @@ function createAsrEngine(config, sessionId) {
       else echoFloorRms = echoFloorRms * 0.98 + rms * 0.02;
     }
     if (echo) {
-      echo.setFrozen(playingNow && echoFloorRms > 0 && latestResidualRms > echoFloorRms * Math.pow(10, 6 / 20));
+      echo.setFrozen(playingNow && echoFloorRms > 0 && latestResidualRms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20));
     }
     if (playingNow && !holdActive && config.mode !== "hold") detectChunks.push(data);
     if (holdActive) {
@@ -898,6 +898,7 @@ var zh = {
   descBargeIn: "\u6253\u65AD\u65B9\u5F0F\uFF08auto \u81EA\u52A8\u6253\u65AD\uFF1A\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u8033\u673A/\u5B89\u9759\u73AF\u5883\u63A8\u8350\uFF1Bmanual \u624B\u52A8\u6253\u65AD\uFF1A\u5916\u653E\u63A8\u8350\u2014\u2014\u56DE\u58F0\u4E0D\u4F1A\u8BEF\u89E6\u53D1\u81EA\u6253\u65AD\uFF0C\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u663E\u5F0F\u6253\u65AD\uFF09",
   bargeInAuto: "\u81EA\u52A8",
   bargeInManual: "\u624B\u52A8",
+  descEchoGate: "\u56DE\u58F0\u95E8\u63A7\u9608\u503C\uFF08dB\uFF0C\u9ED8\u8BA4 6\uFF09\uFF1A\u81EA\u52A8\u6253\u65AD\u8981\u6C42\u6B8B\u5DEE\u9AD8\u4E8E\u56DE\u58F0\u5730\u677F\u6B64\u503C\uFF1B\u5916\u653E\u4ECD\u8BEF\u6253\u65AD\u8C03\u5927\uFF088~10\uFF09\uFF0C\u592A\u96BE\u6253\u65AD\u8C03\u5C0F\uFF083~4\uFF09",
   vadDetected: "VAD \u68C0\u6D4B\u5230\u8BED\u97F3",
   aecOff: "\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548",
   aecOffHint: "\u6D4F\u89C8\u5668\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548\uFF08\u5916\u653E\u53EF\u80FD\u81EA\u6253\u65AD\uFF09\uFF0C\u5EFA\u8BAE\u7528\u8033\u673A\u6216\u5207\u6362\u300C\u624B\u52A8\u6253\u65AD\u300D",
@@ -997,6 +998,7 @@ var en = {
   descBargeIn: "Barge-in mode (auto: interrupt by speaking \u2014 headphones/quiet; manual: for loudspeaker, no echo-triggered self-interrupt \u2014 hold mic/Ctrl to interrupt)",
   bargeInAuto: "Auto",
   bargeInManual: "Manual",
+  descEchoGate: "Echo gate threshold (dB, default 6): auto barge-in requires the residual to exceed the echo floor by this value; raise (8-10) if speaker echo still interrupts, lower (3-4) if hard to interrupt",
   vadDetected: "VAD speech",
   aecOff: "Native AEC off",
   aecOffHint: "Native echo cancellation is not active (speaker echo may self-interrupt); use headphones or Manual barge-in",
@@ -1522,6 +1524,7 @@ function VoiceSettingsCard({ scope }) {
           ]
         }
       ) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "echoGateDb", desc: t("descEchoGate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "echoGateDb", value: value.echoGateDb ?? 6, min: 3, max: 12, step: 1 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 700, min: 500, max: 3e4, step: 100 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }),
@@ -1827,6 +1830,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     autoResume: false,
     mode: "toggle",
     bargeInMode: "auto",
+    echoGateDb: 6,
     wakeWord: ""
   };
   const ui = {
@@ -2276,7 +2280,7 @@ function MicButton({
   const manualHoldRef = (0, import_react2.useRef)(false);
   const breakRef = (0, import_react2.useRef)(null);
   const pausedForHiddenRef = (0, import_react2.useRef)(false);
-  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", wakeWord: "" };
+  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, wakeWord: "" };
   useVoiceCss();
   const [, bumpUi] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(
@@ -2304,6 +2308,7 @@ function MicButton({
         autoResume: c.autoResume === true,
         mode: c.mode === "hold" ? "hold" : "toggle",
         bargeInMode: c.bargeInMode === "manual" ? "manual" : "auto",
+        echoGateDb: typeof c.echoGateDb === "number" ? Math.min(12, Math.max(3, c.echoGateDb)) : cur.echoGateDb,
         wakeWord: c.wakeWord ?? cur.wakeWord
       };
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord });
@@ -2407,6 +2412,7 @@ function MicButton({
           silenceMs,
           basePath,
           mode: cfg.mode,
+          echoGateDb: cfg.echoGateDb,
           wakeWord: cfg.wakeWord,
           echo: bus.echoForAsr(),
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
@@ -2421,7 +2427,7 @@ function MicButton({
               isSpeechTrueCount++;
               if (isSpeechTrueCount === 1 && bus.ui.playing) interruptFirstAt = Date.now();
               if (isSpeechTrueCount >= confirmFrames && bus.ui.playing) {
-                if (engineRef.current && !engineRef.current.aboveEchoFloor(6)) {
+                if (engineRef.current && !engineRef.current.aboveEchoFloor(cfg.echoGateDb ?? 6)) {
                   isSpeechTrueCount = 0;
                   interruptFirstAt = 0;
                   return;

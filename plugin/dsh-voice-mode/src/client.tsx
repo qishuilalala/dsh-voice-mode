@@ -488,6 +488,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     autoResume: false,
     mode: 'toggle',
     bargeInMode: 'auto',
+    echoGateDb: 6,
     wakeWord: '',
   }
   const ui: VoiceUiState = {
@@ -1016,6 +1017,8 @@ interface VoiceBootConfig {
   mode: 'toggle' | 'hold'
   /** 打断方式：auto 自动（VAD 开口打断）；manual 手动（外放推荐，回声不误触发自打断）。 */
   bargeInMode: 'auto' | 'manual'
+  /** 回声门控阈值（dB，默认 6）。 */
+  echoGateDb: number
   wakeWord: string
 }
 
@@ -1061,7 +1064,7 @@ export function MicButton({
   /** M2：隐藏 tab 时已暂停收音（可见时恢复）；隐私——避免后台持续录音。 */
   const pausedForHiddenRef = useRef(false)
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
-  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', wakeWord: '' }
+  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, wakeWord: '' }
 
   useVoiceCss()
 
@@ -1096,6 +1099,7 @@ export function MicButton({
         autoResume: c.autoResume === true,
         mode: c.mode === 'hold' ? 'hold' : 'toggle',
         bargeInMode: c.bargeInMode === 'manual' ? 'manual' : 'auto',
+        echoGateDb: typeof c.echoGateDb === 'number' ? Math.min(12, Math.max(3, c.echoGateDb)) : cur.echoGateDb,
         wakeWord: c.wakeWord ?? cur.wakeWord,
       }
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord })
@@ -1228,6 +1232,7 @@ export function MicButton({
           silenceMs,
           basePath,
           mode: cfg.mode,
+          echoGateDb: cfg.echoGateDb,
           wakeWord: cfg.wakeWord,
           echo: bus.echoForAsr(),
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
@@ -1247,7 +1252,7 @@ export function MicButton({
               if (isSpeechTrueCount >= confirmFrames && bus.ui.playing) {
                 // A2.5 回声门控：残差未明显高于回声地板 → 判回声，不打断（防外放回声自打断）。
                 // 仅自动模式到此处（manual 模式已提前 return）。
-                if (engineRef.current && !engineRef.current.aboveEchoFloor(6)) {
+                if (engineRef.current && !engineRef.current.aboveEchoFloor(cfg.echoGateDb ?? 6)) {
                   isSpeechTrueCount = 0
                   interruptFirstAt = 0
                   return

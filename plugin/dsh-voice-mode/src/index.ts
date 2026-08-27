@@ -107,6 +107,8 @@ export interface VoiceSettingsValue {
   mode: 'toggle' | 'hold'
   /** 打断方式：auto 自动打断（开口即打断，耳机/安静环境）；manual 手动打断（外放推荐——外放回声会误触发自动打断，改显式手势打断）。 */
   bargeInMode: 'auto' | 'manual'
+  /** 回声门控阈值（dB）：自动打断要求残差高于回声地板此值（外放回声误打断调大、难打断调小）。 */
+  echoGateDb: number
   /** 唤醒词（空 = 关；如「你好小D」）：待机态说出后激活，避免误触。 */
   wakeWord: string
   /**
@@ -133,6 +135,7 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   autoResume: false,
   mode: 'toggle',
   bargeInMode: 'auto',
+  echoGateDb: 6,
   wakeWord: '',
   spokenFormat: false,
   senseVoice: true,
@@ -167,6 +170,12 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .union([z.const('auto'), z.const('manual')])
       .default(d.bargeInMode)
       .description('打断方式：auto 自动打断（开口即打断，耳机/安静环境推荐）；manual 手动打断（外放推荐——外放回声会误触发自动打断，改按住麦克风/Ctrl 显式打断，永不自打断）'),
+    echoGateDb: z
+      .number()
+      .min(3)
+      .max(12)
+      .default(d.echoGateDb)
+      .description('回声门控阈值（dB，默认 6）：自动打断要求残差高于回声地板此值；外放仍误打断调大（8~10），太难打断调小（3~4）'),
     wakeWord: z.string().default(d.wakeWord).description('唤醒词：在待机态说出后开始识别（默认关；如「你好小D」）'),
     spokenFormat: z
       .boolean()
@@ -394,6 +403,7 @@ export function apply(ctx: Context, config: Config): void {
             autoResume: vset.autoResume,
             mode: vset.mode,
             bargeInMode: vset.bargeInMode,
+            echoGateDb: vset.echoGateDb,
             wakeWord: vset.wakeWord,
             cacheDir: config.cacheDir,
           }),

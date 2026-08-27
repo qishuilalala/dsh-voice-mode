@@ -602,6 +602,9 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
                 ]}
               />
             </Row>
+            <Row name="echoGateDb" desc={tr('descEchoGate')}>
+              <NumberField score={scope} field="echoGateDb" value={value.echoGateDb ?? 6} min={3} max={12} step={1} />
+            </Row>
             <Row name="silenceMs" desc={tr('descSilence')}>
               <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 700} min={500} max={30000} step={100} />
             </Row>
