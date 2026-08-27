@@ -109,6 +109,8 @@ export interface VoiceSettingsValue {
   bargeInMode: 'auto' | 'manual'
   /** 回声门控阈值（dB）：自动打断要求残差高于回声地板此值（外放回声误打断调大、难打断调小）。 */
   echoGateDb: number
+  /** 进入/退出语音模式的快捷键（形如 Ctrl+Shift+V；留空则禁用快捷键）。 */
+  shortcut: string
   /** 唤醒词（空 = 关；如「你好小D」）：待机态说出后激活，避免误触。 */
   wakeWord: string
   /**
@@ -136,6 +138,7 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   mode: 'toggle',
   bargeInMode: 'auto',
   echoGateDb: 6,
+  shortcut: 'Ctrl+Shift+V',
   wakeWord: '',
   spokenFormat: false,
   senseVoice: true,
@@ -176,6 +179,10 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .max(12)
       .default(d.echoGateDb)
       .description('回声门控阈值（dB，默认 6）：自动打断要求残差高于回声地板此值；外放仍误打断调大（8~10），太难打断调小（3~4）'),
+    shortcut: z
+      .string()
+      .default(d.shortcut)
+      .description('进入/退出语音模式的快捷键（形如 Ctrl+Shift+V，修饰键 Ctrl/Shift/Alt/Meta + 一个字母键；留空禁用快捷键，用麦克风按钮）'),
     wakeWord: z.string().default(d.wakeWord).description('唤醒词：在待机态说出后开始识别（默认关；如「你好小D」）'),
     spokenFormat: z
       .boolean()
@@ -404,6 +411,7 @@ export function apply(ctx: Context, config: Config): void {
             mode: vset.mode,
             bargeInMode: vset.bargeInMode,
             echoGateDb: vset.echoGateDb,
+            shortcut: vset.shortcut,
             wakeWord: vset.wakeWord,
             cacheDir: config.cacheDir,
           }),

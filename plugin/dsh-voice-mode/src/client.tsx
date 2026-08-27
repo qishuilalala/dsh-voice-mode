@@ -190,6 +190,24 @@ function getTabId(): string {
 /** 本 tab 的稳定标识（模块加载时生成一次）。 */
 const TAB_ID = getTabId()
 
+/** 解析快捷键字符串（如 Ctrl+Shift+V）→ 修饰键 + 主键；非法返回 null。 */
+function parseShortcut(s: string): { ctrl: boolean; shift: boolean; alt: boolean; meta: boolean; key: string } | null {
+  const parts = (s || '').split('+')
+  const mods = { ctrl: false, shift: false, alt: false, meta: false }
+  let key = ''
+  for (const raw of parts) {
+    const t = raw.trim().toLowerCase()
+    if (t === 'ctrl' || t === 'control') mods.ctrl = true
+    else if (t === 'shift') mods.shift = true
+    else if (t === 'alt' || t === 'option') mods.alt = true
+    else if (t === 'meta' || t === 'cmd' || t === 'command') mods.meta = true
+    else if (t.length === 1 && /^[a-z0-9]$/.test(t)) key = t
+    else return null
+  }
+  if (!key) return null
+  return { ...mods, key }
+}
+
 /** I5：上次语音会话记忆（localStorage 持久，autoResume 切回时自动恢复）。 */
 function getLastVoiceSession(): string | null {
   try {
@@ -489,6 +507,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     mode: 'toggle',
     bargeInMode: 'auto',
     echoGateDb: 6,
+    shortcut: 'Ctrl+Shift+V',
     wakeWord: '',
   }
   const ui: VoiceUiState = {
@@ -1019,6 +1038,8 @@ interface VoiceBootConfig {
   bargeInMode: 'auto' | 'manual'
   /** 回声门控阈值（dB，默认 6）。 */
   echoGateDb: number
+  /** 进入/退出语音模式的快捷键（如 Ctrl+Shift+V；空 = 禁用）。 */
+  shortcut: string
   wakeWord: string
 }
 
@@ -1064,7 +1085,7 @@ export function MicButton({
   /** M2：隐藏 tab 时已暂停收音（可见时恢复）；隐私——避免后台持续录音。 */
   const pausedForHiddenRef = useRef(false)
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
-  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, wakeWord: '' }
+  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, shortcut: 'Ctrl+Shift+V', wakeWord: '' }
 
   useVoiceCss()
 
@@ -1100,6 +1121,7 @@ export function MicButton({
         mode: c.mode === 'hold' ? 'hold' : 'toggle',
         bargeInMode: c.bargeInMode === 'manual' ? 'manual' : 'auto',
         echoGateDb: typeof c.echoGateDb === 'number' ? Math.min(12, Math.max(3, c.echoGateDb)) : cur.echoGateDb,
+        shortcut: typeof c.shortcut === 'string' ? c.shortcut : cur.shortcut,
         wakeWord: c.wakeWord ?? cur.wakeWord,
       }
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord })
@@ -1477,8 +1499,18 @@ export function MicButton({
       }
     }
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v' && !e.repeat) {
-        // I2：编辑态（输入框/contenteditable）或输入法合成中，Ctrl+Shift+V 是「粘贴纯文本」，
+      // 可配置快捷键（默认 Ctrl+Shift+V；解析失败/空 = 禁用快捷键）。
+      const combo = parseShortcut(bootNow().shortcut)
+      if (
+        combo &&
+        !e.repeat &&
+        e.key.toLowerCase() === combo.key &&
+        e.ctrlKey === combo.ctrl &&
+        e.shiftKey === combo.shift &&
+        e.altKey === combo.alt &&
+        e.metaKey === combo.meta
+      ) {
+        // I2：编辑态（输入框/contenteditable）或输入法合成中，快捷键可能是「粘贴纯文本」等，
         // 不劫持——交给浏览器；语音切换在非输入上下文照常（输入框里用麦克风按钮）。
         const el = e.target
         const editable =

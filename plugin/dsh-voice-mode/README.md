@@ -65,6 +65,7 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | `interruptLevel` | `0` | 发声打断灵敏度：0 高门槛 / 1 中 / 2 低（发声确认约 0.3/0.2/0.1 秒） |
 | `bargeInMode` | `auto` | 打断方式：`auto` 自动打断（开口即打断，耳机/安静环境）；`manual` 手动打断（**外放推荐**——外放回声会误触发自动打断导致自打断静音，改按住麦克风/Ctrl 显式打断，永不自打断） |
 | `echoGateDb` | `6` | 回声门控阈值（dB）：自动打断要求残差高于回声地板此值；外放仍误打断调大（8~10），太难打断调小（3~4） |
+| `shortcut` | `Ctrl+Shift+V` | 进入/退出语音模式的快捷键（形如 Ctrl+Shift+V；留空禁用快捷键，只用麦克风按钮） |
 | `silenceMs` | `700` | 说完整一句的静音停顿毫秒数（至少 250ms 语音才判句） |
 | `idleTimeoutMinutes` | `10` | 无活动自动退出语音模式的分钟数 |
 | `modelHost` | 默认源 | ASR 模型下载源（国内网络填 `https://hf-mirror.com`） |

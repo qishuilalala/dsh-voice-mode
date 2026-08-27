@@ -174,6 +174,10 @@ t('lib/client.js 含 A2.5 回声门控（aboveEchoFloor，自动打断防回声�
   assert.ok(c.includes('aboveEchoFloor'), 'client bundle missing echo gate')
   assert.ok(c.includes('echoFloorRms'), 'client bundle missing echo floor tracking')
 })
+t('lib/client.js 含可配置快捷键（parseShortcut）', () => {
+  const c = read('lib/client.js')
+  assert.ok(c.includes('parseShortcut'), 'client bundle missing parseShortcut')
+})
 t('lib/client.js 含 A1 原生 AEC 生效验证', () => {
   const c = read('lib/client.js')
   assert.ok(c.includes('onAecState'), 'client bundle missing onAecState callback')

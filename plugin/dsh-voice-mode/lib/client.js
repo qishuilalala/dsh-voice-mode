@@ -899,6 +899,7 @@ var zh = {
   bargeInAuto: "\u81EA\u52A8",
   bargeInManual: "\u624B\u52A8",
   descEchoGate: "\u56DE\u58F0\u95E8\u63A7\u9608\u503C\uFF08dB\uFF0C\u9ED8\u8BA4 6\uFF09\uFF1A\u81EA\u52A8\u6253\u65AD\u8981\u6C42\u6B8B\u5DEE\u9AD8\u4E8E\u56DE\u58F0\u5730\u677F\u6B64\u503C\uFF1B\u5916\u653E\u4ECD\u8BEF\u6253\u65AD\u8C03\u5927\uFF088~10\uFF09\uFF0C\u592A\u96BE\u6253\u65AD\u8C03\u5C0F\uFF083~4\uFF09",
+  descShortcut: "\u8FDB\u5165/\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5FEB\u6377\u952E\uFF08\u5F62\u5982 Ctrl+Shift+V\uFF1B\u7559\u7A7A\u7981\u7528\u5FEB\u6377\u952E\uFF0C\u53EA\u7528\u9EA6\u514B\u98CE\u6309\u94AE\uFF09",
   vadDetected: "VAD \u68C0\u6D4B\u5230\u8BED\u97F3",
   aecOff: "\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548",
   aecOffHint: "\u6D4F\u89C8\u5668\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548\uFF08\u5916\u653E\u53EF\u80FD\u81EA\u6253\u65AD\uFF09\uFF0C\u5EFA\u8BAE\u7528\u8033\u673A\u6216\u5207\u6362\u300C\u624B\u52A8\u6253\u65AD\u300D",
@@ -999,6 +1000,7 @@ var en = {
   bargeInAuto: "Auto",
   bargeInManual: "Manual",
   descEchoGate: "Echo gate threshold (dB, default 6): auto barge-in requires the residual to exceed the echo floor by this value; raise (8-10) if speaker echo still interrupts, lower (3-4) if hard to interrupt",
+  descShortcut: "Shortcut to enter/exit voice mode (e.g. Ctrl+Shift+V; empty disables it, mic button only)",
   vadDetected: "VAD speech",
   aecOff: "Native AEC off",
   aecOffHint: "Native echo cancellation is not active (speaker echo may self-interrupt); use headphones or Manual barge-in",
@@ -1525,6 +1527,7 @@ function VoiceSettingsCard({ scope }) {
         }
       ) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "echoGateDb", desc: t("descEchoGate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "echoGateDb", value: value.echoGateDb ?? 6, min: 3, max: 12, step: 1 }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "shortcut", desc: t("descShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "shortcut", value: value.shortcut ?? "Ctrl+Shift+V", placeholder: "Ctrl+Shift+V" }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 700, min: 500, max: 3e4, step: 100 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }),
@@ -1589,6 +1592,22 @@ function getTabId() {
   }
 }
 var TAB_ID = getTabId();
+function parseShortcut(s) {
+  const parts = (s || "").split("+");
+  const mods = { ctrl: false, shift: false, alt: false, meta: false };
+  let key = "";
+  for (const raw of parts) {
+    const t3 = raw.trim().toLowerCase();
+    if (t3 === "ctrl" || t3 === "control") mods.ctrl = true;
+    else if (t3 === "shift") mods.shift = true;
+    else if (t3 === "alt" || t3 === "option") mods.alt = true;
+    else if (t3 === "meta" || t3 === "cmd" || t3 === "command") mods.meta = true;
+    else if (t3.length === 1 && /^[a-z0-9]$/.test(t3)) key = t3;
+    else return null;
+  }
+  if (!key) return null;
+  return { ...mods, key };
+}
 function getLastVoiceSession() {
   try {
     return localStorage.getItem("dshvm-last-voice");
@@ -1831,6 +1850,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     mode: "toggle",
     bargeInMode: "auto",
     echoGateDb: 6,
+    shortcut: "Ctrl+Shift+V",
     wakeWord: ""
   };
   const ui = {
@@ -2280,7 +2300,7 @@ function MicButton({
   const manualHoldRef = (0, import_react2.useRef)(false);
   const breakRef = (0, import_react2.useRef)(null);
   const pausedForHiddenRef = (0, import_react2.useRef)(false);
-  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, wakeWord: "" };
+  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, shortcut: "Ctrl+Shift+V", wakeWord: "" };
   useVoiceCss();
   const [, bumpUi] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(
@@ -2309,6 +2329,7 @@ function MicButton({
         mode: c.mode === "hold" ? "hold" : "toggle",
         bargeInMode: c.bargeInMode === "manual" ? "manual" : "auto",
         echoGateDb: typeof c.echoGateDb === "number" ? Math.min(12, Math.max(3, c.echoGateDb)) : cur.echoGateDb,
+        shortcut: typeof c.shortcut === "string" ? c.shortcut : cur.shortcut,
         wakeWord: c.wakeWord ?? cur.wakeWord
       };
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord });
@@ -2609,7 +2630,8 @@ function MicButton({
       }
     };
     const onKeyDown = (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "v" && !e.repeat) {
+      const combo = parseShortcut(bootNow().shortcut);
+      if (combo && !e.repeat && e.key.toLowerCase() === combo.key && e.ctrlKey === combo.ctrl && e.shiftKey === combo.shift && e.altKey === combo.alt && e.metaKey === combo.meta) {
         const el = e.target;
         const editable = el instanceof HTMLElement && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable);
         if (!editable && !e.isComposing) {
