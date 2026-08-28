@@ -203,10 +203,15 @@ function parseShortcut(s: string): { ctrl: boolean; shift: boolean; alt: boolean
     else if (t === 'shift') mods.shift = true
     else if (t === 'alt' || t === 'option') mods.alt = true
     else if (t === 'meta' || t === 'cmd' || t === 'command') mods.meta = true
-    else if (t.length === 1 && /^[a-z0-9]$/.test(t)) key = t
-    else return null
+    else if (t.length === 1 && /^[a-z0-9]$/.test(t)) {
+      // M9：多主键（Ctrl+A+B）静默覆盖 → 拒绝；单主键且未重复才接受。
+      if (key) return null
+      key = t
+    } else return null
   }
   if (!key) return null
+  // M8：要求至少一个修饰键——裸字母（如 v）会被注册为全局快捷键，非编辑态按键即误切。
+  if (!mods.ctrl && !mods.shift && !mods.alt && !mods.meta) return null
   return { ...mods, key }
 }
 

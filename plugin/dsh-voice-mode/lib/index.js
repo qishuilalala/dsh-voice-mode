@@ -1090,6 +1090,7 @@ function apply(ctx, config) {
     broadcast("turn", { sessionId, state });
   };
   const sseClients = /* @__PURE__ */ new Set();
+  const latestConnByTab = /* @__PURE__ */ new Map();
   const broadcast = (event, payload) => {
     for (const c of sseClients) {
       try {
@@ -1410,6 +1411,7 @@ function apply(ctx, config) {
           tabId = u.searchParams.get("tabId");
         } catch {
         }
+        if (tabId !== null && tabId.length > 64) tabId = null;
         res.writeHead(200, {
           "content-type": "text/event-stream; charset=utf-8",
           "cache-control": "no-cache, no-transform",
@@ -1424,11 +1426,12 @@ data: ${JSON.stringify(payload)}
         };
         const client = { tabId, send };
         sseClients.add(client);
+        if (tabId !== null) latestConnByTab.set(tabId, client);
         if (tabId !== null && tabId === activeTabId && ownerYieldTimer) {
           clearTimeout(ownerYieldTimer);
           ownerYieldTimer = null;
         }
-        send("mode", { active: activeVoiceSession });
+        send("mode", { active: activeVoiceSession, ownerTabId: activeTabId });
         const heartbeat = setInterval(() => {
           res.write(": hb\n");
         }, 25e3);
@@ -1438,9 +1441,12 @@ data: ${JSON.stringify(payload)}
           cleaned = true;
           clearInterval(heartbeat);
           sseClients.delete(client);
-          if (tabId !== null && tabId === activeTabId) {
-            if (ownerYieldTimer) clearTimeout(ownerYieldTimer);
-            ownerYieldTimer = setTimeout(yieldActiveSession, 8e3);
+          if (tabId !== null && latestConnByTab.get(tabId) === client) {
+            latestConnByTab.delete(tabId);
+            if (tabId === activeTabId) {
+              if (ownerYieldTimer) clearTimeout(ownerYieldTimer);
+              ownerYieldTimer = setTimeout(yieldActiveSession, 8e3);
+            }
           }
         };
         req.on("close", cleanup);

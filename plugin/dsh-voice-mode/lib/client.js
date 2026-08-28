@@ -1632,10 +1632,13 @@ function parseShortcut(s) {
     else if (t3 === "shift") mods.shift = true;
     else if (t3 === "alt" || t3 === "option") mods.alt = true;
     else if (t3 === "meta" || t3 === "cmd" || t3 === "command") mods.meta = true;
-    else if (t3.length === 1 && /^[a-z0-9]$/.test(t3)) key = t3;
-    else return null;
+    else if (t3.length === 1 && /^[a-z0-9]$/.test(t3)) {
+      if (key) return null;
+      key = t3;
+    } else return null;
   }
   if (!key) return null;
+  if (!mods.ctrl && !mods.shift && !mods.alt && !mods.meta) return null;
   return { ...mods, key };
 }
 function getLastVoiceSession() {

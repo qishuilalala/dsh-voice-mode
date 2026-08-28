@@ -98,7 +98,7 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | `modelHost` | default | ASR model download host (use `https://hf-mirror.com` on mainland networks) |
 | `autoSend` | `true` | Auto-send after a finalized transcript; when off, text only goes to the draft (hold `Ctrl` / release in hold mode still sends) |
 | `mode` | `toggle` | Interaction mode: `toggle` continuous listening + silence-based end-point detection; `hold` push-to-talk, release to send (short tap exits) |
-| `wakeWord` | empty (off) | Wake word (e.g. `你好小D`): speak it after entering to activate, avoiding accidental triggers; empty = off |
+| `wakeWord` | empty (off) | Wake word (e.g. `你好小D`): speak it after entering to activate, avoiding accidental triggers; empty = off (not applicable in hold mode — pressing is already explicit intent) |
 | `spokenFormat` | `false` | Inject a spoken-format system prompt into voice replies (colloquial short sentences, no Markdown decoration; **applies live**) |
 | `senseVoice` | `true` | Re-transcribe the finalized utterance with SenseVoice (punctuation + ITN, more accurate); turning it off skips the 228 MB model and keeps streaming only |
 | `toolBeep` | `false` | Tool-call beep (default off; one short beep per new tool when enabled) |

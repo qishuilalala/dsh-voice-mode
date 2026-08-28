@@ -267,6 +267,8 @@ export function apply(ctx: Context, config: Config): void {
   /** B2：客户端带 tabId 连接，供 owner 探活（关 tab 检测让出）。 */
   type SseClient = { tabId: string | null; send: SseSink }
   const sseClients = new Set<SseClient>()
+  /** M5：每 tab 最新连接——重连时旧连接的迟到 close 不得武装让出计时（防健康 owner 被误让出）。 */
+  const latestConnByTab = new Map<string, SseClient>()
   const broadcast = (event: string, payload: unknown): void => {
     for (const c of sseClients) {
       try {
@@ -658,6 +660,8 @@ export function apply(ctx: Context, config: Config): void {
         } catch {
           // ignore malformed url
         }
+        // M2：与 /toggle 一致的长度上限（异常长 tabId 不入表，退化为无探活）。
+        if (tabId !== null && tabId.length > 64) tabId = null
         res.writeHead(200, {
           'content-type': 'text/event-stream; charset=utf-8',
           'cache-control': 'no-cache, no-transform',
@@ -669,13 +673,14 @@ export function apply(ctx: Context, config: Config): void {
         }
         const client: SseClient = { tabId, send }
         sseClients.add(client)
+        if (tabId !== null) latestConnByTab.set(tabId, client)
         // B2：owner tab 重连成功 → 取消待执行的让出计时。
         if (tabId !== null && tabId === activeTabId && ownerYieldTimer) {
           clearTimeout(ownerYieldTimer)
           ownerYieldTimer = null
         }
         // 上线即告知当前模式归属（纠正多标签页/多会话漂移）。
-        send('mode', { active: activeVoiceSession })
+        send('mode', { active: activeVoiceSession, ownerTabId: activeTabId })
         const heartbeat = setInterval(() => {
           res.write(': hb\n')
         }, 25000)
@@ -685,10 +690,15 @@ export function apply(ctx: Context, config: Config): void {
           cleaned = true
           clearInterval(heartbeat)
           sseClients.delete(client)
-          // B2：owner tab 的 SSE 断开 → 8s 宽限内没重连则让出（防 transient blip 误让出）。
-          if (tabId !== null && tabId === activeTabId) {
-            if (ownerYieldTimer) clearTimeout(ownerYieldTimer)
-            ownerYieldTimer = setTimeout(yieldActiveSession, 8000)
+          // M5：仅「该 tab 的最新连接」断开才武装让出——重连时旧连接的迟到 close
+          // 若也武装，会在新连接已取消计时之后再次武装，8s 后误让出健康 owner。
+          if (tabId !== null && latestConnByTab.get(tabId) === client) {
+            latestConnByTab.delete(tabId)
+            // B2：owner tab 的 SSE 断开 → 8s 宽限内没重连则让出（防 transient blip 误让出）。
+            if (tabId === activeTabId) {
+              if (ownerYieldTimer) clearTimeout(ownerYieldTimer)
+              ownerYieldTimer = setTimeout(yieldActiveSession, 8000)
+            }
           }
         }
         req.on('close', cleanup)
