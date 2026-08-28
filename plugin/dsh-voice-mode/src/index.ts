@@ -47,6 +47,18 @@ type TurnState = 'idle' | 'listening' | 'finalizing' | 'agent-speaking'
 const BASE_PATH = '/voice-mode'
 
 /**
+ * JSON 响应助手：必须用 writeHead 显式写头。
+ * 第三方 gzip 包装器（如 @wingsky-1/dsh-gzip）只拦截 writeHead 路径——
+ * 「statusCode + setHeader + end」的隐式头路径会产出「content-encoding: gzip
+ * 头 + 明文 body」，浏览器报 ERR_CONTENT_DECODING_FAILED，进入语音模式立即退出
+ * （2026-08-28 实测根因）。writeHead + end 与无包装器环境同样正确。
+ */
+const respondJson = (res: ServerResponse, status: number, payload: unknown): void => {
+  res.writeHead(status, { 'content-type': 'application/json' })
+  res.end(JSON.stringify(payload))
+}
+
+/**
  * 语音模式口语化提示词：设置项 spokenFormat（默认关）开启后，作为 system prompt
  * 末尾 section 注入（仅活跃语音会话，见 apply 内 'system-prompt/assemble' 瀑布）。
  * 让模型从源头用自然口语作答、不写 Markdown 排版符号——与 segmenter.plainText
@@ -375,16 +387,12 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'prefix',
       path: base,
       handler: (_req, res: ServerResponse) => {
-        res.statusCode = 200
-        res.setHeader('content-type', 'application/json')
-        res.end(
-          JSON.stringify({
-            ok: true,
-            name: 'dsh-voice-mode',
-            enabled: config.enabled,
-            active: activeVoiceSession,
-          }),
-        )
+        respondJson(res, 200, {
+          ok: true,
+          name: 'dsh-voice-mode',
+          enabled: config.enabled,
+          active: activeVoiceSession,
+        })
       },
     }),
   )
@@ -394,10 +402,7 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/config`,
       handler: (_req, res: ServerResponse) => {
-        res.statusCode = 200
-        res.setHeader('content-type', 'application/json')
-        res.end(
-          JSON.stringify({
+        respondJson(res, 200, {
             basePath: base,
             rate: currentRate(),
             voice: currentVoice(),
@@ -414,8 +419,7 @@ export function apply(ctx: Context, config: Config): void {
             shortcut: vset.shortcut,
             wakeWord: vset.wakeWord,
             cacheDir: config.cacheDir,
-          }),
-        )
+          })
       },
     }),
   )
@@ -427,9 +431,7 @@ export function apply(ctx: Context, config: Config): void {
       handler: (req: IncomingMessage, res: ServerResponse) => {
         // 总开关一致语义（同 /toggle 403）：关闭时试听也不发起 Edge 网络调用。
         if (!config.enabled) {
-          res.statusCode = 403
-          res.setHeader('content-type', 'application/json')
-          res.end(JSON.stringify({ error: 'voice mode disabled' }))
+          respondJson(res, 403, { error: 'voice mode disabled' })
           return
         }
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
@@ -446,15 +448,11 @@ export function apply(ctx: Context, config: Config): void {
           }
           // 音色名上限：拦截畸形长串（MAX_JSON_BODY 内的兜底）；合法 ShortName 均远短于此。
           if (voice.length > 128) {
-            res.statusCode = 400
-            res.setHeader('content-type', 'application/json')
-            res.end(JSON.stringify({ error: 'voice too long' }))
+            respondJson(res, 400, { error: 'voice too long' })
             return
           }
           if (!voice) {
-            res.statusCode = 400
-            res.setHeader('content-type', 'application/json')
-            res.end(JSON.stringify({ error: 'voice required' }))
+            respondJson(res, 400, { error: 'voice required' })
             return
           }
           // 试听例句按音色区域选：中文音色读中文，其余读英文（英文音色读中文会产出空音频）。
@@ -464,14 +462,10 @@ export function apply(ctx: Context, config: Config): void {
             buf = await queue.synthesize(sample, { voice, rate })
           } catch (e) {
             console.warn(`[dsh-voice-mode] preview synthesis failed: ${String(e)}`)
-            res.statusCode = 502
-            res.setHeader('content-type', 'application/json')
-            res.end(JSON.stringify({ error: '预览合成失败：请检查网络或音色名（ShortName）是否正确' }))
+            respondJson(res, 502, { error: '预览合成失败：请检查网络或音色名（ShortName）是否正确' })
             return
           }
-          res.statusCode = 200
-          res.setHeader('content-type', 'audio/mpeg')
-          res.setHeader('cache-control', 'no-store')
+          res.writeHead(200, { 'content-type': 'audio/mpeg', 'cache-control': 'no-store' })
           res.end(buf)
         })
       },
@@ -496,21 +490,18 @@ export function apply(ctx: Context, config: Config): void {
             // ignore malformed body
           }
           if (!sessionId) {
-            res.statusCode = 400
-            res.end(JSON.stringify({ error: 'sessionId required' }))
+            respondJson(res, 400, { error: 'sessionId required' })
             return
           }
           // strict: on 非布尔显式 400，防误落退出分支
           if (on !== undefined && typeof on !== 'boolean') {
-            res.statusCode = 400
-            res.end(JSON.stringify({ error: 'invalid on' }))
+            respondJson(res, 400, { error: 'invalid on' })
             return
           }
           if (on === true) {
             // 总开关关闭时拒绝进入（enabled=false 的诚实语义：整功能关停）。
             if (!config.enabled) {
-              res.statusCode = 403
-              res.end(JSON.stringify({ error: 'voice mode disabled' }))
+              respondJson(res, 403, { error: 'voice mode disabled' })
               return
             }
             // B1：进入即清该会话可能残留的 host ASR 段（上次中途退出的旧 stream/旧文本），
@@ -559,8 +550,7 @@ export function apply(ctx: Context, config: Config): void {
               broadcast('mode', { active: null })
             }
           }
-          res.setHeader('content-type', 'application/json')
-          res.end(JSON.stringify({ active: activeVoiceSession }))
+          respondJson(res, 200, { active: activeVoiceSession })
         })
       },
     }),
@@ -572,8 +562,7 @@ export function apply(ctx: Context, config: Config): void {
       path: `${base}/models/status`,
       handler: (_req, res: ServerResponse) => {
         // 模型实时状态（设置面板轮询；无需语音模式）。
-        res.setHeader('content-type', 'application/json')
-        res.end(JSON.stringify(asr.modelStatus()))
+        respondJson(res, 200, asr.modelStatus())
       },
     }),
   )
@@ -593,20 +582,15 @@ export function apply(ctx: Context, config: Config): void {
             } else if (p.kind === 'vad' || p.kind === 'sense' || p.kind === 'asr') {
               kind = p.kind
             } else {
-              res.statusCode = 400
-              res.setHeader('content-type', 'application/json')
-              res.end(JSON.stringify({ error: 'invalid kind' }))
+              respondJson(res, 400, { error: 'invalid kind' })
               return
             }
           } catch {
-            res.statusCode = 400
-            res.setHeader('content-type', 'application/json')
-            res.end(JSON.stringify({ error: 'invalid json' }))
+            respondJson(res, 400, { error: 'invalid json' })
             return
           }
           void asr.retryModel(kind).then((done) => {
-            res.setHeader('content-type', 'application/json')
-            res.end(JSON.stringify({ ok: done, kind }))
+            respondJson(res, 200, { ok: done, kind })
           })
         })
       },
@@ -655,8 +639,7 @@ export function apply(ctx: Context, config: Config): void {
             queue.cancel(sessionId)
             if (!keepAsr) asr.reset(sessionId)
           }
-          res.setHeader('content-type', 'application/json')
-          res.end(JSON.stringify({ ok: true }))
+          respondJson(res, 200, { ok: true })
         })
       },
     }),
@@ -734,9 +717,7 @@ function collectBody(
     body += c
     if (body.length > maxBytes) {
       tooLarge = true
-      res.statusCode = 413
-      res.setHeader('content-type', 'application/json')
-      res.end(JSON.stringify({ error: 'request body too large' }))
+      respondJson(res, 413, { error: 'request body too large' })
     }
   })
   req.on('end', () => {

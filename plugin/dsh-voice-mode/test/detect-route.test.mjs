@@ -28,9 +28,13 @@ const fakeReq = (url, pcm) => {
   return req
 }
 
-/** 假 res：捕获 statusCode / headers / body。 */
+/** 假 res：捕获 statusCode / headers / body（含 writeHead 路径——响应助手改用显式头）。 */
 const fakeRes = () => {
   const res = { statusCode: 200, headers: {}, body: '' }
+  res.writeHead = (status, headers) => {
+    res.statusCode = status
+    if (headers) Object.assign(res.headers, headers)
+  }
   res.setHeader = (k, v) => {
     res.headers[k] = v
   }

@@ -693,6 +693,10 @@ async function download(host, repoDir, repo, file, resumeFrom, broadcast) {
   });
   return done.catch(() => false);
 }
+var respondJson = (res, status, payload) => {
+  res.writeHead(status, { "content-type": "application/json" });
+  res.end(JSON.stringify(payload));
+};
 function handleAsrRequest(asr, activeSessionId, req, res) {
   const chunks = [];
   let received = 0;
@@ -702,15 +706,13 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
     received += c.length;
     if (received > MAX_ASR_BYTES) {
       tooLarge = true;
-      res.statusCode = 413;
-      res.end(JSON.stringify({ error: "pcm payload too large" }));
+      respondJson(res, 413, { error: "pcm payload too large" });
       return;
     }
     chunks.push(c);
   });
   req.on("end", () => {
     if (tooLarge) return;
-    res.setHeader("content-type", "application/json");
     const url = new URL(req.url ?? "/", "http://localhost");
     const sessionId = url.searchParams.get("sessionId") ?? "";
     const final = url.searchParams.get("final") === "1";
@@ -721,56 +723,49 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
     const offsetParam = url.searchParams.get("offset");
     const offsetOK = offsetParam === null || Number.isFinite(Number(offsetParam)) && Number(offsetParam) >= 0 && Number(offsetParam) <= MAX_ASR_BYTES / 4;
     if (!offsetOK) {
-      res.statusCode = 400;
-      res.end(JSON.stringify({ error: "invalid offset" }));
+      respondJson(res, 400, { error: "invalid offset" });
       return;
     }
     if (!epochOK) {
-      res.statusCode = 400;
-      res.end(JSON.stringify({ error: "invalid epoch" }));
+      respondJson(res, 400, { error: "invalid epoch" });
       return;
     }
     const epoch = epochParam === null ? 0 : Math.floor(epochN);
     const offset = offsetParam === null ? 0 : Math.floor(Number(offsetParam));
     if (!sessionId || sessionId !== activeSessionId) {
-      res.statusCode = 403;
-      res.end(JSON.stringify({ error: "not the active voice session" }));
+      respondJson(res, 403, { error: "not the active voice session" });
       return;
     }
     if (reset) {
       asr.reset(sessionId);
-      res.end(JSON.stringify({ ok: true }));
+      respondJson(res, 200, { ok: true });
       return;
     }
     const raw = Buffer.concat(chunks);
     const samples = raw.length === 0 ? final ? new Float32Array(0) : null : pcmToSamples(raw);
     if (!samples) {
-      res.statusCode = 400;
-      res.end(JSON.stringify({ error: "invalid pcm payload" }));
+      respondJson(res, 400, { error: "invalid pcm payload" });
       return;
     }
     if (url.searchParams.get("vadOnly") === "1") {
       void asr.detect(sessionId, samples).then((out) => {
-        res.end(JSON.stringify({ isSpeech: out.isSpeech }));
+        respondJson(res, 200, { isSpeech: out.isSpeech });
       }).catch((e) => {
-        res.statusCode = 500;
-        res.end(JSON.stringify({ error: String(e) }));
+        respondJson(res, 500, { error: String(e) });
       });
       return;
     }
     void asr.feed(sessionId, samples, final, offset, epoch).then((out) => {
       if (out.loading) {
-        res.statusCode = 202;
-        res.end(JSON.stringify({ loading: true }));
+        respondJson(res, 202, { loading: true });
         return;
       }
       const body = { text: out.text };
       if (out.endpoint) body.endpoint = true;
       if (out.isSpeech !== void 0) body.isSpeech = out.isSpeech;
-      res.end(JSON.stringify(body));
+      respondJson(res, 200, body);
     }).catch((e) => {
-      res.statusCode = 500;
-      res.end(JSON.stringify({ error: String(e) }));
+      respondJson(res, 500, { error: String(e) });
     });
   });
 }
@@ -1024,6 +1019,10 @@ var TtsQueue = class {
 var name = "voice-mode";
 var NS_VOICE_MODE = "voice-mode";
 var BASE_PATH = "/voice-mode";
+var respondJson2 = (res, status, payload) => {
+  res.writeHead(status, { "content-type": "application/json" });
+  res.end(JSON.stringify(payload));
+};
 var VOICE_SPOKEN_PROMPT = "\u3010\u8BED\u97F3\u6A21\u5F0F\u3011\u5F53\u524D\u56DE\u590D\u4F1A\u88AB\u8BED\u97F3\u6717\u8BFB\uFF0C\u8BF7\u59CB\u7EC8\u7528\u7528\u6237\u6240\u7528\u8BED\u8A00\u3001\u4EE5\u53E3\u8BED\u5316\u7684\u77ED\u53E5\u76F4\u63A5\u56DE\u7B54\uFF0C\u50CF\u9762\u5BF9\u9762\u804A\u5929\u4E00\u6837\u81EA\u7136\uFF0C\u907F\u514D\u4E66\u9762\u8BED\u548C\u957F\u96BE\u53E5\u3002\u4E0D\u8981\u4F7F\u7528\u4EFB\u4F55 Markdown \u6216\u6392\u7248\u7B26\u53F7\uFF08\u661F\u53F7\u3001\u4E0B\u5212\u7EBF\u3001\u53CD\u5F15\u53F7\u3001\u4E95\u53F7\u3001\u5217\u8868\u4E0E\u8868\u683C\u6807\u8BB0\u3001\u4EE3\u7801\u5757\u7B49\uFF09\u3002\u9700\u8981\u5206\u70B9\u8BF4\u660E\u65F6\u7528\u300C\u7B2C\u4E00\u3001\u7B2C\u4E8C\u300D\u6216\u8FDE\u8D2F\u7684\u77ED\u53E5\u8868\u8FBE\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EE3\u7801\u7247\u6BB5\u3001\u5B8C\u6574 URL \u6216\u5197\u957F\u5B9A\u4E49\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u6982\u62EC\u542B\u4E49\u5373\u53EF\u3002\u56DE\u7B54\u7B80\u6D01\u76F4\u63A5\uFF0C\u4E0D\u8981\u91CD\u590D\u548C\u5BD2\u6684\u3002";
 var VOICE_SPOKEN_SECTION = "voice-mode:spoken-format";
 var inject = ["webServer", "settings"];
@@ -1181,16 +1180,12 @@ function apply(ctx, config) {
       kind: "prefix",
       path: base,
       handler: (_req, res) => {
-        res.statusCode = 200;
-        res.setHeader("content-type", "application/json");
-        res.end(
-          JSON.stringify({
-            ok: true,
-            name: "dsh-voice-mode",
-            enabled: config.enabled,
-            active: activeVoiceSession
-          })
-        );
+        respondJson2(res, 200, {
+          ok: true,
+          name: "dsh-voice-mode",
+          enabled: config.enabled,
+          active: activeVoiceSession
+        });
       }
     })
   );
@@ -1199,28 +1194,24 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/config`,
       handler: (_req, res) => {
-        res.statusCode = 200;
-        res.setHeader("content-type", "application/json");
-        res.end(
-          JSON.stringify({
-            basePath: base,
-            rate: currentRate(),
-            voice: currentVoice(),
-            senseVoice: vset.senseVoice,
-            interruptLevel: currentInterrupt(),
-            silenceMs: vset.silenceMs,
-            idleTimeoutMinutes: vset.idleTimeoutMinutes,
-            modelHost: vset.modelHost,
-            autoSend: vset.autoSend,
-            autoResume: vset.autoResume,
-            mode: vset.mode,
-            bargeInMode: vset.bargeInMode,
-            echoGateDb: vset.echoGateDb,
-            shortcut: vset.shortcut,
-            wakeWord: vset.wakeWord,
-            cacheDir: config.cacheDir
-          })
-        );
+        respondJson2(res, 200, {
+          basePath: base,
+          rate: currentRate(),
+          voice: currentVoice(),
+          senseVoice: vset.senseVoice,
+          interruptLevel: currentInterrupt(),
+          silenceMs: vset.silenceMs,
+          idleTimeoutMinutes: vset.idleTimeoutMinutes,
+          modelHost: vset.modelHost,
+          autoSend: vset.autoSend,
+          autoResume: vset.autoResume,
+          mode: vset.mode,
+          bargeInMode: vset.bargeInMode,
+          echoGateDb: vset.echoGateDb,
+          shortcut: vset.shortcut,
+          wakeWord: vset.wakeWord,
+          cacheDir: config.cacheDir
+        });
       }
     })
   );
@@ -1230,9 +1221,7 @@ function apply(ctx, config) {
       path: `${base}/preview`,
       handler: (req, res) => {
         if (!config.enabled) {
-          res.statusCode = 403;
-          res.setHeader("content-type", "application/json");
-          res.end(JSON.stringify({ error: "voice mode disabled" }));
+          respondJson2(res, 403, { error: "voice mode disabled" });
           return;
         }
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
@@ -1247,15 +1236,11 @@ function apply(ctx, config) {
           } catch {
           }
           if (voice.length > 128) {
-            res.statusCode = 400;
-            res.setHeader("content-type", "application/json");
-            res.end(JSON.stringify({ error: "voice too long" }));
+            respondJson2(res, 400, { error: "voice too long" });
             return;
           }
           if (!voice) {
-            res.statusCode = 400;
-            res.setHeader("content-type", "application/json");
-            res.end(JSON.stringify({ error: "voice required" }));
+            respondJson2(res, 400, { error: "voice required" });
             return;
           }
           const sample = voice.startsWith("zh-") ? "\u4F60\u597D\uFF0C\u6B22\u8FCE\u4F7F\u7528\u8BED\u97F3\u6A21\u5F0F\u3002" : "Hello, welcome to voice mode.";
@@ -1264,14 +1249,10 @@ function apply(ctx, config) {
             buf = await queue.synthesize(sample, { voice, rate });
           } catch (e) {
             console.warn(`[dsh-voice-mode] preview synthesis failed: ${String(e)}`);
-            res.statusCode = 502;
-            res.setHeader("content-type", "application/json");
-            res.end(JSON.stringify({ error: "\u9884\u89C8\u5408\u6210\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u97F3\u8272\u540D\uFF08ShortName\uFF09\u662F\u5426\u6B63\u786E" }));
+            respondJson2(res, 502, { error: "\u9884\u89C8\u5408\u6210\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u97F3\u8272\u540D\uFF08ShortName\uFF09\u662F\u5426\u6B63\u786E" });
             return;
           }
-          res.statusCode = 200;
-          res.setHeader("content-type", "audio/mpeg");
-          res.setHeader("cache-control", "no-store");
+          res.writeHead(200, { "content-type": "audio/mpeg", "cache-control": "no-store" });
           res.end(buf);
         });
       }
@@ -1294,19 +1275,16 @@ function apply(ctx, config) {
           } catch {
           }
           if (!sessionId) {
-            res.statusCode = 400;
-            res.end(JSON.stringify({ error: "sessionId required" }));
+            respondJson2(res, 400, { error: "sessionId required" });
             return;
           }
           if (on !== void 0 && typeof on !== "boolean") {
-            res.statusCode = 400;
-            res.end(JSON.stringify({ error: "invalid on" }));
+            respondJson2(res, 400, { error: "invalid on" });
             return;
           }
           if (on === true) {
             if (!config.enabled) {
-              res.statusCode = 403;
-              res.end(JSON.stringify({ error: "voice mode disabled" }));
+              respondJson2(res, 403, { error: "voice mode disabled" });
               return;
             }
             asr.reset(sessionId);
@@ -1340,8 +1318,7 @@ function apply(ctx, config) {
               broadcast("mode", { active: null });
             }
           }
-          res.setHeader("content-type", "application/json");
-          res.end(JSON.stringify({ active: activeVoiceSession }));
+          respondJson2(res, 200, { active: activeVoiceSession });
         });
       }
     })
@@ -1351,8 +1328,7 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/models/status`,
       handler: (_req, res) => {
-        res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify(asr.modelStatus()));
+        respondJson2(res, 200, asr.modelStatus());
       }
     })
   );
@@ -1369,20 +1345,15 @@ function apply(ctx, config) {
             } else if (p.kind === "vad" || p.kind === "sense" || p.kind === "asr") {
               kind = p.kind;
             } else {
-              res.statusCode = 400;
-              res.setHeader("content-type", "application/json");
-              res.end(JSON.stringify({ error: "invalid kind" }));
+              respondJson2(res, 400, { error: "invalid kind" });
               return;
             }
           } catch {
-            res.statusCode = 400;
-            res.setHeader("content-type", "application/json");
-            res.end(JSON.stringify({ error: "invalid json" }));
+            respondJson2(res, 400, { error: "invalid json" });
             return;
           }
           void asr.retryModel(kind).then((done) => {
-            res.setHeader("content-type", "application/json");
-            res.end(JSON.stringify({ ok: done, kind }));
+            respondJson2(res, 200, { ok: done, kind });
           });
         });
       }
@@ -1423,8 +1394,7 @@ function apply(ctx, config) {
             queue.cancel(sessionId);
             if (!keepAsr) asr.reset(sessionId);
           }
-          res.setHeader("content-type", "application/json");
-          res.end(JSON.stringify({ ok: true }));
+          respondJson2(res, 200, { ok: true });
         });
       }
     })
@@ -1488,9 +1458,7 @@ function collectBody(req, res, maxBytes, onBody) {
     body += c;
     if (body.length > maxBytes) {
       tooLarge = true;
-      res.statusCode = 413;
-      res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ error: "request body too large" }));
+      respondJson2(res, 413, { error: "request body too large" });
     }
   });
   req.on("end", () => {

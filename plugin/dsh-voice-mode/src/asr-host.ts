@@ -822,6 +822,13 @@ async function download(
   return done.catch(() => false)
 }
 
+/** JSON 响应：writeHead 显式写头（gzip 包装器只拦截 writeHead 路径；
+ *  statusCode+setHeader+end 的隐式头会产出「gzip 头 + 明文 body」断链）。 */
+const respondJson = (res: ServerResponse, status: number, payload: unknown): void => {
+  res.writeHead(status, { 'content-type': 'application/json' })
+  res.end(JSON.stringify(payload))
+}
+
 /** HTTP 助手：把一块 Buffer 作为 f32 PCM 载荷处理 /asr 请求。 */
 export function handleAsrRequest(
   asr: AsrRuntime,
@@ -837,15 +844,13 @@ export function handleAsrRequest(
     received += c.length
     if (received > MAX_ASR_BYTES) {
       tooLarge = true
-      res.statusCode = 413
-      res.end(JSON.stringify({ error: 'pcm payload too large' }))
+      respondJson(res, 413, { error: 'pcm payload too large' })
       return
     }
     chunks.push(c)
   })
   req.on('end', () => {
     if (tooLarge) return
-    res.setHeader('content-type', 'application/json')
     // 校验会话归属：仅活跃语音会话可识别（防滥用/串流）。
     const url = new URL(req.url ?? '/', 'http://localhost')
     const sessionId = url.searchParams.get('sessionId') ?? ''
@@ -862,27 +867,24 @@ export function handleAsrRequest(
       offsetParam === null ||
       (Number.isFinite(Number(offsetParam)) && Number(offsetParam) >= 0 && Number(offsetParam) <= MAX_ASR_BYTES / 4)
     if (!offsetOK) {
-      res.statusCode = 400
-      res.end(JSON.stringify({ error: 'invalid offset' }))
+      respondJson(res, 400, { error: 'invalid offset' })
       return
     }
     if (!epochOK) {
-      res.statusCode = 400
-      res.end(JSON.stringify({ error: 'invalid epoch' }))
+      respondJson(res, 400, { error: 'invalid epoch' })
       return
     }
     const epoch = epochParam === null ? 0 : Math.floor(epochN)
     const offset = offsetParam === null ? 0 : Math.floor(Number(offsetParam))
     if (!sessionId || sessionId !== activeSessionId) {
-      res.statusCode = 403
-      res.end(JSON.stringify({ error: 'not the active voice session' }))
+      respondJson(res, 403, { error: 'not the active voice session' })
       return
     }
     // reset=1：丢弃该会话进行中的识别段并新建流（唤醒词命中后的清场，防止
     // 唤醒词头漏进正式定稿）。
     if (reset) {
       asr.reset(sessionId)
-      res.end(JSON.stringify({ ok: true }))
+      respondJson(res, 200, { ok: true })
       return
     }
     const raw = Buffer.concat(chunks)
@@ -890,8 +892,7 @@ export function handleAsrRequest(
     // 只补尾垫返回定稿；空 + 非 final 仍按非法载荷 400。
     const samples = raw.length === 0 ? (final ? new Float32Array(0) : null) : pcmToSamples(raw)
     if (!samples) {
-      res.statusCode = 400
-      res.end(JSON.stringify({ error: 'invalid pcm payload' }))
+      respondJson(res, 400, { error: 'invalid pcm payload' })
       return
     }
     // 打断根治：播放期检测通道（vadOnly=1）。AI 朗读中客户端常规 partial 断流
@@ -901,11 +902,10 @@ export function handleAsrRequest(
       void asr
         .detect(sessionId, samples)
         .then((out) => {
-          res.end(JSON.stringify({ isSpeech: out.isSpeech }))
+          respondJson(res, 200, { isSpeech: out.isSpeech })
         })
         .catch((e: unknown) => {
-          res.statusCode = 500
-          res.end(JSON.stringify({ error: String(e) }))
+          respondJson(res, 500, { error: String(e) })
         })
       return
     }
@@ -913,8 +913,7 @@ export function handleAsrRequest(
       .feed(sessionId, samples, final, offset, epoch)
       .then((out) => {
         if (out.loading) {
-          res.statusCode = 202
-          res.end(JSON.stringify({ loading: true }))
+          respondJson(res, 202, { loading: true })
           return
         }
         // P2-1：透传 Silero VAD 端点提示（客户端收到即定稿）。
@@ -922,11 +921,10 @@ export function handleAsrRequest(
         const body: Record<string, unknown> = { text: out.text }
         if (out.endpoint) body.endpoint = true
         if (out.isSpeech !== undefined) body.isSpeech = out.isSpeech
-        res.end(JSON.stringify(body))
+        respondJson(res, 200, body)
       })
       .catch((e: unknown) => {
-        res.statusCode = 500
-        res.end(JSON.stringify({ error: String(e) }))
+        respondJson(res, 500, { error: String(e) })
       })
   })
 }
