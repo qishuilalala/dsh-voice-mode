@@ -1533,10 +1533,13 @@ export function MicButton({
     const onKeyDown = (e: KeyboardEvent): void => {
       // 可配置快捷键（默认 Ctrl+Shift+V；解析失败/空 = 禁用快捷键）。
       const combo = parseShortcut(bootNow().shortcut)
+      // M10：Shift 下 e.key 变符号（如 Shift+1 → '!'），用 e.code 归一化
+      // （KeyV→v / Digit1→1）兜底，否则 Ctrl+Shift+数字类配置静默失效。
+      const codeKey = e.code.replace('Key', '').replace('Digit', '').toLowerCase()
       if (
         combo &&
         !e.repeat &&
-        e.key.toLowerCase() === combo.key &&
+        (e.key.toLowerCase() === combo.key || codeKey === combo.key) &&
         e.ctrlKey === combo.ctrl &&
         e.shiftKey === combo.shift &&
         e.altKey === combo.alt &&

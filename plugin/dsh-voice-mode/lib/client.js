@@ -928,7 +928,7 @@ var zh = {
   bargeInAuto: "\u81EA\u52A8",
   bargeInManual: "\u624B\u52A8",
   descEchoGate: "\u56DE\u58F0\u95E8\u63A7\u9608\u503C\uFF08dB\uFF0C\u9ED8\u8BA4 6\uFF09\uFF1A\u81EA\u52A8\u6253\u65AD\u8981\u6C42\u6B8B\u5DEE\u9AD8\u4E8E\u56DE\u58F0\u5730\u677F\u6B64\u503C\uFF1B\u5916\u653E\u4ECD\u8BEF\u6253\u65AD\u8C03\u5927\uFF088~10\uFF09\uFF0C\u592A\u96BE\u6253\u65AD\u8C03\u5C0F\uFF083~4\uFF09",
-  descShortcut: "\u8FDB\u5165/\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5FEB\u6377\u952E\uFF08\u5F62\u5982 Ctrl+Shift+V\uFF1B\u7559\u7A7A\u7981\u7528\u5FEB\u6377\u952E\uFF0C\u53EA\u7528\u9EA6\u514B\u98CE\u6309\u94AE\uFF09",
+  descShortcut: "\u8FDB\u5165/\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5FEB\u6377\u952E\uFF08\u5F62\u5982 Ctrl+Shift+V\uFF1B\u7559\u7A7A\u7981\u7528\u5FEB\u6377\u952E\uFF0C\u53EA\u7528\u9EA6\u514B\u98CE\u6309\u94AE\uFF1B\u907F\u514D\u6D4F\u89C8\u5668\u4FDD\u7559\u7EC4\u5408\u5982 Ctrl+W/N/T\uFF09",
   vadDetected: "VAD \u68C0\u6D4B\u5230\u8BED\u97F3",
   aecOff: "\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548",
   aecOffHint: "\u6D4F\u89C8\u5668\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548\uFF08\u5916\u653E\u53EF\u80FD\u81EA\u6253\u65AD\uFF09\uFF0C\u5EFA\u8BAE\u7528\u8033\u673A\u6216\u5207\u6362\u300C\u624B\u52A8\u6253\u65AD\u300D",
@@ -1029,7 +1029,7 @@ var en = {
   bargeInAuto: "Auto",
   bargeInManual: "Manual",
   descEchoGate: "Echo gate threshold (dB, default 6): auto barge-in requires the residual to exceed the echo floor by this value; raise (8-10) if speaker echo still interrupts, lower (3-4) if hard to interrupt",
-  descShortcut: "Shortcut to enter/exit voice mode (e.g. Ctrl+Shift+V; empty disables it, mic button only)",
+  descShortcut: "Shortcut to enter/exit voice mode (e.g. Ctrl+Shift+V; empty disables it, mic button only; avoid browser-reserved combos like Ctrl+W/N/T)",
   vadDetected: "VAD speech",
   aecOff: "Native AEC off",
   aecOffHint: "Native echo cancellation is not active (speaker echo may self-interrupt); use headphones or Manual barge-in",
@@ -2676,7 +2676,8 @@ function MicButton({
     };
     const onKeyDown = (e) => {
       const combo = parseShortcut(bootNow().shortcut);
-      if (combo && !e.repeat && e.key.toLowerCase() === combo.key && e.ctrlKey === combo.ctrl && e.shiftKey === combo.shift && e.altKey === combo.alt && e.metaKey === combo.meta) {
+      const codeKey = e.code.replace("Key", "").replace("Digit", "").toLowerCase();
+      if (combo && !e.repeat && (e.key.toLowerCase() === combo.key || codeKey === combo.key) && e.ctrlKey === combo.ctrl && e.shiftKey === combo.shift && e.altKey === combo.alt && e.metaKey === combo.meta) {
         const el = e.target;
         const editable = el instanceof HTMLElement && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable);
         if (!editable && !e.isComposing) {
