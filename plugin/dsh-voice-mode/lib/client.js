@@ -596,6 +596,9 @@ function createAsrEngine(config, sessionId) {
       if (echoFloorRms === 0) return true;
       return latestResidualRms > echoFloorRms * Math.pow(10, marginDb / 20);
     },
+    echoLevels() {
+      return { floorRms: echoFloorRms, residualRms: latestResidualRms };
+    },
     async start() {
       if (active) return;
       stopRequested = false;
@@ -2286,6 +2289,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     echoForAsr() {
       return echoSource;
     },
+    echoDelayMs() {
+      return refDelaySamples / SAMPLE_RATE_16K * 1e3;
+    },
     unduckAudio() {
       engine.unduck();
     },
@@ -2505,7 +2511,7 @@ function MicButton({
               isSpeechTrueCount = 0;
               interruptFirstAt = 0;
             }
-            bus.setUi({ isSpeech: speech });
+            bus.setUi({ isSpeech: speech, echoDelayMs: bus.echoDelayMs(), echoLevels: engineRef.current?.echoLevels() });
           },
           onSessionExpired: async () => {
             if (localRef.current !== "on") return false;
@@ -2974,6 +2980,12 @@ function VoiceStatusBar({ bus, sessionId }) {
   }
   if (b.ui.interruptConfirmMs !== void 0) {
     telParts.push(`${t("interruptConfirm")} ${fmt(b.ui.interruptConfirmMs)}`);
+  }
+  if (b.ui.echoLevels) {
+    const el = b.ui.echoLevels;
+    telParts.push(
+      `AEC delay=${Math.round(b.ui.echoDelayMs ?? 0)}ms floor=${el.floorRms.toFixed(4)} resid=${el.residualRms.toFixed(4)}`
+    );
   }
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",

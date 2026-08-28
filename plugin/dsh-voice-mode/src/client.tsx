@@ -56,6 +56,10 @@ interface VoiceUiState {
   isSpeech?: boolean
   /** 打断确认耗时（ms）：VAD 首次判真 → 确认帧数达标触发 hardBreak；真机标定 C-3 用。 */
   interruptConfirmMs?: number
+  /** 回声诊断：估计 bulk delay（毫秒，未收敛=0）。 */
+  echoDelayMs?: number
+  /** 回声诊断：{ 地板 RMS, 当前残差 RMS }（标定 echoGateDb 用）。 */
+  echoLevels?: { floorRms: number; residualRms: number }
   /** A1：浏览器原生回声消除是否生效（false 时外放易自打断，状态条提示）。 */
   aecOff?: boolean
   /** 延迟埋点链各阶段时刻（开发模式状态条展示；null = 未启用/已清空）。 */
@@ -137,6 +141,8 @@ interface VoiceBus {
   skipAudio(): void
   /** P3-2：回声消除源（参考窗口 + NLMS），供 ASR 引擎注入。 */
   echoForAsr(): EchoRefSource
+  /** 回声诊断：估计的 bulk delay（毫秒，未收敛=0）。 */
+  echoDelayMs(): number
   /** P3-3：恢复 TTS 增益（无爆音斜坡；hardBreak 打断后调用，确保音量不残留压低态）。 */
   unduckAudio(): void
   /** 取消当前回合（keepInbox 保新消息，Q2 打断第二层）。 */
@@ -1016,6 +1022,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     echoForAsr() {
       return echoSource
     },
+    echoDelayMs() {
+      return (refDelaySamples / SAMPLE_RATE_16K) * 1000
+    },
     unduckAudio() {
       engine.unduck()
     },
@@ -1314,7 +1323,8 @@ export function MicButton({
               isSpeechTrueCount = 0
               interruptFirstAt = 0
             }
-            bus.setUi({ isSpeech: speech }) // 仍存 ui 供状态条展示
+            // 仍存 ui 供状态条展示；回声诊断每拍推送（真机标定数据）。
+            bus.setUi({ isSpeech: speech, echoDelayMs: bus.echoDelayMs(), echoLevels: engineRef.current?.echoLevels() })
           },
           onSessionExpired: async () => {
             // I4：仅当本 tab 仍处语音模式（local=on）才反抢；已被让出/退出时跟随 mode 广播
@@ -1941,6 +1951,13 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
   // 打断确认耗时（打断后独立展示；埋点链已被打断清空，此处单列）。
   if (b.ui.interruptConfirmMs !== undefined) {
     telParts.push(`${t('interruptConfirm')} ${fmt(b.ui.interruptConfirmMs)}`)
+  }
+  // 回声诊断（开发模式标定数据）：bulk delay / 回声地板 RMS / 当前残差 RMS。
+  if (b.ui.echoLevels) {
+    const el = b.ui.echoLevels
+    telParts.push(
+      `AEC delay=${Math.round(b.ui.echoDelayMs ?? 0)}ms floor=${el.floorRms.toFixed(4)} resid=${el.residualRms.toFixed(4)}`,
+    )
   }
 
   return (
