@@ -211,11 +211,12 @@ function createAsrEngine(config, sessionId) {
       if (res.status === 403 && config.onSessionExpired) {
         const recovered = await config.onSessionExpired();
         if (recovered && epoch === segmentEpoch) {
+          uploadedSamples = 0;
           try {
-            res = await fetch(asrUrl(false, from, epoch), {
+            res = await fetch(asrUrl(false, 0, epoch), {
               method: "POST",
               headers: { "content-type": "application/octet-stream" },
-              body: samples.buffer
+              body: sliceSince(0).buffer
             });
           } catch {
           }
@@ -306,6 +307,7 @@ function createAsrEngine(config, sessionId) {
     emitTelemetry("endpoint-fired");
     const from = uploadedSamples;
     const samples = sliceSince(from);
+    const recoverySegment = segment;
     const epochSnapshot = segmentEpoch;
     segmentEpoch++;
     const meta = { force: forcePending };
@@ -350,11 +352,11 @@ function createAsrEngine(config, sessionId) {
           const recovered = await config.onSessionExpired();
           if (recovered && segmentEpoch === epochSnapshot + 1) {
             try {
-              res = await fetch(asrUrl(true, from, epochSnapshot), {
+              res = await fetch(asrUrl(true, 0, epochSnapshot), {
                 signal: AbortSignal.timeout(1e4),
                 method: "POST",
                 headers: { "content-type": "application/octet-stream" },
-                body: samples.buffer
+                body: sliceChunks(recoverySegment, 0).buffer
               });
             } catch {
             }
@@ -397,13 +399,16 @@ function createAsrEngine(config, sessionId) {
       }
     }
     const playingNow = config.isPlaying?.() ?? false;
+    const doubleTalk = playingNow && echoFloorRms > 0 && rms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20);
     if (playingNow) {
       latestResidualRms = rms;
       if (echoFloorRms === 0) echoFloorRms = rms;
-      else echoFloorRms = echoFloorRms * 0.98 + rms * 0.02;
+      else if (!doubleTalk) {
+        echoFloorRms = echoFloorRms * 0.98 + rms * 0.02;
+      }
     }
     if (echo) {
-      echo.setFrozen(playingNow && echoFloorRms > 0 && latestResidualRms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20));
+      echo.setFrozen(doubleTalk);
     }
     if (playingNow && !holdActive && config.mode !== "hold") detectChunks.push(data);
     if (holdActive) {
@@ -818,29 +823,53 @@ function estimateBulkDelay(mic, ref, opts = {}) {
   if (maxLagD >= N) return { lag: 0, peak: 0 };
   const m = new Float32Array(N);
   const r = new Float32Array(N);
+  let mSum = 0;
+  let rSum = 0;
+  for (let i = 0; i < N; i++) {
+    let mv = 0;
+    let rv = 0;
+    for (let k = 0; k < ds; k++) {
+      mv += mic[i * ds + k];
+      rv += ref[i * ds + k];
+    }
+    mv /= ds;
+    rv /= ds;
+    m[i] = mv;
+    r[i] = rv;
+    mSum += mv;
+    rSum += rv;
+  }
+  const mMu = mSum / N;
+  const rMu = rSum / N;
   let mE = 0;
   let rE = 0;
   for (let i = 0; i < N; i++) {
-    const mv = mic[i * ds];
-    m[i] = mv;
-    mE += mv * mv;
-    const rv = ref[i * ds];
-    r[i] = rv;
-    rE += rv * rv;
+    m[i] -= mMu;
+    r[i] -= rMu;
+    mE += m[i] * m[i];
+    rE += r[i] * r[i];
   }
-  const denom = Math.sqrt(mE * rE);
-  if (denom < 1e-9) return { lag: 0, peak: 0 };
+  if (mE < 1e-9 || rE < 1e-9) return { lag: 0, peak: 0 };
+  const prefM = new Float32Array(N + 1);
+  const prefR = new Float32Array(N + 1);
+  for (let i = 0; i < N; i++) {
+    prefM[i + 1] = prefM[i] + m[i] * m[i];
+    prefR[i + 1] = prefR[i] + r[i] * r[i];
+  }
   let bestLag = 0;
-  let bestCorr = -Infinity;
+  let bestPeak = -Infinity;
   for (let d = minLagD; d <= maxLagD; d++) {
     let corr = 0;
     for (let i = d; i < N; i++) corr += m[i] * r[i - d];
-    if (corr > bestCorr) {
-      bestCorr = corr;
+    const em = prefM[N] - prefM[d];
+    const er = prefR[N - d];
+    const peak = em > 1e-12 && er > 1e-12 ? corr / Math.sqrt(em * er) : 0;
+    if (peak > bestPeak) {
+      bestPeak = peak;
       bestLag = d;
     }
   }
-  return { lag: bestLag * ds, peak: bestCorr / denom };
+  return { lag: bestLag * ds, peak: bestPeak };
 }
 
 // src/strings.ts
@@ -921,7 +950,7 @@ var zh = {
   descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09",
   wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
   settingsCardDesc: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
-  settingsEffectiveNote: "\u97F3\u8272 / \u8BED\u901F / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 / \u63D0\u793A\u97F3 \u5373\u65F6\u751F\u6548\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
+  settingsEffectiveNote: "\u97F3\u8272 / \u8BED\u901F / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 / \u63D0\u793A\u97F3 \u5373\u65F6\u751F\u6548\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
   configUnavailable: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528",
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: "\u8BF4\u5B8C",
@@ -1022,7 +1051,7 @@ var en = {
   descWakeWord: "Wake word (default off; e.g. Hey D)",
   wakePlaceholder: "e.g. Hey D",
   settingsCardDesc: "Voice / rate / interrupt / barge-in / silence / idle / model host / auto-send / mode / wake word / spoken format",
-  settingsEffectiveNote: "Voice / rate / spoken format / re-transcribe / beep apply immediately; the rest (interrupt / barge-in / silence / idle / mirror / auto-send / auto-resume / mode / wake word) apply next time you enter voice mode.",
+  settingsEffectiveNote: "Voice / rate / spoken format / re-transcribe / beep apply immediately; the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word) apply next time you enter voice mode.",
   configUnavailable: "Configuration unavailable",
   telUtteranceEnd: "end",
   telEndpoint: "endpoint",
@@ -1560,6 +1589,7 @@ var import_jsx_runtime2 = require("react/jsx-runtime");
 var beepCtx = null;
 var isSpeechTrueCount = 0;
 var interruptFirstAt = 0;
+var lastReenterAt = 0;
 var INT_CONFIRM_FRAMES = { 0: 3, 1: 2, 2: 1 };
 var inject = ["slots", "sessions", "settingsScope"];
 var TELEMETRY_VIEW = [
@@ -1951,28 +1981,28 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   let lastEstimateAt = 0;
   const echoSource = {
     process: (mic, ref) => {
-      for (let i = 0; i < mic.length; i++) estMic.push(mic[i]);
-      for (let i = 0; i < ref.length; i++) estRef.push(ref[i]);
-      if (estMic.length > EST_CAP) {
-        const drop = estMic.length - EST_CAP;
-        estMic.splice(0, drop);
-        estRef.splice(0, drop);
-      }
       const now = performance.now();
-      if (now - lastEstimateAt > 2e3 && estMic.length > SAMPLE_RATE_16K * 0.5) {
-        lastEstimateAt = now;
-        const est = estimateBulkDelay(
-          Float32Array.from(estMic),
-          Float32Array.from(estRef),
-          { sampleRate: SAMPLE_RATE_16K, maxLag: Math.floor(0.25 * SAMPLE_RATE_16K) }
-        );
-        if (est.peak > 0.5) {
-          refDelaySamples = refDelaySamples === 0 ? est.lag : Math.round(refDelaySamples * 0.8 + est.lag * 0.2);
-        } else {
-          refDelaySamples = 0;
+      if (ui.playing) {
+        for (let i = 0; i < mic.length; i++) estMic.push(mic[i]);
+        for (let i = 0; i < ref.length; i++) estRef.push(ref[i]);
+        if (estMic.length > EST_CAP) {
+          const drop = estMic.length - EST_CAP;
+          estMic.splice(0, drop);
+          estRef.splice(0, drop);
         }
-        estMic.length = 0;
-        estRef.length = 0;
+        if (now - lastEstimateAt > 2e3 && estMic.length > SAMPLE_RATE_16K * 0.5) {
+          lastEstimateAt = now;
+          const est = estimateBulkDelay(
+            Float32Array.from(estMic),
+            Float32Array.from(estRef),
+            { sampleRate: SAMPLE_RATE_16K, maxLag: Math.floor(0.25 * SAMPLE_RATE_16K) }
+          );
+          if (est.peak > 0.5) {
+            refDelaySamples = refDelaySamples === 0 ? est.lag : Math.round(refDelaySamples * 0.8 + est.lag * 0.2);
+          }
+          estMic.length = 0;
+          estRef.length = 0;
+        }
       }
       let refForAec = ref;
       if (refDelaySamples > 0 && refActive && refTotal > refDelaySamples) {
@@ -2016,8 +2046,11 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
     source.addEventListener("mode", (e) => {
       try {
-        const active = JSON.parse(e.data).active ?? null;
-        if (activeSessionId !== null && active !== activeSessionId) {
+        const data = JSON.parse(e.data);
+        const active = data.active ?? null;
+        const ownerTabId = data.ownerTabId ?? null;
+        const preempted = active !== activeSessionId || ownerTabId !== null && activeSessionId !== null && ownerTabId !== TAB_ID;
+        if (activeSessionId !== null && preempted) {
           const prev = activeSessionId;
           activeSessionId = null;
           if (ui.turn !== "idle") ui.turn = "idle";
@@ -2193,7 +2226,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     },
     /** isPlaying 尾音截止墙钟：playing 或尾音宽限期内均视为「AI 正在朗读」。 */
     playingTailUntil() {
-      return playingEndAt + ECHO_TAIL_MS;
+      return playingEndAt + ECHO_TAIL_MS + refDelaySamples / SAMPLE_RATE_16K * 1e3;
     },
     async enter(sessionId) {
       try {
@@ -2359,6 +2392,8 @@ function MicButton({
       if (bus.activeSessionId !== sid) {
         setLocalMode("off");
         clearIdle();
+        clearBreakTimer();
+        setHolding(false);
         const engine = engineRef.current;
         engineRef.current = null;
         if (engine) void engine.stop();
@@ -2379,11 +2414,13 @@ function MicButton({
     isSpeechTrueCount = 0;
     breakRef.current = null;
     manualHoldRef.current = false;
+    clearBreakTimer();
+    setHolding(false);
     const engine = engineRef.current;
     engineRef.current = null;
     if (engine) await engine.stop();
     bus.resetTelemetry();
-    bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null });
+    bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null, isSpeech: void 0 });
     const sid = sidRef.current;
     if (sid) await bus.exit(sid);
   };
@@ -2469,6 +2506,8 @@ function MicButton({
           },
           onSessionExpired: async () => {
             if (localRef.current !== "on") return false;
+            if (Date.now() - lastReenterAt < 2e3) return false;
+            lastReenterAt = Date.now();
             bus.setUi({ error: t("sessionExpired") });
             const reentered = await bus.enter(sid);
             if (!reentered.ok) {
@@ -2582,12 +2621,15 @@ function MicButton({
     autoResumeTriedRef.current = true;
     const sid = sidRef.current;
     if (!sid) return;
-    if (!bootNow().autoResume) return;
-    if (getLastVoiceSession() !== sid) return;
-    if (bus.activeSessionId !== null) return;
-    void enterMode().catch(() => {
-      setLocalMode("off");
-    });
+    void (async () => {
+      const cfg = await fetchConfig();
+      if (!cfg.autoResume) return;
+      if (getLastVoiceSession() !== sid) return;
+      if (bus.activeSessionId !== null) return;
+      await enterMode().catch(() => {
+        setLocalMode("off");
+      });
+    })();
   }, []);
   const runningSel = useSession ? useSession((s) => s === void 0 ? void 0 : s.running) : void 0;
   (0, import_react2.useEffect)(() => {
@@ -2758,6 +2800,13 @@ function MicButton({
   const holdPtrRef = (0, import_react2.useRef)(null);
   const toggleHoldRef = (0, import_react2.useRef)(false);
   const suppressClickUntilRef = (0, import_react2.useRef)(0);
+  const breakTimerRef = (0, import_react2.useRef)(null);
+  const clearBreakTimer = () => {
+    if (breakTimerRef.current !== null) {
+      clearTimeout(breakTimerRef.current);
+      breakTimerRef.current = null;
+    }
+  };
   const onPointerDown = (e) => {
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId };
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -2765,21 +2814,23 @@ function MicButton({
       if (localRef.current === "on") {
         setHolding(true);
         const eng = engineRef.current;
+        eng?.beginHeld();
         if (eng && bootNow().bargeInMode === "manual" && bus.ui.playing) {
-          eng.beginHeld();
-          void breakRef.current?.();
-        } else {
-          eng?.beginHeld();
+          breakTimerRef.current = setTimeout(() => {
+            breakTimerRef.current = null;
+            if (holdPtrRef.current && bus.ui.playing) void breakRef.current?.();
+          }, 250);
         }
       }
     } else if (localRef.current === "on" && bus.ui.playing) {
       toggleHoldRef.current = true;
       setHolding(true);
       const eng = engineRef.current;
-      if (eng) {
-        eng.beginHeld();
-        void breakRef.current?.();
-      }
+      eng?.beginHeld();
+      breakTimerRef.current = setTimeout(() => {
+        breakTimerRef.current = null;
+        if (holdPtrRef.current && bus.ui.playing) void breakRef.current?.();
+      }, 250);
     }
   };
   const onPointerMove = (e) => {
@@ -2788,14 +2839,17 @@ function MicButton({
     if (p.y - e.clientY >= 40) {
       holdPtrRef.current = null;
       toggleHoldRef.current = false;
+      clearBreakTimer();
       setHolding(false);
       engineRef.current?.endHeld(true);
       bus.setUi({ partial: "" });
+      suppressClickUntilRef.current = Date.now() + 500;
     }
   };
   const onPointerUp = (e) => {
     const p = holdPtrRef.current;
     holdPtrRef.current = null;
+    clearBreakTimer();
     setHolding(false);
     if (!p || p.id !== e.pointerId) return;
     const ms = Date.now() - p.t;
@@ -2825,6 +2879,7 @@ function MicButton({
   const onPointerCancel = () => {
     holdPtrRef.current = null;
     toggleHoldRef.current = false;
+    clearBreakTimer();
     setHolding(false);
     engineRef.current?.endHeld(true);
   };

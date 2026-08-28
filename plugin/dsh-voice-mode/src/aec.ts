@@ -150,31 +150,57 @@ export function estimateBulkDelay(
   const minLagD = Math.floor(minLag / ds)
   if (maxLagD >= N) return { lag: 0, peak: 0 }
 
-  // 下采样 + 能量。
+  // 下采样（ds 点盒式平均 = 简易抗混叠）+ 去均值（去除 DC 对相关的偏置）。
   const m = new Float32Array(N)
   const r = new Float32Array(N)
+  let mSum = 0
+  let rSum = 0
+  for (let i = 0; i < N; i++) {
+    let mv = 0
+    let rv = 0
+    for (let k = 0; k < ds; k++) {
+      mv += mic[i * ds + k]
+      rv += ref[i * ds + k]
+    }
+    mv /= ds
+    rv /= ds
+    m[i] = mv
+    r[i] = rv
+    mSum += mv
+    rSum += rv
+  }
+  const mMu = mSum / N
+  const rMu = rSum / N
   let mE = 0
   let rE = 0
   for (let i = 0; i < N; i++) {
-    const mv = mic[i * ds]
-    m[i] = mv
-    mE += mv * mv
-    const rv = ref[i * ds]
-    r[i] = rv
-    rE += rv * rv
+    m[i] -= mMu
+    r[i] -= rMu
+    mE += m[i] * m[i]
+    rE += r[i] * r[i]
   }
-  const denom = Math.sqrt(mE * rE)
-  if (denom < 1e-9) return { lag: 0, peak: 0 }
+  if (mE < 1e-9 || rE < 1e-9) return { lag: 0, peak: 0 }
 
+  // 前缀平方和：逐滞后用「重叠窗」能量归一化，消除全窗能量的 (N-d)/N 偏置
+  // （对抗审查 Minor#2：大滞后峰值被系统性低估，250ms 从 0.95 降到 0.71）。
+  const prefM = new Float32Array(N + 1)
+  const prefR = new Float32Array(N + 1)
+  for (let i = 0; i < N; i++) {
+    prefM[i + 1] = prefM[i] + m[i] * m[i]
+    prefR[i + 1] = prefR[i] + r[i] * r[i]
+  }
   let bestLag = 0
-  let bestCorr = -Infinity
+  let bestPeak = -Infinity
   for (let d = minLagD; d <= maxLagD; d++) {
     let corr = 0
     for (let i = d; i < N; i++) corr += m[i] * r[i - d]
-    if (corr > bestCorr) {
-      bestCorr = corr
+    const em = prefM[N] - prefM[d]
+    const er = prefR[N - d]
+    const peak = em > 1e-12 && er > 1e-12 ? corr / Math.sqrt(em * er) : 0
+    if (peak > bestPeak) {
+      bestPeak = peak
       bestLag = d
     }
   }
-  return { lag: bestLag * ds, peak: bestCorr / denom }
+  return { lag: bestLag * ds, peak: bestPeak }
 }

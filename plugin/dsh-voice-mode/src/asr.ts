@@ -282,11 +282,14 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       if (res.status === 403 && config.onSessionExpired) {
         const recovered = await config.onSessionExpired()
         if (recovered && epoch === segmentEpoch) {
+          // I2 修复：re-enter 已 asr.reset 清空 host 流（fed=0），旧增量水位作废——
+          // 从 0 全量重发本段（段仍在本地内存），否则 host 只收到尾巴、定稿缺前半句。
+          uploadedSamples = 0
           try {
-            res = await fetch(asrUrl(false, from, epoch), {
+            res = await fetch(asrUrl(false, 0, epoch), {
               method: 'POST',
               headers: { 'content-type': 'application/octet-stream' },
-              body: samples.buffer as ArrayBuffer,
+              body: sliceSince(0).buffer as ArrayBuffer,
             })
           } catch {
             // 重试失败：静默（下轮 partial 自动覆盖）
@@ -410,6 +413,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // P1-4：定稿 = 最后一个增量包打 final 标记（只传尚未上传的部分；可为空包）。
     const from = uploadedSamples
     const samples = sliceSince(from)
+    // I2 修复：清段前保留段引用（chunk 数组不可变，零额外内存）——
+    // 403 恢复时 host 流已被 reset，需从 0 全量重发，否则定稿缺前半句。
+    const recoverySegment = segment
     // 对抗性审查 Fix：epoch 用「本段」世代快照（递增前），响应校验仍按当前世代比。
     const epochSnapshot = segmentEpoch
     segmentEpoch++
@@ -453,11 +459,13 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         if (res.status === 403 && config.onSessionExpired) {
           const recovered = await config.onSessionExpired()
           if (recovered && segmentEpoch === epochSnapshot + 1) {
+            // I2 修复：re-enter 已 asr.reset 清空 host 流，从 0 全量重发（恢复段引用），
+            // 否则 host 只收到尾巴、定稿缺前半句（确定性丢首段）。
             try {
-              res = await fetch(asrUrl(true, from, epochSnapshot), { signal: AbortSignal.timeout(10000),
+              res = await fetch(asrUrl(true, 0, epochSnapshot), { signal: AbortSignal.timeout(10000),
                 method: 'POST',
                 headers: { 'content-type': 'application/octet-stream' },
-                body: samples.buffer as ArrayBuffer,
+                body: sliceChunks(recoverySegment, 0).buffer as ArrayBuffer,
               })
             } catch {
               // 重试失败：静默（下轮 finalize 自动重试）
@@ -524,14 +532,22 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // 经检测通道（其入段路径被下方播放门截断，防 TTS 回声污染唤醒匹配）。
     const playingNow = config.isPlaying?.() ?? false
     // A2.5 回声门控：播放期跟踪残差 RMS 与回声地板（纯回声残差水平）。
+    // 双讲判定（本帧残差 vs 旧地板）先算一次，供地板冻结与 NLMS 冻结共用。
+    const doubleTalk =
+      playingNow && echoFloorRms > 0 && rms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20)
     if (playingNow) {
       latestResidualRms = rms
       if (echoFloorRms === 0) echoFloorRms = rms
-      else echoFloorRms = echoFloorRms * 0.98 + rms * 0.02 // 对称慢速平滑（~3s），跟踪回声残差平均水平
+      else if (!doubleTalk) {
+        // 对抗审查 Important#1：双讲期冻结地板——残差含人声，均值追踪会把地板拉向
+        // 人声电平（持续说话 ~3s 后 aboveEchoFloor 判 false，打断路径冻死）；
+        // 冻结期地板保持纯回声水平，人声停止后自动恢复更新。
+        echoFloorRms = echoFloorRms * 0.98 + rms * 0.02
+      }
     }
     // A2.5 双讲冻结：地板已建立且残差明显高于地板（用户说话）→ 冻结 NLMS 自适应。
     if (echo) {
-      echo.setFrozen(playingNow && echoFloorRms > 0 && latestResidualRms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20))
+      echo.setFrozen(doubleTalk)
     }
     // hold 模式打断走显式手势（按住），不走 VAD 检测通道；toggle 模式保留检测通道。
     if (playingNow && !holdActive && config.mode !== 'hold') detectChunks.push(data)

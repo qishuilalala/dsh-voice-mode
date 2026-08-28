@@ -25,6 +25,8 @@ let beepCtx: AudioContext | null = null
 let isSpeechTrueCount = 0
 /** 打断确认测量：VAD 首次判真时刻（播放中）；触发 hardBreak 时计算确认耗时。 */
 let interruptFirstAt = 0
+/** 403 重入冷却时刻（对抗审查 I3：无退避会与对端互踢振荡，打爆 /toggle）。 */
+let lastReenterAt = 0
 /** 打断灵敏度三档 → isSpeech 连续确认帧数（墙钟节拍 100ms/拍 + 上行往返 → 确认阶段约 0.3/0.2/0.1s；语义对齐旧能量持续时长档位）。 */
 const INT_CONFIRM_FRAMES: Record<0 | 1 | 2, number> = { 0: 3, 1: 2, 2: 1 }
 import { VoiceSettingsCard } from './settings-form.tsx'
@@ -627,31 +629,34 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
 
   const echoSource: EchoRefSource = {
     process: (mic, ref) => {
-      // 累积估计历史（raw ref + mic）。
-      for (let i = 0; i < mic.length; i++) estMic.push(mic[i])
-      for (let i = 0; i < ref.length; i++) estRef.push(ref[i])
-      if (estMic.length > EST_CAP) {
-        const drop = estMic.length - EST_CAP
-        estMic.splice(0, drop)
-        estRef.splice(0, drop)
-      }
-      // 周期估计 bulk delay（每 2s；需 ≥0.5s 历史）。
       const now = performance.now()
-      if (now - lastEstimateAt > 2000 && estMic.length > SAMPLE_RATE_16K * 0.5) {
-        lastEstimateAt = now
-        const est = estimateBulkDelay(
-          Float32Array.from(estMic),
-          Float32Array.from(estRef),
-          { sampleRate: SAMPLE_RATE_16K, maxLag: Math.floor(0.25 * SAMPLE_RATE_16K) },
-        )
-        // 置信门控（peak>0.5 才采信）+ 指数平滑（防跳变）。
-        if (est.peak > 0.5) {
-          refDelaySamples = refDelaySamples === 0 ? est.lag : Math.round(refDelaySamples * 0.8 + est.lag * 0.2)
-        } else {
-          refDelaySamples = 0
+      // 对抗审查 Important#2：仅播放期累积估计历史——非播放期 mic=人声、ref=静音，
+      // 相关无意义，会把已收敛的 delay 拉偏/清空（每句回复前 2s 失去参考平移）。
+      if (ui.playing) {
+        for (let i = 0; i < mic.length; i++) estMic.push(mic[i])
+        for (let i = 0; i < ref.length; i++) estRef.push(ref[i])
+        if (estMic.length > EST_CAP) {
+          const drop = estMic.length - EST_CAP
+          estMic.splice(0, drop)
+          estRef.splice(0, drop)
         }
-        estMic.length = 0
-        estRef.length = 0
+        // 周期估计 bulk delay（每 2s；需 ≥0.5s 历史）。
+        if (now - lastEstimateAt > 2000 && estMic.length > SAMPLE_RATE_16K * 0.5) {
+          lastEstimateAt = now
+          const est = estimateBulkDelay(
+            Float32Array.from(estMic),
+            Float32Array.from(estRef),
+            { sampleRate: SAMPLE_RATE_16K, maxLag: Math.floor(0.25 * SAMPLE_RATE_16K) },
+          )
+          // 置信门控（peak>0.5 才采信）+ 指数平滑（防跳变）。
+          // 低置信保留上次值：声学路径会话内稳定，清零会让后续播放失去参考平移；
+          // 新路径会由下一次高置信估计覆盖。
+          if (est.peak > 0.5) {
+            refDelaySamples = refDelaySamples === 0 ? est.lag : Math.round(refDelaySamples * 0.8 + est.lag * 0.2)
+          }
+          estMic.length = 0
+          estRef.length = 0
+        }
       }
       // 平移参考（从 refChunks 取 D 样本前的原始参考）。
       let refForAec = ref
@@ -708,12 +713,18 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     })
     source.addEventListener('mode', (e: MessageEvent<string>) => {
       try {
-        const active = (JSON.parse(e.data) as { active?: string | null }).active ?? null
+        const data = JSON.parse(e.data) as { active?: string | null; ownerTabId?: string | null }
+        const active = data.active ?? null
+        const ownerTabId = data.ownerTabId ?? null
         // B1 修复：activeSessionId 语义 = 「本 tab 正在跑的语音会话」（owner），只在本地
         // enter/exit 设置，绝不从全局 mode 广播「收养」——否则多 tab 每个 tab 都把
         // activeSessionId 同步成同一值，同一句 TTS 在 N 个 tab 叠加播放、字幕浮层重复。
-        // 此处仅做「被抢占」检测：我是 owner 且全局 active 已切走 → 让出。
-        if (activeSessionId !== null && active !== activeSessionId) {
+        // 此处仅做「被抢占」检测：我是 owner 且（全局 active 已切走 或 owner tab 已换成
+        // 别的 tab）→ 让出。ownerTabId 判定补上「同会话双 tab」场景（对抗审查 I1：
+        // active 不变时旧 owner 无法从 active 字段感知被接管，会双播 + 双麦克风）。
+        const preempted =
+          active !== activeSessionId || (ownerTabId !== null && activeSessionId !== null && ownerTabId !== TAB_ID)
+        if (activeSessionId !== null && preempted) {
           const prev = activeSessionId
           activeSessionId = null
           // 模式被让出/抢占：本地播放立即静音（Q2 之停 TTS）。
@@ -929,7 +940,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     },
     /** isPlaying 尾音截止墙钟：playing 或尾音宽限期内均视为「AI 正在朗读」。 */
     playingTailUntil() {
-      return playingEndAt + ECHO_TAIL_MS
+      // 对抗审查 Minor#5：尾音窗随估计 bulk delay 扩展（回声到达麦克风比本地停播
+      // 晚 D 样本；固定 400ms 在 250ms 延迟路径下不足，残响会漏进 ASR/检测通道）。
+      return playingEndAt + ECHO_TAIL_MS + (refDelaySamples / SAMPLE_RATE_16K) * 1000
     },
     async enter(sessionId) {
       try {
@@ -1154,6 +1167,8 @@ export function MicButton({
       if (bus.activeSessionId !== sid) {
         setLocalMode('off')
         clearIdle()
+        clearBreakTimer()
+        setHolding(false) // 对抗审查 Important#2：被抢占退出时复位录音态红色
         const engine = engineRef.current
         engineRef.current = null
         // Fix：先置 null 防重入，再异步 stop（stop 内部会阻止 handleAudio）
@@ -1178,11 +1193,14 @@ export function MicButton({
     isSpeechTrueCount = 0 // 打断根治：退出重置 isSpeech 计数（防残留）
     breakRef.current = null // 手动打断入口：退出即失效
     manualHoldRef.current = false
+    clearBreakTimer()
+    setHolding(false) // 对抗审查 Important#2：退出复位录音态红色
     const engine = engineRef.current
     engineRef.current = null
     if (engine) await engine.stop() // Fix：等待 stop 完成，确保 handleAudio 停止
     bus.resetTelemetry() // P1-5：退出清空埋点链
-    bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null })
+    // Minor#3：清 VAD 徽标（manual 模式冻结不复位会跨会话残留）。
+    bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null, isSpeech: undefined })
     const sid = sidRef.current
     if (sid) await bus.exit(sid) // Fix：等待 host 退出完成，防 ASR 请求 403
   }
@@ -1218,7 +1236,6 @@ export function MicButton({
       const bargeInMode = cfg.bargeInMode
       // 打断根治阶段二：hardBreak 由 isSpeech 连续前沿触发（RMS 快路径 + duck 探针
       // 移除后提炼为独立函数；行为保持不变）：
-      // （RMS 快路径 + duck 探针移除后，由 isSpeech 连续前沿触发；行为保持不变）：
       // 1) 本地播放队列清空 + host TTS 队列 epoch++（静音）
       // 2) 有 running 回合则 session.cancel({keepInbox:true})（取消生成、保新消息）
       // 3) 半截标注由「转录区新消息续入」自然呈现（Q8 标注见 §8.5 收尾）
@@ -1298,6 +1315,10 @@ export function MicButton({
             // I4：仅当本 tab 仍处语音模式（local=on）才反抢；已被让出/退出时跟随 mode 广播
             // 静默退出，防多 tab 下 403→重入→403 乒乓抖振（TTS 反复被掐）。
             if (localRef.current !== 'on') return false
+            // I3：2s 重入冷却——无退避时两个 local=on 的 tab 每拍 403 都反抢，
+            // 互踢振荡直到某一方 mode 广播先落地；冷却把反抢频率压到 0.5Hz。
+            if (Date.now() - lastReenterAt < 2000) return false
+            lastReenterAt = Date.now()
             // 403 恢复：host 端活跃会话已变更（如被抢占/让出），尝试重新进入。
             bus.setUi({ error: t('sessionExpired') })
             const reentered = await bus.enter(sid)
@@ -1439,13 +1460,19 @@ export function MicButton({
     autoResumeTriedRef.current = true
     const sid = sidRef.current
     if (!sid) return
-    if (!bootNow().autoResume) return
-    if (getLastVoiceSession() !== sid) return
-    if (bus.activeSessionId !== null) return // 已有别的会话在语音模式，不抢
-    void enterMode().catch(() => {
-      // 无手势 getUserMedia 可能失败（Safari/iOS），静默降级为手动点麦克风。
-      setLocalMode('off')
-    })
+    // M6/对抗审查 I4：全新页面加载时 ui.boot 还是默认值（fetchConfig 只在
+    // enterMode 调用），直接读 bootNow().autoResume 恒 false → autoResume 永不触发。
+    // 先拉真实引导配置再判定（fetchConfig 同时把 boot 写入 bus）。
+    void (async () => {
+      const cfg = await fetchConfig()
+      if (!cfg.autoResume) return
+      if (getLastVoiceSession() !== sid) return
+      if (bus.activeSessionId !== null) return // 已有别的会话在语音模式，不抢
+      await enterMode().catch(() => {
+        // 无手势 getUserMedia 可能失败（Safari/iOS），静默降级为手动点麦克风。
+        setLocalMode('off')
+      })
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // 宿主 selector hook 必须组件顶层调用（不能在 effect 内——React #321）。
@@ -1681,6 +1708,15 @@ export function MicButton({
   const toggleHoldRef = useRef(false)
   /** 长按打断松手后抑制合成 click 的时间戳（防误触发 tap-to-exit）。 */
   const suppressClickUntilRef = useRef(0)
+  /** 长按打断定时器：按住 ≥250ms 才真正打断（对抗审查 Blocker——打断不能挂在
+   *  pointerdown 上，否则短按退出也会取消正在生成的回复）。 */
+  const breakTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearBreakTimer = (): void => {
+    if (breakTimerRef.current !== null) {
+      clearTimeout(breakTimerRef.current)
+      breakTimerRef.current = null
+    }
+  }
   const onPointerDown = (e: React.PointerEvent): void => {
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId }
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
@@ -1689,23 +1725,26 @@ export function MicButton({
       if (localRef.current === 'on') {
         setHolding(true)
         const eng = engineRef.current
+        eng?.beginHeld() // 立即接管收音（按住的前 250ms 语音不丢）
         if (eng && bootNow().bargeInMode === 'manual' && bus.ui.playing) {
-          // 手动打断（外放）：按住麦克风立即停 AI + 接管收音（不依赖 VAD，回声无关）。
-          eng.beginHeld()
-          void breakRef.current?.()
-        } else {
-          eng?.beginHeld()
+          // 手动打断（外放）：按住 ≥250ms 才停 AI（短按 = tap-to-exit，不得取消回复）。
+          breakTimerRef.current = setTimeout(() => {
+            breakTimerRef.current = null
+            if (holdPtrRef.current && bus.ui.playing) void breakRef.current?.()
+          }, 250)
         }
       }
     } else if (localRef.current === 'on' && bus.ui.playing) {
-      // toggle 模式（持续聆听）：播放中按住 = 长按打断 + 接管收音（与 hold 手势统一）。
+      // toggle 模式（持续聆听）：播放中按住 = 长按打断 + 接管收音（与 hold 手势统一）；
+      // 打断同样延迟到 ≥250ms，短按退出不取消回复。
       toggleHoldRef.current = true
       setHolding(true)
       const eng = engineRef.current
-      if (eng) {
-        eng.beginHeld()
-        void breakRef.current?.()
-      }
+      eng?.beginHeld()
+      breakTimerRef.current = setTimeout(() => {
+        breakTimerRef.current = null
+        if (holdPtrRef.current && bus.ui.playing) void breakRef.current?.()
+      }, 250)
     }
   }
   const onPointerMove = (e: React.PointerEvent): void => {
@@ -1715,14 +1754,19 @@ export function MicButton({
     if (p.y - e.clientY >= 40) {
       holdPtrRef.current = null
       toggleHoldRef.current = false
+      clearBreakTimer()
       setHolding(false)
       engineRef.current?.endHeld(true)
       bus.setUi({ partial: '' })
+      // 对抗审查 Important#1：滑出后的 trailing click 会走 toggle→exit 误退出；
+      // 抑制该合成 click（与长按松手同机制）。
+      suppressClickUntilRef.current = Date.now() + 500
     }
   }
   const onPointerUp = (e: React.PointerEvent): void => {
     const p = holdPtrRef.current
     holdPtrRef.current = null
+    clearBreakTimer() // 松手即取消未到阈值的打断（短按不得取消回复）
     setHolding(false)
     if (!p || p.id !== e.pointerId) return
     const ms = Date.now() - p.t
@@ -1754,6 +1798,7 @@ export function MicButton({
   const onPointerCancel = (): void => {
     holdPtrRef.current = null
     toggleHoldRef.current = false
+    clearBreakTimer()
     setHolding(false)
     engineRef.current?.endHeld(true)
   }

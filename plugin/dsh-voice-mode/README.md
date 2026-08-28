@@ -19,7 +19,7 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
   - `hold` 按住说话：短按进入/退出，**按住麦克风按钮说话、松手即发**（滑出取消、`Esc`/失焦放弃本段）；`Ctrl` 按住即录、松开即发
 - **唤醒词（可选，默认关）**：设置 `wakeWord` 后进入待机态，说出唤醒词才开始识别（如「你好小D」）
 - **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式 Edge TTS 朗读 + 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录；可选口语化提示词（设置 `spokenFormat`，默认关）让回复为自然短句、不带 Markdown 排版符号，朗读侧再做一轮标记剥离
-- **开口打断（barge-in）**：**NLMS 回声消除（P3，512ms 窗口）**以本页 TTS 播放为参考消掉外放回声后，**host 端 Silero VAD 帧级检测（isSpeech）随 partial 下行驱动打断**——三档灵敏度对应发声确认时长（0 高门槛约 0.3s / 1 中 0.2s / 2 低 0.1s），仅 AI 朗读中触发 → 本地静音 + host 合成队列作废 + 正在运行的回合取消（保留半截并自然续入新消息）
+- **开口打断（barge-in）**：**NLMS 回声消除（P3，互相关 bulk delay 估计 + 64ms 短滤波器）**以本页 TTS 播放为参考消掉外放回声后，**host 端 Silero VAD 帧级检测（isSpeech）随 partial 下行驱动打断**——三档灵敏度对应发声确认时长（0 高门槛约 0.3s / 1 中 0.2s / 2 低 0.1s）；`bargeInMode` 选 `auto` 时开口自动打断，选 `manual`（外放推荐）时改按住麦克风/Ctrl 显式打断 → 本地静音 + host 合成队列作废 + 正在运行的回合取消（保留半截并自然续入新消息）
 - **模型懒加载与进度**：首次使用自动下载 zipformer2 流式模型（~160MB）、Silero VAD（~2MB）与 SenseVoice 定稿模型（~228MB，首次定稿时，可关），全部 `.part` 断点续传、hf-mirror 回退；状态条实时显示进度；`npm run prefetch` 可预下载流式 ASR 模型（VAD/SenseVoice 首次使用时自动下载）
 - **SenseVoice 定稿解码在独立 worker 线程执行**：228MB 离线模型的载入与整段解码不占用宿主主线程事件循环（解码期间其它请求/SSE 保持响应），10s 超时兜底真实可触发，失败/超时/关闭均自动降级 zipformer 定稿，worker 崩溃后下一句自动重建
 - **设置**：设置 → Plugins → 插件配置 → 语音模式（voice-mode），可调音色/语速/打断灵敏度/打断方式/静音停顿/空闲超时/模型镜像/自动发送/交互模式/唤醒词/口语化提示词；**音色可试听**（按当前音色+语速即时合成预览，自定义 ShortName 亦可）
@@ -118,7 +118,7 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 
 ## 已知限制
 
-- 打断已内置 NLMS 声学回声消除（P3，参考=本页 TTS 播放，512ms 窗口）+ host 端 Silero VAD 帧级检测；浏览器 `echoCancellation` 仅兜底；外放极端音量/距离下抑制量需真机标定（`ECHO_DELAY_MS` 等参数）
+- 打断已内置 NLMS 声学回声消除（P3，参考=本页 TTS 播放，互相关 bulk delay 估计 + 64ms 短滤波器）+ host 端 Silero VAD 帧级检测；浏览器 `echoCancellation` 仅兜底；外放极端音量/距离下抑制量需真机标定（`echoGateDb` 等参数）
 - `Ctrl+Shift+V` 会覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍可用 `Ctrl+V`）
 - 识别模型为简体中文优先；识别质量受环境噪声影响
 - 浏览器自动播放策略：朗读需要页面已有用户交互（点击麦克风即满足）；「试听」依赖 `AbortSignal.timeout`（Safari 16+ / Chrome 103+ / Firefox 100+；老浏览器点击试听会立即提示失败，属预期降级）

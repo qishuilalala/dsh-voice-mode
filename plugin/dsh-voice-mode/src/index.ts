@@ -339,7 +339,7 @@ export function apply(ctx: Context, config: Config): void {
     asr.reset(sid)
     setTurn(sid, 'idle')
     turnStates.delete(sid)
-    broadcast('mode', { active: null })
+    broadcast('mode', { active: null, ownerTabId: activeTabId })
   }
 
   // --- 语音口语化提示词：仅活跃语音会话的 system prompt 注入（TTS 朗读听感）。 ---
@@ -529,7 +529,7 @@ export function apply(ctx: Context, config: Config): void {
               setTurn(previous, 'idle')
               turnStates.delete(previous)
             }
-            broadcast('mode', { active: activeVoiceSession })
+            broadcast('mode', { active: activeVoiceSession, ownerTabId: activeTabId })
           } else {
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null
@@ -547,7 +547,7 @@ export function apply(ctx: Context, config: Config): void {
               setTurn(sessionId, 'idle')
               // Fix：清理回合状态，防 turnStates Map 随会话数量无限增长。
               turnStates.delete(sessionId)
-              broadcast('mode', { active: null })
+              broadcast('mode', { active: null, ownerTabId: null })
             }
           }
           respondJson(res, 200, { active: activeVoiceSession })

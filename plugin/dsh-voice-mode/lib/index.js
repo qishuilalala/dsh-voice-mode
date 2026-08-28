@@ -1148,7 +1148,7 @@ function apply(ctx, config) {
     asr.reset(sid);
     setTurn(sid, "idle");
     turnStates.delete(sid);
-    broadcast("mode", { active: null });
+    broadcast("mode", { active: null, ownerTabId: activeTabId });
   };
   ctx.on("system-prompt/assemble", (assembly, context, next) => {
     if (!config.enabled || !vset.spokenFormat) return next();
@@ -1302,7 +1302,7 @@ function apply(ctx, config) {
               setTurn(previous, "idle");
               turnStates.delete(previous);
             }
-            broadcast("mode", { active: activeVoiceSession });
+            broadcast("mode", { active: activeVoiceSession, ownerTabId: activeTabId });
           } else {
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null;
@@ -1315,7 +1315,7 @@ function apply(ctx, config) {
               asr.reset(sessionId);
               setTurn(sessionId, "idle");
               turnStates.delete(sessionId);
-              broadcast("mode", { active: null });
+              broadcast("mode", { active: null, ownerTabId: null });
             }
           }
           respondJson2(res, 200, { active: activeVoiceSession });
