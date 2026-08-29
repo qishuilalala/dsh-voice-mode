@@ -1390,8 +1390,10 @@ export function MicButton({
                 void hardBreak()
               }
             } else {
-              isSpeechTrueCount = 0
-              interruptFirstAt = 0
+              // 泄漏衰减而非清零：VAD 对轻声语音偶闪「假」，清零会让确认计数反复归零，
+              // confirmMs 飙到 1~2.7s（实测）。减 1 跨过单拍闪烁，连续静音才归零。
+              isSpeechTrueCount = Math.max(0, isSpeechTrueCount - 1)
+              if (isSpeechTrueCount === 0) interruptFirstAt = 0
             }
             // 仍存 ui 供状态条展示；回声诊断每拍推送（真机标定数据）。
             bus.setUi({ isSpeech: speech, echoDelayMs: bus.echoDelayMs(), echoLevels: engineRef.current?.echoLevels() })

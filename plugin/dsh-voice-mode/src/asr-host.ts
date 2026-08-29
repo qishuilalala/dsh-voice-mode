@@ -272,12 +272,12 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     }
     return vadLoading
   }
-  /** Silero VAD 实例工厂（端点 VAD 与检测 VAD 共用同一套参数，防参数分叉）。 */
-  const newVad = (vadPath: string): SherpaVad =>
+  /** Silero VAD 实例工厂（端点 VAD 与检测 VAD 共用，threshold 可调）。 */
+  const newVad = (vadPath: string, threshold = 0.5): SherpaVad =>
     createVad({
       sileroVad: {
         model: vadPath,
-        threshold: 0.5,
+        threshold,
         minSilenceDuration: 0.5,
         minSpeechDuration: 0.25,
         maxSpeechDuration: 20,
@@ -307,7 +307,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     if (existing) return existing
     const vadPath = await ensureVadModel()
     if (!vadPath) return null
-    const vad = newVad(vadPath)
+    // 检测 VAD 更灵敏（0.35 vs 端点 0.5）：打断要抓轻声/正常音量的人声前沿，
+    // 0.5 会让 VAD 闪烁（真→假→真），confirmMs 飙到 1~2.7s。端点 VAD 仍 0.5（断句保守）。
+    const vad = newVad(vadPath, 0.35)
     detectVads.set(sessionId, vad)
     return vad
   }

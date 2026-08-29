@@ -255,10 +255,10 @@ function createAsrRuntime(options) {
     }
     return vadLoading;
   };
-  const newVad = (vadPath) => createVad({
+  const newVad = (vadPath, threshold = 0.5) => createVad({
     sileroVad: {
       model: vadPath,
-      threshold: 0.5,
+      threshold,
       minSilenceDuration: 0.5,
       minSpeechDuration: 0.25,
       maxSpeechDuration: 20,
@@ -284,7 +284,7 @@ function createAsrRuntime(options) {
     if (existing) return existing;
     const vadPath = await ensureVadModel();
     if (!vadPath) return null;
-    const vad = newVad(vadPath);
+    const vad = newVad(vadPath, 0.35);
     detectVads.set(sessionId, vad);
     return vad;
   };
