@@ -103,8 +103,6 @@ const SAMPLE_RATE = 16000
 const SPEECH_RMS = 0.015
 /** RMS 映射满格波形的电平。 */
 const LEVEL_CEILING = 0.25
-/** A2.5 回声地板滑动窗帧数（~2s：64ms 帧 ×32；帧长随设备采样率波动，近似即可）。 */
-const FLOOR_HISTORY_LEN = 32
 const MAX_SEGMENT_MS = 30000
 /** 最小语音时长（P1-3）：不足视为短促噪声，静音到点后放弃本段不发送。 */
 const MIN_SPEECH_MS = 250
@@ -503,8 +501,6 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   /** A2.5 回声门控：播放期残差 RMS 与回声地板（纯回声残差水平），自动打断区分人声与回声。 */
   let latestResidualRms = 0
   let echoFloorRms = 0
-  /** A2.5 回声地板滑动窗历史（min 跟踪用；约 2s）。 */
-  let rmsHistory: number[] = []
 
   const handleAudio = (raw: Float32Array): void => {
     if (!active || inFlush) return
@@ -537,26 +533,17 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // hold 有明确意图路径（segment 正常累积、partial 上行）；wake 待机在播放期同样
     // 经检测通道（其入段路径被下方播放门截断，防 TTS 回声污染唤醒匹配）。
     const playingNow = config.isPlaying?.() ?? false
-    // A2.5 回声地板：滑动窗「最小值」跟踪（纯回声期残差的最小水平）。
-    // min 跟踪对两类失败免疫：①均值追踪被用户语音抬升 → 打断冻死（审查 Important#1）；
-    // ②瞬时 6dB 判双讲在外放高残差下把地板冻结在低初值 → TTS 回声被误判人声、
-    // 自打断（实测外放 auto 的根因）。用户语音只会抬高残差、不会压低，
-    // 故窗口最小值天然停在纯回声水平。
-    if (playingNow) {
-      latestResidualRms = rms
-      rmsHistory.push(rms)
-      if (rmsHistory.length > FLOOR_HISTORY_LEN) rmsHistory.shift()
-      let m = rms
-      for (const v of rmsHistory) if (v < m) m = v
-      echoFloorRms = m
-    } else {
-      // 非播放期清窗：下一段播放重新建立地板（音量/环境可能已变）。
-      rmsHistory.length = 0
-      echoFloorRms = 0
-    }
-    // A2.5 双讲冻结（仅 NLMS 权重，不碰地板）：残差明显高于地板 → 冻结自适应。
+    // 回声地板：慢均值跟踪，仅在「纯回声期」更新（playingNow 且残差未明显高于地板）。
+    // 关键：句间停顿（playingNow=false）不更新也不清空——地板保持在上一次回声水平，
+    // 避免塌到 0（实测 floor=0.0000 自打断的根因，是 min-tracking + 非播放清空的回归）。
+    // 双讲（用户说话，残差突增）时冻结地板，防用户语音抬升地板。
     const doubleTalk =
       playingNow && echoFloorRms > 0 && rms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20)
+    if (playingNow) {
+      latestResidualRms = rms
+      if (echoFloorRms === 0) echoFloorRms = rms
+      else if (!doubleTalk) echoFloorRms = echoFloorRms * 0.98 + rms * 0.02
+    }
     if (echo) {
       echo.setFrozen(doubleTalk)
     }

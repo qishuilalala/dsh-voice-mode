@@ -418,7 +418,11 @@ function createAudioEngine(
           // P3-2：把播放 PCM（decodeAudioData 输出的 buffer 采样率）+ 调度墙钟
           // 回传给回声参考池（采集侧经 windowAt 对齐取参考，前导 ECHO_DELAY_MS）。
           try {
-            const wallMs = performance.now() + (at - ctx!.currentTime) * 1000
+            // L2：参考时间戳补 AudioContext outputLatency——声音实际出 DAC 在 at+outputLatency，
+            // 之前只记 at 导致参考比回声早一拍（delay 估计常失败 → 0）。确定性对齐，
+            // 不依赖混合信号上的互相关。
+            const outLat = ctx!.outputLatency ?? 0
+            const wallMs = performance.now() + (at + outLat - ctx!.currentTime) * 1000
             onPlaybackRef?.(buf.getChannelData(0), buf.sampleRate, wallMs)
           } catch {
             // 参考捕获失败不影响播放

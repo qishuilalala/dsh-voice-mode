@@ -76,7 +76,6 @@ function resampleLinear(src, srcRate, dstRate) {
 var SAMPLE_RATE = 16e3;
 var SPEECH_RMS = 0.015;
 var LEVEL_CEILING = 0.25;
-var FLOOR_HISTORY_LEN = 32;
 var MAX_SEGMENT_MS = 3e4;
 var MIN_SPEECH_MS = 250;
 var PRE_PAD_MS = 250;
@@ -382,7 +381,6 @@ function createAsrEngine(config, sessionId) {
   };
   let latestResidualRms = 0;
   let echoFloorRms = 0;
-  let rmsHistory = [];
   const handleAudio = (raw) => {
     if (!active || inFlush) return;
     let data = ctxRate !== SAMPLE_RATE ? resampleLinear(raw, ctxRate, SAMPLE_RATE) : raw;
@@ -401,18 +399,12 @@ function createAsrEngine(config, sessionId) {
       }
     }
     const playingNow = config.isPlaying?.() ?? false;
+    const doubleTalk = playingNow && echoFloorRms > 0 && rms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20);
     if (playingNow) {
       latestResidualRms = rms;
-      rmsHistory.push(rms);
-      if (rmsHistory.length > FLOOR_HISTORY_LEN) rmsHistory.shift();
-      let m = rms;
-      for (const v of rmsHistory) if (v < m) m = v;
-      echoFloorRms = m;
-    } else {
-      rmsHistory.length = 0;
-      echoFloorRms = 0;
+      if (echoFloorRms === 0) echoFloorRms = rms;
+      else if (!doubleTalk) echoFloorRms = echoFloorRms * 0.98 + rms * 0.02;
     }
-    const doubleTalk = playingNow && echoFloorRms > 0 && rms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20);
     if (echo) {
       echo.setFrozen(doubleTalk);
     }
@@ -1806,7 +1798,8 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
           src.start(at);
           nextEndAt = at + buf.duration;
           try {
-            const wallMs = performance.now() + (at - ctx.currentTime) * 1e3;
+            const outLat = ctx.outputLatency ?? 0;
+            const wallMs = performance.now() + (at + outLat - ctx.currentTime) * 1e3;
             onPlaybackRef?.(buf.getChannelData(0), buf.sampleRate, wallMs);
           } catch {
           }
