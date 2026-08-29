@@ -967,8 +967,7 @@ export function handleAsrRequest(
       respondJson(res, 403, { error: 'not the active voice session' })
       return
     }
-    // reset=1：丢弃该会话进行中的识别段并新建流（唤醒词命中后的清场，防止
-    // 唤醒词头漏进正式定稿）。
+    // reset=1：丢弃该会话进行中的识别段并新建流（弃段/打断后的清场）。
     if (reset) {
       asr.reset(sessionId)
       respondJson(res, 200, { ok: true })

@@ -1,7 +1,7 @@
 {
   "name": "dsh-voice-mode",
   "description": "Full-duplex voice mode for DeepSeek Harness: zipformer2 streaming ASR → editable draft, Edge TTS sentence-by-sentence read-aloud with live captions, true barge-in — on-device ASR, no API key. · DSH 语音双工对话：流式识别入草稿、按句朗读+实时字幕、开口即打断，识别本地推理、无需 API Key",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "type": "module",
   "main": "lib/index.js",
   "repository": {
@@ -39,7 +39,7 @@
   "scripts": {
     "build": "node build.mjs",
     "prepack": "node build.mjs",
-    "test": "node test/segmenter.test.mjs && node test/wakeword.test.mjs && node test/aec.test.mjs && node test/download.test.mjs && node test/endpoint.test.mjs && node test/resample.test.mjs && node test/sense-worker.test.mjs && node test/detect-route.test.mjs && node test/verify-client.mjs",
+    "test": "node test/segmenter.test.mjs && node test/aec.test.mjs && node test/download.test.mjs && node test/endpoint.test.mjs && node test/resample.test.mjs && node test/sense-worker.test.mjs && node test/detect-route.test.mjs && node test/verify-client.mjs",
     "verify:client": "node test/verify-client.mjs",
     "prefetch": "node scripts/prefetch.mjs",
     "list-voices": "node scripts/list-voices.mjs",

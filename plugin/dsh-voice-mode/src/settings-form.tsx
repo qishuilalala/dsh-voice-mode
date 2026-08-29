@@ -629,9 +629,6 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             <Row name="senseVoice" desc={tr('descSenseVoice')}>
               <input type="checkbox" checked={Boolean(value.senseVoice)} onChange={(e) => void scope.set('senseVoice', e.target.checked)} />
             </Row>
-            <Row name="toolBeep" desc={tr('descToolBeep')}>
-              <input type="checkbox" checked={Boolean(value.toolBeep)} onChange={(e) => void scope.set('toolBeep', e.target.checked)} />
-            </Row>
             <Row name="mode" desc={tr('descMode')}>
               <SegGroup
                 score={scope}
@@ -642,9 +639,6 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
                   { v: 'hold', label: tr('modeHold') },
                 ]}
               />
-            </Row>
-            <Row name="wakeWord" desc={tr('descWakeWord')}>
-              <TextField score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder={tr('wakePlaceholder')} />
             </Row>
             <div style={{ fontSize: 12, color: t.term, lineHeight: '18px', padding: '4px 0 8px' }}>
               {tr('settingsEffectiveNote')}

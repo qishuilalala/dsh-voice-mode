@@ -5,7 +5,7 @@
  * 帧内容为可确定性渲染的 UI 故事板（无需真实语音/音频）：
  *   1) 输入框麦克风按钮  2) toggle 语音模式状态条  3) 识别 partial 字幕
  *   4) 定稿并发送  5) toggle 继续聆听  6) hold 模式「按住说话」
- *   7) 唤醒词待机提示  8) 退出并收尾
+ *   7) 退出并收尾
  *
  * 依赖：playwright-core、gifenc、pngjs（本地工具依赖，不入 package.json）。
  * 运行：node test/record-demo.mjs
@@ -86,9 +86,9 @@ async function main() {
   const frames = []
 
   // 帧1：输入框麦克风按钮（toggle）
-  await setSettings({ mode: 'toggle', wakeWord: '' })
+  await setSettings({ mode: 'toggle' })
   await page.waitForTimeout(300)
-  frames.push(await shot('1-mic', '1 / 9 · 点击输入框旁的麦克风，开始语音输入'))
+  frames.push(await shot('1-mic', '1 / 8 · 点击输入框旁的麦克风，开始语音输入'))
 
   // 帧2：进入语音模式 → 状态条「聆听中」
   await page.route('**/voice-mode/asr*', (route) => {
@@ -97,11 +97,11 @@ async function main() {
   })
   await mic.click()
   await page.waitForTimeout(800)
-  frames.push(await shot('2-toggle', '2 / 9 · Toggle 模式已开启，状态条显示正在聆听'))
+  frames.push(await shot('2-toggle', '2 / 8 · Toggle 模式已开启，状态条显示正在聆听'))
 
   // 帧3：partial 字幕出现在状态条（>900ms 轮询后）
   await page.waitForTimeout(1300)
-  frames.push(await shot('3-partial', '3 / 9 · 识别中的 partial 字幕实时出现在状态条'))
+  frames.push(await shot('3-partial', '3 / 8 · 识别中的 partial 字幕实时出现在状态条'))
 
   // 帧4：真实定稿与发送帧。toggle 无声时 VAD 不会触发定稿（2s 静音只在有语音段时
   // 生效），所以这里确定性走 hold 长按：按住（期间截图）→ 松手定稿 → 等聊天消息出现。
@@ -115,10 +115,10 @@ async function main() {
   await page.mouse.move(hbb.x + hbb.width / 2, hbb.y + hbb.height / 2)
   await page.mouse.down()
   await page.waitForTimeout(700)
-  frames.push(await shot('4-holding', '4 / 9 · Hold 模式：按住说话（识别字幕实时预览）'))
+  frames.push(await shot('4-holding', '4 / 8 · Hold 模式：按住说话（识别字幕实时预览）'))
   await page.mouse.up()
   await page.getByText('你好世界', { exact: true }).first().waitFor({ state: 'visible', timeout: 12000 })
-  frames.push(await shot('4b-sent', '5 / 9 · 松手定稿并自动发送，聊天出现用户消息「你好世界」'))
+  frames.push(await shot('4b-sent', '5 / 8 · 松手定稿并自动发送，聊天出现用户消息「你好世界」'))
 
   // 帧5：cut back 到 toggle 聆听态（发送完成后继续等待下一句）。
   await page.keyboard.press('Control+Shift+V')
@@ -127,7 +127,7 @@ async function main() {
   await page.waitForTimeout(300)
   await mic.click()
   await page.waitForTimeout(900)
-  frames.push(await shot('5-toggle-ready', '6 / 9 · 发送完成，Toggle 模式继续聆听下一句'))
+  frames.push(await shot('5-toggle-ready', '6 / 8 · 发送完成，Toggle 模式继续聆听下一句'))
 
   // 退出 toggle
   await page.keyboard.press('Control+Shift+V')
@@ -138,7 +138,7 @@ async function main() {
   await page.waitForTimeout(300)
   await mic.click()
   await page.waitForTimeout(900)
-  frames.push(await shot('6-hold', '7 / 9 · Hold 模式：按住说话、松手发送（短按退出）'))
+  frames.push(await shot('6-hold', '7 / 8 · Hold 模式：按住说话、松手发送（短按退出）'))
 
   // 退出 hold
   const bb = await mic.boundingBox()
@@ -148,18 +148,9 @@ async function main() {
   await page.mouse.up()
   await page.waitForTimeout(500)
 
-  // 帧7：唤醒词待机
-  await setSettings({ mode: 'toggle', wakeWord: '你好小D' })
+  // 帧7：真实退出状态收尾，不额外伪造浮层。
   await page.waitForTimeout(300)
-  await mic.click()
-  await page.waitForTimeout(900)
-  frames.push(await shot('7-wake', '8 / 9 · 唤醒词待机：说「你好小D」后才开始识别'))
-
-  // 帧8：真实退出状态收尾，不额外伪造浮层。
-  await page.keyboard.press('Control+Shift+V')
-  await setSettings({ wakeWord: '' })
-  await page.waitForTimeout(300)
-  frames.push(await shot('8-finish', '9 / 9 · 随时退出语音模式，回到正常文字输入'))
+  frames.push(await shot('7-finish', '7 / 8 · 随时退出语音模式，回到正常文字输入'))
 
   // 编码 GIF
   const gif = GIFEncoder()

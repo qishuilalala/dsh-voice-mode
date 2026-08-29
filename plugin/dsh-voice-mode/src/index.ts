@@ -93,7 +93,7 @@ const defaultModelCacheDir = (): string =>
     : join(homedir(), '.cache', 'dsh-voice-mode', 'models')
 
 /**
- * Q15 设置命名空间：全部运行时旋钮（音色/语速/打断/静音/超时/镜像/自动发送/模式/唤醒词/口语化提示词）。
+ * Q15 设置命名空间：全部运行时旋钮（音色/语速/打断/静音/超时/镜像/自动发送/模式/口语化提示词）。
  *
  * 官方分层（dsh-settings 契约）：resolve = schema(mergeLayers(base, 用户文档))——
  * schema 默认（平台常量）为最底、组合包 config 经 register 的 `base` 为第二顺位、
@@ -123,8 +123,6 @@ export interface VoiceSettingsValue {
   echoGateDb: number
   /** 进入/退出语音模式的快捷键（形如 Ctrl+Shift+V；留空则禁用快捷键）。 */
   shortcut: string
-  /** 唤醒词（空 = 关；如「你好小D」）：待机态说出后激活，避免误触。 */
-  wakeWord: string
   /**
    * 语音会话注入口语化提示词（默认关）：开启后，仅当前活跃语音会话的回复被注入
    * 「口语化短句、不用 Markdown 排版符号」提示词（assemble 时读取，实时生效；
@@ -133,8 +131,6 @@ export interface VoiceSettingsValue {
   spokenFormat: boolean
   /** P4：SenseVoice 定稿重译（带标点 + ITN；默认开，关=只用流式 zipformer，省 228MB 模型）。 */
   senseVoice: boolean
-  /** 工具执行提示音（默认开；关掉后执行工具时静音，防连续工具链叮叮叮）。 */
-  toolBeep: boolean
 }
 
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
@@ -151,10 +147,8 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   bargeInMode: 'auto',
   echoGateDb: 6,
   shortcut: 'Ctrl+Shift+V',
-  wakeWord: '',
   spokenFormat: false,
   senseVoice: true,
-  toolBeep: false,
 }
 
 /** 以平台常量默认构造设置 schema。 */
@@ -195,7 +189,6 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .string()
       .default(d.shortcut)
       .description('进入/退出语音模式的快捷键（形如 Ctrl+Shift+V，修饰键 Ctrl/Shift/Alt/Meta + 一个字母键；留空禁用快捷键，用麦克风按钮）'),
-    wakeWord: z.string().default(d.wakeWord).description('唤醒词：在待机态说出后开始识别（默认关；如「你好小D」）'),
     spokenFormat: z
       .boolean()
       .default(d.spokenFormat)
@@ -204,10 +197,6 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .boolean()
       .default(d.senseVoice)
       .description('定稿用 SenseVoice 重译（带标点+数字归一化、识别更准；默认开。关闭可省 228MB 模型，只走流式识别）'),
-    toolBeep: z
-      .boolean()
-      .default(d.toolBeep)
-      .description('工具执行提示音（默认关；开启后 agent 每调用一个新工具响一次）'),
   })
 }
 
@@ -383,10 +372,6 @@ export function apply(ctx: Context, config: Config): void {
       (state) => {
         if ((turnGen.get(sessionId) ?? 0) === gen) setTurn(sessionId, state)
       },
-      // 工具提示音开关（设置 toolBeep；关掉后执行工具静音）。
-      (name) => {
-        if (vset.toolBeep) broadcast('tool', { sessionId, name })
-      },
     )
   })
 
@@ -428,7 +413,6 @@ export function apply(ctx: Context, config: Config): void {
             bargeInMode: vset.bargeInMode,
             echoGateDb: vset.echoGateDb,
             shortcut: vset.shortcut,
-            wakeWord: vset.wakeWord,
             cacheDir: config.cacheDir,
           })
       },
@@ -771,7 +755,7 @@ function collectBody(
 
 /**
  * 活跃语音会话的流 tap：无损转发（观察不改流）；text-delta 进句子切分器并
- * 入 TTS 队列；tool-call 广播提示音事件；被打断的回合不 flush 尾部半句
+ * 入 TTS 队列；被打断的回合不 flush 尾部半句
  * （那正是用户打断的内容，不能朗读 —— Q8 半截标注由 client 侧完成）。
  */
 async function* tapActiveStream(
@@ -780,11 +764,8 @@ async function* tapActiveStream(
   queue: TtsQueue,
   broadcast: (event: string, payload: unknown) => void,
   onTurn: (state: 'listening' | 'agent-speaking') => void,
-  onTool: (name: string) => void,
 ): AsyncIterable<StreamChunk> {
   const segmenter = new SentenceSegmenter()
-  /** 工具提示音去重：每个工具名每回合只响一次（流式 tool-call-delta 每增量 chunk 都带 name，不去重会连续叮叮叮）。 */
-  const beepedTools = new Set<string>()
   // P1-5 延迟埋点链：每回合至多广播一次 host 侧里程碑（首 token / 首句成型）。
   let firstTokenBroadcast = false
   let firstSentenceBroadcast = false
@@ -814,14 +795,6 @@ async function* tapActiveStream(
             broadcast('latency', { sessionId, stage: 'first-sentence-text' })
           }
           queue.enqueue(sessionId, s)
-        }
-      }
-      // 工具调用事件：提示音（Q7，二期可关）。
-      if (chunk.type === 'tool-call-delta' && chunk.name) {
-        // 同一工具名只提示一次（防流式增量重复叮叮叮；设置 toolBeep 可关）。
-        if (!beepedTools.has(chunk.name)) {
-          beepedTools.add(chunk.name)
-          onTool(chunk.name)
         }
       }
       if (chunk.type === 'finish') {

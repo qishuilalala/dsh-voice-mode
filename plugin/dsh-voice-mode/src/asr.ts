@@ -8,21 +8,20 @@
  *    定稿文本才作为结果（Q6/Q13：可编辑草稿 + 自动提交）；服务端 Silero VAD 帧级
  *    isSpeech 随 partial / 播放期 vadOnly 检测响应下行，驱动打断（阶段二，取代 RMS
  *    能量快路径；朗读期常规 partial 因自聊防护断流，检测通道补齐这条链路）；
- *  - v0.2：hold 模式（按住说话、松手发送，绕过 VAD）与唤醒词待机（wake）；
+ *  - v0.2：hold 模式（按住说话、松手发送，绕过 VAD）；
  *  - v0.3（P1-5）：延迟埋点链的客户端三枚时间戳——utterance-end（说完最后一个字）、
  *    endpoint-fired（端点判句到点）、submitted（定稿上传发起），经 onTelemetry 上抛，
  *    由 client.tsx 与 host 下行的 first-llm-token/first-sentence-text/first-tts-chunk/
  *    first-audio-played 拼接成「说完→首音」全链路（开发模式状态条展示）。
  */
 
-import { matchWakeWord } from './wakeword.ts'
 import { resampleLinear } from './resample.ts'
 
 // AudioWorklet 源码字符串（build.mjs 经 esbuild define 注入）：运行时转 Blob URL 供 addModule。
 declare const __AUDIO_WORKLET__: string
 let workletBlobUrl: string | null = null
 
-export type AsrState = 'idle' | 'listening' | 'wake' | 'speech' | 'transcribing' | 'loading-model'
+export type AsrState = 'idle' | 'listening' | 'speech' | 'transcribing' | 'loading-model'
 
 /**
  * P3-2 回声消除参考源（由 client.tsx 组装注入）：采集每帧以 windowAt(墙钟, 长度)
@@ -53,8 +52,6 @@ export interface AsrConfig {
   mode?: 'hold' | 'toggle'
   /** 回声门控阈值（dB，默认 6）：残差高于回声地板此值才判用户人声。 */
   echoGateDb?: number
-  /** 唤醒词（空 = 关）：进入后先在 wake 待机态，说出唤醒词才正式开口。 */
-  wakeWord?: string
   /** P3-2：回声参考（TTS 播放经 NLMS 消除后，信号再用于打断/VAD/上行）。 */
   echo?: EchoRefSource
   /** AI 朗读中（TTS 在播）：根治「TTS→回声→ASR→自聊」。为 true 时只走打断快路径、不入段。 */
@@ -169,8 +166,6 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let prePad: Float32Array[] = []
   /** hold 模式：按住录制中（绕过 VAD 门控与静音切句，整段按压区间保留）。 */
   let holdActive = false
-  /** 唤醒词（归一化后；空串 = 关闭）。 */
-  const wakeWord = (config.wakeWord ?? '').trim().toLowerCase().replace(/[\s\u3000]+/g, '')
   /** P3-2 回声参考（可选；缺失时原信号透传）。 */
   const echo = config.echo
 
@@ -312,22 +307,6 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       if (state === 'loading-model') setState('speech')
       // P1-4：上传成功后才推进已传水位（失败/重试不推进，下一拍补传）。
       uploadedSamples = Math.max(uploadedSamples, from + samples.length)
-      // 唤醒词门：wake 待机态下 partial 文本只用于匹配，命中→清本地与 host 流→激活。
-      if (state === 'wake' && wakeWord) {
-        if (matchWakeWord(out.text ?? '', wakeWord)) {
-          segmentEpoch++
-          segment = []
-          segmentMs = 0
-          speechMs = 0
-          silenceMs = 0
-          prePad = []
-          lastPollAt = 0
-          uploadedSamples = 0
-          await resetHostStream()
-          if (active) setState('listening')
-        }
-        return
-      }
       emit(partialListeners, out.text ?? '')
       // P2-1：host Silero VAD 端点提示（静音 ≥0.5s 判句完成）→ 立即定稿。
       // 客户端静音计时（silenceMs）保留为 VAD 模型缺失/超时兜底。
@@ -390,7 +369,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
   }
 
-  /** 清 host 识别流（唤醒词命中 / wake 滚窗）。 */
+  /** 清 host 识别流（弃段 / 滚窗清场）。 */
   const resetHostStream = async (): Promise<void> => {
     try {
       // 超时防挂起：reset 是 fire-and-forget 语义，挂起不得阻塞 discardSegment/hardBreak。
@@ -563,8 +542,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // 快路径 + P0 瞬态抑制 + P1 噪声自适应）；此处不再做能量域打断判定。
 
     // 打断根治：播放窗口（含尾音宽限）内，AEC 后帧同时进入检测通道（vadOnly 上行）。
-    // hold 有明确意图路径（segment 正常累积、partial 上行）；wake 待机在播放期同样
-    // 经检测通道（其入段路径被下方播放门截断，防 TTS 回声污染唤醒匹配）。
+    // hold 有明确意图路径（segment 正常累积、partial 上行）。
     const playingNow = config.isPlaying?.() ?? false
     // 回声地板：慢均值跟踪，仅在「纯回声期」更新（playingNow 且残差未明显高于地板）。
     // 关键：句间停顿（playingNow=false）不更新也不清空——地板保持在上一次回声水平，
@@ -608,42 +586,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment()
     } else if (config.mode === 'hold') {
       // hold 模式且未按住：不持续聆听（不建段、不 auto-send），底部 ticker 照跑（无数据自然跳过）。
-    } else if (state === 'wake') {
-      // wake 待机：有人声才累积（满足 partial 门槛），但不置 speech、不 finalize；
-      // 唤醒词匹配在 requestPartial 结果上做，命中后由它重置。
-      // 打断根治：AI 朗读中不把语音帧入 wake 段（会话进行中无需唤醒，且防 TTS
-      // 回声污染唤醒匹配）；这些帧已进入顶部检测通道。注意此处不做裸 return——
-      // 必须落到底部 ticker 让 requestDetect 按节拍 flush，否则持续人声时检测
-      // 通道饿死（对抗审查第三轮 Important）。
-      if (rms > SPEECH_RMS && !config.isPlaying?.()) {
-        segmentMs += durationMs
-        segment.push(data)
-        // 上限兜底：滚窗重置（防无唤醒词时空累积无界）。
-        if (segmentMs > MAX_SEGMENT_MS) {
-          segment = []
-          segmentMs = 0
-          silenceMs = 0
-          prePad = []
-          uploadedSamples = 0 // P1-4：滚窗后 host 流重新起算
-          void resetHostStream()
-        }
-      } else if (rms <= SPEECH_RMS) {
-        prePad.push(data)
-        let total = 0
-        let cut = 0
-        for (let i = prePad.length - 1; i >= 0; i--) {
-          total += (prePad[i].length / SAMPLE_RATE) * 1000
-          if (total > PRE_PAD_MS) {
-            cut = i + 1
-            break
-          }
-        }
-        if (cut > 0) prePad = prePad.slice(cut)
-      }
     } else if (rms > SPEECH_RMS) {
       // 根治自聊：AI 朗读期间 VAD 入段丢弃（回声经 AEC 残留仍超 threshold 会被误识为语音）。
-      // 此分支已天然排除 hold（前 if(holdActive)）与 wake（前 else-if(state==='wake')），
-      // 故无需再判——hold/wake 是明确意图，走各自分支不受影响。
+      // 此分支已天然排除 hold（前 if(holdActive)），故无需再判——hold 是明确意图。
       if (config.isPlaying?.()) {
         // 播放已开始：若播放前开着的段仍在（用户边说 AI 边开播），立即强制收口——
         // 段内全是播放前真人声（播放期语音帧不进段）；释放 speechActive 后本帧起
@@ -693,7 +638,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           utteranceEndAt = null
           uploadedSamples = 0 // P1-4：弃段后 host 流重新起算
           void resetHostStream()
-          setState(wakeWord ? 'wake' : 'listening')
+          setState('listening')
         }
       }
     } else {
@@ -715,11 +660,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     const nowMs = Date.now()
     if (nowMs - lastPollAt >= PARTIAL_INTERVAL_MS) {
       if (playingNow && !speechActive && !holdActive) {
-        // 打断根治：朗读中优先检测通道（含 wake 待机——播放期 wake 段被门截断，
-        // partial 无数据可传，只有检测通道能驱动打断）。
+        // 打断根治：朗读中优先检测通道。
         lastPollAt = nowMs
         void requestDetect()
-      } else if (speechActive || holdActive || state === 'wake') {
+      } else if (speechActive || holdActive) {
         lastPollAt = nowMs
         void requestPartial()
       }
@@ -881,8 +825,8 @@ const startRecorder = async (): Promise<void> => {
       detectChunks = [] // 打断根治：进入清检测通道
       detectSent = 0
       detectGeneration++
-      // 配置了唤醒词 → 先进 wake 待机态（说出唤醒词才正式开口）；否则直接聆听。
-      setState(wakeWord ? 'wake' : 'listening')
+      // 进入即直接聆听。
+      setState('listening')
       try {
         await startRecorder()
       } catch (error) {
@@ -949,7 +893,7 @@ const startRecorder = async (): Promise<void> => {
       lastPollAt = 0
       // Fix：等待 host 流重置完成后再恢复状态（防新段使用旧流）
       return resetHostStream().then(() => {
-        if (active) setState(wakeWord ? 'wake' : 'listening')
+        if (active) setState('listening')
       })
     },
     endHeld(cancel = false) {
@@ -964,7 +908,7 @@ const startRecorder = async (): Promise<void> => {
         prePad = []
         speechActive = false
         forcePending = false // 对抗性审查 Fix：取消段不得泄漏 force 标记（否则下段静默绕过 autoSend=false）
-        setState(wakeWord ? 'wake' : 'listening')
+        setState('listening')
         return
       }
       // Fix：segment 为空时不设置 forcePending（防 finalizeSegment 早退后 force 标记泄漏到下段）
@@ -974,7 +918,7 @@ const startRecorder = async (): Promise<void> => {
         finalizeSegment()
       } else {
         forcePending = false
-        setState(wakeWord ? 'wake' : 'listening')
+        setState('listening')
       }
     },
     onSegment(fn) {

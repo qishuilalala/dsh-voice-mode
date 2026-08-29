@@ -42,19 +42,6 @@ module.exports = __toCommonJS(client_exports);
 var React = __toESM(require("react"), 1);
 var import_react2 = require("react");
 
-// src/wakeword.ts
-function normalizeWake(text) {
-  return String(text ?? "").replace(/[\s\u3000]+/g, "").toLowerCase().replace(/[，。！？!?；;、,.]/g, "");
-}
-function matchWakeWord(partial, wakeWord) {
-  const w = normalizeWake(wakeWord);
-  if (!w) return false;
-  const p = normalizeWake(partial);
-  if (!p) return false;
-  if (p.startsWith(w)) return true;
-  return false;
-}
-
 // src/resample.ts
 function resampleLinear(src, srcRate, dstRate) {
   if (srcRate === dstRate) return src;
@@ -126,7 +113,6 @@ function createAsrEngine(config, sessionId) {
   let silenceMs = 0;
   let prePad = [];
   let holdActive = false;
-  const wakeWord = (config.wakeWord ?? "").trim().toLowerCase().replace(/[\s\u3000]+/g, "");
   const echo = config.echo;
   let lastPollAt = 0;
   let partialInFlight = false;
@@ -230,21 +216,6 @@ function createAsrEngine(config, sessionId) {
       if (out.isSpeech !== void 0) config.onIsSpeech?.(out.isSpeech);
       if (state === "loading-model") setState("speech");
       uploadedSamples = Math.max(uploadedSamples, from + samples.length);
-      if (state === "wake" && wakeWord) {
-        if (matchWakeWord(out.text ?? "", wakeWord)) {
-          segmentEpoch++;
-          segment = [];
-          segmentMs = 0;
-          speechMs = 0;
-          silenceMs = 0;
-          prePad = [];
-          lastPollAt = 0;
-          uploadedSamples = 0;
-          await resetHostStream();
-          if (active) setState("listening");
-        }
-        return;
-      }
       emit(partialListeners, out.text ?? "");
       if (out.endpoint && active && speechActive && !holdActive) finalizeSegment();
     } catch {
@@ -451,31 +422,6 @@ function createAsrEngine(config, sessionId) {
       segment.push(data);
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
     } else if (config.mode === "hold") {
-    } else if (state === "wake") {
-      if (rms > SPEECH_RMS && !config.isPlaying?.()) {
-        segmentMs += durationMs;
-        segment.push(data);
-        if (segmentMs > MAX_SEGMENT_MS) {
-          segment = [];
-          segmentMs = 0;
-          silenceMs = 0;
-          prePad = [];
-          uploadedSamples = 0;
-          void resetHostStream();
-        }
-      } else if (rms <= SPEECH_RMS) {
-        prePad.push(data);
-        let total = 0;
-        let cut = 0;
-        for (let i = prePad.length - 1; i >= 0; i--) {
-          total += prePad[i].length / SAMPLE_RATE * 1e3;
-          if (total > PRE_PAD_MS) {
-            cut = i + 1;
-            break;
-          }
-        }
-        if (cut > 0) prePad = prePad.slice(cut);
-      }
     } else if (rms > SPEECH_RMS) {
       if (config.isPlaying?.()) {
         if (speechActive) finalizeSegment(true);
@@ -518,7 +464,7 @@ function createAsrEngine(config, sessionId) {
           utteranceEndAt = null;
           uploadedSamples = 0;
           void resetHostStream();
-          setState(wakeWord ? "wake" : "listening");
+          setState("listening");
         }
       }
     } else {
@@ -539,7 +485,7 @@ function createAsrEngine(config, sessionId) {
       if (playingNow && !speechActive && !holdActive) {
         lastPollAt = nowMs;
         void requestDetect();
-      } else if (speechActive || holdActive || state === "wake") {
+      } else if (speechActive || holdActive) {
         lastPollAt = nowMs;
         void requestPartial();
       }
@@ -672,7 +618,7 @@ function createAsrEngine(config, sessionId) {
       detectChunks = [];
       detectSent = 0;
       detectGeneration++;
-      setState(wakeWord ? "wake" : "listening");
+      setState("listening");
       try {
         await startRecorder();
       } catch (error) {
@@ -734,7 +680,7 @@ function createAsrEngine(config, sessionId) {
       forcePending = false;
       lastPollAt = 0;
       return resetHostStream().then(() => {
-        if (active) setState(wakeWord ? "wake" : "listening");
+        if (active) setState("listening");
       });
     },
     endHeld(cancel = false) {
@@ -748,7 +694,7 @@ function createAsrEngine(config, sessionId) {
         prePad = [];
         speechActive = false;
         forcePending = false;
-        setState(wakeWord ? "wake" : "listening");
+        setState("listening");
         return;
       }
       if (segment.length > 0) {
@@ -757,7 +703,7 @@ function createAsrEngine(config, sessionId) {
         finalizeSegment();
       } else {
         forcePending = false;
-        setState(wakeWord ? "wake" : "listening");
+        setState("listening");
       }
     },
     onSegment(fn) {
@@ -962,7 +908,6 @@ var zh = {
   loadingModel: "\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026",
   listening: "\u8046\u542C\u4E2D\u2026",
   thinking: "\u601D\u8003\u4E2D\u2026",
-  wakeWord: "\u5524\u9192\u8BCD",
   barHold: "\u8BED\u97F3\u6A21\u5F0F \xB7 \u6309\u4F4F\u8BF4\u8BDD\uFF08\u77ED\u6309\u9000\u51FA\uFF09",
   barListening: "\u8BED\u97F3\u6A21\u5F0F \xB7 \u8046\u542C\u4E2D\u2026",
   reading: "\u6717\u8BFB\u4E2D\u2026",
@@ -972,7 +917,6 @@ var zh = {
   modelDownloadFail: "\u8BED\u97F3\u6A21\u578B\u4E0B\u8F7D\u5931\u8D25\uFF08{file}\uFF09\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u65B0\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u91CD\u8BD5",
   startFail: "\u8BED\u97F3\u6A21\u5F0F\u542F\u52A8\u5931\u8D25\uFF1A{err}",
   holdDots: "\u6309\u4F4F\u8BF4\u8BDD\u2026",
-  sayWake: "\u8BF4\u300C{wake}\u300D\u5F00\u59CB",
   exit: "\u9000\u51FA",
   skip: "\u8DF3\u8FC7",
   configUnavailableNote: "\uFF08\u8BBE\u7F6E\u6587\u6863\u672A\u5C31\u7EEA\uFF0C\u9762\u677F\u5C31\u7EEA\u540E\u4F1A\u81EA\u52A8\u51FA\u73B0\uFF09\u3002",
@@ -1009,14 +953,11 @@ var zh = {
   descAutoResume: "\u5207\u6362\u56DE\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD\u65F6\u81EA\u52A8\u6062\u590D\u8BED\u97F3\u6A21\u5F0F\uFF08\u9ED8\u8BA4\u5173\uFF0C\u9700\u9EA6\u514B\u98CE\u6743\u9650\u5DF2\u6388\u4E88\uFF1B\u7701\u53BB\u6BCF\u6B21\u5207\u6362\u4F1A\u8BDD\u540E\u91CD\u65B0\u70B9\u9EA6\u514B\u98CE\uFF09",
   descSpokenFormat: "\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u56DE\u590D\u53E3\u8BED\u5316\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\uFF1B\u9ED8\u8BA4\u5173\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09",
   descSenseVoice: "\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9 + \u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09",
-  descToolBeep: "\u5DE5\u5177\u6267\u884C\u63D0\u793A\u97F3\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5F00\u542F\u540E\u6BCF\u4E2A\u65B0\u5DE5\u5177\u54CD\u4E00\u6B21\uFF0C\u9632\u8FDE\u7EED\u5DE5\u5177\u94FE\u53EE\u53EE\u53EE\uFF09",
   descMode: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09",
   modeToggle: "\u6301\u7EED\u8046\u542C",
   modeHold: "\u6309\u4F4F\u8BF4\u8BDD",
-  descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09",
-  wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
-  settingsCardDesc: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
-  settingsEffectiveNote: "\u97F3\u8272 / \u8BED\u901F / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 / \u63D0\u793A\u97F3 \u5373\u65F6\u751F\u6548\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
+  settingsCardDesc: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
+  settingsEffectiveNote: "\u97F3\u8272 / \u8BED\u901F / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 \u5373\u65F6\u751F\u6548\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
   configUnavailable: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528",
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: "\u8BF4\u5B8C",
@@ -1065,7 +1006,6 @@ var en = {
   loadingModel: "Loading model\u2026",
   listening: "Listening\u2026",
   thinking: "Thinking\u2026",
-  wakeWord: "Wake word",
   barHold: "Voice mode \xB7 hold to talk (tap to exit)",
   barListening: "Voice mode \xB7 listening\u2026",
   reading: "Reading\u2026",
@@ -1075,7 +1015,6 @@ var en = {
   modelDownloadFail: "Model download failed ({file}): check network and re-enter voice mode",
   startFail: "Voice mode failed to start: {err}",
   holdDots: "Hold to talk\u2026",
-  sayWake: 'Say "{wake}" to start',
   exit: "Exit",
   skip: "Skip",
   configUnavailableNote: " (settings document not ready; the panel will appear when it is).",
@@ -1110,14 +1049,11 @@ var en = {
   descAutoResume: "Auto-resume voice mode when switching back to the last voice session (default off, requires granted mic permission)",
   descSpokenFormat: "Inject spoken-format prompt into voice replies (colloquial, no Markdown; default off, live)",
   descSenseVoice: "Re-transcribe the finalized utterance with SenseVoice (punctuation + ITN, more accurate; default on \u2014 turn off to skip the 228 MB model and keep streaming only)",
-  descToolBeep: "Tool-call beep (default off; when enabled, one short beep per new tool)",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)",
   modeToggle: "Continue listen",
   modeHold: "Hold to talk",
-  descWakeWord: "Wake word (default off; e.g. Hey D)",
-  wakePlaceholder: "e.g. Hey D",
-  settingsCardDesc: "Voice / rate / interrupt / barge-in / silence / idle / model host / auto-send / mode / wake word / spoken format",
-  settingsEffectiveNote: "Voice / rate / spoken format / re-transcribe / beep apply immediately; the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word) apply next time you enter voice mode.",
+  settingsCardDesc: "Voice / rate / interrupt / barge-in / silence / idle / model host / auto-send / mode / spoken format",
+  settingsEffectiveNote: "Voice / rate / spoken format / re-transcribe apply immediately; the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode) apply next time you enter voice mode.",
   configUnavailable: "Configuration unavailable",
   telUtteranceEnd: "end",
   telEndpoint: "endpoint",
@@ -1630,7 +1566,6 @@ function VoiceSettingsCard({ scope }) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoResume), onChange: (e) => void scope.set("autoResume", e.target.checked) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.toolBeep), onChange: (e) => void scope.set("toolBeep", e.target.checked) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: t("descMode"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         SegGroup,
         {
@@ -1643,7 +1578,6 @@ function VoiceSettingsCard({ scope }) {
           ]
         }
       ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("settingsEffectiveNote") }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ModelStatusView, {})
     ] }) })
@@ -1652,7 +1586,6 @@ function VoiceSettingsCard({ scope }) {
 
 // src/client.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
-var beepCtx = null;
 var isSpeechTrueCount = 0;
 var interruptFirstAt = 0;
 var isSpeechFalseRun = 0;
@@ -1668,7 +1601,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "4aaf0ae";
+var BUILD_TAG = "2a67df7";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -1902,24 +1835,6 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
       }
     })();
   };
-  const toolBeep = () => {
-    try {
-      if (!beepCtx) {
-        beepCtx = new AudioContext();
-        void beepCtx.resume?.();
-      }
-      const osc = beepCtx.createOscillator();
-      const gain = beepCtx.createGain();
-      osc.frequency.value = 880;
-      gain.gain.setValueAtTime(0.08, beepCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(1e-3, beepCtx.currentTime + 0.1);
-      osc.connect(gain);
-      gain.connect(beepCtx.destination);
-      osc.start();
-      osc.stop(beepCtx.currentTime + 0.1);
-    } catch {
-    }
-  };
   return {
     push(frame) {
       if (fallback || !ctx) {
@@ -1946,7 +1861,6 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
       captionQueue.length = 0;
       setUi({ playing: false, playingCaption: null });
     },
-    toolBeep,
     warm,
     unduck() {
       if (!ctx || !duckGain) return;
@@ -1968,8 +1882,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     mode: "toggle",
     bargeInMode: "auto",
     echoGateDb: 6,
-    shortcut: "Ctrl+Shift+V",
-    wakeWord: ""
+    shortcut: "Ctrl+Shift+V"
   };
   const ui = {
     state: "idle",
@@ -1982,13 +1895,11 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     ttsNotice: null,
     boot: DEFAULT_BOOT,
     mode: "toggle",
-    wakeWord: "",
     telemetry: null,
     turn: "idle"
   };
   const listeners = /* @__PURE__ */ new Set();
   const audioListeners = /* @__PURE__ */ new Set();
-  const toolListeners = /* @__PURE__ */ new Set();
   let source = null;
   let playingEndAt = 0;
   const telemetryStages = {};
@@ -2164,18 +2075,6 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       } catch {
       }
     });
-    source.addEventListener("tool", (e) => {
-      try {
-        const ev = JSON.parse(e.data);
-        for (const fn of toolListeners) {
-          try {
-            fn(ev);
-          } catch {
-          }
-        }
-      } catch {
-      }
-    });
     source.addEventListener("turn", (e) => {
       try {
         const ev = JSON.parse(e.data);
@@ -2280,9 +2179,6 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     curBytes += bytes.length;
     curChunkCount += 1;
   });
-  toolListeners.add((ev) => {
-    if (ev.sessionId === activeSessionId) engine.toolBeep();
-  });
   const doSkipAudio = (sidArg) => {
     const sid = sidArg ?? activeSessionId;
     if (sid) {
@@ -2361,12 +2257,6 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         audioListeners.delete(fn);
       };
     },
-    onToolEvent(fn) {
-      toolListeners.add(fn);
-      return () => {
-        toolListeners.delete(fn);
-      };
-    },
     skipAudio() {
       doSkipAudio();
     },
@@ -2430,7 +2320,7 @@ function MicButton({
   const manualHoldRef = (0, import_react2.useRef)(false);
   const breakRef = (0, import_react2.useRef)(null);
   const pausedForHiddenRef = (0, import_react2.useRef)(false);
-  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, shortcut: "Ctrl+Shift+V", wakeWord: "" };
+  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, shortcut: "Ctrl+Shift+V" };
   useVoiceCss();
   const [, bumpUi] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(
@@ -2459,10 +2349,9 @@ function MicButton({
         mode: c.mode === "hold" ? "hold" : "toggle",
         bargeInMode: c.bargeInMode === "manual" ? "manual" : "auto",
         echoGateDb: typeof c.echoGateDb === "number" ? Math.min(12, Math.max(3, c.echoGateDb)) : cur.echoGateDb,
-        shortcut: typeof c.shortcut === "string" ? c.shortcut : cur.shortcut,
-        wakeWord: c.wakeWord ?? cur.wakeWord
+        shortcut: typeof c.shortcut === "string" ? c.shortcut : cur.shortcut
       };
-      bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord });
+      bus.setUi({ boot: next, mode: next.mode });
       return next;
     } catch {
       return bootNow();
@@ -2588,7 +2477,6 @@ function MicButton({
           basePath,
           mode: cfg.mode,
           echoGateDb: cfg.echoGateDb,
-          wakeWord: cfg.wakeWord,
           echo: bus.echoForAsr(),
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
           isPlaying: () => bus.ui.playing || Date.now() < bus.playingTailUntil(),
@@ -2680,14 +2568,9 @@ function MicButton({
         },
         sid
       );
-      bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord });
+      bus.setUi({ mode: cfg.mode });
       engineRef.current = engine;
       engine.onTelemetry((e) => bus.stampTelemetry(e.stage, e.at));
-      try {
-        if (!beepCtx) beepCtx = new AudioContext();
-        void beepCtx.resume?.();
-      } catch {
-      }
       bus.warmAudio();
       engine.onState((s) => {
         bus.setUi({ state: s });
@@ -3137,7 +3020,7 @@ function VoiceStatusBar({ bus, sessionId }) {
   }, [bus]);
   const isActive = b.active === sessionId;
   if (!isActive) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
-  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? t("recognizing") : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.playing ? t("reading") : b.ui.turn === "agent-speaking" ? t("thinking") : b.ui.mode === "hold" ? t("barHold") : t("barListening");
+  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? t("recognizing") : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.playing ? t("reading") : b.ui.turn === "agent-speaking" ? t("thinking") : b.ui.mode === "hold" ? t("barHold") : t("barListening");
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0);
   const telParts = [];
   const fmt = (ms) => ms >= 1e3 ? `${(ms / 1e3).toFixed(2)}s` : `${Math.round(ms)}ms`;

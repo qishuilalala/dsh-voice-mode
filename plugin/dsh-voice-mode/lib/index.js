@@ -1103,10 +1103,8 @@ var VOICE_SETTINGS_DEFAULTS = {
   bargeInMode: "auto",
   echoGateDb: 6,
   shortcut: "Ctrl+Shift+V",
-  wakeWord: "",
   spokenFormat: false,
-  senseVoice: true,
-  toolBeep: false
+  senseVoice: true
 };
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
@@ -1125,10 +1123,8 @@ function createVoiceSettingsSchema(defs) {
     bargeInMode: z.union([z.const("auto"), z.const("manual")]).default(d.bargeInMode).description("\u6253\u65AD\u65B9\u5F0F\uFF1Aauto \u81EA\u52A8\u6253\u65AD\uFF08\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u8033\u673A/\u5B89\u9759\u73AF\u5883\u63A8\u8350\uFF09\uFF1Bmanual \u624B\u52A8\u6253\u65AD\uFF08\u5916\u653E\u63A8\u8350\u2014\u2014\u5916\u653E\u56DE\u58F0\u4F1A\u8BEF\u89E6\u53D1\u81EA\u52A8\u6253\u65AD\uFF0C\u6539\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u663E\u5F0F\u6253\u65AD\uFF0C\u6C38\u4E0D\u81EA\u6253\u65AD\uFF09"),
     echoGateDb: z.number().min(3).max(12).default(d.echoGateDb).description("\u56DE\u58F0\u95E8\u63A7\u9608\u503C\uFF08dB\uFF0C\u9ED8\u8BA4 6\uFF09\uFF1A\u81EA\u52A8\u6253\u65AD\u8981\u6C42\u6B8B\u5DEE\u9AD8\u4E8E\u56DE\u58F0\u5730\u677F\u6B64\u503C\uFF1B\u5916\u653E\u4ECD\u8BEF\u6253\u65AD\u8C03\u5927\uFF088~10\uFF09\uFF0C\u592A\u96BE\u6253\u65AD\u8C03\u5C0F\uFF083~4\uFF09"),
     shortcut: z.string().default(d.shortcut).description("\u8FDB\u5165/\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5FEB\u6377\u952E\uFF08\u5F62\u5982 Ctrl+Shift+V\uFF0C\u4FEE\u9970\u952E Ctrl/Shift/Alt/Meta + \u4E00\u4E2A\u5B57\u6BCD\u952E\uFF1B\u7559\u7A7A\u7981\u7528\u5FEB\u6377\u952E\uFF0C\u7528\u9EA6\u514B\u98CE\u6309\u94AE\uFF09"),
-    wakeWord: z.string().default(d.wakeWord).description("\u5524\u9192\u8BCD\uFF1A\u5728\u5F85\u673A\u6001\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF09"),
     spokenFormat: z.boolean().default(d.spokenFormat).description("\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u53E3\u8BED\u5316\u77ED\u53E5\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\uFF1B\u9ED8\u8BA4\u5173\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09"),
-    senseVoice: z.boolean().default(d.senseVoice).description("\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9+\u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09"),
-    toolBeep: z.boolean().default(d.toolBeep).description("\u5DE5\u5177\u6267\u884C\u63D0\u793A\u97F3\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5F00\u542F\u540E agent \u6BCF\u8C03\u7528\u4E00\u4E2A\u65B0\u5DE5\u5177\u54CD\u4E00\u6B21\uFF09")
+    senseVoice: z.boolean().default(d.senseVoice).description("\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9+\u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09")
   });
 }
 var VoiceSettingsSchema = createVoiceSettingsSchema();
@@ -1237,10 +1233,6 @@ function apply(ctx, config) {
       broadcast,
       (state) => {
         if ((turnGen.get(sessionId) ?? 0) === gen) setTurn(sessionId, state);
-      },
-      // 工具提示音开关（设置 toolBeep；关掉后执行工具静音）。
-      (name2) => {
-        if (vset.toolBeep) broadcast("tool", { sessionId, name: name2 });
       }
     );
   });
@@ -1279,7 +1271,6 @@ function apply(ctx, config) {
           bargeInMode: vset.bargeInMode,
           echoGateDb: vset.echoGateDb,
           shortcut: vset.shortcut,
-          wakeWord: vset.wakeWord,
           cacheDir: config.cacheDir
         });
       }
@@ -1559,9 +1550,8 @@ function collectBody(req, res, maxBytes, onBody) {
   req.on("error", () => {
   });
 }
-async function* tapActiveStream(sessionId, inner, queue, broadcast, onTurn, onTool) {
+async function* tapActiveStream(sessionId, inner, queue, broadcast, onTurn) {
   const segmenter = new SentenceSegmenter();
-  const beepedTools = /* @__PURE__ */ new Set();
   let firstTokenBroadcast = false;
   let firstSentenceBroadcast = false;
   let flushed = false;
@@ -1587,12 +1577,6 @@ async function* tapActiveStream(sessionId, inner, queue, broadcast, onTurn, onTo
             broadcast("latency", { sessionId, stage: "first-sentence-text" });
           }
           queue.enqueue(sessionId, s);
-        }
-      }
-      if (chunk.type === "tool-call-delta" && chunk.name) {
-        if (!beepedTools.has(chunk.name)) {
-          beepedTools.add(chunk.name);
-          onTool(chunk.name);
         }
       }
       if (chunk.type === "finish") {

@@ -12,7 +12,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '..')
 const tests = [
   ['segmenter 单测', ['node', 'test/segmenter.test.mjs']],
-  ['wakeword 单测', ['node', 'test/wakeword.test.mjs']],
   ['aec 单测', ['node', 'test/aec.test.mjs']],
   ['下载完整性 单测', ['node', 'test/download.test.mjs']],
   ['语义端点 单测', ['node', 'test/endpoint.test.mjs']],

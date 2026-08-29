@@ -22,8 +22,7 @@
     "src/index.ts",
     "src/asr-host.ts",
     "src/tts-queue.ts",
-    "src/segmenter.ts",
-    "src/wakeword.ts"
+    "src/segmenter.ts"
   ],
   "exclude": [
     "src/client.tsx",

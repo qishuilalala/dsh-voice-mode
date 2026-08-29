@@ -17,12 +17,11 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 - **两种交互模式（设置可切换）**：
   - `toggle`（默认）持续聆听：本地 RMS 门控开段 → zipformer2 流式识别（边说边出字，实时字幕预览）→ 静音 700ms 自动断句进草稿并自动发送（不足 250ms 语音视为噪声不判句；端点判定由 host 侧 Silero VAD 神经网络完成，客户端静音计时兜底）；按住 `Ctrl` 强制立即发送
   - `hold` 按住说话：短按进入/退出，**按住麦克风按钮说话、松手即发**（滑出取消、`Esc`/失焦放弃本段）；`Ctrl` 按住即录、松开即发
-- **唤醒词（可选，默认关）**：设置 `wakeWord` 后进入待机态，说出唤醒词才开始识别（如「你好小D」）
-- **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式 Edge TTS 朗读 + 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录；可选口语化提示词（设置 `spokenFormat`，默认关）让回复为自然短句、不带 Markdown 排版符号，朗读侧再做一轮标记剥离
+- **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式 Edge TTS 朗读 + 右下角实时字幕浮层；全文照常写入聊天记录；可选口语化提示词（设置 `spokenFormat`，默认关）让回复为自然短句、不带 Markdown 排版符号，朗读侧再做一轮标记剥离
 - **开口打断（barge-in）**：**NLMS 回声消除（P3，互相关 bulk delay 估计 + 64ms 短滤波器）**以本页 TTS 播放为参考消掉外放回声后，**host 端 Silero VAD 帧级检测（isSpeech）随 partial 下行驱动打断**——三档灵敏度对应发声确认时长（0 高门槛约 0.3s / 1 中 0.2s / 2 低 0.1s）；`bargeInMode` 选 `auto` 时开口自动打断，选 `manual`（外放推荐）时改按住麦克风/Ctrl 显式打断 → 本地静音 + host 合成队列作废 + 正在运行的回合取消（保留半截并自然续入新消息）
 - **模型懒加载与进度**：首次使用自动下载 zipformer2 流式模型（~160MB）、Silero VAD（~2MB）与 SenseVoice 定稿模型（~228MB，首次定稿时，可关），全部 `.part` 断点续传、hf-mirror 回退；状态条实时显示进度；`npm run prefetch` 可预下载流式 ASR 模型（VAD/SenseVoice 首次使用时自动下载）
 - **SenseVoice 定稿解码在独立 worker 线程执行**：228MB 离线模型的载入与整段解码不占用宿主主线程事件循环（解码期间其它请求/SSE 保持响应），10s 超时兜底真实可触发，失败/超时/关闭均自动降级 zipformer 定稿，worker 崩溃后下一句自动重建
-- **设置**：设置 → Plugins → 插件配置 → 语音模式（voice-mode），可调音色/语速/打断灵敏度/打断方式/静音停顿/空闲超时/模型镜像/自动发送/交互模式/唤醒词/口语化提示词；**音色可试听**（按当前音色+语速即时合成预览，自定义 ShortName 亦可）
+- **设置**：设置 → Plugins → 插件配置 → 语音模式（voice-mode），可调音色/语速/打断灵敏度/打断方式/静音停顿/空闲超时/模型镜像/自动发送/交互模式/口语化提示词；**音色可试听**（按当前音色+语速即时合成预览，自定义 ShortName 亦可）
 - **界面语言**：跟随 dsh 语言设置（网页 `<html lang>`，未设置时回退浏览器语言；切换后刷新页面生效）
 - **容错**：麦克风被拒红点提示、模型下载失败可见提示、TTS 连接失败状态条提示（自动退避重试）、提交失败文字留在草稿、SSE 断线自动重连
 - **空闲退出**：10 分钟无活动自动退出并释放麦克风
@@ -51,7 +50,6 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | `Ctrl+Shift+V` | 进入 / 退出语音模式 |
 | 直接说话 | `toggle`：边说边出字，停顿 700ms 自动发送；按住 `Ctrl` 强制立即发送 |
 | 按住麦克风按钮 | `hold`：松手发送；短按退出；滑出 / `Esc` / 失焦放弃本段 |
-| 说唤醒词 | 待机态激活识别（配置后） |
 | AI 朗读时开口说话 | 打断朗读并取消当前回合 |
 | 点状态条「退出」 | 退出语音模式 |
 | 点字幕浮层「跳过」 | 跳过当前句朗读 |
@@ -72,12 +70,10 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | `autoSend` | `true` | 识别定稿后自动发送；关闭则只进草稿（按住 `Ctrl` / hold 松手仍会发送） |
 | `autoResume` | `false` | 切换回上次语音会话时自动恢复语音模式（需麦克风权限已授予；省去每次切换会话后重新点麦克风） |
 | `mode` | `toggle` | 交互模式：`toggle` 持续聆听 + 静音自动断句；`hold` 按住说话、松手发送（短按退出） |
-| `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭（hold 模式不适用——按住即明确意图，无需唤醒） |
 | `spokenFormat` | `false` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效** |
 | `senseVoice` | `true` | 定稿用 SenseVoice 重译（带标点 + 数字归一化，识别更准）；关闭可省 228MB 模型、只走流式识别 |
-| `toolBeep` | `false` | 工具执行提示音（默认关；开启后每个新工具响一次，防连续工具链叮叮叮） |
 
-生效范围：`voice`/`rate`/`spokenFormat`/`senseVoice` **立即生效**；其余（`silenceMs`/`interruptLevel`/`bargeInMode`/`idleTimeoutMinutes`/`modelHost`/`autoSend`/`autoResume`/`mode`/`wakeWord`）下次进入语音模式时生效。前六个键的平台默认由插件配置（`base` 层）提供，其余由 schema 提供。
+生效范围：`voice`/`rate`/`spokenFormat`/`senseVoice` **立即生效**；其余（`silenceMs`/`interruptLevel`/`bargeInMode`/`idleTimeoutMinutes`/`modelHost`/`autoSend`/`autoResume`/`mode`）下次进入语音模式时生效。前六个键的平台默认由插件配置（`base` 层）提供，其余由 schema 提供。
 
 ### 开发工具
 
@@ -122,7 +118,6 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 - `Ctrl+Shift+V` 会覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍可用 `Ctrl+V`）
 - 识别模型为简体中文优先；识别质量受环境噪声影响
 - 浏览器自动播放策略：朗读需要页面已有用户交互（点击麦克风即满足）；「试听」依赖 `AbortSignal.timeout`（Safari 16+ / Chrome 103+ / Firefox 100+；老浏览器点击试听会立即提示失败，属预期降级）
-- **唤醒词为轻量实现**（流式文本匹配，非专用 KWS 引擎）：嘈杂环境可能延迟或误激活；唤醒词本身不会进入聊天
 - hold 模式按住时切换窗口/标签页会**放弃本段**（防持续收音）
 - hero（新会话空态）无语音入口：请先进入会话使用麦克风按钮
 - `spokenFormat` 提示词经官方 `system-prompt/assemble` 瀑布注入；若当前会话使用**完整提示词**配置（persona `complete: true` 的 agent preset），提示词不注入（官方 complete 契约优先）
@@ -140,13 +135,13 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | 状态条「正在加载模型… x%」卡住 | 检查网络；模型大（160MB）可先 `npm run prefetch`；国内网络 `modelHost` 配 `https://hf-mirror.com` |
 | 朗读无声音/无字幕 | 查看状态条「朗读连接失败：正在重试…」（Edge TTS 网络问题，自动退避重试）；确认页面前台且未静音 |
 | 语音模式进不去 | 检查插件 `enabled`；多标签页时确认当前会话为活动会话 |
-| 识别到但不是我要说的 | 环境噪声或唤醒词误判：降低音量、提高 `interruptLevel`（高门槛）或启用 `wakeWord` |
+| 识别到但不是我要说的 | 环境噪声：降低音量或提高 `interruptLevel`（高门槛） |
 
 ## 开发
 
 ```sh
 pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js（browser）
-pnpm test                     # 单测（segmenter/wakeword/aec + 发布前自检，无需网络；测试直接 import src/*.ts，需 Node ≥22.18，即 type stripping）
+pnpm test                     # 单测（segmenter/aec + 发布前自检，无需网络；测试直接 import src/*.ts，需 Node ≥22.18，即 type stripping）
 systemctl restart dsh         # 本机加载新 host 代码；其他平台重启 dsh 进程
 ```
 
@@ -159,10 +154,9 @@ src/index.ts      host：单活指针、llm/stream tap、SSE、settings 注册�
 src/asr-host.ts   host：zipformer2 流式识别 + Silero VAD 端点 + SenseVoice 定稿 + 模型懒下载（.part 断点续传）
 src/tts-queue.ts  host：逐会话 TTS 队列 + 逐 chunk 转发 + epoch 打断机制
 src/segmenter.ts  host：句子切分（markdown 剥离 + 终止标点）
-src/asr.ts        client：音频采集、NLMS AEC 注入、VAD 分段、增量识别、端点处理、唤醒词
+src/asr.ts        client：音频采集、NLMS AEC 注入、VAD 分段、增量识别、端点处理
 src/aec.ts        client：NLMS 声学回声消除（纯模块，可单测）
 src/resample.ts   client：线性重采样（采集/回声参考共用）
-src/wakeword.ts   client：唤醒词归一化匹配
 src/client.tsx    client：麦克风按钮 + 状态条 + 字幕浮层 + 播放引擎（Web Audio 队列）+ 打断
 src/settings-form.tsx client：设置卡片（Plugins → 插件配置）
 src/strings.ts    client：中英文案字典（以 dsh 语言设置 <html lang> 为准）

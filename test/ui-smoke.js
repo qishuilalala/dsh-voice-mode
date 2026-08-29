@@ -100,7 +100,7 @@ async function main() {
   const errs = logs.filter((l) => l.includes('[error]') || l.includes('[pageerror]'))
   console.log('console errors:', errs.length ? errs : 'none')
 
-  // === v0.2：hold 模式与唤醒词待机 ===
+  // === v0.2：hold 模式 ===
   const setSettings = async (patch) =>
     page.evaluate(
       (p) =>
@@ -114,7 +114,7 @@ async function main() {
   const hostActive = () => page.evaluate(async () => (await fetch('/voice-mode')).json().then((d) => d.active))
 
   // 8. hold 模式：长按发送、短按退出（/asr 拦截返回假文本；静音假麦克风无真实语音）
-  await setSettings({ mode: 'hold', wakeWord: '' })
+  await setSettings({ mode: 'hold' })
   await page.waitForTimeout(300)
   await page.route('**/voice-mode/asr*', (route) => {
     const final = new URL(route.request().url()).searchParams.get('final') === '1'
@@ -146,18 +146,6 @@ async function main() {
   await page.waitForTimeout(600)
   console.log('[hold] after tap, button text =', await micBtn.textContent(), '| host active =', await hostActive())
 
-  // 9. wake 模式：待机态显示（匹配逻辑由单测覆盖；无真实语音不驱动 partial）
-  await setSettings({ mode: 'toggle', wakeWord: '你好小D' })
-  await page.waitForTimeout(300)
-  await micBtn.click()
-  await page.waitForTimeout(600)
-  const wakeBar = page.locator('text=说「你好小D」开始').first()
-  await wakeBar.waitFor({ timeout: 10000 })
-  console.log('[wake] status text =', JSON.stringify(await wakeBar.textContent()))
-  await setSettings({ mode: 'toggle', wakeWord: '' })
-  await micBtn.click() // 退出（wake 未配置时直接聆听）
-  await page.waitForTimeout(500)
-  console.log('[wake] exit, host active =', await hostActive())
 
   const errs2 = logs.filter((l) => l.includes('[error]') || l.includes('[pageerror]'))
   console.log('console errors:', errs2.length ? errs2 : 'none')

@@ -15,8 +15,6 @@ import { NlmsAec, estimateBulkDelay } from './aec.ts'
 import { resampleLinear } from './resample.ts'
 import { t, type TKey } from './strings.ts'
 
-/** 共享提示音上下文（进入语音模式手势栈内预热；Safari 非手势栈新建会静默）。 */
-let beepCtx: AudioContext | null = null
 /**
  * 打断根治阶段二：isSpeech 连续 true 计数（模块级；全局单活架构下 createVoiceBus
  * 仅一个实例、语音模式同时至多一个会话在播，模块级与闭包级等价且无并发串扰）。
@@ -50,9 +48,8 @@ interface VoiceUiState {
   ttsNotice: string | null
   /** 本会话激活时读取的引导参数（bus 单例，跨组件重挂载稳定）。 */
   boot: VoiceBootConfig
-  /** 便捷速记：交互模式 / 唤醒词（状态条与手势读取）。 */
+  /** 便捷速记：交互模式（状态条与手势读取）。 */
   mode: 'toggle' | 'hold'
-  wakeWord: string
   /** P2-4 host 回合状态（SSE 'turn'；状态条展示思考中/朗读中）。 */
   turn: 'idle' | 'listening' | 'finalizing' | 'agent-speaking'
   /** 打断根治阶段一：服务端 Silero VAD 帧级语音检测（partial 响应下行；可读存储，供下一阶段接入打断；undefined=无 VAD 信息）。 */
@@ -159,8 +156,6 @@ interface VoiceBus {
   exit(sessionId: string): Promise<void>
   /** 音频分块帧到达（播放引擎消费前由客户端按句拼帧）。 */
   onAudioFrame(fn: (frame: TtsChunkFrame) => void): () => void
-  /** 工具调用提示音事件。 */
-  onToolEvent(fn: (e: { sessionId: string; name: string }) => void): () => void
   /** 清播放队列 + 停当前句（本地 skip，打断第一层）。 */
   skipAudio(): void
   /** P3-2：回声消除源（参考窗口 + NLMS），供 ASR 引擎注入。 */
@@ -334,7 +329,6 @@ function createAudioEngine(
 ): {
   push(frame: PlayFrame): void
   skip(): void
-  toolBeep(): void
   /** 手势栈内预热 AudioContext（Safari 非手势栈新建会 suspended 静默）。 */
   warm(): void
   /** P3-3：恢复 TTS 增益（≥30ms 斜坡，无爆音；打断后调用）。 */
@@ -488,27 +482,6 @@ function createAudioEngine(
     })()
   }
 
-  const toolBeep = (): void => {
-    try {
-      if (!beepCtx) {
-        // 兜底（理论上已被 enterMode 预热；此处避免 SSE 回调新建导致 Safari 静默）
-        beepCtx = new AudioContext()
-        void beepCtx.resume?.()
-      }
-      const osc = beepCtx.createOscillator()
-      const gain = beepCtx.createGain()
-      osc.frequency.value = 880
-      gain.gain.setValueAtTime(0.08, beepCtx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.001, beepCtx.currentTime + 0.1)
-      osc.connect(gain)
-      gain.connect(beepCtx.destination)
-      osc.start()
-      osc.stop(beepCtx.currentTime + 0.1)
-    } catch {
-      // beep 失败静默
-    }
-  }
-
   return {
     push(frame) {
       if (fallback || !ctx) {
@@ -537,7 +510,6 @@ function createAudioEngine(
       captionQueue.length = 0
       setUi({ playing: false, playingCaption: null })
     },
-    toolBeep,
     warm,
     unduck() {
       if (!ctx || !duckGain) return
@@ -561,7 +533,6 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     bargeInMode: 'auto',
     echoGateDb: 6,
     shortcut: 'Ctrl+Shift+V',
-    wakeWord: '',
   }
   const ui: VoiceUiState = {
     state: 'idle',
@@ -574,13 +545,11 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     ttsNotice: null,
     boot: DEFAULT_BOOT,
     mode: 'toggle',
-    wakeWord: '',
     telemetry: null,
     turn: 'idle',
   }
   const listeners = new Set<(b: { active: string | null; ui: VoiceUiState }) => void>()
   const audioListeners = new Set<(frame: TtsChunkFrame) => void>()
-  const toolListeners = new Set<(e: { sessionId: string; name: string }) => void>()
   let source: EventSource | null = null
   /** playing 从 true→false 的墙钟时刻（回声尾音宽限起点，见 ECHO_TAIL_MS）。 */
   let playingEndAt = 0
@@ -810,20 +779,6 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         // ignore malformed frame
       }
     })
-    source.addEventListener('tool', (e: MessageEvent<string>) => {
-      try {
-        const ev = JSON.parse(e.data) as { sessionId: string; name: string }
-        for (const fn of toolListeners) {
-          try {
-            fn(ev)
-          } catch {
-            // ignore
-          }
-        }
-      } catch {
-        // ignore malformed frame
-      }
-    })
     // P2-4：host 回合状态下行（思考中/朗读中展示）。
     source.addEventListener('turn', (e: MessageEvent<string>) => {
       try {
@@ -949,10 +904,6 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     curBytes += bytes.length
     curChunkCount += 1
   })
-  // B1 修复：工具提示音也只在 owner tab 响（非 owner 不重复）。
-  toolListeners.add((ev) => {
-    if (ev.sessionId === activeSessionId) engine.toolBeep()
-  })
 
   /** 双重奏根治：停播 + 记拒绝线（skip 时在途/已入队句的最大 sentenceId，其后 ≤ 线帧丢弃）。
    *  sidArg：模式让出/抢占时传被让出会话 id（此时 activeSessionId 已切到新会话）。 */
@@ -1054,12 +1005,6 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         audioListeners.delete(fn)
       }
     },
-    onToolEvent(fn) {
-      toolListeners.add(fn)
-      return () => {
-        toolListeners.delete(fn)
-      }
-    },
     skipAudio() {
       doSkipAudio()
     },
@@ -1114,7 +1059,6 @@ interface VoiceBootConfig {
   echoGateDb: number
   /** 进入/退出语音模式的快捷键（如 Ctrl+Shift+V；空 = 禁用）。 */
   shortcut: string
-  wakeWord: string
 }
 
 let styleInjected = false
@@ -1161,11 +1105,11 @@ export function MicButton({
   /** M2：隐藏 tab 时已暂停收音（可见时恢复）；隐私——避免后台持续录音。 */
   const pausedForHiddenRef = useRef(false)
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
-  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, shortcut: 'Ctrl+Shift+V', wakeWord: '' }
+  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, shortcut: 'Ctrl+Shift+V' }
 
   useVoiceCss()
 
-  // bus.ui 镜像（仅模式/唤醒词/自动发送变化才触发重渲染；电平高频更新不打扰）。
+  // bus.ui 镜像（仅模式/自动发送变化才触发重渲染；电平高频更新不打扰）。
   const [, bumpUi] = useState(0)
   useEffect(
     () =>
@@ -1198,9 +1142,8 @@ export function MicButton({
         bargeInMode: c.bargeInMode === 'manual' ? 'manual' : 'auto',
         echoGateDb: typeof c.echoGateDb === 'number' ? Math.min(12, Math.max(3, c.echoGateDb)) : cur.echoGateDb,
         shortcut: typeof c.shortcut === 'string' ? c.shortcut : cur.shortcut,
-        wakeWord: c.wakeWord ?? cur.wakeWord,
       }
-      bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord })
+      bus.setUi({ boot: next, mode: next.mode })
       return next
     } catch {
       return bootNow()
@@ -1302,7 +1245,7 @@ export function MicButton({
         }
         return
       }
-      // 每次进入重新拉取 host 引导参数（静音/打断档位/自动发送/空闲超时/模式/唤醒词）
+      // 每次进入重新拉取 host 引导参数（静音/打断档位/自动发送/空闲超时/模式）
       const cfg = await fetchConfig()
       const basePath = cfg.basePath
       const silenceMs = cfg.silenceMs
@@ -1358,7 +1301,6 @@ export function MicButton({
           basePath,
           mode: cfg.mode,
           echoGateDb: cfg.echoGateDb,
-          wakeWord: cfg.wakeWord,
           echo: bus.echoForAsr(),
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
           isPlaying: () => bus.ui.playing || Date.now() < bus.playingTailUntil(),
@@ -1468,19 +1410,11 @@ export function MicButton({
         },
         sid,
       )
-      bus.setUi({ mode: cfg.mode, wakeWord: cfg.wakeWord })
+      bus.setUi({ mode: cfg.mode })
       engineRef.current = engine
       // P1-5 延迟埋点链：ASR 侧三枚时间戳（说完/端点/定稿上传）入链。
       engine.onTelemetry((e) => bus.stampTelemetry(e.stage, e.at))
-      // 共享提示音上下文：进入模式处于用户手势栈（点麦克风），此处创建并恢复——
-      // Safari/iOS 在非手势栈（如 SSE 回调）新建的 AudioContext 会 suspended 静默。
-      try {
-        if (!beepCtx) beepCtx = new AudioContext()
-        void beepCtx.resume?.()
-      } catch {
-        // 预热失败不阻塞（toolBeep 有兜底）
-      }
-      // P1-2：播放引擎 AudioContext 同样需手势栈预热（decode/start 才不会被静音）。
+      // P1-2：播放引擎 AudioContext 需手势栈预热（decode/start 才不会被静音）。
       bus.warmAudio()
 
       engine.onState((s) => {
@@ -2072,9 +2006,7 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
           ? b.ui.mode === 'hold'
             ? t('holdDots')
             : t('listening')
-          : b.ui.state === 'wake'
-            ? t('sayWake').replace('{wake}', b.ui.wakeWord || t('wakeWord'))
-            : b.ui.playing // Fix：TTS 播放時顯示「朗讀中…」，防用戶誤以為系統無響應
+          : b.ui.playing // Fix：TTS 播放時顯示「朗讀中…」，防用戶誤以為系統無響應
               ? t('reading')
               : b.ui.turn === 'agent-speaking'
                 ? t('thinking')
