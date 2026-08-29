@@ -1069,6 +1069,26 @@ var EdgeTtsEngine = class {
   async close() {
   }
 };
+var edgeVoicesCache = null;
+async function listEdgeVoices(force = false) {
+  if (edgeVoicesCache && !force) return edgeVoicesCache;
+  const tts = new MsEdgeTTS();
+  try {
+    const voices = await tts.getVoices();
+    edgeVoicesCache = voices.map((v) => ({
+      ShortName: v.ShortName,
+      Locale: v.Locale,
+      Gender: v.Gender,
+      FriendlyName: v.FriendlyName
+    }));
+    return edgeVoicesCache;
+  } finally {
+    try {
+      await tts.close();
+    } catch {
+    }
+  }
+}
 var TtsQueue = class {
   queues = /* @__PURE__ */ new Map();
   listeners = /* @__PURE__ */ new Set();
@@ -1718,8 +1738,8 @@ var VOICE_SPOKEN_SECTION = "voice-mode:spoken-format";
 var inject = ["webServer", "settings", "sessions"];
 var defaultModelCacheDir = () => process.platform === "win32" ? join4(process.env.LOCALAPPDATA ?? join4(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join4(homedir(), ".cache", "dsh-voice-mode", "models");
 var VOICE_SETTINGS_DEFAULTS = {
-  ttsEngine: "vits",
-  voice: "fushiyu",
+  ttsEngine: "edge",
+  voice: "zh-CN-XiaoxiaoNeural",
   rate: 1,
   interruptLevel: 0,
   silenceMs: 700,
@@ -1767,10 +1787,10 @@ var Config = z.object({
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default("https://huggingface.co"),
-  ttsEngine: z.union([z.const("edge"), z.const("vits"), z.const("kokoro")]).default("vits"),
+  ttsEngine: z.union([z.const("edge"), z.const("vits"), z.const("kokoro")]).default("edge"),
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
-  voice: z.string().default("fushiyu"),
+  voice: z.string().default("zh-CN-XiaoxiaoNeural"),
   rate: z.number().default(1),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(700),
@@ -2172,6 +2192,22 @@ function apply(ctx, config) {
             respondJson2(res, 200, { ok: true, engine });
           }).catch((e) => respondJson2(res, 500, { error: String(e) }));
         });
+      }
+    })
+  );
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: "exact",
+      path: `${base}/voices`,
+      handler: async (req, res) => {
+        if (denyNonLoopback(req, res)) return;
+        if (denyCrossOrigin(req, res)) return;
+        try {
+          const voices = await listEdgeVoices();
+          respondJson2(res, 200, { voices });
+        } catch (e) {
+          respondJson2(res, 502, { error: String(e) });
+        }
       }
     })
   );

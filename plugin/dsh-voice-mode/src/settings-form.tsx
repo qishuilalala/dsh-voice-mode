@@ -46,6 +46,27 @@ const cardStyle: React.CSSProperties = {
   borderRadius: 12,
   overflow: 'hidden',
 }
+
+/** 字段 key → 中文标签（设置行标题用；未知 key 回退显示 key 本身）。 */
+const FIELD_LABELS: Record<string, string> = {
+  ttsEngine: '朗读引擎',
+  voice: '音色',
+  rate: '语速',
+  interruptLevel: '打断灵敏度',
+  bargeInMode: '打断方式',
+  echoGateDb: '回声门控',
+  mode: '交互模式',
+  shortcut: '快捷键',
+  wakeWord: '唤醒词',
+  toolBeep: '工具提示音',
+  autoSend: '自动发送',
+  autoResume: '自动恢复',
+  senseVoice: '定稿重译',
+  spokenFormat: '口语化提示词',
+  silenceMs: '静音停顿',
+  idleTimeoutMinutes: '空闲超时',
+  modelHost: '模型镜像',
+}
 const setHeader: React.CSSProperties = {
   appearance: 'none',
   width: '100%',
@@ -362,6 +383,7 @@ function VoiceSelect({
   options,
   placeholder,
   footer,
+  showCustom = true,
 }: {
   score: ScopeController
   field: string
@@ -370,6 +392,8 @@ function VoiceSelect({
   placeholder?: string
   /** 附加渲染（如试听按钮）：入参为当前生效值。 */
   footer?: (current: string) => React.ReactNode
+  /** 是否允许「自定义」兜底（Edge 需要手输 ShortName；本地引擎全量列出时关掉）。 */
+  showCustom?: boolean
 }): React.ReactElement {
   const cur = String(value ?? '')
   const inOptions = options.some((o) => o.v === cur)
@@ -400,6 +424,8 @@ function VoiceSelect({
     paddingRight: 32,
   }
   const label = inOptions ? options[idx].label : custom || placeholder || ''
+  // 非自定义引擎（全量列出）：值不在列表视为异常，下拉回退到第一项；自定义引擎才出现手输框。
+  const selectValue = inOptions ? cur : showCustom ? '__custom__' : options[0]?.v ?? ''
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 320, maxWidth: '100%', alignItems: 'stretch' }}>
       <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -408,7 +434,7 @@ function VoiceSelect({
         </button>
         <select
           style={selectStyle}
-          value={inOptions ? cur : '__custom__'}
+          value={selectValue}
           aria-label={label}
           onChange={(e) => {
             const v = e.target.value
@@ -421,13 +447,13 @@ function VoiceSelect({
               {o.label}
             </option>
           ))}
-          <option value="__custom__">{tr('custom')}…</option>
+          {showCustom && <option value="__custom__">{tr('custom')}…</option>}
         </select>
         <button type="button" aria-label={tr('voiceNext')} onClick={() => move(1)} style={stepBtn}>
           ›
         </button>
       </span>
-      {!inOptions && (
+      {showCustom && !inOptions && (
         <input
           style={inputStyle}
           value={custom}
@@ -439,7 +465,7 @@ function VoiceSelect({
           }}
         />
       )}
-      {footer?.(inOptions ? cur : custom)}
+      {footer?.(inOptions ? cur : showCustom ? custom : cur)}
     </span>
   )
 }
@@ -557,10 +583,11 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
 }
 
 function Row({ name, desc, children }: { name: string; desc: string; children: React.ReactNode }): React.ReactElement {
+  const label = FIELD_LABELS[name] ?? name
   return (
     <div style={setRow}>
       <div style={setLabelBox}>
-        <span style={setLabel}>{name}</span>
+        <span style={setLabel}>{label}</span>
         <span style={setHint}>{desc}</span>
       </div>
       <span style={{ flexShrink: 0, maxWidth: 300 }}>{children}</span>
@@ -631,6 +658,95 @@ interface ModelsStatusPayload {
 
 const fmtMB = (b: number): string => (b >= 1048576 ? `${(b / 1048576).toFixed(0)}MB` : b > 0 ? `${Math.round(b / 1024)}KB` : '–')
 
+/**
+ * 朗读引擎内联状态：紧挨「朗读引擎」选择器下方展示当前引擎的可用/加载中/失败，
+ * 以及重新下载按钮——切换引擎/点试听时立刻可见，无需滚到页面底部找模型状态。
+ */
+function EngineStatusInline(): React.ReactElement {
+  const [st, setSt] = useState<ModelsStatusPayload | null>(null)
+  const [cleaning, setCleaning] = useState(false)
+  useEffect(() => {
+    let alive = true
+    const poll = async (): Promise<void> => {
+      try {
+        const res = await fetch(location.origin + BASE_PATH + '/models/status')
+        if (res.ok && alive) setSt((await res.json()) as ModelsStatusPayload)
+      } catch {
+        // 轮询失败静默
+      }
+    }
+    void poll()
+    const timer = setInterval(() => void poll(), 3000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [])
+  const clean = (engine: string): void => {
+    setCleaning(true)
+    void fetch(location.origin + BASE_PATH + '/models/clean', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ engine }),
+    })
+      .catch(() => undefined)
+      .finally(() => setTimeout(() => setCleaning(false), 1500))
+  }
+  const tts = st?.tts
+  if (!tts) return <></>
+  const engineName = tts.engine === 'vits' ? tr('engineVits') : tts.engine === 'kokoro' ? tr('engineKokoro') : tr('engineEdge')
+  const isLocal = !!tts.local
+  let statusText: string
+  let statusColor: string
+  if (tts.loading) {
+    statusText = tr('engineLoading')
+    statusColor = t.term
+  } else if (tts.ready) {
+    statusText = tr('engineReady')
+    statusColor = 'var(--dsw-alias-state-success-primary)'
+  } else if (tts.error) {
+    statusText = tr('engineError')
+    statusColor = 'var(--dsw-alias-state-error-primary)'
+  } else if (isLocal && !tts.local!.ready) {
+    statusText = tr('ttsModelsMissing')
+    statusColor = 'var(--dsw-alias-state-error-primary)'
+  } else {
+    statusText = tr('engineIdle')
+    statusColor = t.term
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '2px 0 10px' }}>
+      <span style={{ fontSize: 12, color: t.term }}>{engineName}</span>
+      <span style={{ fontSize: 12, fontWeight: tts.ready || tts.error ? 600 : 400, color: statusColor }}>{statusText}</span>
+      {tts.loading && st?.progress?.file && (
+        <span style={{ fontSize: 12, color: t.term }}>{st.progress.file} {st.progress.percent}%</span>
+      )}
+      {isLocal && (
+        <button
+          type="button"
+          onClick={() => clean(tts.engine!)}
+          disabled={cleaning || tts.loading}
+          style={{
+            font: 'inherit',
+            fontSize: 12,
+            cursor: tts.loading ? 'default' : 'pointer',
+            color: t.label,
+            background: 'var(--dsw-alias-bg-layer-2)',
+            border: `1px solid ${t.border}`,
+            borderRadius: 8,
+            padding: '3px 10px',
+            flexShrink: 0,
+          }}
+          title={tr('ttsRedownloadHint')}
+        >
+          {cleaning ? tr('ttsCleaning') : tr('ttsRedownload')}
+        </button>
+      )}
+      {tts.error && <span style={{ fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', flexBasis: '100%' }}>{tts.error}</span>}
+    </div>
+  )
+}
+
 /** 设置面板「语音模型」实时状态：3s 轮询进度/就绪/失败退避 + 重试按钮。 */
 function ModelStatusView(): React.ReactElement {
   const [st, setSt] = useState<ModelsStatusPayload | null>(null)
@@ -662,19 +778,6 @@ function ModelStatusView(): React.ReactElement {
       .catch(() => undefined)
       .finally(() => {
         setTimeout(() => setRetrying(null), 2000)
-      })
-  }
-  const [cleaning, setCleaning] = useState(false)
-  const clean = (engine: string): void => {
-    setCleaning(true)
-    void fetch(location.origin + BASE_PATH + '/models/clean', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ engine }),
-    })
-      .catch(() => undefined)
-      .finally(() => {
-        setTimeout(() => setCleaning(false), 1500)
       })
   }
   const mkRow = (
@@ -752,65 +855,6 @@ function ModelStatusView(): React.ReactElement {
         'sense',
         anyDownloading ? st.progress : null,
       )}
-      {st?.tts && (
-        <div style={{ marginTop: 6, paddingTop: 8, borderTop: `1px solid ${t.border}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: t.label }}>{tr('ttsTitle')}</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
-            <span style={{ width: 92, flexShrink: 0, fontSize: 12, color: t.label }}>{tr('ttsEngine')}</span>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: t.term }}>
-              {st.tts.engine === 'vits' ? tr('engineVits') : st.tts.engine === 'kokoro' ? tr('engineKokoro') : tr('engineEdge')}
-              {' · '}
-              {st.tts.loading
-                ? tr('engineLoading')
-                : st.tts.ready
-                  ? tr('engineReady')
-                  : st.tts.error
-                    ? tr('engineError')
-                    : tr('engineIdle')}
-            </span>
-          </div>
-          {st.tts.error && (
-            <div style={{ fontSize: 12, color: 'var(--dsw-alias-state-error-primary)', padding: '2px 0 4px' }}>{st.tts.error}</div>
-          )}
-          {st.tts.local && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0' }}>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: t.term }}>
-                {st.tts.local.ready
-                  ? tr('ttsModelsReady')
-                  : st.tts.local.loading
-                    ? tr('modelsDownloading').replace('{file}', st.progress?.file ?? '').replace('{percent}', String(st.progress?.percent ?? 0))
-                    : st.tts.local.error
-                      ? tr('ttsModelsFail')
-                      : tr('ttsModelsMissing')}
-                <span style={{ display: 'block', fontSize: 11, color: t.term, marginTop: 2 }}>
-                  {st.tts.local.files.filter((f) => f.exists).length}/{st.tts.local.files.length} {tr('modelsFileCount')}
-                </span>
-              </span>
-              <button
-                type="button"
-                disabled={cleaning || st.tts.local.loading}
-                onClick={() => clean(st.tts.engine as string)}
-                style={{
-                  font: 'inherit',
-                  fontSize: 12,
-                  cursor: st.tts.local.loading ? 'default' : 'pointer',
-                  color: t.label,
-                  background: 'var(--dsw-alias-bg-layer-2)',
-                  border: `1px solid ${t.border}`,
-                  borderRadius: 8,
-                  padding: '3px 10px',
-                  flexShrink: 0,
-                }}
-                title={tr('ttsRedownloadHint')}
-              >
-                {cleaning ? tr('ttsCleaning') : tr('ttsRedownload')}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
       <div style={{ fontSize: 12, color: t.term, lineHeight: '18px', padding: '4px 0 8px' }}>{tr('modelsHint')}</div>
     </div>
   )
@@ -830,7 +874,35 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
   const unavailable = snap?.status === 'unavailable' || snap?.status === 'error'
   // 朗读引擎（设置项，即时生效）：决定音色列表与试听行为。
   const engine = value.ttsEngine === 'edge' ? 'edge' : value.ttsEngine === 'kokoro' ? 'kokoro' : 'vits'
-  const voiceOptions = engine === 'edge' ? VOICE_OPTIONS : engine === 'kokoro' ? VOICE_OPTIONS_KOKORO : VOICE_OPTIONS_LOCAL
+  // Edge 全量音色：选 Edge 时从 /voices 拉取（几百个），失败回退常用 14 个。
+  const [edgeVoices, setEdgeVoices] = useState<Array<{ v: string; label: string }> | null>(null)
+  useEffect(() => {
+    if (engine !== 'edge') return
+    let alive = true
+    void fetch(location.origin + BASE_PATH + '/voices')
+      .then((res) => (res.ok ? (res.json() as Promise<{ voices?: Array<{ ShortName: string; FriendlyName: string; Locale: string; Gender: string }> }>) : null))
+      .then((data) => {
+        if (!alive || !data?.voices) return
+        const localeName = (lk: string): string => {
+          const m = /^([a-z]{2,3})(?:-[A-Z]{2})?/.exec(lk)
+          return m ? m[1].toUpperCase() : lk
+        }
+        const genderName = (g: string): string => (g === 'Female' ? '女' : g === 'Male' ? '男' : g === 'Neutral' ? '中性' : g)
+        setEdgeVoices(
+          data.voices
+            .map((v) => ({
+              v: v.ShortName,
+              label: v.FriendlyName.replace(/ Microsoft.*/, '') + ' · ' + genderName(v.Gender) + ' · ' + localeName(v.Locale) + ' (' + v.ShortName + ')',
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label)),
+        )
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [engine])
+  const voiceOptions = engine === 'edge' ? (edgeVoices ?? VOICE_OPTIONS) : engine === 'kokoro' ? VOICE_OPTIONS_KOKORO : VOICE_OPTIONS_LOCAL
 
   if (unavailable) {
     return (
@@ -873,11 +945,12 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
                   // 引擎语义不同：仅在引擎真正切换时重置音色；
                   // 点击已选中的引擎不再误重置（曾导致"选了霸总却变女声"）。
                   if (v !== engine) {
-                    void scope.set('voice', ENGINE_DEFAULT_VOICE[String(v)] ?? 'fushiyu')
+                    void scope.set('voice', ENGINE_DEFAULT_VOICE[String(v)] ?? 'zh-CN-XiaoxiaoNeural')
                   }
                 }}
               />
             </Row>
+            <EngineStatusInline />
             <Row
               name="voice"
               desc={engine === 'edge' ? tr('descVoice') : engine === 'kokoro' ? tr('descVoiceKokoro') : tr('descVoiceLocal')}
@@ -887,7 +960,8 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
                 field="voice"
                 value={value.voice ?? ''}
                 options={voiceOptions}
-                placeholder={ENGINE_DEFAULT_VOICE[engine] ?? 'fushiyu'}
+                placeholder={ENGINE_DEFAULT_VOICE[engine] ?? 'zh-CN-XiaoxiaoNeural'}
+                showCustom={engine === 'edge'}
                 footer={(v) => <VoicePreviewButton voice={v} rate={Number(value.rate ?? 1)} />}
               />
             </Row>

@@ -141,6 +141,29 @@ export class EdgeTtsEngine implements TtsEngine {
   }
 }
 
+/** Edge 音色列表（重命名缓存；/voice-mode/voices 用；失败抛错由调用方处理）。 */
+let edgeVoicesCache: Array<{ ShortName: string; Locale: string; Gender: string; FriendlyName: string }> | null = null
+export async function listEdgeVoices(force = false): Promise<Array<{ ShortName: string; Locale: string; Gender: string; FriendlyName: string }>> {
+  if (edgeVoicesCache && !force) return edgeVoicesCache
+  const tts = new MsEdgeTTS()
+  try {
+    const voices = await tts.getVoices()
+    edgeVoicesCache = voices.map((v) => ({
+      ShortName: v.ShortName,
+      Locale: v.Locale,
+      Gender: v.Gender,
+      FriendlyName: v.FriendlyName,
+    }))
+    return edgeVoicesCache
+  } finally {
+    try {
+      await tts.close()
+    } catch {
+      // ignore
+    }
+  }
+}
+
 interface QueuedSentence {
   text: string
   epoch: number

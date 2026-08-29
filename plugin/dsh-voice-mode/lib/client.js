@@ -984,8 +984,8 @@ var zh = {
   modeBtnToggle: "\u6301\u7EED\u8046\u542C",
   modeBtnHold: "\u6309\u4F4F\u8BF4",
   modeBtnTitle: "\u70B9\u51FB\u5207\u6362\u4EA4\u4E92\u6A21\u5F0F\uFF08\u4FDD\u5B58\u5230\u8BBE\u7F6E\uFF09",
-  descVoice: "Edge TTS \u97F3\u8272\uFF08\u5217\u51FA 14 \u4E2A\u4E2D\u6587/\u7CA4\u8BED/\u53F0\u8BED/\u82F1\u6587\u5E38\u7528\uFF0C\u4E0B\u62C9\u6216 \u25C0\u25B6 \u9009\uFF1B\u5176\u4F59\u5FAE\u8F6F\u97F3\u8272\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u586B ShortName \u5982 zh-CN-XiaoxiaoNeural\uFF09",
-  descVoiceLocal: "\u672C\u5730\u97F3\u8272\uFF08vits \u4E94\u4E2A\u8BF4\u8BDD\u4EBA\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B\u300C\u81EA\u5B9A\u4E49\u300D\u53EF\u586B 0-4 \u6216\u82F1\u6587\u540D\uFF09",
+  descVoice: "Edge \u4E91\u7AEF\u97F3\u8272\uFF08\u8FDB\u5165\u65F6\u81EA\u52A8\u52A0\u8F7D\u5FAE\u8F6F\u5168\u90E8\u97F3\u8272\uFF0C\u4E0B\u62C9\u6216 \u25C0\u25B6 \u9009\uFF1B\u7F51\u7EDC\u5F02\u5E38\u56DE\u9000\u5E38\u7528 14 \u4E2A\uFF0C\u4E5F\u53EF\u300C\u81EA\u5B9A\u4E49\u300D\u586B ShortName\uFF09",
+  descVoiceLocal: "\u672C\u5730\u97F3\u8272\uFF08vits \u4E94\u4E2A\u8BF4\u8BDD\u4EBA\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B\u65E0\u9700\u81EA\u5B9A\u4E49\uFF09",
   ttsEngine: "\u6717\u8BFB\u5F15\u64CE",
   descTtsEngine: "\u672C\u5730 VITS\uFF08\u7EAF\u4E2D\u6587\uFF09/ \u672C\u5730 Kokoro\uFF08\u4E2D\u82F1\u5747\u53EF\uFF09/ Edge \u4E91\u7AEF\uFF08\u97F3\u8D28\u6700\u81EA\u7136\uFF0C\u6587\u672C\u4E0A\u5FAE\u8F6F\uFF09",
   engineVits: "\u672C\u5730 VITS",
@@ -1044,16 +1044,12 @@ var zh = {
   modelsRetrying: "\u91CD\u8BD5\u4E2D\u2026",
   modelsRetryHint: "\u955C\u50CF\u5207\u6362\u6216\u4E0B\u8F7D\u5931\u8D25\u540E\u70B9\u51FB\u7ACB\u5373\u91CD\u8BD5",
   modelsHint: "\u4E0B\u8F7D/\u8FDB\u5EA6\u5B9E\u65F6\u8DDF\u8FDB\uFF1B\u5931\u8D25\u81EA\u52A8\u9000\u907F 60s \u91CD\u8BD5\u3002\u955C\u50CF\u6E90\u5207\u6362\u540E\u70B9\u300C\u91CD\u8BD5\u4E0B\u8F7D\u300D\u7ACB\u5373\u751F\u6548\uFF1B\u4E5F\u53EF\u7528 npm run prefetch \u9884\u4E0B\u8F7D\u3002",
-  // 朗读引擎与音色模型（设置面板现状）
-  ttsTitle: "\u6717\u8BFB\u5F15\u64CE\u4E0E\u97F3\u8272\u6A21\u578B",
+  // 朗读引擎状态（设置面板内联展示）
   engineLoading: "\u52A0\u8F7D\u4E2D\u2026",
   engineReady: "\u5C31\u7EEA",
   engineError: "\u52A0\u8F7D\u5931\u8D25",
-  engineIdle: "\u5F85\u4E0B\u8F7D/\u672A\u52A0\u8F7D",
-  ttsModelsReady: "\u672C\u5730\u6A21\u578B\u5DF2\u5C31\u7EEA",
+  engineIdle: "\u53EF\u8BD5\u542C",
   ttsModelsMissing: "\u672C\u5730\u6A21\u578B\u672A\u5C31\u7EEA",
-  ttsModelsFail: "\u672C\u5730\u6A21\u578B\u4E0B\u8F7D/\u6821\u9A8C\u5931\u8D25",
-  modelsFileCount: "\u4E2A\u6587\u4EF6",
   ttsRedownload: "\u91CD\u65B0\u4E0B\u8F7D",
   ttsRedownloadHint: "\u6E05\u7406\u8BE5\u5F15\u64CE\u6A21\u578B\u7F13\u5B58\u5E76\u91CD\u65B0\u4E0B\u8F7D",
   ttsCleaning: "\u6E05\u7406\u4E2D\u2026",
@@ -1119,8 +1115,8 @@ var en = {
   modeBtnToggle: "Continuous",
   modeBtnHold: "Hold to talk",
   modeBtnTitle: "Click to switch interaction mode (saved to settings)",
-  descVoice: "Edge TTS voice (\u25C0\u25B6 to cycle presets, or a custom ShortName)",
-  descVoiceLocal: "Local voice (vits-zh-ll, 5 speakers; \u25C0\u25B6 to cycle; custom accepts 0-4 or a speaker name)",
+  descVoice: "Edge cloud voices (auto-loads all Microsoft voices on entry; \u25C0\u25B6 or dropdown; falls back to 14 common on network failure; custom ShortName allowed)",
+  descVoiceLocal: "Local voice (vits, all 5 speakers listed; dropdown or \u25C0\u25B6; no custom needed)",
   ttsEngine: "Read-aloud engine",
   descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft)",
   engineVits: "Local VITS",
@@ -1177,15 +1173,11 @@ var en = {
   modelsRetrying: "Retrying\u2026",
   modelsRetryHint: "Click to retry now after switching mirror or a failure",
   modelsHint: "Live download state; failures auto-backoff 60s. After switching the mirror, click Retry to take effect immediately; npm run prefetch pre-downloads.",
-  ttsTitle: "Engine & voice models",
   engineLoading: "loading\u2026",
   engineReady: "ready",
   engineError: "failed",
-  engineIdle: "not loaded",
-  ttsModelsReady: "local models ready",
+  engineIdle: "ready to preview",
   ttsModelsMissing: "local models missing",
-  ttsModelsFail: "local models download/checksum failed",
-  modelsFileCount: "files",
   ttsRedownload: "Re-download",
   ttsRedownloadHint: "Clear this engine model cache and re-download",
   ttsCleaning: "Clearing\u2026",
@@ -1218,6 +1210,25 @@ var cardStyle = {
   background: t2.bg,
   borderRadius: 12,
   overflow: "hidden"
+};
+var FIELD_LABELS = {
+  ttsEngine: "\u6717\u8BFB\u5F15\u64CE",
+  voice: "\u97F3\u8272",
+  rate: "\u8BED\u901F",
+  interruptLevel: "\u6253\u65AD\u7075\u654F\u5EA6",
+  bargeInMode: "\u6253\u65AD\u65B9\u5F0F",
+  echoGateDb: "\u56DE\u58F0\u95E8\u63A7",
+  mode: "\u4EA4\u4E92\u6A21\u5F0F",
+  shortcut: "\u5FEB\u6377\u952E",
+  wakeWord: "\u5524\u9192\u8BCD",
+  toolBeep: "\u5DE5\u5177\u63D0\u793A\u97F3",
+  autoSend: "\u81EA\u52A8\u53D1\u9001",
+  autoResume: "\u81EA\u52A8\u6062\u590D",
+  senseVoice: "\u5B9A\u7A3F\u91CD\u8BD1",
+  spokenFormat: "\u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
+  silenceMs: "\u9759\u97F3\u505C\u987F",
+  idleTimeoutMinutes: "\u7A7A\u95F2\u8D85\u65F6",
+  modelHost: "\u6A21\u578B\u955C\u50CF"
 };
 var setHeader = {
   appearance: "none",
@@ -1586,7 +1597,8 @@ function VoiceSelect({
   value,
   options,
   placeholder,
-  footer
+  footer,
+  showCustom = true
 }) {
   const cur = String(value ?? "");
   const inOptions = options.some((o) => o.v === cur);
@@ -1616,6 +1628,7 @@ function VoiceSelect({
     paddingRight: 32
   };
   const label = inOptions ? options[idx].label : custom || placeholder || "";
+  const selectValue = inOptions ? cur : showCustom ? "__custom__" : options[0]?.v ?? "";
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: 320, maxWidth: "100%", alignItems: "stretch" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", gap: 6, alignItems: "center" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": t("voicePrev"), onClick: () => move(-1), style: stepBtn, children: "\u2039" }),
@@ -1623,7 +1636,7 @@ function VoiceSelect({
         "select",
         {
           style: selectStyle,
-          value: inOptions ? cur : "__custom__",
+          value: selectValue,
           "aria-label": label,
           onChange: (e) => {
             const v = e.target.value;
@@ -1632,7 +1645,7 @@ function VoiceSelect({
           },
           children: [
             options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v)),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", { value: "__custom__", children: [
+            showCustom && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", { value: "__custom__", children: [
               t("custom"),
               "\u2026"
             ] })
@@ -1641,7 +1654,7 @@ function VoiceSelect({
       ),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": t("voiceNext"), onClick: () => move(1), style: stepBtn, children: "\u203A" })
     ] }),
-    !inOptions && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    showCustom && !inOptions && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "input",
       {
         style: inputStyle,
@@ -1654,7 +1667,7 @@ function VoiceSelect({
         }
       }
     ),
-    footer?.(inOptions ? cur : custom)
+    footer?.(inOptions ? cur : showCustom ? custom : cur)
   ] });
 }
 function VoicePreviewButton({ voice, rate }) {
@@ -1750,9 +1763,10 @@ function VoicePreviewButton({ voice, rate }) {
   ] });
 }
 function Row({ name, desc, children }) {
+  const label = FIELD_LABELS[name] ?? name;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setLabelBox, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setLabel, children: name }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setLabel, children: label }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setHint, children: desc })
     ] }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flexShrink: 0, maxWidth: 300 }, children })
@@ -1789,6 +1803,88 @@ function SegGroup({
   )) });
 }
 var fmtMB = (b) => b >= 1048576 ? `${(b / 1048576).toFixed(0)}MB` : b > 0 ? `${Math.round(b / 1024)}KB` : "\u2013";
+function EngineStatusInline() {
+  const [st, setSt] = (0, import_react.useState)(null);
+  const [cleaning, setCleaning] = (0, import_react.useState)(false);
+  (0, import_react.useEffect)(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const res = await fetch(location.origin + BASE_PATH + "/models/status");
+        if (res.ok && alive) setSt(await res.json());
+      } catch {
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 3e3);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+  const clean = (engine) => {
+    setCleaning(true);
+    void fetch(location.origin + BASE_PATH + "/models/clean", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ engine })
+    }).catch(() => void 0).finally(() => setTimeout(() => setCleaning(false), 1500));
+  };
+  const tts = st?.tts;
+  if (!tts) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, {});
+  const engineName = tts.engine === "vits" ? t("engineVits") : tts.engine === "kokoro" ? t("engineKokoro") : t("engineEdge");
+  const isLocal = !!tts.local;
+  let statusText;
+  let statusColor;
+  if (tts.loading) {
+    statusText = t("engineLoading");
+    statusColor = t2.term;
+  } else if (tts.ready) {
+    statusText = t("engineReady");
+    statusColor = "var(--dsw-alias-state-success-primary)";
+  } else if (tts.error) {
+    statusText = t("engineError");
+    statusColor = "var(--dsw-alias-state-error-primary)";
+  } else if (isLocal && !tts.local.ready) {
+    statusText = t("ttsModelsMissing");
+    statusColor = "var(--dsw-alias-state-error-primary)";
+  } else {
+    statusText = t("engineIdle");
+    statusColor = t2.term;
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, padding: "2px 0 10px" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.term }, children: engineName }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: tts.ready || tts.error ? 600 : 400, color: statusColor }, children: statusText }),
+    tts.loading && st?.progress?.file && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
+      st.progress.file,
+      " ",
+      st.progress.percent,
+      "%"
+    ] }),
+    isLocal && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        type: "button",
+        onClick: () => clean(tts.engine),
+        disabled: cleaning || tts.loading,
+        style: {
+          font: "inherit",
+          fontSize: 12,
+          cursor: tts.loading ? "default" : "pointer",
+          color: t2.label,
+          background: "var(--dsw-alias-bg-layer-2)",
+          border: `1px solid ${t2.border}`,
+          borderRadius: 8,
+          padding: "3px 10px",
+          flexShrink: 0
+        },
+        title: t("ttsRedownloadHint"),
+        children: cleaning ? t("ttsCleaning") : t("ttsRedownload")
+      }
+    ),
+    tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: tts.error })
+  ] });
+}
 function ModelStatusView() {
   const [st, setSt] = (0, import_react.useState)(null);
   const [retrying, setRetrying] = (0, import_react.useState)(null);
@@ -1816,17 +1912,6 @@ function ModelStatusView() {
       body: JSON.stringify({ kind })
     }).catch(() => void 0).finally(() => {
       setTimeout(() => setRetrying(null), 2e3);
-    });
-  };
-  const [cleaning, setCleaning] = (0, import_react.useState)(false);
-  const clean = (engine) => {
-    setCleaning(true);
-    void fetch(location.origin + BASE_PATH + "/models/clean", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ engine })
-    }).catch(() => void 0).finally(() => {
-      setTimeout(() => setCleaning(false), 1500);
     });
   };
   const mkRow = (label, info, key, progressFor) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }, children: [
@@ -1890,51 +1975,6 @@ function ModelStatusView() {
       "sense",
       anyDownloading ? st.progress : null
     ),
-    st?.tts && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 6, paddingTop: 8, borderTop: `1px solid ${t2.border}` }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 600, color: t2.label }, children: t("ttsTitle") }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { width: 92, flexShrink: 0, fontSize: 12, color: t2.label }, children: t("ttsEngine") }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { flex: 1, minWidth: 0, fontSize: 12, color: t2.term }, children: [
-          st.tts.engine === "vits" ? t("engineVits") : st.tts.engine === "kokoro" ? t("engineKokoro") : t("engineEdge"),
-          " \xB7 ",
-          st.tts.loading ? t("engineLoading") : st.tts.ready ? t("engineReady") : st.tts.error ? t("engineError") : t("engineIdle")
-        ] })
-      ] }),
-      st.tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: "var(--dsw-alias-state-error-primary)", padding: "2px 0 4px" }, children: st.tts.error }),
-      st.tts.local && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { flex: 1, minWidth: 0, fontSize: 12, color: t2.term }, children: [
-          st.tts.local.ready ? t("ttsModelsReady") : st.tts.local.loading ? t("modelsDownloading").replace("{file}", st.progress?.file ?? "").replace("{percent}", String(st.progress?.percent ?? 0)) : st.tts.local.error ? t("ttsModelsFail") : t("ttsModelsMissing"),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "block", fontSize: 11, color: t2.term, marginTop: 2 }, children: [
-            st.tts.local.files.filter((f) => f.exists).length,
-            "/",
-            st.tts.local.files.length,
-            " ",
-            t("modelsFileCount")
-          ] })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "button",
-          {
-            type: "button",
-            disabled: cleaning || st.tts.local.loading,
-            onClick: () => clean(st.tts.engine),
-            style: {
-              font: "inherit",
-              fontSize: 12,
-              cursor: st.tts.local.loading ? "default" : "pointer",
-              color: t2.label,
-              background: "var(--dsw-alias-bg-layer-2)",
-              border: `1px solid ${t2.border}`,
-              borderRadius: 8,
-              padding: "3px 10px",
-              flexShrink: 0
-            },
-            title: t("ttsRedownloadHint"),
-            children: cleaning ? t("ttsCleaning") : t("ttsRedownload")
-          }
-        )
-      ] })
-    ] }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("modelsHint") })
   ] });
 }
@@ -1950,7 +1990,29 @@ function VoiceSettingsCard({ scope }) {
   const value = snap?.value ?? {};
   const unavailable = snap?.status === "unavailable" || snap?.status === "error";
   const engine = value.ttsEngine === "edge" ? "edge" : value.ttsEngine === "kokoro" ? "kokoro" : "vits";
-  const voiceOptions = engine === "edge" ? VOICE_OPTIONS : engine === "kokoro" ? VOICE_OPTIONS_KOKORO : VOICE_OPTIONS_LOCAL;
+  const [edgeVoices, setEdgeVoices] = (0, import_react.useState)(null);
+  (0, import_react.useEffect)(() => {
+    if (engine !== "edge") return;
+    let alive = true;
+    void fetch(location.origin + BASE_PATH + "/voices").then((res) => res.ok ? res.json() : null).then((data) => {
+      if (!alive || !data?.voices) return;
+      const localeName = (lk) => {
+        const m = /^([a-z]{2,3})(?:-[A-Z]{2})?/.exec(lk);
+        return m ? m[1].toUpperCase() : lk;
+      };
+      const genderName = (g) => g === "Female" ? "\u5973" : g === "Male" ? "\u7537" : g === "Neutral" ? "\u4E2D\u6027" : g;
+      setEdgeVoices(
+        data.voices.map((v) => ({
+          v: v.ShortName,
+          label: v.FriendlyName.replace(/ Microsoft.*/, "") + " \xB7 " + genderName(v.Gender) + " \xB7 " + localeName(v.Locale) + " (" + v.ShortName + ")"
+        })).sort((a, b) => a.label.localeCompare(b.label))
+      );
+    }).catch(() => void 0);
+    return () => {
+      alive = false;
+    };
+  }, [engine]);
+  const voiceOptions = engine === "edge" ? edgeVoices ?? VOICE_OPTIONS : engine === "kokoro" ? VOICE_OPTIONS_KOKORO : VOICE_OPTIONS_LOCAL;
   if (unavailable) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: t2.term, fontSize: 12, padding: "14px 16px", ...cardStyle }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)" }, children: t("configUnavailable") }),
@@ -1981,11 +2043,12 @@ function VoiceSettingsCard({ scope }) {
             ],
             onSelect: (v) => {
               if (v !== engine) {
-                void scope.set("voice", ENGINE_DEFAULT_VOICE[String(v)] ?? "fushiyu");
+                void scope.set("voice", ENGINE_DEFAULT_VOICE[String(v)] ?? "zh-CN-XiaoxiaoNeural");
               }
             }
           }
         ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EngineStatusInline, {}),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           Row,
           {
@@ -1998,7 +2061,8 @@ function VoiceSettingsCard({ scope }) {
                 field: "voice",
                 value: value.voice ?? "",
                 options: voiceOptions,
-                placeholder: ENGINE_DEFAULT_VOICE[engine] ?? "fushiyu",
+                placeholder: ENGINE_DEFAULT_VOICE[engine] ?? "zh-CN-XiaoxiaoNeural",
+                showCustom: engine === "edge",
                 footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1) })
               }
             )
@@ -2083,7 +2147,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "f351f75";
+var BUILD_TAG = "bec335a";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

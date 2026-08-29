@@ -27,7 +27,7 @@ import { homedir } from 'node:os'
 import { rm } from 'node:fs/promises'
 import { createAsrRuntime, handleAsrRequest } from './asr-host.ts'
 import { SentenceSegmenter } from './segmenter.ts'
-import { EdgeTtsEngine, TtsQueue, type TtsEngine } from './tts-queue.ts'
+import { EdgeTtsEngine, TtsQueue, listEdgeVoices, type TtsEngine } from './tts-queue.ts'
 import { createSherpaVitsEngine, createSherpaKokoroEngine, TTS_MODEL_REPO, KOKORO_MODEL_DIR } from './tts-local.ts'
 import { HOST_PRIMARY, validateModelHost } from './models.ts'
 import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts'
@@ -145,8 +145,8 @@ export interface VoiceSettingsValue {
 
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
 const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
-  ttsEngine: 'vits',
-  voice: 'fushiyu',
+  ttsEngine: 'edge',
+  voice: 'zh-CN-XiaoxiaoNeural',
   rate: 1.0,
   interruptLevel: 0,
   silenceMs: 700,
@@ -257,10 +257,10 @@ export const Config: z<Config> = z.object({
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default('https://huggingface.co'),
-  ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro')]).default('vits'),
+  ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro')]).default('edge'),
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
-  voice: z.string().default('fushiyu'),
+  voice: z.string().default('zh-CN-XiaoxiaoNeural'),
   rate: z.number().default(1.0),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(700),
@@ -770,6 +770,24 @@ export function apply(ctx: Context, config: Config): void {
             })
             .catch((e) => respondJson(res, 500, { error: String(e) }))
         })
+      },
+    }),
+  )
+
+  ctx.effect(() =>
+    ctx.webServer.register({
+      kind: 'exact',
+      path: `${base}/voices`,
+      handler: async (req: IncomingMessage, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
+        if (denyCrossOrigin(req, res)) return
+        // Edge 全量音色（设置面板选 Edge 时拉取；网络失败由 client 回退常用清单）。
+        try {
+          const voices = await listEdgeVoices()
+          respondJson(res, 200, { voices })
+        } catch (e) {
+          respondJson(res, 502, { error: String(e) })
+        }
       },
     }),
   )
