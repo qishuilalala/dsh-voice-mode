@@ -430,7 +430,7 @@ function createAsrEngine(config, sessionId) {
       latestResidualRms = rms;
       echoPeak = Math.max(echoPeak * peakDecay, rms);
     }
-    const doubleTalk = playingNow && echoFloorRms > 0 && echoPeak > echoFloorRms * gateRatio;
+    const doubleTalk = playingNow && echoFloorRms > 0 && rms > echoFloorRms * gateRatio;
     if (playingNow) {
       if (echoFloorRms === 0) echoFloorRms = rms;
       else if (!doubleTalk) echoFloorRms = echoFloorRms * (1 - floorAlpha) + rms * floorAlpha;
@@ -1655,6 +1655,7 @@ var import_jsx_runtime2 = require("react/jsx-runtime");
 var beepCtx = null;
 var isSpeechTrueCount = 0;
 var interruptFirstAt = 0;
+var isSpeechFalseRun = 0;
 var lastReenterAt = 0;
 var INT_CONFIRM_FRAMES = { 0: 3, 1: 2, 2: 1 };
 var inject = ["slots", "sessions", "settingsScope"];
@@ -1667,7 +1668,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "06c274b";
+var BUILD_TAG = "4aaf0ae";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2614,6 +2615,7 @@ function MicButton({
               });
             }
             if (speech === true) {
+              isSpeechFalseRun = 0;
               isSpeechTrueCount++;
               if (isSpeechTrueCount === 1) interruptFirstAt = Date.now();
               if (isSpeechTrueCount >= confirmFrames) {
@@ -2647,8 +2649,12 @@ function MicButton({
                 void hardBreak();
               }
             } else {
-              isSpeechTrueCount = Math.max(0, isSpeechTrueCount - 1);
-              if (isSpeechTrueCount === 0) interruptFirstAt = 0;
+              isSpeechFalseRun++;
+              if (isSpeechFalseRun >= 2) {
+                isSpeechFalseRun = 0;
+                isSpeechTrueCount = Math.max(0, isSpeechTrueCount - 1);
+                if (isSpeechTrueCount === 0) interruptFirstAt = 0;
+              }
             }
             bus.setUi({ isSpeech: speech, echoDelayMs: bus.echoDelayMs(), echoLevels: engineRef.current?.echoLevels() });
           },

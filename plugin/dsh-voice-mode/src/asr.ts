@@ -580,9 +580,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       // 峰值保持（慢衰减 ~0.4s，跨音节间隙保持语音证据）。
       echoPeak = Math.max(echoPeak * peakDecay, rms)
     }
-    // 双讲冻结与门控同口径：都用峰值（aboveEchoFloor 用 echoPeak），不用瞬时 rms——瞬时值
-    // 在音节间隙掉回地板会让地板间隙爬升，侵蚀长句双讲的门控证据（对抗审查 Important）。
-    const doubleTalk = playingNow && echoFloorRms > 0 && echoPeak > echoFloorRms * gateRatio
+    // 双讲冻结用瞬时 rms（保守：稳定回声期地板仍能跟踪）；门控用 echoPeak（激进：跨音节间隙
+    // 保持语音证据）。两者口径本应不同——用峰值判冻结会让地板永久锁死在低值，回声变响时全过门
+    // 致自打断（对抗审查 Open#9）。
+    const doubleTalk = playingNow && echoFloorRms > 0 && rms > echoFloorRms * gateRatio
     if (playingNow) {
       if (echoFloorRms === 0) echoFloorRms = rms
       else if (!doubleTalk) echoFloorRms = echoFloorRms * (1 - floorAlpha) + rms * floorAlpha

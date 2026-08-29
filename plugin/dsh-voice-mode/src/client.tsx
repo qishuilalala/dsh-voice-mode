@@ -25,6 +25,9 @@ let beepCtx: AudioContext | null = null
 let isSpeechTrueCount = 0
 /** 打断确认测量：VAD 首次判真时刻（播放中）；触发 hardBreak 时计算确认耗时。 */
 let interruptFirstAt = 0
+/** 连续「假」样本数（打断确认迟滞）：单拍假不衰减计数，连续 2 拍假才衰减——
+ *  缓解 Silero VAD 音节边缘抖动导致的 confirmMs 飙高（566~2796ms 真机实测）。 */
+let isSpeechFalseRun = 0
 /** 403 重入冷却时刻（对抗审查 I3：无退避会与对端互踢振荡，打爆 /toggle）。 */
 let lastReenterAt = 0
 /** 打断灵敏度三档 → isSpeech 连续确认帧数（墙钟节拍 100ms/拍 + 上行往返 → 确认阶段约 0.3/0.2/0.1s；语义对齐旧能量持续时长档位）。 */
@@ -1389,6 +1392,7 @@ export function MicButton({
               })
             }
             if (speech === true) {
+              isSpeechFalseRun = 0
               isSpeechTrueCount++
               if (isSpeechTrueCount === 1) interruptFirstAt = Date.now()
               if (isSpeechTrueCount >= confirmFrames) {
@@ -1425,10 +1429,14 @@ export function MicButton({
                 void hardBreak()
               }
             } else {
-              // 泄漏衰减而非清零：VAD 对轻声语音偶闪「假」，清零会让确认计数反复归零，
-              // confirmMs 飙到 1~2.7s（实测）。减 1 跨过单拍闪烁，连续静音才归零。
-              isSpeechTrueCount = Math.max(0, isSpeechTrueCount - 1)
-              if (isSpeechTrueCount === 0) interruptFirstAt = 0
+              // 迟滞衰减而非清零：单拍「假」（音节边缘/轻声闪烁）不衰减，连续 2 拍假才减 1，
+              // 连续静音才归零。比「每拍 -1」更抗抖动，confirmMs 不再飙到 1~2.7s（真机实测）。
+              isSpeechFalseRun++
+              if (isSpeechFalseRun >= 2) {
+                isSpeechFalseRun = 0
+                isSpeechTrueCount = Math.max(0, isSpeechTrueCount - 1)
+                if (isSpeechTrueCount === 0) interruptFirstAt = 0
+              }
             }
             // 仍存 ui 供状态条展示；回声诊断每拍推送（真机标定数据）。
             bus.setUi({ isSpeech: speech, echoDelayMs: bus.echoDelayMs(), echoLevels: engineRef.current?.echoLevels() })
