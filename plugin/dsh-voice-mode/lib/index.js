@@ -227,12 +227,13 @@ async function downloadVerified(opts) {
     return false;
   }
   if (res.status !== 200 && res.status !== 206) return false;
-  const total = Number(res.headers.get("content-length") ?? 0) + resumeFrom;
+  const resume = res.status === 206 ? resumeFrom : 0;
+  const total = Number(res.headers.get("content-length") ?? 0) + resume;
   const src = res.body;
   if (!src) return false;
-  const sink = createWriteStream(partPath, resumeFrom > 0 ? { flags: "a" } : {});
+  const sink = createWriteStream(partPath, resume > 0 ? { flags: "a" } : {});
   const reader = src.getReader();
-  let received = resumeFrom;
+  let received = resume;
   await new Promise((resolve, reject) => {
     sink.on("error", (e) => reject(e));
     sink.on("finish", () => resolve());
