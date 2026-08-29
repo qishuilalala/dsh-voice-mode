@@ -28,7 +28,7 @@
 - 🔊 **它答** —— 最终回复**按句朗读**，全程实时字幕跟随；
 - ⏸️ **随时插嘴** —— AI 还在朗读时**开口即打断**，你的话直接被听见。
 
-**零 API Key、隐私优先**：识别在宿主端**本地推理**（zipformer2 流式 + SenseVoice 定稿，可选双语 Paraformer）；朗读默认**本地合成**（VITS 纯中文 / Kokoro 中英混读），Edge 云端可选。音频与文本默认不出本机。
+**零 API Key、隐私优先**：识别在宿主端**本地推理**（**zipformer2** 流式 + SenseVoice 定稿），朗读默认**本地合成**（VITS 纯中文 / Kokoro 中英混读），Edge 云端可选。音频与文本默认不出本机。
 
 ---
 
@@ -41,7 +41,7 @@
 | 🗣️ **按句朗读 + 实时字幕** | 只读最终答复（跳过 reasoning / 工具调用），字幕跟随播放、可跳过 |
 | 🎚️ **两种交互模式** | `toggle` 持续聆听自动断句 ｜ `hold` 按住说话、松手即发；输入框旁一键切换 |
 | 🎧 **声学打断引擎** | 自适应阈值 barge-in（朗读时自动超灵敏），外放也能精准打断、不误伤自己 |
-| 🪄 **体验细节** | 神经标点、可选唤醒词、中英双语识别、模型懒加载（断点续传）、安全加固 |
+| 🌐 **开箱即用** | 模型懒加载（断点续传 + 镜像回退）；界面语言随浏览器（中 / 英）；安全加固 |
 
 ---
 
@@ -77,24 +77,21 @@ dsh plugin --profile web add dsh-voice-mode
 
 ## ⚙️ 在哪设置
 
-**设置 → Plugins → 插件配置 → 语音模式（voice-mode）**。这里是最常用的几个：
+**设置 → Plugins → 插件配置 → 语音模式（voice-mode）**。最常用的几个：
 
 | 你想调什么 | 改哪个键 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | 朗读引擎 | `ttsEngine` | `vits` | `vits` 本地中文 / `kokoro` 本地中英 / `edge` 微软云端；**即时生效** |
-| 音色 / 语速 | `voice` / `rate` | `zh-CN-XiaoxiaoNeural` / `1.0` | VITS 5 说话人 / Kokoro 103 音色 / Edge 常见音色；行内可**试听** |
+| 音色 / 语速 | `voice` / `rate` | `suyingxue`（VITS）/ `1.0` | 按引擎取值：vits 用说话人名 / kokoro 用编号或中文名 / edge 用 ShortName；行内可**试听** |
 | 打断灵敏度 | `interruptLevel` | `0` | 0 高门槛 / 1 中 / 2 低 |
 | 停顿自动发送 | `silenceMs` / `autoSend` | `700` / `true` | 停顿毫秒数；`autoSend` 关闭则只进草稿 |
 | 交互模式 | `mode` | `toggle` | `toggle` 持续聆听 / `hold` 按住说话 |
-| 识别模型 | `asrModel` | `zh` | `zh` 纯中文 zipformer / `paraformer-zh-en` 中英双语 |
-| 定稿重译 | `senseVoice` | `true` | SenseVoice 定稿（带标点 + 数字归一化）；关掉省 228MB 模型 |
-| 神经标点 | `punctuate` | `true` | 定稿后自动补标点（ct-transformer） |
-| 唤醒词 | `wakeWord` | 关 | 待机态说出后开始识别（如「你好小D」） |
 | 口语化回复 | `spokenFormat` | `false` | 语音会话的回复更口语、无 Markdown 符号（朗读更顺） |
 | 模型镜像 | `modelHost` | 默认源 | 国内网络填 `https://hf-mirror.com` |
 | 空闲退出 | `idleTimeoutMinutes` | `10` | 无活动自动退出语音模式 |
 
 > `ttsEngine` / `voice` / `rate` / `spokenFormat` **立即生效**；其余下次进入语音模式时生效。
+> **预留配置（暂不生效）**：`asrModel`（双语 paraformer）、`punctuate`（神经标点）、`wakeWord`（唤醒词）当前仅合并了配置接口，检测逻辑延后接入，设置暂不生效 —— 流式识别固定为 zipformer2。
 > 完整设置、常用音色表、schema 配置见 [详细文档](plugin/dsh-voice-mode/README.md)。
 
 ---
@@ -102,11 +99,9 @@ dsh plugin --profile web add dsh-voice-mode
 ## 📦 功能全景
 
 - **本地合成（默认）**：VITS（纯中文 5 说话人）/ Kokoro（中英混读 103 音色），独立子进程、崩溃自愈；Edge 云端可选
-- **流式识别**：zipformer2 流式（边说边出字）+ SenseVoice 定稿（带标点 / 数字归一化）；可选 paraformer 中英双语
+- **流式识别**：**zipformer2** 流式（边说边出字）+ SenseVoice 定稿（带标点 / 数字归一化）
 - **真·开口即打断**：自适应阈值（滚动噪声地板）+ 朗读时自动超灵敏；本地静音 + 合成队列作废 + 正在运行的回合取消
 - **两种交互**：`toggle` 持续聆听自动断句 / `hold` 按住说话、松手即发；输入框旁模式切换按钮
-- **神经标点**：识别定稿自动补逗号 / 句号 / 问号 / 顿号（ct-transformer，失败回退原文）
-- **唤醒词**：可选，待机态说出唤醒词才开始识别
 - **模型懒加载**：`.part` 断点续传 + 镜像回退，状态条实时显示进度
 - **安全加固**：会话存在性校验 / 回环 + Origin 校验 / 全端点限流 / 模型 SHA256 固定 / 下载域名白名单
 - **界面语言**：跟随浏览器（中文 / English）
@@ -123,9 +118,9 @@ dsh plugin --profile web add dsh-voice-mode
 | 状态条「正在加载模型… x%」卡住 | 检查网络；模型较大可先 `npm run prefetch`；国内网络 `modelHost` 配 `https://hf-mirror.com` |
 | 朗读无声音 / 无字幕 | 本地引擎首次合成需加载模型；若持续失败看状态条提示（自动退避重试）；确认页面前台且未静音 |
 | 语音模式进不去 | 检查插件 `enabled`；多标签页时确认当前会话为活动会话 |
-| 识别到但不是我要说的 | 环境噪声：降低音量、提高 `interruptLevel`（高门槛）或启用 `wakeWord` |
+| 识别到但不是我要说的 | 环境噪声：降低音量或提高 `interruptLevel`（高门槛） |
 
-> **已知限制**：`Ctrl+Shift+V` 会覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍用 `Ctrl+V`）；识别为简体中文优先（双语场景用 `paraformer-zh-en`）；**Safari / iOS** 需 HTTPS 或 localhost、首次需授权麦克风、后台 / 锁屏会暂停识别与朗读。
+> **已知限制**：`Ctrl+Shift+V` 会覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍用 `Ctrl+V`）；识别为简体中文优先；**Safari / iOS** 需 HTTPS 或 localhost、首次需授权麦克风、后台 / 锁屏会暂停识别与朗读。
 
 ---
 
