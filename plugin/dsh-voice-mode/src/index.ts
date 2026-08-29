@@ -738,15 +738,27 @@ export function apply(ctx: Context, config: Config): void {
       path: `${base}/asr`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
-        // P2-4：回合状态机 —— partial 到达 = listening；final=1 = finalizing。
+        let sid = ''
         try {
           const url = new URL(req.url ?? '/', 'http://localhost')
-          const sid = url.searchParams.get('sessionId') ?? ''
-          if (sid && sid === activeVoiceSession) {
-            setTurn(sid, url.searchParams.get('final') === '1' ? 'finalizing' : 'listening')
-          }
+          sid = url.searchParams.get('sessionId') ?? ''
         } catch {
           // 忽略畸形 URL
+        }
+        // fork 加固：ASR 限流（每会话 60 次/秒）——识别是 WASM 推理、代价高，
+        // 防本地恶意进程用活跃会话 id 打爆 CPU（回环层之外的第二道防滥用）。
+        if (!limiter.hit(`asr:${sid || 'unknown'}`, 60, 1000)) {
+          respondJson(res, 429, { error: 'rate limited' })
+          return
+        }
+        // P2-4：回合状态机 —— partial 到达 = listening；final=1 = finalizing。
+        if (sid && sid === activeVoiceSession) {
+          try {
+            const url = new URL(req.url ?? '/', 'http://localhost')
+            setTurn(sid, url.searchParams.get('final') === '1' ? 'finalizing' : 'listening')
+          } catch {
+            // 忽略畸形 URL
+          }
         }
         handleAsrRequest(asr, activeVoiceSession, req, res)
       },

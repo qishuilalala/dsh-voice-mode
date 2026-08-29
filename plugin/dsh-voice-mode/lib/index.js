@@ -2009,13 +2009,22 @@ function apply(ctx, config) {
       path: `${base}/asr`,
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
+        let sid = "";
         try {
           const url = new URL(req.url ?? "/", "http://localhost");
-          const sid = url.searchParams.get("sessionId") ?? "";
-          if (sid && sid === activeVoiceSession) {
-            setTurn(sid, url.searchParams.get("final") === "1" ? "finalizing" : "listening");
-          }
+          sid = url.searchParams.get("sessionId") ?? "";
         } catch {
+        }
+        if (!limiter.hit(`asr:${sid || "unknown"}`, 60, 1e3)) {
+          respondJson2(res, 429, { error: "rate limited" });
+          return;
+        }
+        if (sid && sid === activeVoiceSession) {
+          try {
+            const url = new URL(req.url ?? "/", "http://localhost");
+            setTurn(sid, url.searchParams.get("final") === "1" ? "finalizing" : "listening");
+          } catch {
+          }
         }
         handleAsrRequest(asr, activeVoiceSession, req, res);
       }
