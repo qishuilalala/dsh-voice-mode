@@ -555,10 +555,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       return (sense && sense.trim() ? sense : settled) || ''
     })().then((finalText) => {
       // 会话代际守卫：定稿期间若会话被 reset（重入/打断），不缓存——否则重入后 epoch 归零
-      // 会撞上旧会话的陈旧缓存条目 → 返回错误文本。仅回收本段 + 清 finalizing 登记。
+      // 会撞上旧会话的陈旧缓存条目 → 返回错误文本。此分支只清 finalizing 登记，不动
+      // segments/finalized（reset 已清；且 segments[sessionId] 可能已指向新会话的段表）。
       if ((resetGen.get(sessionId) ?? 0) !== myGen) {
-        sessSegs.delete(epoch)
-        if (sessSegs.size === 0) segments.delete(sessionId)
         const ff0 = finalizing.get(sessionId)
         ff0?.delete(epoch)
         if (ff0 && ff0.size === 0) finalizing.delete(sessionId)
@@ -584,15 +583,18 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       if (ff && ff.size === 0) finalizing.delete(sessionId)
       return finalText
     }).catch((e) => {
-      // 定稿异常：清 finalizing 登记 + 回收段（防登记泄漏），返回空不阻塞上层。
+      // 定稿异常：清 finalizing 登记 + 回收本段（防登记泄漏），返回空不阻塞上层。
       const ff = finalizing.get(sessionId)
       ff?.delete(epoch)
       if (ff && ff.size === 0) finalizing.delete(sessionId)
-      try {
-        sessSegs.delete(epoch)
-        if (sessSegs.size === 0) segments.delete(sessionId)
-      } catch {
-        // ignore
+      // 仅在会话未被 reset 时才回收段（reset 后 segments[sessionId] 可能已是新会话的段表）。
+      if ((resetGen.get(sessionId) ?? 0) === myGen) {
+        try {
+          sessSegs.delete(epoch)
+          if (sessSegs.size === 0) segments.delete(sessionId)
+        } catch {
+          // ignore
+        }
       }
       console.warn('[dsh-voice-mode] finalize failed: ' + String(e))
       return ''

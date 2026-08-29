@@ -469,8 +469,6 @@ function createAsrRuntime(options) {
       return (sense && sense.trim() ? sense : settled) || "";
     })().then((finalText) => {
       if ((resetGen.get(sessionId) ?? 0) !== myGen) {
-        sessSegs.delete(epoch);
-        if (sessSegs.size === 0) segments.delete(sessionId);
         const ff0 = finalizing.get(sessionId);
         ff0?.delete(epoch);
         if (ff0 && ff0.size === 0) finalizing.delete(sessionId);
@@ -496,10 +494,12 @@ function createAsrRuntime(options) {
       const ff = finalizing.get(sessionId);
       ff?.delete(epoch);
       if (ff && ff.size === 0) finalizing.delete(sessionId);
-      try {
-        sessSegs.delete(epoch);
-        if (sessSegs.size === 0) segments.delete(sessionId);
-      } catch {
+      if ((resetGen.get(sessionId) ?? 0) === myGen) {
+        try {
+          sessSegs.delete(epoch);
+          if (sessSegs.size === 0) segments.delete(sessionId);
+        } catch {
+        }
       }
       console.warn("[dsh-voice-mode] finalize failed: " + String(e));
       return "";
