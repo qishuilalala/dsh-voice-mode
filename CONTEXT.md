@@ -10,7 +10,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿
 ## 打断检测链（架构）
 
 ```
-采集（echoCancellation:true，noiseSuppression/autoGainControl:false）
+采集（AudioWorklet 音频线程 16k 重采样，Blob 内联；echoCancellation:true，noiseSuppression/autoGainControl:false）
  → [原生 AEC 生效时旁路自研 NLMS，否则自研 NLMS(1024 taps)]
  → 残差 RMS → echoPeak(峰值保持 0.4s) + echoFloor(均值+双讲冻结)
  → aboveEchoFloor(echoGateDb)：peak > floor×10^(db/20) 判「用户语音」
@@ -24,6 +24,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿
 - 门控用峰值保持（echoPeak），非瞬时值。
 - 检测 VAD 阈值 0.35（灵敏），端点 VAD 阈值 0.5（保守断句）。
 - 打断计数**仅在播放期累积**（非播放期清零），否则用户说自己的话的残留计数会在 AI 开播瞬间误打断。
+- 段生命周期：host 按 sessionId→epoch 嵌套 Map；finalize 幂等（缓存定稿文本 + 并发守卫），client 对瞬时失败有界重试（3 次）——不丢句。
 
 ## 设置语义
 
@@ -42,7 +43,6 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿
 
 - 打断延迟：已确认 confirmMs ≈525ms（VAD 0.35 + 泄漏计数，接近 0.5s 目标）；想更快可降 interruptLevel
 - 原生 AEC 失效兜底（耳机无原生 AEC / Safari）：自研 AEC 的 delay 对齐需 FDLMS+RES
-- ScriptProcessor → AudioWorklet 迁移
 - 发布：PR #2 合并 → bump → npm
 
 ## 关键源文件
