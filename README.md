@@ -91,7 +91,7 @@ dsh plugin --profile web add dsh-voice-mode
 | 空闲退出 | `idleTimeoutMinutes` | `10` | 无活动自动退出语音模式 |
 
 > `ttsEngine` / `voice` / `rate` / `spokenFormat` **立即生效**；其余下次进入语音模式时生效。
-> **预留配置（暂不生效）**：`asrModel`（双语 paraformer）、`punctuate`（神经标点）、`wakeWord`（唤醒词）当前仅合并了配置接口，检测逻辑延后接入，设置暂不生效 —— 流式识别固定为 zipformer2。
+> **说明**：`wakeWord`（唤醒词，默认关）与 `toolBeep`（工具提示音，默认关）已完整接入；早期 fork 的 `asrModel`（双语 paraformer）与 `punctuate`（神经标点）已移除——SenseVoice 定稿本身已带标点，流式识别固定为 zipformer2。
 > 完整设置、常用音色表、schema 配置见 [详细文档](plugin/dsh-voice-mode/README.md)。
 
 ---

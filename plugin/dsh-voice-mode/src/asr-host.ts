@@ -217,29 +217,19 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
    *  否则每拍 partial 都触发一轮下载尝试，增量识别被拉垮数百 ms。 */
   let asrFailAt = 0
 
-  /** 本地模型是否齐备（快速检查）。 */
-  const haveAllModels = async (): Promise<boolean> => {
-    for (const f of MODEL_FILES) {
-      const st = await stat(join(repoDir, f.file)).catch(() => null)
-      if (!st?.isFile()) return false
-    }
-    return true
-  }
-
   const ensureModels = async (): Promise<boolean> => {
     if (modelsReady) return true
     // 下载失败退避：60s 内不重试（与 VAD/SenseVoice 语义一致；期间作 loading）。
     if (Date.now() < asrFailAt) return false
     if (!modelsLoading) {
       modelsLoading = (async () => {
-        // 已下载跳过下载；否则逐个懒下载（断点续传）。
-        if (!(await haveAllModels())) {
-          for (const f of MODEL_FILES) {
-            if (!(await ensureModelFile({ repo: MODEL_REPO, repoDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast }))) {
-              asrFailAt = Date.now() + 60000
-              broadcast('asr-error', { file: f.file })
-              return false
-            }
+        // 逐文件 ensure：已存在则校验 SHA256（篡改/损坏自愈重下），缺失则懒下载。
+        // 不能只查存在性就跳过——否则损坏模型绕过校验被 recognizer 加载后崩溃。
+        for (const f of MODEL_FILES) {
+          if (!(await ensureModelFile({ repo: MODEL_REPO, repoDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast }))) {
+            asrFailAt = Date.now() + 60000
+            broadcast('asr-error', { file: f.file })
+            return false
           }
         }
         modelsReady = true

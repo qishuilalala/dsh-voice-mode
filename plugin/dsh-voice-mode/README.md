@@ -13,24 +13,22 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 
 ![语音模式：实时字幕与状态条](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/screenshot-voice.png)
 
-> ⚠️ **版本说明（0.4.0 合并版）**：以下「Fork 增强」描述继承自上游 fork。其中 **双语 paraformer 识别（asrModel）、神经标点（punctuate）、唤醒词检测（wakeWord）当前为「配置接口已合并、检测逻辑延后接入」**（设置这些项暂不生效）；流式识别实为 zipformer2（非 paraformer）；静音断句默认 **700 毫秒**（非 5 秒）。详情见 PR #3。
+> **版本说明（0.4.0）**：本地 TTS（VITS/Kokoro，默认隐私优先）+ HTTP 安全加固 + 模型 SHA256 固定为合入核心；`wakeWord`（唤醒词）与 `toolBeep`（工具提示音）已完整接入；早期 fork 的 `asrModel`（双语 paraformer）与 `punctuate`（神经标点）已移除——SenseVoice 定稿本身已带标点，流式识别固定为 zipformer2。静音断句默认 700 毫秒。
 
 ## Fork 增强（本仓库新增）
 
-本仓库在上游基础上加入了大量增强，核心如下（完整清单见 `FORK.md` 与迭代记录）：
+本仓库在上游基础上加入了大量增强，核心如下（完整清单见 git 历史与迭代记录）：
 
 - **本地 TTS（默认，隐私优先）**：回复文本不出本机——
   - 本地 VITS（`sherpa-onnx-vits-zh-ll`，纯中文，5 说话人）；
   - 本地 Kokoro（`kokoro-multi-lang-v1_1`，**中英混读**），经 `sherpa-onnx-node` **原生 addon** 运行（无 WASM 内存上限，连续合成不崩）；
   - Edge 云端朗读保留为可选（设置 `ttsEngine: edge`）；设置面板「朗读引擎」热切换。
 - **Kokoro 音色全量 103 个**（F0 实测标定性别），四个常用男声置顶带编号；音色面板用 **◀▶ 步进器**左右切换；
-- **中英双语识别**：paraformer 双语流式模型（可配 `asrModel: paraformer-zh-en`）；
-- **神经标点**：识别定稿后自动补逗号/句号/问号（ct-transformer 标点模型，实测标点级准确率 92%，可配 `punctuate: false` 关闭）；
 - **增量传输**：partial 只传新增 0.9 秒，长段按住说话松手**秒出定稿**（不再整段重传重解码）；
 - **交互增强**：输入框旁**模式切换按钮**（持续聆听 ⇄ 按住说话，保存到设置）；按住说模式下**按住才录、不按住不打断**；
 - **长段支持**：按住说整段上限 10 分钟（停顿不断句）；持续聆听单句上限 3 分钟；静音断句默认 700 毫秒；
 - **朗读稳定性**：打断即终止在途合成释放 CPU；句间不再有 3-5 秒停顿；长朗读不触发空闲下线；
-- **安全加固**：会话存在性校验 / 回环+Origin 校验 / 全端点限流 / 模型 SHA256 固定 / 下载域名白名单。
+- **安全加固**：会话存在性校验 / 回环+Origin 校验 / 全端点限流 / **ASR+TTS 全模型 SHA256 固定** / 下载域名白名单 / 重定向守卫。
 
 > ⚠️ 上文截图与 `assets/demo.gif` 为**上游旧版界面**（单按钮时期）；当前界面在语音按钮旁多一颗「模式切换」按钮。
 
@@ -38,12 +36,11 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 
 - **语音模式**：输入框工具排麦克风按钮或全局快捷键 `Ctrl+Shift+V` 进入/退出；全局单活（同一时刻仅一个会话处于语音模式，切换会话自动让出）
 - **两种交互模式（输入框旁按钮或设置可切换，切换即持久化）**：
-  - `toggle`（默认）持续聆听：RMS VAD 分段 → paraformer 流式识别（边说边出字，实时字幕预览）→ 静音约 700 毫秒自动断句进草稿并自动发送；按住 `Ctrl` 强制立即发送
+  - `toggle`（默认）持续聆听：RMS VAD 分段 → zipformer2 流式识别（边说边出字，实时字幕预览）→ 静音约 700 毫秒自动断句进草稿并自动发送；按住 `Ctrl` 强制立即发送
   - `hold` 按住说话：短按进入/退出，**按住麦克风按钮说话、松手即发**（滑出取消、`Esc`/失焦放弃本段）；按住期间停顿不断句（上限 10 分钟）；`Ctrl` 按住即录、松开即发
 - **唤醒词（可选，默认关）**：设置 `wakeWord` 后进入待机态，说出唤醒词才开始识别（如「你好小D」）
 - **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式朗读（默认本地 VITS，中英场景可切本地 Kokoro，Edge 可选）+ 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录；可选口语化提示词（设置 `spokenFormat`，默认关）让回复为自然短句、不带 Markdown 排版符号
-- **开口打断（barge-in）**：自适应阈值（滚动噪声地板 + 余量）三档灵敏度 → 本地静音 + host 合成队列作废 + 正在运行的回合取消（保留半截并自然续入新消息）；朗读中自动切超灵敏档
-- **神经标点**：识别定稿后自动补逗号/句号/问号/顿号（默认开；模型失败自动回退无标点原文，不影响识别）
+- **开口打断（barge-in）**：服务端 Silero VAD 帧级检测 + 回声门控（echoGateDb）三档灵敏度 → 本地静音 + host 合成队列作废 + 正在运行的回合取消（保留半截并自然续入新消息）；朗读中自动切超灵敏档
 - **模型懒加载与进度**：首次使用自动下载识别/合成模型（`.part` 断点续传），状态条实时显示进度；可用 `npm run prefetch` 预下载
 - **设置**：设置 → Plugins → 插件配置 → 语音模式（voice-mode），可调朗读引擎/音色/语速/打断灵敏度/静音停顿/空闲超时/模型镜像/自动发送/交互模式/唤醒词/口语化提示词；**音色可试听**（按当前音色+语速即时合成预览，自定义 ShortName 亦可）
 - **界面语言**：跟随浏览器语言（中文 / English；切换后刷新页面生效）
@@ -111,20 +108,20 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 
 ### 配置（bundle config / settings.yaml）
 
-`voice-mode` 命名空间配置可直接写入 `~/.dsh/settings.yaml`；插件总开关 `enabled`（默认 `true`）、模型缓存目录 `cacheDir`、识别模型 `asrModel`（`zh` / `paraformer-zh-en`）、神经标点开关 `punctuate`（默认 `true`）在安装配置中设置。
+`voice-mode` 命名空间配置可直接写入 `~/.dsh/settings.yaml`；插件总开关 `enabled`（默认 `true`）、模型缓存目录 `cacheDir`、在安装配置中设置。
 
 ## 工作原理
 
 ```
-麦克风(16kHz, AEC) ─▶ 浏览器 VAD 分段 ─▶ HOST paraformer 流式识别(本地 WASM, 增量传输)
+麦克风(16kHz, AEC) ─▶ 浏览器 VAD 分段 ─▶ HOST zipformer2 流式识别(本地 WASM, 增量传输)
                                         │
                                         ▼
-用户说话 ◀── 打断 ◀── 音箱 ◀── 逐句合成 ◀── 分句(text-delta 过滤) ◀── 神经标点
+用户说话 ◀── 打断 ◀── 音箱 ◀── 逐句合成 ◀── 分句(text-delta 过滤) ◀── SenseVoice 标点定稿
                           │
            本地 VITS / 本地 Kokoro(原生 addon, 子进程) / Edge 云端(可选)
 ```
 
-- 识别在 **host 端本地运行**（paraformer 双语 int8 WASM，模型懒下载），音频不上传第三方；识别定稿后本地神经标点补标点；
+- 识别在 **host 端本地运行**（zipformer2 中文 int8 WASM + SenseVoice 定稿，模型懒下载），音频不上传第三方；识别定稿由 SenseVoice 补标点；
 - 朗读默认 **本地合成**（VITS 纯中文 / Kokoro 原生中英，跑在独立子进程、崩溃自愈），Edge 云端可选；
 - 同一时间仅一个会话处于语音模式（全局单活）；LLM 流被无损观察（不阻塞）。
 
@@ -132,7 +129,7 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 
 - 发声打断依赖浏览器回声消除（`echoCancellation`）；扬声器音量过大时可能漏声到麦克风
 - `Ctrl+Shift+V` 会覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍可用 `Ctrl+V`）
-- 识别质量受环境噪声影响；paraformer 双语模型对中英混说友好，纯中文场景可用 `asrModel: zh`
+- 识别质量受环境噪声影响；zipformer2 中文流式 + SenseVoice 多语（中英日韩粤）定稿
 - 浏览器自动播放策略：朗读需要页面已有用户交互（点击麦克风即满足）；「试听」依赖 `AbortSignal.timeout`（Safari 16+ / Chrome 103+ / Firefox 100+；老浏览器点击试听会立即提示失败，属预期降级）
 - **唤醒词为轻量实现**（流式文本匹配，非专用 KWS 引擎）：嘈杂环境可能延迟或误激活；唤醒词本身不会进入聊天
 - hold 模式按住时切换窗口/标签页会**放弃本段**（防持续收音）
@@ -168,8 +165,7 @@ systemctl restart dsh         # 本机加载新 host 代码；其他平台重启
 
 ```
 src/index.ts         host：单活指针、llm/stream tap、SSE、settings 注册、口语化提示词注入
-src/asr-host.ts      host：paraformer 流式识别 + 模型懒下载（.part 断点续传）+ 增量喂料
-src/punctuation.ts   host：神经标点（ct-transformer，失败回退原文）
+src/asr-host.ts      host：zipformer2 流式识别 + SenseVoice 定稿 + 模型懒下载（.part 断点续传）+ 增量喂料
 src/models.ts        host：模型下载/校验（SHA256 固定 + 域名白名单）
 src/security.ts      host：限流器与安全守卫
 src/tts-local.ts     host：本地 TTS 引擎（VITS WASM / Kokoro 原生 addon，子进程管理）

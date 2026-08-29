@@ -11,13 +11,12 @@
 >
 > 中文说明见 [README.md](./README.md)。
 
-> ⚠️ **Version note (0.4.0 merged)**: the fork enhancements below were inherited from the upstream fork. **Bilingual paraformer ASR (asrModel), neural punctuation (punctuate), and wake-word detection (wakeWord) currently have their config surface merged but the detection logic deferred** (setting them has no effect yet); streaming ASR is actually zipformer2 (not paraformer); silence split defaults to **700 ms** (not 5 s). See PR #3.
+> **Version note (0.4.0)**: local TTS (VITS/Kokoro, privacy-first by default) + HTTP hardening + model SHA256 pinning form the merged core; `wakeWord` (wake word) and `toolBeep` (tool-call beep) are fully wired; the early fork's `asrModel` (bilingual paraformer) and `punctuate` (neural punctuation) were removed — SenseVoice finalization already adds punctuation, and streaming ASR is fixed to zipformer2. Silence split defaults to 700 ms.
 
 ## Fork enhancements (this repo)
 
 - **Local TTS by default (privacy-first)**: local VITS (Chinese) and local Kokoro (zh+en, native `sherpa-onnx-node` addon, no WASM memory limits) run in an isolated child process; Edge cloud TTS remains optional (`ttsEngine: edge`);
 - **103 Kokoro voices** (F0-measured gender labels, 4 favourite male voices pinned), browsed with a ◀▶ stepper;
-- **Bilingual paraformer ASR** (`asrModel: paraformer-zh-en`) with **neural punctuation** after each final transcript (ct-transformer, ~92% punctuation accuracy, `punctuate: false` to disable);
 - **Delta transport**: partials upload only the new 0.9 s — long push-to-talk segments finalize in seconds;
 - **Interaction**: a mode-switch button next to the mic (continuous ⇄ hold, persisted); hold mode records only while held;
 - **Long segments**: hold up to 10 min (pauses don't split), continuous sentences up to 3 min, 700 ms silence split by default;
@@ -186,7 +185,7 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 
 ```
 input:  mic ──RMS VAD (5s silence split)──▶ POST /voice-mode/asr (f32 PCM, 16k, incremental)
-                                            │ paraformer bilingual streaming ASR (host-side WASM)
+                                            │ zipformer2 streaming ASR (host-side WASM)
                                             ▼
         composer draft ──autoSend──▶ model stream ──llm/stream tap (active voice session only)
                                             │ text-delta filter → sentence segmentation
@@ -196,7 +195,7 @@ input:  mic ──RMS VAD (5s silence split)──▶ POST /voice-mode/asr (f32 
 
 - Speech and reading only happen for the session pointed to by the global single-active pointer `activeVoiceSession`; other sessions pass through `llm/stream` with zero overhead (mode isolation)
 - The `llm/stream` tap is lossless: every chunk passes through unchanged; segmentation/synthesis only observe and never block the model stream
-- ASR runs host-side (sherpa-onnx WASM, paraformer bilingual); final transcripts get neural punctuation (host-side native addon); the browser only captures audio (`getUserMedia` 16k mono) and does endpoint detection
+- ASR runs host-side (sherpa-onnx WASM, zipformer2 Chinese streaming + SenseVoice finalization which adds punctuation); the browser only captures audio (`getUserMedia` 16k mono) and does endpoint detection
 - Local TTS (VITS / native Kokoro) runs in an isolated child process (fork, auto-restart); barge-in kills the in-flight synthesis instantly to free CPU
 - The TTS queue is per-session with an epoch version: old frames are all invalidated after a barge-in, so it is truly silent
 

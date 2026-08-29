@@ -329,25 +329,16 @@ function createAsrRuntime(options) {
   let modelsReady = false;
   let modelsLoading = null;
   let asrFailAt = 0;
-  const haveAllModels = async () => {
-    for (const f of MODEL_FILES) {
-      const st = await stat2(join2(repoDir, f.file)).catch(() => null);
-      if (!st?.isFile()) return false;
-    }
-    return true;
-  };
   const ensureModels = async () => {
     if (modelsReady) return true;
     if (Date.now() < asrFailAt) return false;
     if (!modelsLoading) {
       modelsLoading = (async () => {
-        if (!await haveAllModels()) {
-          for (const f of MODEL_FILES) {
-            if (!await ensureModelFile({ repo: MODEL_REPO, repoDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast })) {
-              asrFailAt = Date.now() + 6e4;
-              broadcast("asr-error", { file: f.file });
-              return false;
-            }
+        for (const f of MODEL_FILES) {
+          if (!await ensureModelFile({ repo: MODEL_REPO, repoDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast })) {
+            asrFailAt = Date.now() + 6e4;
+            broadcast("asr-error", { file: f.file });
+            return false;
           }
         }
         modelsReady = true;
