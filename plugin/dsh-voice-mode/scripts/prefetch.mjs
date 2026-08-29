@@ -2,7 +2,7 @@
 /**
  * dsh-voice-mode 模型预下载（prefetch）：安装后、首次使用前预热
  * ASR（zipformer2 ~160MB / VAD ~2MB / SenseVoice ~228MB）与本地 TTS
- * （vits-zh-ll ~130MB / kokoro ~310MB）模型缓存，全部带 SHA256 校验
+ * （vits-zh-ll ~130MB / kokoro int8 ~109MB）模型缓存，全部带 SHA256 校验
  * （与运行时 src/asr-host.ts / src/tts-local.ts 清单一致）。
  *
  * 用法：node scripts/prefetch.mjs [--cache-dir <path>]
@@ -39,9 +39,9 @@ const MODELS = {
     'phone.fst': '1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7',
     'number.fst': '743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd',
   },
-  // 本地 TTS：Kokoro（中英混读，sherpa-onnx-node 原生）
-  'csukuangfj/kokoro-multi-lang-v1_1': {
-    'model.onnx': 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38',
+  // 本地 TTS：Kokoro（中英混读，sherpa-onnx-node 原生，int8 约 109MB）
+  'csukuangfj/kokoro-int8-multi-lang-v1_1': {
+    'model.int8.onnx': 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26',
     'voices.bin': 'e64a5a581d8c2a350d848f51c3121657cd83aa07ed6109172177345874a7244c',
     'tokens.txt': '931ab2df2400cd65d580a22402024c2347ced8ae9ea300e545144b1aacc48e14',
     'lexicon-us-en.txt': '7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14',
@@ -152,10 +152,10 @@ for (const [repo, files] of Object.entries(MODELS)) {
 
 // --- Kokoro 中英朗读模型：文件多（含 espeak-ng-data 全目录），走 HF 树枚举批量下载 ---
 {
-  const repo = 'csukuangfj/kokoro-multi-lang-v1_1'
+  const repo = 'csukuangfj/kokoro-int8-multi-lang-v1_1'
   const repoDir = join(cacheDir, repo)
   const SENTINELS = {
-    'model.onnx': 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38',
+    'model.int8.onnx': 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26',
     'voices.bin': 'e64a5a581d8c2a350d848f51c3121657cd83aa07ed6109172177345874a7244c',
     'tokens.txt': '931ab2df2400cd65d580a22402024c2347ced8ae9ea300e545144b1aacc48e14',
     'lexicon-us-en.txt': '7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14',

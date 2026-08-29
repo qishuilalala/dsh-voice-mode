@@ -109,6 +109,9 @@ export interface AsrRuntime {
   modelStatus(): ModelsStatus
   /** 手动重试下载（镜像切换/失败后）：清失败退避并触发对应模型 ensure。 */
   retryModel(kind: 'asr' | 'vad' | 'sense'): Promise<boolean>
+  /** 预热（非阻塞）：后台加载 zipformer2 recognizer + VAD（+ SenseVoice 若开启），
+   *  把「首次开语音 ~5s 模型加载」前移到 host 启动，首次进入语音即时可用。 */
+  warmup(): void
 }
 
 /** 模型状态返回（/voice-mode/models/status 载荷）。 */
@@ -717,6 +720,13 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       }
       detectVads.clear()
       detectVadLastUse.clear()
+    },
+    warmup: () => {
+      // 非阻塞预热：host 启动即后台加载，把 ~5s 模型加载前移。
+      // 逐项 fire-and-forget，任一项失败不影响其它；下载失败会走既有 60s 退避。
+      void getRecognizer().catch(() => undefined)
+      void ensureVadModel().catch(() => undefined)
+      if (senseVoice()) void getSenseWorker().catch(() => undefined)
     },
     modelStatus: () => {
       const statFile = async (dir: string, repo: string, name: string): Promise<{ exists: boolean; size: number }> => {

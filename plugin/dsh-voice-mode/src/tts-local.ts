@@ -3,7 +3,7 @@
  *
  * 两种本地引擎：
  *  - vits：vits-zh-ll（纯中文，5 说话人，约 130MB），WASM 运行时；
- *  - kokoro：kokoro-multi-lang-v1_1（中英多语言，FP32 约 310MB 主模型），
+ *  - kokoro：kokoro-int8-multi-lang-v1_1（中英多语言，int8 约 109MB 主模型），
  *    sherpa-onnx-node 原生 addon（无 WASM 内存上限，连续合成不崩、无每 3 句重启）。
  *
  * 合成跑在独立子进程（fork → lib/tts-vits-worker.cjs）——sherpa 的 generate()
@@ -20,7 +20,7 @@ import { ensureModelFile, ensureModelTree, type ModelFileSpec } from './models.t
 import type { TtsEngine, TtsEngineStatus, TtsFileStatus } from './tts-queue.ts'
 
 export const TTS_MODEL_REPO = 'csukuangfj/sherpa-onnx-vits-zh-ll'
-export const KOKORO_MODEL_DIR = 'csukuangfj/kokoro-multi-lang-v1_1'
+export const KOKORO_MODEL_DIR = 'csukuangfj/kokoro-int8-multi-lang-v1_1'
 
 /** VITS 官方 SHA256（HF LFS 指针/内容哈希，固定）。 */
 const TTS_MODEL_FILES: ModelFileSpec[] = [
@@ -186,12 +186,12 @@ const VITS_SPEC: EngineSpec = {
   toSid: voiceToSid,
 }
 
-/** Kokoro 校验清单（FP32 版——int8 版在 WASM 运行时输出全 NaN，实测弃用）：
+/** Kokoro 校验清单（int8 版，~109MB；原生 addon 下 int8 正常、无 WASM 时代全 NaN 问题）：
  *  主文件 + espeak-ng-data 哨兵文件 + 三本中文数字/日期/电话规则 FST
  *  （ruleFsts 接入后阿拉伯数字按中文读；三本与 VITS 同源、字节一致）。 */
 const KOKORO_SPEC: EngineSpec = {
   files: [
-    { file: 'model.onnx', sha256: 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38' },
+    { file: 'model.int8.onnx', sha256: 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26' },
     { file: 'voices.bin', sha256: 'e64a5a581d8c2a350d848f51c3121657cd83aa07ed6109172177345874a7244c' },
     { file: 'tokens.txt', sha256: '931ab2df2400cd65d580a22402024c2347ced8ae9ea300e545144b1aacc48e14' },
     { file: 'lexicon-us-en.txt', sha256: '7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14' },
@@ -202,7 +202,7 @@ const KOKORO_SPEC: EngineSpec = {
     { file: 'phone-zh.fst', sha256: '1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7' },
   ],
   workerPaths: (dir) => ({
-    model: join(dir, 'model.onnx'),
+    model: join(dir, 'model.int8.onnx'),
     voices: join(dir, 'voices.bin'),
     tokens: join(dir, 'tokens.txt'),
     dataDir: join(dir, 'espeak-ng-data'),

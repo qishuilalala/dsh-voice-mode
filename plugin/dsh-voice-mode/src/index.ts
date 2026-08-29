@@ -106,7 +106,7 @@ const defaultModelCacheDir = (): string =>
  * （每次组装提示词时读取，对当前会话的后续回复生效）；其余下次进入生效。
  */
 export interface VoiceSettingsValue {
-  /** 朗读引擎：vits 本地中文（默认）/ kokoro 本地中英 / edge 微软云端；设置面板即时切换。 */
+  /** 朗读引擎：edge 微软云端（默认）/ vits 本地中文 / kokoro 本地中英；设置面板即时切换。 */
   ttsEngine: 'edge' | 'vits' | 'kokoro'
   voice: string
   rate: number
@@ -158,7 +158,7 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   bargeInMode: 'auto',
   echoGateDb: 6,
   shortcut: 'Ctrl+Shift+V',
-  spokenFormat: false,
+  spokenFormat: true,
   senseVoice: true,
   wakeWord: '',
   toolBeep: false,
@@ -172,7 +172,7 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .union([z.const('vits'), z.const('kokoro'), z.const('edge')])
       .default(d.ttsEngine)
       .description(
-        '朗读引擎：vits 本地合成（默认，回复文本不出本机）/ edge 微软云端（音质更自然，被朗读文本会发送到微软）；切换即时生效',
+        '朗读引擎：edge 微软云端（默认，快、音质自然，被朗读文本会发送到微软）/ vits 本地中文 / kokoro 本地中英（回复文本不出本机）；切换即时生效',
       ),
     voice: z
       .string()
@@ -211,7 +211,7 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
     spokenFormat: z
       .boolean()
       .default(d.spokenFormat)
-      .description('语音会话注入口语化提示词（口语化短句、不用 Markdown 排版符号，朗读更顺；默认关，改动即时生效）'),
+      .description('语音会话注入口语化提示词（口语化短句、不用 Markdown 排版符号，朗读更顺更快；默认开，改动即时生效）'),
     senseVoice: z
       .boolean()
       .default(d.senseVoice)
@@ -235,7 +235,7 @@ export interface Config {
   cacheDir: string
   /** 模型上游 host；huggingface.co / hf-mirror.com 均可达（§4 已验证）。 */
   modelHost: string
-  /** 朗读引擎：edge（微软云端）/ vits（本地中文）/ kokoro（本地中英，回复文本不出本机）。默认 vits。 */
+  /** 朗读引擎：edge（微软云端，默认）/ vits（本地中文）/ kokoro（本地中英，回复文本不出本机）。 */
   ttsEngine: 'edge' | 'vits' | 'kokoro'
   /** 允许局域网访问 /voice-mode/*（默认仅回环；开启后建议前置认证门）。 */
   allowLan: boolean
@@ -369,6 +369,9 @@ export function apply(ctx: Context, config: Config): void {
   })
   // 卸载/热重载时释放 ASR runtime（清段 + 定时器，防悬挂）。
   ctx.effect(() => () => asr.dispose())
+  // 预热 ASR 模型（后台非阻塞）：把「首次开语音 ~5s 模型加载」前移到 host 启动。
+  // 仅本地模型文件已缓存时才值得预热；否则留待懒下载（下载进度会在设置页可见）。
+  void asr.warmup()
 
   // --- TTS 引擎工厂（fork：edge 云端 / vits 本地中文 / kokoro 本地中英；设置面板即时切换）。 ---
   const makeEngine = (kind: 'edge' | 'vits' | 'kokoro'): TtsEngine => {
