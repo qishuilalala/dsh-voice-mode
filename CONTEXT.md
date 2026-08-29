@@ -43,7 +43,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿
 
 - 打断延迟：已确认 confirmMs ≈525ms（VAD 0.35 + 泄漏计数，接近 0.5s 目标）；想更快可降 interruptLevel
 - 原生 AEC 失效兜底（耳机无原生 AEC / Safari）：自研 AEC 的 delay 对齐需 FDLMS+RES
-- 发布：PR #2 合并 → bump → npm
+- 发布流程见 ~/.dsh/docs/RELEASE-MEMO.md（git push + npm publish + tag + GitHub release）
 
 ## 关键源文件
 
