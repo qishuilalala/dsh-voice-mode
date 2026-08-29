@@ -19,7 +19,7 @@ export const HOST_PRIMARY = 'https://huggingface.co'
 export const HOST_FALLBACK = 'https://hf-mirror.com'
 
 /** 默认允许的模型下载域名（严格白名单）。 */
-export const ALLOWED_MODEL_HOSTNAMES = ['huggingface.co', 'hf-mirror.com'] as const
+export const ALLOWED_MODEL_HOSTNAMES = ['huggingface.co', 'hf.co', 'hf-mirror.com'] as const
 
 export interface ModelFileSpec {
   /** 仓库内相对文件名（可含子目录）。 */
@@ -62,7 +62,7 @@ export function validateModelHost(raw: string, allowCustomHost: boolean): string
 }
 
 /** 响应最终 URL 的域名是否在允许范围内（防重定向逃逸白名单）。
- *  允许官方源与其子域（LFS 会重定向到 cdn-lfs.huggingface.co 等）。 */
+ *  允许官方源与其子域（LFS 会重定向到 us.aws.cdn.hf.co / cdn-lfs.huggingface.co 等）。 */
 export function redirectHostAllowed(finalUrl: string, allowCustomHost: boolean): boolean {
   try {
     const u = new URL(finalUrl)
@@ -72,6 +72,8 @@ export function redirectHostAllowed(finalUrl: string, allowCustomHost: boolean):
     return (
       hostname === 'huggingface.co' ||
       hostname.endsWith('.huggingface.co') ||
+      hostname === 'hf.co' ||
+      hostname.endsWith('.hf.co') ||
       hostname === 'hf-mirror.com' ||
       hostname.endsWith('.hf-mirror.com')
     )

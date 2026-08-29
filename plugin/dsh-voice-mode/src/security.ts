@@ -19,18 +19,22 @@ export function isLoopbackRequest(req: IncomingMessage): boolean {
 }
 
 /**
- * Origin 同源校验：POST 状态下浏览器必带 Origin；带则必须等于请求自身
- * origin（scheme://host）。无 Origin（非浏览器客户端）放行——由回环层兜底。
+ * Origin 同源校验：POST 状态下浏览器必带 Origin；带则 host（含端口）必须等于
+ * 请求自身。无 Origin（非浏览器客户端）放行——由回环层兜底。
+ *
+ * 反代兼容：经 HTTPS 反代访问时，dsh 只见回环 HTTP（TLS 在反代终止），
+ * 此时 socket.encrypted=false 但浏览器 Origin 是 https，scheme 对不上会误拒。
+ * 因此只比较 host（忽略 scheme），并优先取 X-Forwarded-Host（反代改写 Host 的场景）。
  */
 export function sameOriginRequest(req: IncomingMessage): boolean {
   const origin = req.headers.origin
   if (!origin) return true
   try {
-    const expectedScheme = (req.socket as { encrypted?: boolean }).encrypted ? 'https' : 'http'
-    const host = req.headers.host
+    const originHost = new URL(origin).host
+    const xfh = req.headers['x-forwarded-host']
+    const host = (typeof xfh === 'string' && xfh ? xfh.split(',')[0].trim() : '') || req.headers.host
     if (!host) return false
-    const expected = new URL(`${expectedScheme}://${host}`).origin
-    return new URL(origin).origin === expected
+    return originHost === host
   } catch {
     return false
   }

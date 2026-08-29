@@ -145,7 +145,7 @@ import { mkdir, rename, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 var HOST_PRIMARY = "https://huggingface.co";
 var HOST_FALLBACK = "https://hf-mirror.com";
-var ALLOWED_MODEL_HOSTNAMES = ["huggingface.co", "hf-mirror.com"];
+var ALLOWED_MODEL_HOSTNAMES = ["huggingface.co", "hf.co", "hf-mirror.com"];
 function validateModelHost(raw, allowCustomHost) {
   if (!raw) return null;
   let u;
@@ -167,7 +167,7 @@ function redirectHostAllowed(finalUrl, allowCustomHost) {
     if (u.protocol !== "https:") return false;
     const hostname = u.hostname.toLowerCase();
     if (allowCustomHost) return true;
-    return hostname === "huggingface.co" || hostname.endsWith(".huggingface.co") || hostname === "hf-mirror.com" || hostname.endsWith(".hf-mirror.com");
+    return hostname === "huggingface.co" || hostname.endsWith(".huggingface.co") || hostname === "hf.co" || hostname.endsWith(".hf.co") || hostname === "hf-mirror.com" || hostname.endsWith(".hf-mirror.com");
   } catch {
     return false;
   }
@@ -1529,11 +1529,11 @@ function sameOriginRequest(req) {
   const origin = req.headers.origin;
   if (!origin) return true;
   try {
-    const expectedScheme = req.socket.encrypted ? "https" : "http";
-    const host = req.headers.host;
+    const originHost = new URL(origin).host;
+    const xfh = req.headers["x-forwarded-host"];
+    const host = (typeof xfh === "string" && xfh ? xfh.split(",")[0].trim() : "") || req.headers.host;
     if (!host) return false;
-    const expected = new URL(`${expectedScheme}://${host}`).origin;
-    return new URL(origin).origin === expected;
+    return originHost === host;
   } catch {
     return false;
   }
