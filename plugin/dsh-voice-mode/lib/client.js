@@ -1610,7 +1610,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "cef1ee6";
+var BUILD_TAG = "a14a53e";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2521,6 +2521,12 @@ function MicButton({
           // 防 TTS 回声被 VAD 误判为语音而自打断。
           onIsSpeech: (speech) => {
             if (bargeInMode === "manual") return;
+            if (!bus.ui.playing) {
+              isSpeechTrueCount = 0;
+              interruptFirstAt = 0;
+              bus.setUi({ isSpeech: speech, echoDelayMs: bus.echoDelayMs(), echoLevels: engineRef.current?.echoLevels() });
+              return;
+            }
             if (speech === true && isSpeechTrueCount === 0) {
               const lv = engineRef.current?.echoLevels();
               debugLog("vad-speech-start", {
@@ -2533,8 +2539,8 @@ function MicButton({
             }
             if (speech === true) {
               isSpeechTrueCount++;
-              if (isSpeechTrueCount === 1 && bus.ui.playing) interruptFirstAt = Date.now();
-              if (isSpeechTrueCount >= confirmFrames && bus.ui.playing) {
+              if (isSpeechTrueCount === 1) interruptFirstAt = Date.now();
+              if (isSpeechTrueCount >= confirmFrames) {
                 if (engineRef.current && !engineRef.current.aboveEchoFloor(cfg.echoGateDb ?? 6)) {
                   const lv2 = engineRef.current?.echoLevels();
                   debugLog("echo-gate-reject", {

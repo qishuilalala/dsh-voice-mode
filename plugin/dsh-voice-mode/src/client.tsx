@@ -1342,6 +1342,15 @@ export function MicButton({
             // 误判为语音导致自打断静音；打断改由显式手势触发。也不更新 isSpeech 徽标，
             // 避免回声造成「一直检测到语音」的假象。
             if (bargeInMode === 'manual') return
+            // 打断检测只在 AI 朗读中有意义：非播放期清零计数。否则「用户说自己的话
+            // 期间累积的计数」会在 AI 开播瞬间残留 ≥confirmFrames → confirmMs=0 立即
+            // 误打断（实测「频繁打断」根因）。
+            if (!bus.ui.playing) {
+              isSpeechTrueCount = 0
+              interruptFirstAt = 0
+              bus.setUi({ isSpeech: speech, echoDelayMs: bus.echoDelayMs(), echoLevels: engineRef.current?.echoLevels() })
+              return
+            }
             // 调试：VAD 前沿变化 + 判定链关键态（仅 telemetry=1）。
             if (speech === true && isSpeechTrueCount === 0) {
               const lv = engineRef.current?.echoLevels()
@@ -1355,8 +1364,8 @@ export function MicButton({
             }
             if (speech === true) {
               isSpeechTrueCount++
-              if (isSpeechTrueCount === 1 && bus.ui.playing) interruptFirstAt = Date.now()
-              if (isSpeechTrueCount >= confirmFrames && bus.ui.playing) {
+              if (isSpeechTrueCount === 1) interruptFirstAt = Date.now()
+              if (isSpeechTrueCount >= confirmFrames) {
                 // A2.5 回声门控：残差未明显高于回声地板 → 判回声，不打断（防外放回声自打断）。
                 // 仅自动模式到此处（manual 模式已提前 return）。
                 if (engineRef.current && !engineRef.current.aboveEchoFloor(cfg.echoGateDb ?? 6)) {
