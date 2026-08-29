@@ -619,8 +619,9 @@ export function apply(ctx: Context, config: Config): void {
             respondJson(res, 400, { error: 'invalid on' })
             return
           }
-          // fork 加固：切换限流（每会话 1 次/2 秒，防状态抖动攻击）。
-          if (!limiter.hit(`toggle:${sessionId}`, 1, 2000)) {
+          // fork 加固：切换限流（每会话 2 次/2 秒——允许「进+退」这类正常快速操作对；
+          // 客户端另有 2 秒点击防抖，双保险防状态抖动）。
+          if (!limiter.hit(`toggle:${sessionId}`, 2, 2000)) {
             res.statusCode = 429
             res.setHeader('content-type', 'application/json')
             res.end(JSON.stringify({ error: 'rate limited' }))

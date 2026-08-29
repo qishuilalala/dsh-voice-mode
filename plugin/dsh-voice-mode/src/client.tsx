@@ -1583,7 +1583,12 @@ export function MicButton({
     }
   }
 
+  /** 点击防抖：2 秒内重复的进/出请求只响应第一次（避免撞 /toggle 限流 429）。 */
+  const toggleGuardRef = useRef(0)
   const toggle = (): void => {
+    const now = Date.now()
+    if (now - toggleGuardRef.current < 2000) return
+    toggleGuardRef.current = now
     if (localRef.current === 'on') void exitModeRef.current('manual')
     else if (localRef.current === 'off') void enterMode()
   }
@@ -1948,6 +1953,10 @@ export function MicButton({
     }
     if (ms < 250) {
       // 短按：on → 退出语音模式（tap-to-exit）；off → 进入（hold 模式全程 pointer 驱动）
+      // 同受 2 秒点击防抖保护（快速连点只响应第一次）。
+      const now = Date.now()
+      if (now - toggleGuardRef.current < 2000) return
+      toggleGuardRef.current = now
       if (localRef.current === 'on') {
         engineRef.current?.endHeld(true)
         void exitModeRef.current('manual')
