@@ -86,6 +86,7 @@ var PARTIAL_MAX_S = 30;
 var BUFFER_SIZE = 1024;
 function createAsrEngine(config, sessionId) {
   const wakeWord = (config.wakeWord ?? "").trim().toLowerCase().replace(/[\s\u3000]+/g, "");
+  const wakeEnabled = wakeWord !== "" && config.mode !== "hold";
   let state = "idle";
   const stateListeners = /* @__PURE__ */ new Set();
   const errorListeners = /* @__PURE__ */ new Set();
@@ -227,7 +228,7 @@ function createAsrEngine(config, sessionId) {
       if (!res.ok) return;
       const out = await res.json();
       if (epoch !== segmentEpoch) return;
-      if (state === "wake" && wakeWord) {
+      if (state === "wake" && wakeEnabled) {
         uploadedSamples = Math.max(uploadedSamples, from + samples.length);
         if (matchWakeWord(out.text ?? "", wakeWord)) {
           segmentEpoch++;
@@ -325,7 +326,7 @@ function createAsrEngine(config, sessionId) {
     void (async () => {
       emitTelemetry("submitted");
       const MAX_FINAL_ATTEMPTS = 3;
-      const restoreState = () => setState(active ? speechActive || holdActive ? "speech" : wakeWord ? "wake" : "listening" : "idle");
+      const restoreState = () => setState(active ? speechActive || holdActive ? "speech" : wakeEnabled ? "wake" : "listening" : "idle");
       for (let attempt = 0; attempt < MAX_FINAL_ATTEMPTS; attempt++) {
         if (attempt > 0) {
           if (segmentEpoch !== epochSnapshot + 1) return;
@@ -660,7 +661,7 @@ function createAsrEngine(config, sessionId) {
       detectChunks = [];
       detectSent = 0;
       detectGeneration++;
-      setState(wakeWord ? "wake" : "listening");
+      setState(wakeEnabled ? "wake" : "listening");
       try {
         await startRecorder();
       } catch (error) {
@@ -722,7 +723,7 @@ function createAsrEngine(config, sessionId) {
       forcePending = false;
       lastPollAt = 0;
       return resetHostStream().then(() => {
-        if (active) setState(wakeWord ? "wake" : "listening");
+        if (active) setState(wakeEnabled ? "wake" : "listening");
       });
     },
     endHeld(cancel = false) {
@@ -736,7 +737,7 @@ function createAsrEngine(config, sessionId) {
         prePad = [];
         speechActive = false;
         forcePending = false;
-        setState(wakeWord ? "wake" : "listening");
+        setState(wakeEnabled ? "wake" : "listening");
         return;
       }
       if (segment.length > 0) {
@@ -745,7 +746,7 @@ function createAsrEngine(config, sessionId) {
         finalizeSegment();
       } else {
         forcePending = false;
-        setState(wakeWord ? "wake" : "listening");
+        setState(wakeEnabled ? "wake" : "listening");
       }
     },
     onSegment(fn) {
@@ -1956,7 +1957,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "49cb86a";
+var BUILD_TAG = "a577ab1";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

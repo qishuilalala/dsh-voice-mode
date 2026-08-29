@@ -122,6 +122,8 @@ const BUFFER_SIZE = 1024
 export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine {
   /** 归一化后的唤醒词（空 = 关）。 */
   const wakeWord = (config.wakeWord ?? '').trim().toLowerCase().replace(/[\s\u3000]+/g, '')
+  /** 唤醒词门仅在 toggle 模式生效（hold 模式按住即说，无需唤醒词门，避免状态条误显「说唤醒词」）。 */
+  const wakeEnabled = wakeWord !== '' && config.mode !== 'hold'
   let state: AsrState = 'idle'
   const stateListeners = new Set<(s: AsrState) => void>()
   const errorListeners = new Set<(msg: string) => void>()
@@ -307,7 +309,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       const out = (await res.json()) as { text?: string; endpoint?: boolean; isSpeech?: boolean }
       if (epoch !== segmentEpoch) return
       // 唤醒词门：wake 待机态下 partial 只用于匹配，命中 → 清本地与 host 流 → 激活。
-      if (state === 'wake' && wakeWord) {
+      if (state === 'wake' && wakeEnabled) {
         uploadedSamples = Math.max(uploadedSamples, from + samples.length)
         if (matchWakeWord(out.text ?? '', wakeWord)) {
           segmentEpoch++
@@ -441,7 +443,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       // 有界重试：host 已幂等（重复 final 返回缓存文本），瞬时失败（网络异常/5xx/非 JSON）
       // 重试最多 3 次；期间段被弃（世代变化）即停止。根治「单次瞬时失败丢整句」。
       const MAX_FINAL_ATTEMPTS = 3
-      const restoreState = (): void => setState(active ? (speechActive || holdActive ? 'speech' : (wakeWord ? 'wake' : 'listening')) : 'idle')
+      const restoreState = (): void => setState(active ? (speechActive || holdActive ? 'speech' : (wakeEnabled ? 'wake' : 'listening')) : 'idle')
       for (let attempt = 0; attempt < MAX_FINAL_ATTEMPTS; attempt++) {
         if (attempt > 0) {
           if (segmentEpoch !== epochSnapshot + 1) return // 段已弃，停止重试
@@ -862,8 +864,8 @@ const startRecorder = async (): Promise<void> => {
       detectChunks = [] // 打断根治：进入清检测通道
       detectSent = 0
       detectGeneration++
-      // 配置了唤醒词 → 先进 wake 待机态（说出唤醒词才正式开口）；否则直接聆听。
-      setState(wakeWord ? 'wake' : 'listening')
+      // 配置了唤醒词（且非 hold 模式）→ 先进 wake 待机态；否则直接聆听。
+      setState(wakeEnabled ? 'wake' : 'listening')
       try {
         await startRecorder()
       } catch (error) {
@@ -930,7 +932,7 @@ const startRecorder = async (): Promise<void> => {
       lastPollAt = 0
       // Fix：等待 host 流重置完成后再恢复状态（防新段使用旧流）
       return resetHostStream().then(() => {
-        if (active) setState(wakeWord ? 'wake' : 'listening')
+        if (active) setState(wakeEnabled ? 'wake' : 'listening')
       })
     },
     endHeld(cancel = false) {
@@ -945,7 +947,7 @@ const startRecorder = async (): Promise<void> => {
         prePad = []
         speechActive = false
         forcePending = false // 对抗性审查 Fix：取消段不得泄漏 force 标记（否则下段静默绕过 autoSend=false）
-        setState(wakeWord ? 'wake' : 'listening')
+        setState(wakeEnabled ? 'wake' : 'listening')
         return
       }
       // Fix：segment 为空时不设置 forcePending（防 finalizeSegment 早退后 force 标记泄漏到下段）
@@ -955,7 +957,7 @@ const startRecorder = async (): Promise<void> => {
         finalizeSegment()
       } else {
         forcePending = false
-        setState(wakeWord ? 'wake' : 'listening')
+        setState(wakeEnabled ? 'wake' : 'listening')
       }
     },
     onSegment(fn) {
