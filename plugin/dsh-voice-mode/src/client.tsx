@@ -121,9 +121,18 @@ const TELEMETRY_VIEW: { stage: TelemetryStage; key: TKey }[] = [
  * 「说完→首音」链路各段耗时（P1-5 延迟验收的测量面）。关闭时零采集零展示
  * （host 'latency' 事件照常下行，客户端不理会）。
  */
+/** 构建版本号（build.mjs 用 esbuild define 注入 git 短哈希）。 */
+declare const __BUILD_TAG__: string
+
+// 进入语音模式相关的调试信息统一带版本号，便于确认运行的是哪一版（构建时注入 git 哈希）。
+const BUILD_TAG = __BUILD_TAG__
+
 const TELEMETRY_FLAG = 'dsh-voice-mode.telemetry'
 const telemetryEnabled =
   typeof localStorage !== 'undefined' && localStorage.getItem(TELEMETRY_FLAG) === '1'
+
+// 无条件打一次构建版本（进入页面即见，不依赖 telemetry），确认加载的 bundle 版本。
+console.log('[dsh-voice] build=' + BUILD_TAG)
 
 /** 调试控制台日志：telemetry=1 时把打断判定链的关键决策/输入打到 console，
  *  格式 [dsh-voice] <event> {json}，便于复制回传排查。 */
@@ -1274,6 +1283,7 @@ export function MicButton({
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2
       const bargeInMode = cfg.bargeInMode
       debugLog('enter', {
+        build: BUILD_TAG,
         mode: cfg.mode,
         bargeInMode,
         echoGateDb: cfg.echoGateDb,

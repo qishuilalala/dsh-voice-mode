@@ -4,8 +4,17 @@
 
 import { build } from 'esbuild'
 import { mkdirSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 
 const PKG_ID = 'dsh-voice-mode'
+
+// 构建版本号：git 短哈希（进入语音模式时打到控制台，供确认运行版本）。
+let BUILD_TAG = 'unknown'
+try {
+  BUILD_TAG = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()
+} catch {
+  // 非 git 环境：保持 unknown
+}
 
 const PLATFORM_EXTERNALS = [
   'react',
@@ -67,6 +76,7 @@ await build({
   // Keep the native import() for the transformers.js CDN ESM bundle.
   supported: { 'dynamic-import': true },
   external: PLATFORM_EXTERNALS,
+  define: { __BUILD_TAG__: JSON.stringify(BUILD_TAG) },
   banner: {
     js:
       `window.__ModuleLoader__.load({ id: ${JSON.stringify(PKG_ID)}, factory: (require) => {\n` +
