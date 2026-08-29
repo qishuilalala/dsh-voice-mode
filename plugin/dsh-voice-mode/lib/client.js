@@ -73,6 +73,7 @@ function resampleLinear(src, srcRate, dstRate) {
 }
 
 // src/asr.ts
+var workletBlobUrl = null;
 var SAMPLE_RATE = 16e3;
 var SPEECH_RMS = 0.015;
 var LEVEL_CEILING = 0.25;
@@ -112,6 +113,7 @@ function createAsrEngine(config, sessionId) {
   let audioCtx = null;
   let stream = null;
   let processor = null;
+  let workletNode = null;
   let active = false;
   let stopRequested = false;
   let startSeq = 0;
@@ -553,6 +555,29 @@ function createAsrEngine(config, sessionId) {
     }
     ctxRate = audioCtx.sampleRate;
     const source = audioCtx.createMediaStreamSource(stream);
+    if (audioCtx.audioWorklet) {
+      try {
+        if (!workletBlobUrl) {
+          workletBlobUrl = URL.createObjectURL(new Blob(['"use strict";\n(() => {\n  // src/resample.ts\n  function resampleLinear(src, srcRate, dstRate) {\n    if (srcRate === dstRate) return src;\n    if (src.length === 0) return src;\n    const ratio = srcRate / dstRate;\n    const outLen = Math.max(1, Math.floor(src.length / ratio));\n    const out = new Float32Array(outLen);\n    for (let i = 0; i < outLen; i++) {\n      const pos = i * ratio;\n      const i0 = Math.floor(pos);\n      const i1 = Math.min(i0 + 1, src.length - 1);\n      const frac = pos - i0;\n      out[i] = src[i0] + (src[i1] - src[i0]) * frac;\n    }\n    return out;\n  }\n\n  // src/audio-worklet.ts\n  var TARGET_RATE = 16e3;\n  var CHUNK = 1024;\n  var RATIO = sampleRate / TARGET_RATE;\n  var NEED = Math.ceil(CHUNK * RATIO);\n  var VoiceCaptureProcessor = class extends AudioWorkletProcessor {\n    acc = new Float32Array(0);\n    accLen = 0;\n    process(inputs) {\n      const ch = inputs[0]?.[0];\n      if (ch && ch.length > 0) this.push(ch);\n      this.drain();\n      return true;\n    }\n    push(ch) {\n      if (this.accLen + ch.length > this.acc.length) {\n        let cap = this.acc.length > 0 ? this.acc.length : NEED * 2;\n        while (cap < this.accLen + ch.length) cap *= 2;\n        const next = new Float32Array(cap);\n        next.set(this.acc.subarray(0, this.accLen));\n        this.acc = next;\n      }\n      this.acc.set(ch, this.accLen);\n      this.accLen += ch.length;\n    }\n    drain() {\n      while (this.accLen >= NEED) {\n        const out = resampleLinear(this.acc.subarray(0, NEED), sampleRate, TARGET_RATE);\n        const chunk = out.length >= CHUNK ? out.subarray(0, CHUNK) : (() => {\n          const p = new Float32Array(CHUNK);\n          p.set(out);\n          return p;\n        })();\n        this.port.postMessage(chunk, [chunk.buffer]);\n        this.acc.copyWithin(0, NEED, this.accLen);\n        this.accLen -= NEED;\n      }\n    }\n  };\n  registerProcessor("voice-capture", VoiceCaptureProcessor);\n})();\n'], { type: "text/javascript" }));
+        }
+        await audioCtx.audioWorklet.addModule(workletBlobUrl);
+        workletNode = new AudioWorkletNode(audioCtx, "voice-capture", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+        workletNode.port.onmessage = (e) => {
+          handleAudio(e.data);
+        };
+        source.connect(workletNode);
+        workletNode.connect(audioCtx.destination);
+        ctxRate = SAMPLE_RATE;
+        active = true;
+        return;
+      } catch {
+        try {
+          workletNode?.disconnect();
+        } catch {
+        }
+        workletNode = null;
+      }
+    }
     processor = audioCtx.createScriptProcessor(BUFFER_SIZE, 1, 1);
     processor.onaudioprocess = (e) => {
       handleAudio(new Float32Array(e.inputBuffer.getChannelData(0)));
@@ -582,6 +607,11 @@ function createAsrEngine(config, sessionId) {
     } catch {
     }
     processor = null;
+    try {
+      workletNode?.disconnect();
+    } catch {
+    }
+    workletNode = null;
     try {
       stream?.getTracks().forEach((t3) => t3.stop());
     } catch {
@@ -1615,7 +1645,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "257e258";
+var BUILD_TAG = "b83e2d0";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

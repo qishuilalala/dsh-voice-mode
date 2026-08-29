@@ -18,6 +18,10 @@
 import { matchWakeWord } from './wakeword.ts'
 import { resampleLinear } from './resample.ts'
 
+// AudioWorklet 源码字符串（build.mjs 经 esbuild define 注入）：运行时转 Blob URL 供 addModule。
+declare const __AUDIO_WORKLET__: string
+let workletBlobUrl: string | null = null
+
 export type AsrState = 'idle' | 'listening' | 'wake' | 'speech' | 'transcribing' | 'loading-model'
 
 /**
@@ -145,6 +149,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let audioCtx: AudioContext | null = null
   let stream: MediaStream | null = null
   let processor: ScriptProcessorNode | null = null
+  let workletNode: AudioWorkletNode | null = null
   let active = false
   /** 麦克风取消请求（Fix8 修正：授权返回时若已被 stop 抢占则释放，防止无人能停的常开泄漏）。 */
   let stopRequested = false
@@ -741,6 +746,32 @@ const startRecorder = async (): Promise<void> => {
     // 浏览器可能忽略 sampleRate 选项（Safari 等）：记录真实采样率供重采样。
     ctxRate = audioCtx.sampleRate
     const source = audioCtx.createMediaStreamSource(stream)
+    // 优先 AudioWorklet（专用音频线程，摆脱 ScriptProcessor 主线程卡顿/glitch）；
+    // 不支持或 addModule 失败时回退 ScriptProcessor（跨浏览器兜底，行为与旧版一致）。
+    if (audioCtx.audioWorklet) {
+      try {
+        if (!workletBlobUrl) {
+          workletBlobUrl = URL.createObjectURL(new Blob([__AUDIO_WORKLET__], { type: 'text/javascript' }))
+        }
+        await audioCtx.audioWorklet.addModule(workletBlobUrl)
+        workletNode = new AudioWorkletNode(audioCtx, 'voice-capture', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] })
+        workletNode.port.onmessage = (e: MessageEvent<Float32Array>) => {
+          handleAudio(e.data)
+        }
+        source.connect(workletNode)
+        workletNode.connect(audioCtx.destination) // 保持图活跃；worklet 不写输出 = 静音，无反馈
+        ctxRate = SAMPLE_RATE // worklet 已重采样到 16k，handleAudio 跳过重采样
+        active = true
+        return
+      } catch {
+        try {
+          workletNode?.disconnect()
+        } catch {
+          // ignore
+        }
+        workletNode = null
+      }
+    }
     processor = audioCtx.createScriptProcessor(BUFFER_SIZE, 1, 1)
     processor.onaudioprocess = (e) => {
       handleAudio(new Float32Array(e.inputBuffer.getChannelData(0)))
@@ -773,6 +804,12 @@ const startRecorder = async (): Promise<void> => {
       // ignore
     }
     processor = null
+    try {
+      workletNode?.disconnect()
+    } catch {
+      // ignore
+    }
+    workletNode = null
     try {
       stream?.getTracks().forEach((t) => t.stop())
     } catch {

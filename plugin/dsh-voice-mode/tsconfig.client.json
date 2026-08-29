@@ -25,6 +25,7 @@
     "src/settings-form.tsx",
     "src/asr.ts",
     "src/aec.ts",
+    "src/audio-worklet.ts",
     "src/wakeword.ts"
   ],
   "exclude": [
