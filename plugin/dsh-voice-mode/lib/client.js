@@ -76,6 +76,7 @@ function resampleLinear(src, srcRate, dstRate) {
 var SAMPLE_RATE = 16e3;
 var SPEECH_RMS = 0.015;
 var LEVEL_CEILING = 0.25;
+var FLOOR_HISTORY_LEN = 32;
 var MAX_SEGMENT_MS = 3e4;
 var MIN_SPEECH_MS = 250;
 var PRE_PAD_MS = 250;
@@ -381,6 +382,7 @@ function createAsrEngine(config, sessionId) {
   };
   let latestResidualRms = 0;
   let echoFloorRms = 0;
+  let rmsHistory = [];
   const handleAudio = (raw) => {
     if (!active || inFlush) return;
     let data = ctxRate !== SAMPLE_RATE ? resampleLinear(raw, ctxRate, SAMPLE_RATE) : raw;
@@ -399,14 +401,18 @@ function createAsrEngine(config, sessionId) {
       }
     }
     const playingNow = config.isPlaying?.() ?? false;
-    const doubleTalk = playingNow && echoFloorRms > 0 && rms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20);
     if (playingNow) {
       latestResidualRms = rms;
-      if (echoFloorRms === 0) echoFloorRms = rms;
-      else if (!doubleTalk) {
-        echoFloorRms = echoFloorRms * 0.98 + rms * 0.02;
-      }
+      rmsHistory.push(rms);
+      if (rmsHistory.length > FLOOR_HISTORY_LEN) rmsHistory.shift();
+      let m = rms;
+      for (const v of rmsHistory) if (v < m) m = v;
+      echoFloorRms = m;
+    } else {
+      rmsHistory.length = 0;
+      echoFloorRms = 0;
     }
+    const doubleTalk = playingNow && echoFloorRms > 0 && rms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20);
     if (echo) {
       echo.setFrozen(doubleTalk);
     }
@@ -593,7 +599,7 @@ function createAsrEngine(config, sessionId) {
     },
     /** A2.5 回声门控：当前残差是否明显高于回声地板（marginDb 默认 6dB）——判用户人声而非回声。 */
     aboveEchoFloor(marginDb = 6) {
-      if (echoFloorRms === 0) return true;
+      if (echoFloorRms === 0) return false;
       return latestResidualRms > echoFloorRms * Math.pow(10, marginDb / 20);
     },
     echoLevels() {
