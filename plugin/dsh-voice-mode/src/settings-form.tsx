@@ -350,18 +350,6 @@ const stepBtn: React.CSSProperties = {
   padding: 0,
   fontFamily: 'inherit',
 }
-const stepLabel: React.CSSProperties = {
-  ...inputStyle,
-  flex: 1,
-  width: 'auto',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  textAlign: 'center',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
-}
 
 /**
  * 音色选择器：下拉列表（全部音色一键直达）+ ◀▶ 左右步进（快速切换相邻）。

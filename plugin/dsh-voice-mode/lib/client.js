@@ -1580,18 +1580,6 @@ var stepBtn = {
   padding: 0,
   fontFamily: "inherit"
 };
-var stepLabel = {
-  ...inputStyle,
-  flex: 1,
-  width: "auto",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  textAlign: "center",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap"
-};
 function VoiceSelect({
   score,
   field,
@@ -2095,7 +2083,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "134ac79";
+var BUILD_TAG = "f351f75";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
