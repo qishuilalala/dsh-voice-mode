@@ -526,8 +526,12 @@ function createAsrEngine(config, sessionId) {
       audio: {
         channelCount: 1,
         echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
+        // L0（研究核实）：AGC/NS 是时变非线性，放在 AEC 前破坏线性回声路径假设——
+        // WebRTC GainController2 与 Speex 均把增益放 AEC 之后。禁用后原生 AEC 与
+        // 自研 AEC 的输入才线性，回声消得净；AGC 放大近端语音由「残差地板门控」
+        // 的归一化语义替代，不需要采集端增益。
+        noiseSuppression: false,
+        autoGainControl: false
       }
     });
     if (stopRequested || curStartSeq !== startSeq) {
