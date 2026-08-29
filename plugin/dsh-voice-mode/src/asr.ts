@@ -446,12 +446,17 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           if (segmentEpoch !== epochSnapshot + 1) return // 段已弃，停止重试
           await new Promise((r) => setTimeout(r, 500 * attempt))
         }
+        // 首次用增量尾巴（正常路径）；重试改用全量：host 按 seg.fed 去重幂等，且覆盖
+        // 「403 恢复已 reset host 流，但恢复后的全量重发又失败」→ 尾巴重试会缺前半句。
+        const useFull = attempt > 0
+        const off = useFull ? 0 : from
+        const body = useFull ? (sliceChunks(recoverySegment, 0).buffer as ArrayBuffer) : (samples.buffer as ArrayBuffer)
         let res: Response
         try {
-          res = await fetch(asrUrl(true, from, epochSnapshot), { signal: AbortSignal.timeout(10000),
+          res = await fetch(asrUrl(true, off, epochSnapshot), { signal: AbortSignal.timeout(10000),
             method: 'POST',
             headers: { 'content-type': 'application/octet-stream' },
-            body: samples.buffer as ArrayBuffer,
+            body,
           })
         } catch {
           restoreState()
@@ -464,10 +469,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
             setTimeout(async () => {
               try {
                 resolve(
-                  await fetch(asrUrl(true, from, epochSnapshot), { signal: AbortSignal.timeout(10000),
+                  await fetch(asrUrl(true, off, epochSnapshot), { signal: AbortSignal.timeout(10000),
                     method: 'POST',
                     headers: { 'content-type': 'application/octet-stream' },
-                    body: samples.buffer as ArrayBuffer,
+                    body,
                   }),
                 )
               } catch {

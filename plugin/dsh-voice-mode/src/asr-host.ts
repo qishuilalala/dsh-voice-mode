@@ -202,6 +202,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   /** 定稿进行中：sessionId -> epoch -> Promise<text>。并发 final（客户端重试撞上首发
    *  定稿的 senseP 窗口）共享同一结果，防「首发已删段未缓存、重试重建空段」丢句。 */
   const finalizing = new Map<string, Map<number, Promise<string>>>()
+  /** 会话 reset 代际（重入/打断递增）：在途 finalize 完成时据此判定是否还能写缓存，
+   *  防「重入后 epoch 归零，撞上旧会话陈旧缓存条目返回错误文本」的重入冲突。 */
+  const resetGen = new Map<string, number>()
 
   let recognizer: SherpaRecognizer | null = null
   let modelsReady = false
@@ -439,6 +442,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     // 返回缓存文本、不重建流。根治「同会话新 epoch 抢先按前缀清旧段 → 旧段 final 丢句」
     // 竞态：不再清其它世代段，各段只等自己的 final=1（或 reset/sweep）回收。
     let finMap = finalized.get(sessionId)
+    const myGen = resetGen.get(sessionId) ?? 0 // 定稿代际快照：会话 reset 时递增
     const cached = finMap?.get(epoch)
     if (cached !== undefined) return { text: cached }
     let sessSegs = segments.get(sessionId)
@@ -550,15 +554,28 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       // 空串掩蔽修复：SenseVoice 返回空/空白视同未产出，回退 zipformer 定稿。
       return (sense && sense.trim() ? sense : settled) || ''
     })().then((finalText) => {
-      // 先缓存后删段：幂等守卫（cached）先于段回收生效，杜绝并发 final 重建空段。
-      if (!finMap) {
-        finMap = new Map<number, string>()
-        finalized.set(sessionId, finMap)
+      // 会话代际守卫：定稿期间若会话被 reset（重入/打断），不缓存——否则重入后 epoch 归零
+      // 会撞上旧会话的陈旧缓存条目 → 返回错误文本。仅回收本段 + 清 finalizing 登记。
+      if ((resetGen.get(sessionId) ?? 0) !== myGen) {
+        sessSegs.delete(epoch)
+        if (sessSegs.size === 0) segments.delete(sessionId)
+        const ff0 = finalizing.get(sessionId)
+        ff0?.delete(epoch)
+        if (ff0 && ff0.size === 0) finalizing.delete(sessionId)
+        return finalText
       }
-      finMap.set(epoch, finalText)
-      if (finMap.size > 32) {
-        const first = finMap.keys().next().value
-        if (first !== undefined) finMap.delete(first)
+      // 先缓存后删段：幂等守卫（cached）先于段回收生效，杜绝并发 final 重建空段。
+      // 必须此处重取 session 级 finMap（不能用 feed 顶部捕获的局部 finMap）——并发不同 epoch
+      // 定稿时各 feed 的局部 finMap 均为 null，各自新建会互相覆盖丢失缓存（重试则空串丢句）。
+      let fm = finalized.get(sessionId)
+      if (!fm) {
+        fm = new Map<number, string>()
+        finalized.set(sessionId, fm)
+      }
+      fm.set(epoch, finalText)
+      if (fm.size > 32) {
+        const first = fm.keys().next().value
+        if (first !== undefined) fm.delete(first)
       }
       sessSegs.delete(epoch)
       if (sessSegs.size === 0) segments.delete(sessionId)
@@ -661,6 +678,8 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         segments.delete(sessionId)
       }
       finalized.delete(sessionId) // 会话重置：清定稿缓存（重入后 epoch 从 0 重新起算）
+      resetGen.set(sessionId, (resetGen.get(sessionId) ?? 0) + 1) // 递增代际：作废在途定稿的缓存写回
+      finalizing.delete(sessionId) // 清在途定稿登记（其 .then 靠代际守卫放弃缓存写回）
       // 打断根治：释放该会话检测通道 VAD（下次需要时惰性重建）。
       const dv = detectVads.get(sessionId)
       if (dv) {
@@ -696,6 +715,8 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       }
       segments.clear()
       finalized.clear()
+      finalizing.clear()
+      resetGen.clear()
       // 释放 zipformer recognizer（WASM ~150MB+）：热重载/卸载否则每代泄漏一块大内存。
       try {
         recognizer?.free?.()

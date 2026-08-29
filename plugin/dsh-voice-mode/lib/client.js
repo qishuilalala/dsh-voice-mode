@@ -330,13 +330,16 @@ function createAsrEngine(config, sessionId) {
           if (segmentEpoch !== epochSnapshot + 1) return;
           await new Promise((r) => setTimeout(r, 500 * attempt));
         }
+        const useFull = attempt > 0;
+        const off = useFull ? 0 : from;
+        const body = useFull ? sliceChunks(recoverySegment, 0).buffer : samples.buffer;
         let res;
         try {
-          res = await fetch(asrUrl(true, from, epochSnapshot), {
+          res = await fetch(asrUrl(true, off, epochSnapshot), {
             signal: AbortSignal.timeout(1e4),
             method: "POST",
             headers: { "content-type": "application/octet-stream" },
-            body: samples.buffer
+            body
           });
         } catch {
           restoreState();
@@ -349,11 +352,11 @@ function createAsrEngine(config, sessionId) {
             setTimeout(async () => {
               try {
                 resolve(
-                  await fetch(asrUrl(true, from, epochSnapshot), {
+                  await fetch(asrUrl(true, off, epochSnapshot), {
                     signal: AbortSignal.timeout(1e4),
                     method: "POST",
                     headers: { "content-type": "application/octet-stream" },
-                    body: samples.buffer
+                    body
                   })
                 );
               } catch {
@@ -1659,7 +1662,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "1c11249";
+var BUILD_TAG = "38a0273";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

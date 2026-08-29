@@ -192,6 +192,7 @@ function createAsrRuntime(options) {
   const segments = /* @__PURE__ */ new Map();
   const finalized = /* @__PURE__ */ new Map();
   const finalizing = /* @__PURE__ */ new Map();
+  const resetGen = /* @__PURE__ */ new Map();
   let recognizer = null;
   let modelsReady = false;
   let modelsLoading = null;
@@ -383,6 +384,7 @@ function createAsrRuntime(options) {
       });
     }
     let finMap = finalized.get(sessionId);
+    const myGen = resetGen.get(sessionId) ?? 0;
     const cached = finMap?.get(epoch);
     if (cached !== void 0) return { text: cached };
     let sessSegs = segments.get(sessionId);
@@ -466,14 +468,23 @@ function createAsrRuntime(options) {
       const sense = await senseP;
       return (sense && sense.trim() ? sense : settled) || "";
     })().then((finalText) => {
-      if (!finMap) {
-        finMap = /* @__PURE__ */ new Map();
-        finalized.set(sessionId, finMap);
+      if ((resetGen.get(sessionId) ?? 0) !== myGen) {
+        sessSegs.delete(epoch);
+        if (sessSegs.size === 0) segments.delete(sessionId);
+        const ff0 = finalizing.get(sessionId);
+        ff0?.delete(epoch);
+        if (ff0 && ff0.size === 0) finalizing.delete(sessionId);
+        return finalText;
       }
-      finMap.set(epoch, finalText);
-      if (finMap.size > 32) {
-        const first = finMap.keys().next().value;
-        if (first !== void 0) finMap.delete(first);
+      let fm = finalized.get(sessionId);
+      if (!fm) {
+        fm = /* @__PURE__ */ new Map();
+        finalized.set(sessionId, fm);
+      }
+      fm.set(epoch, finalText);
+      if (fm.size > 32) {
+        const first = fm.keys().next().value;
+        if (first !== void 0) fm.delete(first);
       }
       sessSegs.delete(epoch);
       if (sessSegs.size === 0) segments.delete(sessionId);
@@ -559,6 +570,8 @@ function createAsrRuntime(options) {
         segments.delete(sessionId);
       }
       finalized.delete(sessionId);
+      resetGen.set(sessionId, (resetGen.get(sessionId) ?? 0) + 1);
+      finalizing.delete(sessionId);
       const dv = detectVads.get(sessionId);
       if (dv) {
         try {
@@ -589,6 +602,8 @@ function createAsrRuntime(options) {
       }
       segments.clear();
       finalized.clear();
+      finalizing.clear();
+      resetGen.clear();
       try {
         recognizer?.free?.();
       } catch {
