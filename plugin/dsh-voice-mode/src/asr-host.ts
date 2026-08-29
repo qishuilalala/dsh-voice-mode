@@ -527,7 +527,12 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     const inflightMap = finalizing.get(sessionId)
     const inflightP = inflightMap?.get(epoch)
     if (inflightP) return { text: await inflightP }
-    // 定稿工作封装为 promise 并登记，供并发 final 复用。
+    // 同步摘除本段（先于 free）：否则 senseP 窗口内 reset()/dispose() 会遍历 segments
+    // 对已 free 的 stream/vad 二次释放（WASM double-free Blocker）。此处到登记均为同步块，
+    // 无其它 JS 交错，故「摘段后、登记前」的并发 final 不可能插入（会命中上方 inflight 守卫）。
+    sessSegs.delete(epoch)
+    if (sessSegs.size === 0) segments.delete(sessionId)
+    // 定稿工作封装为 promise 并登记，供并发 final 复用（free 已安全——段已摘除）。
     const finalizeP = (async (): Promise<string> => {
       // P4-1：SenseVoice 整段重译与 zipformer 定稿并行（端点等待期后起跑；
       // 带标点 + ITN 覆盖定稿文本；模型缺失/失败自然降级 zipformer）。
@@ -555,17 +560,11 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       return (sense && sense.trim() ? sense : settled) || ''
     })().then((finalText) => {
       // 会话代际守卫：定稿期间若会话被 reset（重入/打断），不缓存——否则重入后 epoch 归零
-      // 会撞上旧会话的陈旧缓存条目 → 返回错误文本。此分支只清 finalizing 登记，不动
-      // segments/finalized（reset 已清；且 segments[sessionId] 可能已指向新会话的段表）。
-      if ((resetGen.get(sessionId) ?? 0) !== myGen) {
-        const ff0 = finalizing.get(sessionId)
-        ff0?.delete(epoch)
-        if (ff0 && ff0.size === 0) finalizing.delete(sessionId)
-        return finalText
-      }
-      // 先缓存后删段：幂等守卫（cached）先于段回收生效，杜绝并发 final 重建空段。
-      // 必须此处重取 session 级 finMap（不能用 feed 顶部捕获的局部 finMap）——并发不同 epoch
-      // 定稿时各 feed 的局部 finMap 均为 null，各自新建会互相覆盖丢失缓存（重试则空串丢句）。
+      // 会撞上旧会话的陈旧缓存条目 → 返回错误文本。reset 已清 finalizing/segments，此分支
+      // 什么都不做（不得再动 finalizing，否则可能删到重入后新会话同 epoch 的登记）。
+      if ((resetGen.get(sessionId) ?? 0) !== myGen) return finalText
+      // 缓存：必须此处重取 session 级 finMap（不能用 feed 顶部捕获的局部 finMap）——并发不同
+      // epoch 定稿时各 feed 的局部 finMap 均为 null，各自新建会互相覆盖丢失缓存。
       let fm = finalized.get(sessionId)
       if (!fm) {
         fm = new Map<number, string>()
@@ -576,26 +575,15 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         const first = fm.keys().next().value
         if (first !== undefined) fm.delete(first)
       }
-      sessSegs.delete(epoch)
-      if (sessSegs.size === 0) segments.delete(sessionId)
       const ff = finalizing.get(sessionId)
       ff?.delete(epoch)
       if (ff && ff.size === 0) finalizing.delete(sessionId)
       return finalText
     }).catch((e) => {
-      // 定稿异常：清 finalizing 登记 + 回收本段（防登记泄漏），返回空不阻塞上层。
+      // 定稿异常：只清 finalizing 登记（段已在入口同步摘除），返回空不阻塞上层。
       const ff = finalizing.get(sessionId)
       ff?.delete(epoch)
       if (ff && ff.size === 0) finalizing.delete(sessionId)
-      // 仅在会话未被 reset 时才回收段（reset 后 segments[sessionId] 可能已是新会话的段表）。
-      if ((resetGen.get(sessionId) ?? 0) === myGen) {
-        try {
-          sessSegs.delete(epoch)
-          if (sessSegs.size === 0) segments.delete(sessionId)
-        } catch {
-          // ignore
-        }
-      }
       console.warn('[dsh-voice-mode] finalize failed: ' + String(e))
       return ''
     })

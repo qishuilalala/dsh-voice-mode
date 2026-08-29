@@ -450,6 +450,8 @@ function createAsrRuntime(options) {
     const inflightMap = finalizing.get(sessionId);
     const inflightP = inflightMap?.get(epoch);
     if (inflightP) return { text: await inflightP };
+    sessSegs.delete(epoch);
+    if (sessSegs.size === 0) segments.delete(sessionId);
     const finalizeP = (async () => {
       const all = seg.allSamples;
       const senseP = all.length > 0 ? Promise.race([
@@ -468,12 +470,7 @@ function createAsrRuntime(options) {
       const sense = await senseP;
       return (sense && sense.trim() ? sense : settled) || "";
     })().then((finalText) => {
-      if ((resetGen.get(sessionId) ?? 0) !== myGen) {
-        const ff0 = finalizing.get(sessionId);
-        ff0?.delete(epoch);
-        if (ff0 && ff0.size === 0) finalizing.delete(sessionId);
-        return finalText;
-      }
+      if ((resetGen.get(sessionId) ?? 0) !== myGen) return finalText;
       let fm = finalized.get(sessionId);
       if (!fm) {
         fm = /* @__PURE__ */ new Map();
@@ -484,8 +481,6 @@ function createAsrRuntime(options) {
         const first = fm.keys().next().value;
         if (first !== void 0) fm.delete(first);
       }
-      sessSegs.delete(epoch);
-      if (sessSegs.size === 0) segments.delete(sessionId);
       const ff = finalizing.get(sessionId);
       ff?.delete(epoch);
       if (ff && ff.size === 0) finalizing.delete(sessionId);
@@ -494,13 +489,6 @@ function createAsrRuntime(options) {
       const ff = finalizing.get(sessionId);
       ff?.delete(epoch);
       if (ff && ff.size === 0) finalizing.delete(sessionId);
-      if ((resetGen.get(sessionId) ?? 0) === myGen) {
-        try {
-          sessSegs.delete(epoch);
-          if (sessSegs.size === 0) segments.delete(sessionId);
-        } catch {
-        }
-      }
       console.warn("[dsh-voice-mode] finalize failed: " + String(e));
       return "";
     });

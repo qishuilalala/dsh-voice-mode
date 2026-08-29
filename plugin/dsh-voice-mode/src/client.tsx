@@ -1233,6 +1233,7 @@ export function MicButton({
         isSpeechTrueCount = 0 // 打断根治：任何 host 驱动退出（状态条退出/被抢占/跨 tab 让出）都复位计数
         breakRef.current = null
         manualHoldRef.current = false
+        holdCtrlRef.current = false // 复位 Ctrl 按住态（防抢占后残留致下次手势错乱）
         const engine = engineRef.current
         engineRef.current = null
         // Fix：先置 null 防重入，再异步 stop（stop 内部会阻止 handleAudio）
@@ -1719,6 +1720,7 @@ export function MicButton({
         } else if (bootNow().bargeInMode === 'manual' && bus.ui.playing) {
           // 手动打断（外放）：按住 Ctrl 立即停 AI + 接管收音（不依赖 VAD，回声无关）。
           manualHoldRef.current = true
+          setHolding(true)
           eng.beginHeld()
           void breakRef.current?.()
         }

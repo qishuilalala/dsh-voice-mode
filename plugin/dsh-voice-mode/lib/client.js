@@ -365,6 +365,10 @@ function createAsrEngine(config, sessionId) {
             }, 5e3);
           });
         }
+        if (res.status === 202) {
+          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize \u6A21\u578B\u52A0\u8F7D\u8D85\u65F6\uFF08\u91CD\u8BD5\u8017\u5C3D\uFF09");
+          continue;
+        }
         if (res.status === 403 && config.onSessionExpired) {
           const recovered = await config.onSessionExpired();
           if (recovered && segmentEpoch === epochSnapshot + 1) {
@@ -1663,7 +1667,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "228acac";
+var BUILD_TAG = "06c274b";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2490,6 +2494,7 @@ function MicButton({
         isSpeechTrueCount = 0;
         breakRef.current = null;
         manualHoldRef.current = false;
+        holdCtrlRef.current = false;
         const engine = engineRef.current;
         engineRef.current = null;
         if (engine) void engine.stop();
@@ -2865,6 +2870,7 @@ function MicButton({
           }, 600);
         } else if (bootNow().bargeInMode === "manual" && bus.ui.playing) {
           manualHoldRef.current = true;
+          setHolding(true);
           eng.beginHeld();
           void breakRef.current?.();
         }

@@ -481,6 +481,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
             }, 5000)
           })
         }
+        // 5s 重试后模型仍加载（202 持久）：外层继续重试（有界 3 次），而非 return 静默丢句。
+        if (res.status === 202) {
+          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn('[dsh-voice-mode] finalize 模型加载超时（重试耗尽）')
+          continue
+        }
         // 403 会话过期：host 端活跃会话已变更（如被抢占/让出），尝试恢复后重试一次。
         if (res.status === 403 && config.onSessionExpired) {
           const recovered = await config.onSessionExpired()
