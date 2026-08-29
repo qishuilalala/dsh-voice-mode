@@ -15,8 +15,9 @@
 import { fork, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
-import { ensureModelFile, type ModelFileSpec } from './models.ts'
-import type { TtsEngine } from './tts-queue.ts'
+import { statSync } from 'node:fs'
+import { ensureModelFile, ensureModelTree, type ModelFileSpec } from './models.ts'
+import type { TtsEngine, TtsEngineStatus, TtsFileStatus } from './tts-queue.ts'
 
 export const TTS_MODEL_REPO = 'csukuangfj/sherpa-onnx-vits-zh-ll'
 export const KOKORO_MODEL_DIR = 'csukuangfj/kokoro-multi-lang-v1_1'
@@ -245,6 +246,9 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
   let voice = spec.defaultVoice
   let speed = 1.0
   let ready: Promise<void> | null = null
+  /** 引擎/模型现状（设置面板轮询）：加载中 / 最近错误。 */
+  let engineLoading = false
+  let engineError: string | undefined
   let nextId = 1
   const pending = new Map<number, { resolve: (r: WorkerResponse) => void; reject: (e: Error) => void }>()
 
@@ -269,6 +273,9 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
     if (ready && child) return ready
     if (!ready) {
       ready = (async () => {
+        engineLoading = true
+        engineError = undefined
+        try {
         // 冷启动/重建时才校验模型与 init（旧实现每句合成都重哈希数百 MB 模型
         // 文件并重建引擎实例——句间 3-5 秒停顿的真正元凶）。
         if (!child || !childInit) {
@@ -282,7 +289,20 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
               allowCustomHost,
               broadcast,
             })
-            if (!ok) throw new Error(`local TTS model download/verify failed: ${f.file}`)
+            if (!ok) throw new Error('local TTS model download/verify failed: ' + f.file)
+          }
+          // 1b) Kokoro：espeak-ng-data 是按目录分发的 ~355 个语音表文件，spec 只列
+          //     phontab 作哨兵；必须整树补全，否则 worker 报 "phonindex does not exist"。
+          if (options.kind === 'kokoro') {
+            const treeOk = await ensureModelTree({
+              repo: repoName,
+              repoDir,
+              subdir: 'espeak-ng-data',
+              primaryHost: modelHost(),
+              allowCustomHost,
+              broadcast,
+            })
+            if (!treeOk) throw new Error('local TTS model download failed: espeak-ng-data')
           }
           // 2) 子进程：加载模型并合成（同步 CPU 在子进程内，不阻塞主线程；
           //    kokoro 走原生 addon（稳定无 Abort），vits 走 WASM（子进程主线程实测稳定）。
@@ -331,6 +351,12 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
           }
         }
         broadcast('tts-ready', { engine: options.kind, worker: true })
+        } catch (e) {
+          engineError = e instanceof Error ? e.message : String(e)
+          throw e
+        } finally {
+          engineLoading = false
+        }
       })().finally(() => {
         ready = null
       })
@@ -344,6 +370,36 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
       voice = nextVoice || voice
       if (typeof nextRate === 'number' && Number.isFinite(nextRate)) {
         speed = Math.min(2, Math.max(0.5, nextRate))
+      }
+    },
+    status(): TtsEngineStatus {
+      // 本地引擎：按 spec 清单统计当前模型文件现状（存在/字节），用于设置面板展示。
+      // local.ready = 全部必需模型文件已就绪（缓存完整）；引擎 ready = 子进程已 init。
+      const files = spec.files.map((f: ModelFileSpec): TtsFileStatus => {
+        const p = join(repoDir, f.file)
+        let exists = false
+        let size = 0
+        try {
+          const st = statSync(p)
+          exists = st.isFile()
+          size = st.size
+        } catch {
+          // 文件不存在：exists=false
+        }
+        return { name: f.file, exists, size }
+      })
+      return {
+        engine: options.kind,
+        ready: childInit === true,
+        loading: engineLoading,
+        error: engineError,
+        local: {
+          repo: repoName,
+          ready: files.every((f) => f.exists),
+          loading: engineLoading,
+          error: engineError,
+          files,
+        },
       }
     },
     async synthesize(text: string, opts: { voice?: string; rate?: number } = {}): Promise<Buffer> {

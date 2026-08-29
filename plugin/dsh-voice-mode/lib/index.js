@@ -2,6 +2,7 @@
 import z from "@deepseek-ai/schemastery";
 import { join as join4 } from "node:path";
 import { homedir } from "node:os";
+import { rm } from "node:fs/promises";
 
 // src/asr-host.ts
 import { statSync } from "node:fs";
@@ -205,7 +206,6 @@ async function ensureModelFile(opts) {
       lastError = String(e);
     }
   }
-  await unlink(partPath).catch(() => void 0);
   broadcast("asr-error", { file: spec.file, reason: "checksum_or_download_failed", detail: lastError });
   return false;
 }
@@ -267,6 +267,86 @@ async function downloadVerified(opts) {
   }
   await rename(partPath, localPath);
   return true;
+}
+async function ensureModelTree(opts) {
+  const { repo, repoDir, subdir, primaryHost, allowCustomHost, broadcast } = opts;
+  const hosts = [...new Set([primaryHost, HOST_PRIMARY, HOST_FALLBACK].filter(Boolean))];
+  const subRoot = join(repoDir, subdir);
+  await mkdir(subRoot, { recursive: true }).catch(() => void 0);
+  let tree = [];
+  for (const host of hosts) {
+    try {
+      const res = await fetch(host + "/api/models/" + repo + "?blobs=true", { headers: { "user-agent": "dsh-voice-mode" } });
+      if (res.ok) {
+        const j = await res.json();
+        tree = (j.siblings ?? []).map((s) => s.rfilename ?? "").filter((f) => f.startsWith(subdir + "/") && f.length > 0);
+        if (tree.length > 0) break;
+      }
+    } catch {
+    }
+  }
+  if (tree.length === 0) return false;
+  let allOk = true;
+  let done = 0;
+  const queue = [...tree];
+  const worker = async () => {
+    for (; ; ) {
+      const rel = queue.shift();
+      if (rel === void 0) return;
+      const localPath = join(repoDir, rel);
+      const partPath = localPath + ".part";
+      if ((await stat(localPath).catch(() => null))?.isFile() && (await stat(localPath)).size > 0) {
+        done++;
+        continue;
+      }
+      await mkdir(join(repoDir, rel.slice(0, rel.lastIndexOf("/"))), { recursive: true }).catch(() => void 0);
+      let ok = false;
+      for (const host of hosts) {
+        try {
+          const url = host + "/" + repo + "/resolve/main/" + encodeURIComponent(rel);
+          const res = await fetch(url, { headers: { "user-agent": "dsh-voice-mode" }, redirect: "follow" });
+          if (!redirectHostAllowed(res.url, allowCustomHost)) continue;
+          if (res.status !== 200) continue;
+          const sink = createWriteStream(partPath);
+          const reader = res.body?.getReader();
+          if (!reader) continue;
+          let size = 0;
+          await new Promise((resolve, reject) => {
+            sink.on("error", reject);
+            sink.on("finish", resolve);
+            void (async () => {
+              try {
+                for (; ; ) {
+                  const r = await reader.read();
+                  if (r.done) break;
+                  size += r.value.byteLength;
+                  if (!sink.write(r.value)) await new Promise((r2) => sink.once("drain", r2));
+                }
+                sink.end();
+              } catch (e) {
+                sink.destroy(e);
+                reject(e);
+              }
+            })();
+          });
+          if (size > 0) {
+            await rename(partPath, localPath);
+            ok = true;
+            break;
+          }
+        } catch {
+        }
+      }
+      if (ok) {
+        done++;
+        broadcast("asr-progress", { file: rel, percent: Math.round(done / tree.length * 100) });
+      } else {
+        allOk = false;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: 8 }, () => worker()));
+  return allOk;
 }
 
 // src/asr-host.ts
@@ -1018,6 +1098,12 @@ var TtsQueue = class {
   updateVoice(voice, rate) {
     this.engine.updateVoice(voice, rate);
   }
+  /** 当前引擎/模型现状（设置面板状态区轮询）。 */
+  status() {
+    const s = this.engine.status?.();
+    if (s) return s;
+    return { engine: "edge", ready: true, loading: false };
+  }
   /**
    * 一次性合成（设置卡「试听」用）：委托当前引擎；不干扰朗读队列的在途合成。
    * 失败（含非法音色）抛错。
@@ -1135,6 +1221,7 @@ var TtsQueue = class {
 import { fork } from "node:child_process";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { join as join3 } from "node:path";
+import { statSync as statSync2 } from "node:fs";
 var TTS_MODEL_REPO = "csukuangfj/sherpa-onnx-vits-zh-ll";
 var KOKORO_MODEL_DIR = "csukuangfj/kokoro-multi-lang-v1_1";
 var TTS_MODEL_FILES = [
@@ -1385,6 +1472,8 @@ function createSherpaLocalEngine(options) {
   let voice = spec.defaultVoice;
   let speed = 1;
   let ready = null;
+  let engineLoading = false;
+  let engineError;
   let nextId = 1;
   const pending = /* @__PURE__ */ new Map();
   const call = (msg) => new Promise((resolve, reject) => {
@@ -1404,59 +1493,79 @@ function createSherpaLocalEngine(options) {
     if (ready && child) return ready;
     if (!ready) {
       ready = (async () => {
-        if (!child || !childInit) {
-          for (const f of spec.files) {
-            const ok = await ensureModelFile({
-              repo: repoName,
-              repoDir,
-              spec: f,
-              primaryHost: modelHost(),
-              allowCustomHost,
-              broadcast
-            });
-            if (!ok) throw new Error(`local TTS model download/verify failed: ${f.file}`);
+        engineLoading = true;
+        engineError = void 0;
+        try {
+          if (!child || !childInit) {
+            for (const f of spec.files) {
+              const ok = await ensureModelFile({
+                repo: repoName,
+                repoDir,
+                spec: f,
+                primaryHost: modelHost(),
+                allowCustomHost,
+                broadcast
+              });
+              if (!ok) throw new Error("local TTS model download/verify failed: " + f.file);
+            }
+            if (options.kind === "kokoro") {
+              const treeOk = await ensureModelTree({
+                repo: repoName,
+                repoDir,
+                subdir: "espeak-ng-data",
+                primaryHost: modelHost(),
+                allowCustomHost,
+                broadcast
+              });
+              if (!treeOk) throw new Error("local TTS model download failed: espeak-ng-data");
+            }
+            if (!child) {
+              child = fork(workerPath, [], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+              let stderrTail = "";
+              child.stderr?.on("data", (chunk) => {
+                stderrTail += String(chunk);
+                const lines = stderrTail.split("\n");
+                stderrTail = lines.pop() ?? "";
+                for (const line of lines) {
+                  const s = line.trim();
+                  if (!s) continue;
+                  if (/Skip unknown phonemes/.test(s)) continue;
+                  console.error(`[tts-worker:${options.kind}] ${s}`);
+                }
+              });
+              child.on("message", (m) => {
+                const p = pending.get(m.id);
+                if (!p) return;
+                pending.delete(m.id);
+                if (m.ok) p.resolve(m);
+                else p.reject(new Error(m.error ?? "tts child error"));
+              });
+              child.on("error", (e) => {
+                rejectAll(e instanceof Error ? e : new Error(String(e)));
+                child = null;
+                childInit = false;
+                ready = null;
+              });
+              child.on("exit", (code) => {
+                rejectAll(new Error(`tts child exited with code ${code}`));
+                child = null;
+                childInit = false;
+                ready = null;
+              });
+            }
+            if (!childInit) {
+              const init = await call({ type: "init", kind: options.kind, paths: spec.workerPaths(repoDir) });
+              if (!init.ok) throw new Error(init.error ?? "tts child init failed");
+              childInit = true;
+            }
           }
-          if (!child) {
-            child = fork(workerPath, [], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
-            let stderrTail = "";
-            child.stderr?.on("data", (chunk) => {
-              stderrTail += String(chunk);
-              const lines = stderrTail.split("\n");
-              stderrTail = lines.pop() ?? "";
-              for (const line of lines) {
-                const s = line.trim();
-                if (!s) continue;
-                if (/Skip unknown phonemes/.test(s)) continue;
-                console.error(`[tts-worker:${options.kind}] ${s}`);
-              }
-            });
-            child.on("message", (m) => {
-              const p = pending.get(m.id);
-              if (!p) return;
-              pending.delete(m.id);
-              if (m.ok) p.resolve(m);
-              else p.reject(new Error(m.error ?? "tts child error"));
-            });
-            child.on("error", (e) => {
-              rejectAll(e instanceof Error ? e : new Error(String(e)));
-              child = null;
-              childInit = false;
-              ready = null;
-            });
-            child.on("exit", (code) => {
-              rejectAll(new Error(`tts child exited with code ${code}`));
-              child = null;
-              childInit = false;
-              ready = null;
-            });
-          }
-          if (!childInit) {
-            const init = await call({ type: "init", kind: options.kind, paths: spec.workerPaths(repoDir) });
-            if (!init.ok) throw new Error(init.error ?? "tts child init failed");
-            childInit = true;
-          }
+          broadcast("tts-ready", { engine: options.kind, worker: true });
+        } catch (e) {
+          engineError = e instanceof Error ? e.message : String(e);
+          throw e;
+        } finally {
+          engineLoading = false;
         }
-        broadcast("tts-ready", { engine: options.kind, worker: true });
       })().finally(() => {
         ready = null;
       });
@@ -1470,6 +1579,33 @@ function createSherpaLocalEngine(options) {
       if (typeof nextRate === "number" && Number.isFinite(nextRate)) {
         speed = Math.min(2, Math.max(0.5, nextRate));
       }
+    },
+    status() {
+      const files = spec.files.map((f) => {
+        const p = join3(repoDir, f.file);
+        let exists = false;
+        let size = 0;
+        try {
+          const st = statSync2(p);
+          exists = st.isFile();
+          size = st.size;
+        } catch {
+        }
+        return { name: f.file, exists, size };
+      });
+      return {
+        engine: options.kind,
+        ready: childInit === true,
+        loading: engineLoading,
+        error: engineError,
+        local: {
+          repo: repoName,
+          ready: files.every((f) => f.exists),
+          loading: engineLoading,
+          error: engineError,
+          files
+        }
+      };
     },
     async synthesize(text, opts = {}) {
       await ensureReady();
@@ -1583,7 +1719,7 @@ var inject = ["webServer", "settings", "sessions"];
 var defaultModelCacheDir = () => process.platform === "win32" ? join4(process.env.LOCALAPPDATA ?? join4(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join4(homedir(), ".cache", "dsh-voice-mode", "models");
 var VOICE_SETTINGS_DEFAULTS = {
   ttsEngine: "vits",
-  voice: "suyingxue",
+  voice: "fushiyu",
   rate: 1,
   interruptLevel: 0,
   silenceMs: 700,
@@ -1634,7 +1770,7 @@ var Config = z.object({
   ttsEngine: z.union([z.const("edge"), z.const("vits"), z.const("kokoro")]).default("vits"),
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
-  voice: z.string().default("suyingxue"),
+  voice: z.string().default("fushiyu"),
   rate: z.number().default(1),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(700),
@@ -1967,7 +2103,7 @@ function apply(ctx, config) {
       path: `${base}/models/status`,
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
-        respondJson2(res, 200, asr.modelStatus());
+        respondJson2(res, 200, { ...asr.modelStatus(), tts: queue.status() });
       }
     })
   );
@@ -1999,6 +2135,42 @@ function apply(ctx, config) {
           void asr.retryModel(kind).then((done) => {
             respondJson2(res, 200, { ok: done, kind });
           });
+        });
+      }
+    })
+  );
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: "exact",
+      path: `${base}/models/clean`,
+      handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
+        if (denyCrossOrigin(req, res)) return;
+        if (!config.enabled) {
+          respondJson2(res, 403, { error: "voice mode disabled" });
+          return;
+        }
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
+          let engine = "vits";
+          try {
+            const p = JSON.parse(body || "{}");
+            if (p.engine === "kokoro" || p.engine === "vits") engine = p.engine;
+            else {
+              respondJson2(res, 400, { error: "invalid engine" });
+              return;
+            }
+          } catch {
+            respondJson2(res, 400, { error: "invalid json" });
+            return;
+          }
+          const dir = join4(config.cacheDir, engine === "kokoro" ? KOKORO_MODEL_DIR : TTS_MODEL_REPO);
+          void rm(dir, { recursive: true, force: true }).then(() => {
+            if (engineKind === engine) {
+              queue.setEngine(makeEngine(engine));
+              queue.updateVoice(vset.voice, vset.rate);
+            }
+            respondJson2(res, 200, { ok: true, engine });
+          }).catch((e) => respondJson2(res, 500, { error: String(e) }));
         });
       }
     })

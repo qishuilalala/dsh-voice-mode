@@ -122,7 +122,9 @@ export async function ensureModelFile(opts: EnsureModelOptions): Promise<boolean
       lastError = String(e)
     }
   }
-  await unlink(partPath).catch(() => undefined)
+  // 不删 .part：保留断点续传进度。慢网络（如 310MB Kokoro 主模型 @ ~250KB/s）
+  // 单次请求无法下载完，删掉会让每次预览都从头开始、永远不完成。
+  // 仅在校验失败（downloadVerified 内部 SHA 不匹配）时才清 .part——那里已处理。
   broadcast('asr-error', { file: spec.file, reason: 'checksum_or_download_failed', detail: lastError })
   return false
 }
@@ -200,4 +202,104 @@ async function downloadVerified(opts: {
   }
   await rename(partPath, localPath)
   return true
+}
+
+/**
+ * 确保某仓库子目录内的全部文件存在（如 Kokoro 的 espeak-ng-data：按目录分发的 ~355 个
+ * 语音表文件，无独立 SHA 清单）。与 ensureModelFile 不同：树文件靠「下载成功 + size>0」
+ * 判定，不逐一校验 SHA（均为官方仓库的非权重资产；权重类仍走 ensureModelFile 强校验）。
+ * 任一文件在所有上游失败时返回 false（上层可退避重试）。
+ */
+export async function ensureModelTree(opts: {
+  repo: string
+  repoDir: string
+  subdir: string
+  primaryHost: string
+  allowCustomHost: boolean
+  broadcast: (event: string, payload: unknown) => void
+}): Promise<boolean> {
+  const { repo, repoDir, subdir, primaryHost, allowCustomHost, broadcast } = opts
+  const hosts = [...new Set([primaryHost, HOST_PRIMARY, HOST_FALLBACK].filter(Boolean))]
+  // 取其父目录（子目录文件写入正确层）。
+  const subRoot = join(repoDir, subdir)
+  await mkdir(subRoot, { recursive: true }).catch(() => undefined)
+
+  let tree: string[] = []
+  for (const host of hosts) {
+    try {
+      const res = await fetch(host + '/api/models/' + repo + '?blobs=true', { headers: { 'user-agent': 'dsh-voice-mode' } })
+      if (res.ok) {
+        const j = (await res.json()) as { siblings?: Array<{ rfilename?: string }> }
+        tree = (j.siblings ?? []).map((s) => s.rfilename ?? '').filter((f) => f.startsWith(subdir + '/') && f.length > 0)
+        if (tree.length > 0) break
+      }
+    } catch {
+      // 尝试下一个 host
+    }
+  }
+  if (tree.length === 0) return false
+
+  let allOk = true
+  let done = 0
+  const queue = [...tree]
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const rel = queue.shift()
+      if (rel === undefined) return
+      const localPath = join(repoDir, rel)
+      const partPath = localPath + '.part'
+      if ((await stat(localPath).catch(() => null))?.isFile() && (await stat(localPath)).size > 0) {
+        done++
+        continue
+      }
+      await mkdir(join(repoDir, rel.slice(0, rel.lastIndexOf('/'))), { recursive: true }).catch(() => undefined)
+      let ok = false
+      for (const host of hosts) {
+        try {
+          const url = host + '/' + repo + '/resolve/main/' + encodeURIComponent(rel)
+          const res = await fetch(url, { headers: { 'user-agent': 'dsh-voice-mode' }, redirect: 'follow' })
+          if (!redirectHostAllowed(res.url, allowCustomHost)) continue
+          if (res.status !== 200) continue
+          const sink = createWriteStream(partPath)
+          const reader = res.body?.getReader()
+          if (!reader) continue
+          let size = 0
+          await new Promise<void>((resolve, reject) => {
+            sink.on('error', reject)
+            sink.on('finish', resolve)
+            void (async () => {
+              try {
+                for (;;) {
+                  const r = await reader.read()
+                  if (r.done) break
+                  size += r.value.byteLength
+                  if (!sink.write(r.value)) await new Promise((r2) => sink.once('drain', r2))
+                }
+                sink.end()
+              } catch (e) {
+                sink.destroy(e as Error)
+                reject(e as Error)
+              }
+            })()
+          })
+          if (size > 0) {
+            await rename(partPath, localPath)
+            ok = true
+            break
+          }
+        } catch {
+          // 下一个 host
+        }
+      }
+      if (ok) {
+        done++
+        broadcast('asr-progress', { file: rel, percent: Math.round((done / tree.length) * 100) })
+      } else {
+        allOk = false
+      }
+    }
+  }
+  // 限并发：表文件小而多，8 路足够。
+  await Promise.all(Array.from({ length: 8 }, () => worker()))
+  return allOk
 }

@@ -24,10 +24,11 @@ import type { AssembleContext, PromptAssembly } from '@deepseek-ai/dsh-system-pr
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { rm } from 'node:fs/promises'
 import { createAsrRuntime, handleAsrRequest } from './asr-host.ts'
 import { SentenceSegmenter } from './segmenter.ts'
 import { EdgeTtsEngine, TtsQueue, type TtsEngine } from './tts-queue.ts'
-import { createSherpaVitsEngine, createSherpaKokoroEngine } from './tts-local.ts'
+import { createSherpaVitsEngine, createSherpaKokoroEngine, TTS_MODEL_REPO, KOKORO_MODEL_DIR } from './tts-local.ts'
 import { HOST_PRIMARY, validateModelHost } from './models.ts'
 import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts'
 
@@ -145,7 +146,7 @@ export interface VoiceSettingsValue {
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
 const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   ttsEngine: 'vits',
-  voice: 'suyingxue',
+  voice: 'fushiyu',
   rate: 1.0,
   interruptLevel: 0,
   silenceMs: 700,
@@ -259,7 +260,7 @@ export const Config: z<Config> = z.object({
   ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro')]).default('vits'),
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
-  voice: z.string().default('suyingxue'),
+  voice: z.string().default('fushiyu'),
   rate: z.number().default(1.0),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(700),
@@ -692,7 +693,7 @@ export function apply(ctx: Context, config: Config): void {
       handler: (req, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
         // 模型实时状态（设置面板轮询；无需语音模式）。
-        respondJson(res, 200, asr.modelStatus())
+        respondJson(res, 200, { ...asr.modelStatus(), tts: queue.status() })
       },
     }),
   )
@@ -727,6 +728,47 @@ export function apply(ctx: Context, config: Config): void {
           void asr.retryModel(kind).then((done) => {
             respondJson(res, 200, { ok: done, kind })
           })
+        })
+      },
+    }),
+  )
+
+  ctx.effect(() =>
+    ctx.webServer.register({
+      kind: 'exact',
+      path: `${base}/models/clean`,
+      handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
+        if (denyCrossOrigin(req, res)) return
+        if (!config.enabled) {
+          respondJson(res, 403, { error: 'voice mode disabled' })
+          return
+        }
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
+          // 清理本地 TTS 引擎模型缓存（vits/kokoro），下一句合成重新下载。
+          let engine: 'vits' | 'kokoro' = 'vits'
+          try {
+            const p = JSON.parse(body || '{}') as { engine?: unknown }
+            if (p.engine === 'kokoro' || p.engine === 'vits') engine = p.engine
+            else {
+              respondJson(res, 400, { error: 'invalid engine' })
+              return
+            }
+          } catch {
+            respondJson(res, 400, { error: 'invalid json' })
+            return
+          }
+          const dir = join(config.cacheDir, engine === 'kokoro' ? KOKORO_MODEL_DIR : TTS_MODEL_REPO)
+          void rm(dir, { recursive: true, force: true })
+            .then(() => {
+              // 清理的是当前引擎：重建引擎（下一句合成触发重新下载/init）。
+              if (engineKind === engine) {
+                queue.setEngine(makeEngine(engine))
+                queue.updateVoice(vset.voice, vset.rate)
+              }
+              respondJson(res, 200, { ok: true, engine })
+            })
+            .catch((e) => respondJson(res, 500, { error: String(e) }))
         })
       },
     }),

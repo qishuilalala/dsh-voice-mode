@@ -25,6 +25,41 @@ export interface TtsEngine {
   interrupt?(): void
   /** 释放引擎资源（插件卸载/热重载）。 */
   close(): Promise<void>
+  /** 引擎/模型现状（设置面板状态区轮询；可选）。 */
+  status?(): TtsEngineStatus
+}
+
+/** 单个模型文件的存在状态（用于设置面板现状展示）。 */
+export interface TtsFileStatus {
+  name: string
+  exists: boolean
+  size: number
+}
+
+/** 本地引擎某模型的组状态（仓库内文件 + 就绪/加载/失败）。 */
+export interface TtsModelGroup {
+  repo: string
+  /** 组内全部必需文件已就绪（校验通过）。 */
+  ready: boolean
+  /** 正在初始化/加载（下载/子进程 init）。 */
+  loading: boolean
+  /** 最近一次加载/下载错误（可读字符串）。 */
+  error?: string
+  files: TtsFileStatus[]
+}
+
+/** 引擎/模型现状（设置面板轮询）。 */
+export interface TtsEngineStatus {
+  /** 当前生效引擎。 */
+  engine: 'edge' | 'vits' | 'kokoro'
+  /** 当前引擎是否就绪（本地：模型校验 + 子进程 init；edge：恒 true）。 */
+  ready: boolean
+  /** 当前引擎正在初始化/加载。 */
+  loading: boolean
+  /** 当前引擎最近一次错误。 */
+  error?: string
+  /** 当前引擎的模型组（edge 无 local）。 */
+  local?: TtsModelGroup
 }
 
 /** TTS 分块帧（P1-1）：单 chunk 合成场景下 chunkId 固定 0，final=true 帧携带字幕文本。 */
@@ -154,6 +189,14 @@ export class TtsQueue {
   /** 动态更换音色/语速（设置即时生效；正在合成的句子不受影响）。 */
   updateVoice(voice: string, rate?: number): void {
     this.engine.updateVoice(voice, rate)
+  }
+
+  /** 当前引擎/模型现状（设置面板状态区轮询）。 */
+  status(): TtsEngineStatus {
+    const s = this.engine.status?.()
+    if (s) return s
+    // Edge 云端引擎：无本地模型，视为恒就绪。
+    return { engine: 'edge', ready: true, loading: false }
   }
 
   /**

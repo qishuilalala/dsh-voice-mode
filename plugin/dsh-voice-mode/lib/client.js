@@ -984,14 +984,14 @@ var zh = {
   modeBtnToggle: "\u6301\u7EED\u8046\u542C",
   modeBtnHold: "\u6309\u4F4F\u8BF4",
   modeBtnTitle: "\u70B9\u51FB\u5207\u6362\u4EA4\u4E92\u6A21\u5F0F\uFF08\u4FDD\u5B58\u5230\u8BBE\u7F6E\uFF09",
-  descVoice: "Edge TTS \u97F3\u8272\uFF08\u25C0\u25B6 \u5DE6\u53F3\u5207\u6362\u5E38\u7528\u97F3\u8272\uFF0C\u5176\u4F59\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u52A8\u586B ShortName\uFF09",
-  descVoiceLocal: "\u672C\u5730\u97F3\u8272\uFF08vits-zh-ll \u4E94\u8BF4\u8BDD\u4EBA\uFF0C\u25C0\u25B6 \u5207\u6362\uFF1B\u300C\u81EA\u5B9A\u4E49\u300D\u53EF\u586B 0-4 \u6216\u82F1\u6587\u540D\uFF09",
+  descVoice: "Edge TTS \u97F3\u8272\uFF08\u5217\u51FA 14 \u4E2A\u4E2D\u6587/\u7CA4\u8BED/\u53F0\u8BED/\u82F1\u6587\u5E38\u7528\uFF0C\u4E0B\u62C9\u6216 \u25C0\u25B6 \u9009\uFF1B\u5176\u4F59\u5FAE\u8F6F\u97F3\u8272\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u586B ShortName \u5982 zh-CN-XiaoxiaoNeural\uFF09",
+  descVoiceLocal: "\u672C\u5730\u97F3\u8272\uFF08vits \u4E94\u4E2A\u8BF4\u8BDD\u4EBA\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B\u300C\u81EA\u5B9A\u4E49\u300D\u53EF\u586B 0-4 \u6216\u82F1\u6587\u540D\uFF09",
   ttsEngine: "\u6717\u8BFB\u5F15\u64CE",
   descTtsEngine: "\u672C\u5730 VITS\uFF08\u7EAF\u4E2D\u6587\uFF09/ \u672C\u5730 Kokoro\uFF08\u4E2D\u82F1\u5747\u53EF\uFF09/ Edge \u4E91\u7AEF\uFF08\u97F3\u8D28\u6700\u81EA\u7136\uFF0C\u6587\u672C\u4E0A\u5FAE\u8F6F\uFF09",
   engineVits: "\u672C\u5730 VITS",
   engineKokoro: "\u672C\u5730\u4E2D\u82F1",
   engineEdge: "Edge \u4E91\u7AEF",
-  descVoiceKokoro: "Kokoro \u4E2D\u82F1\u97F3\u8272\uFF08103 \u4E2A\uFF0C\u25C0\u25B6 \u5DE6\u53F3\u5207\u6362\uFF1B48-51 \u4E2D\u6587\u540D\uFF0C\u5176\u4F59\u6309\u7F16\u53F7+\u5B9E\u6D4B\u6027\u522B\u6807\u6CE8\uFF0C\u4E2D\u82F1\u6DF7\u8BFB\u5747\u53EF\uFF09",
+  descVoiceKokoro: "Kokoro \u4E2D\u82F1\u97F3\u8272\uFF08103 \u4E2A\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B48-51 \u4E2D\u6587\u540D\uFF0C\u5176\u4F59\u6309\u7F16\u53F7+\u5B9E\u6D4B\u6027\u522B\u6807\u6CE8\uFF0C\u4E2D\u82F1\u6DF7\u8BFB\u5747\u53EF\uFF09",
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09",
   descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF1B\u53D1\u58F0\u786E\u8BA4\u7EA6 0.3/0.2/0.1 \u79D2\uFF09",
   descBargeIn: "\u6253\u65AD\u65B9\u5F0F\uFF08auto \u81EA\u52A8\u6253\u65AD\uFF1A\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u8033\u673A/\u5B89\u9759\u73AF\u5883\u63A8\u8350\uFF1Bmanual \u624B\u52A8\u6253\u65AD\uFF1A\u5916\u653E\u63A8\u8350\u2014\u2014\u56DE\u58F0\u4E0D\u4F1A\u8BEF\u89E6\u53D1\u81EA\u6253\u65AD\uFF0C\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u663E\u5F0F\u6253\u65AD\uFF09",
@@ -1044,6 +1044,25 @@ var zh = {
   modelsRetrying: "\u91CD\u8BD5\u4E2D\u2026",
   modelsRetryHint: "\u955C\u50CF\u5207\u6362\u6216\u4E0B\u8F7D\u5931\u8D25\u540E\u70B9\u51FB\u7ACB\u5373\u91CD\u8BD5",
   modelsHint: "\u4E0B\u8F7D/\u8FDB\u5EA6\u5B9E\u65F6\u8DDF\u8FDB\uFF1B\u5931\u8D25\u81EA\u52A8\u9000\u907F 60s \u91CD\u8BD5\u3002\u955C\u50CF\u6E90\u5207\u6362\u540E\u70B9\u300C\u91CD\u8BD5\u4E0B\u8F7D\u300D\u7ACB\u5373\u751F\u6548\uFF1B\u4E5F\u53EF\u7528 npm run prefetch \u9884\u4E0B\u8F7D\u3002",
+  // 朗读引擎与音色模型（设置面板现状）
+  ttsTitle: "\u6717\u8BFB\u5F15\u64CE\u4E0E\u97F3\u8272\u6A21\u578B",
+  engineLoading: "\u52A0\u8F7D\u4E2D\u2026",
+  engineReady: "\u5C31\u7EEA",
+  engineError: "\u52A0\u8F7D\u5931\u8D25",
+  engineIdle: "\u5F85\u4E0B\u8F7D/\u672A\u52A0\u8F7D",
+  ttsModelsReady: "\u672C\u5730\u6A21\u578B\u5DF2\u5C31\u7EEA",
+  ttsModelsMissing: "\u672C\u5730\u6A21\u578B\u672A\u5C31\u7EEA",
+  ttsModelsFail: "\u672C\u5730\u6A21\u578B\u4E0B\u8F7D/\u6821\u9A8C\u5931\u8D25",
+  modelsFileCount: "\u4E2A\u6587\u4EF6",
+  ttsRedownload: "\u91CD\u65B0\u4E0B\u8F7D",
+  ttsRedownloadHint: "\u6E05\u7406\u8BE5\u5F15\u64CE\u6A21\u578B\u7F13\u5B58\u5E76\u91CD\u65B0\u4E0B\u8F7D",
+  ttsCleaning: "\u6E05\u7406\u4E2D\u2026",
+  // 设置分组标题
+  secRead: "\u6717\u8BFB\u4E0E\u97F3\u8272",
+  secInterrupt: "\u6253\u65AD\u4E0E\u9759\u97F3",
+  secInteraction: "\u4EA4\u4E92\u4E0E\u8F93\u5165",
+  secRecognition: "\u8BC6\u522B\u4E0E\u53E3\u8BED",
+  secModel: "\u6A21\u578B\u4E0E\u955C\u50CF",
   telTotal: "\u5408\u8BA1"
 };
 var en = {
@@ -1158,6 +1177,23 @@ var en = {
   modelsRetrying: "Retrying\u2026",
   modelsRetryHint: "Click to retry now after switching mirror or a failure",
   modelsHint: "Live download state; failures auto-backoff 60s. After switching the mirror, click Retry to take effect immediately; npm run prefetch pre-downloads.",
+  ttsTitle: "Engine & voice models",
+  engineLoading: "loading\u2026",
+  engineReady: "ready",
+  engineError: "failed",
+  engineIdle: "not loaded",
+  ttsModelsReady: "local models ready",
+  ttsModelsMissing: "local models missing",
+  ttsModelsFail: "local models download/checksum failed",
+  modelsFileCount: "files",
+  ttsRedownload: "Re-download",
+  ttsRedownloadHint: "Clear this engine model cache and re-download",
+  ttsCleaning: "Clearing\u2026",
+  secRead: "Reading & voice",
+  secInterrupt: "Interrupt & silence",
+  secInteraction: "Interaction",
+  secRecognition: "Recognition & speech",
+  secModel: "Model & mirror",
   telTotal: "total"
 };
 var guess = () => /^zh\b/i.test(
@@ -1398,8 +1434,8 @@ var VOICE_OPTIONS_KOKORO = [
   ...KOKORO_F0.map((_, sid) => kokoroOption(sid)).filter((o) => !KOKORO_PINNED.includes(Number(o.v)))
 ];
 var ENGINE_DEFAULT_VOICE = {
-  vits: "suyingxue",
-  kokoro: "zf_xiaobei",
+  vits: "fushiyu",
+  kokoro: "zf_xiaoni",
   edge: "zh-CN-XiaoxiaoNeural"
 };
 var HOST_OPTIONS = [
@@ -1556,7 +1592,7 @@ var stepLabel = {
   textOverflow: "ellipsis",
   whiteSpace: "nowrap"
 };
-function VoiceStepper({
+function VoiceSelect({
   score,
   field,
   value,
@@ -1581,11 +1617,40 @@ function VoiceStepper({
       void score.set(field, options[0].v);
     }
   };
-  const labelText = inOptions ? options[idx].label : custom || placeholder || "";
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: 280, alignItems: "stretch" }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", gap: 6, alignItems: "stretch" }, children: [
+  const selectStyle = {
+    ...inputStyle,
+    appearance: "none",
+    cursor: "pointer",
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+    backgroundPosition: "right 12px center",
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "12px 12px",
+    paddingRight: 32
+  };
+  const label = inOptions ? options[idx].label : custom || placeholder || "";
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: 320, maxWidth: "100%", alignItems: "stretch" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", gap: 6, alignItems: "center" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": t("voicePrev"), onClick: () => move(-1), style: stepBtn, children: "\u2039" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: stepLabel, title: labelText, children: labelText }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "select",
+        {
+          style: selectStyle,
+          value: inOptions ? cur : "__custom__",
+          "aria-label": label,
+          onChange: (e) => {
+            const v = e.target.value;
+            if (v === "__custom__") setCustom(inOptions ? "" : custom);
+            else void score.set(field, v);
+          },
+          children: [
+            options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v)),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", { value: "__custom__", children: [
+              t("custom"),
+              "\u2026"
+            ] })
+          ]
+        }
+      ),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": t("voiceNext"), onClick: () => move(1), style: stepBtn, children: "\u203A" })
     ] }),
     !inOptions && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -1705,6 +1770,15 @@ function Row({ name, desc, children }) {
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flexShrink: 0, maxWidth: 300 }, children })
   ] });
 }
+function Section({ title, children }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 2 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "10px 0 2px" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--dsw-alias-label-secondary)" }, children: title }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, height: 1, background: t2.border } })
+    ] }),
+    children
+  ] });
+}
 function SegGroup({
   score,
   field,
@@ -1754,6 +1828,17 @@ function ModelStatusView() {
       body: JSON.stringify({ kind })
     }).catch(() => void 0).finally(() => {
       setTimeout(() => setRetrying(null), 2e3);
+    });
+  };
+  const [cleaning, setCleaning] = (0, import_react.useState)(false);
+  const clean = (engine) => {
+    setCleaning(true);
+    void fetch(location.origin + BASE_PATH + "/models/clean", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ engine })
+    }).catch(() => void 0).finally(() => {
+      setTimeout(() => setCleaning(false), 1500);
     });
   };
   const mkRow = (label, info, key, progressFor) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }, children: [
@@ -1817,6 +1902,51 @@ function ModelStatusView() {
       "sense",
       anyDownloading ? st.progress : null
     ),
+    st?.tts && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 6, paddingTop: 8, borderTop: `1px solid ${t2.border}` }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 600, color: t2.label }, children: t("ttsTitle") }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { width: 92, flexShrink: 0, fontSize: 12, color: t2.label }, children: t("ttsEngine") }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { flex: 1, minWidth: 0, fontSize: 12, color: t2.term }, children: [
+          st.tts.engine === "vits" ? t("engineVits") : st.tts.engine === "kokoro" ? t("engineKokoro") : t("engineEdge"),
+          " \xB7 ",
+          st.tts.loading ? t("engineLoading") : st.tts.ready ? t("engineReady") : st.tts.error ? t("engineError") : t("engineIdle")
+        ] })
+      ] }),
+      st.tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: "var(--dsw-alias-state-error-primary)", padding: "2px 0 4px" }, children: st.tts.error }),
+      st.tts.local && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { flex: 1, minWidth: 0, fontSize: 12, color: t2.term }, children: [
+          st.tts.local.ready ? t("ttsModelsReady") : st.tts.local.loading ? t("modelsDownloading").replace("{file}", st.progress?.file ?? "").replace("{percent}", String(st.progress?.percent ?? 0)) : st.tts.local.error ? t("ttsModelsFail") : t("ttsModelsMissing"),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "block", fontSize: 11, color: t2.term, marginTop: 2 }, children: [
+            st.tts.local.files.filter((f) => f.exists).length,
+            "/",
+            st.tts.local.files.length,
+            " ",
+            t("modelsFileCount")
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            type: "button",
+            disabled: cleaning || st.tts.local.loading,
+            onClick: () => clean(st.tts.engine),
+            style: {
+              font: "inherit",
+              fontSize: 12,
+              cursor: st.tts.local.loading ? "default" : "pointer",
+              color: t2.label,
+              background: "var(--dsw-alias-bg-layer-2)",
+              border: `1px solid ${t2.border}`,
+              borderRadius: 8,
+              padding: "3px 10px",
+              flexShrink: 0
+            },
+            title: t("ttsRedownloadHint"),
+            children: cleaning ? t("ttsCleaning") : t("ttsRedownload")
+          }
+        )
+      ] })
+    ] }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("modelsHint") })
   ] });
 }
@@ -1849,91 +1979,99 @@ function VoiceSettingsCard({ scope }) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...setChevron, transform: collapsed ? "rotate(0deg)" : "rotate(180deg)" }, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 14, height: 14, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 6l4 4 4-4z" }) }) })
     ] }),
     !collapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: setBody, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "ttsEngine", desc: t("descTtsEngine"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        SegGroup,
-        {
-          score: scope,
-          field: "ttsEngine",
-          value: engine,
-          options: [
-            { v: "vits", label: t("engineVits") },
-            { v: "kokoro", label: t("engineKokoro") },
-            { v: "edge", label: t("engineEdge") }
-          ],
-          onSelect: (v) => {
-            if (v !== engine) {
-              void scope.set("voice", ENGINE_DEFAULT_VOICE[String(v)] ?? "suyingxue");
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRead"), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "ttsEngine", desc: t("descTtsEngine"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          SegGroup,
+          {
+            score: scope,
+            field: "ttsEngine",
+            value: engine,
+            options: [
+              { v: "vits", label: t("engineVits") },
+              { v: "kokoro", label: t("engineKokoro") },
+              { v: "edge", label: t("engineEdge") }
+            ],
+            onSelect: (v) => {
+              if (v !== engine) {
+                void scope.set("voice", ENGINE_DEFAULT_VOICE[String(v)] ?? "fushiyu");
+              }
             }
           }
-        }
-      ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        Row,
-        {
-          name: "voice",
-          desc: engine === "edge" ? t("descVoice") : engine === "kokoro" ? t("descVoiceKokoro") : t("descVoiceLocal"),
-          children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            VoiceStepper,
-            {
-              score: scope,
-              field: "voice",
-              value: value.voice ?? "",
-              options: voiceOptions,
-              placeholder: ENGINE_DEFAULT_VOICE[engine] ?? "suyingxue",
-              footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1) })
-            }
-          )
-        }
-      ),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1, min: 0.5, max: 2, step: 0.1 }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: t("descInterrupt"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        SegGroup,
-        {
-          score: scope,
-          field: "interruptLevel",
-          value: value.interruptLevel,
-          options: [
-            { v: 0, label: t("sev0") },
-            { v: 1, label: t("sev1") },
-            { v: 2, label: t("sev2") }
-          ]
-        }
-      ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "bargeInMode", desc: t("descBargeIn"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        SegGroup,
-        {
-          score: scope,
-          field: "bargeInMode",
-          value: value.bargeInMode,
-          options: [
-            { v: "auto", label: t("bargeInAuto") },
-            { v: "manual", label: t("bargeInManual") }
-          ]
-        }
-      ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "echoGateDb", desc: t("descEchoGate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "echoGateDb", value: value.echoGateDb ?? 6, min: 3, max: 12, step: 1 }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "shortcut", desc: t("descShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "shortcut", value: value.shortcut ?? "Ctrl+Shift+V", placeholder: "Ctrl+Shift+V" }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 700, min: 500, max: 3e4, step: 100 }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoSend), onChange: (e) => void scope.set("autoSend", e.target.checked) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoResume), onChange: (e) => void scope.set("autoResume", e.target.checked) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.toolBeep), onChange: (e) => void scope.set("toolBeep", e.target.checked) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: t("descMode"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        SegGroup,
-        {
-          score: scope,
-          field: "mode",
-          value: value.mode,
-          options: [
-            { v: "toggle", label: t("modeToggle") },
-            { v: "hold", label: t("modeHold") }
-          ]
-        }
-      ) }),
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          Row,
+          {
+            name: "voice",
+            desc: engine === "edge" ? t("descVoice") : engine === "kokoro" ? t("descVoiceKokoro") : t("descVoiceLocal"),
+            children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              VoiceSelect,
+              {
+                score: scope,
+                field: "voice",
+                value: value.voice ?? "",
+                options: voiceOptions,
+                placeholder: ENGINE_DEFAULT_VOICE[engine] ?? "fushiyu",
+                footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1) })
+              }
+            )
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1, min: 0.5, max: 2, step: 0.1 }) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secInterrupt"), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: t("descInterrupt"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          SegGroup,
+          {
+            score: scope,
+            field: "interruptLevel",
+            value: value.interruptLevel,
+            options: [
+              { v: 0, label: t("sev0") },
+              { v: 1, label: t("sev1") },
+              { v: 2, label: t("sev2") }
+            ]
+          }
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "bargeInMode", desc: t("descBargeIn"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          SegGroup,
+          {
+            score: scope,
+            field: "bargeInMode",
+            value: value.bargeInMode,
+            options: [
+              { v: "auto", label: t("bargeInAuto") },
+              { v: "manual", label: t("bargeInManual") }
+            ]
+          }
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "echoGateDb", desc: t("descEchoGate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "echoGateDb", value: value.echoGateDb ?? 6, min: 3, max: 12, step: 1 }) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secInteraction"), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: t("descMode"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          SegGroup,
+          {
+            score: scope,
+            field: "mode",
+            value: value.mode,
+            options: [
+              { v: "toggle", label: t("modeToggle") },
+              { v: "hold", label: t("modeHold") }
+            ]
+          }
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "shortcut", desc: t("descShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "shortcut", value: value.shortcut ?? "Ctrl+Shift+V", placeholder: "Ctrl+Shift+V" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.toolBeep), onChange: (e) => void scope.set("toolBeep", e.target.checked) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoSend), onChange: (e) => void scope.set("autoSend", e.target.checked) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoResume), onChange: (e) => void scope.set("autoResume", e.target.checked) }) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRecognition"), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 700, min: 500, max: 3e4, step: 100 }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Section, { title: t("secModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("settingsEffectiveNote") }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ModelStatusView, {})
     ] }) })
@@ -1957,7 +2095,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "bfee0a2";
+var BUILD_TAG = "134ac79";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

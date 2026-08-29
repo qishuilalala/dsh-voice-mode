@@ -180,8 +180,8 @@ const VOICE_OPTIONS_KOKORO: Array<{ v: string; label: string }> = [
 
 /** 各引擎切换时的默认音色（语义不同，切换引擎时自动重置）。 */
 const ENGINE_DEFAULT_VOICE: Record<string, string> = {
-  vits: 'suyingxue',
-  kokoro: 'zf_xiaobei',
+  vits: 'fushiyu',
+  kokoro: 'zf_xiaoni',
   edge: 'zh-CN-XiaoxiaoNeural',
 }
 
@@ -364,10 +364,10 @@ const stepLabel: React.CSSProperties = {
 }
 
 /**
- * 音色步进器：◀ 当前音色 ▶ 左右点击循环切换（首尾相接），替代长下拉。
+ * 音色选择器：下拉列表（全部音色一键直达）+ ◀▶ 左右步进（快速切换相邻）。
  * 值不在列表（如旧配置/自定义 ShortName）时显示手输框兜底，◀▶ 从列表头进入。
  */
-function VoiceStepper({
+function VoiceSelect({
   score,
   field,
   value,
@@ -401,16 +401,40 @@ function VoiceStepper({
       void score.set(field, options[0].v)
     }
   }
-  const labelText = inOptions ? options[idx].label : custom || placeholder || ''
+  const selectStyle: React.CSSProperties = {
+    ...inputStyle,
+    appearance: 'none',
+    cursor: 'pointer',
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+    backgroundPosition: 'right 12px center',
+    backgroundRepeat: 'no-repeat',
+    backgroundSize: '12px 12px',
+    paddingRight: 32,
+  }
+  const label = inOptions ? options[idx].label : custom || placeholder || ''
   return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 280, alignItems: 'stretch' }}>
-      <span style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 320, maxWidth: '100%', alignItems: 'stretch' }}>
+      <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <button type="button" aria-label={tr('voicePrev')} onClick={() => move(-1)} style={stepBtn}>
           ‹
         </button>
-        <span style={stepLabel} title={labelText}>
-          {labelText}
-        </span>
+        <select
+          style={selectStyle}
+          value={inOptions ? cur : '__custom__'}
+          aria-label={label}
+          onChange={(e) => {
+            const v = e.target.value
+            if (v === '__custom__') setCustom(inOptions ? '' : custom)
+            else void score.set(field, v)
+          }}
+        >
+          {options.map((o) => (
+            <option key={o.v} value={o.v}>
+              {o.label}
+            </option>
+          ))}
+          <option value="__custom__">{tr('custom')}…</option>
+        </select>
         <button type="button" aria-label={tr('voiceNext')} onClick={() => move(1)} style={stepBtn}>
           ›
         </button>
@@ -556,6 +580,19 @@ function Row({ name, desc, children }: { name: string; desc: string; children: R
   )
 }
 
+/** 设置分组：小标题 + 上分隔线，把罗列字段梳理成块。 */
+function Section({ title, children }: { title: string; children: React.ReactNode }): React.ReactElement {
+  return (
+    <div style={{ marginTop: 2 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0 2px' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--dsw-alias-label-secondary)' }}>{title}</span>
+        <span style={{ flex: 1, height: 1, background: t.border }} />
+      </div>
+      {children}
+    </div>
+  )
+}
+
 function SegGroup({
   score,
   field,
@@ -594,6 +631,13 @@ interface ModelsStatusPayload {
   asr: { repo: string; ready: boolean; files: Array<{ name: string; exists: boolean; size: number }>; failLatchMs: number }
   vad: { repo: string; ready: boolean; size: number; failLatchMs: number }
   sense: { repo: string; ready: boolean; size: number; failLatchMs: number; enabled: boolean }
+  tts: {
+    engine: 'edge' | 'vits' | 'kokoro'
+    ready: boolean
+    loading: boolean
+    error?: string
+    local?: { repo: string; ready: boolean; loading: boolean; error?: string; files: Array<{ name: string; exists: boolean; size: number }> }
+  }
   progress: { file: string; percent: number } | null
 }
 
@@ -630,6 +674,19 @@ function ModelStatusView(): React.ReactElement {
       .catch(() => undefined)
       .finally(() => {
         setTimeout(() => setRetrying(null), 2000)
+      })
+  }
+  const [cleaning, setCleaning] = useState(false)
+  const clean = (engine: string): void => {
+    setCleaning(true)
+    void fetch(location.origin + BASE_PATH + '/models/clean', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ engine }),
+    })
+      .catch(() => undefined)
+      .finally(() => {
+        setTimeout(() => setCleaning(false), 1500)
       })
   }
   const mkRow = (
@@ -707,6 +764,65 @@ function ModelStatusView(): React.ReactElement {
         'sense',
         anyDownloading ? st.progress : null,
       )}
+      {st?.tts && (
+        <div style={{ marginTop: 6, paddingTop: 8, borderTop: `1px solid ${t.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: t.label }}>{tr('ttsTitle')}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
+            <span style={{ width: 92, flexShrink: 0, fontSize: 12, color: t.label }}>{tr('ttsEngine')}</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: t.term }}>
+              {st.tts.engine === 'vits' ? tr('engineVits') : st.tts.engine === 'kokoro' ? tr('engineKokoro') : tr('engineEdge')}
+              {' · '}
+              {st.tts.loading
+                ? tr('engineLoading')
+                : st.tts.ready
+                  ? tr('engineReady')
+                  : st.tts.error
+                    ? tr('engineError')
+                    : tr('engineIdle')}
+            </span>
+          </div>
+          {st.tts.error && (
+            <div style={{ fontSize: 12, color: 'var(--dsw-alias-state-error-primary)', padding: '2px 0 4px' }}>{st.tts.error}</div>
+          )}
+          {st.tts.local && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0' }}>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: t.term }}>
+                {st.tts.local.ready
+                  ? tr('ttsModelsReady')
+                  : st.tts.local.loading
+                    ? tr('modelsDownloading').replace('{file}', st.progress?.file ?? '').replace('{percent}', String(st.progress?.percent ?? 0))
+                    : st.tts.local.error
+                      ? tr('ttsModelsFail')
+                      : tr('ttsModelsMissing')}
+                <span style={{ display: 'block', fontSize: 11, color: t.term, marginTop: 2 }}>
+                  {st.tts.local.files.filter((f) => f.exists).length}/{st.tts.local.files.length} {tr('modelsFileCount')}
+                </span>
+              </span>
+              <button
+                type="button"
+                disabled={cleaning || st.tts.local.loading}
+                onClick={() => clean(st.tts.engine as string)}
+                style={{
+                  font: 'inherit',
+                  fontSize: 12,
+                  cursor: st.tts.local.loading ? 'default' : 'pointer',
+                  color: t.label,
+                  background: 'var(--dsw-alias-bg-layer-2)',
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 8,
+                  padding: '3px 10px',
+                  flexShrink: 0,
+                }}
+                title={tr('ttsRedownloadHint')}
+              >
+                {cleaning ? tr('ttsCleaning') : tr('ttsRedownload')}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ fontSize: 12, color: t.term, lineHeight: '18px', padding: '4px 0 8px' }}>{tr('modelsHint')}</div>
     </div>
   )
@@ -754,6 +870,7 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
       {!collapsed && (
         <div style={setBody}>
           <div style={{ marginTop: 4 }}>
+            <Section title={tr('secRead')}>
             <Row name="ttsEngine" desc={tr('descTtsEngine')}>
               <SegGroup
                 score={scope}
@@ -768,7 +885,7 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
                   // 引擎语义不同：仅在引擎真正切换时重置音色；
                   // 点击已选中的引擎不再误重置（曾导致"选了霸总却变女声"）。
                   if (v !== engine) {
-                    void scope.set('voice', ENGINE_DEFAULT_VOICE[String(v)] ?? 'suyingxue')
+                    void scope.set('voice', ENGINE_DEFAULT_VOICE[String(v)] ?? 'fushiyu')
                   }
                 }}
               />
@@ -777,18 +894,20 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
               name="voice"
               desc={engine === 'edge' ? tr('descVoice') : engine === 'kokoro' ? tr('descVoiceKokoro') : tr('descVoiceLocal')}
             >
-              <VoiceStepper
+              <VoiceSelect
                 score={scope}
                 field="voice"
                 value={value.voice ?? ''}
                 options={voiceOptions}
-                placeholder={ENGINE_DEFAULT_VOICE[engine] ?? 'suyingxue'}
+                placeholder={ENGINE_DEFAULT_VOICE[engine] ?? 'fushiyu'}
                 footer={(v) => <VoicePreviewButton voice={v} rate={Number(value.rate ?? 1)} />}
               />
             </Row>
             <Row name="rate" desc={tr('descRate')}>
               <NumberField score={scope} field="rate" value={value.rate ?? 1} min={0.5} max={2} step={0.1} />
             </Row>
+            </Section>
+            <Section title={tr('secInterrupt')}>
             <Row name="interruptLevel" desc={tr('descInterrupt')}>
               <SegGroup
                 score={scope}
@@ -815,36 +934,8 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             <Row name="echoGateDb" desc={tr('descEchoGate')}>
               <NumberField score={scope} field="echoGateDb" value={value.echoGateDb ?? 6} min={3} max={12} step={1} />
             </Row>
-            <Row name="shortcut" desc={tr('descShortcut')}>
-              <TextField score={scope} field="shortcut" value={value.shortcut ?? 'Ctrl+Shift+V'} placeholder="Ctrl+Shift+V" />
-            </Row>
-            <Row name="silenceMs" desc={tr('descSilence')}>
-              <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 700} min={500} max={30000} step={100} />
-            </Row>
-            <Row name="idleTimeoutMinutes" desc={tr('descIdle')}>
-              <NumberField score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 10} min={1} max={120} step={1} />
-            </Row>
-            <Row name="modelHost" desc={tr('descModelHost')}>
-              <SelectField score={scope} field="modelHost" value={value.modelHost ?? ''} options={HOST_OPTIONS} placeholder="https://..." />
-            </Row>
-            <Row name="autoSend" desc={tr('descAutoSend')}>
-              <input type="checkbox" checked={Boolean(value.autoSend)} onChange={(e) => void scope.set('autoSend', e.target.checked)} />
-            </Row>
-            <Row name="autoResume" desc={tr('descAutoResume')}>
-              <input type="checkbox" checked={Boolean(value.autoResume)} onChange={(e) => void scope.set('autoResume', e.target.checked)} />
-            </Row>
-            <Row name="spokenFormat" desc={tr('descSpokenFormat')}>
-              <input type="checkbox" checked={Boolean(value.spokenFormat)} onChange={(e) => void scope.set('spokenFormat', e.target.checked)} />
-            </Row>
-            <Row name="senseVoice" desc={tr('descSenseVoice')}>
-              <input type="checkbox" checked={Boolean(value.senseVoice)} onChange={(e) => void scope.set('senseVoice', e.target.checked)} />
-            </Row>
-            <Row name="wakeWord" desc={tr('descWakeWord')}>
-              <TextField score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder={tr('wakePlaceholder')} />
-            </Row>
-            <Row name="toolBeep" desc={tr('descToolBeep')}>
-              <input type="checkbox" checked={Boolean(value.toolBeep)} onChange={(e) => void scope.set('toolBeep', e.target.checked)} />
-            </Row>
+            </Section>
+            <Section title={tr('secInteraction')}>
             <Row name="mode" desc={tr('descMode')}>
               <SegGroup
                 score={scope}
@@ -856,6 +947,41 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
                 ]}
               />
             </Row>
+            <Row name="shortcut" desc={tr('descShortcut')}>
+              <TextField score={scope} field="shortcut" value={value.shortcut ?? 'Ctrl+Shift+V'} placeholder="Ctrl+Shift+V" />
+            </Row>
+            <Row name="wakeWord" desc={tr('descWakeWord')}>
+              <TextField score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder={tr('wakePlaceholder')} />
+            </Row>
+            <Row name="toolBeep" desc={tr('descToolBeep')}>
+              <input type="checkbox" checked={Boolean(value.toolBeep)} onChange={(e) => void scope.set('toolBeep', e.target.checked)} />
+            </Row>
+            <Row name="autoSend" desc={tr('descAutoSend')}>
+              <input type="checkbox" checked={Boolean(value.autoSend)} onChange={(e) => void scope.set('autoSend', e.target.checked)} />
+            </Row>
+            <Row name="autoResume" desc={tr('descAutoResume')}>
+              <input type="checkbox" checked={Boolean(value.autoResume)} onChange={(e) => void scope.set('autoResume', e.target.checked)} />
+            </Row>
+            </Section>
+            <Section title={tr('secRecognition')}>
+            <Row name="senseVoice" desc={tr('descSenseVoice')}>
+              <input type="checkbox" checked={Boolean(value.senseVoice)} onChange={(e) => void scope.set('senseVoice', e.target.checked)} />
+            </Row>
+            <Row name="spokenFormat" desc={tr('descSpokenFormat')}>
+              <input type="checkbox" checked={Boolean(value.spokenFormat)} onChange={(e) => void scope.set('spokenFormat', e.target.checked)} />
+            </Row>
+            <Row name="silenceMs" desc={tr('descSilence')}>
+              <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 700} min={500} max={30000} step={100} />
+            </Row>
+            <Row name="idleTimeoutMinutes" desc={tr('descIdle')}>
+              <NumberField score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 10} min={1} max={120} step={1} />
+            </Row>
+            </Section>
+            <Section title={tr('secModel')}>
+            <Row name="modelHost" desc={tr('descModelHost')}>
+              <SelectField score={scope} field="modelHost" value={value.modelHost ?? ''} options={HOST_OPTIONS} placeholder="https://..." />
+            </Row>
+            </Section>
             <div style={{ fontSize: 12, color: t.term, lineHeight: '18px', padding: '4px 0 8px' }}>
               {tr('settingsEffectiveNote')}
             </div>
