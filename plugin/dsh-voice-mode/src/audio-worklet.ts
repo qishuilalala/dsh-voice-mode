@@ -55,12 +55,14 @@ class VoiceCaptureProcessor extends AudioWorkletProcessor {
 
   private drain(): void {
     while (this.accLen >= NEED) {
-      const out = resampleLinear(this.acc.subarray(0, NEED), sampleRate, TARGET_RATE)
-      const chunk = out.length >= CHUNK ? out.subarray(0, CHUNK) : (() => {
-        const p = new Float32Array(CHUNK)
-        p.set(out)
-        return p
-      })()
+      // 关键：resampleLinear 在同采样率（16k 设备 / Chrome 采纳 sampleRate:16000）下会
+      // 原样返回 this.acc 的视图（借 buffer），直接 transfer 该视图会 detach this.acc，
+      // 下一帧 copyWithin 崩（真机 TypeError: detached ArrayBuffer）。故先拷贝到独立 buffer。
+      const src = sampleRate === TARGET_RATE
+        ? this.acc.subarray(0, CHUNK)
+        : resampleLinear(this.acc.subarray(0, NEED), sampleRate, TARGET_RATE)
+      const chunk = new Float32Array(CHUNK)
+      chunk.set(src.length >= CHUNK ? src.subarray(0, CHUNK) : src)
       this.port.postMessage(chunk, [chunk.buffer])
       this.acc.copyWithin(0, NEED, this.accLen)
       this.accLen -= NEED
