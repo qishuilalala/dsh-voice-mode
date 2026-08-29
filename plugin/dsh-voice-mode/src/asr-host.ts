@@ -199,6 +199,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   /** 已定稿文本缓存：sessionId -> epoch -> 文本。finalize 幂等 + 客户端对瞬时失败的
    *  final 重试时返回同文；同时作废「定稿后迟到 partial 重建幽灵段」。 */
   const finalized = new Map<string, Map<number, string>>()
+  /** 定稿进行中：sessionId -> epoch -> Promise<text>。并发 final（客户端重试撞上首发
+   *  定稿的 senseP 窗口）共享同一结果，防「首发已删段未缓存、重试重建空段」丢句。 */
+  const finalizing = new Map<string, Map<number, Promise<string>>>()
 
   let recognizer: SherpaRecognizer | null = null
   let modelsReady = false
@@ -514,43 +517,74 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       }
     }
     if (!final) return { text, endpoint, isSpeech }
-    // P4-1：SenseVoice 整段重译与 zipformer 定稿并行（端点等待期后起跑；
-    // 带标点 + ITN 覆盖定稿文本；模型缺失/失败自然降级 zipformer）。
-    const all = seg.allSamples
-    // I1：SenseVoice 重译带超时（10s），超时即降级 zipformer 定稿（不阻塞 finalize）。
-    const senseP = all.length > 0
-      ? Promise.race([
-          senseTranscribe(all),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
-        ])
-      : Promise.resolve(null)
-    // 定稿：尾垫 0.5s 静音让尾部字 flush 出来。
-    const pad = new Float32Array(rec.config.featConfig.sampleRate / 2)
-    seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad)
-    while (rec.isReady(seg.stream)) rec.decode(seg.stream)
-    const settled = rec.getResult(seg.stream).text
-    try {
-      seg.vad?.free?.()
-    } catch {
-      // ignore
+    // 并发 final 守卫：同 epoch 已在定稿（首发 final 的 senseP 窗口内）→ 等待并复用其
+    // 结果。否则客户端对「响应丢失但请求已达 host」的 final 重试，会在首发删段后、缓存前
+    // 重建空段 → 丢句（段清理竞态的并发面）。
+    const inflightMap = finalizing.get(sessionId)
+    const inflightP = inflightMap?.get(epoch)
+    if (inflightP) return { text: await inflightP }
+    // 定稿工作封装为 promise 并登记，供并发 final 复用。
+    const finalizeP = (async (): Promise<string> => {
+      // P4-1：SenseVoice 整段重译与 zipformer 定稿并行（端点等待期后起跑；
+      // 带标点 + ITN 覆盖定稿文本；模型缺失/失败自然降级 zipformer）。
+      const all = seg.allSamples
+      // I1：SenseVoice 重译带超时（10s），超时即降级 zipformer 定稿（不阻塞 finalize）。
+      const senseP = all.length > 0
+        ? Promise.race([
+            senseTranscribe(all),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+          ])
+        : Promise.resolve(null)
+      // 定稿：尾垫 0.5s 静音让尾部字 flush 出来。
+      const pad = new Float32Array(rec.config.featConfig.sampleRate / 2)
+      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad)
+      while (rec.isReady(seg.stream)) rec.decode(seg.stream)
+      const settled = rec.getResult(seg.stream).text
+      try {
+        seg.vad?.free?.()
+      } catch {
+        // ignore
+      }
+      seg.stream.free()
+      const sense = await senseP
+      // 空串掩蔽修复：SenseVoice 返回空/空白视同未产出，回退 zipformer 定稿。
+      return (sense && sense.trim() ? sense : settled) || ''
+    })().then((finalText) => {
+      // 先缓存后删段：幂等守卫（cached）先于段回收生效，杜绝并发 final 重建空段。
+      if (!finMap) {
+        finMap = new Map<number, string>()
+        finalized.set(sessionId, finMap)
+      }
+      finMap.set(epoch, finalText)
+      if (finMap.size > 32) {
+        const first = finMap.keys().next().value
+        if (first !== undefined) finMap.delete(first)
+      }
+      sessSegs.delete(epoch)
+      if (sessSegs.size === 0) segments.delete(sessionId)
+      const ff = finalizing.get(sessionId)
+      ff?.delete(epoch)
+      if (ff && ff.size === 0) finalizing.delete(sessionId)
+      return finalText
+    }).catch((e) => {
+      // 定稿异常：清 finalizing 登记 + 回收段（防登记泄漏），返回空不阻塞上层。
+      const ff = finalizing.get(sessionId)
+      ff?.delete(epoch)
+      if (ff && ff.size === 0) finalizing.delete(sessionId)
+      try {
+        sessSegs.delete(epoch)
+        if (sessSegs.size === 0) segments.delete(sessionId)
+      } catch {
+        // ignore
+      }
+      console.warn('[dsh-voice-mode] finalize failed: ' + String(e))
+      return ''
+    })
+    if (!inflightMap) {
+      finalizing.set(sessionId, new Map<number, Promise<string>>())
     }
-    seg.stream.free()
-    sessSegs.delete(epoch)
-    if (sessSegs.size === 0) segments.delete(sessionId)
-    const sense = await senseP
-    // 空串掩蔽修复：SenseVoice 返回空/空白视同未产出，回退 zipformer 定稿。
-    const finalText = (sense && sense.trim() ? sense : settled) || ''
-    // 缓存定稿文本（幂等 + 重试同文）；有界保留最近 32 个 epoch（epoch 单调，旧缓存无重试价值）。
-    if (!finMap) {
-      finMap = new Map<number, string>()
-      finalized.set(sessionId, finMap)
-    }
-    finMap.set(epoch, finalText)
-    if (finMap.size > 32) {
-      const first = finMap.keys().next().value
-      if (first !== undefined) finMap.delete(first)
-    }
-    return { text: finalText }
+    finalizing.get(sessionId)!.set(epoch, finalizeP)
+    return { text: await finalizeP }
   }
 
   // host 侧超时回收：无活动超 90s 的段（页面崩溃/断电/kill 后悬挂）清理，每 30s 扫一次。

@@ -322,14 +322,27 @@ function createAsrEngine(config, sessionId) {
     prePad = [];
     setState("transcribing");
     void (async () => {
-      try {
-        emitTelemetry("submitted");
-        let res = await fetch(asrUrl(true, from, epochSnapshot), {
-          signal: AbortSignal.timeout(1e4),
-          method: "POST",
-          headers: { "content-type": "application/octet-stream" },
-          body: samples.buffer
-        });
+      emitTelemetry("submitted");
+      const MAX_FINAL_ATTEMPTS = 3;
+      const restoreState = () => setState(active ? speechActive || holdActive ? "speech" : "listening" : "idle");
+      for (let attempt = 0; attempt < MAX_FINAL_ATTEMPTS; attempt++) {
+        if (attempt > 0) {
+          if (segmentEpoch !== epochSnapshot + 1) return;
+          await new Promise((r) => setTimeout(r, 500 * attempt));
+        }
+        let res;
+        try {
+          res = await fetch(asrUrl(true, from, epochSnapshot), {
+            signal: AbortSignal.timeout(1e4),
+            method: "POST",
+            headers: { "content-type": "application/octet-stream" },
+            body: samples.buffer
+          });
+        } catch {
+          restoreState();
+          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize fetch \u5F02\u5E38\uFF08\u91CD\u8BD5\u8017\u5C3D\uFF09");
+          continue;
+        }
         if (res.status === 202) {
           setState("loading-model");
           res = await new Promise((resolve) => {
@@ -363,20 +376,21 @@ function createAsrEngine(config, sessionId) {
             }
           }
         }
-        setState(active ? speechActive || holdActive ? "speech" : "listening" : "idle");
-        if (!res.ok) return;
+        restoreState();
+        if (!res.ok) {
+          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize 5xx\uFF08\u91CD\u8BD5\u8017\u5C3D\uFF09");
+          continue;
+        }
         let out;
         try {
           out = await res.json();
         } catch {
-          console.warn("[dsh-voice-mode] finalize \u54CD\u5E94\u975E JSON\uFF0C\u9759\u9ED8\u5FFD\u7565\uFF08\u4E0B\u8F6E\u91CD\u8BD5\uFF09");
-          return;
+          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize \u54CD\u5E94\u975E JSON\uFF08\u91CD\u8BD5\u8017\u5C3D\uFF09");
+          continue;
         }
         if (segmentEpoch !== epochSnapshot + 1) return;
         if (out.text) emit(transcriptListeners, out.text, meta);
-      } catch {
-        console.warn("[dsh-voice-mode] finalize fetch \u5F02\u5E38\u88AB\u6355\u83B7\uFF08\u4E0B\u8F6E\u91CD\u8BD5\uFF09");
-        setState(active ? speechActive || holdActive ? "speech" : "listening" : "idle");
+        return;
       }
     })();
   };
@@ -1645,7 +1659,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "b83e2d0";
+var BUILD_TAG = "1bba3c4";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

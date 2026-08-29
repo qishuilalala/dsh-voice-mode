@@ -191,6 +191,7 @@ function createAsrRuntime(options) {
   };
   const segments = /* @__PURE__ */ new Map();
   const finalized = /* @__PURE__ */ new Map();
+  const finalizing = /* @__PURE__ */ new Map();
   let recognizer = null;
   let modelsReady = false;
   let modelsLoading = null;
@@ -444,34 +445,59 @@ function createAsrRuntime(options) {
       }
     }
     if (!final) return { text, endpoint, isSpeech };
-    const all = seg.allSamples;
-    const senseP = all.length > 0 ? Promise.race([
-      senseTranscribe(all),
-      new Promise((resolve) => setTimeout(() => resolve(null), 1e4))
-    ]) : Promise.resolve(null);
-    const pad = new Float32Array(rec.config.featConfig.sampleRate / 2);
-    seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad);
-    while (rec.isReady(seg.stream)) rec.decode(seg.stream);
-    const settled = rec.getResult(seg.stream).text;
-    try {
-      seg.vad?.free?.();
-    } catch {
+    const inflightMap = finalizing.get(sessionId);
+    const inflightP = inflightMap?.get(epoch);
+    if (inflightP) return { text: await inflightP };
+    const finalizeP = (async () => {
+      const all = seg.allSamples;
+      const senseP = all.length > 0 ? Promise.race([
+        senseTranscribe(all),
+        new Promise((resolve) => setTimeout(() => resolve(null), 1e4))
+      ]) : Promise.resolve(null);
+      const pad = new Float32Array(rec.config.featConfig.sampleRate / 2);
+      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad);
+      while (rec.isReady(seg.stream)) rec.decode(seg.stream);
+      const settled = rec.getResult(seg.stream).text;
+      try {
+        seg.vad?.free?.();
+      } catch {
+      }
+      seg.stream.free();
+      const sense = await senseP;
+      return (sense && sense.trim() ? sense : settled) || "";
+    })().then((finalText) => {
+      if (!finMap) {
+        finMap = /* @__PURE__ */ new Map();
+        finalized.set(sessionId, finMap);
+      }
+      finMap.set(epoch, finalText);
+      if (finMap.size > 32) {
+        const first = finMap.keys().next().value;
+        if (first !== void 0) finMap.delete(first);
+      }
+      sessSegs.delete(epoch);
+      if (sessSegs.size === 0) segments.delete(sessionId);
+      const ff = finalizing.get(sessionId);
+      ff?.delete(epoch);
+      if (ff && ff.size === 0) finalizing.delete(sessionId);
+      return finalText;
+    }).catch((e) => {
+      const ff = finalizing.get(sessionId);
+      ff?.delete(epoch);
+      if (ff && ff.size === 0) finalizing.delete(sessionId);
+      try {
+        sessSegs.delete(epoch);
+        if (sessSegs.size === 0) segments.delete(sessionId);
+      } catch {
+      }
+      console.warn("[dsh-voice-mode] finalize failed: " + String(e));
+      return "";
+    });
+    if (!inflightMap) {
+      finalizing.set(sessionId, /* @__PURE__ */ new Map());
     }
-    seg.stream.free();
-    sessSegs.delete(epoch);
-    if (sessSegs.size === 0) segments.delete(sessionId);
-    const sense = await senseP;
-    const finalText = (sense && sense.trim() ? sense : settled) || "";
-    if (!finMap) {
-      finMap = /* @__PURE__ */ new Map();
-      finalized.set(sessionId, finMap);
-    }
-    finMap.set(epoch, finalText);
-    if (finMap.size > 32) {
-      const first = finMap.keys().next().value;
-      if (first !== void 0) finMap.delete(first);
-    }
-    return { text: finalText };
+    finalizing.get(sessionId).set(epoch, finalizeP);
+    return { text: await finalizeP };
   };
   const sweep = () => {
     const now = Date.now();
