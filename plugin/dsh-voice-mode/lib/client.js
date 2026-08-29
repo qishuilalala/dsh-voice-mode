@@ -395,6 +395,7 @@ function createAsrEngine(config, sessionId) {
         if (out.text) emit(transcriptListeners, out.text, meta);
         return;
       }
+      emitError("recognitionFail");
     })();
   };
   let latestResidualRms = 0;
@@ -1662,7 +1663,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "38a0273";
+var BUILD_TAG = "228acac";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -1788,6 +1789,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
   let nextEndAt = 0;
   const activeSrcs = /* @__PURE__ */ new Set();
   let decoding = false;
+  const captionQueue = [];
   const warm = () => {
     if (ctx) {
       void ctx.resume?.();
@@ -1856,9 +1858,12 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
           activeSrcs.add(src);
           src.onended = () => {
             activeSrcs.delete(src);
+            captionQueue.shift();
             if (activeSrcs.size === 0 && pending.length === 0) {
               setUi({ playing: false, playingCaption: null });
               onAllPlayed?.();
+            } else if (captionQueue.length > 0) {
+              setUi({ playingCaption: captionQueue[0] });
             }
           };
           src.start(at);
@@ -1873,7 +1878,8 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
             onPlayed?.();
           } catch {
           }
-          setUi({ playing: true, playingCaption: frame.text, ttsNotice: null });
+          captionQueue.push(frame.text);
+          setUi({ playing: true, playingCaption: captionQueue[0], ttsNotice: null });
         }
       } catch {
         for (const src of activeSrcs) {
@@ -1883,6 +1889,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
           }
         }
         activeSrcs.clear();
+        captionQueue.length = 0;
         fallback = true;
         playFallback();
       } finally {
@@ -1931,6 +1938,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
         }
       }
       activeSrcs.clear();
+      captionQueue.length = 0;
       setUi({ playing: false, playingCaption: null });
     },
     toolBeep,
@@ -2552,6 +2560,9 @@ function MicButton({
       const hardBreak = async () => {
         bus.skipAudio();
         bus.unduckAudio();
+        if (runningRef.current && sidRef.current) {
+          bus.cancelTurn(sidRef.current);
+        }
         const cancelP = fetch(`${location.origin}${BASE_PATH2}/cancel`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -2562,9 +2573,6 @@ function MicButton({
         });
         if (engineRef.current && !engineRef.current.holding) await engineRef.current.discardSegment();
         await cancelP;
-        if (runningRef.current && sidRef.current) {
-          bus.cancelTurn(sidRef.current);
-        }
         bus.setUi({ partial: "\u2026" });
       };
       breakRef.current = hardBreak;
@@ -2685,6 +2693,7 @@ function MicButton({
       engine.onPartial((text) => bus.setUi({ partial: text }));
       engine.onSegment((text, meta) => {
         resetIdle();
+        bus.setUi({ partial: "" });
         const actions = actionsRef.current;
         const trimmed = text.trim();
         if (!trimmed) return;
@@ -2739,6 +2748,11 @@ function MicButton({
         engineRef.current = null;
         await engine.stop();
         void bus.exit(sid);
+        return;
+      }
+      if (bus.activeSessionId !== sid) {
+        engineRef.current = null;
+        await engine.stop();
         return;
       }
       setLocalMode("on");
@@ -2910,11 +2924,12 @@ function MicButton({
     };
     const onVisibility = () => {
       if (document.hidden) {
-        if (bootNow().mode === "hold") {
-          engineRef.current?.endHeld(true);
-          holdCtrlRef.current = false;
-          setHolding(false);
-        } else if (localRef.current === "on" && engineRef.current) {
+        if (localRef.current === "on" && engineRef.current) {
+          if (bootNow().mode === "hold") {
+            engineRef.current?.endHeld(true);
+            holdCtrlRef.current = false;
+            setHolding(false);
+          }
           pausedForHiddenRef.current = true;
           void engineRef.current.stop();
         }
@@ -3165,7 +3180,7 @@ function VoiceStatusBar({ bus, sessionId }) {
             },
             i
           )) }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
           b.ui.isSpeech === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "span",
             {

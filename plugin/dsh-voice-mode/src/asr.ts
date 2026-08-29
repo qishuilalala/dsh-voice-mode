@@ -518,6 +518,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         if (out.text) emit(transcriptListeners, out.text, meta)
         return
       }
+      // 3 次重试耗尽仍失败：触发 onError → 状态条「识别失败，请重试」（防静默丢句）。
+      emitError('recognitionFail')
     })()
   }
 

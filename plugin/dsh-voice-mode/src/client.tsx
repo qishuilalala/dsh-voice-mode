@@ -349,6 +349,8 @@ function createAudioEngine(
   /** 当前已 start 的源（skip 时全部 stop）。 */
   const activeSrcs = new Set<AudioBufferSourceNode>()
   let decoding = false
+  /** 字幕队列：随真实起播推进（多句连播时字幕不能领先音频一整句）。 */
+  const captionQueue: string[] = []
 
   const warm = (): void => {
     if (ctx) {
@@ -430,10 +432,14 @@ function createAudioEngine(
           activeSrcs.add(src)
           src.onended = () => {
             activeSrcs.delete(src)
+            // 字幕随真实起播推进：本句播完才切下一句（调度时刻不写，否则领先一整句）。
+            captionQueue.shift()
             // 全队列播完才收门面状态（以在播源数为准：多句连播时 pending 会先空）。
             if (activeSrcs.size === 0 && pending.length === 0) {
               setUi({ playing: false, playingCaption: null })
               onAllPlayed?.()
+            } else if (captionQueue.length > 0) {
+              setUi({ playingCaption: captionQueue[0] })
             }
           }
           src.start(at)
@@ -456,7 +462,9 @@ function createAudioEngine(
           } catch {
             // 埋点失败不影响播放
           }
-          setUi({ playing: true, playingCaption: frame.text, ttsNotice: null })
+          // 字幕按真实起播推进：这里只登记（切句在 onended 里做），否则多句连播领先一整句。
+          captionQueue.push(frame.text)
+          setUi({ playing: true, playingCaption: captionQueue[0], ttsNotice: null })
         }
       } catch {
         // 解码失败：停掉 Web Audio 在途源（避免与 <audio> 混播），整段降级（保句序）。
@@ -468,6 +476,7 @@ function createAudioEngine(
           }
         }
         activeSrcs.clear()
+        captionQueue.length = 0
         fallback = true
         playFallback()
       } finally {
@@ -522,6 +531,7 @@ function createAudioEngine(
         }
       }
       activeSrcs.clear()
+      captionQueue.length = 0
       setUi({ playing: false, playingCaption: null })
     },
     toolBeep,
@@ -1313,6 +1323,11 @@ export function MicButton({
         // 立即停播 + 恢复音量：不等待慢操作（discardSegment 最多 5s、cancel 最多 3s）。
         bus.skipAudio()
         bus.unduckAudio()
+        // 立即取消当前回合（不等 cancelP/discardSegment）：否则其 3~5s 窗口内用户开口的
+        // 新回合会被迟到的 cancelTurn 误取消（打断+说话竞态）。
+        if (runningRef.current && sidRef.current) {
+          bus.cancelTurn(sidRef.current!)
+        }
         // 双重奏根治：cancel 立即发出（不等 discardSegment）→ host epoch++ 停推，
         // 缩短「skip 后旧回合帧继续到达」的窗口（在途旧帧由 client 拒绝线兜底丢弃）。
         const cancelP = fetch(`${location.origin}${BASE_PATH}/cancel`, {
@@ -1329,9 +1344,6 @@ export function MicButton({
         // 打断只停 AI——否则按住说的前半句会被吃掉。
         if (engineRef.current && !engineRef.current.holding) await engineRef.current.discardSegment()
         await cancelP
-        if (runningRef.current && sidRef.current) {
-          bus.cancelTurn(sidRef.current!)
-        }
         bus.setUi({ partial: '…' })
       }
       // 手动打断入口：显式手势（按住麦克风/Ctrl）在播放中调用，回声无关、100% 可靠。
@@ -1480,6 +1492,7 @@ export function MicButton({
         // 定稿进草稿（可编辑 Q13）+ 自动发送（Q5 停顿已等过；autoSend=false 只进草稿，
         // 按住 Ctrl 强制发送仍提交）
         resetIdle()
+        bus.setUi({ partial: '' }) // 定稿即清实时字幕（防旧 partial 遮蔽思考/朗读状态条）
         const actions = actionsRef.current
         const trimmed = text.trim()
         if (!trimmed) return
@@ -1543,6 +1556,13 @@ export function MicButton({
         engineRef.current = null
         await engine.stop()
         void bus.exit(sid)
+        return
+      }
+      // 抢占守卫：getUserMedia/start 窗口内若被另一 tab 接管（activeSessionId 已变），
+      // 订阅已置 off + 停麦；此处不得再置 on，否则按钮绿「语音中」但无引擎无麦（卡死态）。
+      if (bus.activeSessionId !== sid) {
+        engineRef.current = null
+        await engine.stop()
         return
       }
       setLocalMode('on')
@@ -1772,12 +1792,14 @@ export function MicButton({
     }
     const onVisibility = (): void => {
       if (document.hidden) {
-        if (bootNow().mode === 'hold') {
-          engineRef.current?.endHeld(true)
-          holdCtrlRef.current = false
-          setHolding(false)
-        } else if (localRef.current === 'on' && engineRef.current) {
-          // M2：toggle 隐藏 tab 暂停收音（隐私），可见时恢复。
+        if (localRef.current === 'on' && engineRef.current) {
+          // M2：隐藏 tab 暂停收音（隐私），可见时恢复。toggle 与 hold 都关麦——hold 之前只
+          // endHeld 不 stop，麦克风后台常开（隐私缺口）。
+          if (bootNow().mode === 'hold') {
+            engineRef.current?.endHeld(true)
+            holdCtrlRef.current = false
+            setHolding(false)
+          }
           pausedForHiddenRef.current = true
           void engineRef.current.stop()
         }
@@ -2116,11 +2138,13 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
               ? b.ui.model
                 ? `${t('loadingModel')} ${b.ui.model.file} ${b.ui.model.percent}%`
                 : stateText
-              : b.ui.partial
-                ? b.ui.partial
-                : b.ui.ttsNotice
-                  ? b.ui.ttsNotice
-                  : stateText}
+              : b.ui.playing || b.ui.turn === 'agent-speaking'
+                ? stateText // 朗读/思考中优先显示状态，不显示用户旧的 partial（防遮蔽 thinking/reading）
+                : b.ui.partial
+                  ? b.ui.partial
+                  : b.ui.ttsNotice
+                    ? b.ui.ttsNotice
+                    : stateText}
         </span>
         {b.ui.isSpeech === true && (
           <span
