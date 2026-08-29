@@ -261,6 +261,9 @@ export function apply(ctx: Context, config: Config): void {
     turnStates.set(sessionId, state)
     broadcast('turn', { sessionId, state })
   }
+  /** 回合世代：每次新 llm/stream（新回合）递增；旧回合迟到的 finally onTurn('listening')
+   *  不得把新回合已推进的 'agent-speaking' 打回 listening（对抗审查 Important）。 */
+  const turnGen = new Map<string, number>()
 
   // --- SSE 客户端表：audio 帧 + mode 状态广播共用一条下行通道。 ---
   type SseSink = (event: string, payload: unknown) => void
@@ -331,10 +334,12 @@ export function apply(ctx: Context, config: Config): void {
   const currentInterrupt = (): 0 | 1 | 2 => vset.interruptLevel
 
   /** B2：host 侧让出活跃会话（等价 /toggle off 的清理）。owner tab 失联超时调用。 */
-  const yieldActiveSession = (): void => {
+  const yieldActiveSession = (expectedSid?: string | null): void => {
     ownerYieldTimer = null
     const sid = activeVoiceSession
     if (!sid) return
+    // 8s 宽限内若新 owner 已接管（activeVoiceSession 已变更），不得误让出健康新 owner。
+    if (expectedSid !== undefined && expectedSid !== sid) return
     activeVoiceSession = null
     activeTabId = null
     queue.cancel(sid)
@@ -368,12 +373,16 @@ export function apply(ctx: Context, config: Config): void {
     // 若被 tap 会把「会话摘要/标题生成」播出来（官方 GenerateOptions.purpose 契约）。
     if (!config.enabled || sessionId === undefined || options.purpose !== undefined) return next()
     if (activeVoiceSession !== sessionId) return next()
+    const gen = (turnGen.get(sessionId) ?? 0) + 1
+    turnGen.set(sessionId, gen)
     return tapActiveStream(
       sessionId,
       next(),
       queue,
       broadcast,
-      (state) => setTurn(sessionId, state),
+      (state) => {
+        if ((turnGen.get(sessionId) ?? 0) === gen) setTurn(sessionId, state)
+      },
       // 工具提示音开关（设置 toolBeep；关掉后执行工具静音）。
       (name) => {
         if (vset.toolBeep) broadcast('tool', { sessionId, name })
@@ -574,7 +583,11 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/models/retry`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
-        // 镜像切换/下载失败后手动重试（设置面板按钮）。
+        // 镜像切换/下载失败后手动重试（设置面板按钮）。禁用态不得触发 ~388MB 下载。
+        if (!config.enabled) {
+          respondJson(res, 403, { error: 'voice mode disabled' })
+          return
+        }
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let kind: 'asr' | 'vad' | 'sense' = 'asr'
           try {
@@ -634,7 +647,9 @@ export function apply(ctx: Context, config: Config): void {
           } catch {
             // ignore malformed body
           }
-          if (sessionId) {
+          // 越权修复：仅活跃语音会话可打断（否则陈旧会话的 /cancel 会 close 共享 TTS 连接，
+          // 打断活跃会话在途合成——对抗审查 Important）。
+          if (sessionId && sessionId === activeVoiceSession) {
             // 停 TTS（epoch++，积压与在途全弃）；hold 打断带 keepAsr=1 时保留在途
             // ASR 段（按住说的前半句已上行，松手定稿以同一 epoch 增量续传，
             // 若 reset 会把 host 流清空导致定稿缺前半句——对抗审查第三轮 Blocker）。
@@ -682,7 +697,11 @@ export function apply(ctx: Context, config: Config): void {
         // 上线即告知当前模式归属（纠正多标签页/多会话漂移）。
         send('mode', { active: activeVoiceSession, ownerTabId: activeTabId })
         const heartbeat = setInterval(() => {
-          res.write(': hb\n')
+          try {
+            res.write(': hb\n')
+          } catch {
+            // socket 已销毁的边缘窗口：忽略（cleanup 会清定时器）
+          }
         }, 25000)
         let cleaned = false
         const cleanup = (): void => {
@@ -697,7 +716,7 @@ export function apply(ctx: Context, config: Config): void {
             // B2：owner tab 的 SSE 断开 → 8s 宽限内没重连则让出（防 transient blip 误让出）。
             if (tabId === activeTabId) {
               if (ownerYieldTimer) clearTimeout(ownerYieldTimer)
-              ownerYieldTimer = setTimeout(yieldActiveSession, 8000)
+              ownerYieldTimer = setTimeout(() => yieldActiveSession(activeVoiceSession), 8000)
             }
           }
         }
@@ -720,18 +739,23 @@ function collectBody(
   maxBytes: number,
   onBody: (body: string) => void | Promise<void>,
 ): void {
-  let body = ''
+  const chunks: Buffer[] = []
+  let received = 0
   let tooLarge = false
   req.on('data', (c: Buffer) => {
     if (tooLarge) return
-    body += c
-    if (body.length > maxBytes) {
+    received += c.length
+    if (received > maxBytes) {
       tooLarge = true
       respondJson(res, 413, { error: 'request body too large' })
+      return
     }
+    chunks.push(c)
   })
   req.on('end', () => {
     if (tooLarge) return
+    // 按 Buffer 收集后一次性 UTF-8 解码：隐式 `body += c` 会在多字节字符跨 chunk 时损坏中文。
+    const body = Buffer.concat(chunks).toString('utf8')
     // onBody 可能是 async（如 /preview）；rejection 不得成为未处理错误（响应已由回调内部处理）。
     try {
       const r = onBody(body)

@@ -167,23 +167,38 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   const repoDir = join(cacheDir, MODEL_REPO)
   const vadDir = join(cacheDir, VAD_REPO)
   const senseDir = join(cacheDir, SENSE_REPO)
-  /** 进行中的段：`sessionId#epoch` -> 段对象（epoch = 客户端段身份，杀乱序/竞态幽灵段）。 */
-  const segments = new Map<
-    string,
-    {
-      stream: SherpaStream
-      fed: number
-      vad: SherpaVad | null
-      /** P2-2：VAD 段完成后的待确认端点（仅语义需升档时存在）。 */
-      pendingEndpoint: { at: number; confirmMs: number; textAtPending: string } | null
-      /** 上次 partial 文本（P2-2 无新实词提前判完判据）。 */
-      lastText: string
-      /** P4-1：本段全量样本（16k f32；SenseVoice 定稿重译用）。 */
-      allSamples: Float32Array[]
-      /** 最近一次 feed 时刻（host 侧超时回收判定）。 */
-      lastActivity: number
+  /** 模型上游 host 列表：去重 + 过滤空串（modelHost 留空/默认 hf 与 HOST_PRIMARY 重复时只试一次）。 */
+  const modelHosts = (): string[] => {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const h of [modelHost(), HOST_PRIMARY, HOST_FALLBACK]) {
+      const v = (h ?? '').trim().replace(/\/+$/, '')
+      if (!v || seen.has(v)) continue
+      seen.add(v)
+      out.push(v)
     }
-  >()
+    return out
+  }
+  /** 段对象（epoch = 客户端段身份）。 */
+  interface Segment {
+    stream: SherpaStream
+    fed: number
+    vad: SherpaVad | null
+    /** P2-2：VAD 段完成后的待确认端点（仅语义需升档时存在）。 */
+    pendingEndpoint: { at: number; confirmMs: number; textAtPending: string } | null
+    /** 上次 partial 文本（P2-2 无新实词提前判完判据）。 */
+    lastText: string
+    /** P4-1：本段全量样本（16k f32；SenseVoice 定稿重译用）。 */
+    allSamples: Float32Array[]
+    /** 最近一次 feed 时刻（host 侧超时回收判定）。 */
+    lastActivity: number
+  }
+  /** 进行中的段：sessionId -> epoch -> 段对象。改嵌套 Map（弃 sessionId#epoch 字符串拼接）：
+   *  epoch 单调 + 按 sessionId 分组，天然消除「# 分隔符」与「前缀清理跨会话误清」两类边界。 */
+  const segments = new Map<string, Map<number, Segment>>()
+  /** 已定稿文本缓存：sessionId -> epoch -> 文本。finalize 幂等 + 客户端对瞬时失败的
+   *  final 重试时返回同文；同时作废「定稿后迟到 partial 重建幽灵段」。 */
+  const finalized = new Map<string, Map<number, string>>()
 
   let recognizer: SherpaRecognizer | null = null
   let modelsReady = false
@@ -210,7 +225,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         // 已下载跳过下载；否则逐个懒下载（断点续传）。
         if (!(await haveAllModels())) {
           for (const f of MODEL_FILES) {
-            if (!(await ensureFile(repoDir, MODEL_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast))) {
+            if (!(await ensureFile(repoDir, MODEL_REPO, f, modelHosts(), localBroadcast))) {
               asrFailAt = Date.now() + 60000
               broadcast('asr-error', { file: f })
               return false
@@ -259,7 +274,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     if (!vadLoading) {
       vadLoading = (async () => {
         for (const f of VAD_FILES) {
-          if (!(await ensureFile(vadDir, VAD_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast))) {
+          if (!(await ensureFile(vadDir, VAD_REPO, f, modelHosts(), localBroadcast))) {
             vadFailAt = Date.now() + 60000
             return null
           }
@@ -325,7 +340,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     if (!senseLoading) {
       senseLoading = (async () => {
         for (const f of SENSE_FILES) {
-          if (!(await ensureFile(senseDir, SENSE_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast))) {
+          if (!(await ensureFile(senseDir, SENSE_REPO, f, modelHosts(), localBroadcast))) {
             senseFailAt = Date.now() + 60000
             return null
           }
@@ -359,6 +374,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         // 崩溃/退出自动重建：清引用后下次 getSenseWorker 懒重建（防永久降级 zipformer）。
         client.onDeath(() => {
           senseWorker = null
+          senseWorkerSyncing = null // 清同步位：否则下次 getSenseWorker 命中旧的已解析 promise，永久降级 zipformer
         })
         // 建 recognizer（worker 内 create；主线程只等回执，不阻塞事件循环）。
         if (!(await client.request('create'))) {
@@ -416,29 +432,22 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       // 预热 worker（模型下载 + worker 内 create）：阻塞在 worker 线程，主线程只等回执。
       void getSenseWorker().catch(() => {})
     }
-    // epoch = 客户端段身份：key = sessionId#epoch；
-    // 同会话新 epoch 先把旧世代段清理（杀「final 先于在途 partial / reset 与 in-flight 竞态」幽灵段）。
-    const key = sessionId + '#' + epoch
-    let seg = segments.get(key)
+    // 幂等守卫：该 epoch 已定稿（客户端对瞬时失败的 final 重试 / 定稿后迟到 partial）→
+    // 返回缓存文本、不重建流。根治「同会话新 epoch 抢先按前缀清旧段 → 旧段 final 丢句」
+    // 竞态：不再清其它世代段，各段只等自己的 final=1（或 reset/sweep）回收。
+    let finMap = finalized.get(sessionId)
+    const cached = finMap?.get(epoch)
+    if (cached !== undefined) return { text: cached }
+    let sessSegs = segments.get(sessionId)
+    if (!sessSegs) {
+      sessSegs = new Map<number, Segment>()
+      segments.set(sessionId, sessSegs)
+    }
+    let seg = sessSegs.get(epoch)
     if (!seg) {
-      for (const [k, s] of segments) {
-        if (k.startsWith(sessionId + '#')) {
-          try {
-            s.vad?.free?.()
-          } catch {
-            // ignore
-          }
-          try {
-            s.stream.free()
-          } catch {
-            // ignore
-          }
-          segments.delete(k)
-        }
-      }
       if (samples.length === 0 && final) return { text: '' }
       seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: '', allSamples: [], lastActivity: Date.now() }
-      segments.set(key, seg)
+      sessSegs.set(epoch, seg)
     }
     seg.lastActivity = Date.now()
     // P1-4 增量上行：samples 为从 offset 开始的段内切片；只喂尚未喂过的部分
@@ -526,27 +535,46 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       // ignore
     }
     seg.stream.free()
-    segments.delete(key)
+    sessSegs.delete(epoch)
+    if (sessSegs.size === 0) segments.delete(sessionId)
     const sense = await senseP
-    return { text: sense ?? settled }
+    // 空串掩蔽修复：SenseVoice 返回空/空白视同未产出，回退 zipformer 定稿。
+    const finalText = (sense && sense.trim() ? sense : settled) || ''
+    // 缓存定稿文本（幂等 + 重试同文）；有界保留最近 32 个 epoch（epoch 单调，旧缓存无重试价值）。
+    if (!finMap) {
+      finMap = new Map<number, string>()
+      finalized.set(sessionId, finMap)
+    }
+    finMap.set(epoch, finalText)
+    if (finMap.size > 32) {
+      const first = finMap.keys().next().value
+      if (first !== undefined) finMap.delete(first)
+    }
+    return { text: finalText }
   }
 
   // host 侧超时回收：无活动超 90s 的段（页面崩溃/断电/kill 后悬挂）清理，每 30s 扫一次。
   const sweep = (): void => {
     const now = Date.now()
-    for (const [k, s] of segments) {
-      if (now - s.lastActivity > SEGMENT_IDLE_MS) {
-        try {
-          s.vad?.free?.()
-        } catch {
-          // ignore
+    for (const [sid, sessSegs] of segments) {
+      for (const [epoch, s] of sessSegs) {
+        if (now - s.lastActivity > SEGMENT_IDLE_MS) {
+          try {
+            s.vad?.free?.()
+          } catch {
+            // ignore
+          }
+          try {
+            s.stream.free()
+          } catch {
+            // ignore
+          }
+          sessSegs.delete(epoch)
         }
-        try {
-          s.stream.free()
-        } catch {
-          // ignore
-        }
-        segments.delete(k)
+      }
+      if (sessSegs.size === 0) {
+        segments.delete(sid)
+        finalized.delete(sid) // 段全回收时一并清定稿缓存，防 finalized 随会话数增长
       }
     }
     // 检测 VAD 清扫：会话 90s 无检测活动即释放（reset/dispose 之外的兜底，
@@ -581,9 +609,10 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       return { isSpeech: speech }
     },
     reset: (sessionId) => {
-      // 清该会话全部世代的段（epoch-key 化后按前缀匹配）。
-      for (const [k, s] of segments) {
-        if (k.startsWith(sessionId + '#')) {
+      // 清该会话全部世代的段（嵌套 Map 按 sessionId 整组回收）。
+      const sessSegs = segments.get(sessionId)
+      if (sessSegs) {
+        for (const [, s] of sessSegs) {
           try {
             s.vad?.free?.()
           } catch {
@@ -594,9 +623,10 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
           } catch {
             // ignore
           }
-          segments.delete(k)
         }
+        segments.delete(sessionId)
       }
+      finalized.delete(sessionId) // 会话重置：清定稿缓存（重入后 epoch 从 0 重新起算）
       // 打断根治：释放该会话检测通道 VAD（下次需要时惰性重建）。
       const dv = detectVads.get(sessionId)
       if (dv) {
@@ -616,19 +646,29 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       senseWorker = null
       senseWorkerSyncing = null
       if (w) void w.terminate()
-      for (const [, s] of segments) {
-        try {
-          s.vad?.free?.()
-        } catch {
-          // ignore
-        }
-        try {
-          s.stream.free()
-        } catch {
-          // ignore
+      for (const [, sessSegs] of segments) {
+        for (const [, s] of sessSegs) {
+          try {
+            s.vad?.free?.()
+          } catch {
+            // ignore
+          }
+          try {
+            s.stream.free()
+          } catch {
+            // ignore
+          }
         }
       }
       segments.clear()
+      finalized.clear()
+      // 释放 zipformer recognizer（WASM ~150MB+）：热重载/卸载否则每代泄漏一块大内存。
+      try {
+        recognizer?.free?.()
+      } catch {
+        // ignore
+      }
+      recognizer = null
       for (const [, dv] of detectVads) {
         try {
           dv.free?.()

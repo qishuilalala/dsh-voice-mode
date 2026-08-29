@@ -178,7 +178,19 @@ function createAsrRuntime(options) {
   const repoDir = join(cacheDir, MODEL_REPO);
   const vadDir = join(cacheDir, VAD_REPO);
   const senseDir = join(cacheDir, SENSE_REPO);
+  const modelHosts = () => {
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    for (const h of [modelHost(), HOST_PRIMARY, HOST_FALLBACK]) {
+      const v = (h ?? "").trim().replace(/\/+$/, "");
+      if (!v || seen.has(v)) continue;
+      seen.add(v);
+      out.push(v);
+    }
+    return out;
+  };
   const segments = /* @__PURE__ */ new Map();
+  const finalized = /* @__PURE__ */ new Map();
   let recognizer = null;
   let modelsReady = false;
   let modelsLoading = null;
@@ -197,7 +209,7 @@ function createAsrRuntime(options) {
       modelsLoading = (async () => {
         if (!await haveAllModels()) {
           for (const f of MODEL_FILES) {
-            if (!await ensureFile(repoDir, MODEL_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast)) {
+            if (!await ensureFile(repoDir, MODEL_REPO, f, modelHosts(), localBroadcast)) {
               asrFailAt = Date.now() + 6e4;
               broadcast("asr-error", { file: f });
               return false;
@@ -242,7 +254,7 @@ function createAsrRuntime(options) {
     if (!vadLoading) {
       vadLoading = (async () => {
         for (const f of VAD_FILES) {
-          if (!await ensureFile(vadDir, VAD_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast)) {
+          if (!await ensureFile(vadDir, VAD_REPO, f, modelHosts(), localBroadcast)) {
             vadFailAt = Date.now() + 6e4;
             return null;
           }
@@ -297,7 +309,7 @@ function createAsrRuntime(options) {
     if (!senseLoading) {
       senseLoading = (async () => {
         for (const f of SENSE_FILES) {
-          if (!await ensureFile(senseDir, SENSE_REPO, f, [modelHost(), HOST_PRIMARY, HOST_FALLBACK], localBroadcast)) {
+          if (!await ensureFile(senseDir, SENSE_REPO, f, modelHosts(), localBroadcast)) {
             senseFailAt = Date.now() + 6e4;
             return null;
           }
@@ -327,6 +339,7 @@ function createAsrRuntime(options) {
         const client = createSenseWorkerClient(w);
         client.onDeath(() => {
           senseWorker = null;
+          senseWorkerSyncing = null;
         });
         if (!await client.request("create")) {
           await client.terminate();
@@ -368,25 +381,19 @@ function createAsrRuntime(options) {
       void getSenseWorker().catch(() => {
       });
     }
-    const key = sessionId + "#" + epoch;
-    let seg = segments.get(key);
+    let finMap = finalized.get(sessionId);
+    const cached = finMap?.get(epoch);
+    if (cached !== void 0) return { text: cached };
+    let sessSegs = segments.get(sessionId);
+    if (!sessSegs) {
+      sessSegs = /* @__PURE__ */ new Map();
+      segments.set(sessionId, sessSegs);
+    }
+    let seg = sessSegs.get(epoch);
     if (!seg) {
-      for (const [k, s] of segments) {
-        if (k.startsWith(sessionId + "#")) {
-          try {
-            s.vad?.free?.();
-          } catch {
-          }
-          try {
-            s.stream.free();
-          } catch {
-          }
-          segments.delete(k);
-        }
-      }
       if (samples.length === 0 && final) return { text: "" };
       seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: "", allSamples: [], lastActivity: Date.now() };
-      segments.set(key, seg);
+      sessSegs.set(epoch, seg);
     }
     seg.lastActivity = Date.now();
     let endpoint = false;
@@ -451,23 +458,40 @@ function createAsrRuntime(options) {
     } catch {
     }
     seg.stream.free();
-    segments.delete(key);
+    sessSegs.delete(epoch);
+    if (sessSegs.size === 0) segments.delete(sessionId);
     const sense = await senseP;
-    return { text: sense ?? settled };
+    const finalText = (sense && sense.trim() ? sense : settled) || "";
+    if (!finMap) {
+      finMap = /* @__PURE__ */ new Map();
+      finalized.set(sessionId, finMap);
+    }
+    finMap.set(epoch, finalText);
+    if (finMap.size > 32) {
+      const first = finMap.keys().next().value;
+      if (first !== void 0) finMap.delete(first);
+    }
+    return { text: finalText };
   };
   const sweep = () => {
     const now = Date.now();
-    for (const [k, s] of segments) {
-      if (now - s.lastActivity > SEGMENT_IDLE_MS) {
-        try {
-          s.vad?.free?.();
-        } catch {
+    for (const [sid, sessSegs] of segments) {
+      for (const [epoch, s] of sessSegs) {
+        if (now - s.lastActivity > SEGMENT_IDLE_MS) {
+          try {
+            s.vad?.free?.();
+          } catch {
+          }
+          try {
+            s.stream.free();
+          } catch {
+          }
+          sessSegs.delete(epoch);
         }
-        try {
-          s.stream.free();
-        } catch {
-        }
-        segments.delete(k);
+      }
+      if (sessSegs.size === 0) {
+        segments.delete(sid);
+        finalized.delete(sid);
       }
     }
     for (const [sid, at] of detectVadLastUse) {
@@ -494,8 +518,9 @@ function createAsrRuntime(options) {
       return { isSpeech: speech };
     },
     reset: (sessionId) => {
-      for (const [k, s] of segments) {
-        if (k.startsWith(sessionId + "#")) {
+      const sessSegs = segments.get(sessionId);
+      if (sessSegs) {
+        for (const [, s] of sessSegs) {
           try {
             s.vad?.free?.();
           } catch {
@@ -504,9 +529,10 @@ function createAsrRuntime(options) {
             s.stream.free();
           } catch {
           }
-          segments.delete(k);
         }
+        segments.delete(sessionId);
       }
+      finalized.delete(sessionId);
       const dv = detectVads.get(sessionId);
       if (dv) {
         try {
@@ -523,17 +549,25 @@ function createAsrRuntime(options) {
       senseWorker = null;
       senseWorkerSyncing = null;
       if (w) void w.terminate();
-      for (const [, s] of segments) {
-        try {
-          s.vad?.free?.();
-        } catch {
-        }
-        try {
-          s.stream.free();
-        } catch {
+      for (const [, sessSegs] of segments) {
+        for (const [, s] of sessSegs) {
+          try {
+            s.vad?.free?.();
+          } catch {
+          }
+          try {
+            s.stream.free();
+          } catch {
+          }
         }
       }
       segments.clear();
+      finalized.clear();
+      try {
+        recognizer?.free?.();
+      } catch {
+      }
+      recognizer = null;
       for (const [, dv] of detectVads) {
         try {
           dv.free?.();
@@ -1089,6 +1123,7 @@ function apply(ctx, config) {
     turnStates.set(sessionId, state);
     broadcast("turn", { sessionId, state });
   };
+  const turnGen = /* @__PURE__ */ new Map();
   const sseClients = /* @__PURE__ */ new Set();
   const latestConnByTab = /* @__PURE__ */ new Map();
   const broadcast = (event, payload) => {
@@ -1139,10 +1174,11 @@ function apply(ctx, config) {
   const currentVoice = () => vset.voice;
   const currentRate = () => vset.rate;
   const currentInterrupt = () => vset.interruptLevel;
-  const yieldActiveSession = () => {
+  const yieldActiveSession = (expectedSid) => {
     ownerYieldTimer = null;
     const sid = activeVoiceSession;
     if (!sid) return;
+    if (expectedSid !== void 0 && expectedSid !== sid) return;
     activeVoiceSession = null;
     activeTabId = null;
     queue.cancel(sid);
@@ -1163,12 +1199,16 @@ function apply(ctx, config) {
     const sessionId = options.sessionId;
     if (!config.enabled || sessionId === void 0 || options.purpose !== void 0) return next();
     if (activeVoiceSession !== sessionId) return next();
+    const gen = (turnGen.get(sessionId) ?? 0) + 1;
+    turnGen.set(sessionId, gen);
     return tapActiveStream(
       sessionId,
       next(),
       queue,
       broadcast,
-      (state) => setTurn(sessionId, state),
+      (state) => {
+        if ((turnGen.get(sessionId) ?? 0) === gen) setTurn(sessionId, state);
+      },
       // 工具提示音开关（设置 toolBeep；关掉后执行工具静音）。
       (name2) => {
         if (vset.toolBeep) broadcast("tool", { sessionId, name: name2 });
@@ -1338,6 +1378,10 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/models/retry`,
       handler: (req, res) => {
+        if (!config.enabled) {
+          respondJson2(res, 403, { error: "voice mode disabled" });
+          return;
+        }
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let kind = "asr";
           try {
@@ -1391,7 +1435,7 @@ function apply(ctx, config) {
             keepAsr = parsed.keepAsr === true;
           } catch {
           }
-          if (sessionId) {
+          if (sessionId && sessionId === activeVoiceSession) {
             queue.cancel(sessionId);
             if (!keepAsr) asr.reset(sessionId);
           }
@@ -1433,7 +1477,10 @@ data: ${JSON.stringify(payload)}
         }
         send("mode", { active: activeVoiceSession, ownerTabId: activeTabId });
         const heartbeat = setInterval(() => {
-          res.write(": hb\n");
+          try {
+            res.write(": hb\n");
+          } catch {
+          }
         }, 25e3);
         let cleaned = false;
         const cleanup = () => {
@@ -1445,7 +1492,7 @@ data: ${JSON.stringify(payload)}
             latestConnByTab.delete(tabId);
             if (tabId === activeTabId) {
               if (ownerYieldTimer) clearTimeout(ownerYieldTimer);
-              ownerYieldTimer = setTimeout(yieldActiveSession, 8e3);
+              ownerYieldTimer = setTimeout(() => yieldActiveSession(activeVoiceSession), 8e3);
             }
           }
         };
@@ -1457,18 +1504,22 @@ data: ${JSON.stringify(payload)}
 }
 var MAX_JSON_BODY = 16 * 1024;
 function collectBody(req, res, maxBytes, onBody) {
-  let body = "";
+  const chunks = [];
+  let received = 0;
   let tooLarge = false;
   req.on("data", (c) => {
     if (tooLarge) return;
-    body += c;
-    if (body.length > maxBytes) {
+    received += c.length;
+    if (received > maxBytes) {
       tooLarge = true;
       respondJson2(res, 413, { error: "request body too large" });
+      return;
     }
+    chunks.push(c);
   });
   req.on("end", () => {
     if (tooLarge) return;
+    const body = Buffer.concat(chunks).toString("utf8");
     try {
       const r = onBody(body);
       if (r && typeof r.then === "function") r.catch(() => {
