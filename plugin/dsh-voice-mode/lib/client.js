@@ -59,6 +59,19 @@ function resampleLinear(src, srcRate, dstRate) {
   return out;
 }
 
+// src/wakeword.ts
+function normalizeWake(text) {
+  return String(text ?? "").replace(/[\s\u3000]+/g, "").toLowerCase().replace(/[，。！？!?；;、,.]/g, "");
+}
+function matchWakeWord(partial, wakeWord) {
+  const w = normalizeWake(wakeWord);
+  if (!w) return false;
+  const p = normalizeWake(partial);
+  if (!p) return false;
+  if (p.startsWith(w)) return true;
+  return false;
+}
+
 // src/asr.ts
 var workletBlobUrl = null;
 var SAMPLE_RATE = 16e3;
@@ -72,6 +85,7 @@ var PARTIAL_MIN_S = 0.4;
 var PARTIAL_MAX_S = 30;
 var BUFFER_SIZE = 1024;
 function createAsrEngine(config, sessionId) {
+  const wakeWord = (config.wakeWord ?? "").trim().toLowerCase().replace(/[\s\u3000]+/g, "");
   let state = "idle";
   const stateListeners = /* @__PURE__ */ new Set();
   const errorListeners = /* @__PURE__ */ new Set();
@@ -213,6 +227,22 @@ function createAsrEngine(config, sessionId) {
       if (!res.ok) return;
       const out = await res.json();
       if (epoch !== segmentEpoch) return;
+      if (state === "wake" && wakeWord) {
+        uploadedSamples = Math.max(uploadedSamples, from + samples.length);
+        if (matchWakeWord(out.text ?? "", wakeWord)) {
+          segmentEpoch++;
+          segment = [];
+          segmentMs = 0;
+          speechMs = 0;
+          silenceMs = 0;
+          prePad = [];
+          uploadedSamples = 0;
+          utteranceEndAt = null;
+          await resetHostStream();
+          if (active) setState("listening");
+        }
+        return;
+      }
       if (out.isSpeech !== void 0) config.onIsSpeech?.(out.isSpeech);
       if (state === "loading-model") setState("speech");
       uploadedSamples = Math.max(uploadedSamples, from + samples.length);
@@ -295,7 +325,7 @@ function createAsrEngine(config, sessionId) {
     void (async () => {
       emitTelemetry("submitted");
       const MAX_FINAL_ATTEMPTS = 3;
-      const restoreState = () => setState(active ? speechActive || holdActive ? "speech" : "listening" : "idle");
+      const restoreState = () => setState(active ? speechActive || holdActive ? "speech" : wakeWord ? "wake" : "listening" : "idle");
       for (let attempt = 0; attempt < MAX_FINAL_ATTEMPTS; attempt++) {
         if (attempt > 0) {
           if (segmentEpoch !== epochSnapshot + 1) return;
@@ -422,6 +452,18 @@ function createAsrEngine(config, sessionId) {
       segment.push(data);
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
     } else if (config.mode === "hold") {
+    } else if (state === "wake") {
+      if (rms > SPEECH_RMS) {
+        segmentMs += durationMs;
+        segment.push(data);
+        if (segmentMs > MAX_SEGMENT_MS) {
+          segment = [];
+          segmentMs = 0;
+          silenceMs = 0;
+          uploadedSamples = 0;
+          void resetHostStream();
+        }
+      }
     } else if (rms > SPEECH_RMS) {
       if (config.isPlaying?.()) {
         if (speechActive) finalizeSegment(true);
@@ -485,7 +527,7 @@ function createAsrEngine(config, sessionId) {
       if (playingNow && !speechActive && !holdActive) {
         lastPollAt = nowMs;
         void requestDetect();
-      } else if (speechActive || holdActive) {
+      } else if (speechActive || holdActive || state === "wake") {
         lastPollAt = nowMs;
         void requestPartial();
       }
@@ -618,7 +660,7 @@ function createAsrEngine(config, sessionId) {
       detectChunks = [];
       detectSent = 0;
       detectGeneration++;
-      setState("listening");
+      setState(wakeWord ? "wake" : "listening");
       try {
         await startRecorder();
       } catch (error) {
@@ -680,7 +722,7 @@ function createAsrEngine(config, sessionId) {
       forcePending = false;
       lastPollAt = 0;
       return resetHostStream().then(() => {
-        if (active) setState("listening");
+        if (active) setState(wakeWord ? "wake" : "listening");
       });
     },
     endHeld(cancel = false) {
@@ -694,7 +736,7 @@ function createAsrEngine(config, sessionId) {
         prePad = [];
         speechActive = false;
         forcePending = false;
-        setState("listening");
+        setState(wakeWord ? "wake" : "listening");
         return;
       }
       if (segment.length > 0) {
@@ -703,7 +745,7 @@ function createAsrEngine(config, sessionId) {
         finalizeSegment();
       } else {
         forcePending = false;
-        setState("listening");
+        setState(wakeWord ? "wake" : "listening");
       }
     },
     onSegment(fn) {
@@ -910,6 +952,8 @@ var zh = {
   thinking: "\u601D\u8003\u4E2D\u2026",
   barHold: "\u8BED\u97F3\u6A21\u5F0F \xB7 \u6309\u4F4F\u8BF4\u8BDD\uFF08\u77ED\u6309\u9000\u51FA\uFF09",
   barListening: "\u8BED\u97F3\u6A21\u5F0F \xB7 \u8046\u542C\u4E2D\u2026",
+  wakeWord: "\u5524\u9192\u8BCD",
+  sayWake: "\u8BF4\u300C{wake}\u300D\u5F00\u59CB",
   reading: "\u6717\u8BFB\u4E2D\u2026",
   recognitionFail: "\u8BC6\u522B\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
   sessionExpired: "\u8BED\u97F3\u4F1A\u8BDD\u5DF2\u65AD\u5F00\uFF0C\u6B63\u5728\u91CD\u8FDE\u2026",
@@ -1026,6 +1070,8 @@ var en = {
   thinking: "Thinking\u2026",
   barHold: "Voice mode \xB7 hold to talk (tap to exit)",
   barListening: "Voice mode \xB7 listening\u2026",
+  wakeWord: "Wake word",
+  sayWake: 'Say "{wake}" to start',
   reading: "Reading\u2026",
   recognitionFail: "Recognition failed, try again",
   sessionExpired: "Voice session expired, reconnecting\u2026",
@@ -1910,7 +1956,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "209cebe";
+var BUILD_TAG = "cb2a885";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2225,7 +2271,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     boot: DEFAULT_BOOT,
     mode: "toggle",
     telemetry: null,
-    turn: "idle"
+    turn: "idle",
+    wakeWord: ""
   };
   const listeners = /* @__PURE__ */ new Set();
   const audioListeners = /* @__PURE__ */ new Set();
@@ -2454,8 +2501,12 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       } catch {
       }
     });
-    source.addEventListener("tool", () => {
-      if (ui.boot.toolBeep === true) playToolBeep();
+    source.addEventListener("tool", (e) => {
+      try {
+        const p = JSON.parse(e.data);
+        if (p.sessionId === activeSessionId && ui.boot.toolBeep === true) playToolBeep();
+      } catch {
+      }
     });
   };
   connect();
@@ -2689,7 +2740,7 @@ function MicButton({
         wakeWord: typeof c.wakeWord === "string" ? c.wakeWord : cur.wakeWord,
         toolBeep: c.toolBeep === true
       };
-      bus.setUi({ boot: next, mode: next.mode });
+      bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord });
       return next;
     } catch {
       return bootNow();
@@ -2814,6 +2865,7 @@ function MicButton({
           silenceMs,
           basePath,
           mode: cfg.mode,
+          wakeWord: cfg.wakeWord,
           echoGateDb: cfg.echoGateDb,
           echo: bus.echoForAsr(),
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
@@ -2910,6 +2962,11 @@ function MicButton({
       engineRef.current = engine;
       engine.onTelemetry((e) => bus.stampTelemetry(e.stage, e.at));
       bus.warmAudio();
+      try {
+        if (!beepCtx) beepCtx = new AudioContext();
+        void beepCtx.resume?.();
+      } catch {
+      }
       engine.onState((s) => {
         bus.setUi({ state: s });
         if (s === "idle") resetIdle();
@@ -3202,7 +3259,7 @@ function MicButton({
   const phaseRef = (0, import_react2.useRef)("");
   phaseRef.current = livePhase;
   const [holding, setHolding] = (0, import_react2.useState)(false);
-  const label = on ? busy ? t("recognizing") : holdMode ? holding ? t("releaseToSend") : t("holdToTalk") : t("voiceDetected") : local === "pending" ? t("entering") : t("voiceBtn");
+  const label = on ? busy ? t("recognizing") : holdMode ? holding ? t("releaseToSend") : t("holdToTalk") : bus.ui.state === "wake" ? t("sayWake").replace("{wake}", bus.ui.wakeWord || t("wakeWord")) : t("voiceDetected") : local === "pending" ? t("entering") : t("voiceBtn");
   const holdPtrRef = (0, import_react2.useRef)(null);
   const toggleHoldRef = (0, import_react2.useRef)(false);
   const suppressClickUntilRef = (0, import_react2.useRef)(0);
@@ -3358,7 +3415,7 @@ function VoiceStatusBar({ bus, sessionId }) {
   }, [bus]);
   const isActive = b.active === sessionId;
   if (!isActive) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
-  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? t("recognizing") : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.playing ? t("reading") : b.ui.turn === "agent-speaking" ? t("thinking") : b.ui.mode === "hold" ? t("barHold") : t("barListening");
+  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? t("recognizing") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.playing ? t("reading") : b.ui.turn === "agent-speaking" ? t("thinking") : b.ui.mode === "hold" ? t("barHold") : t("barListening");
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0);
   const telParts = [];
   const fmt = (ms) => ms >= 1e3 ? `${(ms / 1e3).toFixed(2)}s` : `${Math.round(ms)}ms`;

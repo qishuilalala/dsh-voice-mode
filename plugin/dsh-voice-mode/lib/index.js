@@ -4,9 +4,9 @@ import { join as join4 } from "node:path";
 import { homedir } from "node:os";
 
 // src/asr-host.ts
-import { createWriteStream, statSync } from "node:fs";
-import { mkdir, rename, stat, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { statSync } from "node:fs";
+import { stat as stat2 } from "node:fs/promises";
+import { join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 
@@ -137,13 +137,155 @@ if (parentPort) {
 
 // src/asr-host.ts
 import sherpa_onnx from "sherpa-onnx";
+
+// src/models.ts
+import { createHash } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { mkdir, rename, stat, unlink } from "node:fs/promises";
+import { join } from "node:path";
+var HOST_PRIMARY = "https://huggingface.co";
+var HOST_FALLBACK = "https://hf-mirror.com";
+var ALLOWED_MODEL_HOSTNAMES = ["huggingface.co", "hf-mirror.com"];
+function validateModelHost(raw, allowCustomHost) {
+  if (!raw) return null;
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:") return null;
+  const hostname = u.hostname.toLowerCase();
+  if (!ALLOWED_MODEL_HOSTNAMES.includes(hostname) && !allowCustomHost) {
+    return null;
+  }
+  return `${u.protocol}//${u.hostname}${u.port ? `:${u.port}` : ""}`;
+}
+function redirectHostAllowed(finalUrl, allowCustomHost) {
+  try {
+    const u = new URL(finalUrl);
+    if (u.protocol !== "https:") return false;
+    const hostname = u.hostname.toLowerCase();
+    if (allowCustomHost) return true;
+    return hostname === "huggingface.co" || hostname.endsWith(".huggingface.co") || hostname === "hf-mirror.com" || hostname.endsWith(".hf-mirror.com");
+  } catch {
+    return false;
+  }
+}
+async function sha256OfFile(path) {
+  const hash = createHash("sha256");
+  const { createReadStream } = await import("node:fs");
+  await new Promise((resolve, reject) => {
+    const stream = createReadStream(path);
+    stream.on("data", (c) => hash.update(c));
+    stream.on("error", reject);
+    stream.on("end", () => resolve());
+  });
+  return hash.digest("hex");
+}
+async function ensureModelFile(opts) {
+  const { repo, repoDir, spec, primaryHost, allowCustomHost, broadcast } = opts;
+  const localPath = join(repoDir, spec.file);
+  const partPath = `${localPath}.part`;
+  if ((await stat(localPath).catch(() => null))?.isFile()) {
+    const ok = await sha256OfFile(localPath).catch(() => "") === spec.sha256;
+    if (ok) return true;
+    await unlink(localPath).catch(() => void 0);
+  }
+  await mkdir(join(repoDir, spec.file.includes("/") ? spec.file.slice(0, spec.file.lastIndexOf("/")) : ""), {
+    recursive: true
+  }).catch(() => void 0);
+  const hosts = [...new Set([primaryHost, HOST_PRIMARY, HOST_FALLBACK].filter(Boolean))];
+  let lastError = "no upstream reachable";
+  for (const host of hosts) {
+    try {
+      const done = await downloadVerified({ ...opts, host, partPath, localPath });
+      if (done) return true;
+    } catch (e) {
+      lastError = String(e);
+    }
+  }
+  await unlink(partPath).catch(() => void 0);
+  broadcast("asr-error", { file: spec.file, reason: "checksum_or_download_failed", detail: lastError });
+  return false;
+}
+async function downloadVerified(opts) {
+  const { repo, spec, host, allowCustomHost, partPath, localPath, broadcast } = opts;
+  const url = `${host}/${repo}/resolve/main/${spec.file}`;
+  const partSt = await stat(partPath).catch(() => null);
+  const resumeFrom = partSt?.isFile() ? partSt.size : 0;
+  const headers = { "user-agent": "dsh-voice-mode-fork" };
+  if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;
+  const res = await fetch(url, { headers, redirect: "follow" });
+  if (!redirectHostAllowed(res.url, allowCustomHost)) return false;
+  if (res.status === 416) {
+    if (await sha256OfFile(partPath).catch(() => "") === spec.sha256) {
+      await rename(partPath, localPath);
+      return true;
+    }
+    await unlink(partPath).catch(() => void 0);
+    return false;
+  }
+  if (res.status !== 200 && res.status !== 206) return false;
+  const total = Number(res.headers.get("content-length") ?? 0) + resumeFrom;
+  const src = res.body;
+  if (!src) return false;
+  const sink = createWriteStream(partPath, resumeFrom > 0 ? { flags: "a" } : {});
+  const reader = src.getReader();
+  let received = resumeFrom;
+  await new Promise((resolve, reject) => {
+    sink.on("error", (e) => reject(e));
+    sink.on("finish", () => resolve());
+    void (async () => {
+      try {
+        for (; ; ) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          received += value.byteLength;
+          if (!sink.write(value)) {
+            await new Promise((r) => sink.once("drain", r));
+          }
+          if (total > 0) {
+            broadcast("asr-progress", {
+              file: spec.file,
+              percent: Math.min(100, Math.round(received / total * 100))
+            });
+          }
+        }
+        sink.end();
+      } catch (e) {
+        sink.destroy(e);
+        reject(e);
+      }
+    })();
+  });
+  const actual = await sha256OfFile(partPath).catch(() => "");
+  if (actual !== spec.sha256) {
+    await unlink(partPath).catch(() => void 0);
+    return false;
+  }
+  await rename(partPath, localPath);
+  return true;
+}
+
+// src/asr-host.ts
 var { createOnlineRecognizer, createVad } = sherpa_onnx;
 var MODEL_REPO = "csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30";
-var MODEL_FILES = ["encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt"];
+var MODEL_FILES = [
+  { file: "encoder.int8.onnx", sha256: "5ac51e27981bb4dab01bb9be4958453ba50c3b61c063ddda0eab23fd3671aa4f" },
+  { file: "decoder.onnx", sha256: "06522ad63cec0fdf6809f4e1db9bb4f7d710c34582e3b35db62ac60eccafac7e" },
+  { file: "joiner.int8.onnx", sha256: "b34584dc6f561089e1d747fedebb3765f2caa72c927ef54d7ca55e5ae40a814b" },
+  { file: "tokens.txt", sha256: "deba637de83d28b10e90a759b62637fceb432b9560ff2cda1baad88b14d99236" }
+];
 var VAD_REPO = "csukuangfj/vad";
-var VAD_FILES = ["silero_vad.onnx"];
+var VAD_FILES = [
+  { file: "silero_vad.onnx", sha256: "a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28" }
+];
 var SENSE_REPO = "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17";
-var SENSE_FILES = ["model.int8.onnx", "tokens.txt"];
+var SENSE_FILES = [
+  { file: "model.int8.onnx", sha256: "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51" },
+  { file: "tokens.txt", sha256: "4d14b174af75c64af4b9879a7f2d60c774b4dcea74fddee64510d7e4d7347590" }
+];
 function pcmToSamples(buf) {
   if (buf.length % 4 !== 0) return null;
   return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
@@ -169,26 +311,16 @@ function rmsOf(samples) {
   return Math.sqrt(sum / samples.length);
 }
 function createAsrRuntime(options) {
-  const { cacheDir, modelHost, broadcast, senseVoice } = options;
+  const { cacheDir, modelHost, broadcast, senseVoice, allowCustomHost } = options;
   let lastProgress = null;
   const localBroadcast = (event, payload) => {
     if (event === "asr-progress") lastProgress = payload;
     broadcast(event, payload);
   };
-  const repoDir = join(cacheDir, MODEL_REPO);
-  const vadDir = join(cacheDir, VAD_REPO);
-  const senseDir = join(cacheDir, SENSE_REPO);
-  const modelHosts = () => {
-    const seen = /* @__PURE__ */ new Set();
-    const out = [];
-    for (const h of [modelHost(), HOST_PRIMARY, HOST_FALLBACK]) {
-      const v = (h ?? "").trim().replace(/\/+$/, "");
-      if (!v || seen.has(v)) continue;
-      seen.add(v);
-      out.push(v);
-    }
-    return out;
-  };
+  const repoDir = join2(cacheDir, MODEL_REPO);
+  const vadDir = join2(cacheDir, VAD_REPO);
+  const senseDir = join2(cacheDir, SENSE_REPO);
+  const normalizedModelHost = () => validateModelHost(modelHost(), allowCustomHost) ?? HOST_PRIMARY;
   const segments = /* @__PURE__ */ new Map();
   const finalized = /* @__PURE__ */ new Map();
   const finalizing = /* @__PURE__ */ new Map();
@@ -199,7 +331,7 @@ function createAsrRuntime(options) {
   let asrFailAt = 0;
   const haveAllModels = async () => {
     for (const f of MODEL_FILES) {
-      const st = await stat(join(repoDir, f)).catch(() => null);
+      const st = await stat2(join2(repoDir, f.file)).catch(() => null);
       if (!st?.isFile()) return false;
     }
     return true;
@@ -211,9 +343,9 @@ function createAsrRuntime(options) {
       modelsLoading = (async () => {
         if (!await haveAllModels()) {
           for (const f of MODEL_FILES) {
-            if (!await ensureFile(repoDir, MODEL_REPO, f, modelHosts(), localBroadcast)) {
+            if (!await ensureModelFile({ repo: MODEL_REPO, repoDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast })) {
               asrFailAt = Date.now() + 6e4;
-              broadcast("asr-error", { file: f });
+              broadcast("asr-error", { file: f.file });
               return false;
             }
           }
@@ -230,7 +362,7 @@ function createAsrRuntime(options) {
   const getRecognizer = async () => {
     if (!await ensureModels()) return null;
     if (recognizer) return recognizer;
-    const t = (f) => join(repoDir, f);
+    const t = (f) => join2(repoDir, f);
     recognizer = createOnlineRecognizer({
       modelConfig: {
         transducer: {
@@ -251,18 +383,18 @@ function createAsrRuntime(options) {
   let vadLoading = null;
   let vadFailAt = 0;
   const ensureVadModel = async () => {
-    if (vadModelReady) return join(vadDir, VAD_FILES[0]);
+    if (vadModelReady) return join2(vadDir, VAD_FILES[0].file);
     if (Date.now() < vadFailAt) return null;
     if (!vadLoading) {
       vadLoading = (async () => {
         for (const f of VAD_FILES) {
-          if (!await ensureFile(vadDir, VAD_REPO, f, modelHosts(), localBroadcast)) {
+          if (!await ensureModelFile({ repo: VAD_REPO, repoDir: vadDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast })) {
             vadFailAt = Date.now() + 6e4;
             return null;
           }
         }
         vadModelReady = true;
-        return join(vadDir, VAD_FILES[0]);
+        return join2(vadDir, VAD_FILES[0].file);
       })().finally(() => {
         vadLoading = null;
       });
@@ -306,18 +438,18 @@ function createAsrRuntime(options) {
   let senseLoading = null;
   let senseFailAt = 0;
   const ensureSenseModel = async () => {
-    if (senseModelReady) return join(senseDir, SENSE_FILES[0]);
+    if (senseModelReady) return join2(senseDir, SENSE_FILES[0].file);
     if (Date.now() < senseFailAt) return null;
     if (!senseLoading) {
       senseLoading = (async () => {
         for (const f of SENSE_FILES) {
-          if (!await ensureFile(senseDir, SENSE_REPO, f, modelHosts(), localBroadcast)) {
+          if (!await ensureModelFile({ repo: SENSE_REPO, repoDir: senseDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast })) {
             senseFailAt = Date.now() + 6e4;
             return null;
           }
         }
         senseModelReady = true;
-        return join(senseDir, SENSE_FILES[0]);
+        return join2(senseDir, SENSE_FILES[0].file);
       })().finally(() => {
         senseLoading = null;
       });
@@ -608,21 +740,21 @@ function createAsrRuntime(options) {
     },
     modelStatus: () => {
       const statFile = async (dir, repo, name2) => {
-        const st = await stat(join(dir, repo, name2)).catch(() => null);
+        const st = await stat2(join2(dir, repo, name2)).catch(() => null);
         return { exists: !!st?.isFile(), size: st?.size ?? 0 };
       };
       const asrFiles = MODEL_FILES.map((n) => ({
-        name: n,
+        name: n.file,
         exists: (() => {
           try {
-            return statSync(join(repoDir, n)).isFile();
+            return statSync(join2(repoDir, n.file)).isFile();
           } catch {
             return false;
           }
         })(),
         size: (() => {
           try {
-            return statSync(join(repoDir, n)).size;
+            return statSync(join2(repoDir, n.file)).size;
           } catch {
             return 0;
           }
@@ -630,14 +762,14 @@ function createAsrRuntime(options) {
       }));
       const vadSize = (() => {
         try {
-          return statSync(join(vadDir, VAD_FILES[0])).size;
+          return statSync(join2(vadDir, VAD_FILES[0].file)).size;
         } catch {
           return 0;
         }
       })();
       const senseSize = (() => {
         try {
-          return statSync(join(senseDir, SENSE_FILES[0])).size;
+          return statSync(join2(senseDir, SENSE_FILES[0].file)).size;
         } catch {
           return 0;
         }
@@ -682,79 +814,6 @@ function createAsrRuntime(options) {
       return await ensureModels();
     }
   };
-}
-async function ensureFile(repoDir, repo, file, hosts, broadcast) {
-  const localPath = join(repoDir, file);
-  const st = await stat(localPath).catch(() => null);
-  if (st?.isFile()) return true;
-  await mkdir(repoDir, { recursive: true }).catch(() => void 0);
-  const partPath = `${localPath}.part`;
-  for (const host of hosts) {
-    try {
-      const cur = (await stat(partPath).catch(() => null))?.size ?? 0;
-      const ok = await download(host, repoDir, repo, file, cur, broadcast);
-      if (ok) {
-        await rename(partPath, localPath).catch(() => void 0);
-        if ((await stat(localPath).catch(() => null))?.isFile()) return true;
-      }
-    } catch {
-    }
-  }
-  await unlink(partPath).catch(() => void 0);
-  return false;
-}
-var HOST_PRIMARY = "https://huggingface.co";
-var HOST_FALLBACK = "https://hf-mirror.com";
-async function download(host, repoDir, repo, file, resumeFrom, broadcast) {
-  const url = `${host}/${repo}/resolve/main/${file}`;
-  const headers = { "user-agent": "dsh-voice-mode" };
-  if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(9e5) });
-  if (res.status === 416) return true;
-  if (res.status !== 200 && res.status !== 206) return false;
-  const resume = res.status === 206 ? resumeFrom : 0;
-  const declared = Number(res.headers.get("content-length"));
-  const total = (Number.isFinite(declared) ? declared : 0) + resume;
-  const partPath = join(repoDir, `${file}.part`);
-  const sink = createWriteStream(partPath, resume > 0 ? { flags: "a" } : {});
-  const src = res.body;
-  if (!src) return false;
-  const reader = src.getReader();
-  let received = resume;
-  const done = new Promise((resolve, reject) => {
-    sink.on("error", (e) => reject(e));
-    sink.on("finish", () => {
-      if (total > 0 && received < total) {
-        sink.destroy(new Error("download truncated"));
-        reject(new Error("download truncated"));
-      } else {
-        resolve(true);
-      }
-    });
-    (async () => {
-      try {
-        for (; ; ) {
-          const { done: d, value } = await reader.read();
-          if (d) break;
-          received += value.byteLength;
-          if (!sink.write(value)) {
-            await new Promise((r) => sink.once("drain", r));
-          }
-          if (total > 0) {
-            broadcast("asr-progress", {
-              file,
-              percent: Math.min(100, Math.round(received / total * 100))
-            });
-          }
-        }
-        sink.end();
-      } catch (e) {
-        sink.destroy(e);
-        reject(e);
-      }
-    })();
-  });
-  return done.catch(() => false);
 }
 var respondJson = (res, status, payload) => {
   res.writeHead(status, { "content-type": "application/json" });
@@ -1084,138 +1143,6 @@ var TtsQueue = class {
 import { fork } from "node:child_process";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { join as join3 } from "node:path";
-
-// src/models.ts
-import { createHash } from "node:crypto";
-import { createWriteStream as createWriteStream2 } from "node:fs";
-import { mkdir as mkdir2, rename as rename2, stat as stat2, unlink as unlink2 } from "node:fs/promises";
-import { join as join2 } from "node:path";
-var HOST_PRIMARY2 = "https://huggingface.co";
-var HOST_FALLBACK2 = "https://hf-mirror.com";
-var ALLOWED_MODEL_HOSTNAMES = ["huggingface.co", "hf-mirror.com"];
-function validateModelHost(raw, allowCustomHost) {
-  if (!raw) return null;
-  let u;
-  try {
-    u = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (u.protocol !== "https:") return null;
-  const hostname = u.hostname.toLowerCase();
-  if (!ALLOWED_MODEL_HOSTNAMES.includes(hostname) && !allowCustomHost) {
-    return null;
-  }
-  return `${u.protocol}//${u.hostname}${u.port ? `:${u.port}` : ""}`;
-}
-function redirectHostAllowed(finalUrl, allowCustomHost) {
-  try {
-    const u = new URL(finalUrl);
-    if (u.protocol !== "https:") return false;
-    const hostname = u.hostname.toLowerCase();
-    if (allowCustomHost) return true;
-    return hostname === "huggingface.co" || hostname.endsWith(".huggingface.co") || hostname === "hf-mirror.com" || hostname.endsWith(".hf-mirror.com");
-  } catch {
-    return false;
-  }
-}
-async function sha256OfFile(path) {
-  const hash = createHash("sha256");
-  const { createReadStream } = await import("node:fs");
-  await new Promise((resolve, reject) => {
-    const stream = createReadStream(path);
-    stream.on("data", (c) => hash.update(c));
-    stream.on("error", reject);
-    stream.on("end", () => resolve());
-  });
-  return hash.digest("hex");
-}
-async function ensureModelFile(opts) {
-  const { repo, repoDir, spec, primaryHost, allowCustomHost, broadcast } = opts;
-  const localPath = join2(repoDir, spec.file);
-  const partPath = `${localPath}.part`;
-  if ((await stat2(localPath).catch(() => null))?.isFile()) {
-    const ok = await sha256OfFile(localPath).catch(() => "") === spec.sha256;
-    if (ok) return true;
-    await unlink2(localPath).catch(() => void 0);
-  }
-  await mkdir2(join2(repoDir, spec.file.includes("/") ? spec.file.slice(0, spec.file.lastIndexOf("/")) : ""), {
-    recursive: true
-  }).catch(() => void 0);
-  const hosts = [...new Set([primaryHost, HOST_PRIMARY2, HOST_FALLBACK2].filter(Boolean))];
-  let lastError = "no upstream reachable";
-  for (const host of hosts) {
-    try {
-      const done = await downloadVerified({ ...opts, host, partPath, localPath });
-      if (done) return true;
-    } catch (e) {
-      lastError = String(e);
-    }
-  }
-  await unlink2(partPath).catch(() => void 0);
-  broadcast("asr-error", { file: spec.file, reason: "checksum_or_download_failed", detail: lastError });
-  return false;
-}
-async function downloadVerified(opts) {
-  const { repo, spec, host, allowCustomHost, partPath, localPath, broadcast } = opts;
-  const url = `${host}/${repo}/resolve/main/${spec.file}`;
-  const partSt = await stat2(partPath).catch(() => null);
-  const resumeFrom = partSt?.isFile() ? partSt.size : 0;
-  const headers = { "user-agent": "dsh-voice-mode-fork" };
-  if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;
-  const res = await fetch(url, { headers, redirect: "follow" });
-  if (!redirectHostAllowed(res.url, allowCustomHost)) return false;
-  if (res.status === 416) {
-    if (await sha256OfFile(partPath).catch(() => "") === spec.sha256) {
-      await rename2(partPath, localPath);
-      return true;
-    }
-    await unlink2(partPath).catch(() => void 0);
-    return false;
-  }
-  if (res.status !== 200 && res.status !== 206) return false;
-  const total = Number(res.headers.get("content-length") ?? 0) + resumeFrom;
-  const src = res.body;
-  if (!src) return false;
-  const sink = createWriteStream2(partPath, resumeFrom > 0 ? { flags: "a" } : {});
-  const reader = src.getReader();
-  let received = resumeFrom;
-  await new Promise((resolve, reject) => {
-    sink.on("error", (e) => reject(e));
-    sink.on("finish", () => resolve());
-    void (async () => {
-      try {
-        for (; ; ) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          received += value.byteLength;
-          if (!sink.write(value)) {
-            await new Promise((r) => sink.once("drain", r));
-          }
-          if (total > 0) {
-            broadcast("asr-progress", {
-              file: spec.file,
-              percent: Math.min(100, Math.round(received / total * 100))
-            });
-          }
-        }
-        sink.end();
-      } catch (e) {
-        sink.destroy(e);
-        reject(e);
-      }
-    })();
-  });
-  const actual = await sha256OfFile(partPath).catch(() => "");
-  if (actual !== spec.sha256) {
-    await unlink2(partPath).catch(() => void 0);
-    return false;
-  }
-  await rename2(partPath, localPath);
-  return true;
-}
-
-// src/tts-local.ts
 var TTS_MODEL_REPO = "csukuangfj/sherpa-onnx-vits-zh-ll";
 var KOKORO_MODEL_DIR = "csukuangfj/kokoro-multi-lang-v1_1";
 var TTS_MODEL_FILES = [
@@ -1712,7 +1639,6 @@ var Config = z.object({
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default("https://huggingface.co"),
-  asrModel: z.union([z.const("zh"), z.const("paraformer-zh-en")]).default("zh"),
   ttsEngine: z.union([z.const("edge"), z.const("vits"), z.const("kokoro")]).default("vits"),
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
@@ -1720,8 +1646,7 @@ var Config = z.object({
   rate: z.number().default(1),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(700),
-  idleTimeoutMinutes: z.number().default(10),
-  punctuate: z.boolean().default(true)
+  idleTimeoutMinutes: z.number().default(10)
 });
 function apply(ctx, config) {
   let activeVoiceSession = null;
@@ -1736,7 +1661,9 @@ function apply(ctx, config) {
   const turnGen = /* @__PURE__ */ new Map();
   const sessions = ctx.get("sessions");
   const limiter = new RateLimiter();
-  const normalizedModelHost = () => validateModelHost(vset.modelHost, config.allowCustomModelHost) ?? HOST_PRIMARY2;
+  const limiterPrune = setInterval(() => limiter.prune(Date.now(), 6e4), 6e4);
+  ctx.effect(() => () => clearInterval(limiterPrune));
+  const normalizedModelHost = () => validateModelHost(vset.modelHost, config.allowCustomModelHost) ?? HOST_PRIMARY;
   const denyNonLoopback = (req, res) => {
     if (!config.allowLan && !isLoopbackRequest(req)) {
       res.statusCode = 403;
@@ -1786,6 +1713,7 @@ function apply(ctx, config) {
     modelHost: () => vset.modelHost,
     // P4：SenseVoice 定稿重译开关（实时读取，关闭则不下载/不创建模型）。
     senseVoice: () => vset.senseVoice,
+    allowCustomHost: config.allowCustomModelHost,
     broadcast
   });
   ctx.effect(() => () => asr.dispose());

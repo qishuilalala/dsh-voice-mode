@@ -64,6 +64,8 @@ interface VoiceUiState {
   aecOff?: boolean
   /** 延迟埋点链各阶段时刻（开发模式状态条展示；null = 未启用/已清空）。 */
   telemetry: Partial<Record<TelemetryStage, number>> | null
+  /** 唤醒词（空 = 关）：wake 待机态状态条展示用。 */
+  wakeWord: string
 }
 
 /**
@@ -574,6 +576,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     mode: 'toggle',
     telemetry: null,
     turn: 'idle',
+    wakeWord: '',
   }
   const listeners = new Set<(b: { active: string | null; ui: VoiceUiState }) => void>()
   const audioListeners = new Set<(frame: TtsChunkFrame) => void>()
@@ -864,9 +867,14 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         // ignore malformed frame
       }
     })
-    // 工具调用提示音（toolBeep 设置项，默认关）。
-    source.addEventListener('tool', () => {
-      if (ui.boot.toolBeep === true) playToolBeep()
+    // 工具调用提示音（toolBeep 设置项，默认关；仅活跃语音会话的 tool 事件才响）。
+    source.addEventListener('tool', (e: MessageEvent<string>) => {
+      try {
+        const p = JSON.parse(e.data) as { sessionId?: string }
+        if (p.sessionId === activeSessionId && ui.boot.toolBeep === true) playToolBeep()
+      } catch {
+        // ignore malformed frame
+      }
     })
   }
   connect()
@@ -1184,7 +1192,7 @@ export function MicButton({
         wakeWord: typeof c.wakeWord === 'string' ? c.wakeWord : cur.wakeWord,
         toolBeep: c.toolBeep === true,
       }
-      bus.setUi({ boot: next, mode: next.mode })
+      bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord })
       return next
     } catch {
       return bootNow()
@@ -1341,6 +1349,7 @@ export function MicButton({
           silenceMs,
           basePath,
           mode: cfg.mode,
+          wakeWord: cfg.wakeWord,
           echoGateDb: cfg.echoGateDb,
           echo: bus.echoForAsr(),
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
@@ -1457,6 +1466,14 @@ export function MicButton({
       engine.onTelemetry((e) => bus.stampTelemetry(e.stage, e.at))
       // P1-2：播放引擎 AudioContext 需手势栈预热（decode/start 才不会被静音）。
       bus.warmAudio()
+      // 工具提示音上下文预热：进入语音模式处于用户手势栈（点麦克风），
+      // 此处创建并 resume——Safari/iOS 非手势栈新建的 AudioContext 会 suspended 静默。
+      try {
+        if (!beepCtx) beepCtx = new AudioContext()
+        void beepCtx.resume?.()
+      } catch {
+        // 预热失败不阻塞（toolBeep 首次播放时仍会尝试）
+      }
 
       engine.onState((s) => {
         bus.setUi({ state: s })
@@ -1839,7 +1856,9 @@ export function MicButton({
         ? holding
           ? t('releaseToSend')
           : t('holdToTalk')
-        : t('voiceDetected')
+        : bus.ui.state === 'wake'
+          ? t('sayWake').replace('{wake}', bus.ui.wakeWord || t('wakeWord'))
+          : t('voiceDetected')
     : local === 'pending'
       ? t('entering')
       : t('voiceBtn')
@@ -2043,11 +2062,13 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
       ? t('loadingModel')
       : b.ui.state === 'transcribing'
         ? t('recognizing')
-        : b.ui.state === 'speech'
-          ? b.ui.mode === 'hold'
-            ? t('holdDots')
-            : t('listening')
-          : b.ui.playing // Fix：TTS 播放時顯示「朗讀中…」，防用戶誤以為系統無響應
+        : b.ui.state === 'wake'
+          ? t('sayWake').replace('{wake}', b.ui.wakeWord || t('wakeWord'))
+          : b.ui.state === 'speech'
+            ? b.ui.mode === 'hold'
+              ? t('holdDots')
+              : t('listening')
+            : b.ui.playing // Fix：TTS 播放時顯示「朗讀中…」，防用戶誤以為系統無響應
               ? t('reading')
               : b.ui.turn === 'agent-speaking'
                 ? t('thinking')

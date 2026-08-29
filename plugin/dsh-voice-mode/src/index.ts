@@ -234,17 +234,15 @@ export interface Config {
   cacheDir: string
   /** 模型上游 host；huggingface.co / hf-mirror.com 均可达（§4 已验证）。 */
   modelHost: string
-  /** 识别模型：zh（纯中文 zipformer）/ paraformer-zh-en（双语 Paraformer，错误率低）。 */
-  asrModel: 'zh' | 'paraformer-zh-en'
   /** 朗读引擎：edge（微软云端）/ vits（本地中文）/ kokoro（本地中英，回复文本不出本机）。默认 vits。 */
   ttsEngine: 'edge' | 'vits' | 'kokoro'
   /** 允许局域网访问 /voice-mode/*（默认仅回环；开启后建议前置认证门）。 */
   allowLan: boolean
   /** 允许白名单之外的模型下载源（默认关；仅 https）。 */
   allowCustomModelHost: boolean
-  /** Edge TTS 音色（Q15 设置可改）。 */
+  /** 朗读音色（按 ttsEngine 取值：vits 说话人名 / kokoro sid / edge ShortName）。 */
   voice: string
-  /** Edge TTS 语速倍率（Q15 设置可改）。 */
+  /** 朗读语速倍率（Q15 设置可改）。 */
   rate: number
   /** 打断灵敏度档位：0 高门槛（默认）/ 1 中 / 2 低（Q10）。 */
   interruptLevel: 0 | 1 | 2
@@ -252,15 +250,12 @@ export interface Config {
   silenceMs: number
   /** 空闲多少分钟自动退出语音模式（Q11，默认 10）。 */
   idleTimeoutMinutes: number
-  /** 识别定稿后自动补标点（神经标点模型，默认开；关掉则输出无标点原文）。 */
-  punctuate: boolean
 }
 
 export const Config: z<Config> = z.object({
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default('https://huggingface.co'),
-  asrModel: z.union([z.const('zh'), z.const('paraformer-zh-en')]).default('zh'),
   ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro')]).default('vits'),
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
@@ -269,7 +264,6 @@ export const Config: z<Config> = z.object({
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(700),
   idleTimeoutMinutes: z.number().default(10),
-  punctuate: z.boolean().default(true),
 })
 
 export function apply(ctx: Context, config: Config): void {
@@ -299,6 +293,9 @@ export function apply(ctx: Context, config: Config): void {
 
   // --- fork 加固：限流器（第 4 层）。 ---
   const limiter = new RateLimiter()
+  // 定期回收空 bucket（防 key 数量长期占满 maxKeys 后拒绝新 key；低频路径即可）。
+  const limiterPrune = setInterval(() => limiter.prune(Date.now(), 60000), 60000)
+  ctx.effect(() => () => clearInterval(limiterPrune))
 
   /** 规范化模型源（下载期读最新设置；非法值回退官方源）。 */
   const normalizedModelHost = (): string =>
@@ -366,6 +363,7 @@ export function apply(ctx: Context, config: Config): void {
     modelHost: () => vset.modelHost,
     // P4：SenseVoice 定稿重译开关（实时读取，关闭则不下载/不创建模型）。
     senseVoice: () => vset.senseVoice,
+    allowCustomHost: config.allowCustomModelHost,
     broadcast,
   })
   // 卸载/热重载时释放 ASR runtime（清段 + 定时器，防悬挂）。

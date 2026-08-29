@@ -9,8 +9,8 @@
  *   host 记录已喂样本数只吃增量；final=1 时补 0.5s 尾垫并返回定稿文本。
  * - 下载进度经 SSE `asr-progress` 广播，完成发 `asr-ready`（client 状态条用）。
  */
-import { createWriteStream, statSync } from 'node:fs'
-import { mkdir, rename, stat, unlink } from 'node:fs/promises'
+import { statSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
@@ -47,18 +47,30 @@ const { createOnlineRecognizer, createVad } = sherpa_onnx as unknown as {
   createVad(config: Record<string, unknown>): SherpaVad
 }
 
-/** 模型仓库与文件清单（大小仅作进度参考）。 */
+import { ensureModelFile, validateModelHost, HOST_PRIMARY, type ModelFileSpec } from './models.ts'
+
+/** 模型仓库与文件清单（SHA256 固定，供应链校验）。 */
 export const MODEL_REPO = 'csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30'
-const MODEL_FILES = ['encoder.int8.onnx', 'decoder.onnx', 'joiner.int8.onnx', 'tokens.txt']
+const MODEL_FILES: ModelFileSpec[] = [
+  { file: 'encoder.int8.onnx', sha256: '5ac51e27981bb4dab01bb9be4958453ba50c3b61c063ddda0eab23fd3671aa4f' },
+  { file: 'decoder.onnx', sha256: '06522ad63cec0fdf6809f4e1db9bb4f7d710c34582e3b35db62ac60eccafac7e' },
+  { file: 'joiner.int8.onnx', sha256: 'b34584dc6f561089e1d747fedebb3765f2caa72c927ef54d7ca55e5ae40a814b' },
+  { file: 'tokens.txt', sha256: 'deba637de83d28b10e90a759b62637fceb432b9560ff2cda1baad88b14d99236' },
+]
 
 /** P2-1 Silero VAD 模型：官方 sherpa 文档下载源（csukuangfj/vad，~2MB）。 */
 export const VAD_REPO = 'csukuangfj/vad'
-const VAD_FILES = ['silero_vad.onnx']
+const VAD_FILES: ModelFileSpec[] = [
+  { file: 'silero_vad.onnx', sha256: 'a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28' },
+]
 
 /** P4-1 SenseVoice 定稿模型（int8 ~228MB，带标点 + ITN；模型总体积 160+228=388MB ≤500MB 约束）。 */
 export const SENSE_REPO = 'csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17'
 // 修复：SenseVoice 词表 tokens.txt 必须一并下载（缺则 createOfflineRecognizer 报 length 错误，定稿永远降级 zipformer）。
-const SENSE_FILES = ['model.int8.onnx', 'tokens.txt']
+const SENSE_FILES: ModelFileSpec[] = [
+  { file: 'model.int8.onnx', sha256: 'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51' },
+  { file: 'tokens.txt', sha256: '4d14b174af75c64af4b9879a7f2d60c774b4dcea74fddee64510d7e4d7347590' },
+]
 
 export interface AsrRuntimeOptions {
   cacheDir: string
@@ -66,6 +78,8 @@ export interface AsrRuntimeOptions {
   modelHost: () => string
   /** P4：SenseVoice 定稿重译开关（getter 实时读设置；false 时不下载/不创建模型）。 */
   senseVoice: () => boolean
+  /** 是否允许白名单之外的模型下载源（默认关；仅 https，供应链校验）。 */
+  allowCustomHost: boolean
   /** 状态广播（SSE）：{kind:'asr-progress'|'asr-ready', ...} */
   broadcast: (event: string, payload: unknown) => void
 }
@@ -157,7 +171,7 @@ export function rmsOf(samples: Float32Array): number {
 }
 
 export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
-  const { cacheDir, modelHost, broadcast, senseVoice } = options
+  const { cacheDir, modelHost, broadcast, senseVoice, allowCustomHost } = options
   /** 设置面板实时进度：记录最近一次 asr-progress（含 VAD/SenseVoice 下载）。 */
   let lastProgress: { file: string; percent: number } | null = null
   const localBroadcast = (event: string, payload: unknown): void => {
@@ -167,18 +181,8 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   const repoDir = join(cacheDir, MODEL_REPO)
   const vadDir = join(cacheDir, VAD_REPO)
   const senseDir = join(cacheDir, SENSE_REPO)
-  /** 模型上游 host 列表：去重 + 过滤空串（modelHost 留空/默认 hf 与 HOST_PRIMARY 重复时只试一次）。 */
-  const modelHosts = (): string[] => {
-    const seen = new Set<string>()
-    const out: string[] = []
-    for (const h of [modelHost(), HOST_PRIMARY, HOST_FALLBACK]) {
-      const v = (h ?? '').trim().replace(/\/+$/, '')
-      if (!v || seen.has(v)) continue
-      seen.add(v)
-      out.push(v)
-    }
-    return out
-  }
+  /** 规范化模型源（下载期读最新设置；非法值回退官方源；白名单由 models.ts 强制）。 */
+  const normalizedModelHost = (): string => validateModelHost(modelHost(), allowCustomHost) ?? HOST_PRIMARY
   /** 段对象（epoch = 客户端段身份）。 */
   interface Segment {
     stream: SherpaStream
@@ -216,7 +220,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   /** 本地模型是否齐备（快速检查）。 */
   const haveAllModels = async (): Promise<boolean> => {
     for (const f of MODEL_FILES) {
-      const st = await stat(join(repoDir, f)).catch(() => null)
+      const st = await stat(join(repoDir, f.file)).catch(() => null)
       if (!st?.isFile()) return false
     }
     return true
@@ -231,9 +235,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         // 已下载跳过下载；否则逐个懒下载（断点续传）。
         if (!(await haveAllModels())) {
           for (const f of MODEL_FILES) {
-            if (!(await ensureFile(repoDir, MODEL_REPO, f, modelHosts(), localBroadcast))) {
+            if (!(await ensureModelFile({ repo: MODEL_REPO, repoDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast }))) {
               asrFailAt = Date.now() + 60000
-              broadcast('asr-error', { file: f })
+              broadcast('asr-error', { file: f.file })
               return false
             }
           }
@@ -275,18 +279,18 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   /** 性能修复：VAD 下载失败退避（60s 内不重试）——否则源不可达时每拍 partial 都重试下载，增量识别被拖慢数百 ms。 */
   let vadFailAt = 0
   const ensureVadModel = async (): Promise<string | null> => {
-    if (vadModelReady) return join(vadDir, VAD_FILES[0])
+    if (vadModelReady) return join(vadDir, VAD_FILES[0].file)
     if (Date.now() < vadFailAt) return null
     if (!vadLoading) {
       vadLoading = (async () => {
         for (const f of VAD_FILES) {
-          if (!(await ensureFile(vadDir, VAD_REPO, f, modelHosts(), localBroadcast))) {
+          if (!(await ensureModelFile({ repo: VAD_REPO, repoDir: vadDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast }))) {
             vadFailAt = Date.now() + 60000
             return null
           }
         }
         vadModelReady = true
-        return join(vadDir, VAD_FILES[0])
+        return join(vadDir, VAD_FILES[0].file)
       })().finally(() => {
         vadLoading = null
       })
@@ -341,18 +345,18 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   /** I1：SenseVoice 下载失败退避（失败后 60s 内不再尝试，防每句定稿卡 228MB 下载）。 */
   let senseFailAt = 0
   const ensureSenseModel = async (): Promise<string | null> => {
-    if (senseModelReady) return join(senseDir, SENSE_FILES[0])
+    if (senseModelReady) return join(senseDir, SENSE_FILES[0].file)
     if (Date.now() < senseFailAt) return null
     if (!senseLoading) {
       senseLoading = (async () => {
         for (const f of SENSE_FILES) {
-          if (!(await ensureFile(senseDir, SENSE_REPO, f, modelHosts(), localBroadcast))) {
+          if (!(await ensureModelFile({ repo: SENSE_REPO, repoDir: senseDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast }))) {
             senseFailAt = Date.now() + 60000
             return null
           }
         }
         senseModelReady = true
-        return join(senseDir, SENSE_FILES[0])
+        return join(senseDir, SENSE_FILES[0].file)
       })().finally(() => {
         senseLoading = null
       })
@@ -732,17 +736,17 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       // 同步快照（大小 stat 用已缓存信息：asr 文件逐个 stat 是异步——模型状态为诊断用途，损失精度可接受：
       // 改为同步收集已存在文件大小并异步顺带）。为接口简单，直接返回收集结果：
       const asrFiles: ModelFileStatus[] = MODEL_FILES.map((n) => ({
-        name: n,
+        name: n.file,
         exists: (() => {
           try {
-            return statSync(join(repoDir, n)).isFile()
+            return statSync(join(repoDir, n.file)).isFile()
           } catch {
             return false
           }
         })(),
         size: (() => {
           try {
-            return statSync(join(repoDir, n)).size
+            return statSync(join(repoDir, n.file)).size
           } catch {
             return 0
           }
@@ -750,14 +754,14 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       }))
       const vadSize = (() => {
         try {
-          return statSync(join(vadDir, VAD_FILES[0])).size
+          return statSync(join(vadDir, VAD_FILES[0].file)).size
         } catch {
           return 0
         }
       })()
       const senseSize = (() => {
         try {
-          return statSync(join(senseDir, SENSE_FILES[0])).size
+          return statSync(join(senseDir, SENSE_FILES[0].file)).size
         } catch {
           return 0
         }
@@ -803,110 +807,6 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       return await ensureModels()
     },
   }
-}
-
-/**
- * 单文件断点续传下载：<file>.part 存在则 Range 续传，完成后改名。
- * hosts：依次尝试的上游（调用方传完整列表；含哈希去重与镜像回退）。
- * 完整性：下载期间有 content-length 声明但字节不足 → 判失败换 host（截断坏文件不得落地）。
- */
-export async function ensureFile(
-  repoDir: string,
-  /** URL 的 repo 段（完整上级路径，如 csukuangfj/vad——多级 repo 不可用尾段截断，否则 404）。 */
-  repo: string,
-  file: string,
-  hosts: string[],
-  broadcast: (event: string, payload: unknown) => void,
-): Promise<boolean> {
-  const localPath = join(repoDir, file)
-  const st = await stat(localPath).catch(() => null)
-  if (st?.isFile()) return true
-  await mkdir(repoDir, { recursive: true }).catch(() => undefined)
-  const partPath = `${localPath}.part`
-  for (const host of hosts) {
-    try {
-      // 修复：续传基准在每次尝试前重读——前一 host 可能已在 .part 追加过字节，
-      // 若复用开始检出的过期大小，多个 host 会以同一错误水位拼写坏同一 .part。
-      const cur = (await stat(partPath).catch(() => null))?.size ?? 0
-      const ok = await download(host, repoDir, repo, file, cur, broadcast)
-      if (ok) {
-        await rename(partPath, localPath).catch(() => undefined)
-        if ((await stat(localPath).catch(() => null))?.isFile()) return true
-      }
-    } catch {
-      // 换下一个 host
-    }
-  }
-  // 全部失败：清掉残缺 .part 下次重来
-  await unlink(partPath).catch(() => undefined)
-  return false
-}
-
-const HOST_PRIMARY = 'https://huggingface.co'
-const HOST_FALLBACK = 'https://hf-mirror.com'
-
-async function download(
-  host: string,
-  repoDir: string,
-  repo: string,
-  file: string,
-  resumeFrom: number,
-  broadcast: (event: string, payload: unknown) => void,
-): Promise<boolean> {
-  const url = `${host}/${repo}/resolve/main/${file}`
-  const headers: Record<string, string> = { 'user-agent': 'dsh-voice-mode' }
-  if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`
-  // Fix（对抗性审查）：下载带 15 分钟超时（防悬挂；60s 会掐断 228MB 大模型下载）；content-length 完整性核对。
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(900000) })
-  if (res.status === 416) return true // 已完整，直接改名
-  if (res.status !== 200 && res.status !== 206) return false
-  // 续传只在服务端返回 206 时成立；若带已有 .part 却返回 200 全量（部分镜像/CDN
-  // 忽略 Range），必须从头重写，否则在旧字节上追加全量 → 半旧半新损坏模型。
-  const resume = res.status === 206 ? resumeFrom : 0
-  const declared = Number(res.headers.get('content-length'))
-  const total = (Number.isFinite(declared) ? declared : 0) + resume
-  const partPath = join(repoDir, `${file}.part`)
-  const sink = createWriteStream(partPath, resume > 0 ? { flags: 'a' } : {})
-  const src = res.body
-  if (!src) return false
-  const reader = src.getReader()
-  let received = resume
-  const done = new Promise<boolean>((resolve, reject) => {
-    sink.on('error', (e) => reject(e))
-    // 仅当字节数与声明一致（或服务端未声明长度且收到 EOF）才算成功：
-    // 截断下载不得 rename（否则损坏 onnx 使 createOnlineRecognizer 常驻 500 楔死）。
-    sink.on('finish', () => {
-      if (total > 0 && received < total) {
-        sink.destroy(new Error('download truncated'))
-        reject(new Error('download truncated'))
-      } else {
-        resolve(true)
-      }
-    })
-    ;(async () => {
-      try {
-        for (;;) {
-          const { done: d, value } = await reader.read()
-          if (d) break
-          received += value.byteLength
-          if (!sink.write(value)) {
-            await new Promise<void>((r) => sink.once('drain', r))
-          }
-          if (total > 0) {
-            broadcast('asr-progress', {
-              file,
-              percent: Math.min(100, Math.round((received / total) * 100)),
-            })
-          }
-        }
-        sink.end()
-      } catch (e) {
-        sink.destroy(e as Error)
-        reject(e)
-      }
-    })()
-  })
-  return done.catch(() => false)
 }
 
 /** JSON 响应：writeHead 显式写头（gzip 包装器只拦截 writeHead 路径；
