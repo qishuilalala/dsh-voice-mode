@@ -145,7 +145,7 @@ export interface VoiceSettingsValue {
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
 const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   ttsEngine: 'vits',
-  voice: 'zh-CN-XiaoxiaoNeural',
+  voice: 'suyingxue',
   rate: 1.0,
   interruptLevel: 0,
   silenceMs: 700,
@@ -177,7 +177,7 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .string()
       .default(d.voice)
       .description(
-        'Edge TTS 音色（大陆自然音：zh-CN-XiaoxiaoNeural 晓晓·女 / zh-CN-XiaoyiNeural 晓伊·女 / zh-CN-YunxiNeural 云希·男 / zh-CN-YunjianNeural 云健·男 / zh-CN-YunyangNeural 云扬·男 / zh-CN-YunxiaNeural 云夏·男；方言：东北-小北 / 陕西-小妮；粤语：HiuGaai/HiuMaan/WanLung；台湾：HsiaoChen/HsiaoYu/YunJhe；完整清单见 scripts/list-voices.mjs）',
+        '朗读音色（按 ttsEngine 取值：vits 用说话人名 suyingxue/gunian/fushiyu/bingjiao/bazong；kokoro 用 0-102 编号或中文名 zf_xiaobei/zf_xiaoni/zf_xiaoxiao/zf_xiaoyi；edge 用 Edge ShortName 如 zh-CN-XiaoxiaoNeural 晓晓·女，完整清单见 scripts/list-voices.mjs）',
       ),
     rate: z.number().min(0.5).max(2).default(d.rate).description('朗读语速倍率（0.5 = 慢速，2.0 = 快速，1.0 = 正常）'),
     interruptLevel: z
@@ -264,7 +264,7 @@ export const Config: z<Config> = z.object({
   ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro')]).default('vits'),
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
-  voice: z.string().default('zh-CN-XiaoxiaoNeural'),
+  voice: z.string().default('suyingxue'),
   rate: z.number().default(1.0),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(700),
@@ -691,7 +691,8 @@ export function apply(ctx: Context, config: Config): void {
     ctx.webServer.register({
       kind: 'exact',
       path: `${base}/models/status`,
-      handler: (_req, res: ServerResponse) => {
+      handler: (req, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
         // 模型实时状态（设置面板轮询；无需语音模式）。
         respondJson(res, 200, asr.modelStatus())
       },
@@ -703,6 +704,7 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/models/retry`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
         // 镜像切换/下载失败后手动重试（设置面板按钮）。禁用态不得触发 ~388MB 下载。
         if (!config.enabled) {
           respondJson(res, 403, { error: 'voice mode disabled' })

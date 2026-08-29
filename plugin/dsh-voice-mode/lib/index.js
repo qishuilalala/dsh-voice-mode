@@ -1664,7 +1664,7 @@ var inject = ["webServer", "settings", "sessions"];
 var defaultModelCacheDir = () => process.platform === "win32" ? join4(process.env.LOCALAPPDATA ?? join4(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join4(homedir(), ".cache", "dsh-voice-mode", "models");
 var VOICE_SETTINGS_DEFAULTS = {
   ttsEngine: "vits",
-  voice: "zh-CN-XiaoxiaoNeural",
+  voice: "suyingxue",
   rate: 1,
   interruptLevel: 0,
   silenceMs: 700,
@@ -1688,7 +1688,7 @@ function createVoiceSettingsSchema(defs) {
       "\u6717\u8BFB\u5F15\u64CE\uFF1Avits \u672C\u5730\u5408\u6210\uFF08\u9ED8\u8BA4\uFF0C\u56DE\u590D\u6587\u672C\u4E0D\u51FA\u672C\u673A\uFF09/ edge \u5FAE\u8F6F\u4E91\u7AEF\uFF08\u97F3\u8D28\u66F4\u81EA\u7136\uFF0C\u88AB\u6717\u8BFB\u6587\u672C\u4F1A\u53D1\u9001\u5230\u5FAE\u8F6F\uFF09\uFF1B\u5207\u6362\u5373\u65F6\u751F\u6548"
     ),
     voice: z.string().default(d.voice).description(
-      "Edge TTS \u97F3\u8272\uFF08\u5927\u9646\u81EA\u7136\u97F3\uFF1Azh-CN-XiaoxiaoNeural \u6653\u6653\xB7\u5973 / zh-CN-XiaoyiNeural \u6653\u4F0A\xB7\u5973 / zh-CN-YunxiNeural \u4E91\u5E0C\xB7\u7537 / zh-CN-YunjianNeural \u4E91\u5065\xB7\u7537 / zh-CN-YunyangNeural \u4E91\u626C\xB7\u7537 / zh-CN-YunxiaNeural \u4E91\u590F\xB7\u7537\uFF1B\u65B9\u8A00\uFF1A\u4E1C\u5317-\u5C0F\u5317 / \u9655\u897F-\u5C0F\u59AE\uFF1B\u7CA4\u8BED\uFF1AHiuGaai/HiuMaan/WanLung\uFF1B\u53F0\u6E7E\uFF1AHsiaoChen/HsiaoYu/YunJhe\uFF1B\u5B8C\u6574\u6E05\u5355\u89C1 scripts/list-voices.mjs\uFF09"
+      "\u6717\u8BFB\u97F3\u8272\uFF08\u6309 ttsEngine \u53D6\u503C\uFF1Avits \u7528\u8BF4\u8BDD\u4EBA\u540D suyingxue/gunian/fushiyu/bingjiao/bazong\uFF1Bkokoro \u7528 0-102 \u7F16\u53F7\u6216\u4E2D\u6587\u540D zf_xiaobei/zf_xiaoni/zf_xiaoxiao/zf_xiaoyi\uFF1Bedge \u7528 Edge ShortName \u5982 zh-CN-XiaoxiaoNeural \u6653\u6653\xB7\u5973\uFF0C\u5B8C\u6574\u6E05\u5355\u89C1 scripts/list-voices.mjs\uFF09"
     ),
     rate: z.number().min(0.5).max(2).default(d.rate).description("\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 = \u6162\u901F\uFF0C2.0 = \u5FEB\u901F\uFF0C1.0 = \u6B63\u5E38\uFF09"),
     interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(d.interruptLevel).description("\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF1A0 \u9AD8\u95E8\u69DB\uFF08\u5B89\u9759\u73AF\u5883\uFF0C\u9ED8\u8BA4\uFF09/ 1 \u4E2D / 2 \u4F4E\uFF08\u5608\u6742\u73AF\u5883\u66F4\u5BB9\u6613\u6253\u65AD\uFF09"),
@@ -1716,7 +1716,7 @@ var Config = z.object({
   ttsEngine: z.union([z.const("edge"), z.const("vits"), z.const("kokoro")]).default("vits"),
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
-  voice: z.string().default("zh-CN-XiaoxiaoNeural"),
+  voice: z.string().default("suyingxue"),
   rate: z.number().default(1),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(700),
@@ -2045,7 +2045,8 @@ function apply(ctx, config) {
     () => ctx.webServer.register({
       kind: "exact",
       path: `${base}/models/status`,
-      handler: (_req, res) => {
+      handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
         respondJson2(res, 200, asr.modelStatus());
       }
     })
@@ -2055,6 +2056,7 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/models/retry`,
       handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
         if (!config.enabled) {
           respondJson2(res, 403, { error: "voice mode disabled" });
           return;
