@@ -125,6 +125,18 @@ const TELEMETRY_FLAG = 'dsh-voice-mode.telemetry'
 const telemetryEnabled =
   typeof localStorage !== 'undefined' && localStorage.getItem(TELEMETRY_FLAG) === '1'
 
+/** 调试控制台日志：telemetry=1 时把打断判定链的关键决策/输入打到 console，
+ *  格式 [dsh-voice] <event> {json}，便于复制回传排查。 */
+const debugLog = (event: string, fields: Record<string, unknown> = {}): void => {
+  if (!telemetryEnabled) return
+  // 数字保留 4 位小数（浮点可读），其余原样。
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(fields)) {
+    out[k] = typeof v === 'number' && !Number.isInteger(v) ? Number(v.toFixed(4)) : v
+  }
+  console.log('[dsh-voice]', event, JSON.stringify(out))
+}
+
 interface VoiceBus {
   /** host 当前活跃语音会话（全局单活指针）。 */
   get activeSessionId(): string | null
@@ -1252,6 +1264,14 @@ export function MicButton({
       const interruptLevel = cfg.interruptLevel
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2
       const bargeInMode = cfg.bargeInMode
+      debugLog('enter', {
+        mode: cfg.mode,
+        bargeInMode,
+        echoGateDb: cfg.echoGateDb,
+        interruptLevel,
+        silenceMs,
+        sessionId: sid,
+      })
       // 打断根治阶段二：hardBreak 由 isSpeech 连续前沿触发（RMS 快路径 + duck 探针
       // 移除后提炼为独立函数；行为保持不变）：
       // 1) 本地播放队列清空 + host TTS 队列 epoch++（静音）
@@ -1303,6 +1323,16 @@ export function MicButton({
             // 误判为语音导致自打断静音；打断改由显式手势触发。也不更新 isSpeech 徽标，
             // 避免回声造成「一直检测到语音」的假象。
             if (bargeInMode === 'manual') return
+            // 调试：VAD 前沿变化 + 判定链关键态（仅 telemetry=1）。
+            if (speech === true && isSpeechTrueCount === 0) {
+              const lv = engineRef.current?.echoLevels()
+              debugLog('vad-speech-start', {
+                playing: bus.ui.playing,
+                delayMs: Math.round(bus.echoDelayMs()),
+                floor: lv?.floorRms,
+                resid: lv?.residualRms,
+              })
+            }
             if (speech === true) {
               isSpeechTrueCount++
               if (isSpeechTrueCount === 1 && bus.ui.playing) interruptFirstAt = Date.now()
@@ -1310,12 +1340,26 @@ export function MicButton({
                 // A2.5 回声门控：残差未明显高于回声地板 → 判回声，不打断（防外放回声自打断）。
                 // 仅自动模式到此处（manual 模式已提前 return）。
                 if (engineRef.current && !engineRef.current.aboveEchoFloor(cfg.echoGateDb ?? 6)) {
+                  const lv = engineRef.current?.echoLevels()
+                  debugLog('echo-gate-reject', {
+                    gateDb: cfg.echoGateDb ?? 6,
+                    floor: lv?.floorRms,
+                    resid: lv?.residualRms,
+                    confirmFrames,
+                  })
                   isSpeechTrueCount = 0
                   interruptFirstAt = 0
                   return
                 }
                 // 打断确认耗时 = VAD 首次判真 → 触发（真机标定 C-3 数据）。
                 const confirmMs = interruptFirstAt > 0 ? Date.now() - interruptFirstAt : 0
+                const lv = engineRef.current?.echoLevels()
+                debugLog('interrupt-trigger', {
+                  confirmMs,
+                  floor: lv?.floorRms,
+                  resid: lv?.residualRms,
+                  delayMs: Math.round(bus.echoDelayMs()),
+                })
                 interruptFirstAt = 0
                 isSpeechTrueCount = 0 // 重置计数防重复触发
                 resetIdle()
@@ -1349,7 +1393,10 @@ export function MicButton({
             return reentered.ok
           },
           // A1：原生 AEC 生效状态 → 状态条提示（外放且原生 AEC 失效时引导用耳机/手动打断）。
-          onAecState: (on) => bus.setUi({ aecOff: !on }),
+          onAecState: (on) => {
+            debugLog('aec-state', { nativeEchoCancellation: on })
+            bus.setUi({ aecOff: !on })
+          },
         },
         sid,
       )

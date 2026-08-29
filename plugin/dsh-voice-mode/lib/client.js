@@ -1608,6 +1608,14 @@ var TELEMETRY_VIEW = [
 ];
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
+var debugLog = (event, fields = {}) => {
+  if (!telemetryEnabled) return;
+  const out = {};
+  for (const [k, v] of Object.entries(fields)) {
+    out[k] = typeof v === "number" && !Number.isInteger(v) ? Number(v.toFixed(4)) : v;
+  }
+  console.log("[dsh-voice]", event, JSON.stringify(out));
+};
 var SAMPLE_RATE_16K = 16e3;
 var ECHO_DELAY_MS = 0;
 var ECHO_TAIL_MS = 400;
@@ -2458,6 +2466,14 @@ function MicButton({
       const interruptLevel = cfg.interruptLevel;
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2;
       const bargeInMode = cfg.bargeInMode;
+      debugLog("enter", {
+        mode: cfg.mode,
+        bargeInMode,
+        echoGateDb: cfg.echoGateDb,
+        interruptLevel,
+        silenceMs,
+        sessionId: sid
+      });
       const hardBreak = async () => {
         bus.skipAudio();
         bus.unduckAudio();
@@ -2493,16 +2509,39 @@ function MicButton({
           // 防 TTS 回声被 VAD 误判为语音而自打断。
           onIsSpeech: (speech) => {
             if (bargeInMode === "manual") return;
+            if (speech === true && isSpeechTrueCount === 0) {
+              const lv = engineRef.current?.echoLevels();
+              debugLog("vad-speech-start", {
+                playing: bus.ui.playing,
+                delayMs: Math.round(bus.echoDelayMs()),
+                floor: lv?.floorRms,
+                resid: lv?.residualRms
+              });
+            }
             if (speech === true) {
               isSpeechTrueCount++;
               if (isSpeechTrueCount === 1 && bus.ui.playing) interruptFirstAt = Date.now();
               if (isSpeechTrueCount >= confirmFrames && bus.ui.playing) {
                 if (engineRef.current && !engineRef.current.aboveEchoFloor(cfg.echoGateDb ?? 6)) {
+                  const lv2 = engineRef.current?.echoLevels();
+                  debugLog("echo-gate-reject", {
+                    gateDb: cfg.echoGateDb ?? 6,
+                    floor: lv2?.floorRms,
+                    resid: lv2?.residualRms,
+                    confirmFrames
+                  });
                   isSpeechTrueCount = 0;
                   interruptFirstAt = 0;
                   return;
                 }
                 const confirmMs = interruptFirstAt > 0 ? Date.now() - interruptFirstAt : 0;
+                const lv = engineRef.current?.echoLevels();
+                debugLog("interrupt-trigger", {
+                  confirmMs,
+                  floor: lv?.floorRms,
+                  resid: lv?.residualRms,
+                  delayMs: Math.round(bus.echoDelayMs())
+                });
                 interruptFirstAt = 0;
                 isSpeechTrueCount = 0;
                 resetIdle();
@@ -2530,7 +2569,10 @@ function MicButton({
             return reentered.ok;
           },
           // A1：原生 AEC 生效状态 → 状态条提示（外放且原生 AEC 失效时引导用耳机/手动打断）。
-          onAecState: (on2) => bus.setUi({ aecOff: !on2 })
+          onAecState: (on2) => {
+            debugLog("aec-state", { nativeEchoCancellation: on2 });
+            bus.setUi({ aecOff: !on2 });
+          }
         },
         sid
       );
