@@ -1601,7 +1601,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "2a67df7";
+var BUILD_TAG = "f1bc49c";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -1709,6 +1709,7 @@ function apply(ctx) {
       () => ctx.slots.register(
         {
           name: "settings.plugin.item",
+          id: "voice-mode",
           key: "voice-mode",
           order: 100,
           label: t("stateVoiceMode")

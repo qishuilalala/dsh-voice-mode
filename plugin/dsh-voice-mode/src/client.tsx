@@ -304,6 +304,7 @@ export function apply(ctx: any): void {
       ctx.slots.register(
         {
           name: 'settings.plugin.item',
+          id: 'voice-mode',
           key: 'voice-mode',
           order: 100,
           label: t('stateVoiceMode'),

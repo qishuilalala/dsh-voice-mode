@@ -52,7 +52,7 @@ dsh plugin --profile web add dsh-voice-mode
 npx -y @deepseek-ai/dsh plugin --profile web add dsh-voice-mode
 
 # Option 2: local tarball
-dsh plugin --profile web add ./dsh-voice-mode-0.3.0.tgz
+dsh plugin --profile web add ./dsh-voice-mode-0.3.1.tgz
 
 # Option 3: from source
 git clone https://github.com/qishuilalala/dsh-voice-mode.git
