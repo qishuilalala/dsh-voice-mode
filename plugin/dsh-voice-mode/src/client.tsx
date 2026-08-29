@@ -1137,6 +1137,8 @@ export function MicButton({
   const submitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const runningRef = useRef(false)
+  /** 组件存活守卫：enterMode 异步流程（getUserMedia 权限框）期间卸载时中止收尾。 */
+  const mountedRef = useRef(true)
   /** hold 模式 Ctrl 按住说话中（600ms 阈值后才置真）。 */
   const holdCtrlRef = useRef(false)
   /** 手动打断（bargeInMode=manual）时 toggle 模式按住 Ctrl 接管中。 */
@@ -1215,12 +1217,18 @@ export function MicButton({
       if (bus.activeSessionId !== sid) {
         setLocalMode('off')
         clearIdle()
+        cancelPendingSubmit()
         clearBreakTimer()
         setHolding(false) // 对抗审查 Important#2：被抢占退出时复位录音态红色
+        isSpeechTrueCount = 0 // 打断根治：任何 host 驱动退出（状态条退出/被抢占/跨 tab 让出）都复位计数
+        breakRef.current = null
+        manualHoldRef.current = false
         const engine = engineRef.current
         engineRef.current = null
         // Fix：先置 null 防重入，再异步 stop（stop 内部会阻止 handleAudio）
         if (engine) void engine.stop()
+        bus.resetTelemetry() // P1-5：与 exitMode 同口径清埋点
+        bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null, isSpeech: undefined })
       }
     })
   }, [bus])
@@ -1262,6 +1270,11 @@ export function MicButton({
     setLocalMode('pending')
     try {
       const entered = await bus.enter(sid)
+      if (!mountedRef.current) {
+        // 权限框/网络期间组件已卸载：释放刚 arm 的 host 会话，不继续建引擎（隐私级泄漏）。
+        if (entered.ok) void bus.exit(sid)
+        return
+      }
       if (!entered.ok) {
         setLocalMode('off')
         // M5：被抢占（另一会话已活跃）时静默跟随 mode 广播，不误闪「进入失败」。
@@ -1520,7 +1533,18 @@ export function MicButton({
         }, 500)
       })
       bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null })
+      if (!mountedRef.current) {
+        engineRef.current = null
+        void bus.exit(sid)
+        return
+      }
       await engine.start()
+      if (!mountedRef.current) {
+        engineRef.current = null
+        await engine.stop()
+        void bus.exit(sid)
+        return
+      }
       setLocalMode('on')
       resetIdle()
     } catch (e) {
@@ -1554,12 +1578,12 @@ export function MicButton({
     sidRef.current = sessionId
   }, [sessionId])
   // I5：autoResume——切回上次语音会话时自动恢复（默认关；需麦克风权限已授予，失败静默降级）。
-  const autoResumeTriedRef = useRef(false)
+  // 按 sessionId 触发（而非仅 mount 一次）：组件跨会话持久时「切回上次会话」才有机会命中。
+  const autoResumeTriedForRef = useRef<string | null>(null)
   useEffect(() => {
-    if (autoResumeTriedRef.current) return
-    autoResumeTriedRef.current = true
-    const sid = sidRef.current
-    if (!sid) return
+    const sid = sessionId
+    if (!sid || sid === autoResumeTriedForRef.current) return
+    autoResumeTriedForRef.current = sid
     // M6/对抗审查 I4：全新页面加载时 ui.boot 还是默认值（fetchConfig 只在
     // enterMode 调用），直接读 bootNow().autoResume 恒 false → autoResume 永不触发。
     // 先拉真实引导配置再判定（fetchConfig 同时把 boot 写入 bus）。
@@ -1568,13 +1592,14 @@ export function MicButton({
       if (!cfg.autoResume) return
       if (getLastVoiceSession() !== sid) return
       if (bus.activeSessionId !== null) return // 已有别的会话在语音模式，不抢
+      if (localRef.current !== 'off') return // 已在（或正在进入）语音模式，不重复
       await enterMode().catch(() => {
         // 无手势 getUserMedia 可能失败（Safari/iOS），静默降级为手动点麦克风。
         setLocalMode('off')
       })
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [sessionId])
   // 宿主 selector hook 必须组件顶层调用（不能在 effect 内——React #321）。
   const runningSel = useSession
     ? useSession((s: any) => (s === undefined ? undefined : s.running))
@@ -1585,12 +1610,16 @@ export function MicButton({
 
   // 会话切换让出（组件卸载兜底）
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false // 中止在途 enterMode（权限框期间卸载）
       clearIdle()
       cancelPendingSubmit()
       isSpeechTrueCount = 0 // 打断根治：卸载重置 isSpeech 计数（防残留）
       const sid = sidRef.current
-      if (localRef.current === 'on' && sid) {
+      // 过渡态（pending）也需清理：enterMode 期间卸载时 host 可能已 arm 本会话，
+      // 不发 toggle-off 会残留录音/占用（隐私级）。engine 可能尚未创建，用可选链。
+      if ((localRef.current === 'on' || localRef.current === 'pending') && sid) {
         void engineRef.current?.stop()
         void fetch(`${location.origin}${BASE_PATH}/toggle`, {
           method: 'POST',
@@ -1618,10 +1647,12 @@ export function MicButton({
       }
       if (holdCtrlRef.current) {
         holdCtrlRef.current = false
+        setHolding(false)
         engineRef.current?.endHeld(false)
       }
       if (manualHoldRef.current) {
         manualHoldRef.current = false
+        setHolding(false)
         engineRef.current?.endHeld(false)
       }
     }
@@ -1662,6 +1693,7 @@ export function MicButton({
           ctrlTimer = setTimeout(() => {
             ctrlTimer = null
             holdCtrlRef.current = true
+            setHolding(true)
             eng.beginHeld()
           }, 600)
         } else if (bootNow().bargeInMode === 'manual' && bus.ui.playing) {
@@ -1735,6 +1767,7 @@ export function MicButton({
       if (localRef.current !== 'on' || bootNow().mode !== 'hold') return
       engineRef.current?.endHeld(true)
       holdCtrlRef.current = false
+      setHolding(false)
       bus.setUi({ partial: '' })
     }
     const onVisibility = (): void => {
@@ -1742,6 +1775,7 @@ export function MicButton({
         if (bootNow().mode === 'hold') {
           engineRef.current?.endHeld(true)
           holdCtrlRef.current = false
+          setHolding(false)
         } else if (localRef.current === 'on' && engineRef.current) {
           // M2：toggle 隐藏 tab 暂停收音（隐私），可见时恢复。
           pausedForHiddenRef.current = true

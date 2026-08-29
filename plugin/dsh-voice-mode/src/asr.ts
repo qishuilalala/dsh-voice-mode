@@ -150,7 +150,6 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let stopRequested = false
   /** 启动序号（防授权窗口内快速 start→stop→start 双路开麦：旧启动因序号落后而放弃）。 */
   let startSeq = 0
-  let curStartSeq = 0
   let inFlush = false
   /** AudioContext 实际采样率（可能 ≠ 16k，用于重采样守卫）。 */
   let ctxRate: number = SAMPLE_RATE
@@ -540,14 +539,22 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // 关键：句间停顿（playingNow=false）不更新也不清空——地板保持在上一次回声水平，
     // 避免塌到 0（实测 floor=0.0000 自打断的根因，是 min-tracking + 非播放清空的回归）。
     // 双讲（用户说话，残差突增）时冻结地板，防用户语音抬升地板。
-    const doubleTalk =
-      playingNow && echoFloorRms > 0 && rms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20)
+    const gateRatio = Math.pow(10, (config.echoGateDb ?? 6) / 20)
+    // 墙钟归一化（帧长随 ctxRate 21ms@48k / 64ms@16k 波动）：以 64ms 为基准帧，把峰值
+    // 衰减与地板 alpha 折算到本帧时长，跨浏览器口径一致（Safari 48k 不再衰减过快）。
+    const peakDecay = Math.pow(0.9, durationMs / 64)
+    const floorAlpha = 1 - Math.pow(0.98, durationMs / 64)
     if (playingNow) {
       latestResidualRms = rms
       // 峰值保持（慢衰减 ~0.4s，跨音节间隙保持语音证据）。
-      echoPeak = Math.max(echoPeak * 0.9, rms)
+      echoPeak = Math.max(echoPeak * peakDecay, rms)
+    }
+    // 双讲冻结与门控同口径：都用峰值（aboveEchoFloor 用 echoPeak），不用瞬时 rms——瞬时值
+    // 在音节间隙掉回地板会让地板间隙爬升，侵蚀长句双讲的门控证据（对抗审查 Important）。
+    const doubleTalk = playingNow && echoFloorRms > 0 && echoPeak > echoFloorRms * gateRatio
+    if (playingNow) {
       if (echoFloorRms === 0) echoFloorRms = rms
-      else if (!doubleTalk) echoFloorRms = echoFloorRms * 0.98 + rms * 0.02
+      else if (!doubleTalk) echoFloorRms = echoFloorRms * (1 - floorAlpha) + rms * floorAlpha
     } else {
       echoPeak = 0
     }
@@ -690,6 +697,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
 
 
 const startRecorder = async (): Promise<void> => {
+    // 捕获本启动序号：getUserMedia 异步授权返回期间若发生 stop→start（或再次 start），
+    // startSeq 被推进，据此放弃本启动。此前用模块级 curStartSeq 比较——新 start() 会覆盖
+    // curStartSeq，旧启动返回时 curStartSeq===startSeq 恒真、守卫失效（对抗审查 Blocker）。
+    const mySeq = startSeq
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
@@ -705,7 +716,7 @@ const startRecorder = async (): Promise<void> => {
     // Fix8 修正：授权返回时若已被 stop() 抢占（stopRequested）或已被更新的启动取代
     // （序号落后 → 双路开麦防呆）则立即释放麦克风。注意不能用 active 判断——
     // 它在函数末尾才置 true。
-    if (stopRequested || curStartSeq !== startSeq) {
+    if (stopRequested || mySeq !== startSeq) {
       stream.getTracks().forEach((t) => t.stop())
       stream = null
       return
@@ -799,7 +810,7 @@ const startRecorder = async (): Promise<void> => {
     async start() {
       if (active) return
       stopRequested = false // Fix8：新一次启动清除取消标记
-      curStartSeq = ++startSeq // 防双路开麦：本次启动的序号
+      startSeq++ // 防双路开麦：推进启动序号（startRecorder 入口捕获 mySeq，返回时按差序放弃旧启动）
       segmentEpoch++
       lastPollAt = 0
       holdActive = false

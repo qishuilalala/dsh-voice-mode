@@ -115,7 +115,6 @@ function createAsrEngine(config, sessionId) {
   let active = false;
   let stopRequested = false;
   let startSeq = 0;
-  let curStartSeq = 0;
   let inFlush = false;
   let ctxRate = SAMPLE_RATE;
   let speechActive = false;
@@ -400,12 +399,17 @@ function createAsrEngine(config, sessionId) {
       }
     }
     const playingNow = config.isPlaying?.() ?? false;
-    const doubleTalk = playingNow && echoFloorRms > 0 && rms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20);
+    const gateRatio = Math.pow(10, (config.echoGateDb ?? 6) / 20);
+    const peakDecay = Math.pow(0.9, durationMs / 64);
+    const floorAlpha = 1 - Math.pow(0.98, durationMs / 64);
     if (playingNow) {
       latestResidualRms = rms;
-      echoPeak = Math.max(echoPeak * 0.9, rms);
+      echoPeak = Math.max(echoPeak * peakDecay, rms);
+    }
+    const doubleTalk = playingNow && echoFloorRms > 0 && echoPeak > echoFloorRms * gateRatio;
+    if (playingNow) {
       if (echoFloorRms === 0) echoFloorRms = rms;
-      else if (!doubleTalk) echoFloorRms = echoFloorRms * 0.98 + rms * 0.02;
+      else if (!doubleTalk) echoFloorRms = echoFloorRms * (1 - floorAlpha) + rms * floorAlpha;
     } else {
       echoPeak = 0;
     }
@@ -518,6 +522,7 @@ function createAsrEngine(config, sessionId) {
     }
   };
   const startRecorder = async () => {
+    const mySeq = startSeq;
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
@@ -530,7 +535,7 @@ function createAsrEngine(config, sessionId) {
         autoGainControl: false
       }
     });
-    if (stopRequested || curStartSeq !== startSeq) {
+    if (stopRequested || mySeq !== startSeq) {
       stream.getTracks().forEach((t3) => t3.stop());
       stream = null;
       return;
@@ -608,7 +613,7 @@ function createAsrEngine(config, sessionId) {
     async start() {
       if (active) return;
       stopRequested = false;
-      curStartSeq = ++startSeq;
+      startSeq++;
       segmentEpoch++;
       lastPollAt = 0;
       holdActive = false;
@@ -1610,7 +1615,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "a14a53e";
+var BUILD_TAG = "257e258";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2360,6 +2365,7 @@ function MicButton({
   const submitTimerRef = (0, import_react2.useRef)(null);
   const idleTimerRef = (0, import_react2.useRef)(null);
   const runningRef = (0, import_react2.useRef)(false);
+  const mountedRef = (0, import_react2.useRef)(true);
   const holdCtrlRef = (0, import_react2.useRef)(false);
   const manualHoldRef = (0, import_react2.useRef)(false);
   const breakRef = (0, import_react2.useRef)(null);
@@ -2423,11 +2429,17 @@ function MicButton({
       if (bus.activeSessionId !== sid) {
         setLocalMode("off");
         clearIdle();
+        cancelPendingSubmit();
         clearBreakTimer();
         setHolding(false);
+        isSpeechTrueCount = 0;
+        breakRef.current = null;
+        manualHoldRef.current = false;
         const engine = engineRef.current;
         engineRef.current = null;
         if (engine) void engine.stop();
+        bus.resetTelemetry();
+        bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null, isSpeech: void 0 });
       }
     });
   }, [bus]);
@@ -2462,6 +2474,10 @@ function MicButton({
     setLocalMode("pending");
     try {
       const entered = await bus.enter(sid);
+      if (!mountedRef.current) {
+        if (entered.ok) void bus.exit(sid);
+        return;
+      }
       if (!entered.ok) {
         setLocalMode("off");
         if (!entered.preempted) {
@@ -2666,7 +2682,18 @@ function MicButton({
         }, 500);
       });
       bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null });
+      if (!mountedRef.current) {
+        engineRef.current = null;
+        void bus.exit(sid);
+        return;
+      }
       await engine.start();
+      if (!mountedRef.current) {
+        engineRef.current = null;
+        await engine.stop();
+        void bus.exit(sid);
+        return;
+      }
       setLocalMode("on");
       resetIdle();
     } catch (e) {
@@ -2691,33 +2718,35 @@ function MicButton({
   (0, import_react2.useEffect)(() => {
     sidRef.current = sessionId;
   }, [sessionId]);
-  const autoResumeTriedRef = (0, import_react2.useRef)(false);
+  const autoResumeTriedForRef = (0, import_react2.useRef)(null);
   (0, import_react2.useEffect)(() => {
-    if (autoResumeTriedRef.current) return;
-    autoResumeTriedRef.current = true;
-    const sid = sidRef.current;
-    if (!sid) return;
+    const sid = sessionId;
+    if (!sid || sid === autoResumeTriedForRef.current) return;
+    autoResumeTriedForRef.current = sid;
     void (async () => {
       const cfg = await fetchConfig();
       if (!cfg.autoResume) return;
       if (getLastVoiceSession() !== sid) return;
       if (bus.activeSessionId !== null) return;
+      if (localRef.current !== "off") return;
       await enterMode().catch(() => {
         setLocalMode("off");
       });
     })();
-  }, []);
+  }, [sessionId]);
   const runningSel = useSession ? useSession((s) => s === void 0 ? void 0 : s.running) : void 0;
   (0, import_react2.useEffect)(() => {
     runningRef.current = runningSel === true;
   }, [runningSel]);
   (0, import_react2.useEffect)(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       clearIdle();
       cancelPendingSubmit();
       isSpeechTrueCount = 0;
       const sid = sidRef.current;
-      if (localRef.current === "on" && sid) {
+      if ((localRef.current === "on" || localRef.current === "pending") && sid) {
         void engineRef.current?.stop();
         void fetch(`${location.origin}${BASE_PATH2}/toggle`, {
           method: "POST",
@@ -2740,10 +2769,12 @@ function MicButton({
       }
       if (holdCtrlRef.current) {
         holdCtrlRef.current = false;
+        setHolding(false);
         engineRef.current?.endHeld(false);
       }
       if (manualHoldRef.current) {
         manualHoldRef.current = false;
+        setHolding(false);
         engineRef.current?.endHeld(false);
       }
     };
@@ -2768,6 +2799,7 @@ function MicButton({
           ctrlTimer = setTimeout(() => {
             ctrlTimer = null;
             holdCtrlRef.current = true;
+            setHolding(true);
             eng.beginHeld();
           }, 600);
         } else if (bootNow().bargeInMode === "manual" && bus.ui.playing) {
@@ -2826,6 +2858,7 @@ function MicButton({
       if (localRef.current !== "on" || bootNow().mode !== "hold") return;
       engineRef.current?.endHeld(true);
       holdCtrlRef.current = false;
+      setHolding(false);
       bus.setUi({ partial: "" });
     };
     const onVisibility = () => {
@@ -2833,6 +2866,7 @@ function MicButton({
         if (bootNow().mode === "hold") {
           engineRef.current?.endHeld(true);
           holdCtrlRef.current = false;
+          setHolding(false);
         } else if (localRef.current === "on" && engineRef.current) {
           pausedForHiddenRef.current = true;
           void engineRef.current.stop();
