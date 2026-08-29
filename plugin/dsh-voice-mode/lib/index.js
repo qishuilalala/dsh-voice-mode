@@ -214,7 +214,7 @@ async function downloadVerified(opts) {
   const url = `${host}/${repo}/resolve/main/${spec.file}`;
   const partSt = await stat(partPath).catch(() => null);
   const resumeFrom = partSt?.isFile() ? partSt.size : 0;
-  const headers = { "user-agent": "dsh-voice-mode-fork" };
+  const headers = { "user-agent": "dsh-voice-mode" };
   if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;
   const res = await fetch(url, { headers, redirect: "follow" });
   if (!redirectHostAllowed(res.url, allowCustomHost)) return false;

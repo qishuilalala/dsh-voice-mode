@@ -105,7 +105,7 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | `ttsEngine` | `vits` | Read-aloud engine: `vits` local Chinese / `kokoro` local zh+en (native) / `edge` Microsoft cloud; **applies live** |
 | `voice` | per engine | Voice: 5 VITS speakers; 103 Kokoro voices (◀▶ stepper; 62/68/75/76 favourite males pinned); Edge ShortNames below. The inline "试听" button previews it at the current rate |
 | `rate` | `1.0` | Reading speed multiplier (0.5 slow ～ 2.0 fast), **applies live** |
-| `interruptLevel` | `0` | Barge-in sensitivity (adaptive threshold): 0 high threshold / 1 medium / 2 low |
+| `interruptLevel` | `0` | Barge-in sensitivity (host-side VAD frame detection + echo gate): 0 high threshold / 1 medium / 2 low |
 | `silenceMs` | `700` | Silence pause in ms that marks the end of a complete sentence |
 | `idleTimeoutMinutes` | `10` | Minutes of inactivity before auto-exiting voice mode (reading counts as activity) |
 | `modelHost` | default | Model download host (use `https://hf-mirror.com` on mainland networks) |

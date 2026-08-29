@@ -75,7 +75,7 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | `ttsEngine` | `vits` | 朗读引擎：`vits` 本地中文 / `kokoro` 本地中英 / `edge` 微软云端；**即时生效** |
 | `voice` | 按引擎 | 音色：VITS 五说话人；Kokoro 103 个（◀▶ 切换，62 深沉/68 浑厚/75 清亮/76 磁性置顶）；Edge 见下方常用音色表。行内「试听」可即时预览 |
 | `rate` | `1.0` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
-| `interruptLevel` | `0` | 发声打断灵敏度（自适应阈值）：0 高门槛 / 1 中 / 2 低 |
+| `interruptLevel` | `0` | 发声打断灵敏度（服务端 VAD 帧级检测 + 回声门控）：0 高门槛 / 1 中 / 2 低 |
 | `silenceMs` | `700` | 说完整一句的静音停顿毫秒数 |
 | `idleTimeoutMinutes` | `10` | 无活动自动退出语音模式的分钟数（朗读计为活动） |
 | `modelHost` | 默认源 | 模型下载源（国内网络填 `https://hf-mirror.com`） |
