@@ -381,6 +381,7 @@ function createAsrEngine(config, sessionId) {
   };
   let latestResidualRms = 0;
   let echoFloorRms = 0;
+  let echoPeak = 0;
   const handleAudio = (raw) => {
     if (!active || inFlush) return;
     let data = ctxRate !== SAMPLE_RATE ? resampleLinear(raw, ctxRate, SAMPLE_RATE) : raw;
@@ -402,8 +403,11 @@ function createAsrEngine(config, sessionId) {
     const doubleTalk = playingNow && echoFloorRms > 0 && rms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20);
     if (playingNow) {
       latestResidualRms = rms;
+      echoPeak = Math.max(echoPeak * 0.9, rms);
       if (echoFloorRms === 0) echoFloorRms = rms;
       else if (!doubleTalk) echoFloorRms = echoFloorRms * 0.98 + rms * 0.02;
+    } else {
+      echoPeak = 0;
     }
     if (echo) {
       echo.setFrozen(doubleTalk);
@@ -596,10 +600,10 @@ function createAsrEngine(config, sessionId) {
     /** A2.5 回声门控：当前残差是否明显高于回声地板（marginDb 默认 6dB）——判用户人声而非回声。 */
     aboveEchoFloor(marginDb = 6) {
       if (echoFloorRms === 0) return false;
-      return latestResidualRms > echoFloorRms * Math.pow(10, marginDb / 20);
+      return echoPeak > echoFloorRms * Math.pow(10, marginDb / 20);
     },
     echoLevels() {
-      return { floorRms: echoFloorRms, residualRms: latestResidualRms };
+      return { floorRms: echoFloorRms, residualRms: latestResidualRms, peakRms: echoPeak };
     },
     async start() {
       if (active) return;
@@ -1606,7 +1610,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "417daac";
+var BUILD_TAG = "f968889";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

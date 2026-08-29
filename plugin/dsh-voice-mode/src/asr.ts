@@ -501,6 +501,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   /** A2.5 回声门控：播放期残差 RMS 与回声地板（纯回声残差水平），自动打断区分人声与回声。 */
   let latestResidualRms = 0
   let echoFloorRms = 0
+  /** 残差峰值（慢衰减）——门控用它而非瞬时值：用户话音断断续续，瞬时值会在
+   *  音节间隙掉回回声水平被误拒；峰值保持住「刚才确实有语音」的证据。 */
+  let echoPeak = 0
 
   const handleAudio = (raw: Float32Array): void => {
     if (!active || inFlush) return
@@ -541,8 +544,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       playingNow && echoFloorRms > 0 && rms > echoFloorRms * Math.pow(10, (config.echoGateDb ?? 6) / 20)
     if (playingNow) {
       latestResidualRms = rms
+      // 峰值保持（慢衰减 ~0.4s，跨音节间隙保持语音证据）。
+      echoPeak = Math.max(echoPeak * 0.9, rms)
       if (echoFloorRms === 0) echoFloorRms = rms
       else if (!doubleTalk) echoFloorRms = echoFloorRms * 0.98 + rms * 0.02
+    } else {
+      echoPeak = 0
     }
     if (echo) {
       echo.setFrozen(doubleTalk)
@@ -783,10 +790,11 @@ const startRecorder = async (): Promise<void> => {
       // 无地板（刚开播）→ 保守拒绝打断：放行会让外放回声在首播秒内误触发自打断
       // （实测外放 auto 根因之一）；代价是首播前 ~2s 无法自动打断（真机可接受）。
       if (echoFloorRms === 0) return false
-      return latestResidualRms > echoFloorRms * Math.pow(10, marginDb / 20)
+      // 用峰值（跨音节间隙）而非瞬时值：瞬时值在音节停顿处掉回回声水平被误拒。
+      return echoPeak > echoFloorRms * Math.pow(10, marginDb / 20)
     },
     echoLevels() {
-      return { floorRms: echoFloorRms, residualRms: latestResidualRms }
+      return { floorRms: echoFloorRms, residualRms: latestResidualRms, peakRms: echoPeak }
     },
     async start() {
       if (active) return
