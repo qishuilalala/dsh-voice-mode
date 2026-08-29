@@ -1,7 +1,7 @@
 {
   "name": "dsh-voice-mode",
-  "description": "Full-duplex voice mode for DeepSeek Harness: zipformer2 streaming ASR → editable draft, Edge TTS sentence-by-sentence read-aloud with live captions, true barge-in — on-device ASR, no API key. · DSH 语音双工对话：流式识别入草稿、按句朗读+实时字幕、开口即打断，识别本地推理、无需 API Key",
-  "version": "0.3.1",
+  "description": "Full-duplex voice mode for DeepSeek Harness: zipformer2 streaming ASR → editable draft, local (VITS/Kokoro, privacy-first) or Edge TTS read-aloud with live captions, true barge-in; hardened HTTP surface (loopback/origin/rate-limit) + model SHA256 pinning. · DSH 语音双工对话：流式识别入草稿、本地或 Edge 朗读+实时字幕、开口即打断；HTTP 面安全加固。",
+  "version": "0.4.0",
   "type": "module",
   "main": "lib/index.js",
   "repository": {
@@ -23,6 +23,7 @@
   },
   "files": [
     "lib/index.js",
+    "lib/tts-vits-worker.cjs",
     "lib/client.js",
     "lib/sense-worker.mjs",
     "cordis.patch.yml",
@@ -60,9 +61,10 @@
     }
   },
   "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1",
     "msedge-tts": "^2.0.7",
     "sherpa-onnx": "^1.13.6",
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "sherpa-onnx-node": "1.13.6"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -70,10 +72,15 @@
     "react": "^18.2.0"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0",
-    "typescript": "^5.9.2",
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-llm": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-settings": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.1-rc.2",
     "@types/node": "^26.0.0",
-    "@types/react": "^19.0.0"
+    "@types/react": "^19.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.2"
   },
   "keywords": [
     "dsh",

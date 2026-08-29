@@ -76,8 +76,10 @@ interface TtsChunkFrame {
   chunkId: number
   final: boolean
   text?: string
-  /** base64 MP3 分片（24kHz 单声道）。 */
+  /** base64 音频分片（MP3 或 WAV）。 */
   audio: string
+  /** 音频 MIME（audio/mpeg = Edge；audio/wav = 本地 VITS/Kokoro）。 */
+  mime?: string
 }
 
 /** 播放引擎的整句帧（客户端按句拼帧后的产物；P1-2 Web Audio 队列的输入）。 */
@@ -86,8 +88,10 @@ interface PlayFrame {
   seq: number
   /** 剥离 markdown 后的句子文本（实时字幕）。 */
   text: string
-  /** 整句 MP3 字节（24kHz 单声道；自有 ArrayBuffer 缓冲，可直接入 Blob）。 */
+  /** 整句音频字节（MP3 或 WAV；自有 ArrayBuffer 缓冲，可直接入 Blob）。 */
   audio: Uint8Array<ArrayBuffer>
+  /** 音频 MIME（audio/mpeg = Edge；audio/wav = 本地 VITS/Kokoro；降级 <audio> 路径用）。 */
+  mime?: string
 }
 
 /**
@@ -144,6 +148,26 @@ const debugLog = (event: string, fields: Record<string, unknown> = {}): void => 
     out[k] = typeof v === 'number' && !Number.isInteger(v) ? Number(v.toFixed(4)) : v
   }
   console.log('[dsh-voice]', event, JSON.stringify(out))
+}
+
+/** 工具提示音上下文（toolBeep 设置项，默认关；进入语音模式的手势栈内预热）。 */
+let beepCtx: AudioContext | null = null
+function playToolBeep(): void {
+  try {
+    if (!beepCtx) beepCtx = new AudioContext()
+    void beepCtx.resume?.()
+    const ctx = beepCtx
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0.08, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1)
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.1)
+  } catch {
+    // beep 失败静默
+  }
 }
 
 interface VoiceBus {
@@ -374,7 +398,7 @@ function createAudioEngine(
       setUi({ playing: false, playingCaption: null })
       return
     }
-    const url = URL.createObjectURL(new Blob([frame.audio], { type: 'audio/mpeg' }))
+    const url = URL.createObjectURL(new Blob([frame.audio], { type: frame.mime === 'audio/wav' ? 'audio/wav' : 'audio/mpeg' }))
     fallbackAudio.src = url
     fallbackAudio.onended = () => {
       URL.revokeObjectURL(url)
@@ -534,6 +558,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     bargeInMode: 'auto',
     echoGateDb: 6,
     shortcut: 'Ctrl+Shift+V',
+    wakeWord: '',
+    toolBeep: false,
   }
   const ui: VoiceUiState = {
     state: 'idle',
@@ -838,6 +864,10 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         // ignore malformed frame
       }
     })
+    // 工具调用提示音（toolBeep 设置项，默认关）。
+    source.addEventListener('tool', () => {
+      if (ui.boot.toolBeep === true) playToolBeep()
+    })
   }
   connect()
   // P1-1 分块帧拼帧：按句缓冲 chunk，final 帧后组装整句字节流入播放引擎
@@ -887,13 +917,17 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       curChunks = []
       curBytes = 0
       curChunkCount = 0
-      // 合法性：MP3 帧以同步字开头；空/无效整句丢弃（原 host 侧校验转移至此）。
-      if (buf.length === 0 || buf[0] !== 0xff) return
+      // 合法性：MP3 帧以同步字 0xff 开头、WAV 以 RIFF 开头；空/无效整句丢弃。
+      if (buf.length === 0) return
+      const isMp3 = buf[0] === 0xff
+      const isWav = buf.length >= 4 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
+      if (!isMp3 && !isWav) return
       engine.push({
         sessionId: frame.sessionId,
         seq: frame.sentenceId,
         text: frame.text ?? '',
         audio: buf,
+        mime: frame.mime,
       })
       lastFinalSeq.set(frame.sessionId, frame.sentenceId)
       return
@@ -1060,6 +1094,10 @@ interface VoiceBootConfig {
   echoGateDb: number
   /** 进入/退出语音模式的快捷键（如 Ctrl+Shift+V；空 = 禁用）。 */
   shortcut: string
+  /** 唤醒词（空 = 关；asr.ts 检测入口，当前宿主侧保留接口）。 */
+  wakeWord: string
+  /** 工具调用提示音（默认关）。 */
+  toolBeep: boolean
 }
 
 let styleInjected = false
@@ -1106,7 +1144,7 @@ export function MicButton({
   /** M2：隐藏 tab 时已暂停收音（可见时恢复）；隐私——避免后台持续录音。 */
   const pausedForHiddenRef = useRef(false)
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
-  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, shortcut: 'Ctrl+Shift+V' }
+  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, shortcut: 'Ctrl+Shift+V', wakeWord: '', toolBeep: false }
 
   useVoiceCss()
 
@@ -1143,6 +1181,8 @@ export function MicButton({
         bargeInMode: c.bargeInMode === 'manual' ? 'manual' : 'auto',
         echoGateDb: typeof c.echoGateDb === 'number' ? Math.min(12, Math.max(3, c.echoGateDb)) : cur.echoGateDb,
         shortcut: typeof c.shortcut === 'string' ? c.shortcut : cur.shortcut,
+        wakeWord: typeof c.wakeWord === 'string' ? c.wakeWord : cur.wakeWord,
+        toolBeep: c.toolBeep === true,
       }
       bus.setUi({ boot: next, mode: next.mode })
       return next

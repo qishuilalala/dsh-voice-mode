@@ -11,6 +11,18 @@
 >
 > 中文说明见 [README.md](./README.md)。
 
+## Fork enhancements (this repo)
+
+- **Local TTS by default (privacy-first)**: local VITS (Chinese) and local Kokoro (zh+en, native `sherpa-onnx-node` addon, no WASM memory limits) run in an isolated child process; Edge cloud TTS remains optional (`ttsEngine: edge`);
+- **103 Kokoro voices** (F0-measured gender labels, 4 favourite male voices pinned), browsed with a ◀▶ stepper;
+- **Bilingual paraformer ASR** (`asrModel: paraformer-zh-en`) with **neural punctuation** after each final transcript (ct-transformer, ~92% punctuation accuracy, `punctuate: false` to disable);
+- **Delta transport**: partials upload only the new 0.9 s — long push-to-talk segments finalize in seconds;
+- **Interaction**: a mode-switch button next to the mic (continuous ⇄ hold, persisted); hold mode records only while held;
+- **Long segments**: hold up to 10 min (pauses don't split), continuous sentences up to 3 min, 5 s silence split by default;
+- **Hardening**: session-existence check, loopback + Origin guards, per-endpoint rate limits, model SHA256 pinning, download-host allowlist.
+
+> ⚠️ The screenshots and `assets/demo.gif` below show the **upstream legacy UI** (single button); the current UI adds a mode-switch button beside the mic.
+
 ![demo](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo.gif)
 
 ## Features
@@ -19,14 +31,15 @@
 
 
 - **Voice mode**: toggle with the microphone button in the input toolbar or the global shortcut `Ctrl+Shift+V`; globally single-active (only one session is in voice mode at a time; switching sessions yields automatically)
-- **Two interaction modes (switchable in settings)**:
-  - `toggle` (default) continuous listening: local RMS gate opens segments → streaming zipformer2 ASR (words appear as you speak, live caption preview) → automatic sentence split and send after 700 ms of silence (<250 ms utterances are treated as noise; endpoints are decided by the host-side Silero VAD, with a client-side silence timer as fallback); hold `Ctrl` to force an immediate send
-  - `hold` push-to-talk: short tap to enter/exit, **hold the mic button to talk, release to send** (swipe up to cancel, `Esc`/blur abandons the segment); hold `Ctrl` to record-by-keyboard, release to send
-- **Output pipeline**: only the final answer's `text-delta` is read (reasoning/tool calls are skipped), streamed sentence-by-sentence via Edge TTS with a live caption overlay at the bottom-right; the full text is still written to the chat; in voice mode a spoken-format system prompt is injected (short natural sentences, no Markdown decoration), and the reader side strips markers as well for a smoother listening experience
-- **Barge-in**: **NLMS acoustic echo cancellation (P3, cross-correlation bulk-delay estimate + 64 ms short filter)** using the page's own TTS playback as the reference, then **host-side Silero VAD frame-level detection (isSpeech, sent down with partial responses) drives the interrupt** — three sensitivity levels map to speech-confirmation time (0 high barrier ~0.3 s / 1 medium 0.2 s / 2 low 0.1 s); with `bargeInMode: auto` speaking interrupts automatically, with `manual` (recommended for speakers) hold the mic button / Ctrl to interrupt explicitly → local mute + host synth queue invalidation (epoch) + running turn cancellation (the half-finished part is kept and naturally flows into your new message)
-- **Lazy model download with progress**: the zipformer2 streaming model (~160 MB), Silero VAD (~2 MB) and the SenseVoice finalization model (~228 MB, first finalize; can be disabled) are downloaded on first use — all `.part` resumable with hf-mirror fallback; live progress in the status bar; `npm run prefetch` pre-downloads them
+- **Two interaction modes (switchable in settings, plus a mode-switch button beside the mic)**:
+  - `toggle` (default) continuous listening: RMS VAD segmentation → streaming bilingual paraformer ASR (words appear as you speak, live caption preview) → automatic sentence split and send after 5 s of silence; hold `Ctrl` to force an immediate send
+  - `hold` push-to-talk: short tap to enter/exit, **hold the mic button to talk, release to send** (swipe up to cancel, `Esc`/blur abandons the segment; pauses do not split while held, up to 10 min); hold `Ctrl` to record-by-keyboard, release to send
+- **Wake word (optional, off by default)**: after setting `wakeWord`, entering voice mode starts in standby, and recognition only begins once the wake word is spoken (e.g. `你好小D`), preventing accidental triggers
+- **Output pipeline**: only the final answer's `text-delta` is read (reasoning/tool calls are skipped), streamed sentence-by-sentence (local VITS by default, local Kokoro for zh+en, Edge optional) with a live caption overlay at the bottom-right; tool calls trigger a beep; the full text is still written to the chat; in voice mode a spoken-format system prompt is injected (short natural sentences, no Markdown decoration), and the reader side strips markers as well for a smoother listening experience
+- **Barge-in**: three sensitivity levels of voice-onset detection → local mute + host synth queue invalidation (epoch) + running turn cancellation (the half-finished part is kept and naturally flows into your new message)
+- **Lazy model download with progress**: the zipformer2 Chinese streaming model (~160 MB, `.part` resumable) is downloaded on first use with live progress in the status bar; `npm run prefetch` can pre-download it
 - **Resilience**: mic-denied red hint, visible model-download failure, TTS unreachable status hint (auto retry), failed submit keeps the text in the draft, SSE auto-reconnect
-- **Settings**: Settings → Plugins → voice-mode, with voice / rate / interrupt sensitivity / silence pause / idle timeout / model mirror / auto send / interaction mode; **voices are previewable** (the "试听/Preview" button synthesizes and plays the current voice at the current rate instantly, no need to enter voice mode; custom ShortNames are previewable too)
+- **Settings**: Settings → Plugins → voice-mode, with voice / rate / interrupt sensitivity / silence pause / idle timeout / model mirror / auto send / interaction mode / wake word; **voices are previewable** (the "试听/Preview" button synthesizes and plays the current voice at the current rate instantly, no need to enter voice mode; custom ShortNames are previewable too)
 - **Idle exit**: auto-exit and mic release after 10 minutes of inactivity
 
 ## Interaction gestures
@@ -34,10 +47,11 @@
 | Gesture | Behaviour |
 | --- | --- |
 | Click the mic button / `Ctrl+Shift+V` | Enter / exit voice mode |
-| Just speak (toggle) | Silence-based auto sentence split and send (host VAD endpoint) |
+| Just speak, pause 2 s (toggle) | Auto sentence split and send |
 | Hold `Ctrl` (toggle, ≥250 ms speech) | Force-send the current segment immediately |
 | **Hold the mic button (hold)** | Hold to talk, release to send; swipe up / `Esc` / blur abandons the segment; <250 ms tap exits the mode |
 | Hold `Ctrl` (hold, ≥600 ms) | Keyboard push-to-talk, release to send |
+| Speak the wake word first (if configured) | Activate from standby into listening (then recognition and sending begin) |
 | Speak while AI is reading | Interrupt playback and cancel the running turn |
 | Type in the input box | Auto-exit voice mode (draft is kept) |
 
@@ -52,7 +66,7 @@ dsh plugin --profile web add dsh-voice-mode
 npx -y @deepseek-ai/dsh plugin --profile web add dsh-voice-mode
 
 # Option 2: local tarball
-dsh plugin --profile web add ./dsh-voice-mode-0.3.1.tgz
+dsh plugin --profile web add ./dsh-voice-mode-0.1.0.tgz
 
 # Option 3: from source
 git clone https://github.com/qishuilalala/dsh-voice-mode.git
@@ -70,34 +84,35 @@ dsh plugin --profile web add .
 ```sh
 npm run prefetch          # run inside the plugin dir; writes to the platform cache dir
 # or specify the cache location: node scripts/prefetch.mjs --cache-dir /where/ever/models
-node scripts/bench-asr.mjs --dir <test-set-dir>   # P4-2 offline CER/latency/size comparison (zipformer int8 vs xlarge / small-CTC / paraformer; needs 16k mono PCM wav + same-name .txt)
 ```
 
 ## Usage
 
 1. Click the mic button in the input toolbar (or press `Ctrl+Shift+V`) to enter voice mode; a status bar appears above the input box
-2. Choose how to speak: just talk and let the silence-based end-point auto-send (toggle); or hold the mic button and release to send (hold)
+2. Choose how to speak: just talk and let the 2 s pause auto-send (toggle); or hold the mic button and release to send (hold)
 3. The AI answer is read sentence-by-sentence with a caption overlay at the bottom-right; click "Skip" or just start speaking to interrupt
 4. Click "Exit" in the status bar (or press `Ctrl+Shift+V` again) to leave voice mode
 
 On first entry the recognition model is downloaded; the status bar shows `正在加载模型… <file> <percent>%`.
 
+If a wake word is configured, you land in standby first (the status bar prompts `说『唤醒词』开始`), and recognizing starts after you speak the wake word.
+
 ## Settings (Settings → Plugins → Plugins config → 语音模式)
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `voice` | `zh-CN-XiaoxiaoNeural` | Edge TTS voice (see the common voices table below), **applies live**; the inline "试听" button previews it at the current rate (both listed voices and custom ShortNames are previewable; failures show a visible hint) |
+| `ttsEngine` | `vits` | Read-aloud engine: `vits` local Chinese / `kokoro` local zh+en (native) / `edge` Microsoft cloud; **applies live** |
+| `voice` | per engine | Voice: 5 VITS speakers; 103 Kokoro voices (◀▶ stepper; 62/68/75/76 favourite males pinned); Edge ShortNames below. The inline "试听" button previews it at the current rate |
 | `rate` | `1.0` | Reading speed multiplier (0.5 slow ～ 2.0 fast), **applies live** |
-| `interruptLevel` | `0` | Barge-in sensitivity: 0 high barrier / 1 medium / 2 low (~0.3/0.2/0.1 s speech confirmation) |
-| `silenceMs` | `700` | Silence pause in ms that marks the end of a complete sentence (at least 250 ms of speech required) |
-| `idleTimeoutMinutes` | `10` | Minutes of inactivity before auto-exiting voice mode |
-| `modelHost` | default | ASR model download host (use `https://hf-mirror.com` on mainland networks) |
+| `interruptLevel` | `0` | Barge-in sensitivity (adaptive threshold): 0 high threshold / 1 medium / 2 low |
+| `silenceMs` | `5000` | Silence pause in ms that marks the end of a complete sentence |
+| `idleTimeoutMinutes` | `10` | Minutes of inactivity before auto-exiting voice mode (reading counts as activity) |
+| `modelHost` | default | Model download host (use `https://hf-mirror.com` on mainland networks) |
 | `autoSend` | `true` | Auto-send after a finalized transcript; when off, text only goes to the draft (hold `Ctrl` / release in hold mode still sends) |
-| `mode` | `toggle` | Interaction mode: `toggle` continuous listening + silence-based end-point detection; `hold` push-to-talk, release to send (short tap exits) |
-| `spokenFormat` | `false` | Inject a spoken-format system prompt into voice replies (colloquial short sentences, no Markdown decoration; **applies live**) |
-| `senseVoice` | `true` | Re-transcribe the finalized utterance with SenseVoice (punctuation + ITN, more accurate); turning it off skips the 228 MB model and keeps streaming only |
+| `mode` | `toggle` | Interaction mode: `toggle` continuous listening + 5 s silence split; `hold` push-to-talk, release to send (short tap exits) |
+| `wakeWord` | empty (off) | Wake word (e.g. `你好小D`): speak it after entering to activate, avoiding accidental triggers; empty = off |
 
-Effect timing: `voice`/`rate`/`spokenFormat`/`senseVoice` take effect **immediately**; the rest apply on the next voice-mode entry. Defaults come from the plugin config (`base` layer) — they follow the config unless explicitly changed.
+Effect timing: `voice`/`rate` take effect **immediately** (TTS hot-swap); the rest apply on the next voice-mode entry. Defaults come from the plugin config (`base` layer) — they follow the config unless explicitly changed.
 
 ### Common voices (full list: `node scripts/list-voices.mjs`)
 
@@ -132,7 +147,7 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
     voice: zh-CN-XiaoxiaoNeural
     rate: 1.0
     interruptLevel: 0
-    silenceMs: 700
+    silenceMs: 2000
     idleTimeoutMinutes: 10
     modelHost: https://huggingface.co
 ```
@@ -146,9 +161,9 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 
 | Route | Description |
 | --- | --- |
-| `GET /voice-mode/stream` | SSE: `event: audio` (`{sessionId, sentenceId, chunkId, final, text?(only on the final frame), audio(base64 MP3 chunk)}` — P1-1 chunked forwarding, the client reassembles each sentence before playback), `event: latency` (`{sessionId, stage}`: first-llm-token / first-sentence-text, P1-5), `event: turn` (`{sessionId, state}`: idle / listening / finalizing / agent-speaking, P2-4), `event: mode` (global single-active ownership), `event: asr-progress / asr-ready / asr-error / tts-error` |
+| `GET /voice-mode/stream` | SSE: `event: audio` (`{sessionId, seq, text, audio(base64 MP3)}`), `event: mode` (global single-active ownership), `event: tool` (beep), `event: asr-progress / asr-ready / asr-error / tts-error` |
 | `POST /voice-mode/toggle` | `{sessionId, on}` enter/exit voice mode (globally single-active) |
-| `POST /voice-mode/asr` | f32 LE 16k PCM payload → `{text, endpoint?}` (streaming zipformer2; `endpoint: true` = host-side Silero VAD end-point detection, P2-1); on `final=1` the utterance is also re-transcribed with SenseVoice (int8, punctuation + ITN, P4-1) — falls back to the streaming result when unavailable; returns `202 {loading}` until the model is ready; `?reset=1` discards the in-flight segment. `?offset=N` (P1-4): this packet is the segment slice starting at sample N — the client uploads only newly-appended samples (P1-4 incremental upload); omit for full-packets (backward compatible) |
+| `POST /voice-mode/asr` | Raw f32 LE 16k PCM payload → `{text}` (streaming zipformer2); returns `202 {loading}` until the model is ready; `?reset=1` discards the in-flight segment (used on wake-word hit) |
 | `POST /voice-mode/cancel` | `{sessionId}` invalidates the TTS queue and drops the in-flight ASR segment |
 | `POST /voice-mode/preview` | `{voice, rate?}` one-shot synthesis preview → `audio/mpeg` (400 missing voice / voice too long; 502 synthesis failure, e.g. invalid ShortName; 403 when the plugin's `enabled=false`). Does not require voice mode to be active; uses an isolated synthesis connection and does not affect the reading queue |
 | `GET /voice-mode/config` | Client bootstrap parameters (silence threshold / sensitivity / voice and rate, etc.) |
@@ -156,7 +171,7 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 
 ## Model & cache
 
-- Recognition models (all host-side via sherpa-onnx Node WASM, Apache-2.0): streaming `csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30` (~160 MB, encoder ≈154 MB / decoder / joiner / tokens); VAD `csukuangfj/vad/silero_vad.onnx` (~2 MB, P2); SenseVoice `csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/model.int8.onnx` (~228 MB, P4 finalize, opt-out via settings)
+- Recognition model: `csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30` (encoder ≈154 MB / decoder / joiner / tokens, ~160 MB total), running host-side via sherpa-onnx (Node WASM, Apache-2.0, natively cross-platform)
 - Cache directory defaults by platform:
   - **Windows**: `%LOCALAPPDATA%\dsh-voice-mode\models`
   - **macOS / Linux**: `~/.cache/dsh-voice-mode/models`
@@ -168,31 +183,31 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 ![architecture](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/architecture.svg)
 
 ```
-input:  mic ──local RMS gate──▶ POST /voice-mode/asr (f32 PCM, 16k, incremental; host Silero VAD endpoints + isSpeech interrupt)
-                                            │ zipformer2 streaming ASR (host-side WASM)
+input:  mic ──RMS VAD (5s silence split)──▶ POST /voice-mode/asr (f32 PCM, 16k, incremental)
+                                            │ paraformer bilingual streaming ASR (host-side WASM)
                                             ▼
         composer draft ──autoSend──▶ model stream ──llm/stream tap (active voice session only)
                                             │ text-delta filter → sentence segmentation
                                             ▼
-        browser ◀── SSE /voice-mode/stream ◀── TtsQueue (msedge-tts sentence-by-sentence)
+        browser ◀── SSE /voice-mode/stream ◀── TtsQueue (local VITS / native Kokoro / Edge, sentence-by-sentence)
 ```
 
 - Speech and reading only happen for the session pointed to by the global single-active pointer `activeVoiceSession`; other sessions pass through `llm/stream` with zero overhead (mode isolation)
 - The `llm/stream` tap is lossless: every chunk passes through unchanged; segmentation/synthesis only observe and never block the model stream
-- zipformer2 runs host-side (sherpa-onnx Node WASM); the browser only captures audio (`getUserMedia` 16k mono) and does endpoint detection
+- ASR runs host-side (sherpa-onnx WASM, paraformer bilingual); final transcripts get neural punctuation (host-side native addon); the browser only captures audio (`getUserMedia` 16k mono) and does endpoint detection
+- Local TTS (VITS / native Kokoro) runs in an isolated child process (fork, auto-restart); barge-in kills the in-flight synthesis instantly to free CPU
 - The TTS queue is per-session with an epoch version: old frames are all invalidated after a barge-in, so it is truly silent
 
 ## Known limitations
 
-- Barge-in now includes NLMS acoustic echo cancellation (P3, reference = this page's TTS playback, cross-correlation bulk-delay estimate + 64 ms short filter) plus host-side Silero VAD frame-level detection; browser `echoCancellation` is only a fallback. Under extreme speaker volume/distance the suppression needs on-device calibration (`echoGateDb` etc.)
+- Barge-in relies on browser echo cancellation (`echoCancellation`); loud speaker volume may leak into the mic (no JS-level AEC)
 - `Ctrl+Shift+V` overrides the browser's "paste as plain text" shortcut (normal `Ctrl+V` paste still works)
 - The recognition model prioritizes Simplified Chinese; recognition quality is affected by ambient noise
 - Browser autoplay policy: reading requires prior user interaction on the page (clicking the mic satisfies it); if the browser blocks playback and the status bar shows no hint, make sure the page is foregrounded and not muted
+- **The wake word is a lightweight implementation** (text matching on the streaming transcript, not a dedicated KWS engine): it may lag or misfire in noisy environments; the wake word itself never enters the chat (the buffer is dropped on hit)
 - In hold mode, switching windows/tabs while holding **abandons the segment** (prevents continuous recording); come back and hold again
 - The hero (new-session empty state) has no voice entry: voice mode is a session-level feature; enter a session first and use the mic button in the input toolbar
 - The preview request timeout uses `AbortSignal.timeout` (Chrome 103+ / Firefox 100+ / Safari 16+); on older browsers clicking preview immediately shows a failure hint — an expected degradation
-- **Security**: the plugin HTTP surface (`/voice-mode/*`) follows the host security model — do not expose the dsh port to the public internet; when publishing behind a reverse proxy, add auth at the proxy layer (e.g. basic auth). `/asr` validates the active voice session (403 otherwise); `/toggle` `/cancel` `/preview` are unauthenticated availability surfaces (they can only flip voice-mode state / stop TTS; a local malicious page could trigger that, with no privilege escalation or eavesdropping — reads are CORS-restricted)
-- **Safari / iOS**: requires HTTPS or localhost (secure context for the mic); first entry needs mic permission (iOS: Settings → Safari → Microphone); recognition/reading pause in the background on iOS and resume on return (may drop a sentence) — keep the page in the foreground during voice mode
 
 ## Troubleshooting
 
@@ -236,7 +251,7 @@ changing deps, run `npm pack --dry-run` and `pnpm test` as regression.
 
 ```sh
 pnpm install && pnpm build    # esbuild: lib/index.js (host) + lib/client.js (browser)
-pnpm test                     # unit tests (segmenter/aec + pre-release self-check, no network; tests import src/*.ts directly — needs Node ≥22.18, type stripping)
+pnpm test                     # segmenter/wakeword unit tests + pre-release self-check (no network)
 node test/hold-e2e.js         # hold-mode acceptance (standalone browser, /asr route interception)
 systemctl restart dsh         # Linux; restart the dsh process on other platforms
 ```
@@ -244,34 +259,25 @@ systemctl restart dsh         # Linux; restart the dsh process on other platform
 > Note: dsh installs the plugin as a pnpm `file:` link (directory copy); after `node build.mjs` you
 > must copy `lib/client.js` to `<profile>/node_modules/dsh-voice-mode/lib/` and restart dsh before
 > the browser picks up the new bundle.
->
-> Dev-mode latency telemetry (P1-5): run `localStorage.setItem('dsh-voice-mode.telemetry', '1')` in the
-> browser console, refresh, and enter voice mode — the status bar shows per-stage latencies of the
-> speech-end → first-audio chain (end → endpoint → submit → 1st token → 1st sentence → 1st chunk →
-> 1st audio, plus the total), for P1 acceptance measurement. Remove the key to disable (off by default, zero collection).
 
 ### Structure
 
 ```
-src/index.ts      host: single-active pointer, llm/stream tap, SSE, settings registration, turn state machine
-src/asr-host.ts   host: zipformer2 streaming ASR + Silero VAD endpoint + SenseVoice finalize + lazy model download (.part resume)
-src/tts-queue.ts  host: per-session TTS queue + chunked forwarding + epoch barge-in
+src/index.ts      host: single-active pointer, llm/stream tap, SSE, settings registration
+src/asr-host.ts   host: zipformer2 streaming ASR + lazy model download (.part resume)
+src/tts-queue.ts  host: per-session TTS queue + epoch barge-in
 src/segmenter.ts  host: sentence segmentation (markdown stripping + terminating punctuation)
-src/asr.ts        client: getUserMedia + AEC-injected capture + VAD segmentation + incremental upload + endpoint handling
-src/aec.ts        client: NLMS acoustic echo cancellation (pure module, unit-tested)
-src/resample.ts   client: linear resampling (capture / echo reference)
-src/client.tsx    client: mic button + status bar + overlay + playback engine (Web Audio queue) + barge-in
-src/settings-form.tsx client: settings card (Plugins → plugin config)
-scripts/bench-asr.mjs   offline CER/latency/size comparison of streaming ASR models
+src/client.tsx    client: mic button + status bar + reading overlay + barge-in
+src/asr.ts        client: getUserMedia + RMS VAD + partial polling
 scripts/prefetch.mjs  model pre-download (cross-platform cache dir + resume)
 test/segmenter.test.mjs  sentence segmentation unit tests
-test/aec.test.mjs         NLMS echo cancellation numeric tests (synthetic)
+test/wakeword.test.mjs    wake-word matching unit tests
 test/verify-client.mjs   pre-release self-check (bundle manifest/exports/shape)
 test/hold-e2e.js          hold-mode end-to-end acceptance (standalone browser)
 scripts/list-voices.mjs   print all Edge TTS voices (source of the voice table)
 ```
 
-Integration probes (`hold-e2e.js`, `capture-e2e.js`, `asr-e2e.js`, `output-e2e.js`, …) live in the repo root `test/`, outside this npm package; `capture-e2e.js` self-checks the capture→partial→final loop with a fake mic.
+Integration probes (`hold-e2e.js`, `spoken-prompt-rpc.sh`, `spoken-toggle-ui-check.js`) live in the repo root `test/`, outside this npm package.
 
 ## License
 

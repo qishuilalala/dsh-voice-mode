@@ -926,12 +926,27 @@ var zh = {
   previewPlayFail: "\u8BD5\u542C\u5931\u8D25\uFF1A\u65E0\u6CD5\u64AD\u653E\u8BE5\u97F3\u8272",
   previewAutoplay: "\u6D4F\u89C8\u5668\u62E6\u622A\u4E86\u81EA\u52A8\u64AD\u653E\uFF0C\u8BF7\u518D\u70B9\u4E00\u6B21\u8BD5\u542C",
   previewCheck: "\u8BD5\u542C\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u97F3\u8272\u540D\uFF08ShortName\uFF09\u662F\u5426\u6B63\u786E",
+  previewRateLimited: "\u8BD5\u542C\u592A\u9891\u7E41\u4E86\uFF0C\u7A0D\u5019\u51E0\u79D2\u518D\u70B9\uFF08\u6BCF\u5206\u949F\u9650 20 \u6B21\uFF09",
+  previewTimeout: "\u5408\u6210\u8D85\u65F6\uFF1A\u6A21\u578B\u4ECD\u5728\u52A0\u8F7D\uFF0C\u8BF7\u7A0D\u5019\u51E0\u79D2\u518D\u8BD5",
+  previewSynthesisFail: "\u5408\u6210\u5931\u8D25",
   previewBtnTitle: "\u8BD5\u542C\u5F53\u524D\u97F3\u8272\uFF08\u5F53\u524D\u8BED\u901F\uFF09",
   synthesizing: "\u5408\u6210\u4E2D\u2026",
   preview: "\u8BD5\u542C",
   custom: "\u81EA\u5B9A\u4E49",
   // settings rows
-  descVoice: "Edge TTS \u97F3\u8272\uFF08\u4E0B\u62C9\u5E38\u7528\uFF0C\u5176\u4F59\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u52A8\u586B ShortName\uFF09",
+  voicePrev: "\u4E0A\u4E00\u97F3\u8272",
+  voiceNext: "\u4E0B\u4E00\u97F3\u8272",
+  modeBtnToggle: "\u6301\u7EED\u8046\u542C",
+  modeBtnHold: "\u6309\u4F4F\u8BF4",
+  modeBtnTitle: "\u70B9\u51FB\u5207\u6362\u4EA4\u4E92\u6A21\u5F0F\uFF08\u4FDD\u5B58\u5230\u8BBE\u7F6E\uFF09",
+  descVoice: "Edge TTS \u97F3\u8272\uFF08\u25C0\u25B6 \u5DE6\u53F3\u5207\u6362\u5E38\u7528\u97F3\u8272\uFF0C\u5176\u4F59\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u52A8\u586B ShortName\uFF09",
+  descVoiceLocal: "\u672C\u5730\u97F3\u8272\uFF08vits-zh-ll \u4E94\u8BF4\u8BDD\u4EBA\uFF0C\u25C0\u25B6 \u5207\u6362\uFF1B\u300C\u81EA\u5B9A\u4E49\u300D\u53EF\u586B 0-4 \u6216\u82F1\u6587\u540D\uFF09",
+  ttsEngine: "\u6717\u8BFB\u5F15\u64CE",
+  descTtsEngine: "\u672C\u5730 VITS\uFF08\u7EAF\u4E2D\u6587\uFF09/ \u672C\u5730 Kokoro\uFF08\u4E2D\u82F1\u5747\u53EF\uFF09/ Edge \u4E91\u7AEF\uFF08\u97F3\u8D28\u6700\u81EA\u7136\uFF0C\u6587\u672C\u4E0A\u5FAE\u8F6F\uFF09",
+  engineVits: "\u672C\u5730 VITS",
+  engineKokoro: "\u672C\u5730\u4E2D\u82F1",
+  engineEdge: "Edge \u4E91\u7AEF",
+  descVoiceKokoro: "Kokoro \u4E2D\u82F1\u97F3\u8272\uFF08103 \u4E2A\uFF0C\u25C0\u25B6 \u5DE6\u53F3\u5207\u6362\uFF1B48-51 \u4E2D\u6587\u540D\uFF0C\u5176\u4F59\u6309\u7F16\u53F7+\u5B9E\u6D4B\u6027\u522B\u6807\u6CE8\uFF0C\u4E2D\u82F1\u6DF7\u8BFB\u5747\u53EF\uFF09",
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09",
   descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF1B\u53D1\u58F0\u786E\u8BA4\u7EA6 0.3/0.2/0.1 \u79D2\uFF09",
   descBargeIn: "\u6253\u65AD\u65B9\u5F0F\uFF08auto \u81EA\u52A8\u6253\u65AD\uFF1A\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u8033\u673A/\u5B89\u9759\u73AF\u5883\u63A8\u8350\uFF1Bmanual \u624B\u52A8\u6253\u65AD\uFF1A\u5916\u653E\u63A8\u8350\u2014\u2014\u56DE\u58F0\u4E0D\u4F1A\u8BEF\u89E6\u53D1\u81EA\u6253\u65AD\uFF0C\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u663E\u5F0F\u6253\u65AD\uFF09",
@@ -953,11 +968,14 @@ var zh = {
   descAutoResume: "\u5207\u6362\u56DE\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD\u65F6\u81EA\u52A8\u6062\u590D\u8BED\u97F3\u6A21\u5F0F\uFF08\u9ED8\u8BA4\u5173\uFF0C\u9700\u9EA6\u514B\u98CE\u6743\u9650\u5DF2\u6388\u4E88\uFF1B\u7701\u53BB\u6BCF\u6B21\u5207\u6362\u4F1A\u8BDD\u540E\u91CD\u65B0\u70B9\u9EA6\u514B\u98CE\uFF09",
   descSpokenFormat: "\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u56DE\u590D\u53E3\u8BED\u5316\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\uFF1B\u9ED8\u8BA4\u5173\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09",
   descSenseVoice: "\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9 + \u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09",
+  descToolBeep: '\u5DE5\u5177\u8C03\u7528\u63D0\u793A\u97F3\uFF08\u9ED8\u8BA4\u5173\uFF09\uFF1AAI \u601D\u8003/\u8C03\u7528\u5DE5\u5177\u65F6"\u6EF4"\u4E00\u58F0\uFF1B\u5ACC\u5435\u5C31\u4FDD\u6301\u5173\u95ED',
   descMode: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09",
   modeToggle: "\u6301\u7EED\u8046\u542C",
   modeHold: "\u6309\u4F4F\u8BF4\u8BDD",
-  settingsCardDesc: "\u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
-  settingsEffectiveNote: "\u97F3\u8272 / \u8BED\u901F / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 \u5373\u65F6\u751F\u6548\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
+  descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09",
+  wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
+  settingsCardDesc: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
+  settingsEffectiveNote: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 \u5373\u65F6\u751F\u6548\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
   configUnavailable: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528",
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: "\u8BF4\u5B8C",
@@ -1023,11 +1041,26 @@ var en = {
   previewPlayFail: "Preview failed: cannot play this voice",
   previewAutoplay: "Autoplay blocked \u2014 click preview again",
   previewCheck: "Preview failed: check network or ShortName",
+  previewRateLimited: "Preview too frequent \u2014 wait a few seconds (20/min limit)",
+  previewTimeout: "Synthesis timed out: model still loading, retry in a few seconds",
+  previewSynthesisFail: "Synthesis failed",
   previewBtnTitle: "Preview voice (current rate)",
   synthesizing: "Synthesizing\u2026",
   preview: "Preview",
   custom: "Custom",
-  descVoice: "Edge TTS voice (presets, or a custom ShortName)",
+  voicePrev: "Previous voice",
+  voiceNext: "Next voice",
+  modeBtnToggle: "Continuous",
+  modeBtnHold: "Hold to talk",
+  modeBtnTitle: "Click to switch interaction mode (saved to settings)",
+  descVoice: "Edge TTS voice (\u25C0\u25B6 to cycle presets, or a custom ShortName)",
+  descVoiceLocal: "Local voice (vits-zh-ll, 5 speakers; \u25C0\u25B6 to cycle; custom accepts 0-4 or a speaker name)",
+  ttsEngine: "Read-aloud engine",
+  descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft)",
+  engineVits: "Local VITS",
+  engineKokoro: "Local zh-en",
+  engineEdge: "Edge cloud",
+  descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.0 normal)",
   descInterrupt: "Interrupt sensitivity (0 high barrier / 1 medium / 2 low; ~0.3/0.2/0.1 s speech confirmation)",
   descBargeIn: "Barge-in mode (auto: interrupt by speaking \u2014 headphones/quiet; manual: for loudspeaker, no echo-triggered self-interrupt \u2014 hold mic/Ctrl to interrupt)",
@@ -1049,11 +1082,14 @@ var en = {
   descAutoResume: "Auto-resume voice mode when switching back to the last voice session (default off, requires granted mic permission)",
   descSpokenFormat: "Inject spoken-format prompt into voice replies (colloquial, no Markdown; default off, live)",
   descSenseVoice: "Re-transcribe the finalized utterance with SenseVoice (punctuation + ITN, more accurate; default on \u2014 turn off to skip the 228 MB model and keep streaming only)",
+  descToolBeep: "Tool-call beep (default off): beep when the agent is thinking/calling tools; keep off if it annoys you",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)",
   modeToggle: "Continue listen",
   modeHold: "Hold to talk",
-  settingsCardDesc: "Voice / rate / interrupt / barge-in / silence / idle / model host / auto-send / mode / spoken format",
-  settingsEffectiveNote: "Voice / rate / spoken format / re-transcribe apply immediately; the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode) apply next time you enter voice mode.",
+  descWakeWord: "Wake word (default off; e.g. Hey D)",
+  wakePlaceholder: "e.g. Hey D",
+  settingsCardDesc: "Engine / voice / rate / interrupt / barge-in / silence / idle / model host / auto-send / mode / wake word / spoken format",
+  settingsEffectiveNote: "Engine / voice / rate / spoken format / re-transcribe apply immediately; the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.",
   configUnavailable: "Configuration unavailable",
   telUtteranceEnd: "end",
   telEndpoint: "endpoint",
@@ -1176,6 +1212,149 @@ var VOICE_OPTIONS = [
   { v: "en-US-AriaNeural", label: "Aria \xB7 \u5973 \xB7 English" },
   { v: "en-US-GuyNeural", label: "Guy \xB7 \u7537 \xB7 English" }
 ];
+var VOICE_OPTIONS_LOCAL = [
+  { v: "suyingxue", label: "\u7D20\u6620\u96EA \xB7 \u5973" },
+  { v: "gunian", label: "\u987E\u5FF5 \xB7 \u7537" },
+  { v: "fushiyu", label: "\u5085\u65AF\u9047 \xB7 \u5973" },
+  { v: "bingjiao", label: "\u51B0\u5A07 \xB7 \u7537" },
+  { v: "bazong", label: "\u9738\u603B \xB7 \u7537" }
+];
+var KOKORO_F0 = [
+  224,
+  189,
+  154,
+  261,
+  226,
+  222,
+  220,
+  229,
+  198,
+  186,
+  212,
+  293,
+  233,
+  161,
+  247,
+  207,
+  218,
+  216,
+  220,
+  238,
+  242,
+  229,
+  198,
+  286,
+  211,
+  190,
+  264,
+  261,
+  226,
+  147,
+  216,
+  240,
+  233,
+  188,
+  222,
+  247,
+  253,
+  270,
+  276,
+  276,
+  279,
+  320,
+  247,
+  296,
+  276,
+  235,
+  139,
+  240,
+  282,
+  282,
+  238,
+  226,
+  273,
+  216,
+  286,
+  270,
+  198,
+  179,
+  117,
+  130,
+  114,
+  128,
+  108,
+  106,
+  122,
+  136,
+  190,
+  112,
+  108,
+  128,
+  131,
+  111,
+  110,
+  132,
+  138,
+  189,
+  137,
+  148,
+  151,
+  127,
+  135,
+  111,
+  138,
+  114,
+  125,
+  158,
+  128,
+  156,
+  132,
+  162,
+  131,
+  136,
+  142,
+  124,
+  129,
+  136,
+  126,
+  135,
+  161,
+  150,
+  124,
+  104,
+  124
+];
+var KOKORO_NAMED = {
+  48: { v: "zf_xiaobei", label: "\u5C0F\u5317 \xB7 \u4E2D\u6587\u5973" },
+  49: { v: "zf_xiaoni", label: "\u5C0F\u59AE \xB7 \u4E2D\u6587\u5973" },
+  50: { v: "zf_xiaoxiao", label: "\u5C0F\u5C0F \xB7 \u4E2D\u6587\u5973" },
+  51: { v: "zf_xiaoyi", label: "\u5C0F\u827A \xB7 \u4E2D\u6587\u5973" }
+};
+var KOKORO_LABEL_OVERRIDES = {
+  62: "62 \xB7 \u6DF1\u6C89 \xB7 \u5E38\u7528\u7537\u58F0",
+  68: "68 \xB7 \u6D51\u539A \xB7 \u5E38\u7528\u7537\u58F0",
+  75: "75 \xB7 \u6E05\u4EAE \xB7 \u5E38\u7528\u7537\u58F0",
+  76: "76 \xB7 \u78C1\u6027 \xB7 \u5E38\u7528\u7537\u58F0"
+};
+var KOKORO_PINNED = [62, 68, 75, 76];
+function kokoroOption(sid) {
+  const custom = KOKORO_LABEL_OVERRIDES[sid];
+  if (custom) return { v: String(sid), label: custom };
+  const named = KOKORO_NAMED[sid];
+  if (named) return { v: named.v, label: named.label };
+  const hz = KOKORO_F0[sid] ?? null;
+  if (hz === null) return { v: String(sid), label: `${sid} \xB7 \u97F3\u8272` };
+  return { v: String(sid), label: `${sid} \xB7 ${hz < 180 ? "\u7537\u58F0" : "\u5973\u58F0"} \xB7 ${hz}Hz` };
+}
+var VOICE_OPTIONS_KOKORO = [
+  ...KOKORO_PINNED.map((sid) => kokoroOption(sid)),
+  ...KOKORO_F0.map((_, sid) => kokoroOption(sid)).filter((o) => !KOKORO_PINNED.includes(Number(o.v)))
+];
+var ENGINE_DEFAULT_VOICE = {
+  vits: "suyingxue",
+  kokoro: "zf_xiaobei",
+  edge: "zh-CN-XiaoxiaoNeural"
+};
 var HOST_OPTIONS = [
   { v: "https://huggingface.co", label: "\u5B98\u65B9\u6E90 huggingface.co" },
   { v: "https://hf-mirror.com", label: "\u56FD\u5185\u955C\u50CF hf-mirror.com" }
@@ -1303,6 +1482,81 @@ function SelectField({
     footer?.(inOptions ? cur : custom)
   ] });
 }
+var stepBtn = {
+  boxSizing: "border-box",
+  width: 36,
+  flex: "0 0 auto",
+  cursor: "pointer",
+  border: `1px solid ${t2.border}`,
+  borderRadius: 8,
+  background: "var(--dsw-alias-bg-layer-2)",
+  color: t2.label,
+  fontSize: 16,
+  lineHeight: "28px",
+  textAlign: "center",
+  padding: 0,
+  fontFamily: "inherit"
+};
+var stepLabel = {
+  ...inputStyle,
+  flex: 1,
+  width: "auto",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textAlign: "center",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap"
+};
+function VoiceStepper({
+  score,
+  field,
+  value,
+  options,
+  placeholder,
+  footer
+}) {
+  const cur = String(value ?? "");
+  const inOptions = options.some((o) => o.v === cur);
+  const idx = options.findIndex((o) => o.v === cur);
+  const [custom, setCustom] = (0, import_react.useState)(inOptions ? "" : cur);
+  (0, import_react.useEffect)(() => {
+    if (!options.some((o) => o.v === cur)) setCustom(cur);
+  }, [cur, options]);
+  const move = (delta) => {
+    if (options.length === 0) return;
+    if (inOptions) {
+      const n = options.length;
+      const next = options[((idx + delta) % n + n) % n];
+      void score.set(field, next.v);
+    } else {
+      void score.set(field, options[0].v);
+    }
+  };
+  const labelText = inOptions ? options[idx].label : custom || placeholder || "";
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: 280, alignItems: "stretch" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", gap: 6, alignItems: "stretch" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": t("voicePrev"), onClick: () => move(-1), style: stepBtn, children: "\u2039" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: stepLabel, title: labelText, children: labelText }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": t("voiceNext"), onClick: () => move(1), style: stepBtn, children: "\u203A" })
+    ] }),
+    !inOptions && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "input",
+      {
+        style: inputStyle,
+        value: custom,
+        placeholder,
+        onChange: (e) => setCustom(e.target.value),
+        onBlur: () => void score.set(field, custom),
+        onKeyDown: (e) => {
+          if (e.key === "Enter") void score.set(field, custom);
+        }
+      }
+    ),
+    footer?.(inOptions ? cur : custom)
+  ] });
+}
 function VoicePreviewButton({ voice, rate }) {
   const [busy, setBusy] = (0, import_react.useState)(false);
   const [note, setNote] = (0, import_react.useState)(null);
@@ -1329,13 +1583,26 @@ function VoicePreviewButton({ voice, rate }) {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ voice: v, rate }),
-          signal: AbortSignal.timeout(15e3)
+          signal: AbortSignal.timeout(9e4)
         });
         if (res.status === 403) {
           setNote(t("previewDisabled"));
           return;
         }
-        if (!res.ok) throw new Error(`preview http ${res.status}`);
+        if (res.status === 429) {
+          setNote(t("previewRateLimited"));
+          return;
+        }
+        if (!res.ok) {
+          let detail = "";
+          try {
+            const parsed = await res.json();
+            if (parsed && typeof parsed.error === "string") detail = parsed.error;
+          } catch {
+          }
+          setNote(detail ? `${t("previewSynthesisFail")}\uFF1A${detail}` : t("previewCheck"));
+          return;
+        }
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         audio.src = url;
@@ -1352,8 +1619,8 @@ function VoicePreviewButton({ voice, rate }) {
             e instanceof DOMException && e.name === "NotAllowedError" ? t("previewAutoplay") : t("previewPlayFail")
           );
         }
-      } catch {
-        setNote(t("previewCheck"));
+      } catch (e) {
+        setNote(e instanceof DOMException && e.name === "TimeoutError" ? t("previewTimeout") : t("previewCheck"));
       } finally {
         setBusy(false);
       }
@@ -1395,9 +1662,22 @@ function SegGroup({
   score,
   field,
   value,
-  options
+  options,
+  onSelect
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "group", style: setSeg, children: options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { style: setSegBtn(value === o.v), "aria-pressed": value === o.v, onClick: () => void score.set(field, o.v), children: o.label }, String(o.v))) });
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "group", style: setSeg, children: options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "button",
+    {
+      style: setSegBtn(value === o.v),
+      "aria-pressed": value === o.v,
+      onClick: () => {
+        void score.set(field, o.v);
+        onSelect?.(o.v);
+      },
+      children: o.label
+    },
+    String(o.v)
+  )) });
 }
 var fmtMB = (b) => b >= 1048576 ? `${(b / 1048576).toFixed(0)}MB` : b > 0 ? `${Math.round(b / 1024)}KB` : "\u2013";
 function ModelStatusView() {
@@ -1504,6 +1784,8 @@ function VoiceSettingsCard({ scope }) {
   );
   const value = snap?.value ?? {};
   const unavailable = snap?.status === "unavailable" || snap?.status === "error";
+  const engine = value.ttsEngine === "edge" ? "edge" : value.ttsEngine === "kokoro" ? "kokoro" : "vits";
+  const voiceOptions = engine === "edge" ? VOICE_OPTIONS : engine === "kokoro" ? VOICE_OPTIONS_KOKORO : VOICE_OPTIONS_LOCAL;
   if (unavailable) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: t2.term, fontSize: 12, padding: "14px 16px", ...cardStyle }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)" }, children: t("configUnavailable") }),
@@ -1520,17 +1802,42 @@ function VoiceSettingsCard({ scope }) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...setChevron, transform: collapsed ? "rotate(0deg)" : "rotate(180deg)" }, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 14, height: 14, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 6l4 4 4-4z" }) }) })
     ] }),
     !collapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: setBody, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "voice", desc: t("descVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        SelectField,
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "ttsEngine", desc: t("descTtsEngine"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        SegGroup,
         {
           score: scope,
-          field: "voice",
-          value: value.voice ?? "",
-          options: VOICE_OPTIONS,
-          placeholder: "zh-CN-XiaoxiaoNeural",
-          footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1) })
+          field: "ttsEngine",
+          value: engine,
+          options: [
+            { v: "vits", label: t("engineVits") },
+            { v: "kokoro", label: t("engineKokoro") },
+            { v: "edge", label: t("engineEdge") }
+          ],
+          onSelect: (v) => {
+            if (v !== engine) {
+              void scope.set("voice", ENGINE_DEFAULT_VOICE[String(v)] ?? "suyingxue");
+            }
+          }
         }
       ) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        Row,
+        {
+          name: "voice",
+          desc: engine === "edge" ? t("descVoice") : engine === "kokoro" ? t("descVoiceKokoro") : t("descVoiceLocal"),
+          children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            VoiceStepper,
+            {
+              score: scope,
+              field: "voice",
+              value: value.voice ?? "",
+              options: voiceOptions,
+              placeholder: ENGINE_DEFAULT_VOICE[engine] ?? "suyingxue",
+              footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1) })
+            }
+          )
+        }
+      ),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1, min: 0.5, max: 2, step: 0.1 }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: t("descInterrupt"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         SegGroup,
@@ -1566,6 +1873,8 @@ function VoiceSettingsCard({ scope }) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoResume), onChange: (e) => void scope.set("autoResume", e.target.checked) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.toolBeep), onChange: (e) => void scope.set("toolBeep", e.target.checked) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: t("descMode"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         SegGroup,
         {
@@ -1601,7 +1910,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "f1bc49c";
+var BUILD_TAG = "bb7b494";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -1613,6 +1922,23 @@ var debugLog = (event, fields = {}) => {
   }
   console.log("[dsh-voice]", event, JSON.stringify(out));
 };
+var beepCtx = null;
+function playToolBeep() {
+  try {
+    if (!beepCtx) beepCtx = new AudioContext();
+    void beepCtx.resume?.();
+    const ctx = beepCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(1e-3, ctx.currentTime + 0.1);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+  } catch {
+  }
+}
 var SAMPLE_RATE_16K = 16e3;
 var ECHO_DELAY_MS = 0;
 var ECHO_TAIL_MS = 400;
@@ -1751,7 +2077,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
       setUi({ playing: false, playingCaption: null });
       return;
     }
-    const url = URL.createObjectURL(new Blob([frame.audio], { type: "audio/mpeg" }));
+    const url = URL.createObjectURL(new Blob([frame.audio], { type: frame.mime === "audio/wav" ? "audio/wav" : "audio/mpeg" }));
     fallbackAudio.src = url;
     fallbackAudio.onended = () => {
       URL.revokeObjectURL(url);
@@ -1883,7 +2209,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     mode: "toggle",
     bargeInMode: "auto",
     echoGateDb: 6,
-    shortcut: "Ctrl+Shift+V"
+    shortcut: "Ctrl+Shift+V",
+    wakeWord: "",
+    toolBeep: false
   };
   const ui = {
     state: "idle",
@@ -2126,6 +2454,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       } catch {
       }
     });
+    source.addEventListener("tool", () => {
+      if (ui.boot.toolBeep === true) playToolBeep();
+    });
   };
   connect();
   const rejectSeqUpTo = /* @__PURE__ */ new Map();
@@ -2163,12 +2494,16 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       curChunks = [];
       curBytes = 0;
       curChunkCount = 0;
-      if (buf.length === 0 || buf[0] !== 255) return;
+      if (buf.length === 0) return;
+      const isMp3 = buf[0] === 255;
+      const isWav = buf.length >= 4 && buf[0] === 82 && buf[1] === 73 && buf[2] === 70 && buf[3] === 70;
+      if (!isMp3 && !isWav) return;
       engine.push({
         sessionId: frame.sessionId,
         seq: frame.sentenceId,
         text: frame.text ?? "",
-        audio: buf
+        audio: buf,
+        mime: frame.mime
       });
       lastFinalSeq.set(frame.sessionId, frame.sentenceId);
       return;
@@ -2321,7 +2656,7 @@ function MicButton({
   const manualHoldRef = (0, import_react2.useRef)(false);
   const breakRef = (0, import_react2.useRef)(null);
   const pausedForHiddenRef = (0, import_react2.useRef)(false);
-  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, shortcut: "Ctrl+Shift+V" };
+  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, shortcut: "Ctrl+Shift+V", wakeWord: "", toolBeep: false };
   useVoiceCss();
   const [, bumpUi] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(
@@ -2350,7 +2685,9 @@ function MicButton({
         mode: c.mode === "hold" ? "hold" : "toggle",
         bargeInMode: c.bargeInMode === "manual" ? "manual" : "auto",
         echoGateDb: typeof c.echoGateDb === "number" ? Math.min(12, Math.max(3, c.echoGateDb)) : cur.echoGateDb,
-        shortcut: typeof c.shortcut === "string" ? c.shortcut : cur.shortcut
+        shortcut: typeof c.shortcut === "string" ? c.shortcut : cur.shortcut,
+        wakeWord: typeof c.wakeWord === "string" ? c.wakeWord : cur.wakeWord,
+        toolBeep: c.toolBeep === true
       };
       bus.setUi({ boot: next, mode: next.mode });
       return next;

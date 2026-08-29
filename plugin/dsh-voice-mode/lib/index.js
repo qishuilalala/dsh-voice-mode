@@ -1,6 +1,6 @@
 // src/index.ts
 import z from "@deepseek-ai/schemastery";
-import { join as join2 } from "node:path";
+import { join as join4 } from "node:path";
 import { homedir } from "node:os";
 
 // src/asr-host.ts
@@ -838,6 +838,9 @@ var SKIP_PREFIX = /^[\s.,，、:：;；!?！？)\]）"'”’〉》】]+$/;
 function plainText(text) {
   return String(text).replace(/```[\s\S]*?```/g, " ").replace(/`([^`]*)`/g, "$1").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^#{1,6}\s+/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/^[-*+]\s+/gm, "").replace(/^\d+\.\s+/gm, "").replace(/<\/?[a-zA-Z][^>]*>/g, " ");
 }
+function sanitizeForTts(text) {
+  return String(text).replace(/[*_#>`|^=+~]/g, " ").replace(/\s{2,}/g, " ").replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g, "$1").trim();
+}
 function splitSentences(chunk) {
   const sentences = [];
   let start = 0;
@@ -867,13 +870,13 @@ var SentenceSegmenter = class {
     this.buffer = tail;
     const out = [];
     for (const s of sentences) {
-      const t = s.trim();
+      const t = sanitizeForTts(s).trim();
       if (t && !SKIP_PREFIX.test(t)) out.push(t);
     }
     if (this.buffer.length > this.maxChars) {
       const cut = this.buffer.search(/[，,、\s]/);
       const idx = cut > 0 ? cut : Math.floor(this.maxChars / 2);
-      const head = this.buffer.slice(0, idx).trim();
+      const head = sanitizeForTts(this.buffer.slice(0, idx)).trim();
       this.buffer = this.buffer.slice(idx);
       if (head) out.push(head);
     }
@@ -881,7 +884,7 @@ var SentenceSegmenter = class {
   }
   /** 收尾：flush 剩余缓冲（流结束）。 */
   flush() {
-    const t = this.buffer.trim();
+    const t = sanitizeForTts(this.buffer).trim();
     this.buffer = "";
     if (t && !SKIP_PREFIX.test(t)) return [t];
     return [];
@@ -899,37 +902,27 @@ function prosodyFromRate(rate) {
 function isValidMp3(buf) {
   return buf.length > 0 && buf[0] === MP3_MAGIC;
 }
-var TtsQueue = class {
-  tts = new MsEdgeTTS();
-  queues = /* @__PURE__ */ new Map();
-  listeners = /* @__PURE__ */ new Set();
+var EdgeTtsEngine = class {
   voice;
-  prosody;
-  ready = null;
-  /** TTS 全体不可达通知（每会话去重，成功后复位）。 */
-  onError;
-  constructor(options = {}) {
-    this.voice = options.voice ?? "zh-CN-XiaoxiaoNeural";
-    this.prosody = prosodyFromRate(options.rate);
-    this.onError = options.onError;
-  }
-  /** 动态更换音色/语速（Q15 设置即时生效；正在合成的句子不受影响）。 */
-  updateVoice(voice, rate) {
-    const nextProsody = prosodyFromRate(rate);
-    if (voice === this.voice && nextProsody?.rate === this.prosody?.rate) return;
+  rate;
+  constructor(voice = "zh-CN-XiaoxiaoNeural", rate) {
     this.voice = voice;
-    this.prosody = nextProsody;
-    this.ready = null;
+    this.rate = rate;
   }
-  /**
-   * 一次性合成（设置卡「试听」用）：独立连接，不干扰朗读队列的在途合成；
-   * 音色/语速可指定，缺省用当前队列参数。失败（含非法 ShortName）抛错。
-   */
+  mime = "audio/mpeg";
+  updateVoice(voice, rate) {
+    this.voice = voice;
+    if (rate !== void 0 && Number.isFinite(rate)) this.rate = rate;
+  }
   async synthesize(text, options = {}) {
     const tts = new MsEdgeTTS();
     try {
-      await tts.setMetadata(options.voice ?? this.voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, TTS_METADATA);
-      const { audioStream } = tts.toStream(text, prosodyFromRate(options.rate));
+      await tts.setMetadata(
+        options.voice ?? this.voice,
+        OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3,
+        TTS_METADATA
+      );
+      const { audioStream } = tts.toStream(text, prosodyFromRate(options.rate ?? this.rate));
       const chunks = [];
       for await (const chunk of audioStream) chunks.push(chunk);
       const buf = Buffer.concat(chunks);
@@ -942,14 +935,44 @@ var TtsQueue = class {
       }
     }
   }
-  /** 初始化 Edge TTS WebSocket（懒执行，close 后可重来）。 */
-  async ensureReady() {
-    if (this.ready) return this.ready;
-    this.ready = this.tts.setMetadata(this.voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, TTS_METADATA).catch((e) => {
-      this.ready = null;
-      throw e;
+  async close() {
+  }
+};
+var TtsQueue = class {
+  queues = /* @__PURE__ */ new Map();
+  listeners = /* @__PURE__ */ new Set();
+  engine;
+  /** TTS 全体不可达通知（每会话去重，成功后复位）。 */
+  onError;
+  constructor(options) {
+    this.engine = options.engine;
+    this.onError = options.onError;
+  }
+  /** 当前引擎音频 MIME（/preview 的 Content-Type 也用它）。 */
+  get mime() {
+    return this.engine.mime;
+  }
+  /**
+   * 运行时切换引擎（设置面板「朗读引擎」即时生效）：
+   * 关闭旧引擎、清空所有会话队列；新句子用新引擎合成。
+   */
+  setEngine(engine) {
+    const old = this.engine;
+    this.engine = engine;
+    this.queues.clear();
+    void old.close().catch(() => {
     });
-    return this.ready;
+  }
+  /** 动态更换音色/语速（设置即时生效；正在合成的句子不受影响）。 */
+  updateVoice(voice, rate) {
+    this.engine.updateVoice(voice, rate);
+  }
+  /**
+   * 一次性合成（设置卡「试听」用）：委托当前引擎；不干扰朗读队列的在途合成。
+   * 失败（含非法音色）抛错。
+   */
+  async synthesize(text, options = {}) {
+    return this.engine.synthesize(text, options);
   }
   subscribe(listener) {
     this.listeners.add(listener);
@@ -964,17 +987,13 @@ var TtsQueue = class {
       q = { pending: [], busy: false, seq: 0, epoch: 0, errorNotified: false, backoff: 0 };
       this.queues.set(sessionId, q);
     }
+    if (q.pending.length >= 20) q.pending.shift();
     q.pending.push({ text, epoch: q.epoch });
     void this.pump(sessionId, q);
   }
   /**
    * 弃掉某会话的所有积压并作废正在合成的句子（打断）。之后入队的句子
-   * 获得新 epoch 正常播放。
-   *
-   * 打断同时重置 WebSocket 连接：pump 的 break 会 destroy 当前 audioStream（删
-   * requestId），但服务端仍在发该句残留数据——msedge-tts 的 onmessage 访问已删
-   * stream 抛 TypeError，且复用同一条 ws 会累积脏状态导致后续合成静音/失败。
-   * close 后下次 ensureReady 重建连接，干净恢复。
+   * 获得新 epoch 正常播放。同时立刻中止在途合成（本地引擎杀子进程释放 CPU）。
    */
   cancel(sessionId) {
     const q = this.queues.get(sessionId);
@@ -982,11 +1001,7 @@ var TtsQueue = class {
       q.epoch++;
       q.pending.length = 0;
     }
-    this.ready = null;
-    try {
-      this.tts.close();
-    } catch {
-    }
+    this.engine.interrupt?.();
   }
   /** 会话退出/被抢占时彻底清理其队列（防止 Map 长期累积）。 */
   prune(sessionId) {
@@ -1001,58 +1016,46 @@ var TtsQueue = class {
     if (q.busy) return;
     q.busy = true;
     try {
-      await this.ensureReady();
       while (q.pending.length > 0) {
         const item = q.pending.shift();
         try {
+          const buf = await this.engine.synthesize(item.text);
+          if (item.epoch !== q.epoch) continue;
+          q.errorNotified = false;
+          q.backoff = 0;
           const sentenceId = q.seq++;
-          const { audioStream } = this.tts.toStream(item.text, this.prosody);
-          let chunkId = 0;
-          let bytes = 0;
-          for await (const chunk of audioStream) {
-            const bin = chunk;
-            if (!bin || bin.length === 0) continue;
-            if (item.epoch !== q.epoch) break;
-            bytes += bin.length;
-            const frame = {
-              sessionId,
-              sentenceId,
-              chunkId: chunkId++,
-              final: false,
-              audio: bin.toString("base64")
-            };
-            for (const fn of this.listeners) {
-              try {
-                fn(frame);
-              } catch {
-              }
+          const mime = this.engine.mime;
+          const dataFrame = {
+            sessionId,
+            sentenceId,
+            chunkId: 0,
+            final: false,
+            audio: buf.toString("base64"),
+            mime
+          };
+          for (const fn of this.listeners) {
+            try {
+              fn(dataFrame);
+            } catch {
             }
           }
-          if (bytes > 0 && item.epoch === q.epoch) {
-            q.errorNotified = false;
-            q.backoff = 0;
-            const frame = {
-              sessionId,
-              sentenceId,
-              chunkId,
-              final: true,
-              text: item.text,
-              audio: ""
-            };
-            for (const fn of this.listeners) {
-              try {
-                fn(frame);
-              } catch {
-              }
+          const finalFrame = {
+            sessionId,
+            sentenceId,
+            chunkId: 1,
+            final: true,
+            text: item.text,
+            audio: "",
+            mime
+          };
+          for (const fn of this.listeners) {
+            try {
+              fn(finalFrame);
+            } catch {
             }
           }
         } catch (e) {
           console.warn(`[dsh-voice-mode] synthesis failed: ${String(e)}`);
-          this.ready = null;
-          try {
-            this.tts.close();
-          } catch {
-          }
         }
       }
     } catch (e) {
@@ -1073,8 +1076,577 @@ var TtsQueue = class {
     }
   }
   async close() {
-    await this.tts.close();
-    this.ready = null;
+    await this.engine.close();
+  }
+};
+
+// src/tts-local.ts
+import { fork } from "node:child_process";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+import { join as join3 } from "node:path";
+
+// src/models.ts
+import { createHash } from "node:crypto";
+import { createWriteStream as createWriteStream2 } from "node:fs";
+import { mkdir as mkdir2, rename as rename2, stat as stat2, unlink as unlink2 } from "node:fs/promises";
+import { join as join2 } from "node:path";
+var HOST_PRIMARY2 = "https://huggingface.co";
+var HOST_FALLBACK2 = "https://hf-mirror.com";
+var ALLOWED_MODEL_HOSTNAMES = ["huggingface.co", "hf-mirror.com"];
+function validateModelHost(raw, allowCustomHost) {
+  if (!raw) return null;
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:") return null;
+  const hostname = u.hostname.toLowerCase();
+  if (!ALLOWED_MODEL_HOSTNAMES.includes(hostname) && !allowCustomHost) {
+    return null;
+  }
+  return `${u.protocol}//${u.hostname}${u.port ? `:${u.port}` : ""}`;
+}
+function redirectHostAllowed(finalUrl, allowCustomHost) {
+  try {
+    const u = new URL(finalUrl);
+    if (u.protocol !== "https:") return false;
+    const hostname = u.hostname.toLowerCase();
+    if (allowCustomHost) return true;
+    return hostname === "huggingface.co" || hostname.endsWith(".huggingface.co") || hostname === "hf-mirror.com" || hostname.endsWith(".hf-mirror.com");
+  } catch {
+    return false;
+  }
+}
+async function sha256OfFile(path) {
+  const hash = createHash("sha256");
+  const { createReadStream } = await import("node:fs");
+  await new Promise((resolve, reject) => {
+    const stream = createReadStream(path);
+    stream.on("data", (c) => hash.update(c));
+    stream.on("error", reject);
+    stream.on("end", () => resolve());
+  });
+  return hash.digest("hex");
+}
+async function ensureModelFile(opts) {
+  const { repo, repoDir, spec, primaryHost, allowCustomHost, broadcast } = opts;
+  const localPath = join2(repoDir, spec.file);
+  const partPath = `${localPath}.part`;
+  if ((await stat2(localPath).catch(() => null))?.isFile()) {
+    const ok = await sha256OfFile(localPath).catch(() => "") === spec.sha256;
+    if (ok) return true;
+    await unlink2(localPath).catch(() => void 0);
+  }
+  await mkdir2(join2(repoDir, spec.file.includes("/") ? spec.file.slice(0, spec.file.lastIndexOf("/")) : ""), {
+    recursive: true
+  }).catch(() => void 0);
+  const hosts = [...new Set([primaryHost, HOST_PRIMARY2, HOST_FALLBACK2].filter(Boolean))];
+  let lastError = "no upstream reachable";
+  for (const host of hosts) {
+    try {
+      const done = await downloadVerified({ ...opts, host, partPath, localPath });
+      if (done) return true;
+    } catch (e) {
+      lastError = String(e);
+    }
+  }
+  await unlink2(partPath).catch(() => void 0);
+  broadcast("asr-error", { file: spec.file, reason: "checksum_or_download_failed", detail: lastError });
+  return false;
+}
+async function downloadVerified(opts) {
+  const { repo, spec, host, allowCustomHost, partPath, localPath, broadcast } = opts;
+  const url = `${host}/${repo}/resolve/main/${spec.file}`;
+  const partSt = await stat2(partPath).catch(() => null);
+  const resumeFrom = partSt?.isFile() ? partSt.size : 0;
+  const headers = { "user-agent": "dsh-voice-mode-fork" };
+  if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;
+  const res = await fetch(url, { headers, redirect: "follow" });
+  if (!redirectHostAllowed(res.url, allowCustomHost)) return false;
+  if (res.status === 416) {
+    if (await sha256OfFile(partPath).catch(() => "") === spec.sha256) {
+      await rename2(partPath, localPath);
+      return true;
+    }
+    await unlink2(partPath).catch(() => void 0);
+    return false;
+  }
+  if (res.status !== 200 && res.status !== 206) return false;
+  const total = Number(res.headers.get("content-length") ?? 0) + resumeFrom;
+  const src = res.body;
+  if (!src) return false;
+  const sink = createWriteStream2(partPath, resumeFrom > 0 ? { flags: "a" } : {});
+  const reader = src.getReader();
+  let received = resumeFrom;
+  await new Promise((resolve, reject) => {
+    sink.on("error", (e) => reject(e));
+    sink.on("finish", () => resolve());
+    void (async () => {
+      try {
+        for (; ; ) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          received += value.byteLength;
+          if (!sink.write(value)) {
+            await new Promise((r) => sink.once("drain", r));
+          }
+          if (total > 0) {
+            broadcast("asr-progress", {
+              file: spec.file,
+              percent: Math.min(100, Math.round(received / total * 100))
+            });
+          }
+        }
+        sink.end();
+      } catch (e) {
+        sink.destroy(e);
+        reject(e);
+      }
+    })();
+  });
+  const actual = await sha256OfFile(partPath).catch(() => "");
+  if (actual !== spec.sha256) {
+    await unlink2(partPath).catch(() => void 0);
+    return false;
+  }
+  await rename2(partPath, localPath);
+  return true;
+}
+
+// src/tts-local.ts
+var TTS_MODEL_REPO = "csukuangfj/sherpa-onnx-vits-zh-ll";
+var KOKORO_MODEL_DIR = "csukuangfj/kokoro-multi-lang-v1_1";
+var TTS_MODEL_FILES = [
+  { file: "model.onnx", sha256: "6c349bdd73dc928234dd7bc86929748bba32cd5264d32d915bf7b7aa0595965b" },
+  { file: "lexicon.txt", sha256: "b3a82f16b286c424953dea3686039e7ab465fa8e15d87ef8abd0ec69175beb21" },
+  { file: "tokens.txt", sha256: "34b035b9aeb070df6188b022f29c00e0e142c7ade9f25611ced65db5e9cc8402" },
+  { file: "G_multisperaker_latest.json", sha256: "f31e4bf23827c3528fdf090fd7b6fb8e63333709b80670d40fa864f1fa9fadf3" },
+  { file: "date.fst", sha256: "eb8aa079ae3cb81d8f4404992f39d61a0cb990947512b5b8d1e54d1f6980e718" },
+  { file: "phone.fst", sha256: "1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7" },
+  { file: "number.fst", sha256: "743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd" }
+];
+var VITS_SPEAKERS = [
+  { name: "suyingxue", sid: 0, label: "\u7D20\u6620\u96EA \xB7 \u5973" },
+  { name: "gunian", sid: 1, label: "\u987E\u5FF5 \xB7 \u7537" },
+  { name: "fushiyu", sid: 2, label: "\u5085\u65AF\u9047 \xB7 \u5973" },
+  { name: "bingjiao", sid: 3, label: "\u51B0\u5A07 \xB7 \u7537" },
+  { name: "bazong", sid: 4, label: "\u9738\u603B \xB7 \u7537" }
+];
+var KOKORO_F0 = [
+  224,
+  189,
+  154,
+  261,
+  226,
+  222,
+  220,
+  229,
+  198,
+  186,
+  212,
+  293,
+  233,
+  161,
+  247,
+  207,
+  218,
+  216,
+  220,
+  238,
+  242,
+  229,
+  198,
+  286,
+  211,
+  190,
+  264,
+  261,
+  226,
+  147,
+  216,
+  240,
+  233,
+  188,
+  222,
+  247,
+  253,
+  270,
+  276,
+  276,
+  279,
+  320,
+  247,
+  296,
+  276,
+  235,
+  139,
+  240,
+  282,
+  282,
+  238,
+  226,
+  273,
+  216,
+  286,
+  270,
+  198,
+  179,
+  117,
+  130,
+  114,
+  128,
+  108,
+  106,
+  122,
+  136,
+  190,
+  112,
+  108,
+  128,
+  131,
+  111,
+  110,
+  132,
+  138,
+  189,
+  137,
+  148,
+  151,
+  127,
+  135,
+  111,
+  138,
+  114,
+  125,
+  158,
+  128,
+  156,
+  132,
+  162,
+  131,
+  136,
+  142,
+  124,
+  129,
+  136,
+  126,
+  135,
+  161,
+  150,
+  124,
+  104,
+  124
+];
+var KOKORO_NAMED = {
+  48: { name: "zf_xiaobei", label: "\u5C0F\u5317 \xB7 \u4E2D\u6587\u5973" },
+  49: { name: "zf_xiaoni", label: "\u5C0F\u59AE \xB7 \u4E2D\u6587\u5973" },
+  50: { name: "zf_xiaoxiao", label: "\u5C0F\u5C0F \xB7 \u4E2D\u6587\u5973" },
+  51: { name: "zf_xiaoyi", label: "\u5C0F\u827A \xB7 \u4E2D\u6587\u5973" }
+};
+var KOKORO_LABEL_OVERRIDES = {
+  62: "62 \xB7 \u6DF1\u6C89 \xB7 \u5E38\u7528\u7537\u58F0",
+  68: "68 \xB7 \u6D51\u539A \xB7 \u5E38\u7528\u7537\u58F0",
+  75: "75 \xB7 \u6E05\u4EAE \xB7 \u5E38\u7528\u7537\u58F0",
+  76: "76 \xB7 \u78C1\u6027 \xB7 \u5E38\u7528\u7537\u58F0"
+};
+var KOKORO_PINNED = [62, 68, 75, 76];
+function kokoroVoice(sid) {
+  const custom = KOKORO_LABEL_OVERRIDES[sid];
+  if (custom) return { name: String(sid), sid, label: custom };
+  const named = KOKORO_NAMED[sid];
+  if (named) return { name: named.name, sid, label: named.label };
+  const hz = KOKORO_F0[sid] ?? null;
+  if (hz === null) return { name: String(sid), sid, label: `${sid} \xB7 \u97F3\u8272` };
+  return { name: String(sid), sid, label: `${sid} \xB7 ${hz < 180 ? "\u7537\u58F0" : "\u5973\u58F0"} \xB7 ${hz}Hz` };
+}
+var KOKORO_VOICES = [
+  ...KOKORO_PINNED.map((sid) => kokoroVoice(sid)),
+  ...KOKORO_F0.map((_, sid) => kokoroVoice(sid)).filter((v) => !KOKORO_PINNED.includes(v.sid))
+];
+function voiceToSid(voice) {
+  const v = String(voice ?? "").trim().toLowerCase();
+  if (/^\d+$/.test(v)) {
+    const n = Number(v);
+    if (n >= 0 && n < VITS_SPEAKERS.length) return n;
+  }
+  const hit = VITS_SPEAKERS.find((s) => s.name.toLowerCase() === v);
+  return hit ? hit.sid : 0;
+}
+function kokoroVoiceToSid(voice) {
+  const v = String(voice ?? "").trim().toLowerCase();
+  if (/^\d+$/.test(v)) {
+    const n = Number(v);
+    if (n >= 0 && n <= KOKORO_VOICES.length - 1) return n;
+  }
+  const hit = KOKORO_VOICES.find((s) => s.name.toLowerCase() === v);
+  return hit ? hit.sid : 48;
+}
+function floatToPcm16(samples) {
+  const buf = Buffer.alloc(samples.length * 2);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    buf.writeInt16LE(s < 0 ? s * 32768 : s * 32767, i * 2);
+  }
+  return buf;
+}
+function pcmToWav(pcm, sampleRate) {
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+var VITS_SPEC = {
+  files: TTS_MODEL_FILES,
+  workerPaths: (dir) => ({
+    model: join3(dir, "model.onnx"),
+    lexicon: join3(dir, "lexicon.txt"),
+    tokens: join3(dir, "tokens.txt"),
+    date: join3(dir, "date.fst"),
+    phone: join3(dir, "phone.fst"),
+    number: join3(dir, "number.fst")
+  }),
+  defaultVoice: "suyingxue",
+  toSid: voiceToSid
+};
+var KOKORO_SPEC = {
+  files: [
+    { file: "model.onnx", sha256: "acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38" },
+    { file: "voices.bin", sha256: "e64a5a581d8c2a350d848f51c3121657cd83aa07ed6109172177345874a7244c" },
+    { file: "tokens.txt", sha256: "931ab2df2400cd65d580a22402024c2347ced8ae9ea300e545144b1aacc48e14" },
+    { file: "lexicon-us-en.txt", sha256: "7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14" },
+    { file: "lexicon-zh.txt", sha256: "11111d8cd695fba2ace1367a1d0a708b586e6ef5c1f9be91da5d7eef129b651c" },
+    { file: "espeak-ng-data/phontab", sha256: "886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6" },
+    { file: "date-zh.fst", sha256: "eb8aa079ae3cb81d8f4404992f39d61a0cb990947512b5b8d1e54d1f6980e718" },
+    { file: "number-zh.fst", sha256: "743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd" },
+    { file: "phone-zh.fst", sha256: "1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7" }
+  ],
+  workerPaths: (dir) => ({
+    model: join3(dir, "model.onnx"),
+    voices: join3(dir, "voices.bin"),
+    tokens: join3(dir, "tokens.txt"),
+    dataDir: join3(dir, "espeak-ng-data"),
+    lexicon: [join3(dir, "lexicon-us-en.txt"), join3(dir, "lexicon-zh.txt")].join(","),
+    date: join3(dir, "date-zh.fst"),
+    phone: join3(dir, "phone-zh.fst"),
+    number: join3(dir, "number-zh.fst"),
+    lang: ""
+  }),
+  defaultVoice: "zf_xiaobei",
+  toSid: kokoroVoiceToSid
+};
+function createSherpaLocalEngine(options) {
+  const { cacheDir, modelHost, allowCustomHost, broadcast } = options;
+  const spec = options.kind === "kokoro" ? KOKORO_SPEC : VITS_SPEC;
+  const repoName = options.kind === "kokoro" ? KOKORO_MODEL_DIR : TTS_MODEL_REPO;
+  const repoDir = join3(cacheDir, repoName);
+  const workerPath = fileURLToPath2(new URL("./tts-vits-worker.cjs", import.meta.url));
+  let child = null;
+  let childInit = false;
+  const respawnChild = async () => {
+    if (child) {
+      child.kill();
+      child = null;
+    }
+    childInit = false;
+    ready = null;
+  };
+  let voice = spec.defaultVoice;
+  let speed = 1;
+  let ready = null;
+  let nextId = 1;
+  const pending = /* @__PURE__ */ new Map();
+  const call = (msg) => new Promise((resolve, reject) => {
+    if (!child) {
+      reject(new Error("tts child not running"));
+      return;
+    }
+    const id = nextId++;
+    pending.set(id, { resolve, reject });
+    child.send({ id, ...msg });
+  });
+  const rejectAll = (e) => {
+    for (const p of pending.values()) p.reject(e);
+    pending.clear();
+  };
+  const ensureReady = () => {
+    if (ready && child) return ready;
+    if (!ready) {
+      ready = (async () => {
+        if (!child || !childInit) {
+          for (const f of spec.files) {
+            const ok = await ensureModelFile({
+              repo: repoName,
+              repoDir,
+              spec: f,
+              primaryHost: modelHost(),
+              allowCustomHost,
+              broadcast
+            });
+            if (!ok) throw new Error(`local TTS model download/verify failed: ${f.file}`);
+          }
+          if (!child) {
+            child = fork(workerPath, [], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+            let stderrTail = "";
+            child.stderr?.on("data", (chunk) => {
+              stderrTail += String(chunk);
+              const lines = stderrTail.split("\n");
+              stderrTail = lines.pop() ?? "";
+              for (const line of lines) {
+                const s = line.trim();
+                if (!s) continue;
+                if (/Skip unknown phonemes/.test(s)) continue;
+                console.error(`[tts-worker:${options.kind}] ${s}`);
+              }
+            });
+            child.on("message", (m) => {
+              const p = pending.get(m.id);
+              if (!p) return;
+              pending.delete(m.id);
+              if (m.ok) p.resolve(m);
+              else p.reject(new Error(m.error ?? "tts child error"));
+            });
+            child.on("error", (e) => {
+              rejectAll(e instanceof Error ? e : new Error(String(e)));
+              child = null;
+              childInit = false;
+              ready = null;
+            });
+            child.on("exit", (code) => {
+              rejectAll(new Error(`tts child exited with code ${code}`));
+              child = null;
+              childInit = false;
+              ready = null;
+            });
+          }
+          if (!childInit) {
+            const init = await call({ type: "init", kind: options.kind, paths: spec.workerPaths(repoDir) });
+            if (!init.ok) throw new Error(init.error ?? "tts child init failed");
+            childInit = true;
+          }
+        }
+        broadcast("tts-ready", { engine: options.kind, worker: true });
+      })().finally(() => {
+        ready = null;
+      });
+    }
+    return ready;
+  };
+  return {
+    mime: "audio/wav",
+    updateVoice(nextVoice, nextRate) {
+      voice = nextVoice || voice;
+      if (typeof nextRate === "number" && Number.isFinite(nextRate)) {
+        speed = Math.min(2, Math.max(0.5, nextRate));
+      }
+    },
+    async synthesize(text, opts = {}) {
+      await ensureReady();
+      const sid = spec.toSid(opts.voice ?? voice);
+      const spd = typeof opts.rate === "number" && Number.isFinite(opts.rate) ? Math.min(2, Math.max(0.5, opts.rate)) : speed;
+      let res = await call({ type: "synth", text, sid, speed: spd });
+      if (!res.ok && /Aborted/.test(res.error ?? "")) {
+        await respawnChild();
+        res = await call({ type: "synth", text, sid, speed: spd });
+      }
+      if (!res.ok) throw new Error(res.error ?? "local TTS synthesis failed");
+      if (typeof res.samples !== "string" || res.samples.length === 0) {
+        throw new Error("local TTS produced empty audio");
+      }
+      const bytes = Buffer.from(res.samples, "base64");
+      const samples = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+      if (samples.length === 0) {
+        throw new Error("local TTS produced empty audio");
+      }
+      return pcmToWav(floatToPcm16(samples), res.sampleRate || 16e3);
+    },
+    async close() {
+      const c = child;
+      if (c) {
+        try {
+          await call({ type: "close" });
+        } catch {
+        }
+        try {
+          c.kill();
+        } catch {
+        }
+      }
+      child = null;
+      childInit = false;
+      ready = null;
+    },
+    interrupt() {
+      void respawnChild();
+    }
+  };
+}
+function createSherpaVitsEngine(options) {
+  return createSherpaLocalEngine({ ...options, kind: "vits" });
+}
+function createSherpaKokoroEngine(options) {
+  return createSherpaLocalEngine({ ...options, kind: "kokoro" });
+}
+
+// src/security.ts
+var LOOPBACK_ADDRESSES = /* @__PURE__ */ new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+function isLoopbackRequest(req) {
+  const addr = req.socket.remoteAddress ?? "";
+  return LOOPBACK_ADDRESSES.has(addr);
+}
+function sameOriginRequest(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    const expectedScheme = req.socket.encrypted ? "https" : "http";
+    const host = req.headers.host;
+    if (!host) return false;
+    const expected = new URL(`${expectedScheme}://${host}`).origin;
+    return new URL(origin).origin === expected;
+  } catch {
+    return false;
+  }
+}
+var RateLimiter = class {
+  buckets = /* @__PURE__ */ new Map();
+  maxKeys;
+  constructor(maxKeys = 1e4) {
+    this.maxKeys = maxKeys;
+  }
+  /** 命中一次；返回是否允许。maxHits 次 / windowMs 毫秒。 */
+  hit(key, maxHits, windowMs) {
+    const now = Date.now();
+    const cutoff = now - windowMs;
+    let bucket = this.buckets.get(key);
+    if (!bucket) {
+      if (this.buckets.size >= this.maxKeys) return false;
+      bucket = [];
+      this.buckets.set(key, bucket);
+    }
+    while (bucket.length > 0 && bucket[0] <= cutoff) bucket.shift();
+    if (bucket.length >= maxHits) return false;
+    bucket.push(now);
+    return true;
+  }
+  /** 定期清理（由调用方在低频路径触发即可）。 */
+  prune(now = Date.now(), windowMs) {
+    const cutoff = now - windowMs;
+    for (const [key, bucket] of this.buckets) {
+      while (bucket.length > 0 && bucket[0] <= cutoff) bucket.shift();
+      if (bucket.length === 0) this.buckets.delete(key);
+    }
   }
 };
 
@@ -1088,9 +1660,10 @@ var respondJson2 = (res, status, payload) => {
 };
 var VOICE_SPOKEN_PROMPT = "\u3010\u8BED\u97F3\u6A21\u5F0F\u3011\u5F53\u524D\u56DE\u590D\u4F1A\u88AB\u8BED\u97F3\u6717\u8BFB\uFF0C\u8BF7\u59CB\u7EC8\u7528\u7528\u6237\u6240\u7528\u8BED\u8A00\u3001\u4EE5\u53E3\u8BED\u5316\u7684\u77ED\u53E5\u76F4\u63A5\u56DE\u7B54\uFF0C\u50CF\u9762\u5BF9\u9762\u804A\u5929\u4E00\u6837\u81EA\u7136\uFF0C\u907F\u514D\u4E66\u9762\u8BED\u548C\u957F\u96BE\u53E5\u3002\u4E0D\u8981\u4F7F\u7528\u4EFB\u4F55 Markdown \u6216\u6392\u7248\u7B26\u53F7\uFF08\u661F\u53F7\u3001\u4E0B\u5212\u7EBF\u3001\u53CD\u5F15\u53F7\u3001\u4E95\u53F7\u3001\u5217\u8868\u4E0E\u8868\u683C\u6807\u8BB0\u3001\u4EE3\u7801\u5757\u7B49\uFF09\u3002\u9700\u8981\u5206\u70B9\u8BF4\u660E\u65F6\u7528\u300C\u7B2C\u4E00\u3001\u7B2C\u4E8C\u300D\u6216\u8FDE\u8D2F\u7684\u77ED\u53E5\u8868\u8FBE\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EE3\u7801\u7247\u6BB5\u3001\u5B8C\u6574 URL \u6216\u5197\u957F\u5B9A\u4E49\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u6982\u62EC\u542B\u4E49\u5373\u53EF\u3002\u56DE\u7B54\u7B80\u6D01\u76F4\u63A5\uFF0C\u4E0D\u8981\u91CD\u590D\u548C\u5BD2\u6684\u3002";
 var VOICE_SPOKEN_SECTION = "voice-mode:spoken-format";
-var inject = ["webServer", "settings"];
-var defaultModelCacheDir = () => process.platform === "win32" ? join2(process.env.LOCALAPPDATA ?? join2(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join2(homedir(), ".cache", "dsh-voice-mode", "models");
+var inject = ["webServer", "settings", "sessions"];
+var defaultModelCacheDir = () => process.platform === "win32" ? join4(process.env.LOCALAPPDATA ?? join4(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join4(homedir(), ".cache", "dsh-voice-mode", "models");
 var VOICE_SETTINGS_DEFAULTS = {
+  ttsEngine: "vits",
   voice: "zh-CN-XiaoxiaoNeural",
   rate: 1,
   interruptLevel: 0,
@@ -1104,11 +1677,16 @@ var VOICE_SETTINGS_DEFAULTS = {
   echoGateDb: 6,
   shortcut: "Ctrl+Shift+V",
   spokenFormat: false,
-  senseVoice: true
+  senseVoice: true,
+  wakeWord: "",
+  toolBeep: false
 };
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
   return z.object({
+    ttsEngine: z.union([z.const("vits"), z.const("kokoro"), z.const("edge")]).default(d.ttsEngine).description(
+      "\u6717\u8BFB\u5F15\u64CE\uFF1Avits \u672C\u5730\u5408\u6210\uFF08\u9ED8\u8BA4\uFF0C\u56DE\u590D\u6587\u672C\u4E0D\u51FA\u672C\u673A\uFF09/ edge \u5FAE\u8F6F\u4E91\u7AEF\uFF08\u97F3\u8D28\u66F4\u81EA\u7136\uFF0C\u88AB\u6717\u8BFB\u6587\u672C\u4F1A\u53D1\u9001\u5230\u5FAE\u8F6F\uFF09\uFF1B\u5207\u6362\u5373\u65F6\u751F\u6548"
+    ),
     voice: z.string().default(d.voice).description(
       "Edge TTS \u97F3\u8272\uFF08\u5927\u9646\u81EA\u7136\u97F3\uFF1Azh-CN-XiaoxiaoNeural \u6653\u6653\xB7\u5973 / zh-CN-XiaoyiNeural \u6653\u4F0A\xB7\u5973 / zh-CN-YunxiNeural \u4E91\u5E0C\xB7\u7537 / zh-CN-YunjianNeural \u4E91\u5065\xB7\u7537 / zh-CN-YunyangNeural \u4E91\u626C\xB7\u7537 / zh-CN-YunxiaNeural \u4E91\u590F\xB7\u7537\uFF1B\u65B9\u8A00\uFF1A\u4E1C\u5317-\u5C0F\u5317 / \u9655\u897F-\u5C0F\u59AE\uFF1B\u7CA4\u8BED\uFF1AHiuGaai/HiuMaan/WanLung\uFF1B\u53F0\u6E7E\uFF1AHsiaoChen/HsiaoYu/YunJhe\uFF1B\u5B8C\u6574\u6E05\u5355\u89C1 scripts/list-voices.mjs\uFF09"
     ),
@@ -1124,7 +1702,9 @@ function createVoiceSettingsSchema(defs) {
     echoGateDb: z.number().min(3).max(12).default(d.echoGateDb).description("\u56DE\u58F0\u95E8\u63A7\u9608\u503C\uFF08dB\uFF0C\u9ED8\u8BA4 6\uFF09\uFF1A\u81EA\u52A8\u6253\u65AD\u8981\u6C42\u6B8B\u5DEE\u9AD8\u4E8E\u56DE\u58F0\u5730\u677F\u6B64\u503C\uFF1B\u5916\u653E\u4ECD\u8BEF\u6253\u65AD\u8C03\u5927\uFF088~10\uFF09\uFF0C\u592A\u96BE\u6253\u65AD\u8C03\u5C0F\uFF083~4\uFF09"),
     shortcut: z.string().default(d.shortcut).description("\u8FDB\u5165/\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5FEB\u6377\u952E\uFF08\u5F62\u5982 Ctrl+Shift+V\uFF0C\u4FEE\u9970\u952E Ctrl/Shift/Alt/Meta + \u4E00\u4E2A\u5B57\u6BCD\u952E\uFF1B\u7559\u7A7A\u7981\u7528\u5FEB\u6377\u952E\uFF0C\u7528\u9EA6\u514B\u98CE\u6309\u94AE\uFF09"),
     spokenFormat: z.boolean().default(d.spokenFormat).description("\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u53E3\u8BED\u5316\u77ED\u53E5\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\uFF1B\u9ED8\u8BA4\u5173\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09"),
-    senseVoice: z.boolean().default(d.senseVoice).description("\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9+\u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09")
+    senseVoice: z.boolean().default(d.senseVoice).description("\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9+\u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09"),
+    wakeWord: z.string().default(d.wakeWord).description("\u5524\u9192\u8BCD\uFF1A\u5728\u5F85\u673A\u6001\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF09"),
+    toolBeep: z.boolean().default(d.toolBeep).description('\u5DE5\u5177\u8C03\u7528\u63D0\u793A\u97F3\uFF08\u9ED8\u8BA4\u5173\uFF09\uFF1A\u5F00\u542F\u540E AI \u8C03\u7528\u5DE5\u5177\u65F6"\u6EF4"\u4E00\u58F0\uFF0C\u5173\u95ED\u5219\u5168\u7A0B\u9759\u9ED8')
   });
 }
 var VoiceSettingsSchema = createVoiceSettingsSchema();
@@ -1132,11 +1712,16 @@ var Config = z.object({
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default("https://huggingface.co"),
+  asrModel: z.union([z.const("zh"), z.const("paraformer-zh-en")]).default("zh"),
+  ttsEngine: z.union([z.const("edge"), z.const("vits"), z.const("kokoro")]).default("vits"),
+  allowLan: z.boolean().default(false),
+  allowCustomModelHost: z.boolean().default(false),
   voice: z.string().default("zh-CN-XiaoxiaoNeural"),
   rate: z.number().default(1),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(700),
-  idleTimeoutMinutes: z.number().default(10)
+  idleTimeoutMinutes: z.number().default(10),
+  punctuate: z.boolean().default(true)
 });
 function apply(ctx, config) {
   let activeVoiceSession = null;
@@ -1149,6 +1734,27 @@ function apply(ctx, config) {
     broadcast("turn", { sessionId, state });
   };
   const turnGen = /* @__PURE__ */ new Map();
+  const sessions = ctx.get("sessions");
+  const limiter = new RateLimiter();
+  const normalizedModelHost = () => validateModelHost(vset.modelHost, config.allowCustomModelHost) ?? HOST_PRIMARY2;
+  const denyNonLoopback = (req, res) => {
+    if (!config.allowLan && !isLoopbackRequest(req)) {
+      res.statusCode = 403;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ error: "loopback only (allowLan=false)" }));
+      return true;
+    }
+    return false;
+  };
+  const denyCrossOrigin = (req, res) => {
+    if (!sameOriginRequest(req)) {
+      res.statusCode = 403;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ error: "cross-origin request denied" }));
+      return true;
+    }
+    return false;
+  };
   const sseClients = /* @__PURE__ */ new Set();
   const latestConnByTab = /* @__PURE__ */ new Map();
   const broadcast = (event, payload) => {
@@ -1164,6 +1770,7 @@ function apply(ctx, config) {
     createVoiceSettingsSchema(),
     {
       base: {
+        ttsEngine: config.ttsEngine,
         voice: config.voice,
         rate: config.rate,
         interruptLevel: config.interruptLevel,
@@ -1182,23 +1789,46 @@ function apply(ctx, config) {
     broadcast
   });
   ctx.effect(() => () => asr.dispose());
+  const makeEngine = (kind) => {
+    if (kind === "edge") return new EdgeTtsEngine(config.voice, config.rate);
+    if (kind === "kokoro") {
+      return createSherpaKokoroEngine({
+        cacheDir: config.cacheDir,
+        modelHost: normalizedModelHost,
+        allowCustomHost: config.allowCustomModelHost,
+        broadcast
+      });
+    }
+    return createSherpaVitsEngine({
+      cacheDir: config.cacheDir,
+      modelHost: normalizedModelHost,
+      allowCustomHost: config.allowCustomModelHost,
+      broadcast
+    });
+  };
+  let engineKind = vset.ttsEngine ?? config.ttsEngine;
   const queue = new TtsQueue({
-    voice: vset.voice,
-    rate: vset.rate,
+    engine: makeEngine(engineKind),
     onError: (sessionId) => broadcast("tts-error", { sessionId })
   });
+  queue.updateVoice(vset.voice, vset.rate);
   const unsubscribe = queue.subscribe((frame) => broadcast("audio", frame));
   ctx.effect(() => unsubscribe);
   ctx.effect(() => () => void queue.close());
   ctx.effect(
     () => settingsScope.watch((next) => {
       vset = next;
+      if (next.ttsEngine !== engineKind) {
+        engineKind = next.ttsEngine;
+        queue.setEngine(makeEngine(engineKind));
+      }
       queue.updateVoice(next.voice, next.rate);
     })
   );
   const currentVoice = () => vset.voice;
   const currentRate = () => vset.rate;
   const currentInterrupt = () => vset.interruptLevel;
+  const currentEngine = () => engineKind;
   const yieldActiveSession = (expectedSid) => {
     ownerYieldTimer = null;
     const sid = activeVoiceSession;
@@ -1241,7 +1871,8 @@ function apply(ctx, config) {
     () => ctx.webServer.register({
       kind: "prefix",
       path: base,
-      handler: (_req, res) => {
+      handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
         respondJson2(res, 200, {
           ok: true,
           name: "dsh-voice-mode",
@@ -1255,7 +1886,8 @@ function apply(ctx, config) {
     () => ctx.webServer.register({
       kind: "exact",
       path: `${base}/config`,
-      handler: (_req, res) => {
+      handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
         respondJson2(res, 200, {
           basePath: base,
           rate: currentRate(),
@@ -1271,7 +1903,12 @@ function apply(ctx, config) {
           bargeInMode: vset.bargeInMode,
           echoGateDb: vset.echoGateDb,
           shortcut: vset.shortcut,
-          cacheDir: config.cacheDir
+          wakeWord: vset.wakeWord,
+          toolBeep: vset.toolBeep,
+          cacheDir: config.cacheDir,
+          ttsEngine: currentEngine(),
+          audioMime: queue.mime,
+          allowLan: config.allowLan
         });
       }
     })
@@ -1281,6 +1918,14 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/preview`,
       handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
+        if (denyCrossOrigin(req, res)) return;
+        if (!limiter.hit(`preview:${req.socket.remoteAddress ?? "unknown"}`, 20, 6e4)) {
+          res.statusCode = 429;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ error: "rate limited" }));
+          return;
+        }
         if (!config.enabled) {
           respondJson2(res, 403, { error: "voice mode disabled" });
           return;
@@ -1304,7 +1949,7 @@ function apply(ctx, config) {
             respondJson2(res, 400, { error: "voice required" });
             return;
           }
-          const sample = voice.startsWith("zh-") ? "\u4F60\u597D\uFF0C\u6B22\u8FCE\u4F7F\u7528\u8BED\u97F3\u6A21\u5F0F\u3002" : "Hello, welcome to voice mode.";
+          const sample = currentEngine() === "kokoro" ? "\u4F60\u597D\uFF0C\u6B22\u8FCE\u4F7F\u7528\u8BED\u97F3\u6A21\u5F0F\u3002Hello, welcome to voice mode." : currentEngine() === "vits" || voice.startsWith("zh-") ? "\u4F60\u597D\uFF0C\u6B22\u8FCE\u4F7F\u7528\u8BED\u97F3\u6A21\u5F0F\u3002" : "Hello, welcome to voice mode.";
           let buf;
           try {
             buf = await queue.synthesize(sample, { voice, rate });
@@ -1313,7 +1958,7 @@ function apply(ctx, config) {
             respondJson2(res, 502, { error: "\u9884\u89C8\u5408\u6210\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u97F3\u8272\u540D\uFF08ShortName\uFF09\u662F\u5426\u6B63\u786E" });
             return;
           }
-          res.writeHead(200, { "content-type": "audio/mpeg", "cache-control": "no-store" });
+          res.writeHead(200, { "content-type": queue.mime, "cache-control": "no-store" });
           res.end(buf);
         });
       }
@@ -1324,6 +1969,8 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/toggle`,
       handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
+        if (denyCrossOrigin(req, res)) return;
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let sessionId;
           let on;
@@ -1343,9 +1990,19 @@ function apply(ctx, config) {
             respondJson2(res, 400, { error: "invalid on" });
             return;
           }
+          if (!limiter.hit(`toggle:${sessionId}`, 1, 2e3)) {
+            res.statusCode = 429;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ error: "rate limited" }));
+            return;
+          }
           if (on === true) {
             if (!config.enabled) {
               respondJson2(res, 403, { error: "voice mode disabled" });
+              return;
+            }
+            if (sessions && !sessions.get(sessionId)) {
+              respondJson2(res, 403, { error: "unknown session" });
               return;
             }
             asr.reset(sessionId);
@@ -1429,6 +2086,7 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/asr`,
       handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
         try {
           const url = new URL(req.url ?? "/", "http://localhost");
           const sid = url.searchParams.get("sessionId") ?? "";
@@ -1446,6 +2104,8 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/cancel`,
       handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
+        if (denyCrossOrigin(req, res)) return;
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let sessionId;
           let keepAsr = false;
@@ -1456,6 +2116,10 @@ function apply(ctx, config) {
           } catch {
           }
           if (sessionId && sessionId === activeVoiceSession) {
+            if (!limiter.hit(`cancel:${sessionId}`, 2, 1e3)) {
+              respondJson2(res, 429, { error: "rate limited" });
+              return;
+            }
             queue.cancel(sessionId);
             if (!keepAsr) asr.reset(sessionId);
           }
@@ -1467,8 +2131,47 @@ function apply(ctx, config) {
   ctx.effect(
     () => ctx.webServer.register({
       kind: "exact",
+      path: `${base}/mode`,
+      handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
+        if (denyCrossOrigin(req, res)) return;
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
+          let mode;
+          try {
+            const parsed = JSON.parse(body || "{}");
+            mode = parsed.mode === "toggle" || parsed.mode === "hold" ? parsed.mode : void 0;
+          } catch {
+          }
+          if (!mode) {
+            res.statusCode = 400;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ error: "mode must be toggle or hold" }));
+            return;
+          }
+          void settingsScope.update({ mode }).then(() => {
+            res.statusCode = 200;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ ok: true, mode }));
+          }).catch((e) => {
+            console.warn(`[dsh-voice-mode] mode update failed: ${String(e)}`);
+            res.statusCode = 500;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ error: "mode update failed" }));
+          });
+        });
+      }
+    })
+  );
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: "exact",
       path: `${base}/stream`,
       handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
+        if (sseClients.size >= 4) {
+          respondJson2(res, 429, { error: "too many streams" });
+          return;
+        }
         let tabId = null;
         try {
           const u = new URL(req.url ?? "/", "http://localhost");
@@ -1578,6 +2281,9 @@ async function* tapActiveStream(sessionId, inner, queue, broadcast, onTurn) {
           }
           queue.enqueue(sessionId, s);
         }
+      }
+      if (chunk.type === "tool-call-delta" && chunk.name) {
+        broadcast("tool", { sessionId, name: chunk.name });
       }
       if (chunk.type === "finish") {
         finishReason = chunk.reason;
