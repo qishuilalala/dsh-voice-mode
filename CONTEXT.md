@@ -23,6 +23,7 @@ DeepSeek Harness 语音双工对话插件：会话内一键进入语音模式 �
 - **外放 auto 自打断已根治（2026-08-28 实测）**：根因 = 自研 NLMS 在原生 AEC 已生效时级联、且 bulk-delay 恒 0 错位制造 0.11 残差尖峰。修复 = 原生 AEC 生效时旁路自研 NLMS。
 - **核心事实**：浏览器原生 echoCancellation 就是 AEC3（52ms 线性 + RES），且正确拿同页 Web Audio 播放流做参考——常见外放/耳机场景已够用。**自研 FDLMS+RES 只作为「原生 AEC 失效」的兜底，非主路径。**
 - 门控用**峰值保持**（echoPeak），不用瞬时值（用户音节断断续续，瞬时值在停顿处掉回回声水平会被误拒）。
+- **打断灵敏度（f8c9ce9）**：检测 VAD 阈值 0.5→0.35（端点 VAD 仍 0.5 保守断句）；确认计数改「泄漏衰减」（假帧减 1 而非清零）——修 confirmMs 1~2.7s 的「要大声才打断」问题。噪音误打断由 echoGateDb 门控兜底（误打断调大 8-10）。
 
 ## 设置项（真机标定旋钮）
 
@@ -44,7 +45,7 @@ DeepSeek Harness 语音双工对话插件：会话内一键进入语音模式 �
 
 ## 待办
 
-1. 打断延迟 confirmMs ~0.8s → 目标 <0.5s（降 interruptLevel 或优化确认逻辑）。
+1. 打断延迟：f8c9ce9 已降 VAD 阈值+泄漏计数，待真机确认 confirmMs 是否 <0.5s；若仍慢可再降 interruptLevel（1/2 档确认帧数 2/1）。
 2. 原生 AEC 失效兜底（耳机无原生 AEC / Safari VoiceProcessingIO）：自研 NLMS 主路径的 delay=0 错位仍需 FDLMS+RES 或参考对齐修复。
 3. ScriptProcessor 弃用 → AudioWorklet 迁移（性能，独立于打断）。
 4. 发布：PR #2 合并 → bump → npm 发布。
