@@ -55,7 +55,7 @@ const MODEL_FILES: ModelFileSpec[] = [
   { file: 'encoder.int8.onnx', sha256: '5ac51e27981bb4dab01bb9be4958453ba50c3b61c063ddda0eab23fd3671aa4f' },
   { file: 'decoder.onnx', sha256: '06522ad63cec0fdf6809f4e1db9bb4f7d710c34582e3b35db62ac60eccafac7e' },
   { file: 'joiner.int8.onnx', sha256: 'b34584dc6f561089e1d747fedebb3765f2caa72c927ef54d7ca55e5ae40a814b' },
-  { file: 'tokens.txt', sha256: 'deba637de83d28b10e90a759b62637fceb432b9560ff2cda1baad88b14d99236' },
+  { file: 'tokens.txt', sha256: '6193c7ea1c96d0d9a1e9652789b40d13a8a913b434a5451e93158f5a09fd6652' },
 ]
 
 /** P2-1 Silero VAD 模型：官方 sherpa 文档下载源（csukuangfj/vad，~2MB）。 */
@@ -69,7 +69,7 @@ export const SENSE_REPO = 'csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-20
 // 修复：SenseVoice 词表 tokens.txt 必须一并下载（缺则 createOfflineRecognizer 报 length 错误，定稿永远降级 zipformer）。
 const SENSE_FILES: ModelFileSpec[] = [
   { file: 'model.int8.onnx', sha256: 'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51' },
-  { file: 'tokens.txt', sha256: '4d14b174af75c64af4b9879a7f2d60c774b4dcea74fddee64510d7e4d7347590' },
+  { file: 'tokens.txt', sha256: 'f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc' },
 ]
 
 export interface AsrRuntimeOptions {

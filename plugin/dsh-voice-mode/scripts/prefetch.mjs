@@ -19,7 +19,7 @@ const MODELS = {
     'encoder.int8.onnx': '5ac51e27981bb4dab01bb9be4958453ba50c3b61c063ddda0eab23fd3671aa4f',
     'decoder.onnx': '06522ad63cec0fdf6809f4e1db9bb4f7d710c34582e3b35db62ac60eccafac7e',
     'joiner.int8.onnx': 'b34584dc6f561089e1d747fedebb3765f2caa72c927ef54d7ca55e5ae40a814b',
-    'tokens.txt': 'deba637de83d28b10e90a759b62637fceb432b9560ff2cda1baad88b14d99236',
+    'tokens.txt': '6193c7ea1c96d0d9a1e9652789b40d13a8a913b434a5451e93158f5a09fd6652',
   },
   // VAD（Silero 端点检测）
   'csukuangfj/vad': {
@@ -28,7 +28,7 @@ const MODELS = {
   // SenseVoice（定稿重译，带标点 + 数字归一化）
   'csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17': {
     'model.int8.onnx': 'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51',
-    'tokens.txt': '4d14b174af75c64af4b9879a7f2d60c774b4dcea74fddee64510d7e4d7347590',
+    'tokens.txt': 'f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc',
   },
   'csukuangfj/sherpa-onnx-vits-zh-ll': {
     'model.onnx': '6c349bdd73dc928234dd7bc86929748bba32cd5264d32d915bf7b7aa0595965b',
