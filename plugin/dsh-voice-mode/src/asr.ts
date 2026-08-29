@@ -82,8 +82,8 @@ export interface AsrEngine {
   readonly holding: boolean
   /** A2.5 回声门控：当前残差是否明显高于回声地板（默认 6dB）——判用户人声而非回声。 */
   aboveEchoFloor(marginDb?: number): boolean
-  /** 回声诊断读数（真机标定数据）：{ 地板 RMS, 当前残差 RMS }（未建立地板时 floor=0）。 */
-  echoLevels(): { floorRms: number; residualRms: number }
+  /** 回声诊断读数（真机标定数据）：{ 地板 RMS, 当前残差 RMS, 残差峰值 RMS }。 */
+  echoLevels(): { floorRms: number; residualRms: number; peakRms: number }
   /** 丢弃当前已录段（打断后防幽灵消息），host 流重置。返回 Promise 供调用方等待。 */
   discardSegment(): Promise<void>
   /** 定稿文本（段结束/强制发送后）。 */

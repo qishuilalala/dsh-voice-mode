@@ -1350,6 +1350,7 @@ export function MicButton({
                 delayMs: Math.round(bus.echoDelayMs()),
                 floor: lv?.floorRms,
                 resid: lv?.residualRms,
+                peak: lv?.peakRms,
               })
             }
             if (speech === true) {
@@ -1364,6 +1365,7 @@ export function MicButton({
                     gateDb: cfg.echoGateDb ?? 6,
                     floor: lv?.floorRms,
                     resid: lv?.residualRms,
+                    peak: lv?.peakRms,
                     confirmFrames,
                   })
                   isSpeechTrueCount = 0
@@ -1377,6 +1379,7 @@ export function MicButton({
                   confirmMs,
                   floor: lv?.floorRms,
                   resid: lv?.residualRms,
+                  peak: lv?.peakRms,
                   delayMs: Math.round(bus.echoDelayMs()),
                 })
                 interruptFirstAt = 0

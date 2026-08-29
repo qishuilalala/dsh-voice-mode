@@ -1610,7 +1610,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "f968889";
+var BUILD_TAG = "7ae204c";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2527,7 +2527,8 @@ function MicButton({
                 playing: bus.ui.playing,
                 delayMs: Math.round(bus.echoDelayMs()),
                 floor: lv?.floorRms,
-                resid: lv?.residualRms
+                resid: lv?.residualRms,
+                peak: lv?.peakRms
               });
             }
             if (speech === true) {
@@ -2540,6 +2541,7 @@ function MicButton({
                     gateDb: cfg.echoGateDb ?? 6,
                     floor: lv2?.floorRms,
                     resid: lv2?.residualRms,
+                    peak: lv2?.peakRms,
                     confirmFrames
                   });
                   isSpeechTrueCount = 0;
@@ -2552,6 +2554,7 @@ function MicButton({
                   confirmMs,
                   floor: lv?.floorRms,
                   resid: lv?.residualRms,
+                  peak: lv?.peakRms,
                   delayMs: Math.round(bus.echoDelayMs())
                 });
                 interruptFirstAt = 0;
