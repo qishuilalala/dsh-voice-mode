@@ -153,6 +153,8 @@ interface VoiceBus {
   skipAudio(): void
   /** P3-2：回声消除源（参考窗口 + NLMS），供 ASR 引擎注入。 */
   echoForAsr(): EchoRefSource
+  /** 原生 AEC 生效时旁路自研 NLMS（原生 AEC3 已消净，自研 delay=0 错位反而制造尖峰）。 */
+  setEchoBypass(on: boolean): void
   /** 回声诊断：估计的 bulk delay（毫秒，未收敛=0）。 */
   echoDelayMs(): number
   /** P3-3：恢复 TTS 增益（无爆音斜坡；hardBreak 打断后调用，确保音量不残留压低态）。 */
@@ -654,8 +656,12 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   const EST_CAP = SAMPLE_RATE_16K // 1s
   let lastEstimateAt = 0
 
+  /** 原生 AEC 生效 → 旁路自研 NLMS（实测：原生已把 resid 消到 0.0016，自研 delay=0
+   *  错位减法反而制造 0.11 瞬态尖峰导致自打断）。原生 AEC 未生效时才走自研 NLMS。 */
+  let echoBypass = false
   const echoSource: EchoRefSource = {
     process: (mic, ref) => {
+      if (echoBypass) return mic
       const now = performance.now()
       // 对抗审查 Important#2：仅播放期累积估计历史——非播放期 mic=人声、ref=静音，
       // 相关无意义，会把已收敛的 delay 拉偏/清空（每句回复前 2s 失去参考平移）。
@@ -1038,6 +1044,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     echoForAsr() {
       return echoSource
     },
+    setEchoBypass(on) {
+      echoBypass = on
+    },
     echoDelayMs() {
       return (refDelaySamples / SAMPLE_RATE_16K) * 1000
     },
@@ -1395,6 +1404,7 @@ export function MicButton({
           // A1：原生 AEC 生效状态 → 状态条提示（外放且原生 AEC 失效时引导用耳机/手动打断）。
           onAecState: (on) => {
             debugLog('aec-state', { nativeEchoCancellation: on })
+            bus.setEchoBypass(on) // 原生 AEC 生效时旁路自研 NLMS（防错位尖峰）
             bus.setUi({ aecOff: !on })
           },
         },

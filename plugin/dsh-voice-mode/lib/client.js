@@ -1996,8 +1996,10 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   let estRef = [];
   const EST_CAP = SAMPLE_RATE_16K;
   let lastEstimateAt = 0;
+  let echoBypass = false;
   const echoSource = {
     process: (mic, ref) => {
+      if (echoBypass) return mic;
       const now = performance.now();
       if (ui.playing) {
         for (let i = 0; i < mic.length; i++) estMic.push(mic[i]);
@@ -2300,6 +2302,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     echoForAsr() {
       return echoSource;
     },
+    setEchoBypass(on) {
+      echoBypass = on;
+    },
     echoDelayMs() {
       return refDelaySamples / SAMPLE_RATE_16K * 1e3;
     },
@@ -2571,6 +2576,7 @@ function MicButton({
           // A1：原生 AEC 生效状态 → 状态条提示（外放且原生 AEC 失效时引导用耳机/手动打断）。
           onAecState: (on2) => {
             debugLog("aec-state", { nativeEchoCancellation: on2 });
+            bus.setEchoBypass(on2);
             bus.setUi({ aecOff: !on2 });
           }
         },
