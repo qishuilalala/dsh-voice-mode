@@ -2147,7 +2147,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "a76aad8";
+var BUILD_TAG = "f040dfa";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -3245,7 +3245,11 @@ function MicButton({
       if (sid2) void bus.exit(sid2);
     }
   };
+  const toggleGuardRef = (0, import_react2.useRef)(0);
   const toggle = () => {
+    const now = Date.now();
+    if (now - toggleGuardRef.current < 2e3) return;
+    toggleGuardRef.current = now;
     if (localRef.current === "on") void exitModeRef.current("manual");
     else if (localRef.current === "off") void enterMode();
   };
@@ -3520,6 +3524,9 @@ function MicButton({
       return;
     }
     if (ms < 250) {
+      const now = Date.now();
+      if (now - toggleGuardRef.current < 2e3) return;
+      toggleGuardRef.current = now;
       if (localRef.current === "on") {
         engineRef.current?.endHeld(true);
         void exitModeRef.current("manual");

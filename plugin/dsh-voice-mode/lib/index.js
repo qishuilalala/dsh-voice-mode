@@ -2072,7 +2072,7 @@ function apply(ctx, config) {
             respondJson2(res, 400, { error: "invalid on" });
             return;
           }
-          if (!limiter.hit(`toggle:${sessionId}`, 1, 2e3)) {
+          if (!limiter.hit(`toggle:${sessionId}`, 2, 2e3)) {
             res.statusCode = 429;
             res.setHeader("content-type", "application/json");
             res.end(JSON.stringify({ error: "rate limited" }));
