@@ -20,7 +20,12 @@ import { ensureModelFile, ensureModelTree, type ModelFileSpec } from './models.t
 import type { TtsEngine, TtsEngineStatus, TtsFileStatus } from './tts-queue.ts'
 
 export const TTS_MODEL_REPO = 'csukuangfj/sherpa-onnx-vits-zh-ll'
-export const KOKORO_MODEL_DIR = 'csukuangfj/kokoro-int8-multi-lang-v1_1'
+export const KOKORO_MODEL_DIR_INT8 = 'csukuangfj/kokoro-int8-multi-lang-v1_1'
+export const KOKORO_MODEL_DIR_FP32 = 'csukuangfj/kokoro-multi-lang-v1_1'
+/** Kokoro 模型精度：int8（默认，CPU/低带宽友好）/ fp32（音质更好，GPU/大内存）。 */
+export type KokoroModel = 'int8' | 'fp32'
+/** 按精度取模型目录（int8 与 fp32 是不同缓存目录，可同时保留、切换无需重下）。 */
+export const kokoroModelDir = (m: KokoroModel): string => (m === 'fp32' ? KOKORO_MODEL_DIR_FP32 : KOKORO_MODEL_DIR_INT8)
 
 /** VITS 官方 SHA256（HF LFS 指针/内容哈希，固定）。 */
 const TTS_MODEL_FILES: ModelFileSpec[] = [
@@ -145,6 +150,8 @@ export function pcmToWav(pcm: Buffer, sampleRate: number): Buffer {
 export interface LocalEngineOptions {
   /** 引擎种类：vits（纯中文）/ kokoro（中英多语言）。 */
   kind: 'vits' | 'kokoro'
+  /** Kokoro 模型精度（仅 kokoro 生效；缺省 int8）。 */
+  model?: KokoroModel
   cacheDir: string
   /** 已规范化的模型源 origin getter（'' = 默认源）。 */
   modelHost: () => string
@@ -186,34 +193,47 @@ const VITS_SPEC: EngineSpec = {
   toSid: voiceToSid,
 }
 
-/** Kokoro 校验清单（int8 版，~109MB；原生 addon 下 int8 正常、无 WASM 时代全 NaN 问题）：
- *  主文件 + espeak-ng-data 哨兵文件 + 三本中文数字/日期/电话规则 FST
- *  （ruleFsts 接入后阿拉伯数字按中文读；三本与 VITS 同源、字节一致）。 */
-const KOKORO_SPEC: EngineSpec = {
-  files: [
-    { file: 'model.int8.onnx', sha256: 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26' },
-    { file: 'voices.bin', sha256: 'e64a5a581d8c2a350d848f51c3121657cd83aa07ed6109172177345874a7244c' },
-    { file: 'tokens.txt', sha256: '931ab2df2400cd65d580a22402024c2347ced8ae9ea300e545144b1aacc48e14' },
-    { file: 'lexicon-us-en.txt', sha256: '7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14' },
-    { file: 'lexicon-zh.txt', sha256: '11111d8cd695fba2ace1367a1d0a708b586e6ef5c1f9be91da5d7eef129b651c' },
-    { file: 'espeak-ng-data/phontab', sha256: '886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6' },
-    { file: 'date-zh.fst', sha256: 'eb8aa079ae3cb81d8f4404992f39d61a0cb990947512b5b8d1e54d1f6980e718' },
-    { file: 'number-zh.fst', sha256: '743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd' },
-    { file: 'phone-zh.fst', sha256: '1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7' },
-  ],
-  workerPaths: (dir) => ({
-    model: join(dir, 'model.int8.onnx'),
-    voices: join(dir, 'voices.bin'),
-    tokens: join(dir, 'tokens.txt'),
-    dataDir: join(dir, 'espeak-ng-data'),
-    lexicon: [join(dir, 'lexicon-us-en.txt'), join(dir, 'lexicon-zh.txt')].join(','),
-    date: join(dir, 'date-zh.fst'),
-    phone: join(dir, 'phone-zh.fst'),
-    number: join(dir, 'number-zh.fst'),
-    lang: '',
-  }),
-  defaultVoice: 'zf_xiaobei',
-  toSid: kokoroVoiceToSid,
+/**
+ * Kokoro 校验清单。int8（默认）与 fp32 共用同一套 103 音色 voices.bin + 词典 + FST + espeak-ng-data
+ * （字节一致，两 repo 实测 voices.bin SHA256 相同），唯一区别是主模型文件：
+ *   - int8：model.int8.onnx（~109MB，CPU/低带宽友好，默认）
+ *   - fp32：model.onnx（~311MB，音质更好，GPU/大内存）
+ */
+const KOKORO_SHARED_FILES: ModelFileSpec[] = [
+  { file: 'voices.bin', sha256: 'e64a5a581d8c2a350d848f51c3121657cd83aa07ed6109172177345874a7244c' },
+  { file: 'tokens.txt', sha256: '931ab2df2400cd65d580a22402024c2347ced8ae9ea300e545144b1aacc48e14' },
+  { file: 'lexicon-us-en.txt', sha256: '7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14' },
+  { file: 'lexicon-zh.txt', sha256: '11111d8cd695fba2ace1367a1d0a708b586e6ef5c1f9be91da5d7eef129b651c' },
+  { file: 'espeak-ng-data/phontab', sha256: '886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6' },
+  { file: 'date-zh.fst', sha256: 'eb8aa079ae3cb81d8f4404992f39d61a0cb990947512b5b8d1e54d1f6980e718' },
+  { file: 'number-zh.fst', sha256: '743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd' },
+  { file: 'phone-zh.fst', sha256: '1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7' },
+]
+
+const kokoroWorkerPaths = (dir: string, modelFile: string): Record<string, string> => ({
+  model: join(dir, modelFile),
+  voices: join(dir, 'voices.bin'),
+  tokens: join(dir, 'tokens.txt'),
+  dataDir: join(dir, 'espeak-ng-data'),
+  lexicon: [join(dir, 'lexicon-us-en.txt'), join(dir, 'lexicon-zh.txt')].join(','),
+  date: join(dir, 'date-zh.fst'),
+  phone: join(dir, 'phone-zh.fst'),
+  number: join(dir, 'number-zh.fst'),
+  lang: '',
+})
+
+/** 按精度构造 Kokoro 校验清单（主模型文件 + 各自 SHA256；支持文件共用）。 */
+export function kokoroSpec(model: KokoroModel): EngineSpec {
+  const main: ModelFileSpec =
+    model === 'fp32'
+      ? { file: 'model.onnx', sha256: 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38' }
+      : { file: 'model.int8.onnx', sha256: 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26' }
+  return {
+    files: [main, ...KOKORO_SHARED_FILES],
+    workerPaths: (dir) => kokoroWorkerPaths(dir, main.file),
+    defaultVoice: 'zf_xiaobei',
+    toSid: kokoroVoiceToSid,
+  }
 }
 
 /**
@@ -223,8 +243,20 @@ const KOKORO_SPEC: EngineSpec = {
  */
 export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine {
   const { cacheDir, modelHost, allowCustomHost, broadcast } = options
-  const spec = options.kind === 'kokoro' ? KOKORO_SPEC : VITS_SPEC
-  const repoName = options.kind === 'kokoro' ? KOKORO_MODEL_DIR : TTS_MODEL_REPO
+  /** 当前模型下载进度（ensureModelFile/Tree 以 asr-progress 广播时更新，供设置面板轮询展示）。 */
+  let downloadProgress: { file: string; percent: number } | null = null
+  const trackedBroadcast = (event: string, payload: unknown): void => {
+    if (event === 'asr-progress' && payload && typeof payload === 'object') {
+      const pr = payload as { file?: unknown; percent?: unknown }
+      if (typeof pr.file === 'string' && typeof pr.percent === 'number') {
+        downloadProgress = { file: pr.file, percent: Math.min(100, Math.max(0, pr.percent)) }
+      }
+    }
+    broadcast(event, payload)
+  }
+  const kokoroModel: KokoroModel = options.model ?? 'int8'
+  const spec = options.kind === 'kokoro' ? kokoroSpec(kokoroModel) : VITS_SPEC
+  const repoName = options.kind === 'kokoro' ? kokoroModelDir(kokoroModel) : TTS_MODEL_REPO
   const repoDir = join(cacheDir, repoName)
   /** 子进程脚本路径：与 lib/index.js 同目录（构建产物 lib/tts-vits-worker.cjs，CJS 以获得 IPC）。 */
   const workerPath = fileURLToPath(new URL('./tts-vits-worker.cjs', import.meta.url))
@@ -275,6 +307,7 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
       ready = (async () => {
         engineLoading = true
         engineError = undefined
+        downloadProgress = null
         try {
         // 冷启动/重建时才校验模型与 init（旧实现每句合成都重哈希数百 MB 模型
         // 文件并重建引擎实例——句间 3-5 秒停顿的真正元凶）。
@@ -287,7 +320,7 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
               spec: f,
               primaryHost: modelHost(),
               allowCustomHost,
-              broadcast,
+              broadcast: trackedBroadcast,
             })
             if (!ok) throw new Error('local TTS model download/verify failed: ' + f.file)
           }
@@ -300,7 +333,7 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
               subdir: 'espeak-ng-data',
               primaryHost: modelHost(),
               allowCustomHost,
-              broadcast,
+              broadcast: trackedBroadcast,
             })
             if (!treeOk) throw new Error('local TTS model download failed: espeak-ng-data')
           }
@@ -393,6 +426,7 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
         ready: childInit === true,
         loading: engineLoading,
         error: engineError,
+        progress: downloadProgress ?? undefined,
         local: {
           repo: repoName,
           ready: files.every((f) => f.exists),
@@ -402,6 +436,8 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
         },
       }
     },
+    // 设置面板「下载」按钮：无文本也触发模型下载 + 子进程初始化（与首次合成路径一致）。
+    prepare: () => ensureReady(),
     async synthesize(text: string, opts: { voice?: string; rate?: number } = {}): Promise<Buffer> {
       await ensureReady()
       const sid = spec.toSid(opts.voice ?? voice)

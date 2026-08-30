@@ -28,7 +28,7 @@ import { rm } from 'node:fs/promises'
 import { createAsrRuntime, handleAsrRequest } from './asr-host.ts'
 import { SentenceSegmenter } from './segmenter.ts'
 import { EdgeTtsEngine, TtsQueue, listEdgeVoices, type TtsEngine } from './tts-queue.ts'
-import { createSherpaVitsEngine, createSherpaKokoroEngine, TTS_MODEL_REPO, KOKORO_MODEL_DIR } from './tts-local.ts'
+import { createSherpaVitsEngine, createSherpaKokoroEngine, TTS_MODEL_REPO, kokoroModelDir, type KokoroModel } from './tts-local.ts'
 import { HOST_PRIMARY, validateModelHost } from './models.ts'
 import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts'
 
@@ -108,6 +108,8 @@ const defaultModelCacheDir = (): string =>
 export interface VoiceSettingsValue {
   /** 朗读引擎：edge 微软云端（默认）/ vits 本地中文 / kokoro 本地中英；设置面板即时切换。 */
   ttsEngine: 'edge' | 'vits' | 'kokoro'
+  /** Kokoro 模型精度（int8 默认 / fp32 音质更好；仅 kokoro 引擎生效，切换即时重建引擎）。 */
+  kokoroModel: KokoroModel
   voice: string
   rate: number
   interruptLevel: 0 | 1 | 2
@@ -146,6 +148,7 @@ export interface VoiceSettingsValue {
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
 const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   ttsEngine: 'edge',
+  kokoroModel: 'int8',
   voice: 'zh-CN-XiaoxiaoNeural',
   rate: 1.0,
   interruptLevel: 0,
@@ -173,6 +176,12 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .default(d.ttsEngine)
       .description(
         '朗读引擎：edge 微软云端（默认，快、音质自然，被朗读文本会发送到微软）/ vits 本地中文 / kokoro 本地中英（回复文本不出本机）；切换即时生效',
+      ),
+    kokoroModel: z
+      .union([z.const('int8'), z.const('fp32')])
+      .default(d.kokoroModel)
+      .description(
+        'Kokoro 模型精度：int8（默认，体积小/加载快，CPU 友好）/ fp32（音质更好、体积大，GPU 或大内存机器推荐）；两档共用同一套 103 音色，切换即时生效',
       ),
     voice: z
       .string()
@@ -237,6 +246,8 @@ export interface Config {
   modelHost: string
   /** 朗读引擎：edge（微软云端，默认）/ vits（本地中文）/ kokoro（本地中英，回复文本不出本机）。 */
   ttsEngine: 'edge' | 'vits' | 'kokoro'
+  /** Kokoro 模型精度（int8 默认 / fp32 音质更好）。 */
+  kokoroModel: KokoroModel
   /** 允许局域网访问 /voice-mode/*（默认仅回环；开启后建议前置认证门）。 */
   allowLan: boolean
   /** 允许白名单之外的模型下载源（默认关；仅 https）。 */
@@ -258,6 +269,7 @@ export const Config: z<Config> = z.object({
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default('https://huggingface.co'),
   ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro')]).default('edge'),
+  kokoroModel: z.union([z.const('int8'), z.const('fp32')]).default('int8'),
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
   voice: z.string().default('zh-CN-XiaoxiaoNeural'),
@@ -381,6 +393,7 @@ export function apply(ctx: Context, config: Config): void {
         cacheDir: config.cacheDir,
         modelHost: normalizedModelHost,
         allowCustomHost: config.allowCustomModelHost,
+        model: vset.kokoroModel,
         broadcast,
       })
     }
@@ -392,6 +405,7 @@ export function apply(ctx: Context, config: Config): void {
     })
   }
   let engineKind: 'edge' | 'vits' | 'kokoro' = vset.ttsEngine ?? config.ttsEngine
+  let activeKokoroModel: KokoroModel = vset.kokoroModel
 
   // --- TTS 队列（§8.4）：逐句合成后经 SSE 广播；epoch 机制支撑打断。 ---
   const queue = new TtsQueue({
@@ -413,6 +427,10 @@ export function apply(ctx: Context, config: Config): void {
       if (next.ttsEngine !== engineKind) {
         engineKind = next.ttsEngine
         queue.setEngine(makeEngine(engineKind))
+      } else if (engineKind === 'kokoro' && next.kokoroModel !== activeKokoroModel) {
+        // Kokoro 精度切换：重建引擎指向另一模型目录（已缓存则即时，否则下次下载）。
+        activeKokoroModel = next.kokoroModel
+        queue.setEngine(makeEngine('kokoro'))
       }
       queue.updateVoice(next.voice, next.rate)
     }),
@@ -762,7 +780,7 @@ export function apply(ctx: Context, config: Config): void {
             respondJson(res, 400, { error: 'invalid json' })
             return
           }
-          const dir = join(config.cacheDir, engine === 'kokoro' ? KOKORO_MODEL_DIR : TTS_MODEL_REPO)
+          const dir = join(config.cacheDir, engine === 'kokoro' ? kokoroModelDir(vset.kokoroModel) : TTS_MODEL_REPO)
           void rm(dir, { recursive: true, force: true })
             .then(() => {
               // 清理的是当前引擎：重建引擎（下一句合成触发重新下载/init）。
@@ -773,6 +791,47 @@ export function apply(ctx: Context, config: Config): void {
               respondJson(res, 200, { ok: true, engine })
             })
             .catch((e) => respondJson(res, 500, { error: String(e) }))
+        })
+      },
+    }),
+  )
+
+  ctx.effect(() =>
+    ctx.webServer.register({
+      kind: 'exact',
+      path: `${base}/models/download`,
+      handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
+        if (denyCrossOrigin(req, res)) return
+        if (!config.enabled) {
+          respondJson(res, 403, { error: 'voice mode disabled' })
+          return
+        }
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
+          let engine: 'vits' | 'kokoro' = 'vits'
+          try {
+            const p = JSON.parse(body || '{}') as { engine?: unknown }
+            if (p.engine === 'kokoro' || p.engine === 'vits') engine = p.engine
+            else {
+              respondJson(res, 400, { error: 'invalid engine' })
+              return
+            }
+          } catch {
+            respondJson(res, 400, { error: 'invalid json' })
+            return
+          }
+          // 仅当前生效的本地引擎可在此触发下载（设置面板「下载」按钮只在本地引擎下出现）。
+          if (engineKind !== engine) {
+            respondJson(res, 400, { error: 'engine not active' })
+            return
+          }
+          void queue
+            .prepare()
+            .then(() => respondJson(res, 200, { ok: true, engine }))
+            .catch((e) => {
+              console.warn(`[dsh-voice-mode] model download failed: ${String(e)}`)
+              respondJson(res, 502, { error: '模型下载失败：请检查网络' })
+            })
         })
       },
     }),

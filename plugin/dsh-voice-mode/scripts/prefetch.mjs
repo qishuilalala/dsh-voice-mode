@@ -51,6 +51,18 @@ const MODELS = {
     'number-zh.fst': '743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd',
     'phone-zh.fst': '1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7',
   },
+  // 本地 TTS：Kokoro fp32（音质更好，约 311MB；支持文件与 int8 同源）
+  'csukuangfj/kokoro-multi-lang-v1_1': {
+    'model.onnx': 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38',
+    'voices.bin': 'e64a5a581d8c2a350d848f51c3121657cd83aa07ed6109172177345874a7244c',
+    'tokens.txt': '931ab2df2400cd65d580a22402024c2347ced8ae9ea300e545144b1aacc48e14',
+    'lexicon-us-en.txt': '7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14',
+    'lexicon-zh.txt': '11111d8cd695fba2ace1367a1d0a708b586e6ef5c1f9be91da5d7eef129b651c',
+    'espeak-ng-data/phontab': '886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6',
+    'date-zh.fst': 'eb8aa079ae3cb81d8f4404992f39d61a0cb990947512b5b8d1e54d1f6980e718',
+    'number-zh.fst': '743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd',
+    'phone-zh.fst': '1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7',
+  },
 }
 const HOST_PRIMARY = 'https://huggingface.co'
 const HOST_FALLBACK = 'https://hf-mirror.com'
@@ -150,21 +162,25 @@ for (const [repo, files] of Object.entries(MODELS)) {
   }
 }
 
-// --- Kokoro 中英朗读模型：文件多（含 espeak-ng-data 全目录），走 HF 树枚举批量下载 ---
-{
-  const repo = 'csukuangfj/kokoro-int8-multi-lang-v1_1'
+// --- Kokoro 中英朗读模型：文件多（含 espeak-ng-data 全目录），走 HF 树枚举批量下载。
+//     int8（默认，CPU 友好）与 fp32（音质更好）两档，主模型文件不同、支持文件同源。 ---
+for (const kokoro of [
+  { repo: 'csukuangfj/kokoro-int8-multi-lang-v1_1', main: 'model.int8.onnx', sha: 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26' },
+  { repo: 'csukuangfj/kokoro-multi-lang-v1_1', main: 'model.onnx', sha: 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38' },
+]) {
+  const { repo, main, sha } = kokoro
   const repoDir = join(cacheDir, repo)
   const SENTINELS = {
-    'model.int8.onnx': 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26',
+    [main]: sha,
     'voices.bin': 'e64a5a581d8c2a350d848f51c3121657cd83aa07ed6109172177345874a7244c',
     'tokens.txt': '931ab2df2400cd65d580a22402024c2347ced8ae9ea300e545144b1aacc48e14',
     'lexicon-us-en.txt': '7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14',
     'lexicon-zh.txt': '11111d8cd695fba2ace1367a1d0a708b586e6ef5c1f9be91da5d7eef129b651c',
     'espeak-ng-data/phontab': '886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6',
   }
-  const sentinelOk = await Promise.all(Object.entries(SENTINELS).map(async ([f, sha]) => (await sha256OfFile(join(repoDir, f)).catch(() => '')) === sha))
+  const sentinelOk = await Promise.all(Object.entries(SENTINELS).map(async ([f, sha2]) => (await sha256OfFile(join(repoDir, f)).catch(() => '')) === sha2))
   if (!sentinelOk.every(Boolean)) {
-    console.log(`Kokoro 模型（${repo}）：文件不全，走 HF 树枚举下载（约 400 个文件）`)
+    console.log(`Kokoro 模型（${repo}）：文件不全，走 HF 树枚举下载`)
     const treeRes = await fetch(`${HOST_FALLBACK}/api/models/${repo}/tree/main?recursive=true`, { headers: { 'user-agent': 'dsh-voice-mode/prefetch' } })
     if (treeRes.ok) {
       const tree = await treeRes.json()

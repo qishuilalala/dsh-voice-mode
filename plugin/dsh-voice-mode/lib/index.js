@@ -1129,6 +1129,10 @@ var TtsQueue = class {
     if (s) return s;
     return { engine: "edge", ready: true, loading: false };
   }
+  /** 触发当前引擎预热/下载模型并初始化（设置面板「下载」按钮；Edge 为无操作）。 */
+  async prepare() {
+    await this.engine.prepare?.();
+  }
   /**
    * 一次性合成（设置卡「试听」用）：委托当前引擎；不干扰朗读队列的在途合成。
    * 失败（含非法音色）抛错。
@@ -1248,7 +1252,9 @@ import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { join as join3 } from "node:path";
 import { statSync as statSync2 } from "node:fs";
 var TTS_MODEL_REPO = "csukuangfj/sherpa-onnx-vits-zh-ll";
-var KOKORO_MODEL_DIR = "csukuangfj/kokoro-int8-multi-lang-v1_1";
+var KOKORO_MODEL_DIR_INT8 = "csukuangfj/kokoro-int8-multi-lang-v1_1";
+var KOKORO_MODEL_DIR_FP32 = "csukuangfj/kokoro-multi-lang-v1_1";
+var kokoroModelDir = (m) => m === "fp32" ? KOKORO_MODEL_DIR_FP32 : KOKORO_MODEL_DIR_INT8;
 var TTS_MODEL_FILES = [
   { file: "model.onnx", sha256: "6c349bdd73dc928234dd7bc86929748bba32cd5264d32d915bf7b7aa0595965b" },
   { file: "lexicon.txt", sha256: "b3a82f16b286c424953dea3686039e7ab465fa8e15d87ef8abd0ec69175beb21" },
@@ -1452,36 +1458,51 @@ var VITS_SPEC = {
   defaultVoice: "suyingxue",
   toSid: voiceToSid
 };
-var KOKORO_SPEC = {
-  files: [
-    { file: "model.int8.onnx", sha256: "bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26" },
-    { file: "voices.bin", sha256: "e64a5a581d8c2a350d848f51c3121657cd83aa07ed6109172177345874a7244c" },
-    { file: "tokens.txt", sha256: "931ab2df2400cd65d580a22402024c2347ced8ae9ea300e545144b1aacc48e14" },
-    { file: "lexicon-us-en.txt", sha256: "7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14" },
-    { file: "lexicon-zh.txt", sha256: "11111d8cd695fba2ace1367a1d0a708b586e6ef5c1f9be91da5d7eef129b651c" },
-    { file: "espeak-ng-data/phontab", sha256: "886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6" },
-    { file: "date-zh.fst", sha256: "eb8aa079ae3cb81d8f4404992f39d61a0cb990947512b5b8d1e54d1f6980e718" },
-    { file: "number-zh.fst", sha256: "743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd" },
-    { file: "phone-zh.fst", sha256: "1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7" }
-  ],
-  workerPaths: (dir) => ({
-    model: join3(dir, "model.int8.onnx"),
-    voices: join3(dir, "voices.bin"),
-    tokens: join3(dir, "tokens.txt"),
-    dataDir: join3(dir, "espeak-ng-data"),
-    lexicon: [join3(dir, "lexicon-us-en.txt"), join3(dir, "lexicon-zh.txt")].join(","),
-    date: join3(dir, "date-zh.fst"),
-    phone: join3(dir, "phone-zh.fst"),
-    number: join3(dir, "number-zh.fst"),
-    lang: ""
-  }),
-  defaultVoice: "zf_xiaobei",
-  toSid: kokoroVoiceToSid
-};
+var KOKORO_SHARED_FILES = [
+  { file: "voices.bin", sha256: "e64a5a581d8c2a350d848f51c3121657cd83aa07ed6109172177345874a7244c" },
+  { file: "tokens.txt", sha256: "931ab2df2400cd65d580a22402024c2347ced8ae9ea300e545144b1aacc48e14" },
+  { file: "lexicon-us-en.txt", sha256: "7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14" },
+  { file: "lexicon-zh.txt", sha256: "11111d8cd695fba2ace1367a1d0a708b586e6ef5c1f9be91da5d7eef129b651c" },
+  { file: "espeak-ng-data/phontab", sha256: "886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6" },
+  { file: "date-zh.fst", sha256: "eb8aa079ae3cb81d8f4404992f39d61a0cb990947512b5b8d1e54d1f6980e718" },
+  { file: "number-zh.fst", sha256: "743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd" },
+  { file: "phone-zh.fst", sha256: "1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7" }
+];
+var kokoroWorkerPaths = (dir, modelFile) => ({
+  model: join3(dir, modelFile),
+  voices: join3(dir, "voices.bin"),
+  tokens: join3(dir, "tokens.txt"),
+  dataDir: join3(dir, "espeak-ng-data"),
+  lexicon: [join3(dir, "lexicon-us-en.txt"), join3(dir, "lexicon-zh.txt")].join(","),
+  date: join3(dir, "date-zh.fst"),
+  phone: join3(dir, "phone-zh.fst"),
+  number: join3(dir, "number-zh.fst"),
+  lang: ""
+});
+function kokoroSpec(model) {
+  const main = model === "fp32" ? { file: "model.onnx", sha256: "acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38" } : { file: "model.int8.onnx", sha256: "bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26" };
+  return {
+    files: [main, ...KOKORO_SHARED_FILES],
+    workerPaths: (dir) => kokoroWorkerPaths(dir, main.file),
+    defaultVoice: "zf_xiaobei",
+    toSid: kokoroVoiceToSid
+  };
+}
 function createSherpaLocalEngine(options) {
   const { cacheDir, modelHost, allowCustomHost, broadcast } = options;
-  const spec = options.kind === "kokoro" ? KOKORO_SPEC : VITS_SPEC;
-  const repoName = options.kind === "kokoro" ? KOKORO_MODEL_DIR : TTS_MODEL_REPO;
+  let downloadProgress = null;
+  const trackedBroadcast = (event, payload) => {
+    if (event === "asr-progress" && payload && typeof payload === "object") {
+      const pr = payload;
+      if (typeof pr.file === "string" && typeof pr.percent === "number") {
+        downloadProgress = { file: pr.file, percent: Math.min(100, Math.max(0, pr.percent)) };
+      }
+    }
+    broadcast(event, payload);
+  };
+  const kokoroModel = options.model ?? "int8";
+  const spec = options.kind === "kokoro" ? kokoroSpec(kokoroModel) : VITS_SPEC;
+  const repoName = options.kind === "kokoro" ? kokoroModelDir(kokoroModel) : TTS_MODEL_REPO;
   const repoDir = join3(cacheDir, repoName);
   const workerPath = fileURLToPath2(new URL("./tts-vits-worker.cjs", import.meta.url));
   let child = null;
@@ -1520,6 +1541,7 @@ function createSherpaLocalEngine(options) {
       ready = (async () => {
         engineLoading = true;
         engineError = void 0;
+        downloadProgress = null;
         try {
           if (!child || !childInit) {
             for (const f of spec.files) {
@@ -1529,7 +1551,7 @@ function createSherpaLocalEngine(options) {
                 spec: f,
                 primaryHost: modelHost(),
                 allowCustomHost,
-                broadcast
+                broadcast: trackedBroadcast
               });
               if (!ok) throw new Error("local TTS model download/verify failed: " + f.file);
             }
@@ -1540,7 +1562,7 @@ function createSherpaLocalEngine(options) {
                 subdir: "espeak-ng-data",
                 primaryHost: modelHost(),
                 allowCustomHost,
-                broadcast
+                broadcast: trackedBroadcast
               });
               if (!treeOk) throw new Error("local TTS model download failed: espeak-ng-data");
             }
@@ -1623,6 +1645,7 @@ function createSherpaLocalEngine(options) {
         ready: childInit === true,
         loading: engineLoading,
         error: engineError,
+        progress: downloadProgress ?? void 0,
         local: {
           repo: repoName,
           ready: files.every((f) => f.exists),
@@ -1632,6 +1655,8 @@ function createSherpaLocalEngine(options) {
         }
       };
     },
+    // 设置面板「下载」按钮：无文本也触发模型下载 + 子进程初始化（与首次合成路径一致）。
+    prepare: () => ensureReady(),
     async synthesize(text, opts = {}) {
       await ensureReady();
       const sid = spec.toSid(opts.voice ?? voice);
@@ -1744,6 +1769,7 @@ var inject = ["webServer", "settings", "sessions"];
 var defaultModelCacheDir = () => process.platform === "win32" ? join4(process.env.LOCALAPPDATA ?? join4(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join4(homedir(), ".cache", "dsh-voice-mode", "models");
 var VOICE_SETTINGS_DEFAULTS = {
   ttsEngine: "edge",
+  kokoroModel: "int8",
   voice: "zh-CN-XiaoxiaoNeural",
   rate: 1,
   interruptLevel: 0,
@@ -1766,6 +1792,9 @@ function createVoiceSettingsSchema(defs) {
   return z.object({
     ttsEngine: z.union([z.const("vits"), z.const("kokoro"), z.const("edge")]).default(d.ttsEngine).description(
       "\u6717\u8BFB\u5F15\u64CE\uFF1Aedge \u5FAE\u8F6F\u4E91\u7AEF\uFF08\u9ED8\u8BA4\uFF0C\u5FEB\u3001\u97F3\u8D28\u81EA\u7136\uFF0C\u88AB\u6717\u8BFB\u6587\u672C\u4F1A\u53D1\u9001\u5230\u5FAE\u8F6F\uFF09/ vits \u672C\u5730\u4E2D\u6587 / kokoro \u672C\u5730\u4E2D\u82F1\uFF08\u56DE\u590D\u6587\u672C\u4E0D\u51FA\u672C\u673A\uFF09\uFF1B\u5207\u6362\u5373\u65F6\u751F\u6548"
+    ),
+    kokoroModel: z.union([z.const("int8"), z.const("fp32")]).default(d.kokoroModel).description(
+      "Kokoro \u6A21\u578B\u7CBE\u5EA6\uFF1Aint8\uFF08\u9ED8\u8BA4\uFF0C\u4F53\u79EF\u5C0F/\u52A0\u8F7D\u5FEB\uFF0CCPU \u53CB\u597D\uFF09/ fp32\uFF08\u97F3\u8D28\u66F4\u597D\u3001\u4F53\u79EF\u5927\uFF0CGPU \u6216\u5927\u5185\u5B58\u673A\u5668\u63A8\u8350\uFF09\uFF1B\u4E24\u6863\u5171\u7528\u540C\u4E00\u5957 103 \u97F3\u8272\uFF0C\u5207\u6362\u5373\u65F6\u751F\u6548"
     ),
     voice: z.string().default(d.voice).description(
       "\u6717\u8BFB\u97F3\u8272\uFF08\u6309 ttsEngine \u53D6\u503C\uFF1Avits \u7528\u8BF4\u8BDD\u4EBA\u540D suyingxue/gunian/fushiyu/bingjiao/bazong\uFF1Bkokoro \u7528 0-102 \u7F16\u53F7\u6216\u4E2D\u6587\u540D zf_xiaobei/zf_xiaoni/zf_xiaoxiao/zf_xiaoyi\uFF1Bedge \u7528 Edge ShortName \u5982 zh-CN-XiaoxiaoNeural \u6653\u6653\xB7\u5973\uFF0C\u5B8C\u6574\u6E05\u5355\u89C1 scripts/list-voices.mjs\uFF09"
@@ -1793,6 +1822,7 @@ var Config = z.object({
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default("https://huggingface.co"),
   ttsEngine: z.union([z.const("edge"), z.const("vits"), z.const("kokoro")]).default("edge"),
+  kokoroModel: z.union([z.const("int8"), z.const("fp32")]).default("int8"),
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
   voice: z.string().default("zh-CN-XiaoxiaoNeural"),
@@ -1878,6 +1908,7 @@ function apply(ctx, config) {
         cacheDir: config.cacheDir,
         modelHost: normalizedModelHost,
         allowCustomHost: config.allowCustomModelHost,
+        model: vset.kokoroModel,
         broadcast
       });
     }
@@ -1889,6 +1920,7 @@ function apply(ctx, config) {
     });
   };
   let engineKind = vset.ttsEngine ?? config.ttsEngine;
+  let activeKokoroModel = vset.kokoroModel;
   const queue = new TtsQueue({
     engine: makeEngine(engineKind),
     onError: (sessionId) => broadcast("tts-error", { sessionId })
@@ -1903,6 +1935,9 @@ function apply(ctx, config) {
       if (next.ttsEngine !== engineKind) {
         engineKind = next.ttsEngine;
         queue.setEngine(makeEngine(engineKind));
+      } else if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) {
+        activeKokoroModel = next.kokoroModel;
+        queue.setEngine(makeEngine("kokoro"));
       }
       queue.updateVoice(next.voice, next.rate);
     })
@@ -2189,7 +2224,7 @@ function apply(ctx, config) {
             respondJson2(res, 400, { error: "invalid json" });
             return;
           }
-          const dir = join4(config.cacheDir, engine === "kokoro" ? KOKORO_MODEL_DIR : TTS_MODEL_REPO);
+          const dir = join4(config.cacheDir, engine === "kokoro" ? kokoroModelDir(vset.kokoroModel) : TTS_MODEL_REPO);
           void rm(dir, { recursive: true, force: true }).then(() => {
             if (engineKind === engine) {
               queue.setEngine(makeEngine(engine));
@@ -2197,6 +2232,42 @@ function apply(ctx, config) {
             }
             respondJson2(res, 200, { ok: true, engine });
           }).catch((e) => respondJson2(res, 500, { error: String(e) }));
+        });
+      }
+    })
+  );
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: "exact",
+      path: `${base}/models/download`,
+      handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
+        if (denyCrossOrigin(req, res)) return;
+        if (!config.enabled) {
+          respondJson2(res, 403, { error: "voice mode disabled" });
+          return;
+        }
+        collectBody(req, res, MAX_JSON_BODY, (body) => {
+          let engine = "vits";
+          try {
+            const p = JSON.parse(body || "{}");
+            if (p.engine === "kokoro" || p.engine === "vits") engine = p.engine;
+            else {
+              respondJson2(res, 400, { error: "invalid engine" });
+              return;
+            }
+          } catch {
+            respondJson2(res, 400, { error: "invalid json" });
+            return;
+          }
+          if (engineKind !== engine) {
+            respondJson2(res, 400, { error: "engine not active" });
+            return;
+          }
+          void queue.prepare().then(() => respondJson2(res, 200, { ok: true, engine })).catch((e) => {
+            console.warn(`[dsh-voice-mode] model download failed: ${String(e)}`);
+            respondJson2(res, 502, { error: "\u6A21\u578B\u4E0B\u8F7D\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC" });
+          });
         });
       }
     })

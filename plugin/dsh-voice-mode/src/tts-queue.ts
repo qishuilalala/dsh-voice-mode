@@ -27,6 +27,8 @@ export interface TtsEngine {
   close(): Promise<void>
   /** 引擎/模型现状（设置面板状态区轮询；可选）。 */
   status?(): TtsEngineStatus
+  /** 预热/下载本地模型并初始化（设置面板「下载」按钮；Edge 无操作，缺省不实现）。 */
+  prepare?(): Promise<void>
 }
 
 /** 单个模型文件的存在状态（用于设置面板现状展示）。 */
@@ -58,6 +60,8 @@ export interface TtsEngineStatus {
   loading: boolean
   /** 当前引擎最近一次错误。 */
   error?: string
+  /** 当前模型下载进度（本地引擎下载时；edge 无）。 */
+  progress?: { file: string; percent: number }
   /** 当前引擎的模型组（edge 无 local）。 */
   local?: TtsModelGroup
 }
@@ -220,6 +224,11 @@ export class TtsQueue {
     if (s) return s
     // Edge 云端引擎：无本地模型，视为恒就绪。
     return { engine: 'edge', ready: true, loading: false }
+  }
+
+  /** 触发当前引擎预热/下载模型并初始化（设置面板「下载」按钮；Edge 为无操作）。 */
+  async prepare(): Promise<void> {
+    await this.engine.prepare?.()
   }
 
   /**

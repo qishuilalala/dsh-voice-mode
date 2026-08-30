@@ -5,7 +5,7 @@
 
 ## 是什么
 
-DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿自动发送 → 按句朗读+字幕 → 开口打断。识别本地（zipformer2 流式 + SenseVoice 定稿），TTS 走 Edge。
+DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿自动发送 → 按句朗读+字幕 → 开口打断。识别本地（zipformer2 流式 + SenseVoice 定稿）；TTS 默认 Edge 云端，本地 VITS / Kokoro 可选（int8 默认 / fp32 更好音质）。
 
 ## 打断检测链（架构）
 
@@ -25,11 +25,15 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿
 - 检测 VAD 阈值 0.35（灵敏），端点 VAD 阈值 0.5（保守断句）。
 - 打断计数**仅在播放期累积**（非播放期清零），否则用户说自己的话的残留计数会在 AI 开播瞬间误打断。
 - 段生命周期：host 按 sessionId→epoch 嵌套 Map；finalize 幂等（缓存定稿文本 + 并发守卫），client 对瞬时失败有界重试（3 次）——不丢句。
+- 本地 TTS 模型：就绪以「模型文件已下载」为准（跨引擎持久，非子进程 init）；`/models/download` 触发下载、`/models/clean` 删除本地；int8/fp32 分目录缓存、切换不重下。
 
 ## 设置语义
 
 | 键 | 默认 | 语义 |
 |---|---|---|
+| ttsEngine | edge | 朗读引擎 edge / vits / kokoro（即时） |
+| kokoroModel | int8 | Kokoro 精度 int8（109MB，CPU）/ fp32（311MB，音质更好）；即时切换，两档共用 103 音色 |
+| voice | 按引擎 | VITS 说话人名 / Kokoro sid 或中文名 / Edge ShortName（即时） |
 | bargeInMode | auto | auto 自动打断 / manual 长按打断（外放推荐） |
 | echoGateDb | 6 | 打断要求 peak 高于 floor 此 dB；打不断降 3-4、噪音误打断升 8-10 |
 | interruptLevel | 0 | 确认帧数 3/2/1，越低越稳越慢 |
@@ -47,4 +51,4 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿
 
 ## 关键源文件
 
-src/asr.ts（采集/门控/打断引擎）· client.tsx（播放/参考池/手势/UI）· aec.ts（NLMS）· asr-host.ts（host ASR/检测通道）· index.ts（路由/SSE/owner）
+src/asr.ts（采集/门控/打断引擎）· client.tsx（播放/参考池/手势/UI）· aec.ts（NLMS）· asr-host.ts（host ASR/检测通道）· index.ts（路由/SSE/owner）· tts-local.ts（本地 TTS VITS/Kokoro + 精度）· tts-queue.ts（逐会话队列/epoch 打断）· settings-form.tsx（设置面板）

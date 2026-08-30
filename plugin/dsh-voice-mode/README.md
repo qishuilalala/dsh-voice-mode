@@ -13,7 +13,7 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 
 ![语音模式：实时字幕与状态条](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/screenshot-voice.png)
 
-> **版本说明（0.4.0）**：朗读默认 **Edge 云端**（快速自然），本地 TTS（VITS/Kokoro）可选（隐私优先）+ HTTP 安全加固 + 模型 SHA256 固定为合入核心；`wakeWord`（唤醒词）与 `toolBeep`（工具提示音）已完整接入；早期 fork 的 `asrModel`（双语 paraformer）与 `punctuate`（神经标点）已移除——SenseVoice 定稿本身已带标点，流式识别固定为 zipformer2。静音断句默认 700 毫秒。
+> **版本说明（0.6.0）**：朗读默认 **Edge 云端**（快速自然），本地 TTS（VITS / Kokoro）可选（隐私优先）+ HTTP 安全加固 + 模型 SHA256 固定为合入核心；Kokoro 新增**模型精度可选**（`int8` 默认 109MB / `fp32` 音质更好 311MB）；`wakeWord`（唤醒词）与 `toolBeep`（工具提示音）已完整接入；早期 fork 的 `asrModel`（双语 paraformer）与 `punctuate`（神经标点）已移除——SenseVoice 定稿本身已带标点，流式识别固定为 zipformer2。静音断句默认 700 毫秒。
 
 ## Fork 增强（本仓库新增）
 
@@ -21,7 +21,7 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 
 - **朗读默认 Edge 云端；本地 TTS 可选（隐私优先）**：选本地则回复文本不出本机——
   - 本地 VITS（`sherpa-onnx-vits-zh-ll`，纯中文，5 说话人）；
-  - 本地 Kokoro（`kokoro-int8-multi-lang-v1_1`，**中英混读**，int8 约 109MB），经 `sherpa-onnx-node` **原生 addon** 运行（无 WASM 内存上限，连续合成不崩）；
+  - 本地 Kokoro（**中英混读**，103 音色；`int8` 默认约 109MB / 可选 `fp32` 约 311MB 音质更好），经 `sherpa-onnx-node` **原生 addon** 运行（无 WASM 内存上限，连续合成不崩）；
   - Edge 云端朗读保留为可选（设置 `ttsEngine: edge`）；设置面板「朗读引擎」热切换。
 - **Kokoro 音色全量 103 个**（F0 实测标定性别），四个常用男声置顶带编号；音色面板用 **下拉列表 + ◀▶ 步进**切换；
 - **增量传输**：partial 只传新增 0.9 秒，长段按住说话松手**秒出定稿**（不再整段重传重解码）；
@@ -73,6 +73,7 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
 | `ttsEngine` | `edge` | 朗读引擎：`edge` 微软云端（默认，快）/ `vits` 本地中文 / `kokoro` 本地中英；**即时生效** |
+| `kokoroModel` | `int8` | Kokoro 模型精度：`int8`（默认，109MB，纯 CPU/低带宽推荐）/ `fp32`（311MB，音质更好，独显/大内存推荐）；两档共用 103 音色，**即时生效** |
 | `voice` | 按引擎 | 音色：VITS 五说话人；Kokoro 103 个（下拉+◀▶，62 深沉/68 浑厚/75 清亮/76 磁性置顶）；Edge 进入时自动加载全量 322 个。行内「试听」可即时预览 |
 | `rate` | `1.0` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
 | `interruptLevel` | `0` | 发声打断灵敏度（服务端 VAD 帧级检测 + 回声门控）：0 高门槛 / 1 中 / 2 低 |
@@ -82,9 +83,9 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | `autoSend` | `true` | 识别定稿后自动发送；关闭则只进草稿（按住 `Ctrl` / hold 松手仍会发送） |
 | `mode` | `toggle` | 交互模式：`toggle` 持续聆听 + 700ms 静音断句；`hold` 按住说话、松手发送（短按退出） |
 | `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭 |
-| `spokenFormat` | `false` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效** |
+| `spokenFormat` | `true` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效** |
 
-生效范围：`voice`/`rate`/`ttsEngine`/`spokenFormat` **立即生效**；其余设置下次进入语音模式时生效。设置项默认值由插件配置（`base` 层）提供。
+生效范围：`voice`/`rate`/`ttsEngine`/`kokoroModel`/`spokenFormat` **立即生效**；其余设置下次进入语音模式时生效。设置项默认值由插件配置（`base` 层）提供。
 
 ### 本地音色（VITS / Kokoro）
 

@@ -50,6 +50,7 @@ const cardStyle: React.CSSProperties = {
 /** 字段 key → 中文标签（设置行标题用；未知 key 回退显示 key 本身）。 */
 const FIELD_LABELS: Record<string, string> = {
   ttsEngine: '朗读引擎',
+  kokoroModel: 'Kokoro 模型精度',
   voice: '音色',
   rate: '语速',
   interruptLevel: '打断灵敏度',
@@ -201,8 +202,10 @@ const VOICE_OPTIONS_KOKORO: Array<{ v: string; label: string }> = [
 
 /** 各引擎切换时的默认音色（语义不同，切换引擎时自动重置）。 */
 const ENGINE_DEFAULT_VOICE: Record<string, string> = {
-  vits: 'fushiyu',
-  kokoro: 'zf_xiaoni',
+  // 与 host 侧引擎 defaultVoice 对齐（VITS suyingxue / Kokoro zf_xiaobei），
+  // 避免「config 直连」与「面板切引擎」落到不同默认音色。
+  vits: 'suyingxue',
+  kokoro: 'zf_xiaobei',
   edge: 'zh-CN-XiaoxiaoNeural',
 }
 
@@ -415,6 +418,10 @@ function VoiceSelect({
   }
   const selectStyle: React.CSSProperties = {
     ...inputStyle,
+    // 下拉主控件占满剩余宽度（覆盖 inputStyle 固定 280，避免与 ‹› 并排时被压窄导致长名截断）。
+    width: 'auto',
+    minWidth: 0,
+    flex: '1 1 auto',
     appearance: 'none',
     cursor: 'pointer',
     backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
@@ -427,7 +434,7 @@ function VoiceSelect({
   // 非自定义引擎（全量列出）：值不在列表视为异常，下拉回退到第一项；自定义引擎才出现手输框。
   const selectValue = inOptions ? cur : showCustom ? '__custom__' : options[0]?.v ?? ''
   return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 320, maxWidth: '100%', alignItems: 'stretch' }}>
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', maxWidth: '100%', alignItems: 'stretch' }}>
       <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <button type="button" aria-label={tr('voicePrev')} onClick={() => move(-1)} style={stepBtn}>
           ‹
@@ -651,6 +658,7 @@ interface ModelsStatusPayload {
     ready: boolean
     loading: boolean
     error?: string
+    progress?: { file: string; percent: number }
     local?: { repo: string; ready: boolean; loading: boolean; error?: string; files: Array<{ name: string; exists: boolean; size: number }> }
   }
   progress: { file: string; percent: number } | null
@@ -664,7 +672,7 @@ const fmtMB = (b: number): string => (b >= 1048576 ? `${(b / 1048576).toFixed(0)
  */
 function EngineStatusInline(): React.ReactElement {
   const [st, setSt] = useState<ModelsStatusPayload | null>(null)
-  const [cleaning, setCleaning] = useState(false)
+  const [acting, setActing] = useState<'download' | 'clean' | null>(null)
   useEffect(() => {
     let alive = true
     const poll = async (): Promise<void> => {
@@ -682,50 +690,52 @@ function EngineStatusInline(): React.ReactElement {
       clearInterval(timer)
     }
   }, [])
-  const clean = (engine: string): void => {
-    setCleaning(true)
-    void fetch(location.origin + BASE_PATH + '/models/clean', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ engine }),
-    })
-      .catch(() => undefined)
-      .finally(() => setTimeout(() => setCleaning(false), 1500))
-  }
   const tts = st?.tts
   if (!tts) return <></>
   const engineName = tts.engine === 'vits' ? tr('engineVits') : tts.engine === 'kokoro' ? tr('engineKokoro') : tr('engineEdge')
   const isLocal = !!tts.local
+  // 就绪以「本地模型文件是否已下载」为准：切换引擎不动本地文件，
+  // 故一次下载后（只要不点「删除」）跨引擎始终保持就绪（用户契约）。
+  const localReady = isLocal ? !!tts.local?.ready : false
   let statusText: string
   let statusColor: string
   if (tts.loading) {
     statusText = tr('engineLoading')
     statusColor = t.term
-  } else if (tts.ready) {
-    statusText = tr('engineReady')
-    statusColor = 'var(--dsw-alias-state-success-primary)'
   } else if (tts.error) {
     statusText = tr('engineError')
     statusColor = 'var(--dsw-alias-state-error-primary)'
-  } else if (isLocal && !tts.local!.ready) {
+  } else if (isLocal && !localReady) {
     statusText = tr('ttsModelsMissing')
     statusColor = 'var(--dsw-alias-state-error-primary)'
   } else {
-    statusText = tr('engineIdle')
-    statusColor = t.term
+    statusText = tr('engineReady')
+    statusColor = 'var(--dsw-alias-state-success-primary)'
   }
+  const act = (kind: 'download' | 'clean'): void => {
+    setActing(kind)
+    void fetch(location.origin + BASE_PATH + (kind === 'clean' ? '/models/clean' : '/models/download'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ engine: tts.engine }),
+    })
+      .catch(() => undefined)
+      .finally(() => setTimeout(() => setActing(null), 1500))
+  }
+  // 契约：就绪→删除本地；未就绪→触发下载。
+  const action: 'download' | 'clean' = localReady ? 'clean' : 'download'
   return (
     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '2px 0 10px' }}>
       <span style={{ fontSize: 12, color: t.term }}>{engineName}</span>
-      <span style={{ fontSize: 12, fontWeight: tts.ready || tts.error ? 600 : 400, color: statusColor }}>{statusText}</span>
-      {tts.loading && st?.progress?.file && (
-        <span style={{ fontSize: 12, color: t.term }}>{st.progress.file} {st.progress.percent}%</span>
+      <span style={{ fontSize: 12, fontWeight: statusText === tr('engineReady') || statusText === tr('engineError') ? 600 : 400, color: statusColor }}>{statusText}</span>
+      {tts.loading && tts.progress?.file && (
+        <span style={{ fontSize: 12, color: t.term }}>{tts.progress.file} {tts.progress.percent}%</span>
       )}
       {isLocal && (
         <button
           type="button"
-          onClick={() => clean(tts.engine!)}
-          disabled={cleaning || tts.loading}
+          onClick={() => act(action)}
+          disabled={!!acting || tts.loading}
           style={{
             font: 'inherit',
             fontSize: 12,
@@ -737,9 +747,15 @@ function EngineStatusInline(): React.ReactElement {
             padding: '3px 10px',
             flexShrink: 0,
           }}
-          title={tr('ttsRedownloadHint')}
+          title={action === 'clean' ? tr('ttsDeleteHint') : tr('ttsDownloadHint')}
         >
-          {cleaning ? tr('ttsCleaning') : tr('ttsRedownload')}
+          {acting
+            ? acting === 'clean'
+              ? tr('ttsDeleting')
+              : tr('ttsDownloading')
+            : action === 'clean'
+              ? tr('ttsDelete')
+              : tr('ttsDownload')}
         </button>
       )}
       {tts.error && <span style={{ fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', flexBasis: '100%' }}>{tts.error}</span>}
@@ -883,19 +899,23 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
       .then((res) => (res.ok ? (res.json() as Promise<{ voices?: Array<{ ShortName: string; FriendlyName: string; Locale: string; Gender: string }> }>) : null))
       .then((data) => {
         if (!alive || !data?.voices) return
-        const localeName = (lk: string): string => {
-          const m = /^([a-z]{2,3})(?:-[A-Z]{2})?/.exec(lk)
-          return m ? m[1].toUpperCase() : lk
-        }
         const genderName = (g: string): string => (g === 'Female' ? '女' : g === 'Male' ? '男' : g === 'Neutral' ? '中性' : g)
-        setEdgeVoices(
-          data.voices
-            .map((v) => ({
-              v: v.ShortName,
-              label: v.FriendlyName.replace(/ Microsoft.*/, '') + ' · ' + genderName(v.Gender) + ' · ' + localeName(v.Locale) + ' (' + v.ShortName + ')',
-            }))
-            .sort((a, b) => a.label.localeCompare(b.label)),
-        )
+        // 清洗 Edge FriendlyName：「Microsoft 前缀 + Online (Natural) + 尾部区域」都是噪声。
+        // 旧实现 `.replace(/ Microsoft.*/, '')` 因 FriendlyName 以 Microsoft 开头（其前无空格）
+        // 永不匹配，导致下拉全是冗长全名、中文音色按英文名沉底。
+        const voiceName = (fn: string): string =>
+          fn.replace(/^Microsoft\s+/, '').replace(/\s+Online\s+\(Natural\)/, '').split(/\s*-\s*/)[0].trim()
+        const mkLabel = (v: { ShortName: string; FriendlyName: string; Gender: string }): string =>
+          // 精简标签：只留说话人名 + 性别（去掉尾部区域与 ShortName 冗余），避免 Edge 长名被截断。
+          (voiceName(v.FriendlyName) || v.ShortName) + ' · ' + genderName(v.Gender)
+        const all = data.voices
+          .map((v) => ({ v: v.ShortName, label: mkLabel(v) }))
+          .sort((a, b) => a.label.localeCompare(b.label))
+        // 常用 14 个（中文为主）置顶，其余全量按清洗标签排序——避免中文音色被
+        // 淹没在几百个外语音色里（此前仅 /voices 请求失败才退到常用 14 个）。
+        const commonKeys = new Set(VOICE_OPTIONS.map((o) => o.v))
+        const pinned = VOICE_OPTIONS.filter((o) => all.some((a) => a.v === o.v))
+        setEdgeVoices([...pinned, ...all.filter((a) => !commonKeys.has(a.v))])
       })
       .catch(() => undefined)
     return () => {
@@ -951,6 +971,19 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
               />
             </Row>
             <EngineStatusInline />
+            {engine === 'kokoro' && (
+              <Row name="kokoroModel" desc={tr('descKokoroModel')}>
+                <SegGroup
+                  score={scope}
+                  field="kokoroModel"
+                  value={value.kokoroModel}
+                  options={[
+                    { v: 'int8', label: tr('kokoroModelInt8') },
+                    { v: 'fp32', label: tr('kokoroModelFp32') },
+                  ]}
+                />
+              </Row>
+            )}
             <Row
               name="voice"
               desc={engine === 'edge' ? tr('descVoice') : engine === 'kokoro' ? tr('descVoiceKokoro') : tr('descVoiceLocal')}
