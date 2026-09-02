@@ -45,6 +45,8 @@
     "prefetch": "node scripts/prefetch.mjs",
     "list-voices": "node scripts/list-voices.mjs",
     "bench-asr": "node scripts/bench-asr.mjs",
+    "bench:echo-gate": "node scripts/bench-echo-gate.mjs",
+    "analyze:fixture": "node scripts/analyze-fixture.mjs",
     "verify": "node scripts/verify.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.client.json --noEmit"
   },

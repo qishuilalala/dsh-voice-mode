@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createAsrEngine, type AsrEngine, type AsrState, type EchoRefSource } from './asr.ts'
 import { NlmsAec, estimateBulkDelay } from './aec.ts'
 import { resampleLinear } from './resample.ts'
+import { fixtureRecorder } from './fixture-recorder.ts'
 import { t, type TKey } from './strings.ts'
 
 /**
@@ -432,6 +433,7 @@ function createAudioEngine(
       }
     }
     setUi({ playing: true, playingCaption: frame.text, ttsNotice: null })
+    fixtureRecorder.mark('tts-sentence', frame.text)
     void fallbackAudio.play().catch(() => playFallback())
   }
 
@@ -1253,6 +1255,7 @@ export function MicButton({
     clearIdle()
     cancelPendingSubmit()
     isSpeechTrueCount = 0 // 打断根治：退出重置 isSpeech 计数（防残留）
+    fixtureRecorder.save('exit') // fixture 录制：退出即落盘（未开录时为 no-op）
     breakRef.current = null // 手动打断入口：退出即失效
     manualHoldRef.current = false
     clearBreakTimer()
@@ -1359,6 +1362,7 @@ export function MicButton({
           // 判真实人声前沿；仅 AI 朗读中（bus.ui.playing）触发 hardBreak，
           // 防 TTS 回声被 VAD 误判为语音而自打断。
           onIsSpeech: (speech) => {
+            fixtureRecorder.noteIsSpeech(speech)
             // 手动打断模式（外放推荐）：不依赖 VAD 自动打断——外放回声会被 Silero VAD
             // 误判为语音导致自打断静音；打断改由显式手势触发。也不更新 isSpeech 徽标，
             // 避免回声造成「一直检测到语音」的假象。
@@ -1415,6 +1419,7 @@ export function MicButton({
                 })
                 interruptFirstAt = 0
                 isSpeechTrueCount = 0 // 重置计数防重复触发
+                fixtureRecorder.mark('interrupt', `confirmMs=${confirmMs}`)
                 resetIdle()
                 bus.resetTelemetry() // P1-5：打断 = 上一轮回复作废，链清空
                 bus.setUi({ interruptConfirmMs: confirmMs })
@@ -1456,12 +1461,21 @@ export function MicButton({
             debugLog('aec-state', { nativeEchoCancellation: on })
             bus.setEchoBypass(on) // 原生 AEC 生效时旁路自研 NLMS（防错位尖峰）
             bus.setUi({ aecOff: !on })
+            fixtureRecorder.mark('native-aec', on ? 'on（自研 NLMS 旁路）' : 'off（自研 NLMS 生效）')
           },
         },
         sid,
       )
       bus.setUi({ mode: cfg.mode })
       engineRef.current = engine
+      // fixture 录制（ADR-0004，默认关闭；localStorage['dsh-voice-mode.record']=meta|full）
+      fixtureRecorder.begin({
+        build: BUILD_TAG,
+        mode: cfg.mode,
+        bargeInMode,
+        echoGateDb: cfg.echoGateDb,
+        interruptLevel,
+      })
       // P1-5 延迟埋点链：ASR 侧三枚时间戳（说完/端点/定稿上传）入链。
       engine.onTelemetry((e) => bus.stampTelemetry(e.stage, e.at))
       // P1-2：播放引擎 AudioContext 需手势栈预热（decode/start 才不会被静音）。

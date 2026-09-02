@@ -17,6 +17,7 @@
 
 import { resampleLinear } from './resample.ts'
 import { matchWakeWord } from './wakeword.ts'
+import { fixtureRecorder } from './fixture-recorder.ts'
 
 // AudioWorklet 源码字符串（build.mjs 经 esbuild define 注入）：运行时转 Blob URL 供 addModule。
 declare const __AUDIO_WORKLET__: string
@@ -544,9 +545,13 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // 实际按 44.1k/48k 输出。非 16k 时先线性重采样，保证 host zipformer2
     // 始终收到 16k PCM（避免识别错乱）。
     let data = ctxRate !== SAMPLE_RATE ? resampleLinear(raw, ctxRate, SAMPLE_RATE) : raw
+    // fixture 录制（ADR-0004，默认关闭）：留住 AEC 前的 mic 与参考窗，供离线重放。
+    const recMicPre = data
+    let recRef: Float32Array | null = null
     // P3-2：回声参考（TTS 播放 → NLMS 消除回声）后再做打断/VAD/上行判定。
     if (echo) {
       const ref = echo.windowAt(performance.now(), data.length)
+      recRef = ref
       data = echo.process(data, ref)
     }
     let sum = 0
@@ -594,6 +599,16 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
     if (echo) {
       echo.setFrozen(doubleTalk)
+    }
+    // fixture 录制（默认关闭；开关见 fixture-recorder.ts）：门控统计已算完，此处落一帧。
+    if (fixtureRecorder.isActive) {
+      fixtureRecorder.frame(recMicPre, recRef, data, {
+        rms,
+        floorRms: echoFloorRms,
+        peakRms: echoPeak,
+        doubleTalk,
+        playingTail: playingNow,
+      })
     }
     // hold 模式打断走显式手势（按住），不走 VAD 检测通道；toggle 模式保留检测通道。
     if (playingNow && !holdActive && config.mode !== 'hold') detectChunks.push(data)

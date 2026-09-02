@@ -72,9 +72,258 @@ function matchWakeWord(partial, wakeWord) {
   return false;
 }
 
+// src/fixture-recorder.ts
+var FLAG = "dsh-voice-mode.record";
+var MAX_SECONDS = 180;
+var SAMPLE_RATE = 16e3;
+function recordMode() {
+  try {
+    const v = localStorage.getItem(FLAG);
+    if (v === "full") return "full";
+    if (v === "meta" || v === "1") return "meta";
+  } catch {
+  }
+  return "off";
+}
+var Track = class {
+  chunks = [];
+  total = 0;
+  push(f) {
+    const out = new Int16Array(f.length);
+    for (let i = 0; i < f.length; i++) {
+      const v = Math.max(-1, Math.min(1, f[i]));
+      out[i] = v < 0 ? v * 32768 : v * 32767;
+    }
+    this.chunks.push(out);
+    this.total += out.length;
+  }
+  get length() {
+    return this.total;
+  }
+  toBase64() {
+    const all = new Int16Array(this.total);
+    let off = 0;
+    for (const c of this.chunks) {
+      all.set(c, off);
+      off += c.length;
+    }
+    const bytes = new Uint8Array(all.buffer);
+    let bin = "";
+    const STEP = 32768;
+    for (let i = 0; i < bytes.length; i += STEP) {
+      bin += String.fromCharCode(...bytes.subarray(i, i + STEP));
+    }
+    return btoa(bin);
+  }
+  clear() {
+    this.chunks = [];
+    this.total = 0;
+  }
+};
+var FixtureRecorder = class {
+  mode = "off";
+  active = false;
+  startedAt = 0;
+  frames = [];
+  marks = [];
+  micTrack = new Track();
+  refTrack = new Track();
+  resTrack = new Track();
+  /** 残差与 mic 是否出现过差异（原生 AEC 失效时自研 NLMS 生效）——决定是否落残差轨。 */
+  resDiffers = false;
+  env = {};
+  badge = null;
+  userSpeaking = false;
+  keyHandler = null;
+  get isActive() {
+    return this.active;
+  }
+  /** 进入语音模式时调用。档位为 off 时什么都不做。 */
+  begin(env) {
+    const mode = recordMode();
+    if (mode === "off") {
+      this.mode = "off";
+      return;
+    }
+    if (this.active) this.save("restart");
+    this.mode = mode;
+    this.active = true;
+    this.startedAt = Date.now();
+    this.frames = [];
+    this.marks = [];
+    this.micTrack.clear();
+    this.refTrack.clear();
+    this.resTrack.clear();
+    this.resDiffers = false;
+    this.userSpeaking = false;
+    this.env = env;
+    this.mark("begin", mode);
+    this.mountBadge();
+    this.bindKeys();
+    console.log(`[dsh-voice][rec] \u5F00\u59CB\u5F55\u5236\uFF08${mode}\uFF09\xB7 F8=\u6807\u6CE8\u8BF4\u8BDD \xB7 F9=\u4FDD\u5B58\u4E0B\u8F7D`);
+  }
+  /**
+   * 逐帧写入。在 asr.ts handleAudio 里 AEC 与门控统计算完之后调用。
+   * micPre = AEC 前（重采样后）；ref = 参考窗；res = AEC 后残差（判定链实际输入）。
+   */
+  frame(micPre, ref, res, stats) {
+    if (!this.active) return;
+    const t3 = Date.now() - this.startedAt;
+    if (t3 > MAX_SECONDS * 1e3) {
+      this.mark("auto-stop", `\u5230\u8FBE ${MAX_SECONDS}s \u4E0A\u9650`);
+      this.save("maxlen");
+      return;
+    }
+    this.frames.push({
+      t: t3,
+      rms: round6(stats.rms),
+      mic: round6(rmsOf(micPre)),
+      ref: round6(ref ? rmsOf(ref) : 0),
+      fl: round6(stats.floorRms),
+      pk: round6(stats.peakRms),
+      dt: stats.doubleTalk ? 1 : 0,
+      pt: stats.playingTail ? 1 : 0
+    });
+    if (this.mode === "full") {
+      this.micTrack.push(micPre);
+      this.refTrack.push(ref ?? new Float32Array(micPre.length));
+      if (res !== micPre) {
+        if (!this.resDiffers) this.resDiffers = true;
+        this.resTrack.push(res);
+      } else if (this.resDiffers) {
+        this.resTrack.push(res);
+      }
+    }
+    this.refreshBadge();
+  }
+  /** host 下行 isSpeech：盖在最近一帧上。 */
+  noteIsSpeech(speech) {
+    if (!this.active || speech === void 0) return;
+    const last = this.frames[this.frames.length - 1];
+    if (last) last.spk = speech ? 1 : 0;
+  }
+  /** 播放态（裸口径）变化 / 打断触发 / 句子边界等事件。 */
+  mark(kind, note) {
+    if (!this.active && kind !== "begin") return;
+    this.marks.push({ t: Date.now() - this.startedAt, kind, note });
+  }
+  /** 保存并触发下载。reason 只用于文件名与日志。 */
+  save(reason = "manual") {
+    if (!this.active) return;
+    this.active = false;
+    this.unbindKeys();
+    this.unmountBadge();
+    const durationMs = Date.now() - this.startedAt;
+    const payload = {
+      schema: "dsh-voice-mode/fixture@1",
+      recordedAt: new Date(this.startedAt).toISOString(),
+      reason,
+      mode: this.mode,
+      sampleRate: SAMPLE_RATE,
+      durationMs,
+      env: this.env,
+      frames: this.frames,
+      marks: this.marks
+    };
+    if (this.mode === "full" && this.micTrack.length > 0) {
+      payload.audio = {
+        encoding: "int16le-base64",
+        mic: this.micTrack.toBase64(),
+        ref: this.refTrack.toBase64(),
+        ...this.resDiffers ? { res: this.resTrack.toBase64() } : {}
+      };
+    }
+    const name = `dshvm-fixture-${new Date(this.startedAt).toISOString().replace(/[:.]/g, "-")}-${reason}.json`;
+    try {
+      const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1e4);
+      console.log(
+        `[dsh-voice][rec] \u5DF2\u4FDD\u5B58 ${name}\uFF1A${this.frames.length} \u5E27 / ${(durationMs / 1e3).toFixed(1)}s / \u6807\u6CE8 ${this.marks.length} \u6761`
+      );
+    } catch (e) {
+      console.warn("[dsh-voice][rec] \u4FDD\u5B58\u5931\u8D25\uFF1A" + String(e));
+    }
+    this.micTrack.clear();
+    this.refTrack.clear();
+    this.resTrack.clear();
+  }
+  // ── 键盘标注 ──
+  bindKeys() {
+    this.keyHandler = (e) => {
+      if (e.key === "F8") {
+        e.preventDefault();
+        this.userSpeaking = !this.userSpeaking;
+        this.mark(this.userSpeaking ? "user-speech-start" : "user-speech-end");
+        console.log(`[dsh-voice][rec] \u6807\u6CE8\uFF1A${this.userSpeaking ? "\u5F00\u59CB\u8BF4\u8BDD" : "\u8BF4\u5B8C\u4E86"}`);
+        this.refreshBadge();
+      } else if (e.key === "F9") {
+        e.preventDefault();
+        this.save("hotkey");
+      }
+    };
+    window.addEventListener("keydown", this.keyHandler, true);
+  }
+  unbindKeys() {
+    if (this.keyHandler) window.removeEventListener("keydown", this.keyHandler, true);
+    this.keyHandler = null;
+  }
+  // ── 徽标（自包含 DOM，不接 React）──
+  mountBadge() {
+    try {
+      const el = document.createElement("div");
+      el.style.cssText = [
+        "position:fixed",
+        "top:8px",
+        "right:8px",
+        "z-index:2147483647",
+        "padding:6px 10px",
+        "border-radius:6px",
+        "background:rgba(180,20,20,.92)",
+        "color:#fff",
+        "font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace",
+        "pointer-events:none",
+        "white-space:pre"
+      ].join(";");
+      document.body.appendChild(el);
+      this.badge = el;
+      this.refreshBadge();
+    } catch {
+    }
+  }
+  refreshBadge() {
+    if (!this.badge) return;
+    const s = ((Date.now() - this.startedAt) / 1e3).toFixed(1);
+    const last = this.frames[this.frames.length - 1];
+    this.badge.textContent = `\u25CF REC ${this.mode}  ${s}s  ${this.frames.length}\u5E27` + (this.userSpeaking ? "  [\u8BF4\u8BDD\u4E2D]" : "") + (last ? `
+resid ${last.rms.toFixed(4)}  floor ${last.fl.toFixed(4)}  peak ${last.pk.toFixed(4)}` : "") + "\nF8 \u6807\u6CE8\u8BF4\u8BDD \xB7 F9 \u4FDD\u5B58";
+  }
+  unmountBadge() {
+    try {
+      this.badge?.remove();
+    } catch {
+    }
+    this.badge = null;
+  }
+};
+function rmsOf(x) {
+  if (x.length === 0) return 0;
+  let s = 0;
+  for (let i = 0; i < x.length; i++) s += x[i] * x[i];
+  return Math.sqrt(s / x.length);
+}
+var round6 = (v) => Math.round(v * 1e6) / 1e6;
+var fixtureRecorder = new FixtureRecorder();
+
 // src/asr.ts
 var workletBlobUrl = null;
-var SAMPLE_RATE = 16e3;
+var SAMPLE_RATE2 = 16e3;
 var SPEECH_RMS = 0.015;
 var LEVEL_CEILING = 0.25;
 var MAX_SEGMENT_MS = 3e4;
@@ -120,7 +369,7 @@ function createAsrEngine(config, sessionId) {
   let stopRequested = false;
   let startSeq = 0;
   let inFlush = false;
-  let ctxRate = SAMPLE_RATE;
+  let ctxRate = SAMPLE_RATE2;
   let speechActive = false;
   let segment = [];
   let segmentMs = 0;
@@ -179,7 +428,7 @@ function createAsrEngine(config, sessionId) {
   const requestPartial = async () => {
     if (partialInFlight || segment.length === 0) return;
     const total = segment.reduce((n, c) => n + c.length, 0);
-    const seconds = total / SAMPLE_RATE;
+    const seconds = total / SAMPLE_RATE2;
     if (seconds < PARTIAL_MIN_S || seconds > PARTIAL_MAX_S) return;
     const from = uploadedSamples;
     if (total - from <= 0) return;
@@ -257,7 +506,7 @@ function createAsrEngine(config, sessionId) {
   const requestDetect = async () => {
     if (detectInFlight) return;
     let total = detectChunks.reduce((n, c) => n + c.length, 0);
-    const MAX_DETECT_PENDING = 30 * SAMPLE_RATE;
+    const MAX_DETECT_PENDING = 30 * SAMPLE_RATE2;
     if (total - detectSent > MAX_DETECT_PENDING) {
       detectSent = Math.max(0, total - MAX_DETECT_PENDING);
     }
@@ -409,15 +658,18 @@ function createAsrEngine(config, sessionId) {
   let echoPeak = 0;
   const handleAudio = (raw) => {
     if (!active || inFlush) return;
-    let data = ctxRate !== SAMPLE_RATE ? resampleLinear(raw, ctxRate, SAMPLE_RATE) : raw;
+    let data = ctxRate !== SAMPLE_RATE2 ? resampleLinear(raw, ctxRate, SAMPLE_RATE2) : raw;
+    const recMicPre = data;
+    let recRef = null;
     if (echo) {
       const ref = echo.windowAt(performance.now(), data.length);
+      recRef = ref;
       data = echo.process(data, ref);
     }
     let sum = 0;
     for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
     const rms = Math.sqrt(sum / data.length);
-    const durationMs = data.length / SAMPLE_RATE * 1e3;
+    const durationMs = data.length / SAMPLE_RATE2 * 1e3;
     for (const fn of levelListeners) {
       try {
         fn(Math.min(1, rms / LEVEL_CEILING));
@@ -441,6 +693,15 @@ function createAsrEngine(config, sessionId) {
     }
     if (echo) {
       echo.setFrozen(doubleTalk);
+    }
+    if (fixtureRecorder.isActive) {
+      fixtureRecorder.frame(recMicPre, recRef, data, {
+        rms,
+        floorRms: echoFloorRms,
+        peakRms: echoPeak,
+        doubleTalk,
+        playingTail: playingNow
+      });
     }
     if (playingNow && !holdActive && config.mode !== "hold") detectChunks.push(data);
     if (holdActive) {
@@ -515,7 +776,7 @@ function createAsrEngine(config, sessionId) {
       let total = 0;
       let cut = 0;
       for (let i = prePad.length - 1; i >= 0; i--) {
-        total += prePad[i].length / SAMPLE_RATE * 1e3;
+        total += prePad[i].length / SAMPLE_RATE2 * 1e3;
         if (total > PRE_PAD_MS) {
           cut = i + 1;
           break;
@@ -559,7 +820,7 @@ function createAsrEngine(config, sessionId) {
     }
     config.onAecState?.(aecOn);
     const AC = window.AudioContext ?? window.webkitAudioContext;
-    audioCtx = new AC({ sampleRate: SAMPLE_RATE });
+    audioCtx = new AC({ sampleRate: SAMPLE_RATE2 });
     try {
       await audioCtx.resume?.();
     } catch {
@@ -578,7 +839,7 @@ function createAsrEngine(config, sessionId) {
         };
         source.connect(workletNode);
         workletNode.connect(audioCtx.destination);
-        ctxRate = SAMPLE_RATE;
+        ctxRate = SAMPLE_RATE2;
         active = true;
         return;
       } catch {
@@ -633,7 +894,7 @@ function createAsrEngine(config, sessionId) {
     } catch {
     }
     audioCtx = null;
-    ctxRate = SAMPLE_RATE;
+    ctxRate = SAMPLE_RATE2;
     inFlush = false;
   };
   return {
@@ -681,7 +942,7 @@ function createAsrEngine(config, sessionId) {
       setState("idle");
     },
     forceSend() {
-      const speechS = segment.reduce((n, c) => n + c.length, 0) / SAMPLE_RATE;
+      const speechS = segment.reduce((n, c) => n + c.length, 0) / SAMPLE_RATE2;
       if (speechActive && speechS >= 0.25) {
         forcePending = true;
         lastPollAt = 0;
@@ -2184,7 +2445,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "d4c61da";
+var BUILD_TAG = "79db748";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2377,6 +2638,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
       }
     };
     setUi({ playing: true, playingCaption: frame.text, ttsNotice: null });
+    fixtureRecorder.mark("tts-sentence", frame.text);
     void fallbackAudio.play().catch(() => playFallback());
   };
   const drainPending = () => {
@@ -3022,6 +3284,7 @@ function MicButton({
     clearIdle();
     cancelPendingSubmit();
     isSpeechTrueCount = 0;
+    fixtureRecorder.save("exit");
     breakRef.current = null;
     manualHoldRef.current = false;
     clearBreakTimer();
@@ -3103,6 +3366,7 @@ function MicButton({
           // 判真实人声前沿；仅 AI 朗读中（bus.ui.playing）触发 hardBreak，
           // 防 TTS 回声被 VAD 误判为语音而自打断。
           onIsSpeech: (speech) => {
+            fixtureRecorder.noteIsSpeech(speech);
             if (bargeInMode === "manual") return;
             if (!bus.ui.playing) {
               isSpeechTrueCount = 0;
@@ -3149,6 +3413,7 @@ function MicButton({
                 });
                 interruptFirstAt = 0;
                 isSpeechTrueCount = 0;
+                fixtureRecorder.mark("interrupt", `confirmMs=${confirmMs}`);
                 resetIdle();
                 bus.resetTelemetry();
                 bus.setUi({ interruptConfirmMs: confirmMs });
@@ -3182,12 +3447,20 @@ function MicButton({
             debugLog("aec-state", { nativeEchoCancellation: on2 });
             bus.setEchoBypass(on2);
             bus.setUi({ aecOff: !on2 });
+            fixtureRecorder.mark("native-aec", on2 ? "on\uFF08\u81EA\u7814 NLMS \u65C1\u8DEF\uFF09" : "off\uFF08\u81EA\u7814 NLMS \u751F\u6548\uFF09");
           }
         },
         sid
       );
       bus.setUi({ mode: cfg.mode });
       engineRef.current = engine;
+      fixtureRecorder.begin({
+        build: BUILD_TAG,
+        mode: cfg.mode,
+        bargeInMode,
+        echoGateDb: cfg.echoGateDb,
+        interruptLevel
+      });
       engine.onTelemetry((e) => bus.stampTelemetry(e.stage, e.at));
       bus.warmAudio();
       try {
