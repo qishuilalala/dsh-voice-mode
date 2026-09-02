@@ -46,7 +46,11 @@
     "list-voices": "node scripts/list-voices.mjs",
     "bench-asr": "node scripts/bench-asr.mjs",
     "verify": "node scripts/verify.mjs",
-    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.client.json --noEmit"
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && node node_modules/typescript/bin/tsc -p tsconfig.client.json --noEmit",
+    "check:anchors": "node scripts/check-anchors.mjs",
+    "typecheck:dual": "bash scripts/typecheck-dual.sh",
+    "smoke:runtime": "bash scripts/smoke-runtime.sh",
+    "verify:dual": "bash scripts/verify-dual.sh"
   },
   "dsh": {
     "bundle": {
@@ -86,6 +90,7 @@
     "@types/node": "^26.0.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.25.0",
+    "playwright-core": "1.62.1",
     "typescript": "^5.9.2"
   },
   "keywords": [

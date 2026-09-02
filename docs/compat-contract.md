@@ -62,28 +62,33 @@ voice-mode 与宿主的交互只有 12 个契约点，分两层：
 ### Verdict
 当前双向兼容方案**健全**（12 契约点全核对通过）。真正的风险不是「现在不兼容」，而是「**未来某次升级静默破坏 0.1.1 兼容而无人发现**」。核心缺口是可复现的防回归机制（I-1、I-2），次要是 schemastery 依赖方式对齐（M-1）。
 
-## 4. 落地行动项
+## 4. 落地行动项（全部脚本化、可复现）
 
 - [x] 报告本文件（`docs/compat-contract.md`）。
-- [x] I-1：`scripts/typecheck-dual.sh`——对 0.1.1 与 0.1.2 两套 `@deepseek-ai/dsh-*` 类型各跑一遍 `tsc`（已实测：0.1.1 与 0.1.2 四组 host/client 均 ✓）。
-- [x] I-2：`scripts/check-anchors.mjs`——读取 package.json 的 `dsh.client.inject`，逐一 `npm view <pkg>@<target> version` 校验存在性（已实测 9 锚点双边全 ✓）。
-- [x] I-3（runtime 冒烟）：`scripts/smoke-runtime.sh <dsh-core-bin.js> [port]`——隔离 DSH_HOME 上 boot + 验证 `/voice-mode`、`/voice-mode/config`、`/voice-mode/models/status` 三端点 200。
-  - 已实测：0.1.1-rc.2 核心与 0.1.2-alpha.4 核心**均通过**（三端点全 ✓）。
-  - 客户端渲染（mic 按钮 + console 0 error）需 headless 浏览器，由 Playwright 另行验证（§5 第 4 步）；alpha 下 client bundle 走合并 URL `/plugins/??<全部包>/client.js&rev=..` 且需 cookie，curl 无法可靠探测。
-  - dsh 核心获取（smoke 前置）：`pnpm add @deepseek-ai/dsh@<版本>` 到独立前缀（0.1.1 用 `NODE_OPTIONS=--max-old-space-size=4096 pnpm add`，避开 npm 大包 OOM）。
-- [ ] M-1（评估后**维持现状，不改**）：`schemastery` 保持 `dependencies`（`^3.18.1`）。
-  - 深入分析：voice-mode host half 对 `schemastery` 是**运行时硬依赖**（`import z`），放 `dependencies` 是更稳健的选择——不依赖「宿主是否把 schemastery 暴露为可解析 peer」这一隐含假设。
-  - 核心 alpha 用 `^3.18.2`，与 `^3.18.1` 均为 `^3.18.x` 兼容，pnpm 会 hoist/dedupe 成单一副本，**无实际重复副本问题**。
-  - dshmarket 放 peer 是其自身选择；voice-mode 放 dependency 同样合法且更自包含。故 M-1 降级为「无需改动」。
+- [x] I-1：`scripts/typecheck-dual.sh`——0.1.1 与 0.1.2 两套类型各跑 `tsc`（四组 host/client 均 ✓）。
+- [x] I-2：`scripts/check-anchors.mjs`——`dsh.client.inject` 锚点逐包校验存在性（9 锚点双边全 ✓）。
+- [x] I-3：`scripts/smoke-runtime.sh`——隔离 DSH_HOME boot + host 三端点 + **client 冒烟**（`smoke-client.mjs` 用 headless chromium 走首次引导流程，断言 mic 按钮渲染 + console 0 error）。
+  - 已实测：0.1.1-rc.2 与 0.1.2-alpha.4 双核心**均通过**（host 三端点 + client mic + console 0 error）。
+  - client 冒烟走通首次引导：Internal Testing Notice → Continue → API/workspace 配置 → Configure later → Choose workspace → 目录选择器 Open → mic 渲染（0.1.1 与 0.1.2 流程一致）。
+  - dsh 核心获取：`pnpm add @deepseek-ai/dsh@<版本>`（0.1.1 用 `NODE_OPTIONS=--max-old-space-size=4096`，避开 npm 大包 OOM）。
+- [x] 顶层编排：`scripts/verify-dual.sh`（= `npm run verify:dual`）——一键顺序跑锚点 + 双版本 typecheck + 双版本 runtime 冒烟，已端到端实测通过（FINAL_EXIT=0）。
+- [ ] M-1（评估后**维持现状，不改**）：`schemastery` 保持 `dependencies`（`^3.18.1`），见下。
+
+### npm scripts 速查
+
+```bash
+npm run check:anchors      # 锚点存在性
+npm run typecheck:dual     # 双版本 typecheck
+npm run smoke:runtime -- <dsh核心bin.js> [port]   # 单版本 runtime 冒烟（host+client）
+npm run verify:dual        # 一键全量（锚点 + typecheck + 双版本 runtime 冒烟）
+```
 
 ## 5. 后续迭代指引（跟上 dsh 步伐）
 
-每次 dsh 出新版本线（如 0.1.3-rc.0）时，执行：
+每次 dsh 出新版本线（如 0.1.3-rc.0）时：
 
 1. 读 dsh release notes，重点看**客户端锚点包**与 **dsh-settings/session 导出**的增删改。
-2. `node scripts/check-anchors.mjs <新版本>`——锚点包是否仍存在（缺失则收敛交集或适配）。
-3. `bash scripts/typecheck-dual.sh 0.1.1-rc.2 <新版本>`——源码在新旧两套类型下都能编译。
-4. `bash scripts/smoke-runtime.sh <新版本核心 bin.js> <port>`——host 冒烟三端点 200；再用 Playwright 验证客户端 `[data-dshvm="mic"]` 渲染 + console 0 error。
-5. 更新本文件与 `docs/migrate-alpha-012.md` 的契约点结论。
+2. 一条命令全量回归：`npm run verify:dual`（默认 0.1.1 + 0.1.2）；对新版本则 `check-anchors.mjs <新版>`、`typecheck-dual.sh 0.1.1 <新版>`、`smoke-runtime.sh <新版核心> <port>`。
+3. 更新本文件与 `docs/migrate-alpha-012.md` 的契约点结论。
 
-> 类型证据位置（本机 /tmp/v011-types 下的 tarball）：`deepseek-ai-dsh-{settings,system-prompt,llm,host-webserver,session,client-ui-settings,client-runtime,agent,client-ui-conversation,client-ui-layout,client-ui-settings-plugins}-0.1.1-rc.2/package/lib/types/…`。
+> 类型证据（本机核对用，可再生成）：0.1.1 各子包 `.d.ts` 经 `npm pack @deepseek-ai/<pkg>@0.1.1-rc.2` 解包比对。
