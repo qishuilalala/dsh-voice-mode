@@ -65,8 +65,21 @@ voice-mode 与宿主的交互只有 12 个契约点，分两层：
 ## 4. 落地行动项
 
 - [x] 报告本文件（`docs/compat-contract.md`）。
-- [ ] I-1：`scripts/typecheck-dual.sh`——对 0.1.1 与 0.1.2 两套 `@deepseek-ai/dsh-*` 类型各跑一遍 `tsc`。
-- [ ] I-2：`scripts/check-anchors.mjs`——读取 package.json 的 `dsh.client.inject`，逐一 `npm view <pkg>@<target> version` 校验存在性。
-- [ ] M-1：`schemastery` 从 `dependencies` 移到 `peerDependencies`（`^3.18.1`）。
+- [x] I-1：`scripts/typecheck-dual.sh`——对 0.1.1 与 0.1.2 两套 `@deepseek-ai/dsh-*` 类型各跑一遍 `tsc`（已实测：0.1.1 与 0.1.2 四组 host/client 均 ✓）。
+- [x] I-2：`scripts/check-anchors.mjs`——读取 package.json 的 `dsh.client.inject`，逐一 `npm view <pkg>@<target> version` 校验存在性（已实测 9 锚点双边全 ✓）。
+- [ ] M-1（评估后**维持现状，不改**）：`schemastery` 保持 `dependencies`（`^3.18.1`）。
+  - 深入分析：voice-mode host half 对 `schemastery` 是**运行时硬依赖**（`import z`），放 `dependencies` 是更稳健的选择——不依赖「宿主是否把 schemastery 暴露为可解析 peer」这一隐含假设。
+  - 核心 alpha 用 `^3.18.2`，与 `^3.18.1` 均为 `^3.18.x` 兼容，pnpm 会 hoist/dedupe 成单一副本，**无实际重复副本问题**。
+  - dshmarket 放 peer 是其自身选择；voice-mode 放 dependency 同样合法且更自包含。故 M-1 降级为「无需改动」。
+
+## 5. 后续迭代指引（跟上 dsh 步伐）
+
+每次 dsh 出新版本线（如 0.1.3-rc.0）时，执行：
+
+1. 读 dsh release notes，重点看**客户端锚点包**与 **dsh-settings/session 导出**的增删改。
+2. `node scripts/check-anchors.mjs <新版本>`——锚点包是否仍存在（缺失则收敛交集或适配）。
+3. `bash scripts/typecheck-dual.sh 0.1.1-rc.2 <新版本>`——源码在新旧两套类型下都能编译。
+4. 在隔离 profile 上 boot + `/voice-mode` 200 + 客户端 `[data-dshvm="mic"]` 渲染 + console 0 error。
+5. 更新本文件与 `docs/migrate-alpha-012.md` 的契约点结论。
 
 > 类型证据位置（本机 /tmp/v011-types 下的 tarball）：`deepseek-ai-dsh-{settings,system-prompt,llm,host-webserver,session,client-ui-settings,client-runtime,agent,client-ui-conversation,client-ui-layout,client-ui-settings-plugins}-0.1.1-rc.2/package/lib/types/…`。
