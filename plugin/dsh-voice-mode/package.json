@@ -33,6 +33,7 @@
     "scripts/list-voices.mjs",
     "scripts/bench-asr.mjs",
     "scripts/verify.mjs",
+    "scripts/check-anchors.mjs",
     "README.md",
     "README.en.md",
     "LICENSE"
