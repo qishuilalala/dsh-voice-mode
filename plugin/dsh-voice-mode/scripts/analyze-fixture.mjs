@@ -113,8 +113,23 @@ const userVadTrue = userVad.filter((f) => f.spk === 1).length
 const detects = (fx.detects ?? []).filter((d) => d.ok === 1)
 
 // ── 检测通道观测栅格：回报间隔分布（打断延迟的真实约束） ──
-const pollTimes = frames.filter((f) => f.pt === 1 && f.spk !== undefined).map((f) => f.t)
-const gaps = pollTimes.slice(1).map((v, i) => v - pollTimes[i]).filter((g) => g > 0 && g < 10000)
+// 只在**连续播放段内部**统计：跨越非播放期的"间隔"是两轮对话之间的静默，不是停顿。
+// （初版没分段，把 9.5s 的回合间静默算成了停顿。）
+const playRuns = []
+{
+  let cur = null
+  for (const f of frames) {
+    if (f.pt === 1) {
+      if (!cur) { cur = []; playRuns.push(cur) }
+      cur.push(f)
+    } else cur = null
+  }
+}
+const gaps = []
+for (const run of playRuns) {
+  const ts = run.filter((f) => f.spk !== undefined).map((f) => f.t)
+  for (let i = 1; i < ts.length; i++) gaps.push(ts[i] - ts[i - 1])
+}
 const confirmWindow = (cf) => {
   const w = []
   for (let i = 0; i + cf - 1 < gaps.length; i++) w.push(gaps.slice(i, i + cf).reduce((a, b) => a + b, 0))
@@ -208,17 +223,20 @@ if (gaps.length > 4) {
   if (expectedPolls > 10 && detects.length > 0) {
     const coverage = (100 * detects.length) / expectedPolls
     L.push(`**检测通道覆盖率**：播放期 ${(playMs / 1000).toFixed(1)}s，应发约 ${expectedPolls} 次，实发 ${detects.length} 次 → **${coverage.toFixed(0)}%**`)
-    // 用户说话期间单独算——这是最该覆盖、也最容易被漏掉的窗口
-    if (userWhilePlaying.length > 0) {
-      const a = userWhilePlaying[0].t
-      const b = userWhilePlaying[userWhilePlaying.length - 1].t
-      const expUser = Math.round((b - a) / 128)
-      const gotUser = detects.filter((d) => d.t >= a && d.t <= b).length
-      if (expUser > 3) {
-        const cu = (100 * gotUser) / expUser
-        L.push(`**打断窗口覆盖率**：${((b - a) / 1000).toFixed(1)}s，应发约 ${expUser} 次，实发 ${gotUser} 次 → **${cu.toFixed(0)}%**`)
-        if (cu < 80) L.push(`> ⚠️ 打断窗口覆盖率偏低——正是最需要检测的时候反而少发。检查 handleAudio 是否有分支跳过了轮询块。`)
-      }
+    // 用户说话期间单独算——这是最该覆盖、也最容易被漏掉的窗口。
+    // 按**每段说话区间**分别算：初版取首末帧做窗口，把区间之间的空隙也算进了分母（虚低）。
+    let expUser = 0
+    let gotUser = 0
+    for (const [a, b] of speechSpans) {
+      const fr = frames.filter((f) => f.pt === 1 && f.t >= a && f.t <= b)
+      if (fr.length === 0) continue
+      expUser += Math.round((fr.length * 64) / 128)
+      gotUser += detects.filter((d) => d.t >= a && d.t <= b).length
+    }
+    if (expUser > 3) {
+      const cu = (100 * gotUser) / expUser
+      L.push(`**打断窗口覆盖率**：${speechSpans.length} 段说话，应发约 ${expUser} 次，实发 ${gotUser} 次 → **${cu.toFixed(0)}%**`)
+      if (cu < 80) L.push('> ⚠️ 打断窗口覆盖率偏低——正是最需要检测的时候反而少发。检查 handleAudio 是否有分支跳过了轮询块。')
     }
     L.push('')
   }
@@ -272,8 +290,11 @@ if (interrupts.length > 0) {
   const cm = interrupts.map((m) => Number(String(m.note ?? '').replace(/\D/g, ''))).filter(Number.isFinite)
   if (cm.length) {
     L.push('')
-    L.push(`确认耗时：${cm.join(' / ')}ms（理论 ${3 * 128}ms @ interruptLevel=0）`)
-    if (Math.max(...cm) > 3 * 128 * 1.5) L.push('> 明显超出理论值 → 对照 §3 的回报停顿，多半是被在途往返拖的。')
+    // confirmMs = 首次判真 → 第三次判真 = **2 个**回报间隔（不是 3 个）。
+    const floorMs = 2 * 128
+    L.push(`确认耗时：${cm.join(' / ')}ms（理论下限 ${floorMs}ms = 2 × 128ms 栅格 @ interruptLevel=0）`)
+    if (Math.max(...cm) > floorMs * 1.5) L.push('> 明显超出理论下限 → 对照上面的覆盖率与停顿归因。')
+    else L.push('> 贴着理论下限 —— 检测通道没有被跳过或拖延。')
   }
   L.push('')
 }
