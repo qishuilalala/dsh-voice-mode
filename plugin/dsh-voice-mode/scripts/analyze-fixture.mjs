@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 真机 fixture 分析（ADR-0004 第二批）——把一次录制变成结论。
+ * 真机 fixture 分析（ADR-0005 第二批）——把一次录制变成结论。
  *
  * 用法：
  *   node scripts/analyze-fixture.mjs <fixture.json> [--json]
@@ -255,7 +255,7 @@ if (gaps.length > 4) {
     const gapP99 = qtl(gaps, 0.99)
     if (rttP99 > gapP99 * 0.6) {
       L.push(`> 尾部由**往返耗时**主导（p99 往返 ${rttP99}ms vs 间隔 ${gapP99}ms）⇒ 瓶颈在宿主/网络侧。`)
-      L.push('> 客户端侧的节拍修复帮不上，需要 ADR-0002（VAD 下沉）或减小上行体积。')
+      L.push('> 客户端侧的节拍修复帮不上，需要 ADR-0003（VAD 下沉）或减小上行体积。')
     } else {
       L.push(`> 尾部**不由往返耗时解释**（p99 往返仅 ${rttP99}ms，间隔却 ${gapP99}ms）⇒ 时间花在客户端等待上。`)
       L.push('> 这正是 A 档节拍修复针对的情形——请求回来后应当立即补发，而不是等下一个 128ms 边界。')

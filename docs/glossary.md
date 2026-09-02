@@ -32,7 +32,7 @@ AEC 之后仍留在麦克风信号里的回声 + 用户语音。`echoLevels().re
 扬声器出声 → 回到麦克风的粗延迟（输出缓冲 + 系统混音 + 采集缓冲，数十 ms）。用互相关估计（`src/aec.ts` `estimateBulkDelay`），估出后平移参考，让短滤波器只建模残余房间冲激响应。诊断行里的 `delay`。
 
 **ERLE（Echo Return Loss Enhancement）**
-回声抑制比，dB。衡量 AEC 效果的标准指标。**本项目目前不采集**——[ADR-0004](adr/0004-acoustic-regression-harness.md) 提议补上，它是判断"自研 AEC 该修还是该降级"的判据。
+回声抑制比，dB。衡量 AEC 效果的标准指标。**本项目目前不采集**——[ADR-0005](adr/0005-acoustic-regression-harness.md) 提议补上，它是判断"自研 AEC 该修还是该降级"的判据。
 
 **AGC / NS（自动增益 / 噪声抑制）**
 本项目**显式关闭**（`src/asr.ts` `startRecorder`）。两者都是时变非线性，放在 AEC 前会破坏线性回声路径假设；WebRTC 与 Speex 都把增益放在 AEC 之后。
@@ -127,7 +127,7 @@ TTS 下行单元：`sentenceId`（句序）+ `chunkId`（句内块序）+ `final
 持有活跃会话的浏览器标签。失联超时后 host 让出会话（`yieldActiveSession`）。
 
 **代际计数器（epoch / generation）**
-在无序传输上维持顺序语义的守卫。当前有 5 套：`segmentEpoch`、`detectGeneration`、`resetGen`、`turnGen`、TTS `q.epoch`。[ADR-0003](adr/0003-realtime-transport.md) 提议用 WebSocket 塌缩其中 3 套。
+在无序传输上维持顺序语义的守卫。当前有 5 套：`segmentEpoch`、`detectGeneration`、`resetGen`、`turnGen`、TTS `q.epoch`。[ADR-0004](adr/0004-realtime-transport.md) 提议用 WebSocket 塌缩其中 3 套。
 
 **水位（fed / uploadedSamples / detectSent）**
 增量上传的幂等基准：客户端记"已传到第几个采样"，host 记"已喂到第几个采样"，只处理二者差集。
@@ -141,7 +141,8 @@ TTS 下行单元：`sentenceId`（句序）+ `chunkId`（句内块序）+ `final
 
 - [评审：当前得失与推进方向](review-2026-08-30.md)
 - [ADR-0001 回声消除以浏览器原生 AEC 为主](adr/0001-native-aec-primary.md)
-- [ADR-0002 打断 VAD 下沉到客户端](adr/0002-client-side-vad.md)
-- [ADR-0003 实时环路改用单会话 WebSocket](adr/0003-realtime-transport.md)
-- [ADR-0004 建立离线声学回归基准](adr/0004-acoustic-regression-harness.md)（已接受）
-- [ADR-0005 打断模式自动探测降级](adr/0005-barge-in-auto-degrade.md)（已接受）
+- [ADR-0002 客户端注入锚点取新旧版本交集](adr/0002-dual-version-compat.md)
+- [ADR-0003 打断 VAD 下沉到客户端](adr/0003-client-side-vad.md)
+- [ADR-0004 实时环路改用单会话 WebSocket](adr/0004-realtime-transport.md)
+- [ADR-0005 建立离线声学回归基准](adr/0005-acoustic-regression-harness.md)（已接受）
+- [ADR-0006 打断模式自动探测降级](adr/0006-barge-in-auto-degrade.md)（已接受）

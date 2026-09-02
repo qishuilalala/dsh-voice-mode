@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * 回声门控离线基准（ADR-0004 第一批：零依赖、零录音、可进 CI）。
+ * 回声门控离线基准（ADR-0005 第一批：零依赖、零录音、可进 CI）。
  *
  * 用法：
  *   node scripts/bench-echo-gate.mjs            # 打印 Markdown 报告
  *   node scripts/bench-echo-gate.mjs --json     # 追加机器可读 JSON（基线对比用）
  *
- * 为什么是「bench」而不是「test」：ADR-0004 的第一阶段是「先报告不拦截」。
+ * 为什么是「bench」而不是「test」：ADR-0005 的第一阶段是「先报告不拦截」。
  * 本脚本当前报告的是**现状**，而现状里有一个已确认的缺陷（见下），所以它
  * 不能当断言门用——先把数字晒出来，等修法确定后再转成 test。
  *
@@ -191,7 +191,7 @@ const wantJson = process.argv.includes('--json')
 const out = []
 const p = (s) => out.push(s)
 
-p('# 回声门控离线基准（ADR-0004 · 报告模式）')
+p('# 回声门控离线基准（ADR-0005 · 报告模式）')
 p('')
 p(`帧长 ${FRAME_MS}ms · 门限 ${DEFAULT_GATE_DB}dB · 确定性合成 · 无外部依赖`)
 p('')

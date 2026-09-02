@@ -1125,6 +1125,16 @@ function useVoiceCss(): void {
 @keyframes dshvm-eq { 0%, 100% { transform: scaleY(0.35) } 50% { transform: scaleY(1) } }
 @keyframes dshvm-spin { to { transform: rotate(360deg) } }
 .dshvm-bar { width: 3px; border-radius: 99px; transition: height 0.08s linear, opacity 0.08s linear }
+/* 麦克风按钮所在的宿主容器也禁选：手指偏大时长按可能命中按钮外侧的容器留白，
+   浏览器就近选中「语音」标签文字。 */
+:has(> [data-dshvm="mic"]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
+/* 按住说话期间整页禁选（!important 压过宿主样式）：安卓/桌面在长按或按住微拖时
+   会从按钮附近开始选区，出现蓝色高亮和选择手柄，导致「按住说话」不可用。 */
+html.dshvm-holding, html.dshvm-holding * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
 `
     document.head.appendChild(el)
   }, [])
@@ -1902,7 +1912,67 @@ export function MicButton({
       breakTimerRef.current = null
     }
   }
+  /** 按住期间的整页禁选守卫（null = 未加锁）。 */
+  const selectGuardRef = useRef<(() => void) | null>(null)
+  const unlockSelection = (): void => {
+    const off = selectGuardRef.current
+    if (!off) return
+    selectGuardRef.current = null
+    off()
+    // 清掉长按已经产生的高亮（禁选样式无效的内核上仍会先选中一次）
+    try {
+      window.getSelection()?.removeAllRanges()
+    } catch {
+      /* 忽略：个别内核在无选区时抛错 */
+    }
+  }
+  /** 按下即锁：CSS 禁选 + selectstart 拦截，覆盖桌面拖选与移动端长按取词。 */
+  const lockSelection = (): void => {
+    if (selectGuardRef.current) return
+    const root = document.documentElement
+    root.classList.add('dshvm-holding')
+    try {
+      window.getSelection()?.removeAllRanges()
+    } catch {
+      /* 忽略 */
+    }
+    const stopSelect = (ev: Event): void => ev.preventDefault()
+    const release = (): void => unlockSelection()
+    document.addEventListener('selectstart', stopSelect, true)
+    // 长按菜单可能派发在按钮以外的节点上，按钮自身的 onContextMenu 拦不住。
+    document.addEventListener('contextmenu', stopSelect, true)
+    // 兜底：指针在按钮外抬起/被系统取消时，按钮自身的 pointerup 不会到达。
+    window.addEventListener('pointerup', release, true)
+    window.addEventListener('pointercancel', release, true)
+    selectGuardRef.current = () => {
+      root.classList.remove('dshvm-holding')
+      document.removeEventListener('selectstart', stopSelect, true)
+      document.removeEventListener('contextmenu', stopSelect, true)
+      window.removeEventListener('pointerup', release, true)
+      window.removeEventListener('pointercancel', release, true)
+    }
+  }
+  useEffect(() => unlockSelection, [])
+
+  /** 按钮 DOM：给 touchstart 挂**非被动**原生监听（React 的 onTouchStart 是 passive，
+   *  里面 preventDefault 无效）。preventDefault 掉 touchstart 是唯一能压住安卓/iOS
+   *  内核长按菜单（复制/全选/翻译）的手段——禁选 CSS 在这些内核上会被无视。
+   *  仅 hold 模式生效：hold 全程由 pointer 事件驱动，不依赖合成 click；
+   *  toggle 模式靠 click 进出，不能拦（否则点不动）。 */
+  const btnRef = useRef<HTMLButtonElement | null>(null)
+  useEffect(() => {
+    const el = btnRef.current
+    if (!el) return
+    const onTouchStart = (ev: TouchEvent): void => {
+      if (bootNow().mode !== 'hold') return
+      if (ev.cancelable) ev.preventDefault()
+    }
+    el.addEventListener('touchstart', onTouchStart, { passive: false })
+    return () => el.removeEventListener('touchstart', onTouchStart)
+  }, [])
+
   const onPointerDown = (e: React.PointerEvent): void => {
+    lockSelection()
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId }
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
     if (bootNow().mode === 'hold') {
@@ -2010,6 +2080,7 @@ export function MicButton({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onContextMenu={(e) => e.preventDefault()} // 防长按/右键弹出「复制」菜单
+      ref={btnRef}
       data-dshvm="mic"
       aria-label={on ? t('ariaActive') : t('ariaEnter')}
       aria-pressed={on}

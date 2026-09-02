@@ -1,6 +1,6 @@
 # 真机 fixture 录制指引
 
-给一个人、一台机器、十几分钟用的。目标不是把 ADR-0004 的完整 fixture 矩阵录满，
+给一个人、一台机器、十几分钟用的。目标不是把 ADR-0005 的完整 fixture 矩阵录满，
 而是**先回答一个问题**：真机上 AEC 后残差是否保留语音包络（crest ≥ 7dB）？
 
 这一个数决定 [findings/2026-09-02-echo-gate-ratchet.md](findings/2026-09-02-echo-gate-ratchet.md) 的哪个分支成立。

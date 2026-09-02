@@ -2485,7 +2485,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "120f2c5";
+var BUILD_TAG = "da18c8f";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -3214,6 +3214,16 @@ function useVoiceCss() {
 @keyframes dshvm-eq { 0%, 100% { transform: scaleY(0.35) } 50% { transform: scaleY(1) } }
 @keyframes dshvm-spin { to { transform: rotate(360deg) } }
 .dshvm-bar { width: 3px; border-radius: 99px; transition: height 0.08s linear, opacity 0.08s linear }
+/* \u9EA6\u514B\u98CE\u6309\u94AE\u6240\u5728\u7684\u5BBF\u4E3B\u5BB9\u5668\u4E5F\u7981\u9009\uFF1A\u624B\u6307\u504F\u5927\u65F6\u957F\u6309\u53EF\u80FD\u547D\u4E2D\u6309\u94AE\u5916\u4FA7\u7684\u5BB9\u5668\u7559\u767D\uFF0C
+   \u6D4F\u89C8\u5668\u5C31\u8FD1\u9009\u4E2D\u300C\u8BED\u97F3\u300D\u6807\u7B7E\u6587\u5B57\u3002 */
+:has(> [data-dshvm="mic"]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
+/* \u6309\u4F4F\u8BF4\u8BDD\u671F\u95F4\u6574\u9875\u7981\u9009\uFF08!important \u538B\u8FC7\u5BBF\u4E3B\u6837\u5F0F\uFF09\uFF1A\u5B89\u5353/\u684C\u9762\u5728\u957F\u6309\u6216\u6309\u4F4F\u5FAE\u62D6\u65F6
+   \u4F1A\u4ECE\u6309\u94AE\u9644\u8FD1\u5F00\u59CB\u9009\u533A\uFF0C\u51FA\u73B0\u84DD\u8272\u9AD8\u4EAE\u548C\u9009\u62E9\u624B\u67C4\uFF0C\u5BFC\u81F4\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u4E0D\u53EF\u7528\u3002 */
+html.dshvm-holding, html.dshvm-holding * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
 `;
     document.head.appendChild(el);
   }, []);
@@ -3816,7 +3826,53 @@ function MicButton({
       breakTimerRef.current = null;
     }
   };
+  const selectGuardRef = (0, import_react2.useRef)(null);
+  const unlockSelection = () => {
+    const off = selectGuardRef.current;
+    if (!off) return;
+    selectGuardRef.current = null;
+    off();
+    try {
+      window.getSelection()?.removeAllRanges();
+    } catch {
+    }
+  };
+  const lockSelection = () => {
+    if (selectGuardRef.current) return;
+    const root = document.documentElement;
+    root.classList.add("dshvm-holding");
+    try {
+      window.getSelection()?.removeAllRanges();
+    } catch {
+    }
+    const stopSelect = (ev) => ev.preventDefault();
+    const release = () => unlockSelection();
+    document.addEventListener("selectstart", stopSelect, true);
+    document.addEventListener("contextmenu", stopSelect, true);
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+    selectGuardRef.current = () => {
+      root.classList.remove("dshvm-holding");
+      document.removeEventListener("selectstart", stopSelect, true);
+      document.removeEventListener("contextmenu", stopSelect, true);
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
+    };
+  };
+  (0, import_react2.useEffect)(() => unlockSelection, []);
+  const btnRef = (0, import_react2.useRef)(null);
+  (0, import_react2.useEffect)(() => {
+    const el = btnRef.current;
+    if (!el) return;
+    const onTouchStart = (ev) => {
+      if (bootNow().mode !== "hold") return;
+      if (ev.cancelable) ev.preventDefault();
+    };
+    el.addEventListener("touchstart", onTouchStart, { passive: false });
+    return () => el.removeEventListener("touchstart", onTouchStart);
+  }, []);
   const onPointerDown = (e) => {
+    lockSelection();
     holdPtrRef.current = { t: Date.now(), y: e.clientY, id: e.pointerId };
     e.currentTarget.setPointerCapture?.(e.pointerId);
     if (bootNow().mode === "hold") {
@@ -3910,6 +3966,7 @@ function MicButton({
       onPointerUp,
       onPointerCancel,
       onContextMenu: (e) => e.preventDefault(),
+      ref: btnRef,
       "data-dshvm": "mic",
       "aria-label": on ? t("ariaActive") : t("ariaEnter"),
       "aria-pressed": on,

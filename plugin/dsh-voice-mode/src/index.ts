@@ -476,10 +476,14 @@ export function apply(ctx: Context, config: Config): void {
 
   // --- llm/stream 无损 tap：仅活跃语音会话被观察，其余直达（验收点 7）。 ---
   ctx.on('llm/stream', (options: GenerateOptions, next): AsyncIterable<StreamChunk> => {
-    const sessionId = options.sessionId
+    const rawSessionId = options.sessionId
     // 只朗读主对话回合：compaction / session-title 等内部生成流带 purpose，
     // 若被 tap 会把「会话摘要/标题生成」播出来（官方 GenerateOptions.purpose 契约）。
-    if (!config.enabled || sessionId === undefined || options.purpose !== undefined) return next()
+    if (!config.enabled || rawSessionId === undefined || options.purpose !== undefined) return next()
+    // dsh 0.1.2：sessionId 为 SessionId 品牌（Agent/Session 共用同一身份轴）。
+    // 运行时是普通字符串，与 activeVoiceSession（来自 /toggle 的 sessionId）同源可比较，
+    // 仅需消除品牌在 map 键/比较上的类型约束。
+    const sessionId: string = rawSessionId as string
     if (activeVoiceSession !== sessionId) return next()
     const gen = (turnGen.get(sessionId) ?? 0) + 1
     turnGen.set(sessionId, gen)
