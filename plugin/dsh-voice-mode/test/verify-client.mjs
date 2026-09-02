@@ -169,6 +169,23 @@ t('lib 含 B2 宿主存活探活（owner tabId + 失联让出）', () => {
   const c = read('lib/client.js')
   assert.ok(c.includes('dshvm-tabId'), 'client bundle missing per-tab id storage key')
 })
+t('lib/client.js 播放期人声帧不跳过轮询（return-跳过轮询回归守卫）', () => {
+  const c = read('lib/client.js')
+  // 历史 bug：播放中 rms>SPEECH_RMS 的帧走 `if (isPlaying) { ...; return }`，
+  // 这个 return 连带跳过函数末尾的轮询块——用户说得越响，检测通道发得越少
+  // （真机实测：6s 打断窗口应发 47 次、实发 10 次，确认耗时 753~951ms）。
+  // 修复后该分支改为 if/else，轮询块照常执行。
+  // esbuild 会剥离注释，因此断言代码形状：播放门分支后必须是 `} else {`，不是 `return`。
+  assert.ok(
+    /if \(speechActive\) finalizeSegment\(true\);\s*\}\s*else\s*\{/.test(c),
+    'client bundle: 播放门分支后不是 else——return 跳过轮询的历史 bug 可能回归了',
+  )
+  assert.ok(
+    !/if \(speechActive\) finalizeSegment\(true\);\s*return;/.test(c),
+    'client bundle: 播放门分支仍在 return，会跳过末尾轮询块',
+  )
+})
+
 t('lib/client.js 含 A 档节拍修复（在途请求不吞掉轮询 tick）', () => {
   const c = read('lib/client.js')
   // 修复前：lastPollAt 无条件推进，一次 >128ms 的往返会连吃后续整拍（实测停顿 449/758ms）。

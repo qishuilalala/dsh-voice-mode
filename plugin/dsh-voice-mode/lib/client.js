@@ -765,23 +765,23 @@ function createAsrEngine(config, sessionId) {
     } else if (rms > SPEECH_RMS) {
       if (config.isPlaying?.()) {
         if (speechActive) finalizeSegment(true);
-        return;
+      } else {
+        if (!speechActive) {
+          speechActive = true;
+          detectChunks = [];
+          detectSent = 0;
+          detectGeneration++;
+          utteranceEndAt = null;
+          setState("speech");
+          for (const p of prePad) segment.push(p);
+          prePad = [];
+        }
+        speechMs += durationMs;
+        segmentMs += durationMs;
+        silenceMs = 0;
+        segment.push(data);
+        if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
       }
-      if (!speechActive) {
-        speechActive = true;
-        detectChunks = [];
-        detectSent = 0;
-        detectGeneration++;
-        utteranceEndAt = null;
-        setState("speech");
-        for (const p of prePad) segment.push(p);
-        prePad = [];
-      }
-      speechMs += durationMs;
-      segmentMs += durationMs;
-      silenceMs = 0;
-      segment.push(data);
-      if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
     } else if (speechActive) {
       if (utteranceEndAt === null) {
         utteranceEndAt = Date.now();
@@ -2485,7 +2485,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "68881be";
+var BUILD_TAG = "120f2c5";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

@@ -200,6 +200,29 @@ if (gaps.length > 4) {
     L.push(`| ${cf}${cf === 3 ? '（默认）' : ''} | ${cf * 128}ms | ${qtl(w, 0.5)}ms | ${qtl(w, 0.9)}ms | ${qtl(w, 0.99)}ms |`)
   }
   L.push('')
+  // 检测通道覆盖率：播放期本应每 128ms 发一次，实际发了多少。
+  // 这一项能直接抓出「某些帧跳过了轮询」这类 bug——2026-09-02 的 return-跳过轮询
+  // 就是靠它暴露的（打断窗口覆盖率仅 21%）。
+  const playMs = frames.filter((f) => f.pt === 1).length * 64
+  const expectedPolls = Math.round(playMs / 128)
+  if (expectedPolls > 10 && detects.length > 0) {
+    const coverage = (100 * detects.length) / expectedPolls
+    L.push(`**检测通道覆盖率**：播放期 ${(playMs / 1000).toFixed(1)}s，应发约 ${expectedPolls} 次，实发 ${detects.length} 次 → **${coverage.toFixed(0)}%**`)
+    // 用户说话期间单独算——这是最该覆盖、也最容易被漏掉的窗口
+    if (userWhilePlaying.length > 0) {
+      const a = userWhilePlaying[0].t
+      const b = userWhilePlaying[userWhilePlaying.length - 1].t
+      const expUser = Math.round((b - a) / 128)
+      const gotUser = detects.filter((d) => d.t >= a && d.t <= b).length
+      if (expUser > 3) {
+        const cu = (100 * gotUser) / expUser
+        L.push(`**打断窗口覆盖率**：${((b - a) / 1000).toFixed(1)}s，应发约 ${expUser} 次，实发 ${gotUser} 次 → **${cu.toFixed(0)}%**`)
+        if (cu < 80) L.push(`> ⚠️ 打断窗口覆盖率偏低——正是最需要检测的时候反而少发。检查 handleAudio 是否有分支跳过了轮询块。`)
+      }
+    }
+    L.push('')
+  }
+
   // A 档埋点：把「回报间隔」拆成「往返耗时」与「客户端等待」，定位瓶颈在哪一侧。
   if (detects.length > 4) {
     const rtts = detects.map((d) => d.rtt)

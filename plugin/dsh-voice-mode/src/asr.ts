@@ -657,26 +657,31 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         // 段内全是播放前真人声（播放期语音帧不进段）；释放 speechActive 后本帧起
         // 检测通道接管打断，防「陈旧 speechActive 饿死检测通道」致整段回复无法打断。
         if (speechActive) finalizeSegment(true)
-        return
+        // 此处**不得 return**（历史 bug，真机实测定位）：return 会连带跳过函数末尾的
+        // 轮询块，于是「播放中且 rms 超门限」的帧一律不发检测请求——而这正是用户开口
+        // 打断的那些帧。用户说得越响越连续，检测通道发得越少，请求只在音节间隙漏出去。
+        // 实测：6s 打断窗口内本应发 47 次，实际只发 10 次，确认耗时被拉到 753~951ms。
+        // 本帧不入段（自聊防护，语义不变），但轮询照常。
+      } else {
+        if (!speechActive) {
+          speechActive = true
+          // 打断根治：新一轮人声开始，清残留检测帧（上一播放窗口未发送的尾部已无意义）；
+          // 代际递增作废跨边界在途响应（防 detectSent 水位毒化）。
+          detectChunks = []
+          detectSent = 0
+          detectGeneration++
+          // P1-5：新一轮语音开始，复位「说完」标记（下一轮 chain 重新起算）。
+          utteranceEndAt = null
+          setState('speech')
+          for (const p of prePad) segment.push(p)
+          prePad = []
+        }
+        speechMs += durationMs
+        segmentMs += durationMs
+        silenceMs = 0
+        segment.push(data)
+        if (segmentMs > MAX_SEGMENT_MS) finalizeSegment()
       }
-      if (!speechActive) {
-        speechActive = true
-        // 打断根治：新一轮人声开始，清残留检测帧（上一播放窗口未发送的尾部已无意义）；
-        // 代际递增作废跨边界在途响应（防 detectSent 水位毒化）。
-        detectChunks = []
-        detectSent = 0
-        detectGeneration++
-        // P1-5：新一轮语音开始，复位「说完」标记（下一轮 chain 重新起算）。
-        utteranceEndAt = null
-        setState('speech')
-        for (const p of prePad) segment.push(p)
-        prePad = []
-      }
-      speechMs += durationMs
-      segmentMs += durationMs
-      silenceMs = 0
-      segment.push(data)
-      if (segmentMs > MAX_SEGMENT_MS) finalizeSegment()
     } else if (speechActive) {
       // P1-5：说完最后一个字 = 语音→静音过渡的首帧（每段只报一次）。
       if (utteranceEndAt === null) {
