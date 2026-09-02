@@ -126,6 +126,7 @@ var FixtureRecorder = class {
   startedAt = 0;
   frames = [];
   marks = [];
+  detects = [];
   micTrack = new Track();
   refTrack = new Track();
   resTrack = new Track();
@@ -151,6 +152,7 @@ var FixtureRecorder = class {
     this.startedAt = Date.now();
     this.frames = [];
     this.marks = [];
+    this.detects = [];
     this.micTrack.clear();
     this.refTrack.clear();
     this.resTrack.clear();
@@ -210,6 +212,14 @@ var FixtureRecorder = class {
     }
     this.refreshBadge();
   }
+  /**
+   * 检测通道一次往返（A 档埋点）：分离「请求在途慢」与「客户端没排上」。
+   * 停顿归因的唯一依据——回报间隔 = 往返耗时 + 客户端等待，此处记的是前者。
+   */
+  noteDetect(sentAt, rttMs, ok, samples) {
+    if (!this.active) return;
+    this.detects.push({ t: sentAt - this.startedAt, rtt: rttMs, ok: ok ? 1 : 0, n: samples });
+  }
   /** host 下行 isSpeech：盖在最近一帧上。 */
   noteIsSpeech(speech) {
     if (!this.active || speech === void 0) return;
@@ -237,7 +247,8 @@ var FixtureRecorder = class {
       durationMs,
       env: this.env,
       frames: this.frames,
-      marks: this.marks
+      marks: this.marks,
+      detects: this.detects
     };
     if (this.mode === "full" && this.micTrack.length > 0) {
       payload.audio = {
@@ -259,7 +270,7 @@ var FixtureRecorder = class {
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1e4);
       console.log(
-        `[dsh-voice][rec] \u5DF2\u4FDD\u5B58 ${name}\uFF1A${this.frames.length} \u5E27 / ${(durationMs / 1e3).toFixed(1)}s / \u6807\u6CE8 ${this.marks.length} \u6761`
+        `[dsh-voice][rec] \u5DF2\u4FDD\u5B58 ${name}\uFF1A${this.frames.length} \u5E27 / ${(durationMs / 1e3).toFixed(1)}s / \u6807\u6CE8 ${this.marks.length} \u6761 / \u68C0\u6D4B\u5F80\u8FD4 ${this.detects.length} \u6B21`
       );
     } catch (e) {
       console.warn("[dsh-voice][rec] \u4FDD\u5B58\u5931\u8D25\uFF1A" + String(e));
@@ -525,7 +536,7 @@ function createAsrEngine(config, sessionId) {
   const requestDetect = async () => {
     if (detectInFlight) return;
     let total = detectChunks.reduce((n, c) => n + c.length, 0);
-    const MAX_DETECT_PENDING = 30 * SAMPLE_RATE2;
+    const MAX_DETECT_PENDING = 1 * SAMPLE_RATE2;
     if (total - detectSent > MAX_DETECT_PENDING) {
       detectSent = Math.max(0, total - MAX_DETECT_PENDING);
     }
@@ -539,6 +550,8 @@ function createAsrEngine(config, sessionId) {
     const epoch = segmentEpoch;
     const gen = detectGeneration;
     detectInFlight = true;
+    const sentAt = Date.now();
+    let rttMs = -1;
     try {
       const res = await fetch(asrUrl(false, detectSent, epoch) + "&vadOnly=1", {
         method: "POST",
@@ -547,6 +560,7 @@ function createAsrEngine(config, sessionId) {
         signal: AbortSignal.timeout(5e3)
         // 防服务端挂起长期锁死 detectInFlight（Important#2）
       });
+      rttMs = Date.now() - sentAt;
       if (epoch !== segmentEpoch || gen !== detectGeneration) return;
       if (!res.ok) return;
       const out = await res.json();
@@ -560,6 +574,9 @@ function createAsrEngine(config, sessionId) {
     } catch {
     } finally {
       detectInFlight = false;
+      if (fixtureRecorder.isActive) {
+        fixtureRecorder.noteDetect(sentAt, rttMs < 0 ? Date.now() - sentAt : rttMs, rttMs >= 0, samples.length);
+      }
     }
   };
   const resetHostStream = async () => {
@@ -806,11 +823,15 @@ function createAsrEngine(config, sessionId) {
     const nowMs = Date.now();
     if (nowMs - lastPollAt >= PARTIAL_INTERVAL_MS) {
       if (playingNow && !speechActive && !holdActive) {
-        lastPollAt = nowMs;
-        void requestDetect();
+        if (!detectInFlight) {
+          lastPollAt = nowMs;
+          void requestDetect();
+        }
       } else if (speechActive || holdActive || state === "wake") {
-        lastPollAt = nowMs;
-        void requestPartial();
+        if (!partialInFlight) {
+          lastPollAt = nowMs;
+          void requestPartial();
+        }
       }
     }
   };
@@ -2464,7 +2485,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "827d2a8";
+var BUILD_TAG = "68881be";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

@@ -109,6 +109,9 @@ const echoVadTrue = echoVad.filter((f) => f.spk === 1).length
 const userVad = userWhilePlaying.filter((f) => f.spk !== undefined)
 const userVadTrue = userVad.filter((f) => f.spk === 1).length
 
+// ── 检测通道往返耗时（A 档埋点；旧 fixture 无此字段） ──
+const detects = (fx.detects ?? []).filter((d) => d.ok === 1)
+
 // ── 检测通道观测栅格：回报间隔分布（打断延迟的真实约束） ──
 const pollTimes = frames.filter((f) => f.pt === 1 && f.spk !== undefined).map((f) => f.t)
 const gaps = pollTimes.slice(1).map((v, i) => v - pollTimes[i]).filter((g) => g > 0 && g < 10000)
@@ -197,6 +200,30 @@ if (gaps.length > 4) {
     L.push(`| ${cf}${cf === 3 ? '（默认）' : ''} | ${cf * 128}ms | ${qtl(w, 0.5)}ms | ${qtl(w, 0.9)}ms | ${qtl(w, 0.99)}ms |`)
   }
   L.push('')
+  // A 档埋点：把「回报间隔」拆成「往返耗时」与「客户端等待」，定位瓶颈在哪一侧。
+  if (detects.length > 4) {
+    const rtts = detects.map((d) => d.rtt)
+    L.push('**停顿归因**（A 档埋点，`detects` 字段）：')
+    L.push('')
+    L.push('| | p50 | p90 | p99 | max |')
+    L.push('|---|---|---|---|---|')
+    L.push(`| 请求往返耗时 | ${qtl(rtts, 0.5)}ms | ${qtl(rtts, 0.9)}ms | ${qtl(rtts, 0.99)}ms | ${Math.max(...rtts)}ms |`)
+    L.push(`| 回报间隔（含等待） | ${qtl(gaps, 0.5)}ms | ${qtl(gaps, 0.9)}ms | ${qtl(gaps, 0.99)}ms | ${Math.max(...gaps)}ms |`)
+    L.push('')
+    const rttP99 = qtl(rtts, 0.99)
+    const gapP99 = qtl(gaps, 0.99)
+    if (rttP99 > gapP99 * 0.6) {
+      L.push(`> 尾部由**往返耗时**主导（p99 往返 ${rttP99}ms vs 间隔 ${gapP99}ms）⇒ 瓶颈在宿主/网络侧。`)
+      L.push('> 客户端侧的节拍修复帮不上，需要 ADR-0002（VAD 下沉）或减小上行体积。')
+    } else {
+      L.push(`> 尾部**不由往返耗时解释**（p99 往返仅 ${rttP99}ms，间隔却 ${gapP99}ms）⇒ 时间花在客户端等待上。`)
+      L.push('> 这正是 A 档节拍修复针对的情形——请求回来后应当立即补发，而不是等下一个 128ms 边界。')
+    }
+    L.push('')
+  } else if ((fx.detects ?? []).length === 0) {
+    L.push('> （本次录制没有 `detects` 字段——是 A 档埋点之前的版本。重录可拿到停顿归因。）')
+    L.push('')
+  }
   const stalls = gaps.filter((g) => g > 200).length
   if (stalls > 0) {
     L.push(

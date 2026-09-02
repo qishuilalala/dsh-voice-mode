@@ -352,10 +352,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
    */
   const requestDetect = async (): Promise<void> => {
     if (detectInFlight) return
-    // 积压上界（30s 音频）：网络持续失败时丢弃最旧帧——检测只关心「当前是否在说话」，
+    // 积压上界：网络失败或宿主卡顿时丢弃最旧帧——检测只关心「当前是否在说话」，
     // 陈旧音频无价值；防无界增长与超 64s（4MB）后每包必被 host 413 的死锁。
+    // A 档修复：30s → 1s。停顿后补传整段积压会让下一次往返更慢（正反馈），
+    // 而对「此刻是否在说话」而言 1s 之前的音频已无意义。
     let total = detectChunks.reduce((n, c) => n + c.length, 0)
-    const MAX_DETECT_PENDING = 30 * SAMPLE_RATE
+    const MAX_DETECT_PENDING = 1 * SAMPLE_RATE
     if (total - detectSent > MAX_DETECT_PENDING) {
       detectSent = Math.max(0, total - MAX_DETECT_PENDING)
     }
@@ -369,6 +371,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     const epoch = segmentEpoch
     const gen = detectGeneration
     detectInFlight = true
+    // fixture 录制：分离「往返耗时」与「客户端没排上」——停顿归因的唯一依据。
+    const sentAt = Date.now()
+    let rttMs = -1
     try {
       const res = await fetch(asrUrl(false, detectSent, epoch) + '&vadOnly=1', {
         method: 'POST',
@@ -376,6 +381,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         body: samples.buffer as ArrayBuffer,
         signal: AbortSignal.timeout(5000), // 防服务端挂起长期锁死 detectInFlight（Important#2）
       })
+      rttMs = Date.now() - sentAt
       if (epoch !== segmentEpoch || gen !== detectGeneration) return // 弃段/重置后迟到响应作废
       if (!res.ok) return
       const out = (await res.json()) as { isSpeech?: boolean }
@@ -391,6 +397,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       // 超时/网络波动静默：未推进水位，下一拍重传
     } finally {
       detectInFlight = false
+      if (fixtureRecorder.isActive) {
+        fixtureRecorder.noteDetect(sentAt, rttMs < 0 ? Date.now() - sentAt : rttMs, rttMs >= 0, samples.length)
+      }
     }
   }
 
@@ -713,13 +722,21 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // 条件转为满足的下一帧立即补发，语义与原「帧时长累加」一致）。
     const nowMs = Date.now()
     if (nowMs - lastPollAt >= PARTIAL_INTERVAL_MS) {
+      // A 档修复：只有「真的发出去了」才推进节拍。
+      // 此前无论请求是否被在途标志挡下都推进 lastPollAt——一次超过 128ms 的往返会连着
+      // 吃掉后续整拍，把观测栅格量化到 RTT 向上取整的 128ms 倍数（实测停顿 449/758ms）。
+      // 改后：在途期间不推进，请求一回来，下一帧（≤64ms）立即补发。
       if (playingNow && !speechActive && !holdActive) {
         // 打断根治：朗读中优先检测通道。
-        lastPollAt = nowMs
-        void requestDetect()
+        if (!detectInFlight) {
+          lastPollAt = nowMs
+          void requestDetect()
+        }
       } else if (speechActive || holdActive || state === 'wake') {
-        lastPollAt = nowMs
-        void requestPartial()
+        if (!partialInFlight) {
+          lastPollAt = nowMs
+          void requestPartial()
+        }
       }
     }
   }

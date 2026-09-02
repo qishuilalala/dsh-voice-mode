@@ -59,6 +59,18 @@ interface Mark {
   note?: string
 }
 
+/** 检测通道一次往返（A 档：停顿归因）。 */
+interface DetectRtt {
+  /** 发起时刻（相对录制起点，ms）。 */
+  t: number
+  /** 往返耗时 ms。 */
+  rtt: number
+  /** 1 = 拿到响应，0 = 超时/网络失败。 */
+  ok: 0 | 1
+  /** 本次上行样本数。 */
+  n: number
+}
+
 /** 读取当前档位（每次读，改完刷新即可生效）。 */
 export function recordMode(): RecordMode {
   try {
@@ -130,6 +142,7 @@ class FixtureRecorder {
   private startedAt = 0
   private frames: FrameMeta[] = []
   private marks: Mark[] = []
+  private detects: DetectRtt[] = []
   private micTrack = new Track()
   private refTrack = new Track()
   private resTrack = new Track()
@@ -157,6 +170,7 @@ class FixtureRecorder {
     this.startedAt = Date.now()
     this.frames = []
     this.marks = []
+    this.detects = []
     this.micTrack.clear()
     this.refTrack.clear()
     this.resTrack.clear()
@@ -225,6 +239,15 @@ class FixtureRecorder {
     this.refreshBadge()
   }
 
+  /**
+   * 检测通道一次往返（A 档埋点）：分离「请求在途慢」与「客户端没排上」。
+   * 停顿归因的唯一依据——回报间隔 = 往返耗时 + 客户端等待，此处记的是前者。
+   */
+  noteDetect(sentAt: number, rttMs: number, ok: boolean, samples: number): void {
+    if (!this.active) return
+    this.detects.push({ t: sentAt - this.startedAt, rtt: rttMs, ok: ok ? 1 : 0, n: samples })
+  }
+
   /** host 下行 isSpeech：盖在最近一帧上。 */
   noteIsSpeech(speech: boolean | undefined): void {
     if (!this.active || speech === undefined) return
@@ -255,6 +278,7 @@ class FixtureRecorder {
       env: this.env,
       frames: this.frames,
       marks: this.marks,
+      detects: this.detects,
     }
     if (this.mode === 'full' && this.micTrack.length > 0) {
       payload.audio = {
@@ -277,7 +301,7 @@ class FixtureRecorder {
       a.remove()
       setTimeout(() => URL.revokeObjectURL(url), 10000)
       console.log(
-        `[dsh-voice][rec] 已保存 ${name}：${this.frames.length} 帧 / ${(durationMs / 1000).toFixed(1)}s / 标注 ${this.marks.length} 条`,
+        `[dsh-voice][rec] 已保存 ${name}：${this.frames.length} 帧 / ${(durationMs / 1000).toFixed(1)}s / 标注 ${this.marks.length} 条 / 检测往返 ${this.detects.length} 次`,
       )
     } catch (e) {
       console.warn('[dsh-voice][rec] 保存失败：' + String(e))

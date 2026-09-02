@@ -169,6 +169,25 @@ t('lib 含 B2 宿主存活探活（owner tabId + 失联让出）', () => {
   const c = read('lib/client.js')
   assert.ok(c.includes('dshvm-tabId'), 'client bundle missing per-tab id storage key')
 })
+t('lib/client.js 含 A 档节拍修复（在途请求不吞掉轮询 tick）', () => {
+  const c = read('lib/client.js')
+  // 修复前：lastPollAt 无条件推进，一次 >128ms 的往返会连吃后续整拍（实测停顿 449/758ms）。
+  // 修复后：detect/partial 各自被 in-flight 标志守卫，只有真正派发才推进节拍。
+  assert.ok(/if\s*\(!\w*[Dd]etectInFlight\)/.test(c), 'client bundle missing detect in-flight poll guard')
+  assert.ok(/if\s*\(!\w*[Pp]artialInFlight\)/.test(c), 'client bundle missing partial in-flight poll guard')
+})
+
+t('lib/client.js 检测通道积压上界为 1s（停顿后不补传整段，防正反馈）', () => {
+  const c = read('lib/client.js')
+  assert.ok(/MAX_DETECT_PENDING\s*=\s*1\s*\*/.test(c) || /1\s*\*\s*SAMPLE_RATE/.test(c), 'detect backlog cap not 1s')
+  assert.ok(!/30\s*\*\s*SAMPLE_RATE/.test(c), 'stale 30s detect backlog cap still present')
+})
+
+t('lib/client.js 含检测往返埋点（停顿归因：区分往返慢 vs 客户端没排上）', () => {
+  const c = read('lib/client.js')
+  assert.ok(c.includes('noteDetect'), 'client bundle missing detect RTT instrumentation')
+})
+
 t('lib/client.js 含 A2.5 回声门控（aboveEchoFloor，自动打断防回声自打断）', () => {
   const c = read('lib/client.js')
   assert.ok(c.includes('aboveEchoFloor'), 'client bundle missing echo gate')
