@@ -160,7 +160,21 @@ var FixtureRecorder = class {
     this.mark("begin", mode);
     this.mountBadge();
     this.bindKeys();
-    console.log(`[dsh-voice][rec] \u5F00\u59CB\u5F55\u5236\uFF08${mode}\uFF09\xB7 F8=\u6807\u6CE8\u8BF4\u8BDD \xB7 F9=\u4FDD\u5B58\u4E0B\u8F7D`);
+    try {
+      ;
+      window.__dshvmRec = {
+        \u8BF4\u8BDD\u5F00\u59CB: () => this.setUserSpeaking(true),
+        \u8BF4\u8BDD\u7ED3\u675F: () => this.setUserSpeaking(false),
+        \u4FDD\u5B58: () => this.save("console"),
+        \u6807\u6CE8: (kind, note) => this.mark(kind, note),
+        \u72B6\u6001: () => ({ mode: this.mode, \u5E27\u6570: this.frames.length, \u6807\u6CE8\u6570: this.marks.length, \u8BF4\u8BDD\u4E2D: this.userSpeaking })
+      };
+    } catch {
+    }
+    console.log(
+      `[dsh-voice][rec] \u5F00\u59CB\u5F55\u5236\uFF08${mode}\uFF09\xB7 F8=\u6807\u6CE8\u8BF4\u8BDD \xB7 F9=\u4FDD\u5B58\u4E0B\u8F7D
+[dsh-voice][rec] \u952E\u76D8\u4E0D\u7075\u65F6\u7528\u63A7\u5236\u53F0\uFF1A__dshvmRec.\u8BF4\u8BDD\u5F00\u59CB() / .\u8BF4\u8BDD\u7ED3\u675F() / .\u4FDD\u5B58() / .\u72B6\u6001()`
+    );
   }
   /**
    * 逐帧写入。在 asr.ts handleAudio 里 AEC 与门控统计算完之后调用。
@@ -254,15 +268,20 @@ var FixtureRecorder = class {
     this.refTrack.clear();
     this.resTrack.clear();
   }
+  /** 说话区间标注（键盘与控制台入口共用；重复置同一状态不产生重复标注）。 */
+  setUserSpeaking(on) {
+    if (!this.active || this.userSpeaking === on) return;
+    this.userSpeaking = on;
+    this.mark(on ? "user-speech-start" : "user-speech-end");
+    console.log(`[dsh-voice][rec] \u6807\u6CE8\uFF1A${on ? "\u5F00\u59CB\u8BF4\u8BDD" : "\u8BF4\u5B8C\u4E86"}`);
+    this.refreshBadge();
+  }
   // ── 键盘标注 ──
   bindKeys() {
     this.keyHandler = (e) => {
       if (e.key === "F8") {
         e.preventDefault();
-        this.userSpeaking = !this.userSpeaking;
-        this.mark(this.userSpeaking ? "user-speech-start" : "user-speech-end");
-        console.log(`[dsh-voice][rec] \u6807\u6CE8\uFF1A${this.userSpeaking ? "\u5F00\u59CB\u8BF4\u8BDD" : "\u8BF4\u5B8C\u4E86"}`);
-        this.refreshBadge();
+        this.setUserSpeaking(!this.userSpeaking);
       } else if (e.key === "F9") {
         e.preventDefault();
         this.save("hotkey");
@@ -2445,7 +2464,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "79db748";
+var BUILD_TAG = "04b5973";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

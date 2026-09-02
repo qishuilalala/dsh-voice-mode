@@ -166,7 +166,22 @@ class FixtureRecorder {
     this.mark('begin', mode)
     this.mountBadge()
     this.bindKeys()
-    console.log(`[dsh-voice][rec] 开始录制（${mode}）· F8=标注说话 · F9=保存下载`)
+    // 控制台兜底入口：部分笔记本 F8/F9 被 Fn 功能键占用，键盘标注可能触发不了。
+    try {
+      ;(window as unknown as Record<string, unknown>).__dshvmRec = {
+        说话开始: () => this.setUserSpeaking(true),
+        说话结束: () => this.setUserSpeaking(false),
+        保存: () => this.save('console'),
+        标注: (kind: string, note?: string) => this.mark(kind, note),
+        状态: () => ({ mode: this.mode, 帧数: this.frames.length, 标注数: this.marks.length, 说话中: this.userSpeaking }),
+      }
+    } catch {
+      // ignore
+    }
+    console.log(
+      `[dsh-voice][rec] 开始录制（${mode}）· F8=标注说话 · F9=保存下载\n` +
+        `[dsh-voice][rec] 键盘不灵时用控制台：__dshvmRec.说话开始() / .说话结束() / .保存() / .状态()`,
+    )
   }
 
   /**
@@ -272,15 +287,21 @@ class FixtureRecorder {
     this.resTrack.clear()
   }
 
+  /** 说话区间标注（键盘与控制台入口共用；重复置同一状态不产生重复标注）。 */
+  setUserSpeaking(on: boolean): void {
+    if (!this.active || this.userSpeaking === on) return
+    this.userSpeaking = on
+    this.mark(on ? 'user-speech-start' : 'user-speech-end')
+    console.log(`[dsh-voice][rec] 标注：${on ? '开始说话' : '说完了'}`)
+    this.refreshBadge()
+  }
+
   // ── 键盘标注 ──
   private bindKeys(): void {
     this.keyHandler = (e: KeyboardEvent) => {
       if (e.key === 'F8') {
         e.preventDefault()
-        this.userSpeaking = !this.userSpeaking
-        this.mark(this.userSpeaking ? 'user-speech-start' : 'user-speech-end')
-        console.log(`[dsh-voice][rec] 标注：${this.userSpeaking ? '开始说话' : '说完了'}`)
-        this.refreshBadge()
+        this.setUserSpeaking(!this.userSpeaking)
       } else if (e.key === 'F9') {
         e.preventDefault()
         this.save('hotkey')
