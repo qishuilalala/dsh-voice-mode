@@ -37,6 +37,23 @@
 
 同时，播放期 detect 通道以 f32 PCM 持续上行（16000 × 4 B/s ≈ 64 KB/s），并需要 `detectGeneration` 代际计数器来作废迟到响应（`src/asr.ts:197`）。
 
+## 真机数据（2026-09-02 补充，本 ADR 的分量因此上调）
+
+两条真机录制（`build=04b5973`）量到的检测通道回报间隔：
+
+| 录制 | p50 | p90 | p99 | max |
+|---|---|---|---|---|
+| ① 纯听 124.6s（504 拍） | 128ms | 130ms | 132ms | 166ms |
+| ② 打断 61.8s（278 拍） | 128ms | 130ms | **449ms** | **758ms** |
+
+稳态与本 ADR 的 128ms 推算完全吻合。**但②里唯一一次真实打断的确认耗时是 951ms**
+（理论 384ms）——因为 `requestDetect` 被 `detectInFlight` 串行化，下一拍必须等上一次
+HTTP 往返回来，而停顿恰好落在打断时刻。
+
+这把本 ADR 从"省 128ms 量化 + 往返"改写成：**消除一个会在最需要时退化 2.5 倍的尾部风险**
+（p50 完美、p99 崩，平均值完全看不出来）。详见
+[findings/2026-09-02-barge-in-latency-stall.md](../findings/2026-09-02-barge-in-latency-stall.md)。
+
 ## 决策（提议）
 
 **把 Silero VAD 搬到浏览器采集侧**（AudioWorklet 或专用 Worker，onnxruntime-web / sherpa-onnx WASM），打断判定完全本地闭环：

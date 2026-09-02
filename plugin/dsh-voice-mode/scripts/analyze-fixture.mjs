@@ -5,15 +5,23 @@
  * 用法：
  *   node scripts/analyze-fixture.mjs <fixture.json> [--json]
  *
- * 它回答的核心问题（docs/findings/2026-09-02-echo-gate-ratchet.md 的未决分支）：
- *   **真机上 AEC 后残差是否保留语音包络？**
- *   - crest ≥ 7dB  → 回声门控在所有场景失效（合成结论直接成立）
- *   - crest ≈ 1dB  → 门在「原生 AEC 生效」时可用，在失效时崩溃（依然是最需要它的场景）
+ * ── 判据的由来（2026-09-02 修正） ──
+ * 初版用 crest factor（max/mean）判断「残差是否保留语音包络」。**这个判据是错的**：
+ * crest 被单个离群帧主导，真机上量到 8.6dB / 12.4dB（看着"像语音"），而实际的
+ * 回声地板棘轮效应几乎没发生（doubleTalk 触发率 0.3% / 16.4%，远低于合成信号的 85~97%）。
  *
- * 顺带产出：
- *   - 用录到的真实残差重放回声门控 → 真机门开率、地板估计误差
- *   - 与 bench-echo-gate.mjs 的合成预测对照
- *   - ERLE（有 mic/res 双轨时）
+ * 进一步试过 中位/均值、p90/中位、调制周期 等多个边缘统计量，**没有一个能预测棘轮强度**
+ * （合成 p90/中位=1.92 冻结 85%，真机=2.62 只冻结 16%，不单调）。原因是棘轮是**双稳态动态**：
+ * 地板一旦开始塌就正反馈继续塌，是否启动取决于初期越过 floor×2 的帧够不够多，不是分布形状的函数。
+ *
+ * 所以本脚本**不再给基于分布的判据**，直接报引擎每帧记下的真值：
+ *   - doubleTalk 触发率（f.dt）→ 棘轮驱动力本身
+ *   - 门开率（f.fl / f.pk）→ 门控当时的真实状态
+ *   - 地板对残差均值的误差 → 地板还能不能当电平估计用
+ * 分布统计量保留为描述性信息，不参与判定。
+ *
+ * 而「回声门控有没有在保护你」的答案，其实由更前面的一环决定：
+ *   - 朗读期 Silero isSpeech 真值率 → 若为 0，门控根本不会被查询到（打断需要先连续判真）
  */
 import { readFileSync } from 'node:fs'
 
@@ -37,99 +45,80 @@ if (frames.length === 0) {
   process.exit(1)
 }
 
-// ── 圈定「纯回声窗口」：TTS 在播 且 用户没在说话 ──
-// 用户说话区间来自 F8 标注；没有标注时认为全程未说话（"问一句然后闭嘴听"的场景）。
+const GATE_DB = fx.env?.echoGateDb ?? 6
+const GATE_RATIO = Math.pow(10, GATE_DB / 20)
+
+// ── 圈定窗口：TTS 在播 且 用户没在说话 = 纯回声 ──
 const speechSpans = []
-let open = null
+let openSpan = null
 for (const m of marks) {
-  if (m.kind === 'user-speech-start') open = m.t
-  else if (m.kind === 'user-speech-end' && open !== null) {
-    speechSpans.push([open, m.t])
-    open = null
+  if (m.kind === 'user-speech-start') openSpan = m.t
+  else if (m.kind === 'user-speech-end' && openSpan !== null) {
+    speechSpans.push([openSpan, m.t])
+    openSpan = null
   }
 }
-if (open !== null) speechSpans.push([open, Infinity])
+if (openSpan !== null) speechSpans.push([openSpan, Infinity])
 const inUserSpeech = (t) => speechSpans.some(([a, b]) => t >= a && t <= b)
 
 const pureEcho = frames.filter((f) => f.pt === 1 && !inUserSpeech(f.t))
-const userFrames = frames.filter((f) => inUserSpeech(f.t))
+const userWhilePlaying = frames.filter((f) => f.pt === 1 && inUserSpeech(f.t))
 const idleFrames = frames.filter((f) => f.pt === 0 && !inUserSpeech(f.t))
 
-const stat = (arr, key) => {
-  const v = arr.map((f) => f[key]).filter((x) => Number.isFinite(x))
-  if (v.length === 0) return null
-  const sorted = [...v].sort((a, b) => a - b)
-  const mean = v.reduce((s, x) => s + x, 0) / v.length
+const qtl = (a, p) => {
+  const s = [...a].sort((x, y) => x - y)
+  return s.length ? s[Math.min(s.length - 1, Math.floor(s.length * p))] : 0
+}
+const avg = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0)
+
+function shape(fr) {
+  if (fr.length === 0) return null
+  const r = fr.map((f) => f.rms)
+  const mean = avg(r)
+  const median = qtl(r, 0.5)
   return {
-    n: v.length,
+    n: fr.length,
     mean,
-    median: sorted[Math.floor(sorted.length / 2)],
-    p95: sorted[Math.floor(sorted.length * 0.95)],
-    max: sorted[sorted.length - 1],
-    min: sorted[0],
-    crestDb: mean > 0 ? 20 * Math.log10(sorted[sorted.length - 1] / mean) : 0,
+    median,
+    p90: qtl(r, 0.9),
+    p99: qtl(r, 0.99),
+    max: Math.max(...r),
+    /** 描述性：分布偏度代理。**不预测棘轮**（见文件头），仅供人看。 */
+    medianOverMean: mean > 0 ? median / mean : 0,
+    /** 描述性：旧判据，已废弃。 */
+    crestDb: mean > 0 ? 20 * Math.log10(Math.max(...r) / mean) : 0,
+    /** 引擎内真值：本窗口 doubleTalk 触发率（= 地板棘轮的驱动力）。 */
+    doubleTalkPct: (100 * fr.filter((f) => f.dt === 1).length) / fr.length,
+    /** 引擎内真值：门开率（用录制时的 fl/pk，不是重放）。 */
+    gateOpenPct: (100 * fr.filter((f) => f.fl > 0 && f.pk > f.fl * GATE_RATIO).length) / fr.length,
+    /** 地板对本窗口残差均值的估计误差（正 = 低估）。 */
+    floorErrorDb: (() => {
+      const fl = qtl(fr.map((f) => f.fl), 0.5)
+      return fl > 0 && mean > 0 ? 20 * Math.log10(mean / fl) : null
+    })(),
   }
 }
 
-const echoRes = stat(pureEcho, 'rms')
-const echoMic = stat(pureEcho, 'mic')
-const userRes = stat(userFrames, 'rms')
-const idleRes = stat(idleFrames, 'rms')
+const echo = shape(pureEcho)
+const userPlay = shape(userWhilePlaying)
+const idle = shape(idleFrames)
 
-// ── 用真实残差重放回声门控（逐行等价 asr.ts:575-593 + :849-852）──
-function replayGate(seq, gateDb = fx.env?.echoGateDb ?? 6) {
-  let floorRms = 0
-  let peakRms = 0
-  let opened = 0
-  let frozen = 0
-  const flags = []
-  for (const f of seq) {
-    const durationMs = 64
-    const gateRatio = Math.pow(10, gateDb / 20)
-    const peakDecay = Math.pow(0.9, durationMs / 64)
-    const floorAlpha = 1 - Math.pow(0.98, durationMs / 64)
-    const playing = f.pt === 1
-    if (playing) {
-      peakRms = Math.max(peakRms * peakDecay, f.rms)
-    }
-    const doubleTalk = playing && floorRms > 0 && f.rms > floorRms * gateRatio
-    if (playing) {
-      if (floorRms === 0) floorRms = f.rms
-      else if (!doubleTalk) floorRms = floorRms * (1 - floorAlpha) + f.rms * floorAlpha
-    } else {
-      peakRms = 0
-    }
-    if (doubleTalk) frozen++
-    const g = floorRms !== 0 && peakRms > floorRms * gateRatio
-    if (g) opened++
-    flags.push({ t: f.t, open: g, floorRms, peakRms })
-  }
-  return { openPct: (100 * opened) / seq.length, frozenPct: (100 * frozen) / seq.length, flags, finalFloor: floorRms }
+// ── 决定性一环：朗读期 Silero 有没有把回声判成语音 ──
+const echoVad = pureEcho.filter((f) => f.spk !== undefined)
+const echoVadTrue = echoVad.filter((f) => f.spk === 1).length
+const userVad = userWhilePlaying.filter((f) => f.spk !== undefined)
+const userVadTrue = userVad.filter((f) => f.spk === 1).length
+
+// ── 检测通道观测栅格：回报间隔分布（打断延迟的真实约束） ──
+const pollTimes = frames.filter((f) => f.pt === 1 && f.spk !== undefined).map((f) => f.t)
+const gaps = pollTimes.slice(1).map((v, i) => v - pollTimes[i]).filter((g) => g > 0 && g < 10000)
+const confirmWindow = (cf) => {
+  const w = []
+  for (let i = 0; i + cf - 1 < gaps.length; i++) w.push(gaps.slice(i, i + cf).reduce((a, b) => a + b, 0))
+  return w
 }
 
-const replay = replayGate(frames)
-const echoOpen = (() => {
-  const f = replay.flags.filter((x, i) => frames[i].pt === 1 && !inUserSpeech(frames[i].t))
-  return f.length ? (100 * f.filter((x) => x.open).length) / f.length : null
-})()
-const userOpen = (() => {
-  const f = replay.flags.filter((x, i) => inUserSpeech(frames[i].t))
-  return f.length ? (100 * f.filter((x) => x.open).length) / f.length : null
-})()
-
-// 录制期间实际的地板（引擎内真值）与真实回声电平的差
-const recordedFloor = stat(pureEcho, 'fl')
-const floorErrDb =
-  echoRes && recordedFloor && recordedFloor.median > 0
-    ? 20 * Math.log10(echoRes.mean / recordedFloor.median)
-    : null
-
-// ERLE（需 full 模式且自研 AEC 实际生效，即 audio.res 存在）
-const hasRes = !!fx.audio?.res
-const erleDb =
-  echoMic && echoRes && echoRes.mean > 0 ? 20 * Math.log10(echoMic.mean / echoRes.mean) : null
-
-const fmt = (v, d = 4) => (v === null || v === undefined ? '—' : typeof v === 'number' ? v.toFixed(d) : String(v))
+const fmt = (v, d = 4) => (v === null || v === undefined ? '—' : v.toFixed(d))
 const pct = (v) => (v === null || v === undefined ? '—' : v.toFixed(1) + '%')
 
 const L = []
@@ -139,75 +128,116 @@ L.push(`文件：\`${path}\``)
 L.push(`录于 ${fx.recordedAt} · 时长 ${(fx.durationMs / 1000).toFixed(1)}s · ${frames.length} 帧 · 档位 ${fx.mode} · 结束原因 ${fx.reason}`)
 const env = fx.env ?? {}
 L.push(
-  `环境：build=${env.build ?? '?'} · mode=${env.mode ?? '?'} · bargeInMode=${env.bargeInMode ?? '?'} · echoGateDb=${env.echoGateDb ?? '?'} · interruptLevel=${env.interruptLevel ?? '?'}`,
+  `环境：build=${env.build ?? '?'} · mode=${env.mode ?? '?'} · bargeInMode=${env.bargeInMode ?? '?'} · echoGateDb=${GATE_DB} · interruptLevel=${env.interruptLevel ?? '?'}`,
 )
 const aecMark = marks.find((m) => m.kind === 'native-aec')
-L.push(`原生 AEC：${aecMark ? aecMark.note : '（未记录）'}${hasRes ? ' · 含独立残差轨（自研 NLMS 生效过）' : ''}`)
+L.push(`原生 AEC：${aecMark ? aecMark.note : '（未记录）'}`)
 L.push('')
-L.push(`窗口划分：纯回声 ${pureEcho.length} 帧 · 用户说话 ${userFrames.length} 帧 · 空闲 ${idleFrames.length} 帧`)
-if (speechSpans.length === 0) L.push('> 无 F8 标注 → 按「全程未说话」处理（纯听场景）。若你其实说过话，结论会偏。')
+L.push(`窗口：纯回声 ${pureEcho.length} 帧 · 播放期用户说话 ${userWhilePlaying.length} 帧 · 非播放 ${idleFrames.length} 帧`)
+if (speechSpans.length === 0) L.push('> 无 F8 标注 → 按「全程未说话」处理。非播放窗口里会混入你提问时的语音，属正常。')
 L.push('')
 
-L.push('## 1. 核心问题：真机残差的 crest')
+// ── 1. 门控是否在保护你 ──
+L.push('## 1. 回声门控实际起没起作用')
 L.push('')
-if (!echoRes) {
-  L.push('**没有纯回声帧**——本次录制里 TTS 没播过，或全程都在说话。换一条录：问一句，然后闭嘴听完。')
+if (!echo) {
+  L.push('**没有纯回声帧**——本次 TTS 没播过，或全程都在说话。')
 } else {
-  L.push('| 窗口 | 帧数 | 残差均值 | 中位数 | 峰值 | **crest (dB)** |')
-  L.push('|---|---|---|---|---|---|')
-  L.push(`| 纯回声 | ${echoRes.n} | ${fmt(echoRes.mean)} | ${fmt(echoRes.median)} | ${fmt(echoRes.max)} | **${echoRes.crestDb.toFixed(1)}** |`)
-  if (userRes) L.push(`| 用户说话 | ${userRes.n} | ${fmt(userRes.mean)} | ${fmt(userRes.median)} | ${fmt(userRes.max)} | ${userRes.crestDb.toFixed(1)} |`)
-  if (idleRes) L.push(`| 空闲底噪 | ${idleRes.n} | ${fmt(idleRes.mean)} | ${fmt(idleRes.median)} | ${fmt(idleRes.max)} | ${idleRes.crestDb.toFixed(1)} |`)
+  L.push('| 指标 | 纯回声 | 播放期用户说话 | 判读 |')
+  L.push('|---|---|---|---|')
+  L.push(
+    `| 朗读期 Silero 判语音率 | **${echoVad.length ? pct((100 * echoVadTrue) / echoVad.length) : '无回报'}**（${echoVadTrue}/${echoVad.length}） | ${userVad.length ? pct((100 * userVadTrue) / userVad.length) : '—'}（${userVadTrue}/${userVad.length}） | 为 0 ⇒ 门控**根本没被查询到** |`,
+  )
+  L.push(`| 引擎内门开率 | ${pct(echo.gateOpenPct)} | ${userPlay ? pct(userPlay.gateOpenPct) : '—'} | 纯回声段理想 0% |`)
+  L.push(`| doubleTalk 触发率 | ${pct(echo.doubleTalkPct)} | ${userPlay ? pct(userPlay.doubleTalkPct) : '—'} | 高 ⇒ 地板棘轮 |`)
+  L.push(`| 地板低估残差均值 | ${echo.floorErrorDb === null ? '—' : echo.floorErrorDb.toFixed(1) + ' dB'} | — | 大 ⇒ 地板不可作电平估计 |`)
   L.push('')
-  const c = echoRes.crestDb
-  if (c >= 7) {
-    L.push(`**判定：crest = ${c.toFixed(1)} dB ≥ 7 dB → 残差保留语音包络。**`)
-    L.push('合成基准的结论直接成立：回声门控在真机上同样是单向棘轮，判别力≈0。')
-  } else if (c <= 3) {
-    L.push(`**判定：crest = ${c.toFixed(1)} dB ≤ 3 dB → 残差接近准平稳噪声。**`)
-    L.push('说明原生 AEC 的 RES 把残差整形掉了。门在这台设备上可用——但仍需录一条「原生 AEC 失效」的对照，')
-    L.push('那才是门真正要顶事的场景。')
-  } else {
-    L.push(`**判定：crest = ${c.toFixed(1)} dB，落在灰区（3~7 dB）。** 需要再录 1-2 条不同设备/音量的对照。`)
+  if (echoVad.length > 0 && echoVadTrue === 0) {
+    L.push('**判定：Silero 在整个朗读期从未把回声判成语音（0 帧）。**')
+    L.push('⇒ 打断的必要条件（连续 confirmFrames 次判真）从未成立 ⇒ **回声门控这一道从未被查询到**。')
+    L.push('真正在拦自打断的是 VAD，不是门控。`echoGateDb` 在此配置下是空操作——但原因是"没走到"，')
+    L.push('不是"走到了但判错"。')
+  } else if (echoVad.length > 0) {
+    L.push(`**判定：Silero 在纯回声期有 ${echoVadTrue} 帧判真** ⇒ 门控是最后一道防线，它的判别力此时才重要。`)
   }
 }
 L.push('')
 
-L.push('## 2. 用真实残差重放回声门控')
+// ── 2. 分布形状（描述性；没有边缘统计量能预测棘轮，见文件头）──
+L.push('## 2. 残差分布形状（描述性，不作判据）')
 L.push('')
-L.push('| 指标 | 实测 | 合成基准的预测 |')
-L.push('|---|---|---|')
-L.push(`| 纯回声段门开率 | ${pct(echoOpen)} | 99.8% |`)
-L.push(`| 用户说话段门开率 | ${pct(userOpen)} | 100.0% |`)
-L.push(`| 判别余量 | ${echoOpen !== null && userOpen !== null ? (userOpen - echoOpen).toFixed(1) + ' pt' : '—'} | 0.4 pt |`)
-L.push(`| 地板冻结率 | ${pct(replay.frozenPct)} | 85–97% |`)
-L.push(`| 地板低估真实回声 | ${floorErrDb === null ? '—' : floorErrDb.toFixed(1) + ' dB'} | 28–57 dB |`)
+L.push('| 窗口 | 帧 | 均值 | 中位 | p90 | p99 | max | **中位/均值** | crest(dB) |')
+L.push('|---|---|---|---|---|---|---|---|---|')
+for (const [nm, s] of [['纯回声', echo], ['播放期用户说话', userPlay], ['非播放', idle]]) {
+  if (!s) continue
+  L.push(
+    `| ${nm} | ${s.n} | ${fmt(s.mean)} | ${fmt(s.median)} | ${fmt(s.p90)} | ${fmt(s.p99)} | ${fmt(s.max)} | **${s.medianOverMean.toFixed(2)}** | ${s.crestDb.toFixed(1)} |`,
+  )
+}
 L.push('')
-L.push('> "地板低估"用的是录制期引擎内的真实 `floor` 中位数 vs 纯回声段残差均值——不是重放值，是真值。')
+L.push('> 以上均为**描述性统计**。中位/均值、p90/中位、调制周期都试过，没有一个能预测棘轮强度——')
+L.push('> 棘轮是双稳态动态（地板一塌就正反馈继续塌），不是分布形状的函数。**判定看 §1 的引擎真值，不看这里。**')
+L.push('> 参照：`bench-echo-gate.mjs` 的尖锐档中位/均值 ≈0.49~1.07，冻结率却一律 85%+；真机 0.80 只冻结 16.4%。')
 L.push('')
 
-if (erleDb !== null) {
-  L.push('## 3. ERLE（AEC 前后）')
+// ── 3. 打断观测栅格（延迟的真实约束）──
+if (gaps.length > 4) {
+  L.push('## 3. 打断检测的观测栅格')
   L.push('')
-  L.push(`纯回声段：mic 均值 ${fmt(echoMic.mean)} → 残差均值 ${fmt(echoRes.mean)}，**ERLE ≈ ${erleDb.toFixed(1)} dB**`)
-  if (!hasRes) L.push('> 原生 AEC 生效时自研 NLMS 被旁路，mic 与残差同源，此值≈0 属正常——它衡量的是自研 AEC，不是原生 AEC。')
+  L.push(`播放期共 ${gaps.length} 次 VAD 回报。名义节拍 128ms（64ms 帧 + \`>=100ms\` 阈值需攒两帧）。`)
+  L.push('')
+  L.push('| 分位 | p50 | p90 | p95 | p99 | max |')
+  L.push('|---|---|---|---|---|---|')
+  L.push(`| 回报间隔 | ${qtl(gaps, 0.5)}ms | ${qtl(gaps, 0.9)}ms | ${qtl(gaps, 0.95)}ms | ${qtl(gaps, 0.99)}ms | ${Math.max(...gaps)}ms |`)
+  L.push('')
+  L.push('| confirmFrames | 理论确认窗 | 实测 p50 | 实测 p90 | 实测 p99 |')
+  L.push('|---|---|---|---|---|')
+  for (const cf of [3, 2, 1]) {
+    const w = confirmWindow(cf)
+    L.push(`| ${cf}${cf === 3 ? '（默认）' : ''} | ${cf * 128}ms | ${qtl(w, 0.5)}ms | ${qtl(w, 0.9)}ms | ${qtl(w, 0.99)}ms |`)
+  }
+  L.push('')
+  const stalls = gaps.filter((g) => g > 200).length
+  if (stalls > 0) {
+    L.push(
+      `> **${stalls} 次回报间隔 > 200ms**（占 ${((100 * stalls) / gaps.length).toFixed(1)}%，最长 ${Math.max(...gaps)}ms）。`,
+    )
+    L.push('> 检测通道被 `detectInFlight` 串行化——下一拍必须等上一次 HTTP 往返回来。宿主忙时（TTS 合成 / LLM 流 / ASR 解码')
+    L.push('> 共用一条 Node 事件循环）这一拍就被拖长，而**这恰好发生在打断时刻**。')
+  } else {
+    L.push('> 本次录制没有出现回报停顿（全程 ≤200ms）。')
+  }
   L.push('')
 }
 
+// ── 4. 打断事件 ──
 const interrupts = marks.filter((m) => m.kind === 'interrupt')
 if (interrupts.length > 0) {
   L.push('## 4. 打断事件')
   L.push('')
-  for (const m of interrupts) L.push(`- t=${(m.t / 1000).toFixed(2)}s · ${m.note ?? ''}${inUserSpeech(m.t) ? ' · 用户确实在说话 ✅' : ' · **用户未标注说话 → 疑似误打断** ⚠️'}`)
+  for (const m of interrupts) {
+    const ok = inUserSpeech(m.t)
+    L.push(`- t=${(m.t / 1000).toFixed(2)}s · ${m.note ?? ''} · ${ok ? '用户确实在说话 ✅' : '**用户未标注说话 → 疑似误打断** ⚠️'}`)
+  }
+  const cm = interrupts.map((m) => Number(String(m.note ?? '').replace(/\D/g, ''))).filter(Number.isFinite)
+  if (cm.length) {
+    L.push('')
+    L.push(`确认耗时：${cm.join(' / ')}ms（理论 ${3 * 128}ms @ interruptLevel=0）`)
+    if (Math.max(...cm) > 3 * 128 * 1.5) L.push('> 明显超出理论值 → 对照 §3 的回报停顿，多半是被在途往返拖的。')
+  }
   L.push('')
 }
 
 const sentences = marks.filter((m) => m.kind === 'tts-sentence')
-L.push(`## ${erleDb !== null ? 5 : 4}. 朗读句（供定位）`)
+L.push('## 5. 朗读句（供定位）')
 L.push('')
-if (sentences.length === 0) L.push('（本次没有 TTS 朗读）')
-else for (const m of sentences.slice(0, 12)) L.push(`- t=${(m.t / 1000).toFixed(2)}s · ${String(m.note ?? '').slice(0, 60)}`)
-if (sentences.length > 12) L.push(`- …共 ${sentences.length} 句`)
+if (sentences.length === 0) {
+  L.push('（无 `tts-sentence` 标注。若本次确实朗读过，说明埋点漏在了 Web Audio 主路径——')
+  L.push('已于 2026-09-02 修复，重建后重录即可拿到句边界。）')
+} else {
+  for (const m of sentences.slice(0, 12)) L.push(`- t=${(m.t / 1000).toFixed(2)}s · ${String(m.note ?? '').slice(0, 60)}`)
+  if (sentences.length > 12) L.push(`- …共 ${sentences.length} 句`)
+}
 
 console.log(L.join('\n'))
 
@@ -216,14 +246,21 @@ if (wantJson) {
   console.log(
     JSON.stringify(
       {
-        schema: 'dsh-voice-mode/fixture-analysis@1',
+        schema: 'dsh-voice-mode/fixture-analysis@2',
         source: path,
         env,
-        windows: { pureEcho: pureEcho.length, userSpeech: userFrames.length, idle: idleFrames.length },
-        residual: { pureEcho: echoRes, userSpeech: userRes, idle: idleRes },
-        gateReplay: { echoOpenPct: echoOpen, userOpenPct: userOpen, frozenPct: replay.frozenPct, floorErrorDb: floorErrDb },
-        erleDb,
-        interrupts: interrupts.length,
+        windows: { pureEcho: pureEcho.length, userWhilePlaying: userWhilePlaying.length, idle: idleFrames.length },
+        shape: { pureEcho: echo, userWhilePlaying: userPlay, idle },
+        vadOnEcho: { reported: echoVad.length, trueCount: echoVadTrue },
+        pollGrid: {
+          n: gaps.length,
+          p50: qtl(gaps, 0.5),
+          p90: qtl(gaps, 0.9),
+          p99: qtl(gaps, 0.99),
+          max: gaps.length ? Math.max(...gaps) : null,
+          confirm3: { p50: qtl(confirmWindow(3), 0.5), p99: qtl(confirmWindow(3), 0.99) },
+        },
+        interrupts: interrupts.map((m) => ({ t: m.t, note: m.note })),
       },
       null,
       2,

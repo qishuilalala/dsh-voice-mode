@@ -491,6 +491,9 @@ function createAudioEngine(
           // 字幕按真实起播推进：这里只登记（切句在 onended 里做），否则多句连播领先一整句。
           captionQueue.push(frame.text)
           setUi({ playing: true, playingCaption: captionQueue[0], ttsNotice: null })
+          // fixture 录制：主路径（Web Audio）的句边界。此前只接了 <audio> 降级路径，
+          // 实测两次真机录制的 tts-sentence 标注全为空——就是漏在这里。
+          fixtureRecorder.mark('tts-sentence', frame.text)
         }
       } catch {
         // 解码失败：停掉 Web Audio 在途源（避免与 <audio> 混播），整段降级（保句序）。

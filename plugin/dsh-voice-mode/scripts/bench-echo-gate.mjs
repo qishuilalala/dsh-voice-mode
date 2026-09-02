@@ -17,7 +17,18 @@
  *   1) 纯回声期的门开率（理想 0%）
  *   2) 回声地板对真实回声电平的估计误差（理想 0dB）
  *
- * ── 已确认的缺陷（2026-09-02） ──
+ * ── 重要：这是压力测试，不是真机预测器（2026-09-02 真机修订） ──
+ * 本脚本的合成残差比真机残差"尖"得多，下表的 99.8% 门开率是**机制的上界**，不是现状。
+ * 真机实测：门开率 0.3%（纯听）/ 27.1%（打断场景）。见
+ * docs/findings/2026-09-02-echo-gate-ratchet.md。
+ *
+ * **不要把本脚本的数字当真机预测。** 试过用中位/均值、p90/中位、调制周期等统计量把合成档
+ * 映射到真机，都不成立（合成中位/均值 1.07 冻结 85%，真机 1.00 只冻结 0.3%）——棘轮是双稳态
+ * 动态，不是分布形状的函数。要知道真机什么样，只能录一条跑 analyze-fixture.mjs。
+ *
+ * 保留尖锐档的意义：它守的是「原生 AEC 失效、走自研 NLMS」那条尚无真机数据的路径。
+ *
+ * ── 机制（真实存在，强度随残差尖锐度单调上升） ──
  * `doubleTalk` 冻结让回声地板变成**单向棘轮**：
  *   doubleTalk = playing && floor > 0 && rms > floor * gateRatio   (asr.ts:588)
  *   地板仅在 !doubleTalk 时更新                                     (asr.ts:591)
@@ -82,7 +93,18 @@ function refEchoGate(gateDb = DEFAULT_GATE_DB) {
   }
 }
 
-/** crest factor（峰值/均值，dB）——衡量信号有多「像语音」。 */
+/**
+ * 分布偏度代理：中位/均值。越接近 1 越准平稳，越接近 0 越「深谷+高峰」。
+ * **这是棘轮强度的正确预测量**——crest（下面那个）不是，它被单个离群帧主导。
+ * 真机参照：纯听 1.00、打断场景 0.80；本脚本的尖锐档 ~0.49。
+ */
+function medianOverMean(a) {
+  const sorted = [...a].sort((x, y) => x - y)
+  const mean = sorted.reduce((s, x) => s + x, 0) / sorted.length
+  return mean > 0 ? sorted[Math.floor(sorted.length / 2)] / mean : 0
+}
+
+/** crest factor（峰值/均值，dB）——**保留仅作对照，它不预测棘轮**。 */
 function crestDb(a) {
   const mean = a.reduce((s, x) => s + x, 0) / a.length
   return 20 * Math.log10(Math.max(...a) / mean)
@@ -176,18 +198,28 @@ p('')
 
 p('## 1. 纯回声期门开率 vs 信号 crest（理想：全 0%）')
 p('')
-p('| 词间静音深度 | crest (dB) | 门开率 | 地板冻结率 | 地板低估真实回声 |')
-p('|---|---|---|---|---|')
+p('| 词间静音深度 | **中位/均值** | 门开率 | 地板冻结率 | 地板低估真实回声 | crest (dB) |')
+p('|---|---|---|---|---|---|')
 const sweep = []
 for (const gapDepth of [1, 0.6, 0.3, 0.15, 0.08, 0.03]) {
   const sig = synthResidual({ gapDepth })
   const r = evaluate(sig)
-  sweep.push({ gapDepth, crestDb: +crestDb(sig).toFixed(2), openPct: +r.openPct.toFixed(1), frozenPct: +r.frozenPct.toFixed(1), floorErrorDb: +r.floorErrorDb.toFixed(1) })
-  p(`| ${gapDepth} | ${crestDb(sig).toFixed(1)} | ${r.openPct.toFixed(1)}% | ${r.frozenPct.toFixed(1)}% | ${r.floorErrorDb.toFixed(1)} dB |`)
+  const mom = medianOverMean(sig)
+  sweep.push({ gapDepth, medianOverMean: +mom.toFixed(2), crestDb: +crestDb(sig).toFixed(2), openPct: +r.openPct.toFixed(1), frozenPct: +r.frozenPct.toFixed(1), floorErrorDb: +r.floorErrorDb.toFixed(1) })
+  p(`| ${gapDepth} | **${mom.toFixed(2)}** | ${r.openPct.toFixed(1)}% | ${r.frozenPct.toFixed(1)}% | ${r.floorErrorDb.toFixed(1)} dB | ${crestDb(sig).toFixed(1)} |`)
 }
 p('')
-p('> TTS 回声就是语音，crest 天然 ≥7dB。上表说明：只要残差保留语音包络，门就恒开。')
-p('> 准平稳残差（crest ~1dB，接近原生 AEC + RES 之后）才是门能工作的唯一区间。')
+p('')
+p('**真机实测对照**（`analyze-fixture.mjs`，原生 AEC 生效，外放）：')
+p('')
+p('| 录制 | 中位/均值 | 门开率 | doubleTalk 触发率 | 地板低估 |')
+p('|---|---|---|---|---|')
+p('| ① 纯听 124.6s | 1.00 | 0.3% | 0.3% | 0.1 dB |')
+p('| ② 打断 61.8s | 0.80 | 27.1% | 16.4% | 2.8 dB |')
+p('')
+p('> 真机上棘轮几乎不发作（原生 AEC 生效时）。合成档是**机制上界**，两者之间没有可用的映射关系——')
+p('> 试过中位/均值、p90/中位、调制周期，都不单调。棘轮是双稳态动态，只能实测。')
+p('> 机制本身是真的：真机②相对①更"尖"一点，冻结率就从 0.3% 跳到 16.4%。')
 p('')
 
 p('## 2. 调大 echoGateDb 能否补救（README 目前教用户这么做）')
@@ -201,7 +233,9 @@ for (const gateDb of [6, 8, 10, 12, 15, 20, 30]) {
   p(`| ${gateDb} | ${r.openPct.toFixed(1)}% | ${r.floorErrorDb.toFixed(1)} dB |`)
 }
 p('')
-p('> README 建议的范围是 8-10。上表说明该范围内门开率不变——**这个旋钮对本失效模式无效**。')
+p('> README 建议的范围是 8-10。在尖锐档下该范围内门开率不变。')
+p('> 但真机上这个旋钮无效是另一个原因：朗读期 Silero 从未把回声判成语音（真机 0/777 帧），')
+p('> 门控这一道**根本没被查询到**。见 docs/findings/2026-09-02-echo-gate-ratchet.md。')
 p('')
 
 p('## 3. 判别力（这道门到底值多少）')
@@ -215,8 +249,8 @@ for (const gateDb of [6, 10, 20]) {
   p(`| ${gateDb} | ${d.echoOpen.toFixed(1)}% | ${d.userOpen.toFixed(1)}% | ${d.marginPct.toFixed(1)} pt |`)
 }
 p('')
-p('> 判别余量 ≈ 0 意味着这道门在回声与人声之间几乎不做区分——')
-p('> 当前真正拦住自打断的是 Silero VAD 对（被原生 AEC 压低的）残差不判语音，不是这道门。')
+p('> 尖锐档下判别余量 ≈ 0。真机上无从比较——门控从未被触及。')
+p('> 真正拦住自打断的是 Silero VAD 对（被原生 AEC 压低的）残差不判语音：真机 3.1 分钟朗读期 0/777 帧判真。')
 p('')
 
 const grid = pollGrid()

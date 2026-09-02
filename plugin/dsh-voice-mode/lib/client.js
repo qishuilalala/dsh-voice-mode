@@ -2464,7 +2464,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "04b5973";
+var BUILD_TAG = "827d2a8";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2700,6 +2700,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
           }
           captionQueue.push(frame.text);
           setUi({ playing: true, playingCaption: captionQueue[0], ttsNotice: null });
+          fixtureRecorder.mark("tts-sentence", frame.text);
         }
       } catch {
         for (const src of activeSrcs) {
