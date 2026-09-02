@@ -1968,8 +1968,9 @@ function apply(ctx, config) {
     return next();
   });
   ctx.on("llm/stream", (options, next) => {
-    const sessionId = options.sessionId;
-    if (!config.enabled || sessionId === void 0 || options.purpose !== void 0) return next();
+    const rawSessionId = options.sessionId;
+    if (!config.enabled || rawSessionId === void 0 || options.purpose !== void 0) return next();
+    const sessionId = rawSessionId;
     if (activeVoiceSession !== sessionId) return next();
     const gen = (turnGen.get(sessionId) ?? 0) + 1;
     turnGen.set(sessionId, gen);

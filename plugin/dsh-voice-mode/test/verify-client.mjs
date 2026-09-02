@@ -27,8 +27,17 @@ t('dsh.bundle.patch 指向 cordis.patch.yml 且文件存在', () => {
 t('dsh.client 声明 platform=web + inject 运行时', () => {
   assert.equal(pkg.dsh?.client?.platform, 'web')
   assert.deepEqual(pkg.dsh?.client?.inject, [
-    '@deepseek-ai/dsh-client-runtime',
-    '@deepseek-ai/dsh-client-ui-slots',
+    '@deepseek-ai/dsh-client-connection',
+    '@deepseek-ai/dsh-cordis-client-runner',
+    '@deepseek-ai/dsh-api-remotes',
+    '@deepseek-ai/dsh-client-locale',
+    '@deepseek-ai/dsh-client-ui-renderer',
+    '@deepseek-ai/dsh-api-session-controller',
+    '@deepseek-ai/dsh-client-ui-session',
+    '@deepseek-ai/dsh-client-ui-conversation',
+    '@deepseek-ai/dsh-client-ui-layout',
+    '@deepseek-ai/dsh-client-ui-settings',
+    '@deepseek-ai/dsh-client-ui-settings-plugins',
   ])
 })
 t('exports 必须含 ./.client、./cordis.patch.yml、./package.json', () => {
