@@ -189,3 +189,30 @@ boot **失败**，根因是若干第三方插件的 **host half `import` 了 alp
 - 或让 alpha 侧 `dsh-storage-domain` 对旧格式宽容迁移（属 dsh 上游改动，非本插件）。
 
 > 恢复基线：`/home/www/.dsh/profiles/web/package.json.pre-alpha-20260902-113907.bak`、`pnpm-lock.yaml.pre-alpha-20260902-113907.bak`、`cordis.patch.yml.pre-alpha-20260902-113907.bak`（打回 `dsh --version` 退到 0.1.1-rc.2 即回 stable）。
+
+## 10. 双向兼容（旧 0.1.1 + 新 0.1.2）落地
+
+用户要求 voice-mode 一份代码同时兼容旧 dsh 0.1.1-rc.2 与最新 0.1.2-alpha.4。做法：**客户端 `dsh.client.inject` 锚点取两边都存在的交集**。
+
+关键证据（`npm view <pkg> versions` 比对 0.1.1-rc.2 与 0.1.2-alpha.4 是否存在）：
+
+| 锚点包 | 0.1.1-rc.2 | 0.1.2-alpha.4 | 结论 |
+|---|---|---|---|
+| `dsh-cordis-client-runner` | ✅ | ✅ | 交集，保留 |
+| `dsh-client-ui-renderer` | ✅ | ✅ | 交集，保留 |
+| `dsh-client-connection` / `-locale` / `-conversation` / `-layout` / `-settings` / `-settings-plugins` / `dsh-api-remotes` | ✅ | ✅ | 交集，保留 |
+| `dsh-api-session-controller` | ❌ | ✅ | **alpha 独有，从锚点移除** |
+| `dsh-client-ui-session` | ❌ | ✅ | **alpha 独有，从锚点移除** |
+| `dsh-client-runtime`（旧 0.1.1 锚点） | ✅ | ❌（无 alpha 版） | **已弃用** |
+
+最终锚点（9 个，两边交集）：`dsh-client-connection`、`dsh-cordis-client-runner`、`dsh-api-remotes`、`dsh-client-locale`、
+`dsh-client-ui-renderer`、`dsh-client-ui-conversation`、`dsh-client-ui-layout`、`dsh-client-ui-settings`、`dsh-client-ui-settings-plugins`。
+
+配套改动：
+- `peerDependencies.@deepseek-ai/cordis` 从 `^4.0.2` 放宽回 `^4.0.1`（单区间覆盖 4.0.1 与 4.0.2，兼容两边）。
+- 客户端 `sessions` 服务跨版本：0.1.1 由 core 的 `dsh-client-runtime` 提供、0.1.2 由 `dsh-client-ui-session`/`dsh-api-session-controller` 提供，服务名均为 `sessions`；
+  voice-mode 客户端用 `ctx?.sessions?.binding?.(id)?.session.cancel?.()` 防御式访问 + `ctx.get('sessions')`，两边都解析。
+- 服务端 API（`webServer.register` / `dsh-settings` / `llm/stream` / `system-prompt/assemble`）在两边一致；唯一类型差异 `sessionId: SessionId` 品牌已用 `as string` 消除。
+- `verify-client.mjs` 锚点期望同步为 9 个。
+
+> devDependencies 仍钉 `0.1.2-alpha.4`（typecheck 面向更新的表面）；如需严格双向 typecheck，可在 CI 额外对 `0.1.1-rc.2` 的 `@deepseek-ai/dsh-*` 类型跑第二遍 `tsc`（本任务以运行时实测为准，未加 CI）。
