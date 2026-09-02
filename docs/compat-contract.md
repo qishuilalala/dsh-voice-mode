@@ -67,6 +67,10 @@ voice-mode 与宿主的交互只有 12 个契约点，分两层：
 - [x] 报告本文件（`docs/compat-contract.md`）。
 - [x] I-1：`scripts/typecheck-dual.sh`——对 0.1.1 与 0.1.2 两套 `@deepseek-ai/dsh-*` 类型各跑一遍 `tsc`（已实测：0.1.1 与 0.1.2 四组 host/client 均 ✓）。
 - [x] I-2：`scripts/check-anchors.mjs`——读取 package.json 的 `dsh.client.inject`，逐一 `npm view <pkg>@<target> version` 校验存在性（已实测 9 锚点双边全 ✓）。
+- [x] I-3（runtime 冒烟）：`scripts/smoke-runtime.sh <dsh-core-bin.js> [port]`——隔离 DSH_HOME 上 boot + 验证 `/voice-mode`、`/voice-mode/config`、`/voice-mode/models/status` 三端点 200。
+  - 已实测：0.1.1-rc.2 核心与 0.1.2-alpha.4 核心**均通过**（三端点全 ✓）。
+  - 客户端渲染（mic 按钮 + console 0 error）需 headless 浏览器，由 Playwright 另行验证（§5 第 4 步）；alpha 下 client bundle 走合并 URL `/plugins/??<全部包>/client.js&rev=..` 且需 cookie，curl 无法可靠探测。
+  - dsh 核心获取（smoke 前置）：`pnpm add @deepseek-ai/dsh@<版本>` 到独立前缀（0.1.1 用 `NODE_OPTIONS=--max-old-space-size=4096 pnpm add`，避开 npm 大包 OOM）。
 - [ ] M-1（评估后**维持现状，不改**）：`schemastery` 保持 `dependencies`（`^3.18.1`）。
   - 深入分析：voice-mode host half 对 `schemastery` 是**运行时硬依赖**（`import z`），放 `dependencies` 是更稳健的选择——不依赖「宿主是否把 schemastery 暴露为可解析 peer」这一隐含假设。
   - 核心 alpha 用 `^3.18.2`，与 `^3.18.1` 均为 `^3.18.x` 兼容，pnpm 会 hoist/dedupe 成单一副本，**无实际重复副本问题**。
@@ -79,7 +83,7 @@ voice-mode 与宿主的交互只有 12 个契约点，分两层：
 1. 读 dsh release notes，重点看**客户端锚点包**与 **dsh-settings/session 导出**的增删改。
 2. `node scripts/check-anchors.mjs <新版本>`——锚点包是否仍存在（缺失则收敛交集或适配）。
 3. `bash scripts/typecheck-dual.sh 0.1.1-rc.2 <新版本>`——源码在新旧两套类型下都能编译。
-4. 在隔离 profile 上 boot + `/voice-mode` 200 + 客户端 `[data-dshvm="mic"]` 渲染 + console 0 error。
+4. `bash scripts/smoke-runtime.sh <新版本核心 bin.js> <port>`——host 冒烟三端点 200；再用 Playwright 验证客户端 `[data-dshvm="mic"]` 渲染 + console 0 error。
 5. 更新本文件与 `docs/migrate-alpha-012.md` 的契约点结论。
 
 > 类型证据位置（本机 /tmp/v011-types 下的 tarball）：`deepseek-ai-dsh-{settings,system-prompt,llm,host-webserver,session,client-ui-settings,client-runtime,agent,client-ui-conversation,client-ui-layout,client-ui-settings-plugins}-0.1.1-rc.2/package/lib/types/…`。
