@@ -25,6 +25,11 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿
 - 检测 VAD 阈值 0.35（灵敏），端点 VAD 阈值 0.5（保守断句）。
 - 打断计数**仅在播放期累积**（非播放期清零），否则用户说自己的话的残留计数会在 AI 开播瞬间误打断。
 - 段生命周期：host 按 sessionId→epoch 嵌套 Map；finalize 幂等（缓存定稿文本 + 并发守卫），client 对瞬时失败有界重试（3 次）——不丢句。
+- **观测栅格 128ms**（64ms 帧 + `>=100ms` 阈值需攒两帧），三档确认窗 384/256/128ms；
+  打断确认下限 = 2×128 = 256ms。真机实测 252~272ms、端到端 199~597ms（2026-09-02）。
+- **播放门分支不得 return**：它会连带跳过末尾轮询块，使用户开口时检测通道反而停发（已修，有回归守卫）。
+- 回声门控（echoGateDb）在原生 AEC 生效时**从未被执行**——真机 3.1 分钟朗读期 Silero 判回声为
+  语音 0/777 帧，打断前置条件不成立。拦住自打断的是 VAD，不是这道门。
 - 本地 TTS 模型：就绪以「模型文件已下载」为准（跨引擎持久，非子进程 init）；`/models/download` 触发下载、`/models/clean` 删除本地；int8/fp32 分目录缓存、切换不重下。
 
 ## 设置语义
@@ -45,10 +50,19 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿
 
 ## 已知待办（短期，做完即删）
 
-- 打断延迟：已确认 confirmMs ≈525ms（VAD 0.35 + 泄漏计数，接近 0.5s 目标）；想更快可降 interruptLevel
-- 原生 AEC 失效兜底（耳机无原生 AEC / Safari）：自研 AEC 的 delay 对齐需 FDLMS+RES
+- 原生 AEC 失效兜底（耳机无原生 AEC / Safari）：自研 AEC 的 delay 对齐需 FDLMS+RES；
+  该场景**尚无真机数据**，也是回声地板棘轮唯一还可能发作的一格
+- ADR-0006 第一级探测（原生 AEC 未生效 → 自动落 manual）尚未实现
 - 发布流程见 ~/.dsh/docs/RELEASE-MEMO.md（git push + npm publish + tag + GitHub release）
+
+## 声学基准与录制（ADR-0005）
+
+- `npm run bench:echo-gate`：零依赖离线基准（合成压力档，**不是真机预测器**）
+- `npm run analyze:fixture -- <fixture.json>`：真机录制分析（覆盖率/停顿归因/confirmMs）
+- 录制开关 `localStorage['dsh-voice-mode.record']=meta|full`，用法见 docs/fixture-recording.md
+- 决策记录：ADR-0003 VAD 下沉（提议，紧迫性已下调）· ADR-0004 WebSocket（提议）·
+  ADR-0005 回归基准（已接受）· ADR-0006 打断模式自动探测（已接受）
 
 ## 关键源文件
 
-src/asr.ts（采集/门控/打断引擎）· client.tsx（播放/参考池/手势/UI）· aec.ts（NLMS）· asr-host.ts（host ASR/检测通道）· index.ts（路由/SSE/owner）· tts-local.ts（本地 TTS VITS/Kokoro + 精度）· tts-queue.ts（逐会话队列/epoch 打断）· settings-form.tsx（设置面板）
+src/asr.ts（采集/门控/打断引擎）· fixture-recorder.ts（真机录制，默认关）· client.tsx（播放/参考池/手势/UI）· aec.ts（NLMS）· asr-host.ts（host ASR/检测通道）· index.ts（路由/SSE/owner）· tts-local.ts（本地 TTS VITS/Kokoro + 精度）· tts-queue.ts（逐会话队列/epoch 打断）· settings-form.tsx（设置面板）

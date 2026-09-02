@@ -12,7 +12,13 @@ BIN="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 PORT="${2:-3120}"
 [ -f "$BIN" ] || { echo "✗ dsh 核心不存在: $BIN"; exit 2; }
 
-WORK=$(mktemp -d /tmp/dsh-smoke-XXXXXX)
+# 链接路径必须是原生格式：Git Bash/MSYS 下 $PWD 是 /c/... 形式，pnpm 在 Windows 上
+# 解析不了，会静默装不上，最终 boot 报 "cannot resolve profile bundle"。cygpath -m
+# 输出 C:/... 混合格式，Windows 与 POSIX 侧都能用。
+LINK_SRC="$PWD"
+if command -v cygpath >/dev/null 2>&1; then LINK_SRC="$(cygpath -m "$PWD")"; fi
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/dsh-smoke-XXXXXX")
 DSH_HOME="$WORK/home"
 BOOTLOG="$WORK/boot.log"
 NODE_PID=""
@@ -29,14 +35,56 @@ cat > "$DSH_HOME/profiles/web/package.json" <<EOF
 {
   "name": "dsh-profile-web",
   "private": true,
-  "dependencies": { "dsh-voice-mode": "link:$PWD" },
+  "dependencies": { "dsh-voice-mode": "link:$LINK_SRC" },
   "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-voice-mode"] } }
 }
 EOF
 echo '[]' > "$DSH_HOME/profiles/web/cordis.patch.yml"
-(cd "$DSH_HOME/profiles/web" && pnpm install --no-frozen-lockfile >/dev/null 2>&1) || {
-  echo "✗ profile pnpm install 失败"; exit 1
+
+# 预置 settings：跳过首次引导弹窗。比在 UI 上按文本点按钮可靠得多——界面语言跟随浏览器，
+# 文本匹配天然脆弱（实测中文环境下英文正则全不命中，引导关不掉）。
+# smoke-client 里的点击逻辑保留为兜底（本键名若在未来版本改变，仍能走 UI 关）。
+cat > "$DSH_HOME/settings.yaml" <<'YAML'
+ui-onboarding:
+  welcomeNoticeVersion: 2026-08-13.1
+permission:
+  defaultPreset: danger-full-access
+YAML
+
+# 预置一个工作区：mic 按钮所在的输入区要选定工作区后才渲染，而「选择工作区」走的是
+# 系统目录选择器，headless 里点不了。直接写 storages/workspace.json 绕过整个交互。
+mkdir -p "$DSH_HOME/storages" "$WORK/ws"
+WS_DIR="$WORK/ws"
+if command -v cygpath >/dev/null 2>&1; then WS_DIR="$(cygpath -m "$WORK/ws")"; fi  # -m 出正斜杠，JSON 无需转义，Windows 也接受
+WS_ID="00000000-0000-4000-8000-00000000smoke"
+WS_ID="${WS_ID:0:36}"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+cat > "$DSH_HOME/storages/workspace.json" <<EOF
+{
+  "unit": { "name": "workspace", "version": 2 },
+  "global": { "initialized": true, "workspaceIds": ["$WS_ID"], "archivedSessionIds": [] },
+  "tables": {
+    "workspaces": {
+      "$WS_ID": {
+        "path": "$WS_DIR",
+        "title": "smoke",
+        "sessionIds": [],
+        "createdAt": "$NOW",
+        "updatedAt": "$NOW"
+      }
+    }
+  }
 }
+EOF
+(cd "$DSH_HOME/profiles/web" && pnpm install --no-frozen-lockfile >"$WORK/pnpm.log" 2>&1) || {
+  echo "✗ profile pnpm install 失败"; tail -20 "$WORK/pnpm.log"; exit 1
+}
+# 装完立即校验链接真的建起来了——pnpm 对无法解析的 link 会静默跳过（退出码仍为 0），
+# 不校验的话要到 boot 阶段才以 "cannot resolve profile bundle" 暴露，排障成本高。
+if [ ! -e "$DSH_HOME/profiles/web/node_modules/dsh-voice-mode/package.json" ]; then
+  echo "✗ dsh-voice-mode 未链接进隔离 profile（link:$LINK_SRC 解析失败）"
+  tail -20 "$WORK/pnpm.log"; exit 1
+fi
 
 echo "== boot dsh 核心（port $PORT）=="
 DSH_HOME="$DSH_HOME" node "$BIN" web --port "$PORT" --host 127.0.0.1 --no-open >"$BOOTLOG" 2>&1 &

@@ -92,3 +92,56 @@ npm run verify:dual        # 一键全量（锚点 + typecheck + 双版本 runti
 3. 更新本文件与 `docs/migrate-alpha-012.md` 的契约点结论。
 
 > 类型证据（本机核对用，可再生成）：0.1.1 各子包 `.d.ts` 经 `npm pack @deepseek-ai/<pkg>@0.1.1-rc.2` 解包比对。
+
+---
+
+## 6. Windows 复核（2026-09-03）与脚本跨平台修复
+
+上述结论此前在 Linux 上取得。本次在 **Windows 11 + Git Bash + Node 24** 上复核，
+三个验证脚本各有一处**在 Windows 上必然失败**的实现问题，均已修复；修完后双版本全部通过。
+
+### 6.1 修掉的三个跨平台问题
+
+| # | 脚本 | 问题 | 表现 | 修法 |
+|---|---|---|---|---|
+| 1 | `check-anchors.mjs` | `execFileSync('npm', …)` | `npm` 实为 `npm.cmd`，不经 shell 报 ENOENT；显式写 `npm.cmd` 又被 Node 20+ 安全限制拒绝（EINVAL）。两者都被 catch 吞成「锚点不存在」→ **9 锚点 × 2 版本 = 18 个假失败** | 改走 registry HTTP（不 spawn），每包只取一次 packument；并区分「版本不存在」(exit 1) 与「网络故障」(exit 2) |
+| 2 | `smoke-runtime.sh` | `link:$PWD` | Git Bash 下 `$PWD` 是 `/c/...`，pnpm 在 Windows 上解析不了，**静默跳过**（退出码仍 0），到 boot 阶段才报 `cannot resolve profile bundle` | `cygpath -m` 转原生路径；并在 install 后立即校验链接真的建起来 |
+| 3 | `smoke-client.mjs` | 引导按钮正则纯英文 | dsh 界面语言跟随浏览器，中文环境下 `/continue\|later\|skip/` 一个都匹配不到，引导关不掉 → 30s 等不到 mic | 正则补中文；**主路径改为预置 `settings.yaml` + `storages/workspace.json`**，与语言、与弹窗文案解耦 |
+
+### 6.2 mic 断言口径校正（重要）
+
+原实现：等不到 `[data-dshvm="mic"]` 即判 FAIL。**这个口径不成立**——实测（Windows 上逐步走 DOM 确认）：
+
+> mic 按钮挂在「活跃会话」的输入区上；活跃会话要发出第一条消息才真正创建（记录在浏览器
+> `localStorage['dsh.sessions.current']`）；发消息需要模型凭据，而隔离冒烟 home 故意不配
+> （走「稍后配置」）。**因此隔离环境里拿不到 mic 是环境使然，不是插件回归。**
+
+现改为三分支：有 mic → PASS；**无会话且无 mic → SKIP（打印原因）**；**有会话却无 mic → FAIL**（这才是真回归）。
+不加区分的原口径会把环境限制误报成产品问题。
+
+mic 实际渲染由真实实例佐证：配置完整的 dsh 0.1.1-rc.2 上 `document.querySelector('[data-dshvm="mic"]')` 存在。
+
+### 6.3 Windows 复核结果
+
+| 项 | 0.1.1-rc.2 | 0.1.2-alpha.5 |
+|---|---|---|
+| 锚点存在性（9 个） | ✅ 全在 | ✅ 全在（alpha.4 亦全在） |
+| host typecheck | ✅ | ✅ |
+| client typecheck | ✅ | ✅ |
+| boot | ✅ | ✅ |
+| `/voice-mode` | ✅ 200 | ✅ 200 |
+| `/voice-mode/config` | ✅ 200 | ✅ 200 |
+| `/voice-mode/models/status` | ✅ 200 | ✅ 200 |
+| console error | ✅ 0 条 | ✅ 0 条 |
+| mic 断言 | ⚠ SKIP（无凭据，见 6.2） | ⚠ SKIP（同） |
+
+> 双版本 typecheck 的取得方式：本次未跑 `typecheck-dual.sh`（它用 `pnpm add` 临时改写
+> `package.json` + lockfile，在已用 npm 装好且插件正 link 给本机 dsh 的环境里风险偏高）。
+> 改为等价而无副作用的做法：合并前的 `node_modules` 恰是 0.1.1-rc.2 类型 → 跑一次 tsc；
+> `npm install` 拉到合并后的 0.1.2-alpha.5 类型 → 再跑一次。两次均 host/client 通过，
+> 覆盖面与 `typecheck-dual.sh` 一致。
+
+> `verify-dual.sh` 的默认核心路径是作者 Linux 环境的（`/tmp/dsh011-core`、`/www/server/...`）。
+> Windows 上需显式传参，例如：
+> `bash scripts/verify-dual.sh "C:/Users/<你>/AppData/Roaming/npm/node_modules/@deepseek-ai/dsh/lib/bin.js" "C:/.../dsh012-core/node_modules/@deepseek-ai/dsh/lib/bin.js"`
+
