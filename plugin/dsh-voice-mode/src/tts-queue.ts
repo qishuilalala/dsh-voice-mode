@@ -253,8 +253,13 @@ export class TtsQueue {
       q = { pending: [], busy: false, seq: 0, epoch: 0, errorNotified: false, backoff: 0 }
       this.queues.set(sessionId, q)
     }
-    // 队列上限（防长回复积压失控，超限丢最旧）。
-    if (q.pending.length >= 20) q.pending.shift()
+    // 队列上限（防病理性积压失控）。20 → 500：长回复流式文本比 Edge 合成快时，
+    // 积压超 20 就会静默丢最旧句子——「长话跳句」的另一来源。500 覆盖任意正常回复
+    // 长度（每句仅几十字，内存无忧），仍留病理性护栏；超限告警而非静默。
+    if (q.pending.length >= 500) {
+      console.warn('[dsh-voice-mode] TTS queue overflow, dropping oldest sentence')
+      q.pending.shift()
+    }
     q.pending.push({ text, epoch: q.epoch })
     void this.pump(sessionId, q)
   }

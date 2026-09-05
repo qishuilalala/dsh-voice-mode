@@ -1153,7 +1153,10 @@ var TtsQueue = class {
       q = { pending: [], busy: false, seq: 0, epoch: 0, errorNotified: false, backoff: 0 };
       this.queues.set(sessionId, q);
     }
-    if (q.pending.length >= 20) q.pending.shift();
+    if (q.pending.length >= 500) {
+      console.warn("[dsh-voice-mode] TTS queue overflow, dropping oldest sentence");
+      q.pending.shift();
+    }
     q.pending.push({ text, epoch: q.epoch });
     void this.pump(sessionId, q);
   }
