@@ -106,7 +106,7 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | `silenceMs` | `1500` | Silence pause in ms that marks the end of a complete sentence |
 | `idleTimeoutMinutes` | `10` | Minutes of inactivity before auto-exiting voice mode (reading counts as activity) |
 | `modelHost` | default | Model download host (use `https://hf-mirror.com` on mainland networks) |
-| `autoSend` | `true` | Auto-send after a finalized transcript; when off, text only goes to the draft (hold `Ctrl` / release in hold mode still sends) |
+| `autoSend` | `true` | Auto-send once quiet (consecutive segments join into one message); when off, text only goes to the draft (hold `Ctrl` / release in hold mode still sends) |
 | `mode` | `toggle` | Interaction mode: `toggle` continuous listening + 1500 ms silence split; `hold` push-to-talk, release to send (short tap exits) |
 | `wakeWord` | empty (off) | Wake word (e.g. `你好小D`): speak it after entering to activate, avoiding accidental triggers; empty = off |
 
