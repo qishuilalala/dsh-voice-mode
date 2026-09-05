@@ -2,7 +2,7 @@
  * dsh-voice-mode ASR engine（浏览器半）：持续聆听 + VAD 自动分段。
  *
  * 与参照 dsh-voice 的关键差异：
- *  - 不是 tap/hold，而是「进入语音模式后持续收音」：静音 700ms 自动断句（P1-3，端点优先由 host Silero VAD 判定），
+ *  - 不是 tap/hold，而是「进入语音模式后持续收音」：静音 1500ms 自动断句（P1-3，端点优先由 host Silero VAD 判定），
  *    段定稿后提交；按住 Ctrl（≥250ms 语音）强制立即发送兜底；
  *  - partial 轮询（100ms，P1-4 增量上行）走 host 流式识别增量，实时字幕只在状态条预览，
  *    定稿文本才作为结果（Q6/Q13：可编辑草稿 + 自动提交）；服务端 Silero VAD 帧级
@@ -46,7 +46,7 @@ export interface TelemetryEvent {
 }
 
 export interface AsrConfig {
-  /** 静音多少 ms 判句结束（Q5，默认 700；端点优先由 host Silero VAD 判定）。 */
+  /** 静音多少 ms 判句结束（Q5，默认 1500；端点优先由 host Silero VAD 判定）。 */
   silenceMs: number
   /** host 路由前缀。 */
   basePath: string
@@ -935,7 +935,8 @@ const startRecorder = async (): Promise<void> => {
     beginHeld() {
       if (!active || holdActive) return
       holdActive = true
-      forcePending = true // 松手定稿 = 明确发送意图（autoSend=false 也发）
+      // 不在此置 forcePending：hold 期间 30s 滚段定稿应只累积（松手才发），
+      // force 统一由 endHeld 松手时置位，避免按住 >30s 被提前发送。
       segmentEpoch++ // 作废迟到的 wake/旧段 partial
       utteranceEndAt = null // P1-5：新按压段重新起算说完时刻
       segment = []

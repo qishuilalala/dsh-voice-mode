@@ -1066,7 +1066,7 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
               <input type="checkbox" checked={Boolean(value.spokenFormat)} onChange={(e) => void scope.set('spokenFormat', e.target.checked)} />
             </Row>
             <Row name="silenceMs" desc={tr('descSilence')}>
-              <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 700} min={500} max={30000} step={100} />
+              <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 1500} min={500} max={30000} step={100} />
             </Row>
             <Row name="idleTimeoutMinutes" desc={tr('descIdle')}>
               <NumberField score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 10} min={1} max={120} step={1} />

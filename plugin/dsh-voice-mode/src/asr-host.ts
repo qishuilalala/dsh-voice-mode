@@ -78,6 +78,8 @@ export interface AsrRuntimeOptions {
   modelHost: () => string
   /** P4：SenseVoice 定稿重译开关（getter 实时读设置；false 时不下载/不创建模型）。 */
   senseVoice: () => boolean
+  /** 断句静音阈值（getter 实时读设置，毫秒）：驱动端点 VAD 的 minSilenceDuration。 */
+  silenceMs: () => number
   /** 是否允许白名单之外的模型下载源（默认关；仅 https，供应链校验）。 */
   allowCustomHost: boolean
   /** 状态广播（SSE）：{kind:'asr-progress'|'asr-ready', ...} */
@@ -174,7 +176,7 @@ export function rmsOf(samples: Float32Array): number {
 }
 
 export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
-  const { cacheDir, modelHost, broadcast, senseVoice, allowCustomHost } = options
+  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, allowCustomHost } = options
   /** 设置面板实时进度：记录最近一次 asr-progress（含 VAD/SenseVoice 下载）。 */
   let lastProgress: { file: string; percent: number } | null = null
   const localBroadcast = (event: string, payload: unknown): void => {
@@ -291,12 +293,12 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     return vadLoading
   }
   /** Silero VAD 实例工厂（端点 VAD 与检测 VAD 共用，threshold 可调）。 */
-  const newVad = (vadPath: string, threshold = 0.5): SherpaVad =>
+  const newVad = (vadPath: string, threshold = 0.5, minSilenceDuration = 0.5): SherpaVad =>
     createVad({
       sileroVad: {
         model: vadPath,
         threshold,
-        minSilenceDuration: 0.5,
+        minSilenceDuration,
         minSpeechDuration: 0.25,
         maxSpeechDuration: 20,
         windowSize: 512,
@@ -312,7 +314,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     if (seg.vad) return seg.vad
     const vadPath = await ensureVadModel()
     if (!vadPath) return null
-    seg.vad = newVad(vadPath)
+    // 端点 VAD 的静音阈值跟随设置（秒）：默认 1500ms，给思考停顿留空间；
+    // 检测 VAD（打断）仍用短阈值 0.35 + 默认 0.5s，与断句解耦。
+    seg.vad = newVad(vadPath, 0.5, silenceMs() / 1000)
     return seg.vad
   }
   /** 播放期检测通道 VAD 池：按会话独立实例（跨段纪元存活）。只喂 vadOnly 音频，

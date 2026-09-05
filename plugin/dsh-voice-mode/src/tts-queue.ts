@@ -294,48 +294,59 @@ export class TtsQueue {
     try {
       while (q.pending.length > 0) {
         const item = q.pending.shift()!
-        try {
-          const buf = await this.engine.synthesize(item.text)
-          if (item.epoch !== q.epoch) continue
-          q.errorNotified = false // 有帧成功：复位不可达提示
-          q.backoff = 0 // 成功后退避清零，防下次失败时退避窗口无限递增
-          const sentenceId = q.seq++
-          const mime = this.engine.mime
-          // 单 chunk（整句音频）+ final 帧（字幕文本）：客户端按句拼帧后解码起播。
-          const dataFrame: TtsChunkFrame = {
-            sessionId,
-            sentenceId,
-            chunkId: 0,
-            final: false,
-            audio: buf.toString('base64'),
-            mime,
-          }
-          for (const fn of this.listeners) {
-            try {
-              fn(dataFrame)
-            } catch {
-              // listener 错误不得杀死泵
+        // 单句合成有界重试：Edge 云端 WebSocket 偶发 ETIMEDOUT（实测日志），
+        // 失败即静默丢句会表现为「长话没规律跳过几句」——重试 3 次、退避后仍失败才跳过。
+        const MAX_SYNTH_ATTEMPTS = 3
+        let buf: Buffer | null = null
+        for (let attempt = 0; attempt < MAX_SYNTH_ATTEMPTS; attempt++) {
+          if (item.epoch !== q.epoch) break // 打断：停止重试
+          try {
+            buf = await this.engine.synthesize(item.text)
+            break
+          } catch (e) {
+            console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${String(e)}`)
+            if (attempt < MAX_SYNTH_ATTEMPTS - 1) {
+              await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
             }
           }
-          const finalFrame: TtsChunkFrame = {
-            sessionId,
-            sentenceId,
-            chunkId: 1,
-            final: true,
-            text: item.text,
-            audio: '',
-            mime,
+        }
+        if (item.epoch !== q.epoch) continue
+        if (buf === null) continue // 重试耗尽：跳过该句（不阻塞队列）
+        q.errorNotified = false // 有帧成功：复位不可达提示
+        q.backoff = 0 // 成功后退避清零，防下次失败时退避窗口无限递增
+        const sentenceId = q.seq++
+        const mime = this.engine.mime
+        // 单 chunk（整句音频）+ final 帧（字幕文本）：客户端按句拼帧后解码起播。
+        const dataFrame: TtsChunkFrame = {
+          sessionId,
+          sentenceId,
+          chunkId: 0,
+          final: false,
+          audio: buf.toString('base64'),
+          mime,
+        }
+        for (const fn of this.listeners) {
+          try {
+            fn(dataFrame)
+          } catch {
+            // listener 错误不得杀死泵
           }
-          for (const fn of this.listeners) {
-            try {
-              fn(finalFrame)
-            } catch {
-              // listener 错误不得杀死泵
-            }
+        }
+        const finalFrame: TtsChunkFrame = {
+          sessionId,
+          sentenceId,
+          chunkId: 1,
+          final: true,
+          text: item.text,
+          audio: '',
+          mime,
+        }
+        for (const fn of this.listeners) {
+          try {
+            fn(finalFrame)
+          } catch {
+            // listener 错误不得杀死泵
           }
-        } catch (e) {
-          // 单句失败不阻塞队列（连续失败由上层降级）。
-          console.warn(`[dsh-voice-mode] synthesis failed: ${String(e)}`)
         }
       }
     } catch (e) {

@@ -5,7 +5,7 @@
  * Ctrl+Shift+V；激活后输入框上方常驻状态条（conversation.input.dock）。
  * 全局单活（Q9）：host 为真相源 + SSE mode 广播纠正多标签页漂移；切换会话/
  * 被抢占自动让出（Q11）。打字即退出（Q13 双通道不混入）。
- * 输入链路（§8.3）：持续聆听 -> 端点判定（host Silero VAD 优先，静音 700ms 兜底）-> partial 轮询
+ * 输入链路（§8.3）：持续聆听 -> 端点判定（host Silero VAD 优先，静音 1500ms 兜底）-> partial 轮询
  * 字幕预览 -> 定稿进草稿 + 自动提交；按住 Ctrl 强制立即发送。
  */
 import * as React from 'react'
@@ -556,7 +556,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   let activeSessionId: string | null = null
   const DEFAULT_BOOT: VoiceBootConfig = {
     basePath: BASE_PATH,
-    silenceMs: 700,
+    silenceMs: 1500,
     interruptLevel: 0,
     idleTimeoutMinutes: 10,
     autoSend: true,
@@ -1154,6 +1154,8 @@ export function MicButton({
   const engineRef = useRef<AsrEngine | null>(null)
   const actionsRef = useRef(inputActions)
   const submitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 累积模式「静音到点才发」的延迟发送计时（区别于 submitTimerRef 的提交重试计时）。 */
+  const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const runningRef = useRef(false)
   /** 组件存活守卫：enterMode 异步流程（getUserMedia 权限框）期间卸载时中止收尾。 */
@@ -1167,7 +1169,7 @@ export function MicButton({
   /** M2：隐藏 tab 时已暂停收音（可见时恢复）；隐私——避免后台持续录音。 */
   const pausedForHiddenRef = useRef(false)
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
-  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, shortcut: 'Ctrl+Shift+V', wakeWord: '', toolBeep: false }
+  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 1500, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, shortcut: 'Ctrl+Shift+V', wakeWord: '', toolBeep: false }
 
   useVoiceCss()
 
@@ -1238,6 +1240,7 @@ export function MicButton({
         setLocalMode('off')
         clearIdle()
         cancelPendingSubmit()
+        cancelAutoSend()
         clearBreakTimer()
         setHolding(false) // 对抗审查 Important#2：被抢占退出时复位录音态红色
         isSpeechTrueCount = 0 // 打断根治：任何 host 驱动退出（状态条退出/被抢占/跨 tab 让出）都复位计数
@@ -1262,11 +1265,74 @@ export function MicButton({
     }
   }
 
+  /** 取消「静音到点才发」的延迟发送计时（用户再开口 / 退出 / 被抢占时）。 */
+  const cancelAutoSend = (): void => {
+    if (autoSendTimerRef.current) {
+      clearTimeout(autoSendTimerRef.current)
+      autoSendTimerRef.current = null
+    }
+  }
+
+  /** 提交当前草稿（带 3 次有界重试；提交成功草稿被清、或用户改写则停止重试）。
+   *  expectedText：调用方已知的草稿文本。force 路径在 setDraft 后立即调用，draftRef 尚未
+   *  re-render 更新（读旧值会误判空草稿而漏发），故由调用方显式传入；定时器路径省略则读 draftRef。 */
+  const submitDraftNow = (expectedText?: string): void => {
+    cancelPendingSubmit()
+    const actions = actionsRef.current
+    const submitFn = actions?.submit
+    if (typeof submitFn !== 'function') return
+    const draftSnapshot = (expectedText ?? draftRef.current).trim()
+    if (!draftSnapshot) return
+    const doSubmit = (): void => {
+      try {
+        const r: any = submitFn()
+        // 兼容 Promise 型 submit
+        if (r && typeof r.then === 'function') {
+          r.catch(() => {
+            bus.setUi({ error: t('sendFailKept') })
+          })
+        }
+      } catch {
+        bus.setUi({ error: t('sendFailKept') })
+      }
+    }
+    doSubmit()
+    let retryCount = 0
+    submitTimerRef.current = setInterval(() => {
+      retryCount++
+      const phase = phaseRef.current
+      // 已提交（草稿被清成空）/ 用户改写 / 进入提交态 → 停止重试
+      if (retryCount > 3 || phase === 'submitting' || phase === 'adjudicating' || draftRef.current.trim() !== draftSnapshot) {
+        cancelPendingSubmit()
+        return
+      }
+      doSubmit()
+    }, 500)
+  }
+
+  /** 累积模式：静音到「发送阈值」（断句已等一个 silenceMs，再额外等一个）才发；
+   *  期间再开口由 onState('speech') → cancelAutoSend 取消，继续累积。 */
+  const scheduleAutoSend = (): void => {
+    cancelAutoSend()
+    const delay = bootNow().silenceMs
+    autoSendTimerRef.current = setTimeout(() => {
+      autoSendTimerRef.current = null
+      const eng = engineRef.current
+      // 用户仍在说话（30s 滚段后新段已开）→ 不发，文字留草稿，下一段定稿会重新调度。
+      if (eng && (eng.state === 'speech' || eng.holding)) return
+      // 到点前 AI 已开播 / 自动发送被关 → 不发（文字已留在草稿）。
+      if (bus.ui.playing) return
+      if (bootNow().autoSend === false) return
+      submitDraftNow()
+    }, delay)
+  }
+
   const exitMode = async (_reason: 'manual' | 'idle' | 'typing'): Promise<void> => {
     if (localRef.current === 'off') return
     setLocalMode('off')
     clearIdle()
     cancelPendingSubmit()
+    cancelAutoSend()
     isSpeechTrueCount = 0 // 打断根治：退出重置 isSpeech 计数（防残留）
     fixtureRecorder.save('exit') // fixture 录制：退出即落盘（未开录时为 no-op）
     breakRef.current = null // 手动打断入口：退出即失效
@@ -1504,6 +1570,7 @@ export function MicButton({
 
       engine.onState((s) => {
         bus.setUi({ state: s })
+        if (s === 'speech') cancelAutoSend() // 再开口：取消延迟发送，继续累积
         if (s === 'idle') resetIdle()
       })
       engine.onError((key) => {
@@ -1517,22 +1584,21 @@ export function MicButton({
       })
       engine.onPartial((text) => bus.setUi({ partial: text }))
       engine.onSegment((text, meta) => {
-        // 定稿进草稿（可编辑 Q13）+ 自动发送（Q5 停顿已等过；autoSend=false 只进草稿，
-        // 按住 Ctrl 强制发送仍提交）
+        // 定稿进草稿（可编辑 Q13）。发送语义：累积模式——连续多段拼成一条消息，
+        // 静音到「发送阈值」（断句后再额外静音一个 silenceMs）或按住 Ctrl / hold 松手才发，
+        // 不再每段定稿立即发送（长句碎片化/丢字的根因）。
         resetIdle()
         bus.setUi({ partial: '' }) // 定稿即清实时字幕（防旧 partial 遮蔽思考/朗读状态条）
         const actions = actionsRef.current
         const trimmed = text.trim()
         if (!trimmed) return
         // 追加式写入：保留已有草稿内容（绝对不改第一真文）：
+        let nextDraft = trimmed
         try {
           const curText = draftRef.current
-          const nextDraft = curText ? `${curText} ${trimmed}` : trimmed
+          nextDraft = curText ? `${curText} ${trimmed}` : trimmed
           if (typeof actions?.setDraft === 'function') actions.setDraft(nextDraft)
           else if (typeof (actions as any)?.setDraft === 'function') (actions as any).setDraft(nextDraft)
-          else {
-            // 提交失败兜底：文字已留在 UI 侧（Q16）
-          }
         } catch {
           try {
             actions?.setDraft?.(trimmed)
@@ -1540,38 +1606,21 @@ export function MicButton({
             // 提交失败：文字已留在草稿（Q16）
           }
         }
+        // 强制发送（按住 Ctrl / hold 松手）恒立即提交，绕过播放门与 autoSend 开关。
+        if (meta?.force) {
+          cancelAutoSend()
+          submitDraftNow(nextDraft)
+          return
+        }
+        // hold 模式按住期间的非强制定稿（30s 滚段）：只累积进草稿，绝不自动发送（松手才发）。
+        if (bootNow().mode === 'hold') return
         // AI 自聊修复：TTS 在播（bus.ui.playing）时不得自动发送非强制段——
         // 因 TTS 回声定稿后若无 gate 会经 onSegment 发出，进入 AI 回复→TTS→回声 → 自循环。
-        if (bus.ui.playing && !meta?.force) return
-        // 自动提交门控：设置关闭或未强制时只留草稿，等待用户编辑/发送
-        if (bootNow().autoSend === false && !meta?.force) return
-        // 自动提交：增加重试与可见降级（Q16 提交失败→留在草稿+错误提示）
-        const doSubmit = (): void => {
-          try {
-            const r: any = actions?.submit?.()
-            // 兼容 Promise 型 submit
-            if (r && typeof r.then === 'function') {
-              r.catch(() => {
-                bus.setUi({ error: t('sendFailKept') })
-              })
-            }
-          } catch {
-            bus.setUi({ error: t('sendFailKept') })
-          }
-        }
-        cancelPendingSubmit()
-        // 立即尝试一次，失败则 500ms 后重试（最多 3 次防无限循环）
-        doSubmit()
-        let retryCount = 0
-        submitTimerRef.current = setInterval(() => {
-          retryCount++
-          const phase = phaseRef.current
-          if (retryCount > 3 || phase === 'submitting' || phase === 'adjudicating' || draftRef.current.trim() !== trimmed) {
-            cancelPendingSubmit()
-            return
-          }
-          doSubmit()
-        }, 500)
+        if (bus.ui.playing) return
+        // 自动提交门控：设置关闭时只留草稿，等待用户编辑/发送。
+        if (bootNow().autoSend === false) return
+        // 累积模式：静音到点才发（期间再开口 → onState('speech') → cancelAutoSend 继续累积）。
+        scheduleAutoSend()
       })
       bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null })
       if (!mountedRef.current) {
@@ -1668,6 +1717,7 @@ export function MicButton({
       mountedRef.current = false // 中止在途 enterMode（权限框期间卸载）
       clearIdle()
       cancelPendingSubmit()
+      cancelAutoSend()
       isSpeechTrueCount = 0 // 打断根治：卸载重置 isSpeech 计数（防残留）
       const sid = sidRef.current
       // 过渡态（pending）也需清理：enterMode 期间卸载时 host 可能已 arm 本会话，

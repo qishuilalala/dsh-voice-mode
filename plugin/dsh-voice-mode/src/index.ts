@@ -113,7 +113,7 @@ export interface VoiceSettingsValue {
   voice: string
   rate: number
   interruptLevel: 0 | 1 | 2
-  /** 静音停顿多少毫秒判定说完一句（Q5，默认 700ms；端点优先由 host Silero VAD 判定）。 */
+  /** 静音停顿多少毫秒判定说完一句（Q5，默认 1500ms；端点优先由 host Silero VAD 判定）。 */
   silenceMs: number
   /** 空闲多少分钟自动退出语音模式（Q11，默认 10）。 */
   idleTimeoutMinutes: number
@@ -152,7 +152,7 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   voice: 'zh-CN-XiaoxiaoNeural',
   rate: 1.0,
   interruptLevel: 0,
-  silenceMs: 700,
+  silenceMs: 1500,
   idleTimeoutMinutes: 10,
   modelHost: '',
   autoSend: true,
@@ -194,10 +194,10 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .union([z.const(0), z.const(1), z.const(2)])
       .default(d.interruptLevel)
       .description('发声打断灵敏度：0 高门槛（安静环境，默认）/ 1 中 / 2 低（嘈杂环境更容易打断）'),
-    silenceMs: z.number().min(500).max(30000).default(d.silenceMs).description('说完整一句的静音停顿毫秒数（默认 700 毫秒；至少 250ms 语音才判句，防短促噪声误触发）'),
+    silenceMs: z.number().min(500).max(30000).default(d.silenceMs).description('说完整一句的静音停顿毫秒数（默认 1500 毫秒，给思考停顿留空间；至少 250ms 语音才判句，防短促噪声误触发）'),
     idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description('无活动自动退出语音模式的分钟数（默认 10）'),
     modelHost: z.string().default(d.modelHost).description('ASR 模型下载源（留空用默认源；国内网络可填 https://hf-mirror.com）'),
-    autoSend: z.boolean().default(d.autoSend).description('识别定稿后自动发送（关闭则只进草稿供编辑；按住 Ctrl / hold 松手仍会发送）'),
+    autoSend: z.boolean().default(d.autoSend).description('静音到点自动发送（连续多段拼成一条消息；关闭则只进草稿供编辑；按住 Ctrl / hold 松手仍会发送）'),
     autoResume: z.boolean().default(d.autoResume).description('切换回上次语音会话时自动恢复语音模式（默认关，需麦克风权限已授予；关闭则每次切换会话后需重新点麦克风）'),
     mode: z
       .union([z.const('toggle'), z.const('hold')])
@@ -258,7 +258,7 @@ export interface Config {
   rate: number
   /** 打断灵敏度档位：0 高门槛（默认）/ 1 中 / 2 低（Q10）。 */
   interruptLevel: 0 | 1 | 2
-  /** 静音停顿多少毫秒判定为说完一句（Q5，默认 700ms）。 */
+  /** 静音停顿多少毫秒判定为说完一句（Q5，默认 1500ms）。 */
   silenceMs: number
   /** 空闲多少分钟自动退出语音模式（Q11，默认 10）。 */
   idleTimeoutMinutes: number
@@ -275,7 +275,7 @@ export const Config: z<Config> = z.object({
   voice: z.string().default('zh-CN-XiaoxiaoNeural'),
   rate: z.number().default(1.0),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
-  silenceMs: z.number().default(700),
+  silenceMs: z.number().default(1500),
   idleTimeoutMinutes: z.number().default(10),
 })
 
@@ -376,6 +376,8 @@ export function apply(ctx: Context, config: Config): void {
     modelHost: () => vset.modelHost,
     // P4：SenseVoice 定稿重译开关（实时读取，关闭则不下载/不创建模型）。
     senseVoice: () => vset.senseVoice,
+    // 断句静音阈值（实时读取）：端点 VAD minSilenceDuration 跟随设置。
+    silenceMs: () => vset.silenceMs,
     allowCustomHost: config.allowCustomModelHost,
     broadcast,
   })

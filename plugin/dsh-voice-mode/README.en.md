@@ -11,7 +11,7 @@
 >
 > 中文说明见 [README.md](./README.md)。
 
-> **Version note (0.6.0)**: Edge cloud TTS by default (fast & natural); local TTS (VITS / Kokoro, privacy-first) optional + HTTP hardening + model SHA256 pinning form the merged core; Kokoro adds a model-precision choice (`int8` default 109 MB / `fp32` better quality 311 MB); `wakeWord` (wake word) and `toolBeep` (tool-call beep) are fully wired; the early fork's `asrModel` (bilingual paraformer) and `punctuate` (neural punctuation) were removed — SenseVoice finalization already adds punctuation, and streaming ASR is fixed to zipformer2. Silence split defaults to 700 ms.
+> **Version note (0.6.0)**: Edge cloud TTS by default (fast & natural); local TTS (VITS / Kokoro, privacy-first) optional + HTTP hardening + model SHA256 pinning form the merged core; Kokoro adds a model-precision choice (`int8` default 109 MB / `fp32` better quality 311 MB); `wakeWord` (wake word) and `toolBeep` (tool-call beep) are fully wired; the early fork's `asrModel` (bilingual paraformer) and `punctuate` (neural punctuation) were removed — SenseVoice finalization already adds punctuation, and streaming ASR is fixed to zipformer2. Silence split defaults to 1500 ms.
 
 ## Fork enhancements (this repo)
 
@@ -19,7 +19,7 @@
 - **103 Kokoro voices** (F0-measured gender labels, 4 favourite male voices pinned), browsed with a ◀▶ stepper;
 - **Delta transport**: partials upload only the new 0.9 s — long push-to-talk segments finalize in seconds;
 - **Interaction**: a mode-switch button next to the mic (continuous ⇄ hold, persisted); hold mode records only while held;
-- **Long segments**: hold up to 10 min (pauses don't split), continuous sentences up to 3 min, 700 ms silence split by default;
+- **Long segments**: continuous listening stitches consecutive segments into one message (internally chunked at 30 s and concatenated across chunks); 1500 ms silence split by default; hold keeps pauses from splitting;
 - **Hardening**: session-existence check, loopback + Origin guards, per-endpoint rate limits, model SHA256 pinning, download-host allowlist.
 
 > ⚠️ The screenshots below (and `assets/demo.gif`) show the **upstream legacy single-button UI**; the current UI adds a mode-switch button next to the mic.
@@ -29,7 +29,7 @@
 
 - **Voice mode**: toggle with the microphone button in the input toolbar or the global shortcut `Ctrl+Shift+V`; globally single-active (only one session is in voice mode at a time; switching sessions yields automatically)
 - **Two interaction modes (switchable in settings, plus a mode-switch button beside the mic)**:
-  - `toggle` (default) continuous listening: RMS VAD segmentation → streaming zipformer2 ASR (words appear as you speak, live caption preview) → automatic sentence split and send after 700 ms of silence; hold `Ctrl` to force an immediate send
+  - `toggle` (default) continuous listening: RMS VAD segmentation → streaming zipformer2 ASR (words appear as you speak, live caption preview) → automatic sentence split after 1500 ms of silence into the draft, consecutive segments joined into one message, then auto-sent after ~1500 ms more of silence (≈3 s total); hold `Ctrl` to force an immediate send
   - `hold` push-to-talk: short tap to enter/exit, **hold the mic button to talk, release to send** (swipe up to cancel, `Esc`/blur abandons the segment; pauses do not split while held, up to 10 min); hold `Ctrl` to record-by-keyboard, release to send
 - **Wake word (optional, off by default)**: after setting `wakeWord`, entering voice mode starts in standby, and recognition only begins once the wake word is spoken (e.g. `你好小D`), preventing accidental triggers
 - **Output pipeline**: only the final answer's `text-delta` is read (reasoning/tool calls are skipped), streamed sentence-by-sentence (Edge cloud by default; local VITS / Kokoro, int8/fp32, optional) with a live caption overlay at the bottom-right; tool calls trigger a beep; the full text is still written to the chat; in voice mode a spoken-format system prompt is injected (short natural sentences, no Markdown decoration), and the reader side strips markers as well for a smoother listening experience
@@ -44,7 +44,7 @@
 | Gesture | Behaviour |
 | --- | --- |
 | Click the mic button / `Ctrl+Shift+V` | Enter / exit voice mode |
-| Just speak, pause 700 ms (toggle) | Auto sentence split and send |
+| Just speak, pause ~1500 ms (toggle) | Accumulate into draft, auto-send after ~3 s of quiet |
 | Hold `Ctrl` (toggle, ≥250 ms speech) | Force-send the current segment immediately |
 | **Hold the mic button (hold)** | Hold to talk, release to send; swipe up / `Esc` / blur abandons the segment; <250 ms tap exits the mode |
 | Hold `Ctrl` (hold, ≥600 ms) | Keyboard push-to-talk, release to send |
@@ -86,7 +86,7 @@ npm run prefetch          # run inside the plugin dir; writes to the platform ca
 ## Usage
 
 1. Click the mic button in the input toolbar (or press `Ctrl+Shift+V`) to enter voice mode; a status bar appears above the input box
-2. Choose how to speak: just talk and let the 700 ms pause auto-send (toggle); or hold the mic button and release to send (hold)
+2. Choose how to speak: just talk and let the ~1500 ms pause split and ~3 s of quiet auto-send (toggle); or hold the mic button and release to send (hold)
 3. The AI answer is read sentence-by-sentence with a caption overlay at the bottom-right; click "Skip" or just start speaking to interrupt
 4. Click "Exit" in the status bar (or press `Ctrl+Shift+V` again) to leave voice mode
 
@@ -103,11 +103,11 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | `voice` | per engine | Voice: 5 VITS speakers; 103 Kokoro voices (◀▶ stepper; 62/68/75/76 favourite males pinned); Edge ShortNames below. The inline "试听" button previews it at the current rate |
 | `rate` | `1.0` | Reading speed multiplier (0.5 slow ～ 2.0 fast), **applies live** |
 | `interruptLevel` | `0` | Barge-in sensitivity (host-side VAD frame detection + echo gate): 0 high threshold / 1 medium / 2 low |
-| `silenceMs` | `700` | Silence pause in ms that marks the end of a complete sentence |
+| `silenceMs` | `1500` | Silence pause in ms that marks the end of a complete sentence |
 | `idleTimeoutMinutes` | `10` | Minutes of inactivity before auto-exiting voice mode (reading counts as activity) |
 | `modelHost` | default | Model download host (use `https://hf-mirror.com` on mainland networks) |
 | `autoSend` | `true` | Auto-send after a finalized transcript; when off, text only goes to the draft (hold `Ctrl` / release in hold mode still sends) |
-| `mode` | `toggle` | Interaction mode: `toggle` continuous listening + 700 ms silence split; `hold` push-to-talk, release to send (short tap exits) |
+| `mode` | `toggle` | Interaction mode: `toggle` continuous listening + 1500 ms silence split; `hold` push-to-talk, release to send (short tap exits) |
 | `wakeWord` | empty (off) | Wake word (e.g. `你好小D`): speak it after entering to activate, avoiding accidental triggers; empty = off |
 
 Effect timing: `voice`/`rate`/`ttsEngine`/`kokoroModel`/`spokenFormat` take effect **immediately** (TTS hot-swap); the rest apply on the next voice-mode entry. Defaults come from the plugin config (`base` layer) — they follow the config unless explicitly changed.
@@ -145,7 +145,7 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
     voice: zh-CN-XiaoxiaoNeural
     rate: 1.0
     interruptLevel: 0
-    silenceMs: 700
+    silenceMs: 1500
     idleTimeoutMinutes: 10
     modelHost: https://huggingface.co
 ```
@@ -181,7 +181,7 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 ![architecture](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/architecture.svg)
 
 ```
-input:  mic ──RMS VAD (700 ms silence split)──▶ POST /voice-mode/asr (f32 PCM, 16k, incremental)
+input:  mic ──RMS VAD (1500 ms silence split)──▶ POST /voice-mode/asr (f32 PCM, 16k, incremental)
                                             │ zipformer2 streaming ASR (host-side WASM)
                                             ▼
         composer draft ──autoSend──▶ model stream ──llm/stream tap (active voice session only)

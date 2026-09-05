@@ -992,7 +992,6 @@ function createAsrEngine(config, sessionId) {
     beginHeld() {
       if (!active || holdActive) return;
       holdActive = true;
-      forcePending = true;
       segmentEpoch++;
       utteranceEndAt = null;
       segment = [];
@@ -1307,10 +1306,10 @@ var zh = {
   sev0: "0 \u9AD8\u95E8\u69DB",
   sev1: "1 \u4E2D",
   sev2: "2 \u4F4E",
-  descSilence: "\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 700 \u6BEB\u79D2\uFF1B\u81F3\u5C11 250ms \u8BED\u97F3\u624D\u5224\u53E5\uFF0C\u9632\u77ED\u4FC3\u566A\u58F0\u8BEF\u89E6\u53D1\uFF09",
+  descSilence: "\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 1500 \u6BEB\u79D2\uFF0C\u7ED9\u601D\u8003\u505C\u987F\u7559\u7A7A\u95F4\uFF1B\u81F3\u5C11 250ms \u8BED\u97F3\u624D\u5224\u53E5\uFF0C\u9632\u77ED\u4FC3\u566A\u58F0\u8BEF\u89E6\u53D1\uFF09",
   descIdle: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09",
   descModelHost: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u5B98\u65B9\u6E90 / \u56FD\u5185\u955C\u50CF\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u586B\u4EFB\u610F\u955C\u50CF\uFF09",
-  descAutoSend: "\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09",
+  descAutoSend: "\u9759\u97F3\u5230\u70B9\u81EA\u52A8\u53D1\u9001\uFF08\u8FDE\u7EED\u591A\u6BB5\u62FC\u6210\u4E00\u6761\uFF1B\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09",
   descAutoResume: "\u5207\u6362\u56DE\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD\u65F6\u81EA\u52A8\u6062\u590D\u8BED\u97F3\u6A21\u5F0F\uFF08\u9ED8\u8BA4\u5173\uFF0C\u9700\u9EA6\u514B\u98CE\u6743\u9650\u5DF2\u6388\u4E88\uFF1B\u7701\u53BB\u6BCF\u6B21\u5207\u6362\u4F1A\u8BDD\u540E\u91CD\u65B0\u70B9\u9EA6\u514B\u98CE\uFF09",
   descSpokenFormat: "\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u56DE\u590D\u53E3\u8BED\u5316\u3001\u77ED\u53E5\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\u66F4\u5FEB\uFF1B\u9ED8\u8BA4\u5F00\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09",
   descSenseVoice: "\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9 + \u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09",
@@ -1448,10 +1447,10 @@ var en = {
   sev0: "0 high",
   sev1: "1 medium",
   sev2: "2 low",
-  descSilence: "Silence pause before a sentence is committed (default 700 ms; at least 250 ms of speech required, guards against noise triggers)",
+  descSilence: "Silence pause before a sentence is committed (default 1500 ms; at least 250 ms of speech required, guards against noise triggers)",
   descIdle: "Auto-exit voice mode after idle minutes (default 10)",
   descModelHost: "ASR model download source (official source / mirror, or any custom URL)",
-  descAutoSend: "Auto-send after finalized recognition (off = draft only; Ctrl / hold still sends)",
+  descAutoSend: "Auto-send once quiet (consecutive segments join into one message; off = draft only; Ctrl / hold still sends)",
   descAutoResume: "Auto-resume voice mode when switching back to the last voice session (default off, requires granted mic permission)",
   descSpokenFormat: "Inject spoken-format prompt into voice replies (colloquial, short sentences, no Markdown; default on, live)",
   descSenseVoice: "Re-transcribe the finalized utterance with SenseVoice (punctuation + ITN, more accurate; default on \u2014 turn off to skip the 228 MB model and keep streaming only)",
@@ -2458,7 +2457,7 @@ function VoiceSettingsCard({ scope }) {
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRecognition"), children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 700, min: 500, max: 3e4, step: 100 }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Section, { title: t("secModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }) }),
@@ -2485,7 +2484,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "56e7e10";
+var BUILD_TAG = "9d179d9";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2778,7 +2777,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   let activeSessionId = null;
   const DEFAULT_BOOT = {
     basePath: BASE_PATH2,
-    silenceMs: 700,
+    silenceMs: 1500,
     interruptLevel: 0,
     idleTimeoutMinutes: 10,
     autoSend: true,
@@ -3241,6 +3240,7 @@ function MicButton({
   const engineRef = (0, import_react2.useRef)(null);
   const actionsRef = (0, import_react2.useRef)(inputActions);
   const submitTimerRef = (0, import_react2.useRef)(null);
+  const autoSendTimerRef = (0, import_react2.useRef)(null);
   const idleTimerRef = (0, import_react2.useRef)(null);
   const runningRef = (0, import_react2.useRef)(false);
   const mountedRef = (0, import_react2.useRef)(true);
@@ -3248,7 +3248,7 @@ function MicButton({
   const manualHoldRef = (0, import_react2.useRef)(false);
   const breakRef = (0, import_react2.useRef)(null);
   const pausedForHiddenRef = (0, import_react2.useRef)(false);
-  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 700, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, shortcut: "Ctrl+Shift+V", wakeWord: "", toolBeep: false };
+  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 1500, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, shortcut: "Ctrl+Shift+V", wakeWord: "", toolBeep: false };
   useVoiceCss();
   const [, bumpUi] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(
@@ -3309,6 +3309,7 @@ function MicButton({
         setLocalMode("off");
         clearIdle();
         cancelPendingSubmit();
+        cancelAutoSend();
         clearBreakTimer();
         setHolding(false);
         isSpeechTrueCount = 0;
@@ -3329,11 +3330,61 @@ function MicButton({
       submitTimerRef.current = null;
     }
   };
+  const cancelAutoSend = () => {
+    if (autoSendTimerRef.current) {
+      clearTimeout(autoSendTimerRef.current);
+      autoSendTimerRef.current = null;
+    }
+  };
+  const submitDraftNow = (expectedText) => {
+    cancelPendingSubmit();
+    const actions = actionsRef.current;
+    const submitFn = actions?.submit;
+    if (typeof submitFn !== "function") return;
+    const draftSnapshot = (expectedText ?? draftRef.current).trim();
+    if (!draftSnapshot) return;
+    const doSubmit = () => {
+      try {
+        const r = submitFn();
+        if (r && typeof r.then === "function") {
+          r.catch(() => {
+            bus.setUi({ error: t("sendFailKept") });
+          });
+        }
+      } catch {
+        bus.setUi({ error: t("sendFailKept") });
+      }
+    };
+    doSubmit();
+    let retryCount = 0;
+    submitTimerRef.current = setInterval(() => {
+      retryCount++;
+      const phase = phaseRef.current;
+      if (retryCount > 3 || phase === "submitting" || phase === "adjudicating" || draftRef.current.trim() !== draftSnapshot) {
+        cancelPendingSubmit();
+        return;
+      }
+      doSubmit();
+    }, 500);
+  };
+  const scheduleAutoSend = () => {
+    cancelAutoSend();
+    const delay = bootNow().silenceMs;
+    autoSendTimerRef.current = setTimeout(() => {
+      autoSendTimerRef.current = null;
+      const eng = engineRef.current;
+      if (eng && (eng.state === "speech" || eng.holding)) return;
+      if (bus.ui.playing) return;
+      if (bootNow().autoSend === false) return;
+      submitDraftNow();
+    }, delay);
+  };
   const exitMode = async (_reason) => {
     if (localRef.current === "off") return;
     setLocalMode("off");
     clearIdle();
     cancelPendingSubmit();
+    cancelAutoSend();
     isSpeechTrueCount = 0;
     fixtureRecorder.save("exit");
     breakRef.current = null;
@@ -3521,6 +3572,7 @@ function MicButton({
       }
       engine.onState((s) => {
         bus.setUi({ state: s });
+        if (s === "speech") cancelAutoSend();
         if (s === "idle") resetIdle();
       });
       engine.onError((key) => {
@@ -3538,45 +3590,27 @@ function MicButton({
         const actions = actionsRef.current;
         const trimmed = text.trim();
         if (!trimmed) return;
+        let nextDraft = trimmed;
         try {
           const curText = draftRef.current;
-          const nextDraft = curText ? `${curText} ${trimmed}` : trimmed;
+          nextDraft = curText ? `${curText} ${trimmed}` : trimmed;
           if (typeof actions?.setDraft === "function") actions.setDraft(nextDraft);
           else if (typeof actions?.setDraft === "function") actions.setDraft(nextDraft);
-          else {
-          }
         } catch {
           try {
             actions?.setDraft?.(trimmed);
           } catch {
           }
         }
-        if (bus.ui.playing && !meta?.force) return;
-        if (bootNow().autoSend === false && !meta?.force) return;
-        const doSubmit = () => {
-          try {
-            const r = actions?.submit?.();
-            if (r && typeof r.then === "function") {
-              r.catch(() => {
-                bus.setUi({ error: t("sendFailKept") });
-              });
-            }
-          } catch {
-            bus.setUi({ error: t("sendFailKept") });
-          }
-        };
-        cancelPendingSubmit();
-        doSubmit();
-        let retryCount = 0;
-        submitTimerRef.current = setInterval(() => {
-          retryCount++;
-          const phase = phaseRef.current;
-          if (retryCount > 3 || phase === "submitting" || phase === "adjudicating" || draftRef.current.trim() !== trimmed) {
-            cancelPendingSubmit();
-            return;
-          }
-          doSubmit();
-        }, 500);
+        if (meta?.force) {
+          cancelAutoSend();
+          submitDraftNow(nextDraft);
+          return;
+        }
+        if (bootNow().mode === "hold") return;
+        if (bus.ui.playing) return;
+        if (bootNow().autoSend === false) return;
+        scheduleAutoSend();
       });
       bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null });
       if (!mountedRef.current) {
@@ -3650,6 +3684,7 @@ function MicButton({
       mountedRef.current = false;
       clearIdle();
       cancelPendingSubmit();
+      cancelAutoSend();
       isSpeechTrueCount = 0;
       const sid = sidRef.current;
       if ((localRef.current === "on" || localRef.current === "pending") && sid) {

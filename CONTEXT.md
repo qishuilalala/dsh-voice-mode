@@ -5,7 +5,7 @@
 
 ## 是什么
 
-DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿自动发送 → 按句朗读+字幕 → 开口打断。识别本地（zipformer2 流式 + SenseVoice 定稿）；TTS 默认 Edge 云端，本地 VITS / Kokoro 可选（int8 默认 / fp32 更好音质）。
+DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音累积、长静音自动发送 → 按句朗读+字幕 → 开口打断。识别本地（zipformer2 流式 + SenseVoice 定稿）；TTS 默认 Edge 云端，本地 VITS / Kokoro 可选（int8 默认 / fp32 更好音质）。
 
 ## 打断检测链（架构）
 
@@ -25,6 +25,9 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿
 - 检测 VAD 阈值 0.35（灵敏），端点 VAD 阈值 0.5（保守断句）。
 - 打断计数**仅在播放期累积**（非播放期清零），否则用户说自己的话的残留计数会在 AI 开播瞬间误打断。
 - 段生命周期：host 按 sessionId→epoch 嵌套 Map；finalize 幂等（缓存定稿文本 + 并发守卫），client 对瞬时失败有界重试（3 次）——不丢句。
+- **断句静音阈值由设置 silenceMs 真实驱动**（端点 VAD minSilenceDuration = silenceMs/1000，默认 1500ms；
+  客户端静音计时仅作 VAD 缺失兜底）。**发送为累积模式**：定稿进草稿，再静音一个 silenceMs 或 Ctrl/hold 才发，
+  连续多段拼成一条消息（内部仍按 30s 分块识别、跨块拼接）。
 - **观测栅格 128ms**（64ms 帧 + `>=100ms` 阈值需攒两帧），三档确认窗 384/256/128ms；
   打断确认下限 = 2×128 = 256ms。真机实测 252~272ms、端到端 199~597ms（2026-09-02）。
 - **播放门分支不得 return**：它会连带跳过末尾轮询块，使用户开口时检测通道反而停发（已修，有回归守卫）。
@@ -42,7 +45,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 停顿
 | bargeInMode | auto | auto 自动打断 / manual 长按打断（外放推荐） |
 | echoGateDb | 6 | 打断要求 peak 高于 floor 此 dB；打不断降 3-4、噪音误打断升 8-10 |
 | interruptLevel | 0 | 确认帧数 3/2/1，越低越稳越慢 |
-| mode / silenceMs / shortcut / autoResume | toggle/700/Ctrl+Shift+V/false | 交互/静音断句/快捷键/切回自动恢复 |
+| mode / silenceMs / shortcut / autoResume | toggle/1500/Ctrl+Shift+V/false | 交互/静音断句/快捷键/切回自动恢复 |
 
 ## 诊断
 

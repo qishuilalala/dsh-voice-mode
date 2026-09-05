@@ -392,7 +392,7 @@ function rmsOf(samples) {
   return Math.sqrt(sum / samples.length);
 }
 function createAsrRuntime(options) {
-  const { cacheDir, modelHost, broadcast, senseVoice, allowCustomHost } = options;
+  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, allowCustomHost } = options;
   let lastProgress = null;
   const localBroadcast = (event, payload) => {
     if (event === "asr-progress") lastProgress = payload;
@@ -473,11 +473,11 @@ function createAsrRuntime(options) {
     }
     return vadLoading;
   };
-  const newVad = (vadPath, threshold = 0.5) => createVad({
+  const newVad = (vadPath, threshold = 0.5, minSilenceDuration = 0.5) => createVad({
     sileroVad: {
       model: vadPath,
       threshold,
-      minSilenceDuration: 0.5,
+      minSilenceDuration,
       minSpeechDuration: 0.25,
       maxSpeechDuration: 20,
       windowSize: 512
@@ -492,7 +492,7 @@ function createAsrRuntime(options) {
     if (seg.vad) return seg.vad;
     const vadPath = await ensureVadModel();
     if (!vadPath) return null;
-    seg.vad = newVad(vadPath);
+    seg.vad = newVad(vadPath, 0.5, silenceMs() / 1e3);
     return seg.vad;
   };
   const detectVads = /* @__PURE__ */ new Map();
@@ -1184,44 +1184,54 @@ var TtsQueue = class {
     try {
       while (q.pending.length > 0) {
         const item = q.pending.shift();
-        try {
-          const buf = await this.engine.synthesize(item.text);
-          if (item.epoch !== q.epoch) continue;
-          q.errorNotified = false;
-          q.backoff = 0;
-          const sentenceId = q.seq++;
-          const mime = this.engine.mime;
-          const dataFrame = {
-            sessionId,
-            sentenceId,
-            chunkId: 0,
-            final: false,
-            audio: buf.toString("base64"),
-            mime
-          };
-          for (const fn of this.listeners) {
-            try {
-              fn(dataFrame);
-            } catch {
+        const MAX_SYNTH_ATTEMPTS = 3;
+        let buf = null;
+        for (let attempt = 0; attempt < MAX_SYNTH_ATTEMPTS; attempt++) {
+          if (item.epoch !== q.epoch) break;
+          try {
+            buf = await this.engine.synthesize(item.text);
+            break;
+          } catch (e) {
+            console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${String(e)}`);
+            if (attempt < MAX_SYNTH_ATTEMPTS - 1) {
+              await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
             }
           }
-          const finalFrame = {
-            sessionId,
-            sentenceId,
-            chunkId: 1,
-            final: true,
-            text: item.text,
-            audio: "",
-            mime
-          };
-          for (const fn of this.listeners) {
-            try {
-              fn(finalFrame);
-            } catch {
-            }
+        }
+        if (item.epoch !== q.epoch) continue;
+        if (buf === null) continue;
+        q.errorNotified = false;
+        q.backoff = 0;
+        const sentenceId = q.seq++;
+        const mime = this.engine.mime;
+        const dataFrame = {
+          sessionId,
+          sentenceId,
+          chunkId: 0,
+          final: false,
+          audio: buf.toString("base64"),
+          mime
+        };
+        for (const fn of this.listeners) {
+          try {
+            fn(dataFrame);
+          } catch {
           }
-        } catch (e) {
-          console.warn(`[dsh-voice-mode] synthesis failed: ${String(e)}`);
+        }
+        const finalFrame = {
+          sessionId,
+          sentenceId,
+          chunkId: 1,
+          final: true,
+          text: item.text,
+          audio: "",
+          mime
+        };
+        for (const fn of this.listeners) {
+          try {
+            fn(finalFrame);
+          } catch {
+          }
         }
       }
     } catch (e) {
@@ -1773,7 +1783,7 @@ var VOICE_SETTINGS_DEFAULTS = {
   voice: "zh-CN-XiaoxiaoNeural",
   rate: 1,
   interruptLevel: 0,
-  silenceMs: 700,
+  silenceMs: 1500,
   idleTimeoutMinutes: 10,
   modelHost: "",
   autoSend: true,
@@ -1801,10 +1811,10 @@ function createVoiceSettingsSchema(defs) {
     ),
     rate: z.number().min(0.5).max(2).default(d.rate).description("\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 = \u6162\u901F\uFF0C2.0 = \u5FEB\u901F\uFF0C1.0 = \u6B63\u5E38\uFF09"),
     interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(d.interruptLevel).description("\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF1A0 \u9AD8\u95E8\u69DB\uFF08\u5B89\u9759\u73AF\u5883\uFF0C\u9ED8\u8BA4\uFF09/ 1 \u4E2D / 2 \u4F4E\uFF08\u5608\u6742\u73AF\u5883\u66F4\u5BB9\u6613\u6253\u65AD\uFF09"),
-    silenceMs: z.number().min(500).max(3e4).default(d.silenceMs).description("\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 700 \u6BEB\u79D2\uFF1B\u81F3\u5C11 250ms \u8BED\u97F3\u624D\u5224\u53E5\uFF0C\u9632\u77ED\u4FC3\u566A\u58F0\u8BEF\u89E6\u53D1\uFF09"),
+    silenceMs: z.number().min(500).max(3e4).default(d.silenceMs).description("\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 1500 \u6BEB\u79D2\uFF0C\u7ED9\u601D\u8003\u505C\u987F\u7559\u7A7A\u95F4\uFF1B\u81F3\u5C11 250ms \u8BED\u97F3\u624D\u5224\u53E5\uFF0C\u9632\u77ED\u4FC3\u566A\u58F0\u8BEF\u89E6\u53D1\uFF09"),
     idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description("\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09"),
     modelHost: z.string().default(d.modelHost).description("ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u7559\u7A7A\u7528\u9ED8\u8BA4\u6E90\uFF1B\u56FD\u5185\u7F51\u7EDC\u53EF\u586B https://hf-mirror.com\uFF09"),
-    autoSend: z.boolean().default(d.autoSend).description("\u8BC6\u522B\u5B9A\u7A3F\u540E\u81EA\u52A8\u53D1\u9001\uFF08\u5173\u95ED\u5219\u53EA\u8FDB\u8349\u7A3F\u4F9B\u7F16\u8F91\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u4F1A\u53D1\u9001\uFF09"),
+    autoSend: z.boolean().default(d.autoSend).description("\u9759\u97F3\u5230\u70B9\u81EA\u52A8\u53D1\u9001\uFF08\u8FDE\u7EED\u591A\u6BB5\u62FC\u6210\u4E00\u6761\u6D88\u606F\uFF1B\u5173\u95ED\u5219\u53EA\u8FDB\u8349\u7A3F\u4F9B\u7F16\u8F91\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u4F1A\u53D1\u9001\uFF09"),
     autoResume: z.boolean().default(d.autoResume).description("\u5207\u6362\u56DE\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD\u65F6\u81EA\u52A8\u6062\u590D\u8BED\u97F3\u6A21\u5F0F\uFF08\u9ED8\u8BA4\u5173\uFF0C\u9700\u9EA6\u514B\u98CE\u6743\u9650\u5DF2\u6388\u4E88\uFF1B\u5173\u95ED\u5219\u6BCF\u6B21\u5207\u6362\u4F1A\u8BDD\u540E\u9700\u91CD\u65B0\u70B9\u9EA6\u514B\u98CE\uFF09"),
     mode: z.union([z.const("toggle"), z.const("hold")]).default(d.mode).description("\u4EA4\u4E92\u6A21\u5F0F\uFF1Atoggle \u6301\u7EED\u8046\u542C + \u9759\u97F3\u81EA\u52A8\u65AD\u53E5\uFF08\u9ED8\u8BA4\uFF09\uFF1Bhold \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF08\u77ED\u6309\u9000\u51FA\uFF09"),
     bargeInMode: z.union([z.const("auto"), z.const("manual")]).default(d.bargeInMode).description("\u6253\u65AD\u65B9\u5F0F\uFF1Aauto \u81EA\u52A8\u6253\u65AD\uFF08\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u8033\u673A/\u5B89\u9759\u73AF\u5883\u63A8\u8350\uFF09\uFF1Bmanual \u624B\u52A8\u6253\u65AD\uFF08\u5916\u653E\u63A8\u8350\u2014\u2014\u5916\u653E\u56DE\u58F0\u4F1A\u8BEF\u89E6\u53D1\u81EA\u52A8\u6253\u65AD\uFF0C\u6539\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u663E\u5F0F\u6253\u65AD\uFF0C\u6C38\u4E0D\u81EA\u6253\u65AD\uFF09"),
@@ -1828,7 +1838,7 @@ var Config = z.object({
   voice: z.string().default("zh-CN-XiaoxiaoNeural"),
   rate: z.number().default(1),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
-  silenceMs: z.number().default(700),
+  silenceMs: z.number().default(1500),
   idleTimeoutMinutes: z.number().default(10)
 });
 function apply(ctx, config) {
@@ -1896,6 +1906,8 @@ function apply(ctx, config) {
     modelHost: () => vset.modelHost,
     // P4：SenseVoice 定稿重译开关（实时读取，关闭则不下载/不创建模型）。
     senseVoice: () => vset.senseVoice,
+    // 断句静音阈值（实时读取）：端点 VAD minSilenceDuration 跟随设置。
+    silenceMs: () => vset.silenceMs,
     allowCustomHost: config.allowCustomModelHost,
     broadcast
   });
