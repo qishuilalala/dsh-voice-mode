@@ -4,7 +4,7 @@
 
 <h1 align="center">dsh-voice-mode</h1>
 
-<p align="center">给 DeepSeek Harness 装上「能听 · 能说 · 能打断」的语音嘴</p>
+<p align="center">DeepSeek Harness 全双工语音插件 —— 实时识别 · 按句朗读 · 开口即打断</p>
 
 <p align="center">
   <a href="https://github.com/topics/dsh-plugin"><img src="https://img.shields.io/badge/dsh--plugin-voice-brightgreen?style=flat-square" alt="dsh-plugin voice"></a>
@@ -16,19 +16,19 @@
 
 ![dsh-voice-mode 全双工语音对话](assets/hero-banner.png)
 
-> **Full-duplex voice mode for DeepSeek Harness** —— 会话内一键进入语音模式，像打电话一样和你的 AI 对话。**识别本地推理、无需 API Key；朗读默认 Edge 云端（快且自然），本地 VITS / Kokoro 可选（int8 默认 / fp32 更好音质，隐私优先）。**
+> **Full-duplex voice mode for DeepSeek Harness** —— 在会话内用语音完成整轮对话：说话时**边说边出字**、停顿后自动发送；回复**按句朗读**并跟随实时字幕；朗读中**开口即打断**。识别在本地推理、无需 API Key；朗读默认 Edge 云端（快且自然），本地 VITS / Kokoro 可选（隐私优先）。兼容 dsh 0.1.1 / 0.1.2 双版本。
 
 ---
 
 ## 💡 它是什么
 
-在 DeepSeek Harness 的会话里，按一下麦克风就能**开口说话**：
+在 DeepSeek Harness 的会话里，点一下麦克风就能用语音完成整轮对话：
 
 - 🎤 **你说** —— 一边说一边**实时出字**（流式识别），停顿约 **700ms 自动发送**；
 - 🔊 **它答** —— 最终回复**按句朗读**，全程实时字幕跟随；
-- ⏸️ **随时插嘴** —— AI 还在朗读时**开口即打断**，你的话直接被听见。
+- ⏸️ **随时打断** —— AI 还在朗读时**开口即打断**，你的话直接被听见。
 
-**零 API Key**：识别在宿主端**本地推理**（**zipformer2** 流式 + SenseVoice 定稿）；朗读默认 **Edge 云端**（快、自然），可选本地 **VITS** 纯中文 / **Kokoro** 中英混读（int8 默认 / fp32 可选，回复文本不出本机，隐私优先）。
+**零 API Key**：识别在宿主端**本地推理**（**zipformer2** 流式 + SenseVoice 定稿）；朗读默认 **Edge 云端**（快、自然），可选本地 **VITS** 纯中文 / **Kokoro** 中英混读（回复文本不出本机，隐私优先）。
 
 ---
 
@@ -36,11 +36,12 @@
 
 | 亮点 | 说明 |
 | --- | --- |
-| 🔒 **零 API Key · 识别本地** | 识别本地推理；朗读默认 Edge 云端，本地 VITS / Kokoro（int8 默认 / fp32）可选（隐私优先） |
-| ⚡ **真·全双工** | 边说边出字、停顿自动发；AI 朗读时开口就打断，像真人对话一样自然 |
+| 🔒 **零 API Key · 识别本地** | 识别本地推理；朗读默认 Edge 云端，本地 VITS / Kokoro 可选（隐私优先） |
+| ⚡ **全双工对话** | 边说边出字、停顿自动发；AI 朗读时开口即打断，节奏接近真人对话 |
 | 🗣️ **按句朗读 + 实时字幕** | 只读最终答复（跳过 reasoning / 工具调用），字幕跟随播放、可跳过 |
 | 🎚️ **两种交互模式** | `toggle` 持续聆听自动断句 ｜ `hold` 按住说话、松手即发；输入框旁一键切换 |
-| 🎧 **声学打断引擎** | 自适应阈值 barge-in（朗读时自动超灵敏），外放也能精准打断、不误伤自己 |
+| 🎧 **声学打断引擎** | 自适应阈值 barge-in（朗读时自动超灵敏），外放也能精准打断、不误判回声 |
+| 🧩 **双版本兼容** | 注入锚点取新旧交集 + 双版本 typecheck 回归；同一份代码跑 dsh 0.1.1 与 0.1.2 |
 | 🌐 **开箱即用** | 模型懒加载（断点续传 + 镜像回退）；界面语言随浏览器（中 / 英）；安全加固 |
 
 ---
@@ -71,7 +72,7 @@ dsh plugin --profile web add dsh-voice-mode
 | 点状态条「退出」 | 退出语音模式 |
 | 点字幕浮层「跳过」 | 跳过当前句朗读 |
 
-![全双工语音体验](assets/voice-experience.png)
+![全双工语音体验（概念示意）](assets/voice-experience.png)
 
 ---
 
@@ -101,13 +102,13 @@ dsh plugin --profile web add dsh-voice-mode
 
 - **朗读**：默认 Edge 云端；本地 VITS（纯中文 5 说话人）/ Kokoro（中英混读 103 音色，int8 默认 / fp32 可选），独立子进程、崩溃自愈
 - **流式识别**：**zipformer2** 流式（边说边出字）+ SenseVoice 定稿（带标点 / 数字归一化）
-- **真·开口即打断**：自适应阈值（滚动噪声地板）+ 朗读时自动超灵敏；本地静音 + 合成队列作废 + 正在运行的回合取消
+- **开口即打断（barge-in）**：自适应阈值（滚动噪声地板）+ 朗读时自动超灵敏；本地静音 + 合成队列作废 + 正在运行的回合取消
 - **两种交互**：`toggle` 持续聆听自动断句 / `hold` 按住说话、松手即发；输入框旁模式切换按钮
 - **模型预热 + 懒下载**：ASR 模型 host 启动即后台预热（首次开语音零冷启动）；本地 TTS 懒下载，`.part` 断点续传 + 镜像回退，状态条实时显示进度
 - **安全加固**：会话存在性校验 / 回环 + Origin 校验 / 全端点限流 / 模型 SHA256 固定 / 下载域名白名单
 - **界面语言**：跟随浏览器（中文 / English）
 
-![真机界面](assets/screenshot-voice.png)
+![真机界面（截图，当前版本以实机为准）](assets/screenshot-voice.png)
 
 ### 架构总览
 

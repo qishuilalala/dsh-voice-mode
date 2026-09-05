@@ -22,11 +22,9 @@
 - **Long segments**: hold up to 10 min (pauses don't split), continuous sentences up to 3 min, 700 ms silence split by default;
 - **Hardening**: session-existence check, loopback + Origin guards, per-endpoint rate limits, model SHA256 pinning, download-host allowlist.
 
-![Voice mode: live captions and status bar](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/screenshot-voice.png)
+> ⚠️ The screenshots below (and `assets/demo.gif`) show the **upstream legacy single-button UI**; the current UI adds a mode-switch button next to the mic.
 
 ## Features
-
-![Voice mode: live captions and status bar](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/screenshot-voice.png)
 
 
 - **Voice mode**: toggle with the microphone button in the input toolbar or the global shortcut `Ctrl+Shift+V`; globally single-active (only one session is in voice mode at a time; switching sessions yields automatically)
@@ -46,7 +44,7 @@
 | Gesture | Behaviour |
 | --- | --- |
 | Click the mic button / `Ctrl+Shift+V` | Enter / exit voice mode |
-| Just speak, pause 2 s (toggle) | Auto sentence split and send |
+| Just speak, pause 700 ms (toggle) | Auto sentence split and send |
 | Hold `Ctrl` (toggle, ≥250 ms speech) | Force-send the current segment immediately |
 | **Hold the mic button (hold)** | Hold to talk, release to send; swipe up / `Esc` / blur abandons the segment; <250 ms tap exits the mode |
 | Hold `Ctrl` (hold, ≥600 ms) | Keyboard push-to-talk, release to send |
@@ -88,7 +86,7 @@ npm run prefetch          # run inside the plugin dir; writes to the platform ca
 ## Usage
 
 1. Click the mic button in the input toolbar (or press `Ctrl+Shift+V`) to enter voice mode; a status bar appears above the input box
-2. Choose how to speak: just talk and let the 2 s pause auto-send (toggle); or hold the mic button and release to send (hold)
+2. Choose how to speak: just talk and let the 700 ms pause auto-send (toggle); or hold the mic button and release to send (hold)
 3. The AI answer is read sentence-by-sentence with a caption overlay at the bottom-right; click "Skip" or just start speaking to interrupt
 4. Click "Exit" in the status bar (or press `Ctrl+Shift+V` again) to leave voice mode
 
@@ -183,7 +181,7 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 ![architecture](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/architecture.svg)
 
 ```
-input:  mic ──RMS VAD (5s silence split)──▶ POST /voice-mode/asr (f32 PCM, 16k, incremental)
+input:  mic ──RMS VAD (700 ms silence split)──▶ POST /voice-mode/asr (f32 PCM, 16k, incremental)
                                             │ zipformer2 streaming ASR (host-side WASM)
                                             ▼
         composer draft ──autoSend──▶ model stream ──llm/stream tap (active voice session only)
