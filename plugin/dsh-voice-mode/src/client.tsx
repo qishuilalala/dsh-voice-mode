@@ -2195,7 +2195,8 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
     telParts.push(`${t('interruptConfirm')} ${fmt(b.ui.interruptConfirmMs)}`)
   }
   // 回声诊断（开发模式标定数据）：bulk delay / 回声地板 RMS / 当前残差 RMS。
-  if (b.ui.echoLevels) {
+  // 仅 telemetry 开启时显示——默认关，避免把 AEC 标定数据暴露给普通用户。
+  if (telemetryEnabled && b.ui.echoLevels) {
     const el = b.ui.echoLevels
     telParts.push(
       `AEC delay=${Math.round(b.ui.echoDelayMs ?? 0)}ms floor=${el.floorRms.toFixed(4)} resid=${el.residualRms.toFixed(4)}`,

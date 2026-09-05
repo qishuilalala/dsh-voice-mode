@@ -2485,7 +2485,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "697c538";
+var BUILD_TAG = "231f447";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -4040,7 +4040,7 @@ function VoiceStatusBar({ bus, sessionId }) {
   if (b.ui.interruptConfirmMs !== void 0) {
     telParts.push(`${t("interruptConfirm")} ${fmt(b.ui.interruptConfirmMs)}`);
   }
-  if (b.ui.echoLevels) {
+  if (telemetryEnabled && b.ui.echoLevels) {
     const el = b.ui.echoLevels;
     telParts.push(
       `AEC delay=${Math.round(b.ui.echoDelayMs ?? 0)}ms floor=${el.floorRms.toFixed(4)} resid=${el.residualRms.toFixed(4)}`
