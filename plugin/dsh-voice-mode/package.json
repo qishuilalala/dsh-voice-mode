@@ -13,7 +13,8 @@
     "url": "https://github.com/qishuilalala/dsh-voice-mode/issues"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.0.0",
+    "dsh": ">=0.1.1-rc.2 <0.2.0-0"
   },
   "exports": {
     ".": "./lib/index.js",
