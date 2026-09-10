@@ -9,3 +9,9 @@ research/
 *.pem
 *.key
 *.p12
+# 本地规则文件（不进 Git）
+AGENTS.md
+CLAUDE.md
+# 本地草稿与临时调查产物（不进 Git）
+.scratch/
+pai3/
