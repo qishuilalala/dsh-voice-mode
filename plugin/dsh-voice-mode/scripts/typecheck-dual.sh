@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # 双版本 typecheck（防回归 I-1）。
-# 对 0.1.1-rc.2 与 0.1.2-alpha.4 两套 @deepseek-ai 类型各跑一遍 tsc，确保 voice-mode
+# 对 0.1.1-rc.2 与 0.1.5-rc.1 两套 @deepseek-ai 类型各跑一遍 tsc，确保 voice-mode
 # 源码在旧版与新版的类型面上都能通过——防止未来改动误用某版本独有 API 而静默破坏兼容。
 #
 # 用法：bash scripts/typecheck-dual.sh [版本线...]
-#   默认检查 0.1.1-rc.2 0.1.2-alpha.4
+#   默认检查 0.1.1-rc.2 0.1.5-rc.1（支持区间两端；中间线如 0.1.2-rc.1 可显式传入）
 #
 # 原理：client.tsx/settings-form.tsx 不 import dsh-client 类型（走 ctx 运行时服务），
 # 仅 host 侧 index.ts 依赖 5 个类型包（cordis + dsh-host-webserver/llm/settings/system-prompt）。
@@ -13,15 +13,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [ $# -eq 0 ]; then
-  VERSIONS=(0.1.1-rc.2 0.1.2-alpha.4)
+  VERSIONS=(0.1.1-rc.2 0.1.5-rc.1)
 else
   VERSIONS=("$@")
 fi
 
-# 版本线 → cordis 版本（0.1.1 用 4.0.1，0.1.2 用 4.0.2；未知默认 4.0.1）
+# 版本线 → cordis 版本（0.1.1 用 4.0.1，0.1.2-rc.1 起全部用 4.0.2；未知默认 4.0.1）
+# 依据：dsh-host-webserver peerDependencies——0.1.1-rc.2 为 ^4.0.1，0.1.2-rc.1 与 0.1.5-rc.1 均为 ^4.0.2
 cordis_ver_for() {
   case "$1" in
-    0.1.2-alpha.*) echo 4.0.2 ;;
+    0.1.2-*|0.1.3-*|0.1.5-*) echo 4.0.2 ;;
     *) echo 4.0.1 ;;
   esac
 }

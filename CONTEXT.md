@@ -34,6 +34,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 - 回声门控（echoGateDb）在原生 AEC 生效时**从未被执行**——真机 3.1 分钟朗读期 Silero 判回声为
   语音 0/777 帧，打断前置条件不成立。拦住自打断的是 VAD，不是这道门。
 - 本地 TTS 模型：就绪以「模型文件已下载」为准（跨引擎持久，非子进程 init）；`/models/download` 触发下载、`/models/clean` 删除本地；int8/fp32 分目录缓存、切换不重下。
+- **宿主兼容 0.1.1 → 0.1.5**：9 个 `dsh.client.inject` 锚点取交集；升级 dsh 前先 `npm run check:anchors` 预检，回归用 `npm run verify:dual`（多版本 typecheck + 隔离冒烟，核心备于 /tmp/dsh011/012/015-core）；契约点枚举与版本矩阵见 docs/compat-contract.md。
 
 ## 设置语义
 

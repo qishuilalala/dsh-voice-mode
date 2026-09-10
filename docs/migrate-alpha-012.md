@@ -4,6 +4,9 @@
 > 依据：`/tmp/alpha-clean`（在**不含** `--ignore-scripts` 的干净 `npm install` 下安装的完整 alpha 树）、
 > `dsh-agent-presets/.../cordis-plugin-development/SKILL.md`（官方插件作者指南）、dsh-host-webserver / dsh-settings
 > / dsh-llm / dsh-system-prompt / dsh-session / dsh-client-ui-* 各包的 `.d.ts` 类型面。
+>
+> **后续版本线**：本文是 0.1.2 线的历史迁移记录；0.1.5 线的结论与三版本兼容矩阵见
+> `docs/compat-contract.md` §7（2026-09-10，0.1.1 → 0.1.5 当日全绿），运维过程见 `~/.dsh/docs/UPGRADES.md`。
 
 ## 0. 结论先行
 

@@ -1,6 +1,6 @@
 {
   "name": "dsh-voice-mode",
-  "description": "Full-duplex voice plugin for DeepSeek Harness: local zipformer2 streaming ASR (no API key) → editable draft; Edge TTS or local VITS / Kokoro read-aloud with live captions; true barge-in; hardened HTTP surface + model SHA256 pinning; compatible with dsh 0.1.1 → 0.1.2. · DSH 语音双工插件：流式识别入草稿、按句朗读+实时字幕、开口即打断；免 API Key、安全加固、新旧版本兼容。",
+  "description": "Full-duplex voice plugin for DeepSeek Harness: local zipformer2 streaming ASR (no API key) → editable draft; Edge TTS or local VITS / Kokoro read-aloud with live captions; true barge-in; hardened HTTP surface + model SHA256 pinning; compatible with dsh 0.1.1 → 0.1.5. · DSH 语音双工插件：流式识别入草稿、按句朗读+实时字幕、开口即打断；免 API Key、安全加固、新旧版本兼容。",
   "version": "0.7.5",
   "type": "module",
   "main": "lib/index.js",
@@ -85,11 +85,11 @@
     "react": "^18.2.0"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-host-webserver": "0.1.2-alpha.5",
-    "@deepseek-ai/dsh-llm": "0.1.2-alpha.5",
-    "@deepseek-ai/dsh-settings": "0.1.2-alpha.5",
-    "@deepseek-ai/dsh-system-prompt": "0.1.2-alpha.5",
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-host-webserver": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-llm": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-settings": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "0.1.5-rc.1",
     "@types/node": "^26.0.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.25.0",

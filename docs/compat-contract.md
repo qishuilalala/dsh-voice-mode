@@ -145,3 +145,18 @@ mic 实际渲染由真实实例佐证：配置完整的 dsh 0.1.1-rc.2 上 `docu
 > Windows 上需显式传参，例如：
 > `bash scripts/verify-dual.sh "C:/Users/<你>/AppData/Roaming/npm/node_modules/@deepseek-ai/dsh/lib/bin.js" "C:/.../dsh012-core/node_modules/@deepseek-ai/dsh/lib/bin.js"`
 
+---
+
+## 7. 0.1.5 线复核（2026-09-10，升级 0.1.5-alpha.2 前的预检）
+
+- **目标版本组合**：主包 0.1.5-alpha.2 + 全部子包解析为 **0.1.5-rc.1**（`^0.1.5-alpha.2` 吸收同版本线的 rc.1，registry 现状即如此；pi-ai 0.85.1、cordis 4.0.2）。GitHub 已发 0.1.5-rc.1 主包尚未上 npm，待其上架后可再对齐一轮。
+- **12 契约点对 0.1.5 的变化评估**：
+  - 上游移除/收紧：`ctx.agent`（改为显式传 Agent）、Inbox 运行时类（类型化）、`agentLoop.create()` 异步化、会话格式 V3。voice-mode 源码扫描：`ctx.agent` / `.inbox` / `agentLoop` **0 命中**，不触碰这些面 ✅
+  - 契约点 1–12 类型面：对 0.1.5-alpha.2 类型 typecheck host+client **双过** ✅（`typecheck-dual.sh` 已扩 cordis 映射：`0.1.3-*|0.1.5-* → 4.0.2`，依据 `dsh-host-webserver@0.1.5-alpha.2` peerDeps）
+  - 契约点 7（9 交集锚点）：0.1.3-alpha.2 / 0.1.5-alpha.1 / 0.1.5-alpha.2 全在 ✅（`check-anchors.mjs` registry 直查）——O-1 担心的"0.1.3+ 继续删锚点包"本轮未发生
+  - 运行时：隔离冒烟 host 三端点 + mic 渲染 + console 0 error ✅；**真实 profile 全量副本演练**（含 better-sidebar/dshmarket/真实 settings/sessions 269M）boot 成功、三端点 200、日志无错误 ✅
+- **V3 会话迁移**：逐会话懒迁移（打开旧会话时生成新版日志、保留原文件）；boot 期不批量重写。回滚场景：升级后继续过的会话旧核心不可读，但原始文件仍在（另有 269M sessions 备份）。
+- **本轮矩阵口径（2026-09-10 当日两轮实测：升级预检 + 同步复核）**：0.1.1-rc.2 = 锚点 + 类型 + runtime 冒烟 ✅（核心 `/tmp/dsh011-core`）；0.1.2-rc.1 = 锚点 + 类型（cordis 4.0.2，peerDeps 实证）+ 冒烟 ✅（核心 `/tmp/dsh012-core`，由 0.1.2 回滚 tar 解出）；0.1.5 = 锚点（alpha.2 与 rc.1 都查）+ 类型（alpha.2 与 rc.1 两套都过）+ 冒烟（`/tmp/dsh015-core`，mic 走"已建会话"强断言）+ 真实 profile 演练 ✅。锚点检查覆盖 0.1.1-rc.2 / 0.1.2-rc.1 / 0.1.5-alpha.2 / 0.1.5-rc.1 四个版本，9 交集锚点全在。三行矩阵当日全绿。
+- **同步落地（2026-09-10）**：devDeps 已对齐 0.1.5-rc.1（dsh-host-webserver/llm/settings/system-prompt + cordis ^4.0.2；peerDeps 维持 ^4.0.1 以覆盖 0.1.1 线的 cordis 4.0.1）；`typecheck-dual.sh` 默认线更新为区间两端（0.1.1-rc.2 + 0.1.5-rc.1）、cordis 映射修正为 `0.1.2-*` 起 4.0.2；`verify-dual.sh` 默认双冒烟为 0.1.1 + 全局（0.1.5），0.1.2 核心可显式传参；package.json 描述兼容声明扩为 0.1.1 → 0.1.5。对齐后 `npm test`（含 verify-client 40 项）复跑全过。
+- **遗留（2026-09-10 线上复核后更新）**：`settings.plugin.item` 槽位已验证——线上回环浏览器 Settings→Plugins 页 voice-mode 设置表单正常渲染、console/pageerror 0；0.1.5-rc.1 主包上架 npm 后，把全局 dsh 对齐到 rc.1 并重放 `verify:dual`（`/tmp/dsh011-core`、`/tmp/dsh012-core`、`/tmp/dsh015-core` 三份核心已备好，可直接复用）。
+
