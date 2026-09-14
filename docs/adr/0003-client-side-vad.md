@@ -16,7 +16,7 @@
   → 客户端连续 confirmFrames 次为真 → 回声门控 → hardBreak
 ```
 
-判定信号在 host 产生（`src/asr-host.ts:643`），客户端只做计数（`src/client.tsx:1386-1390`）。
+判定信号在 host 产生（`src/asr-host.ts:640-647`，detect 异步函数内 acceptWaveform → isSpeech），客户端只做计数（`src/client.tsx:1384` `INT_CONFIRM_FRAMES[interruptLevel]`）。
 
 实测确认延迟 ≈525ms（CONTEXT.md 记录）。拆解：
 
@@ -24,18 +24,16 @@
 |---|---|---|
 | 轮询量化 | 平均 64ms（最坏 128ms） | 见下方「栅格更正」 |
 | 上行 + host 推理 + 下行 | 数十 ms | 回环 HTTP + JSON + Silero 推理 |
-| 确认帧 | **384 / 256 / 128ms** | `INT_CONFIRM_FRAMES = {0:3, 1:2, 2:1}`（`src/client.tsx:32`）× 128ms 栅格 |
+| 确认帧 | **384 / 256 / 128ms** | `INT_CONFIRM_FRAMES = {0:3, 1:2, 2:1}`（`src/client.tsx:33`）× 128ms 栅格 |
 | Silero 自身窗口 | ~32ms/帧 | 模型固有 |
 
 > **栅格更正（2026-09-02）**：本表初版把确认窗写成 300/200/100ms，**错了**。
-> AudioWorklet 每 1024 样本 = 64ms 投一帧（`src/audio-worklet.ts`），而 `src/asr.ts:700`
-> 的派发条件是 `nowMs - lastPollAt >= 100` 且仅在派发时推进 `lastPollAt`——64ms 的帧
-> 永远要攒两帧才够 100ms，**稳态派发间隔是 128ms**。
-> 三档确认窗实际为 384 / 256 / 128ms。`src/client.tsx:1358-1359` 的注释同样写错，需一并修。
+> AudioWorklet 每 1024 样本 = 64ms 投一帧（`src/audio-worklet.ts:804` `new AudioWorkletNode`），而 `src/asr.ts:700` 一带是 `MAX_SEGMENT_MS` 滚窗重置（**与栅格无关**）；真正的派发条件是 `nowMs - lastPollAt >= 100` 且仅在派发时推进 `lastPollAt`——64ms 的帧永远要攒两帧才够 100ms，**稳态派发间隔是 128ms**。
+> 三档确认窗实际为 384 / 256 / 128ms。`src/client.tsx:1355-1359` 的 `isSpeechTrueCount = 0` 与 `setLocalMode('pending')` 注释同样写错，需一并修。
 > 复核：`node scripts/bench-echo-gate.mjs` §4。
 > 这也解释了实测的 525ms（384 + Silero 窗口 + 往返），并意味着**下沉能省掉的比原估计更多**。
 
-同时，播放期 detect 通道以 f32 PCM 持续上行（16000 × 4 B/s ≈ 64 KB/s），并需要 `detectGeneration` 代际计数器来作废迟到响应（`src/asr.ts:197`）。
+同时，播放期 detect 通道以 f32 PCM 持续上行（16000 × 4 B/s ≈ 64 KB/s），并需要 `detectGeneration` 代际计数器来作废迟到响应（`src/asr.ts:198`，对应 L372/L385/L388/L672 4 处迟到响应作废判断）。
 
 ## 真机数据（2026-09-02 补充，本 ADR 的分量因此上调）
 
@@ -79,7 +77,7 @@ host 侧 VAD 保留两个用途，不再承担打断：
 - 确认延迟从 ~525ms 降到 ~150–250ms（去掉轮询量化 + 往返；确认帧改为按 32ms VAD 帧计，可用更多帧换更低延迟）
 - detect 通道上行归零（省 64 KB/s，且长朗读下不再有积压/丢弃逻辑）
 - 打断与网络解耦：网络抖动不再导致打断失效
-- 可删除 `detectGeneration` 与 detect 通道的积压上界逻辑（`src/asr.ts:354-360`）
+- 可删除 `detectGeneration` 与 detect 通道的积压上界逻辑（`src/asr.ts:354-367`）
 - 判定与音频帧严格对齐，消除 100ms 量化误差
 
 **负面 / 成本**
@@ -101,6 +99,6 @@ host 侧 VAD 保留两个用途，不再承担打断：
 ## 备选方案
 
 - **A：保持 host VAD，改用 WebSocket 传输**（[ADR-0004](0004-realtime-transport.md)）——去掉轮询量化，但保留往返，延迟改善有限（~50–80ms），收益远小于本方案，但成本也小得多
-- **B：客户端能量域快路径 + host VAD 确认**——历史上已试过并移除（`src/asr.ts:565-566` 注释），能量域无法区分语音与噪声/回声，不重走
+- **B：客户端能量域快路径 + host VAD 确认**——历史上已试过并移除（`src/asr.ts:580-582` 注释：「打断前沿：已由服务端 Silero VAD 帧级 isSpeech 驱动（阶段二，取代原 RMS 能量快路径 + P0 瞬态抑制 + P1 噪声自适应）；此处不再做能量域打断判定」），能量域无法区分语音与噪声/回声，不重走
 - **C：什么都不做，用 `interruptLevel=2`（1 帧确认）换延迟**——确认窗从 384ms 降到 128ms，但误打断率上升，且没有基准无法量化代价。
   注意：[2026-09-02 的发现](../findings/2026-09-02-echo-gate-ratchet.md)表明回声门控在真实回声下判别力≈0，**降档时没有第二道防线兜底**，风险比原先设想的高
