@@ -25,7 +25,7 @@
 
 ## P0 — 立即可补的小工程量（≤3 天）
 
-### A1 · Need-ADR-0007 · 内联情感/非语言标签 DSL
+### A1 · 🟢 已批准（ADR-0007 已接受 2026-09-14，先本地后 Edge 分两步）· 内联情感/非语言标签 DSL
 
 - **做什么**：在 `tts-local.ts` 文本归一化阶段解析 `<laugh> <whisper> <sigh> <emphasis>` 等内联标签；分引擎映射：
   - **Edge**：转 `mstts:express-as style="cheerful"` 包装（**当前 `msedge-tts` 2.0.7 `Prosody.d.ts` 仅支持 `pitch/rate/volume`，无 `style` 字段**；必须 fork 或改走 WebSocket 自拼 SSML——⚠ 6-10 天而非 ≤3 天）
@@ -205,7 +205,7 @@
 
 ## P2 — 大工程量（1-3 月，需用户决策 / ADR）
 
-### B1 · Need-ADR-0009 · 声音克隆（OpenVoice v2 接 Kokoro）
+### B1 · ❄ 已推迟（2026-09-14：不确定性与包体积高，低于让位语义 ROI）· 声音克隆（OpenVoice v2 接 Kokoro）
 
 - **先 1 周 PoC**：跑通"参考音频 → speaker embedding → Kokoro 调音色"
 - **需独立 ADR-0009** 拍板：
@@ -218,7 +218,7 @@
   - `plugin/dsh-voice-mode/src/settings-form.tsx:54`（上传 UI）
 - **关联**：扫描 §B1；TTS 子代理 §3 红线 4
 
-### B2 · Need-User · xAI `/v1/realtime` WebSocket 引擎作为云端 fallback
+### B2 · ❌ 已拒绝（2026-09-14 用户接受推荐：保持零 API Key 差异化）· xAI `/v1/realtime` fallback
 
 - **前置决策**：用户是否愿意引入第三方 API Key；5min ≈ $0.25 vs 当前 Edge ¥0.3-0.5 哪个更适合？
 - **file:line 锚点**：
@@ -232,7 +232,7 @@
 - **状态**：B3 真机数据（ERLE < 15dB）不达标时再升；当前 B3 已是 PoC 起步阶段
 - **关联**：扫描 §B4；ASR 子代理 §5.3 + §5.4
 
-### C1 · Need-User · 会话式语音人格层 + 情绪识别
+### C1 · ❄ 推迟（Phase 1 验证后再议；Hume 破零 API Key）· 会话式语音人格层 + 情绪识别
 
 - **状态**：作为"高级 opt-in 插件"延后；先做 A1 标签 DSL 让 Kokoro 自身情感表达**先行**
 - **需要用户决策**：是否愿意引入 Hume EVI API Key（破坏"零 API Key"卖点）或本地 emotion2vec 模型（~200MB 下载）
@@ -298,7 +298,7 @@
 
 > 本节是第二轮新增 backlog 项，与 backlog 主体合并使用。
 
-### P0-UX · Ready · 双条 SVG 波形 + state 拆 (mode, subState)
+### P0-UX · ✅ 已完成（R19，commit 4d16133）· 双条 SVG 波形 + state 拆 (mode, subState)
 - **来源**：`scan-ux-dx-detail-2026-09.md` §1 状态反馈（红线 5 第 1 条）
 - **做什么**：`client.tsx:2226` `bars` 渲染段扩一对 `botLevels`，让用户看见"AI 何时开始说话 / 何时停"
 - **真实工作量**：<50 行改动
@@ -316,13 +316,13 @@
 - **真实工作量**：1-2 人天
 - **关联**：Otter a11y / Apple Live Captions
 
-### P1-UX · Ready · engine 切换 toast + 数据流向标签
+### P1-UX · ✅ 部分完成（R23，commit f05c249：数据流向标签已落地；切换 toast 未做）· engine 切换 toast + 数据流向标签
 - **来源**：`scan-ux-dx-detail-2026-09.md` §10 隐私合规（红线 5 第 4 条）
 - **做什么**：切到 Edge 时弹一次"云端合成"提示；设置卡常驻"识别本地（zipformer2+SenseVoice）/ 朗读 云端/本地"数据流向标签（**R23 精化：识别本地恒为真，本仓 ASR 永远本地；只有 TTS 区分云/本。backlog 旧描述"识别本地 / 朗读云端-本地"实为只读 tts.engine**）
 - **真实工作量**：<1 人天
 - **关联**：Apple Intelligence on-device vs PCC 徽章
 
-### P1-UX · Ready · 状态条加会话计时器
+### P1-UX · ✅ 已完成（R18，commit dc25715）· 状态条加会话计时器
 - **来源**：`scan-ux-dx-detail-2026-09.md` §11 通知/后台（红线 5 第 5 条）
 - **做什么**：实时显示"已说 3:42"，离开 Webview 回看立刻知道节奏
 - **真实工作量**：<0.5 人天
@@ -391,7 +391,7 @@
 
 > 来源 `scan-multilang-a11y-compliance-2026-09.md`；与本仓 ctx 与 ADR 不变量冲突检查通过。
 
-### P0 · Ready · zipformer2 热词 (hotwords) 暴露
+### P0 · 🟢 已批准开工（2026-09-14 用户拍板「批量 go」）· zipformer2 热词 (hotwords) 暴露
 
 - **做什么**：开发者场景下"项目代号 / 函数名 / 包名 / commit SHA"被 ASR 误识别
 - **file:line 锚点**：
@@ -405,7 +405,7 @@
 - **关联**：sherpa-onnx 官方 hotwords 文档 (transducer + modified_beam_search)；仅与 B1/B6 冲突
 - **事实勘误**：zipformer2 **已具备** hotwords 路径，仅缺开关（**+ 缺 temp file 写入 + 缺 UI 热词输入框**）
 
-### P0 · Ready · SenseVoice 语言显式锁定
+### P0 · 🟢 已批准开工（2026-09-14）· SenseVoice 语言显式锁定
 
 - **做什么**：把 `src/sense-worker.ts:165` 硬编码 `'auto'` 改成 getter；用户可锁定 `zh/en/ja/ko/yue`
 - **file:line 锚点**：
@@ -427,7 +427,7 @@
 - **真实工作量**：2-3 人天（复用 ADR-0007 rawSSMLRequest 路径）
 - **关联**：W3C SSML 1.1 §3.1.12；与 ADR-0007 同路径不同标签
 
-### P0 · Ready · 字幕 a11y + captionFontSize + 中文换行
+### P0 · 🟢 已批准开工（2026-09-14）· 字幕 a11y + captionFontSize + 中文换行
 
 - **做什么**：a11y 字幕 4 档字号（12/14/18/24 px）+ captionMaxWidth + 中文 word-break
 - **file:line 锚点**：
@@ -451,7 +451,7 @@
 - **真实工作量**：2-3 人天（含文案审阅 + 设置面板 + 测试矩阵）
 - **关联**：GDPR Art.7 / CCPA §1798.100 / 国内《个人信息保护法》第 14 条
 
-### P1 · Ready · 让位语义（ADR-0008 前置调研）
+### P1 · 🟢 已批准（ADR-0008 已接受 Phase 1 2026-09-14：#1 backchannel + #2 让位 prompt）· 让位语义
 
 - **做什么**：backchannel detector + Hume EVI 风格让位 prompt 注入
 - **file:line 锚点**：

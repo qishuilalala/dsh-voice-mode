@@ -78,7 +78,35 @@
 
 - **PluginHost ← `plugin/dsh-voice-mode/src/`** —— 9k+ 行 TypeScript 源码，永远是唯一真源
 - **State ← `docs/rules/STATE.md`**（本文件）
-- **Context ← `CONTEXT.md`**（74 行开发者上下文）
-- **ADR ← `docs/adr/0001-0007`**
+- **Context ← `CONTEXT.md`**（开发者上下文）
+- **ADR ← `docs/adr/0001-0008`**
 - **Competitive research ← `docs/competitive/scan-2026-09.md` 主扫描 + `docs/competitive/sources/` 18 份子报告**
 - **Backlog ← `docs/competitive/backlog.md` 43 项 P0-P3**
+
+---
+
+## 任务：拍板后实施（main 当前任务）—— **计划已定稿待开工（2026-09-14）**
+
+### 2026-09-14 拍板与实证（前置事件，全部已落盘）
+
+- **用户拍板**：ADR-0007「完整做分两步（先本地后 Edge）」· ADR-0008「Phase 1（#1+#2，#3-5 砍/推迟）」·
+  3 处链断 P0「批量 go」· xAI fallback 拒绝 · 声音克隆推迟 · C1 人格层推迟
+- **用户录真机 fixture**：4 条 2×2 矩阵（外放/耳机 × 纯听/打断），`mode:full` 含音轨，不进公开仓。
+  判定见 `docs/findings/2026-09-14-fixture-verdict.md`（crest≥7dB 成立；Silero 0/937 泛化；
+  confirmMs 517/488ms；detect 串行化实证；耳机残差>用户语音 = ADR-0001 边界形态）
+- **线上同步实证**：dsh.service 21:48:41 重启 > lib 重建 21:22:50；fixture env.build=6d077c2。
+  R7-R23 四件（normalizeWake/计时器/双条 SVG/数据流向标签）**已在线上运行**
+- **守卫抓真问题**：`npm test` 曾因「lib 早于源码」失败 → R29 重建（commit 0ff025b）→ 91/91 全绿
+
+### 当前状态：计划文档已定稿，**未开工**（用户令：先文档后代码）
+
+- **唯一执行入口：`docs/plan/implementation-plan-2026-09-14.md`**——6 批串行、每批独立 commit +
+  全量验证 + 回滚路径 + 文件锁矩阵 + 不变量保护清单。**一切实施以该文档为准，本文不重复。**
+- 开工令已给（用户 2026-09-14「都开工吧」→ 改为「先同步文档梳理周全计划，先不要开工」）。
+  **下一步 = 用户确认计划文档后按批执行。**
+
+### 恢复点（若会话中断，从这里续）
+
+1. 读本段 + `docs/plan/implementation-plan-2026-09-14.md` 全文
+2. `git log --oneline -5` 确认批 0（文档同步 commit）已入库
+3. 从**批 1（P0 热词）**开始执行；每批完成后回写本文件的「批次进度」表

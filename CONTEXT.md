@@ -31,8 +31,12 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 - **观测栅格 128ms**（64ms 帧 + `>=100ms` 阈值需攒两帧），三档确认窗 384/256/128ms；
   打断确认下限 = 2×128 = 256ms。真机实测 252~272ms、端到端 199~597ms（2026-09-02）。
 - **播放门分支不得 return**：它会连带跳过末尾轮询块，使用户开口时检测通道反而停发（已修，有回归守卫）。
-- 回声门控（echoGateDb）在原生 AEC 生效时**从未被执行**——真机 3.1 分钟朗读期 Silero 判回声为
-  语音 0/777 帧，打断前置条件不成立。拦住自打断的是 VAD，不是这道门。
+- 回声门控（echoGateDb）在原生 AEC 生效时**从未被执行**——2026-09-14 2×2 fixture（外放/耳机×纯听/打断）
+  **0/937 帧**判回声为语音，单样本结论已泛化。拦自打断的是 VAD，不是这道门；README 排障表已声明。
+- **真机 fixture 基线（2026-09-14，build=6d077c2）**：纯回声 crest 外放 17.1dB/耳机 7.7dB（ADR-0005「crest≥7dB」
+  分支成立）；打断 confirmMs 517/488ms（超 256ms 理论下限 ~90%，尾部由 HTTP 往返 p99≈430ms 主导——
+  detect 通道 `detectInFlight` 串行化，ADR-0003 必要性实证）；耳机用户语音 crest 9.5dB < 残差 12.8dB
+  （ADR-0001 物理边界形态实证）。详见 docs/findings/2026-09-14-fixture-verdict.md。
 - 本地 TTS 模型：就绪以「模型文件已下载」为准（跨引擎持久，非子进程 init）；`/models/download` 触发下载、`/models/clean` 删除本地；int8/fp32 分目录缓存、切换不重下。
 - **宿主兼容 0.1.1-rc.2 → 0.1.5-rc.2**（全版本支持，engines.dsh>=0.1.1-rc.2 无上界）：9 个 `dsh.client.inject` 锚点取交集；升级 dsh 前先 `npm run check:anchors` 预检，回归用 `npm run verify:dual`（多版本 typecheck + 隔离冒烟，核心备于 /tmp/dsh011/012/015/015-rc2-core）；RPC 端点 schema 实证表见 docs/compat-contract.md §8（逐端点：session/list 用 `args._request`；session/create|prompt|cancel 用 `args.request`；settings/describe、llm/listProviders 不嵌字段；所有 /api/* 强制 args 信封）。
 
@@ -52,11 +56,11 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 
 `localStorage.setItem('dsh-voice-mode.telemetry','1')` 后刷新 → `[dsh-voice] <event> {json}` 控制台日志 + 状态条诊断行（delay/floor/resid/peak）。`build=<git短哈希>` 确认版本。
 
-## 已知待办（短期，做完即删）
+## 已知待办（短期，做完即删；2026-09-14 拍板后的开工队列见 docs/plan/implementation-plan-2026-09-14.md）
 
 - 原生 AEC 失效兜底（耳机无原生 AEC / Safari）：自研 AEC 的 delay 对齐需 FDLMS+RES；
   该场景**尚无真机数据**，也是回声地板棘轮唯一还可能发作的一格
-- ADR-0006 第一级探测**部分实现**：asr.ts:778 已读 `track.getSettings().echoCancellation`，L780 console.warn 但**未自动落 manual**——需接通到 `bargeInMode='manual'` 闸门
+- ADR-0006 第一级探测**部分实现**：asr.ts:778 已读 `track.getSettings().echoCancellation`，L780 console.warn 但**未自动落 manual**——需接通到 `bargeInMode='manual'` 闸门；二级探测阈值可用 fixture verdict 数据标定
 - Ctrl 强制发送在「已停顿但草稿有累积」时不 flush（Minor，需处理 in-flight 定稿竞态）
 - 松手恰在 30s 滚段边界（~1-3s 窗口）的竞态（Rare，需给 hold 引入待发块队列）
 - 发布流程见 ~/.dsh/docs/RELEASE-MEMO.md（git push + npm publish + tag + GitHub release）
@@ -66,8 +70,17 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 - `npm run bench:echo-gate`：零依赖离线基准（合成压力档，**不是真机预测器**）
 - `npm run analyze:fixture -- <fixture.json>`：真机录制分析（覆盖率/停顿归因/confirmMs）
 - 录制开关 `localStorage['dsh-voice-mode.record']=meta|full`，用法见 docs/fixture-recording.md
-- 决策记录：ADR-0003 VAD 下沉（提议，紧迫性已下调）· ADR-0004 WebSocket（提议）·
-  ADR-0005 回归基准（已接受）· ADR-0006 打断模式自动探测（已接受）
+- **真机 fixture 已起步**：4 条 2×2 矩阵（2026-09-14，含音轨，不进公开仓）
+- 决策记录：ADR-0003 VAD 下沉（提议，fixture 已实证必要性）· ADR-0004 WebSocket（提议）·
+  ADR-0005 回归基准（已接受）· ADR-0006 打断模式自动探测（已接受）·
+  ADR-0007 情感标签 DSL（**已接受 2026-09-14，先本地后 Edge 分两步**）·
+  ADR-0008 让位语义（**已接受 Phase 1 2026-09-14，#1 backchannel + #2 让位 prompt，#3-5 砍/推迟**）
+
+## 2026-09 已落地增量（R7-R23，均过 typecheck + npm test 91/91）
+
+normalizeWake 语气词前缀白名单（wakeword.ts）· 状态条会话计时器 mm:ss（VoiceStatusBar）·
+双条 SVG 波形 蓝 AI/绿麦克风（pushBotLevels + botBars）· 设置卡数据流向标签「识别本地·朗读云/本」
+（EngineStatusInline）。lib 产物已于 2026-09-14 重建并 restart dsh 同步（fixture env.build=6d077c2 实证）。
 
 ## 关键源文件
 

@@ -1,8 +1,10 @@
 # ADR-0008：让位语义（人格层）+ 4 层 system prompt 模板
 
-- 状态：**提议**（待拍板）
-- 日期：2026-09-15
-- 决策人：待定（主会话为用户）
+- 状态：**已接受·Phase 1**（2026-09-14 用户拍板「选 C，砍掉后两项」）
+- 日期：2026-09-15 起草；2026-09-14 拍板（按 host clock）
+- 决策人：用户
+- 拍板范围修正：**仅落地 Phase 1 两项**——#1 Backchannel detector + #2 Hume 风格让位 prompt 注入（Layer 2 YIELDING 段优先）。**#3 Inattentive silence break 推迟**（等 Phase 1 真机效果数据）；**#4 End-of-turn probability 维持推迟**（依赖 ADR-0003）；**#5 让位历史记忆不立项**（ROI 最低）。全量 4 层模板（Layer 1/3/4）在 Phase 1 验证有效后按 `scan-system-prompt-design-2026-09.md` 分阶段扩展。
+- 真机数据支撑（[findings/2026-09-14-fixture-verdict.md](../findings/2026-09-14-fixture-verdict.md)）：打断窗口覆盖率仅 42-50%、检测通道被宿主忙时拖长——**软让位（pauseAtBoundary，句边界停而非硬打断）在检测稀疏窗口价值更高**；confirmMs 517/488ms 真机基线已锁定。
 - 前置：
   - [ADR-0001](0001-native-aec-primary.md)（声学边界，决定让位语义能依赖的信号源）
   - [ADR-0004](0004-realtime-transport.md)（协议骨架，提议状态，前置 #1 `WebUpgradeRoute` 已满足）
