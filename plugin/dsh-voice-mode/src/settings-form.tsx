@@ -727,6 +727,19 @@ function EngineStatusInline(): React.ReactElement {
   return (
     <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '2px 0 10px' }}>
       <span style={{ fontSize: 12, color: t.term }}>{engineName}</span>
+      {/* P1-UX 数据流向标签：识别本地恒真(zipformer2+SenseVoice);只有 TTS 区分云/本 */}
+      <span
+        title={tr('dataFlowHint')}
+        style={{
+          fontSize: 11,
+          color: t.term,
+          padding: '0 6px',
+          borderRadius: 6,
+          background: 'var(--dsw-alias-bg-layer-1)',
+        }}
+      >
+        识别本地 · 朗读 {tts.engine === 'edge' ? '云端' : '本地'}
+      </span>
       <span style={{ fontSize: 12, fontWeight: statusText === tr('engineReady') || statusText === tr('engineError') ? 600 : 400, color: statusColor }}>{statusText}</span>
       {tts.loading && tts.progress?.file && (
         <span style={{ fontSize: 12, color: t.term }}>{tts.progress.file} {tts.progress.percent}%</span>

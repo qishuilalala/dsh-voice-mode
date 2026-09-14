@@ -318,7 +318,7 @@
 
 ### P1-UX · Ready · engine 切换 toast + 数据流向标签
 - **来源**：`scan-ux-dx-detail-2026-09.md` §10 隐私合规（红线 5 第 4 条）
-- **做什么**：切到 Edge 时弹一次"云端合成"提示，设置卡常驻"识别本地 / 朗读云端/本地"数据流向标签
+- **做什么**：切到 Edge 时弹一次"云端合成"提示；设置卡常驻"识别本地（zipformer2+SenseVoice）/ 朗读 云端/本地"数据流向标签（**R23 精化：识别本地恒为真，本仓 ASR 永远本地；只有 TTS 区分云/本。backlog 旧描述"识别本地 / 朗读云端-本地"实为只读 tts.engine**）
 - **真实工作量**：<1 人天
 - **关联**：Apple Intelligence on-device vs PCC 徽章
 
