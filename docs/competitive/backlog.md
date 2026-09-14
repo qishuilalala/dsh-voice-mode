@@ -408,9 +408,9 @@
 
 - **做什么**：把 `src/sense-worker.ts:165` 硬编码 `'auto'` 改成 getter；用户可锁定 `zh/en/ja/ko/yue`
 - **file:line 锚点**：
-  - `plugin/dsh-voice-mode/src/sense-worker.ts:165` — `language: 'auto'` → `data.language`
-  - `plugin/dsh-voice-mode/src/sense-worker.ts:166` — ITN 开关用户可控
-  - `plugin/dsh-voice-mode/src/index.ts:224-227` — schema 加 `recognitionLanguage` 6 值枚举
+  - `plugin/dsh-voice-mode/src/sense-worker.ts:165` — `language: 'auto'` → `data.language`（**R21 实测：SenseWorkerData 接口 L40-45 没有 `language` 字段，需要先扩接口 + main thread 传 data 时设值 + 接收端 reader，链断 3 处**）
+  - `plugin/dsh-voice-mode/src/sense-worker.ts:166` — ITN 开关用户可控（同链断，需要 `data.useITN`）
+  - `plugin/dsh-voice-mode/src/index.ts:224-227` — schema 加 `recognitionLanguage` 6 值枚举（auto/zh/en/ja/ko/yue）
   - `plugin/dsh-voice-mode/src/settings-form.tsx:1061` — secRecognition 加 SelectField
 - **真实工作量**：1-1.5 人天
 - **关联**：B8 backlog 的"实际可落地版本"（不是 50 语种，是 6 语种）
@@ -430,11 +430,11 @@
 
 - **做什么**：a11y 字幕 4 档字号（12/14/18/24 px）+ captionMaxWidth + 中文 word-break
 - **file:line 锚点**：
-  - `plugin/dsh-voice-mode/src/index.ts:224-227` — schema 加 `captionFontSize?: 12|14|18|24` + `captionMaxWidth?: 50|70|90`
-  - `plugin/dsh-voice-mode/src/client.tsx:2384-2444` — `VoiceOverlay` 用 `var(--dshvm-caption-fs, 12)` + `min(90vw, var(--dshvm-caption-w, 480))`
-  - `plugin/dsh-voice-mode/src/client.tsx:2426-2428` — span `whiteSpace: 'normal'`（中文不靠 nowrap）
-  - `plugin/dsh-voice-mode/src/client.tsx:938` — CSS 加 `.dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }`
-  - `plugin/dsh-voice-mode/src/client.tsx:2429-2444` — 跳过按钮 aria-label
+  - `plugin/dsh-voice-mode/src/index.ts` (host 端) — schema 加 `captionFontSize?: 0|1|2|3` + `captionMaxWidth?: 0|1|2`（**R21 实测：还必须扩 `VoiceBootConfig` (L1122-1141) + 桥接 `bus.setUi({ boot: next, ... })` (L1239) 把字段传到 client；backlog 旧 4 文件改动链断**，见 R21 调研）
+  - `plugin/dsh-voice-mode/src/client.tsx:VoiceOverlay` (L2466+) — 用 `var(--dshvm-caption-fs, 12)` + `min(90vw, var(--dshvm-caption-w, 480))`
+  - `plugin/dsh-voice-mode/src/client.tsx:span` (caption span) — `whiteSpace: 'normal'`（中文不靠 nowrap），保留 `overflow: hidden` + `textOverflow: 'ellipsis'` 兜底
+  - `plugin/dsh-voice-mode/src/client.tsx:<style>` 节点（**`focusVisibleCss` 标识符在 client.tsx 0 命中，backlog 旧写 L938 不准**）— 加 `.dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }`
+  - `plugin/dsh-voice-mode/src/client.tsx` 跳过按钮 — 加 `aria-label={`朗读中：${b.ui.playingCaption ?? t('reading')}`}`
 - **真实工作量**：0.5-1 人天
 - **关联**：Otter / Apple Live Captions / Google Meet Captions 标杆
 - **事实勘误**：`aria-live="polite"` 已在 `src/client.tsx:2387`（无需加），但 captionFontSize + 中文换行需补
