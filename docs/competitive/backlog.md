@@ -498,3 +498,100 @@
 ### 第三轮 13 条全部录入**
 
 完整清单见 `scan-multilang-a11y-compliance-2026-09.md`，按 ROI 分高/中/低三档，每条都已对照 file:line + 真实工作量 + 不变量风险。
+
+---
+
+## 第四轮新增：以 dsh 生态 market leader 为锚（2026-09-15）
+
+> 来源：`scan-dsh-audiogen-2026-09.md`（v0.4.26 / 5,395 下载） + `scan-dsh-voco-voice-call-2026-09.md`（voco 4,334 下载 + PandaPolo voice-call 1,107 下载）
+> **关键反直觉数据**：audiogen 月下载是本插件 1.37×（5,395 vs 3,943），**但周下载本插件反而是 audiogen 的 2.13×**（1,205 vs 565）—— audiogen 在加速渗透，本插件是**日活型**粘性高。
+> 路径不同：audiogen 是"文本→多厂商音频非实时生成"面板 + Agent 工具；voice-mode 是"实时双工语音对话"流。**真杠杆在宿主编排骨架**（同源 loopback 路由 / CardForm / system prompt 注入 / skill 同步 / host-side 闸门），不是 TTS 引擎本身。
+
+### P0 · Ready · 把插件能力结构化注入 system prompt
+
+- **做什么**：让 Agent 在任何会话里知道本插件存在 + 知道使用约束（参考 audiogen `src/index.ts:266-282` 的 `AUDIOGEN_GUIDANCE` 写法）
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/index.ts:266-282`（既有 `VOICE_SPOKEN_SECTION` / `VOICE_SPOKEN_PROMPT` 模式）
+  - `plugin/dsh-voice-mode/src/index.ts:462-477`（`system-prompt/assemble` 注入点）
+- **真实工作量**：30 行（在前两轮出 ADR-0008 让位 prompt 注入的同一处可顺带合并）
+- **关联**：voco `persona` 引导（order:50 PromptSection）；本插件当前 prompt 仅有"内容层口语化"
+
+### P0 · Ready · 同步自带 skill 到 `~/.dsh/skills/`
+
+- **做什么**：audiogen 6 个 SKILL.md 是其生态粘性核心；本插件**零 skill**
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/index.ts:108-132`（参考 audiogen 的 `syncBundledSkills()` 模式）
+  - `plugin/dsh-voice-mode/src/.agent-skills/`（仿 audiogen 放 4-6 个 SKILL.md）
+- **真实工作量**：30 行 + 4-6 个 SKILL.md 文件
+- **真实示例 skills**：`/voice-mode:enter`（进入语音模式）/ `/voice-mode:reading-toggle`（开/关朗读）/ `/voice-mode:barge-in-mode`（改打断模式）/ `/voice-mode:caption-font-size`（调字幕字号）
+
+### P1 · Ready · 注册 MCP `voice_*` 工具
+
+- **做什么**：让本插件在 LLM 视角具备"声音维度能力"（audiogen 月下载主因 = Agent 可自主调音频）
+- **具体工具**（精简到本插件范围）：
+  - `voice_mode_toggle`：进入/退出语音模式
+  - `voice_speak`：`{text, voice?, emotion?}` 让插件朗读一段
+  - `voice_change_voice`：`{voice_id}`（未来对接 B1 后可用）
+  - `voice_interrupt_settings_read/get/set`：BargeIn 模式查询/修改
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/index.ts:88`（现有 `inject`）
+  - 参考 audiogen `src/agent-audio-tools.ts:212-560` 模式
+- **真实工作量**：1-2 人天
+- **关联**：P2 阶段：`inject` 加 `'tools'` + `systemPrompt` 后才可注册 `ctx.tools`；前端无需改动
+
+### P1 · Ready · 设置卡引入 CardForm draft/validate 模式
+
+- **做什么**：secret 字段（API key 等） 空 draft = "不变"，never 误清（避免用户输入空白覆盖已有 key）
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/settings-form.tsx:1-1088`（完整设置面板）
+  - 参考 audiogen `src/client/settings-form.ts:223-258` 的 CardForm draft/validate 模式
+- **真实工作量**：150 行（重构性，但零风险）
+- **关键不变量**：保留本插件"零 API Key"哲学——本项不应引入 API key 字段；但为未来字段（如 hotwords / 语言列表）做准备
+
+### P1 · Ready · 全局并发闸门 + AbortSignal 队列
+
+- **做什么**：host-side FIFO semaphore — 防止用户连续发 3 个语音请求时同时跑出 3 个长 LLM 回复
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/index.ts:88`（既有的 apply 入口）
+  - 参考 audiogen `src/audio-scheduler.ts:11-75` 模式
+- **真实工作量**：80 行
+- **关联**：与 tts-queue 的 epoch 守卫协同（不破坏不丢句）
+
+### P2 · Frozen（前置 inject + tools 实证）· agent-initiated voice call
+
+- **做什么**：LLM tool call `offer_call({text, voice})` → 振铃卡片 UI → 接听/拒接/稍后三态 → 决定返回给 agent
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/index.ts:88`（injection）
+  - `plugin/dsh-voice-mode/src/index.ts:507`（既有 `webServer.register(prefix)` 模式，可照搬 CallBoard 三路由）
+  - `plugin/dsh-voice-mode/src/client.tsx:2197`（`VoiceStatusBar` 组件，振铃卡片可在此插入）
+- **真实工作量**：~250 行（4 新文件 + 2 处插入）
+- **关键前置**：`inject` 必须扩到 `['webServer','settings','sessions','tools','userQuestions']`（D2 第一轮已警告；本轮可推进）
+- **关联**：本插件 vs voco/voice-call 的差异化卖点 vs 风险——voice-call 是 BYOK 而本插件零 API Key；agent 主动打电话会破坏"双工对话"的产品哲学，应作为可选 opt-in
+- **不变量风险**：voc 的 5 态 `send_voice_message`（voco 路径）— **不学**，会破坏 CONTEXT.md:27 "不丢句"不变量。本插件仅做"两态精简版"（接听 → 即朗读；拒接 → 即返回文本）
+
+### P2 · Frozen（前两轮 dsh-version 实证）· background Agent delegation
+
+- **做什么**：voco 的 `realtime_delegation` task.command + `parentSession/origin:'subagent'` 子会话
+- **真实工作量**：~150 行（1 新文件 + SSE 段）
+- **关键前置**：`inject` 扩 `'jobs'/'agents'` —— 这两个 service 在 0.1.5-rc.2 是否可达未核实
+- **关联**：与 ADR-0008 让位语义正交（一个是 LLM 流程，一个是 LLM 输出节奏）
+- **风险**：voco 的 "95% context window rotate + 12000 chars handoff" 实现复杂，本插件若做应先做 PoC
+
+### P3 · ❄ ADR-0008 占位 · 跨设备 push notification
+
+- **状态**：行业空白（voice-call README 明文"未做"）
+- **行动**：仅留 `docs/adr/0008-agent-initiated-call-multi-device.md` 占位
+- **当前不做**：本插件定位"桌面 webview"场景，非"不在桌前" 场景
+
+### 第四轮 5 条真红优先级汇总
+
+| 优先级 | 借鉴 | 工作量 | 来源 |
+|---|---|---|---|
+| 🥇 | system prompt 注入（`AUDIOGEN_GUIDANCE` 模式） | 30 行 | audiogen 1.1 |
+| 🥇 | skill 同步 `~/.dsh/skills/`（audiogen 6 个 SKILL.md 模式） | 30 行 + 4-6 文件 | audiogen 1.2 |
+| 🥇 | MCP `voice_*` 工具暴露（让 LLM 知道 + 可调） | 1-2 人天 | audiogen 1.3 |
+| 🥈 | CardForm draft/validate 模式（hidden 空 = 不变） | 150 行 | audiogen 1.4 |
+| 🥈 | host-side 并发闸门 + AbortSignal 队列 | 80 行 | audiogen 1.5 |
+| 🥉 | `offer_call` agent-initiated voice call | 250 行 | PandaPolo voice-call |
+| 🥉 | `realtime_delegation` background Agent delegation | 150 行 | voco |
+| ❄ | 跨设备 push（ADR-0008 占位） | 0 行 | 行业空白 |
