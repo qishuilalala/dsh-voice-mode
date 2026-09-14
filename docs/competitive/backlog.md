@@ -400,9 +400,10 @@
   - `plugin/dsh-voice-mode/src/index.ts:240-280` — schema 加 `asrHotwords?: string` + `asrHotwordsScore?: number`（**真源默认 1.5**，**backlog 写 2.0 错**）
   - `plugin/dsh-voice-mode/src/settings-form.tsx:1062` — secRecognition 加热词文本框
   - sherpa-onnx 真源：`sherpa-onnx-asr.js:460-465, 493, 507, 517, 542` 接受 `hotwordsFile`/`hotwordsBuf`/`hotwordsScore`(默认 1.5) 三参数
+  - **R24 链路核对**：链路完整（vset 暴露 + AsrRuntimeOptions 已有 getter 模式 + sherpa 真源接受）—— 但 **`hotwordsFile: string` 是文件路径**，与用户输入"字符串列表"之间**需要 temp file 写入机制**（写到 `cacheDir` 下，sherpa 直接读文件）—— **backlog 旧描述未提到这一点，1.5-2 天估值可能偏低**（R24 实测：vset 链 + sherpa 链完整，但 IO/cleanup 新增 module ~30-50 行 + settings-form.tsx textarea ~20-30 行 + schema 加字段 ~5 行 = 总 ~70-100 行多文件）
 - **真实工作量**：1.5-2 人天
 - **关联**：sherpa-onnx 官方 hotwords 文档 (transducer + modified_beam_search)；仅与 B1/B6 冲突
-- **事实勘误**：zipformer2 **已具备** hotwords 路径，仅缺开关
+- **事实勘误**：zipformer2 **已具备** hotwords 路径，仅缺开关（**+ 缺 temp file 写入 + 缺 UI 热词输入框**）
 
 ### P0 · Ready · SenseVoice 语言显式锁定
 
