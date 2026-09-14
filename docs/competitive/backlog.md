@@ -420,9 +420,9 @@
 
 - **做什么**：开发者场景 AI 答中文时夹 function / HTTPS / commit SHA；Edge 默认 zh 音色直读英文为中文近似音。`<lang>` 是 W3C SSML 1.1 标准原语
 - **file:line 锚点**：
-  - `plugin/dsh-voice-mode/src/segmenter.ts:1-30` — 加 `splitMixedLang(text: string): string`
-  - `plugin/dsh-voice-mode/src/index.ts:1110-1127` — `tapActiveStream` 在 `segmenter.feed` 之前调 splitMixedLang
-  - `plugin/dsh-voice-mode/src/tts-queue.ts:104-145` — `EdgeTtsEngine.synthesize` 检测 `<lang` 时切 rawSSMLRequest
+  - `plugin/dsh-voice-mode/src/segmenter.ts:60+`（**R28 补：R24 commit message 写但实际没改**；旧写 L1-30 是文件头注释+SegmenterOptions interface，function 应在 L60+） — 加 `splitMixedLang(text: string): string`
+  - `plugin/dsh-voice-mode/src/index.ts:1110-1115` `tapActiveStream` 内部 `try { for await (const chunk of inner) {` 循环入口（**R28 补：R24 commit message 写"+"实际未漂移**；L1110-1115 实际是循环开头，R19 加 botBars 后**未漂移**） — `tapActiveStream` 在 `segmenter.feed` 之前调 splitMixedLang
+  - `plugin/dsh-voice-mode/src/tts-queue.ts:120-141` `EdgeTtsEngine.synthesize` 函数体（**R28 精化：L104-145 范围含整个 class，synthesize 实际 L120-141**）检测 `<lang` 时切 rawSSMLRequest
   - `plugin/dsh-voice-mode/src/settings-form.tsx:54` — 加 `mixedLangSplit?: boolean`（默认开）
 - **真实工作量**：2-3 人天（复用 ADR-0007 rawSSMLRequest 路径）
 - **关联**：W3C SSML 1.1 §3.1.12；与 ADR-0007 同路径不同标签
@@ -432,7 +432,7 @@
 - **做什么**：a11y 字幕 4 档字号（12/14/18/24 px）+ captionMaxWidth + 中文 word-break
 - **file:line 锚点**：
   - `plugin/dsh-voice-mode/src/index.ts` (host 端) — schema 加 `captionFontSize?: 0|1|2|3` + `captionMaxWidth?: 0|1|2`（**R21 实测：还必须扩 `VoiceBootConfig` (L1122-1141) + 桥接 `bus.setUi({ boot: next, ... })` (L1239) 把字段传到 client；backlog 旧 4 文件改动链断**，见 R21 调研）
-  - `plugin/dsh-voice-mode/src/client.tsx:VoiceOverlay` (L2466+) — 用 `var(--dshvm-caption-fs, 12)` + `min(90vw, var(--dshvm-caption-w, 480))`
+  - `plugin/dsh-voice-mode/src/client.tsx:VoiceOverlay` (L2457+, 旧写 L2466+ 在 R19 加 botBars 后漂移 +9 行) — 用 `var(--dshvm-caption-fs, 12)` + `min(90vw, var(--dshvm-caption-w, 480))`
   - `plugin/dsh-voice-mode/src/client.tsx:span` (caption span) — `whiteSpace: 'normal'`（中文不靠 nowrap），保留 `overflow: hidden` + `textOverflow: 'ellipsis'` 兜底
   - `plugin/dsh-voice-mode/src/client.tsx:<style>` 节点（**`focusVisibleCss` 标识符在 client.tsx 0 命中，backlog 旧写 L938 不准**）— 加 `.dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }`
   - `plugin/dsh-voice-mode/src/client.tsx` 跳过按钮 — 加 `aria-label={`朗读中：${b.ui.playingCaption ?? t('reading')}`}`
