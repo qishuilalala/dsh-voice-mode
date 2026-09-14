@@ -69,8 +69,15 @@
 ## 前置条件
 
 1. 核实宿主 `@deepseek-ai/dsh-host-webserver` 支持 WebSocket upgrade
+   - **2026-09-14 真机核对（第三方深度复查）**：`@deepseek-ai/dsh-host-webserver@0.1.5-rc.2` 已暴露 `WebUpgradeRoute` 与 `registerUpgrade(route: WebUpgradeRoute): () => void` 接口（`lib/types/index.d.ts:40-46, 97`）—— **前置条件 #1 已满足**。本仓 `src/index.ts` 尚未使用该 API（grep 0 命中），因此 ADR-0004 现在可推进。
 2. [ADR-0005](0005-acoustic-regression-harness.md) 的基准就位（这是一次高风险重构，没有基准不应动）
 3. 建议排在 [ADR-0003](0003-client-side-vad.md) **之后**——若 VAD 已下沉，实时上行需求大幅下降，本 ADR 的收益需要重新评估（可能从"必须做"降为"可以做"）
+
+### 第三方深度复查小结（2026-09-14）
+
+- **A**：状态保持"提议"——前置条件 #1 已满足，应进入正式决策环节
+- **B**：本仓应优先复用 `ctx.webServer.registerUpgrade` 而非自建 ws server（避免双端口冲突）
+- **C**：与 ADR-0007（标签 DSL）无冲突，但**协议级情绪注入**应放在 ADR-0008 让位语义之后——speaker turn 是协议维度的考虑
 
 ## 备选方案
 

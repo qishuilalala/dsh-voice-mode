@@ -384,3 +384,117 @@
 3. **角色陪伴 + 情感化语音**（Character.ai/Replika）：道德风险 + 商业模式错位
 4. **电话外呼平台**（Vapi/Retell/Bland）：电话线 + 拨号流程错位
 5. **实时变声器**（Voicemod/Uberduck）：游戏/直播场景错位
+
+---
+
+## 第三轮新增（多语言 / a11y / 合规三维）
+
+> 来源 `scan-multilang-a11y-compliance-2026-09.md`；与本仓 ctx 与 ADR 不变量冲突检查通过。
+
+### P0 · Ready · zipformer2 热词 (hotwords) 暴露
+
+- **做什么**：开发者场景下"项目代号 / 函数名 / 包名 / commit SHA"被 ASR 误识别
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/asr-host.ts:266` — `decodingMethod: 'greedy_search'` 改 `'modified_beam_search'` + 加 `hotwordsFile` + `hotwordsScore`
+  - `plugin/dsh-voice-mode/src/asr-host.ts:75-87` — `AsrRuntimeOptions` 加 `hotwordsFile` getter
+  - `plugin/dsh-voice-mode/src/index.ts:240-280` — schema 加 `asrHotwords?: string` + `asrHotwordsScore?: number`（默认 2.0，clamp 1.0-5.0）
+  - `plugin/dsh-voice-mode/src/settings-form.tsx:1062` — secRecognition 加热词文本框
+- **真实工作量**：1.5-2 人天
+- **关联**：sherpa-onnx 官方 hotwords 文档 (transducer + modified_beam_search)；仅与 B1/B6 冲突
+- **事实勘误**：zipformer2 **已具备** hotwords 路径，仅缺开关
+
+### P0 · Ready · SenseVoice 语言显式锁定
+
+- **做什么**：把 `src/sense-worker.ts:165` 硬编码 `'auto'` 改成 getter；用户可锁定 `zh/en/ja/ko/yue`
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/sense-worker.ts:165` — `language: 'auto'` → `data.language`
+  - `plugin/dsh-voice-mode/src/sense-worker.ts:166` — ITN 开关用户可控
+  - `plugin/dsh-voice-mode/src/index.ts:224-227` — schema 加 `recognitionLanguage` 6 值枚举
+  - `plugin/dsh-voice-mode/src/settings-form.tsx:1061` — secRecognition 加 SelectField
+- **真实工作量**：1-1.5 人天
+- **关联**：B8 backlog 的"实际可落地版本"（不是 50 语种，是 6 语种）
+
+### P0 · Ready · Edge TTS `<lang xml:lang="en-US">` 中英混读
+
+- **做什么**：开发者场景 AI 答中文时夹 function / HTTPS / commit SHA；Edge 默认 zh 音色直读英文为中文近似音。`<lang>` 是 W3C SSML 1.1 标准原语
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/segmenter.ts:1-30` — 加 `splitMixedLang(text: string): string`
+  - `plugin/dsh-voice-mode/src/index.ts:1110-1127` — `tapActiveStream` 在 `segmenter.feed` 之前调 splitMixedLang
+  - `plugin/dsh-voice-mode/src/tts-queue.ts:104-145` — `EdgeTtsEngine.synthesize` 检测 `<lang` 时切 rawSSMLRequest
+  - `plugin/dsh-voice-mode/src/settings-form.tsx:54` — 加 `mixedLangSplit?: boolean`（默认开）
+- **真实工作量**：2-3 人天（复用 ADR-0007 rawSSMLRequest 路径）
+- **关联**：W3C SSML 1.1 §3.1.12；与 ADR-0007 同路径不同标签
+
+### P0 · Ready · 字幕 a11y + captionFontSize + 中文换行
+
+- **做什么**：a11y 字幕 4 档字号（12/14/18/24 px）+ captionMaxWidth + 中文 word-break
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/index.ts:224-227` — schema 加 `captionFontSize?: 12|14|18|24` + `captionMaxWidth?: 50|70|90`
+  - `plugin/dsh-voice-mode/src/client.tsx:2384-2444` — `VoiceOverlay` 用 `var(--dshvm-caption-fs, 12)` + `min(90vw, var(--dshvm-caption-w, 480))`
+  - `plugin/dsh-voice-mode/src/client.tsx:2426-2428` — span `whiteSpace: 'normal'`（中文不靠 nowrap）
+  - `plugin/dsh-voice-mode/src/client.tsx:938` — CSS 加 `.dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }`
+  - `plugin/dsh-voice-mode/src/client.tsx:2429-2444` — 跳过按钮 aria-label
+- **真实工作量**：0.5-1 人天
+- **关联**：Otter / Apple Live Captions / Google Meet Captions 标杆
+- **事实勘误**：`aria-live="polite"` 已在 `src/client.tsx:2387`（无需加），但 captionFontSize + 中文换行需补
+
+### P0 · Ready · 录音同意弹窗（GDPR/CCPA/个保法）
+
+- **做什么**：第一次进入语音模式前弹同意对话框；显示数据流向；`localStorage` 持久；设置区可撤销
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/client.tsx:1710` — enterMode 前置检查 `localStorage['dsh-voice-mode.consent']`
+  - `plugin/dsh-voice-mode/src/client.tsx:1-10` — 新增 `<ConsentDialog>` 子组件（~80 行）
+  - 数据流向从 `vset.ttsEngine` 读：`识别本地 + 朗读 Edge 云端` / `识别本地 + 朗读本地 VITS` / `识别本地 + 朗读本地 Kokoro`
+  - `plugin/dsh-voice-mode/src/settings-form.tsx:54` —「数据与隐私」折叠区 + 「撤销同意」按钮
+- **真实工作量**：2-3 人天（含文案审阅 + 设置面板 + 测试矩阵）
+- **关联**：GDPR Art.7 / CCPA §1798.100 / 国内《个人信息保护法》第 14 条
+
+### P1 · Ready · 让位语义（ADR-0008 前置调研）
+
+- **做什么**：backchannel detector + Hume EVI 风格让位 prompt 注入
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/index.ts:470-477` — 让位 prompt 注入点（system-prompt/assemble 复用）
+  - `plugin/dsh-voice-mode/src/tts-queue.ts:271-280` — TTS 让位执行点（需新增 `pauseAtBoundary()` 走 epoch 通道，不能直接 engine.interrupt()）
+  - `plugin/dsh-voice-mode/src/client.tsx:1400-1505` — VAD 让位触发点
+  - `plugin/dsh-voice-mode/src/segmenter.ts:63-101` — `SentenceSegmenter`（backchannel 检测挂载点）
+- **真实工作量**：2-3 周拿 80% 价值（#1 Backchannel detector + #2 Hume 让位 prompt，并行无依赖）
+- **前置**：ADR-0005 回归基准扩 fixture
+- **关键发现**：dsh-voice-mode 当前**人格层让位能力 = 0** —— LLM system prompt 完全没有"何时让、让什么、不让什么"的指令，只有客户端的短时段打断
+- **完整调研**：`scan-yield-semantics-2026-09.md`
+
+### P1 · Ready · ARIA 全链路补全
+
+- **做什么**：状态条 `role="status" aria-live` + 退出/试听/重试按钮 `aria-label`
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/client.tsx:2256` — 状态条 `aria-live="polite" aria-atomic="true"`
+  - `plugin/dsh-voice-mode/src/client.tsx:2335-2349` — 退出按钮 `aria-label="退出语音模式"`
+  - `plugin/dsh-voice-mode/src/settings-form.tsx:579` — 试听按钮 `aria-label={tr('previewBtnTitle')}`
+  - `plugin/dsh-voice-mode/src/settings-form.tsx:825-845` — 重试下载 `aria-label={tr('modelsRetry')}`
+- **真实工作量**：0.5 人天（纯属性加法）
+
+### P1 · Ready · 纯字幕模式（a11y 听障用户）
+
+- **做什么**：`audioOutputMuted?: boolean` 设置；TTS 继续合成帧但音频帧被丢弃，仅字幕滚动
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/index.ts:224-227` — schema 加 `audioOutputMuted?: boolean`（默认关）
+  - `plugin/dsh-voice-mode/src/settings-form.tsx:1051` — secInteraction 加 checkbox
+  - `plugin/dsh-voice-mode/src/client.tsx:435-500` — captionQueue 渲染：mute 模式下不创建 Audio element
+- **真实工作量**：1-1.5 人天
+
+### P1 · Ready · 色弱对比度 + telemetry 关闭披露
+
+- **做什么**：状态色增加图标/文字前缀（不只颜色）+ telemetry 关闭后明确"未收集 X"
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/client.tsx:2167-2186` — 麦克风按钮加形态语义（holding/on/off 不同麦克风样式）
+  - `plugin/dsh-voice-mode/src/client.tsx:2257-2270` — 状态条改主题变量
+  - `plugin/dsh-voice-mode/src/index.ts:224-227` — schema 加 `diagnostics: boolean`（默认关）
+- **真实工作量**：0.5-1 人天
+
+### P2 · Frozen (前置 B1 拍板) · 声音克隆授权弹窗
+
+- **状态**：B1（声音克隆 OpenVoice v2）拍板后才能立
+- **关联**：scan-multilang §11
+
+### 第三轮 13 条全部录入**
+
+完整清单见 `scan-multilang-a11y-compliance-2026-09.md`，按 ROI 分高/中/低三档，每条都已对照 file:line + 真实工作量 + 不变量风险。

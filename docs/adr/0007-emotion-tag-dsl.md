@@ -1,0 +1,116 @@
+# ADR-0007：内联情感/非语言标签 DSL 跨引擎映射方案
+
+- 状态：**提议**（待拍板）
+- 日期：2026-09-14
+- 决策人：待定
+- 前置：[ADR-0006](0006-barge-in-auto-degrade.md)（打断模式自动降级，UX 直觉性）
+
+## 背景
+
+dsh-voice-mode 当前 TTS 三引擎（Edge/VITS/Kokoro）**都不支持情感/非语言声音朗读**——读出来都是中性（无情绪变化、无笑声/叹气）。这与第一性原理断点（scan-2026-09.md §0.2）："对话式语音真正难的是社会-语用层，包括人格一致性"高度相关。SoTA 共识（ElevenLabs v3 / Orpheus / Bark / Dia / Fish Audio / Cartesia）都把"内联情感标签"作为低成本差异化路径。
+
+调研与真机对照发现：
+- TTS 子代理 §3 红线 1（2026-09 第一轮）：**Orpheus / Bark / Dia 风格的内联情感标签 → tts-local 文本归一化**（小工程量）
+- 真机对照基线审查（2026-09 第二轮）：A1 Edge 路径评估 — `msedge-tts` `Prosody.d.ts` 仅 `pitch/rate/volume`，**无 `style`**；评估为"6-10 天 fork 或自拼 SSML"
+- 本轮（第三轮）深度复查（2026-09-14）：**纠正上述结论**——`msedge-tts` 仓库 `dist/MsEdgeTTS.d.ts:122` 已暴露 `rawToFile(dirPath, requestSSML)`，可绕过 `_SSMLTemplate` 直接拼 SSML 字符串提交，**无需 fork**
+
+## 决策（提议）
+
+**引入内联情感/非语言标签 DSL，作为 tts-local 文本预处理的可选开关；按引擎拆三分支映射（Kokoro/VITS/Edge）。**
+
+### 1. DSL 语法（最小可用集）
+
+```
+<laugh>              笑声
+<sigh>              叹气
+<whisper>           耳语
+<emphasis>          强调（在中性朗读后加轻微停顿 + 升调）
+<break 500ms>       强插停顿（500 毫秒）
+```
+
+标签大小写不敏感；不识别则按字面文本朗读（向后兼容）。**不在 DSL 范围**：
+- 多角色对话（`<|speaker:62|>`） — 暂不支持，本仓 single-voice-per-engine 设计
+- 情绪系统 prompt（如 "Speak cheerfully"） — 与 Edge `instructions` 不同通路，本期不融合
+- SSML 全集（phoneme / sub / say-as 等） — Edge 路径将来可走 rawSSMLRequest 复用
+
+### 2. 引擎映射（关键差异表）
+
+| 标签 | Kokoro | VITS | Edge |
+|---|---|---|---|
+| `<laugh>` | 拼接 SSML `<phoneme alphabet="ipa" ph="...">` 笑声 token | 字符串前插入 emoji（笑）+ 50ms 停顿 buffer | rawSSML 注入 `<mstts:express-as style="cheerful">` |
+| `<sigh>` | 插入 `<break time="300ms"/>` + 短停顿 | emoji + 200ms 停顿 | rawSSML `<mstts:express-as style="sad">` |
+| `<whisper>` | 加 SSML `<prosody volume="x-soft" rate="slow">` 包 | 全段音量 0.5 倍（VITS 无 SSML） | rawSSML `<mstts:express-as style="whisper">` |
+| `<emphasis>` | SSML `<emphasis level="strong">` | 加强停顿 + emoji（弱表达） | rawSSML `<emphasis>` |
+| `<break Nms>` | SSML `<break time="Nms"/>` | 字符串插入 Nms 静默 buffer | rawSSML `<break time="Nms"/>` |
+
+### 3. 实现路径
+
+**`src/tts-queue.ts` 改为**：
+
+```ts
+export interface TtsEngine {
+  ... existing fields ...
+  synthesize(text: string, options?: { voice?: string; rate?: number; emotion?: boolean }): Promise<Buffer>
+}
+```
+
+**`src/tts-local.ts` 加 `normalizeEmotionTags(text: string, engine: TtsEngine): string`**：
+- 在 `enqueue` 之前调一次（`src/tts-queue.ts:250`）
+- 解析 `<\w+(?:\s+\d+ms)?>` → 按引擎映射替换为对应 SSML/停顿/emoji
+- 返回**纯字符串**（注意：Edge 引擎后续需走 rawSSMLRequest 路径而非 `_SSMLTemplate`，因为后者的 `<prosody>` 包裹破坏 `<mstts:express-as>` 嵌入）
+
+**`src/tts-queue.ts` Edge 引擎 (`src/tts-queue.ts:104` 的 `EdgeTtsEngine`)**：
+- 检测 `text` 是否包含 emotion 标签（已 stripped 时不含）
+- 不含：走原 `synthesize` 路径
+- 含：切换到 rawSSMLRequest 路径（用 `MsEdgeTTS.rawSSMLRequest` 或 `rawToReadable` API）—— **仓库已暴露**（`dist/MsEdgeTTS.d.ts:122`），无需 fork
+
+**`src/index.ts:1110-1127` `tapActiveStream`**：
+- 在 `segmenter.feed(chunk.text)` 之前调 `normalizeEmotionTags(chunk.text, engine)`，把抽取到的情绪信息塞到 `enqueue` 路径
+- `SentenceSegmenter.feed` (`src/segmenter.ts:72-92`) 内部 `plainText` 必须在情绪标签抽取之后调——**顺序敏感**
+
+### 4. 验收（必须达成）
+
+- [ ] 默认关闭；用户设置 `tts.emotionTags: true` 后启用
+- [ ] 标签大小写不敏感
+- [ ] 未知标签按字面文本朗读
+- [ ] 三引擎跑通样例句 `"你好<laugh>今天天气真好"`：Kokoro 笑声 token、VITS emoji+停顿、Edge `<mstts:express-as style="cheerful">`
+- [ ] 现有 `ttsEngine: edge/vits/kokoro` 切换不影响其他字段
+- [ ] **不破坏现有不丢句不变量**：`tts-queue.ts:300-320` 重试 + epoch 守卫不动
+
+## 后果
+
+**正面**
+- 拟人度代际差补齐——对话朗读从"中性语调"上升到"笑声 + 叹气 + 耳语"
+- 不引入新依赖（msedge-tts 已暴露 rawSSMLRequest）；不破坏零 API Key
+- 标签 DSL 为未来扩展（多角色、多引擎 emotion）留接口
+- 与 ADR-0006 互补：自动打断模式保证"对话节奏"，本 ADR 提升"对话质感"
+
+**负面 / 成本**
+- 工程量：**实测 2-3 天（不是 6-10 天）**——靠 msedge-tts 已暴露的 `rawToFile/rawSSMLRequest` API
+- Edge rawSSML 路径与 `_SSMLTemplate` 路径**互斥**——需要在合成前判断是否含标签，决定走哪条流
+- SSML 标签的语义不正确时 Edge 静默失败——需在批测脚本加 SSML 合法性检查
+- `<laugh>` 等情感标签的"标准度"由各家引擎定义——Kokoro 实际有的 IPA token 决定可表达范围
+- 仅在 `tts.engine=edge/vits/kokoro` 三选之一时启用；用户切到 `cartesia` (未来) 时此 DSL 不生效
+
+## 依据
+
+- TTS 子代理 §3 红线 1（Orpheus / Bark / Dia 风格）
+- 国际对话式语音子代理 §6 Hume EVI（**emotion scores 是社会-语用层第一个杠杆**）
+- 真机对照基线审查（已纠正：rawSSMLRequest 暴露，`ProsodyOptions` 缺 `style` 但 rawSSML 仍可拼 `<mstts:express-as>`）
+- msedge-tts 仓库：`dist/MsEdgeTTS.d.ts:122 rawToFile(dirPath, requestSSML: string): Promise<...>` 已公开
+
+## 备选方案
+
+- **A：仅本地引擎支持（Kokoro/VITS），Edge 走纯文本** —— 简化为 1 天工作量，但 Edge 默认用户（多数）无情感朗读
+- **B：fork msedge-tts 增加 `style` 字段支持（已被 rawSSMLRequest 路径替代，本 ADR 不需要）**
+- **C：仅做基础停顿控制（`<break Nms>`），不支持情感标签** —— 折中，但失去人格层杠杆；不推荐
+- **D：什么都不做** —— 与第一性原理断点（拟人度代际差）冲突，不接受
+
+## 落地顺序
+
+1. 拍板本 ADR（A 路径 / 本 ADR 路径 / C 路径）
+2. `tts-local.ts` 加 `normalizeEmotionTags` + 三引擎映射表
+3. `tapActiveStream` 接入点正确排序
+4. Edge 引擎 rawSSMLRequest 路径分支（不破坏 `_SSMLTemplate` 路径）
+5. `settings-form.tsx` 加 `tts.emotionTags: boolean` 设置（默认关）
+6. `test/` 加 `test/emotion-tags.spec.ts`（三引擎 × 5 标签 × 3 样例句）
