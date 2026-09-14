@@ -444,7 +444,7 @@
 
 - **做什么**：第一次进入语音模式前弹同意对话框；显示数据流向；`localStorage` 持久；设置区可撤销
 - **file:line 锚点**：
-  - `plugin/dsh-voice-mode/src/client.tsx:1352` — `enterMode` 函数定义；前置检查 `localStorage['dsh-voice-mode.consent']`
+  - `plugin/dsh-voice-mode/src/client.tsx:1379` — `enterMode` 函数定义（**R26 实测：旧写 L1352 是 submitDraftNow() 内部，不是 enterMode；R19 加 botBars 后 enterMode 真源 L1352→L1379，+27 漂移**）；前置检查 `localStorage['dsh-voice-mode.consent']`
   - **新加 `<ConsentDialog>` 子组件**（暂未存在）：建议位置 `plugin/dsh-voice-mode/src/client.tsx:1-100` 之后的合适空白区，或独立子文件 `plugin/dsh-voice-mode/src/consent-dialog.tsx`（待落地时决定）
   - 数据流向从 `vset.ttsEngine` 读：`识别本地 + 朗读 Edge 云端` / `识别本地 + 朗读本地 VITS` / `识别本地 + 朗读本地 Kokoro`
   - `plugin/dsh-voice-mode/src/settings-form.tsx:54` —「数据与隐私」折叠区 + 「撤销同意」按钮
