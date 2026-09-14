@@ -9,12 +9,14 @@
  * 高级方案（sherpa-onnx keyword spotting 模型）列为远期。
  */
 
-/** 归一化：去空白/全半角统一/小写（对中文无影响，兼容英文唤醒词）。 */
+/** 归一化：去空白/全半角统一/小写（对中文无影响，兼容英文唤醒词）+ 剥离前置语气词
+ *  ("嗯/哎/呃/这个/那个/so/um")，让"嗯你好小D"也能命中唤醒词"你好小D"。 */
 export function normalizeWake(text: string): string {
   return String(text ?? '')
     .replace(/[\s\u3000]+/g, '')
     .toLowerCase()
     .replace(/[，。！？!?；;、,.]/g, '')
+    .replace(/^(嗯+|哎+|呃+|这个+|那个+|so|um|uh|er|well)[，。！？!?；;、,.\s\u3000]*/, '')
 }
 
 /**

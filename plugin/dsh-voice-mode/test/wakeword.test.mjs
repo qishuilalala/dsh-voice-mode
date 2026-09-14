@@ -36,6 +36,19 @@ t('去空白/标点/小写', () => {
 t('空输入安全', () => {
   assert.equal(normalizeWake(''), '')
 })
+t('前置语气词白名单（增强命中率）', () => {
+  assert.equal(normalizeWake('嗯你好小D'), '你好小d')
+  assert.equal(normalizeWake('嗯嗯，你好小D'), '你好小d')
+  assert.equal(normalizeWake('哎你好小D'), '你好小d')
+  assert.equal(normalizeWake('呃，你好小D'), '你好小d')
+  assert.equal(normalizeWake('so hey dsh'), 'heydsh')
+  assert.equal(normalizeWake('um hi'), 'hi')
+  // 不在白名单的"嗯"不会剥离（避免误命中）
+  assert.equal(normalizeWake('嘿你好小D'), '嘿你好小d')
+})
+t('精确匹配仍正常（不被白名单影响）', () => {
+  assert.equal(normalizeWake('你好小D'), '你好小d')
+})
 
 console.log('matchWakeWord')
 t('关闭（空唤醒词）永不命中', () => {
