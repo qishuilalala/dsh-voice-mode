@@ -61,7 +61,7 @@ function resampleLinear(src, srcRate, dstRate) {
 
 // src/wakeword.ts
 function normalizeWake(text) {
-  return String(text ?? "").replace(/[\s\u3000]+/g, "").toLowerCase().replace(/[，。！？!?；;、,.]/g, "");
+  return String(text ?? "").replace(/[\s\u3000]+/g, "").toLowerCase().replace(/[，。！？!?；;、,.]/g, "").replace(/^(嗯+|哎+|呃+|这个+|那个+|so|um|uh|er|well)[，。！？!?；;、,.\s\u3000]*/, "");
 }
 function matchWakeWord(partial, wakeWord) {
   const w = normalizeWake(wakeWord);
@@ -1302,6 +1302,8 @@ var zh = {
   vadDetected: "VAD \u68C0\u6D4B\u5230\u8BED\u97F3",
   aecOff: "\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548",
   aecOffHint: "\u6D4F\u89C8\u5668\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548\uFF08\u5916\u653E\u53EF\u80FD\u81EA\u6253\u65AD\uFF09\uFF0C\u5EFA\u8BAE\u7528\u8033\u673A\u6216\u5207\u6362\u300C\u624B\u52A8\u6253\u65AD\u300D",
+  elapsedHint: "\u5F53\u524D\u8BED\u97F3\u4F1A\u8BDD\u5DF2\u7528\u65F6\u957F",
+  botLevelsHint: "AI \u6717\u8BFB\u97F3\u91CF\uFF08\u84DD\u8272\u6761 = \u6717\u8BFB\uFF0C\u7EFF\u8272\u6761 = \u9EA6\u514B\u98CE\uFF09",
   interruptConfirm: "\u6253\u65AD\u786E\u8BA4",
   sev0: "0 \u9AD8\u95E8\u69DB",
   sev1: "1 \u4E2D",
@@ -1359,6 +1361,7 @@ var zh = {
   ttsDeleting: "\u5220\u9664\u4E2D\u2026",
   ttsDownloadHint: "\u4E0B\u8F7D\u8BE5\u5F15\u64CE\u7684\u672C\u5730\u6A21\u578B\uFF1B\u4E0B\u8F7D\u5B8C\u6210\u540E\u7ACB\u5373\u5C31\u7EEA\uFF0C\u53EF\u8BD5\u542C/\u6717\u8BFB",
   ttsDeleteHint: "\u5220\u9664\u672C\u5730\u6A21\u578B\uFF08\u91CA\u653E\u7A7A\u95F4\uFF1B\u4E0B\u6B21\u4F7F\u7528\u4F1A\u81EA\u52A8\u91CD\u65B0\u4E0B\u8F7D\uFF09",
+  dataFlowHint: "\u6570\u636E\u6D41\u5411\uFF1AASR \u8BC6\u522B\uFF08zipformer2+SenseVoice\uFF09\u59CB\u7EC8\u672C\u5730\uFF1BTTS \u6717\u8BFB\u53D6\u51B3\u4E8E\u5F15\u64CE\uFF08edge=\u5FAE\u8F6F\u4E91\u7AEF\uFF0Cvits/kokoro=\u672C\u5730\uFF09",
   kokoroModel: "Kokoro \u6A21\u578B\u7CBE\u5EA6",
   kokoroModelInt8: "int8\uFF08\u9ED8\u8BA4\uFF09",
   kokoroModelFp32: "fp32\uFF08\u97F3\u8D28\u66F4\u597D\uFF09",
@@ -1443,6 +1446,8 @@ var en = {
   vadDetected: "VAD speech",
   aecOff: "Native AEC off",
   aecOffHint: "Native echo cancellation is not active (speaker echo may self-interrupt); use headphones or Manual barge-in",
+  elapsedHint: "Current voice session duration",
+  botLevelsHint: "AI playback level (blue bar = TTS playback, green bar = microphone)",
   interruptConfirm: "interrupt confirm",
   sev0: "0 high",
   sev1: "1 medium",
@@ -1496,6 +1501,7 @@ var en = {
   ttsDownloading: "Downloading\u2026",
   ttsDeleting: "Deleting\u2026",
   ttsDownloadHint: "Download this engine's local model; becomes ready immediately after",
+  dataFlowHint: "Data flow: ASR recognition (zipformer2+SenseVoice) is always local; TTS playback depends on engine (edge=Microsoft cloud, vits/kokoro=local)",
   ttsDeleteHint: "Delete local models (frees space; auto re-downloads on next use)",
   kokoroModel: "Kokoro model precision",
   kokoroModelInt8: "int8 (default)",
@@ -2180,6 +2186,23 @@ function EngineStatusInline() {
   const action = localReady ? "clean" : "download";
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, padding: "2px 0 10px" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.term }, children: engineName }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "span",
+      {
+        title: t("dataFlowHint"),
+        style: {
+          fontSize: 11,
+          color: t2.term,
+          padding: "0 6px",
+          borderRadius: 6,
+          background: "var(--dsw-alias-bg-layer-1)"
+        },
+        children: [
+          "\u8BC6\u522B\u672C\u5730 \xB7 \u6717\u8BFB ",
+          tts.engine === "edge" ? "\u4E91\u7AEF" : "\u672C\u5730"
+        ]
+      }
+    ),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: statusText === t("engineReady") || statusText === t("engineError") ? 600 : 400, color: statusColor }, children: statusText }),
     tts.loading && tts.progress?.file && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
       tts.progress.file,
@@ -2484,7 +2507,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "a3ec2f7";
+var BUILD_TAG = "6d077c2";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2793,6 +2816,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     state: "idle",
     partial: "",
     levels: [],
+    botLevels: [],
     error: null,
     playingCaption: null,
     playing: false,
@@ -2831,6 +2855,22 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   let refTotal = 0;
   let refStartWall = 0;
   let refActive = false;
+  const pushBotLevels = (pcmSrc, srcRate) => {
+    const pcm = srcRate === SAMPLE_RATE_16K ? pcmSrc : resampleLinear(pcmSrc, srcRate, SAMPLE_RATE_16K);
+    const FRAME = 256;
+    const total = Math.floor(pcm.length / FRAME);
+    if (total === 0) return;
+    const start = Math.max(0, WAVE_BARS - total);
+    const merged = ui.botLevels.slice(0, start);
+    for (let i = 0; i < total; i++) {
+      let s = 0;
+      for (let j = 0; j < FRAME; j++) s += pcm[i * FRAME + j] * pcm[i * FRAME + j];
+      const rms = Math.sqrt(s / FRAME) / 0.25;
+      merged.push(Math.max(0, Math.min(1, rms)));
+    }
+    Object.assign(ui, { botLevels: merged });
+    notify();
+  };
   const pushRef = (pcmSrc, srcRate, startWallMs) => {
     const pcm = resampleLinear(pcmSrc, srcRate, SAMPLE_RATE_16K);
     if (!refActive) {
@@ -2928,7 +2968,10 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       notify();
     },
     () => stampTelemetry("first-audio-played"),
-    (pcm, sampleRate, wallMs) => pushRef(pcm, sampleRate, wallMs),
+    (pcm, sampleRate, wallMs) => {
+      pushRef(pcm, sampleRate, wallMs);
+      pushBotLevels(pcm, sampleRate);
+    },
     // Fix：自然播完（无 TTS 在播）即清参考池——AEC 不再拿旧回合参考适配新语音。
     () => {
       refActive = false;
@@ -2939,7 +2982,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   const notify = () => {
     for (const fn of listeners) {
       try {
-        fn({ active: activeSessionId, ui: { ...ui, levels: [...ui.levels] } });
+        fn({ active: activeSessionId, ui: { ...ui, levels: [...ui.levels], botLevels: [...ui.botLevels] } });
       } catch {
       }
     }
@@ -3320,7 +3363,7 @@ function MicButton({
         engineRef.current = null;
         if (engine) void engine.stop();
         bus.resetTelemetry();
-        bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null, isSpeech: void 0 });
+        bus.setUi({ state: "idle", partial: "", levels: [], botLevels: [], error: null, model: null, ttsNotice: null, isSpeech: void 0 });
       }
     });
   }, [bus]);
@@ -3612,7 +3655,7 @@ function MicButton({
         if (bootNow().autoSend === false) return;
         scheduleAutoSend();
       });
-      bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null });
+      bus.setUi({ state: "idle", partial: "", levels: [], botLevels: [], error: null, model: null, ttsNotice: null });
       if (!mountedRef.current) {
         engineRef.current = null;
         void bus.exit(sid);
@@ -4051,13 +4094,23 @@ function MicButton({
 }
 function VoiceStatusBar({ bus, sessionId }) {
   const [b, setB] = (0, import_react2.useState)(() => ({ active: bus.activeSessionId, ui: bus.ui }));
+  const [elapsedSec, setElapsedSec] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(() => {
     return bus.subscribe(setB);
   }, [bus]);
+  (0, import_react2.useEffect)(() => {
+    if (b.active !== sessionId) {
+      setElapsedSec(0);
+      return;
+    }
+    const id = setInterval(() => setElapsedSec((s) => s + 1), 1e3);
+    return () => clearInterval(id);
+  }, [b.active, sessionId]);
   const isActive = b.active === sessionId;
   if (!isActive) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
   const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? t("recognizing") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.playing ? t("reading") : b.ui.turn === "agent-speaking" ? t("thinking") : b.ui.mode === "hold" ? t("barHold") : t("barListening");
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0);
+  const botBars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.botLevels[i] ?? 0);
   const telParts = [];
   const fmt = (ms) => ms >= 1e3 ? `${(ms / 1e3).toFixed(2)}s` : `${Math.round(ms)}ms`;
   const tel = b.ui.telemetry;
@@ -4099,6 +4152,31 @@ function VoiceStatusBar({ bus, sessionId }) {
       },
       children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+          botBars.some((v) => v > 0) && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "span",
+            {
+              title: t("botLevelsHint"),
+              style: {
+                display: "inline-flex",
+                alignItems: "flex-end",
+                gap: 2,
+                height: 14,
+                flexShrink: 0
+              },
+              children: botBars.map((v, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                "span",
+                {
+                  className: "dshvm-bar-bot",
+                  style: {
+                    height: `${3 + v * 12}px`,
+                    background: "#58a6ff",
+                    opacity: 0.4 + v * 0.6
+                  }
+                },
+                i
+              ))
+            }
+          ),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { display: "inline-flex", alignItems: "flex-end", gap: 2, height: 14, flexShrink: 0 }, children: bars.map((v, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "span",
             {
@@ -4127,6 +4205,27 @@ function VoiceStatusBar({ bus, sessionId }) {
                 border: "1px solid rgba(255, 166, 87, 0.35)"
               },
               children: t("vadDetected")
+            }
+          ),
+          elapsedSec > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+            "span",
+            {
+              title: t("elapsedHint"),
+              style: {
+                flexShrink: 0,
+                padding: "0 6px",
+                borderRadius: 8,
+                fontSize: 10,
+                lineHeight: "16px",
+                color: "#8b949e",
+                fontVariantNumeric: "tabular-nums",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace"
+              },
+              children: [
+                Math.floor(elapsedSec / 60),
+                ":",
+                String(elapsedSec % 60).padStart(2, "0")
+              ]
             }
           ),
           b.ui.aecOff === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
