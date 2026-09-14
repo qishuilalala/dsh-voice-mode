@@ -38,7 +38,10 @@ export const inject = ['slots', 'sessions', 'settingsScope']
 interface VoiceUiState {
   state: AsrState
   partial: string
+  /** 麦克风端电平（采集侧 RMS，按 100ms 周期推）。 */
   levels: number[]
+  /** 朗读端电平（播放侧 RMS，按 PCM 帧推；前端 SVG 双条波形用）。 */
+  botLevels: number[]
   error: string | null
   /** 正在朗读的句子字幕（播放引擎写入）。 */
   playingCaption: string | null
@@ -572,6 +575,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     state: 'idle',
     partial: '',
     levels: [],
+    botLevels: [],
     error: null,
     playingCaption: null,
     playing: false,
@@ -617,6 +621,25 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   let refTotal = 0
   let refStartWall = 0
   let refActive = false
+  // P0-UX 双条 SVG 波形：AI 朗读端 PCM 推 robotLevels (WAVE_BARS 元素)
+  // 解码后的 PCM 是 Float32Array(单声道);对每 16ms 帧(256 样本 @ 16kHz)算 RMS,推入 botLevels 环形
+  const pushBotLevels = (pcmSrc: Float32Array, srcRate: number): void => {
+    // 重采样到 16k(参考采样率)便于帧对齐;若原已 16k 则等价
+    const pcm = srcRate === SAMPLE_RATE_16K ? pcmSrc : resampleLinear(pcmSrc, srcRate, SAMPLE_RATE_16K)
+    const FRAME = 256 // ~16ms @ 16kHz
+    const total = Math.floor(pcm.length / FRAME)
+    if (total === 0) return
+    const start = Math.max(0, WAVE_BARS - total) // 滑窗到末尾
+    const merged = ui.botLevels.slice(0, start)
+    for (let i = 0; i < total; i++) {
+      let s = 0
+      for (let j = 0; j < FRAME; j++) s += pcm[i * FRAME + j] * pcm[i * FRAME + j]
+      const rms = Math.sqrt(s / FRAME) / 0.25 // 归一到 [0, 1];与 asr.ts:110 LEVEL_CEILING 同值
+      merged.push(Math.max(0, Math.min(1, rms)))
+    }
+    Object.assign(ui, { botLevels: merged })
+    notify()
+  }
   const pushRef = (pcmSrc: Float32Array, srcRate: number, startWallMs: number): void => {
     const pcm = resampleLinear(pcmSrc, srcRate, SAMPLE_RATE_16K)
     if (!refActive) {
@@ -739,7 +762,11 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       notify()
     },
     () => stampTelemetry('first-audio-played'),
-    (pcm, sampleRate, wallMs) => pushRef(pcm, sampleRate, wallMs),
+    (pcm, sampleRate, wallMs) => {
+      pushRef(pcm, sampleRate, wallMs)
+      // P0-UX 双条 SVG 波形:同时算 RMS 推 botLevels(独立于回声参考池)
+      pushBotLevels(pcm, sampleRate)
+    },
     // Fix：自然播完（无 TTS 在播）即清参考池——AEC 不再拿旧回合参考适配新语音。
     () => {
       refActive = false
@@ -751,7 +778,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   const notify = (): void => {
     for (const fn of listeners) {
       try {
-        fn({ active: activeSessionId, ui: { ...ui, levels: [...ui.levels] } })
+        fn({ active: activeSessionId, ui: { ...ui, levels: [...ui.levels], botLevels: [...ui.botLevels] } })
       } catch {
         // listener errors must not kill the loop
       }
@@ -1252,7 +1279,7 @@ export function MicButton({
         // Fix：先置 null 防重入，再异步 stop（stop 内部会阻止 handleAudio）
         if (engine) void engine.stop()
         bus.resetTelemetry() // P1-5：与 exitMode 同口径清埋点
-        bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null, isSpeech: undefined })
+        bus.setUi({ state: 'idle', partial: '', levels: [], botLevels: [], error: null, model: null, ttsNotice: null, isSpeech: undefined })
       }
     })
   }, [bus])
@@ -1622,7 +1649,7 @@ export function MicButton({
         // 累积模式：静音到点才发（期间再开口 → onState('speech') → cancelAutoSend 继续累积）。
         scheduleAutoSend()
       })
-      bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null })
+      bus.setUi({ state: 'idle', partial: '', levels: [], botLevels: [], error: null, model: null, ttsNotice: null })
       if (!mountedRef.current) {
         engineRef.current = null
         void bus.exit(sid)
@@ -2235,6 +2262,8 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
                   : t('barListening')
 
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0)
+  // P0-UX 双条 SVG 波形：第二组柱形表示 AI 朗读端电平
+  const botBars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.botLevels[i] ?? 0)
 
   // P1-5 延迟埋点链展示（开发模式）：各相邻阶段耗时 + 说完→首音合计。
   const telParts: string[] = []
@@ -2281,6 +2310,31 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* P0-UX 双条 SVG 波形：先 AI 朗读端(蓝)，后麦克风采集端(绿)；视觉左→右读"AI→我" */}
+        {botBars.some((v) => v > 0) && (
+          <span
+            title={t('botLevelsHint')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'flex-end',
+              gap: 2,
+              height: 14,
+              flexShrink: 0,
+            }}
+          >
+            {botBars.map((v, i) => (
+              <span
+                key={i}
+                className="dshvm-bar-bot"
+                style={{
+                  height: `${3 + v * 12}px`,
+                  background: '#58a6ff',
+                  opacity: 0.4 + v * 0.6,
+                }}
+              />
+            ))}
+          </span>
+        )}
         <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 14, flexShrink: 0 }}>
           {bars.map((v, i) => (
             <span
