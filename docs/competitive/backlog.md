@@ -524,8 +524,8 @@
 
 - **做什么**：audiogen 6 个 SKILL.md 是其生态粘性核心；本插件**零 skill**
 - **file:line 锚点**：
-  - `plugin/dsh-voice-mode/src/index.ts:108-132`（参考 audiogen 的 `syncBundledSkills()` 模式）
-  - `plugin/dsh-voice-mode/src/.agent-skills/`（仿 audiogen 放 4-6 个 SKILL.md）
+  - `plugin/dsh-voice-mode/src/index.ts` (apply 入口 L282+ ) — **新加** `syncBundledSkills()` 函数（参考 audiogen `src/index.ts:108-132` 模式）；**backlog 旧写 L108-132 错**（真源是 `VoiceSettingsValue` interface，不是 syncBundledSkills）
+  - `plugin/dsh-voice-mode/src/.agent-skills/`（仿 audiogen 放 4-6 个 SKILL.md，新目录）
 - **真实工作量**：30 行 + 4-6 个 SKILL.md 文件
 - **真实示例 skills**：`/voice-mode:enter`（进入语音模式）/ `/voice-mode:reading-toggle`（开/关朗读）/ `/voice-mode:barge-in-mode`（改打断模式）/ `/voice-mode:caption-font-size`（调字幕字号）
 
