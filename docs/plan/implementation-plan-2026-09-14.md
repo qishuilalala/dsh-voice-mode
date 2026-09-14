@@ -13,6 +13,10 @@
 
 批 1/2/3/5 都要改 `src/index.ts`（schema 或 prompt 区）、批 4/5 都要改 `src/tts-queue.ts` 或 `src/client.tsx`——**并行写同文件有物理冲突风险**。6 批严格串行，每批：改码 → typecheck → npm test → build → commit → 下一批。单批失败立即定位（上一 commit 的影响面隔离）。
 
+### 0.2a 新测试文件登记（易漏步骤，每批新增 test/*.mjs 后必做）
+
+`package.json` 的 `scripts.test` 是**显式文件列表**（非通配）——每个新增测试文件必须同步 append 进该列表，否则 `npm test` 根本不会跑它（R7 的 wakeword.test.mjs 已在列表，是先例）。
+
 ### 0.2 每批固定验证序列（任何一批不过则停）
 
 ```bash
@@ -40,7 +44,7 @@ node build.mjs                                                       # 重建 li
 | I7 | host 侧 cordis inject 仅按需 | `src/index.ts:88` | 本计划 6 批**均不需要**扩（system-prompt/assemble 事件已可用） |
 | I8 | 模型 SHA256 固定 + 下载白名单 | `models.ts` | 热词/锁语种不新增模型下载 |
 | I9 | 零 API Key | 全局 | 6 批全部本地，无任何云调用 |
-| I10 | 热词/锁语种**默认行为与现状完全一致** | 新设置键全部带默认值 | 未配置的用户感知零变化 |
+| I10 | 热词/锁语种**默认行为与现状完全一致** | 新设置键全部带默认值 | 未配置的用户感知零变化。**豁免声明：批 5 `backchannelYield` 默认 true 是产品决策（ADR-0008 已接受），不满足 I10 字面义——回退手段 = 设置关闭；其余各批严格遵守** |
 
 ### 0.5 行号漂移预警
 
@@ -107,10 +111,20 @@ if (recognizer && key === recognizerHotwordsKey) return recognizer
 if (recognizer) { try { recognizer.free?.() } catch { /* ignore */ } recognizer = null }
 recognizer = createOnlineRecognizer({
   modelConfig: { ...现状不动... },
-  ...(hw ? { decodingMethod: 'modified_beam_search', hotwordsBuf: hw, hotwordsBufSize: hw.length, hotwordsScore: hotwordsScore() } : {}),
+  ...(hw ? { decodingMethod: 'modified_beam_search', hotwordsBuf: hw, hotwordsBufSize: Buffer.byteLength(hw, 'utf8'), hotwordsScore: hotwordsScore() } : {}),
 })
 recognizerHotwordsKey = key
 ```
+
+### 3.0a 开工前置 PoC（批 1 第一动作，未通过则启用降级方案）
+
+```bash
+cd plugin/dsh-voice-mode && node -e '/* P1: hotwordsBuf 中文热词实证；P2: recognizer 释放 API 存在性；P3: byteLength vs length 差异打印 */'
+```
+
+- P1 失败（热词不生效）→ 本批暂停回报，不硬写
+- P2 **无释放 API** → 降级：热词变更**不静默重建** recognizer（ONNX native 内存 GC 不回收，多次重建 = 泄漏），schema description 改「改动需重启 dsh 生效」或走 dispose+重建整 runtime（一次性）；降级选择写入 commit message
+- P3 差异确认中文必须 `Buffer.byteLength(hw,'utf8')`（骨架已修正）
 
 **关键语义**：`hw` 为空 → 完全不传热词三参、`decodingMethod` 保持 `'greedy_search'`（**保 I10：未配置用户行为零变化 + 保 RTF 不退化**）；非空才切 `modified_beam_search`。`recognizer.free?.()` 若 d.ts 无此方法则查 sherpa-onnx 真实释放 API（开工时 grep `free\|destroy` in sherpa-onnx-asr.js；若无释放接口则接受旧实例由 GC 回收，注释说明）。
 
@@ -163,7 +177,7 @@ senseLangKey = langKey
 // 建 worker 时 workerData: { sherpaModule, modelDir, language: recognitionLanguage(), useITN: senseITN() ? 1 : 0 }
 ```
 
-onDeath 懒重建机制已有（L388-391），主动 terminate 走同路径，无新风险。
+onDeath 懒重建机制已有（L388-391）。**开工前核实一点**：`createSenseWorkerClient` 的 pending request 在 worker 被 terminate 时是否有超时/reject（读该函数实现）——若无，正在 in-flight 的 decode 会挂起；I1 兜底（client 有界重试 3 次）覆盖的前提是「重试能拿到新 worker」，而挂起的 request 是否让 finalize 整体超时需实测确认。核实结果写入本批 commit message。
 
 ### 4.4 验证与 Done
 
@@ -188,7 +202,7 @@ onDeath 懒重建机制已有（L388-391），主动 terminate 走同路径，�
 | 2 | `src/index.ts` | `/config` 路由 L523-545 返回对象 | 加 `captionFontSize: vset.captionFontSize` / `captionMaxWidth: vset.captionMaxWidth` |
 | 3 | `src/client.tsx` | `VoiceBootConfig` L1122-1141 | 加两字段（类型） |
 | 4 | `src/client.tsx` | `bootNow()` 默认对象 L1199 | 加 `captionFontSize: 1, captionMaxWidth: 1` |
-| 5 | `src/client.tsx` | `VoiceOverlay` L2457+ 渲染 | `fontSize: 12` → `const FS=[12,14,18,24][b.ui.boot?.captionFontSize ?? 1]`；`maxWidth: 480` → `['50vw','70vw','90vw'][... ?? 1]`；caption span `whiteSpace:'normal'` + 保留 ellipsis 兜底 |
+| 5 | `src/client.tsx` | `VoiceOverlay` L2457+ 渲染 | `fontSize: 12` → `const FS=[12,14,18,24][b.ui.boot?.captionFontSize ?? 1]`；`maxWidth: 480` → `['50vw','70vw','90vw'][... ?? 1]`；caption span `whiteSpace:'normal' + overflowWrap:'anywhere'`（**注意：换行后 ellipsis 失效是正常行为，不要试图同时保留——`text-overflow:ellipsis` 需要 nowrap，与中文换行互斥**）；浮层加 `maxHeight: '30vh' + overflow:'hidden'`（防 24px 多行盖住输入框） |
 | 6 | `src/client.tsx` | `<style>` 注入区（useVoiceCss L1142+） | `.dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }` |
 | + | `src/client.tsx` | 跳过按钮（VoiceOverlay 内） | `aria-label` = 朗读中文案（`t('skipReading')` 新键） |
 | + | `src/settings-form.tsx` | secInteraction | 两个 SegGroup（字号 4 档 / 宽度 3 档，纯展示标签「小/标准/大/特大」） |
@@ -213,9 +227,9 @@ Kokoro/VITS 走 sherpa-onnx offline TTS（纯文本+sid 输入），**不支持 
 
 | 标签 | 本地实现 |
 |---|---|
-| `<break 500ms>` | 文本切段 → 分段合成 → 段间插 N ms 静音 PCM |
-| `<whisper>` | 作用域内段落 PCM 增益 ×0.5 |
-| `<laugh>/<sigh>/<emphasis>` 等 | **剥离不读出**（防标签被逐字朗读）；真声音留给第二步 Edge |
+| `<break 500ms>` | 单标签；文本切段 → 分段合成 → 段间插 N ms 静音 PCM |
+| `<whisper>...</whisper>` | **成对标签**（作用域 = 闭合内文本；落地修正：ADR-0007 原文是单标签，但单标签无明确作用域边界，成对才是可判定语义——本偏差显式声明并回写 ADR-0007 落地注记）；作用域内段落 PCM 增益 ×0.5 |
+| `<laugh>/<sigh>/<emphasis>` | 单标签；**剥离不读出**（防逐字朗读）；真声音留给第二步 Edge |
 
 ### 6.2 改动清单
 
@@ -224,7 +238,7 @@ Kokoro/VITS 走 sherpa-onnx offline TTS（纯文本+sid 输入），**不支持 
 | `src/emotion.ts`（新） | 纯函数：`parseEmotionTags(text)` → `Array<{text, preBreakMs?, gain?}>` 段序列；`stripEmotionTags(text)`；标签正则 `/<(break\s+(\d+)ms|whisper|laugh|sigh|emphasis)>/gi`。**不依赖任何运行时，可单测** |
 | `src/tts-local.ts` synthesize L441-465 | 拿到 PCM 后按段序列处理：段间插静音（`sampleRate*N/1000` 个 0 样本）、gain 段乘系数；最终一次 `pcmToWav`。**<break> 落句内时**：多段各自调底层合成（sherpa generate）再拼 PCM |
 | `src/index.ts` tapActiveStream L1110+ | `chunk.text` 进 `segmenter.feed` **之前**调 `stripEmotionTags`（防标签进 partial 草稿被用户看到）；朗读路径的 enqueue 文本保留标签（由 tts-local 消费）。**实现：feed 前 strip、enqueue 前保留**——需要 tapActiveStream 持有两份文本（strip 后给 segmenter，原文给 queue）。检查 segmenter 输出的句子是从 strip 后文本切的——则 queue 收到的是 strip 后句子，标签丢了！**修正设计：标签解析必须在句子切分后、合成前**——即 tts-queue enqueue 后、pump 调 engine.synthesize 前由 emotion.ts 处理 item.text。tapActiveStream **不动**（避免动段切分）。**这是本批关键设计决策：处理点放 tts-queue pump 内（engine.synthesize(item.text) 改为 emotion 处理后多段合成）** |
-| `src/tts-queue.ts` pump L300-320 | `synthesize(item.text)` 处包 emotion 处理：本地引擎走多段；Edge 引擎本批**原样直传**（第二步再接 rawSSML）。仅在 `engine.mime === 'audio/wav'`（本地）时启用，保 Edge 零变化 |
+| `src/tts-queue.ts` | **完全不动**（定稿：emotion 处理全部收在 tts-local.synthesize 内部——`synthesize(text)` 收到含标签文本时内部多段合成再拼 PCM 返回单个 WAV；pump 与帧协议零触碰，I4/I5 天然无风险）。Edge 的 EdgeTtsEngine（本文件内）第二步才动 |
 | `test/emotion.test.mjs`（新） | 解析/剥离/分段/静音插入/增益 8-10 断言 |
 
 ### 6.3 验证与 Done
@@ -295,6 +309,7 @@ systemctl restart dsh.service && curl -s -o /dev/null -w '%{http_code}' http://1
 | R2 | sherpa recognizer 无显式 free API | 开工时 grep；无则 GC 回收 + 注释（内存实测一次） |
 | R3 | 锁 zh 后英文段降级 | schema description 明示「混合场景用 auto」；真机验收含英文段 |
 | R4 | backchannel 词表误命中（用户名字就一个字） | 整段 ≤4 字符 + 词表闭集；`backchannelYield` 可关；真机观察误命中率 |
+| **R4b（致命边界，已接受）** | **「嗯」等单字短应答 ~150-250ms 可能低于 `MIN_SPEECH_MS=250` 开段门槛 → speechActive 不置真 → 播放期走 detect 通道（无文本）→ backchannel 根本检测不到** | 本批接受局限：仅 ≥250ms 且 RMS 过门的应答触发；真机命中率写入 STATE 后再议第二步（detect 通道带文本 = 动 host 协议，本批明令禁止）。批 5 验收用「嗯——」拖长音（>300ms）测试 |
 | R5 | 批 4 多段合成改变句时长语义（字幕同步按帧 final 走，天然兼容） | I4 不动帧协议；单测断言 final 帧仍单发 |
 | R6 | 行号漂移（批间） | 0.5 节：每批按符号名 grep 重定位 |
 | O1 | hotwordsBuf 中文 UTF-8 字节数 vs 字符数（sherpa 用 lengthBytesUTF8） | 批 1 单测含中文词；`hotwordsBufSize` 传 `Buffer.byteLength(hw,'utf8')` 而非 `.length` |
