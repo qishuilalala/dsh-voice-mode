@@ -86,9 +86,16 @@ dsh plugin --profile web add dsh-voice-mode
 | 模型精度 | `kokoroModel` | `int8` | Kokoro 精度：`int8`（默认 109MB，CPU 推荐）/ `fp32`（311MB，音质更好，独显/大内存推荐） |
 | 音色 / 语速 | `voice` / `rate` | `zh-CN-XiaoxiaoNeural`（Edge）/ `1.0` | 按引擎取值：edge 用 ShortName（下拉全量加载 322 个）/ vits 说话人名 / kokoro 编号或中文名；行内可**试听** |
 | 打断灵敏度 | `interruptLevel` | `0` | 0 高门槛 / 1 中 / 2 低 |
-| 停顿自动发送 | `silenceMs` / `autoSend` | `700` / `true` | 停顿毫秒数；`autoSend` 关闭则只进草稿 |
+| 打断模式 | `bargeInMode` | `auto` | `auto` 自动打断 / `manual` 长按打断（外放场景推荐 manual，避免自打断） |
+| 打断回声门限 | `echoGateDb` | `6` | 打断要求响度高于回声地板此 dB（参考 ADR-0006 二级探测）；打不断降 3-4、噪音误打断升 8-10 |
+| 流式 ASR 定稿 | `senseVoice` | `true` | 开 = SenseVoice 定稿（带标点 + ITN）；关 = 只用流式 zipformer2（节省 228MB 模型） |
+| 停顿自动发送 | `silenceMs` / `autoSend` | `1500` / `true` | 停顿毫秒数；`autoSend` 关闭则只进草稿 |
+| 切回自动恢复 | `autoResume` | `false` | 切换回上次语音会话时自动恢复语音模式 |
 | 交互模式 | `mode` | `toggle` | `toggle` 持续聆听 / `hold` 按住说话 |
+| 快捷键 | `shortcut` | `Ctrl+Shift+V` | 进入 / 退出语音模式 |
 | 口语化回复 | `spokenFormat` | `true` | 语音会话的回复更口语、短句、无 Markdown 符号（朗读更顺更快） |
+| 唤醒词 | `wakeWord` | 空（关） | 待机态说出后激活；空串 = 关闭 |
+| 工具提示音 | `toolBeep` | `false` | AI 调用工具时滴一声 |
 | 模型镜像 | `modelHost` | 默认源 | 国内网络填 `https://hf-mirror.com` |
 | 空闲退出 | `idleTimeoutMinutes` | `10` | 无活动自动退出语音模式 |
 
