@@ -1,8 +1,13 @@
 # dsh-voice-mode 借鉴 backlog（从 2026-09 竞品扫描收敛）
 
-> **依据**：`docs/competitive/scan-2026-09.md`（5 份子代理 + 对抗性审查 + 主会话独立验证后汇总）
+> **依据**：`docs/competitive/scan-2026-09.md`（5 份子代理 + 对抗性审查 + 主会话独立验证后汇总）+ 2026-09 第二轮 4 份扩展扫描（AI 音频全景 / 同类 plugin 生态 / UX-DX 深挖）+ 真机对照基线审查（`docs/findings/baseline-review-p0-a1-a10.md`）。
 > **基线**：2026-09-14 仓 `main`（参考 `CONTEXT.md` ADR-0001/0003/0004/0005/0006 + `plugin/dsh-voice-mode/src/` 主代码）
 > **纪律**：每项 backlog **必须配 file:line 锚点 + 实现路径 + 验证脚本（参考 ADR-0005）**；按优先级 P0/P1/P2/P3 排序；冻结项标 ❄。
+> **第二轮新增关键事实**（来自真机对照基线审查）：
+> - A1 Edge 路径事实不通：`msedge-tts` 2.0.7 `Prosody.d.ts` 仅 `pitch/rate/volume`，**无 `style`**，要走 `<mstts:express-as>` 需 fork msedge-tts 走 WebSocket 自拼 SSML
+> - A3 pyannote 4.x ONNX ~120MB（segmentation + embedding WEVO），5-7 天严重低估，且会破坏 `asr-host.ts:442-466` finalize 同步路径的"不丢句"不变量
+> - B9 `recognition-draft` 字段是规划项非现状（`client.tsx` grep 0 命中）；当前仅有 `silenceMs` 默认 1500ms
+> - D1 `inject` 数组扩 9 anchor 取交集有兼容成本，应复用现有服务而非扩数组
 
 ---
 
@@ -20,23 +25,29 @@
 
 ## P0 — 立即可补的小工程量（≤3 天）
 
-### A1 · Ready · 内联情感/非语言标签 DSL
+### A1 · Need-ADR-0007 · 内联情感/非语言标签 DSL
 
 - **做什么**：在 `tts-local.ts` 文本归一化阶段解析 `<laugh> <whisper> <sigh> <emphasis>` 等内联标签；分引擎映射：
-  - **Edge**：转 `mstts:express-as style="cheerful"` 包装
+  - **Edge**：转 `mstts:express-as style="cheerful"` 包装（**当前 `msedge-tts` 2.0.7 `Prosody.d.ts` 仅支持 `pitch/rate/volume`，无 `style` 字段**；必须 fork 或改走 WebSocket 自拼 SSML——⚠ 6-10 天而非 ≤3 天）
   - **Kokoro**：插入 SSML `<phoneme>` 或预录音
   - **VITS**：插入停顿 emoji
 - **为什么**：ElevenLabs v3 / Orpheus / Bark / Dia 共识；与本插件 `ttsEngine` 三引擎兼容
 - **file:line 锚点**：
   - `plugin/dsh-voice-mode/src/tts-local.ts:1-100` （引擎入口与归一化逻辑）
-  - `plugin/dsh-voice-mode/src/tts-queue.ts:268-307` （播放循环，对应插入点）
-  - `plugin/dsh-voice-mode/src/strings.ts` （新增 `EMOTION_TAG_MAP` 常量表）
+  - `plugin/dsh-voice-mode/src/tts-queue.ts:17-32` （`TtsEngine` 接口，可加 `synthesize` 的 `options.emotion` 字段）
+  - `plugin/dsh-voice-mode/src/tts-queue.ts:250` （`enqueue` 接入点）
+  - `plugin/dsh-voice-mode/src/index.ts:1110-1127` （`tapActiveStream` 调用 `enqueue` 的具体位置）
+  - `plugin/dsh-voice-mode/src/segmenter.ts:72-92` （`SentenceSegmenter.feed` 调用 `plainText`，顺序敏感——情绪标签必须在 plainText 之前抽）
+  - `plugin/dsh-voice-mode/lib/index.js:1034` （`prosodyFromRate` 当前仅支持 `{rate}`，确认 Edge 路径缺 style 支持）
 - **实现路径**：
-  1. 在 `strings.ts` 新增 `EMOTION_TAG_MAP = {laugh: {edge: 'mstts:express-as style="cheerful"', kokoro: '…', vits: '…'}, ...}`
-  2. `tts-local.ts` 加 `normalizeEmotionTags(text: string, engine: TtsEngine)` 函数
-  3. 在 `tts-queue.ts` 入队前调用一次
+  1. **ADR-0007 拍板**：在 Edge 路径上是否 fork msedge-tts 还是仅启用本地引擎情感标签
+  2. 在 `strings.ts` 新增 `EMOTION_TAG_MAP = {laugh: {edge: 'mstts:express-as...', kokoro: '...', vits: '...'}, ...}`
+  3. `tts-local.ts` 加 `normalizeEmotionTags(text: string, engine: TtsEngine)` 函数
+  4. `tapActiveStream` 在 `segmenter.feed` 之前抽标签 → 后续可传 emotion 给 `enqueue`
+  5. **`segmenter.plainText` (`src/segmenter.ts:27`) 必须早于情绪标签抽取**——**顺序敏感**
 - **验证**：在 `test/` 加 `test/emotion-tags.spec.ts` 对每引擎跑 10 条样例 → 断言输出音频时长峰值位置变化
 - **关联**：扫描 §A1；TTS 子代理 §3 红线 1；ElevenLabs v3 来源 https://elevenlabs.io/v3
+- **第二轮基线审查**：`scan-baseline-review-2026-09.md` A1 段——Edge 路径事实不通；需开 ADR-0007。
 
 ### A2 · Ready · 会后"3 条要点 + 行动项"摘要卡片
 
@@ -52,21 +63,23 @@
 - **验证**：录一段样本 → 退出时面板出现 3 条要点 → 折叠/展开可读
 - **关联**：扫描 §A2；垂类子代理 §1 Otter, Fireflies, Granola, NotebookLM
 
-### A3 · Ready · 字幕 `[S1]/[S2]` 说话人标签
+### A3 · Need-PoC · 字幕 `[S1]/[S2]` 说话人标签
 
 - **做什么**：在 finalize 路径嵌入 pyannote-audio 4.x ONNX pipeline；缓冲 1.5s 推断 `speaker_label`；字幕前添加 `[S1]/[S2]`
 - **为什么**：pyannote 4.x ONNX pipeline 单 decode 即可得 VAD + segmentation + embedding + clustering
 - **file:line 锚点**：
   - `plugin/dsh-voice-mode/src/asr-host.ts:135-160`（既有 `pcmToSamples` 与 `MAX_ASR_BYTES` 入口）
+  - `plugin/dsh-voice-mode/src/asr-host.ts:442-466`（**⚠ finalize 同步路径——不丢句不变量**）
   - `plugin/dsh-voice-mode/src/sense-worker.ts:1-203`（可仿写 `pyannote-worker.ts`）
   - `plugin/dsh-voice-mode/src/asr.ts:71-90`（`SegmentMeta`，加 `speaker?: 0|1`）
 - **实现路径**：
   1. 新增 `pyannote-worker.ts` 内嵌 ONNX runtime（web worker）
-  2. `asr-host.ts` finalize 路径 1.5s 窗口送 worker → 拿 `speaker_label`
+  2. `asr-host.ts` finalize 路径 1.5s 窗口送 worker → 拿 `speaker_label`（**必须改成 finalize 后台异步，不破坏同步 finalize 不变量**）
   3. `client.tsx` 字幕渲染 `<span class="spk-N">`
   4. **单说话人跳过快路径**：能量集中度 > 95% 时直接跳过 ONNX（保 CPU）
-- **验证**：录 2 人对话样本 → 字幕前正确出现 `[S1]/[S2]`
-- **关联**：扫描 §A3；ASR 子代理 §6.1 + §7.1
+- **真实工作量**：第二轮基线审查 ⚠ — pyannote 4.x ONNX ~120MB（segmentation + embedding WEVO），严重低估为 5-7 天，**实际 2-3 周**。致命风险：200-500ms 推理会破坏现有 finalize 同步路径不变量。
+- **验证**：录 2 人对话样本 → 字幕前正确出现 `[S1]/[S2]`；同时验证 finalize 同步不被打断
+- **关联**：扫描 §A3；ASR 子代理 §6.1 + §7.1；`scan-baseline-review-2026-09.md` A3 段
 
 ### A5 · Ready · 设置项 `interruptThreshold_ms` + `eagerness` 暴露
 
@@ -89,15 +102,18 @@
 - **做什么**：长按录音时浮窗 + 启动 80ms chime；纯客户端加法
 - **为什么**：Hey, Copilot + Recall 已示范；用户不开键盘前面也能感知
 - **file:line 锚点**：
-  - `plugin/dsh-voice-mode/src/client.tsx:1932`附近（"按住说话中"录音态视觉反馈）
-  - `plugin/dsh-voice-mode/src/index.ts:166`附近（`wakeWord` 已接但默认关）
-  - `plugin/dsh-voice-mode/src/strings.ts`（`AUDIO.MIC_OPEN_CHIME_URL` 常量）
+  - `plugin/dsh-voice-mode/src/client.tsx:156-174`（**既有 `beepCtx: AudioContext` + `playToolBeep` 实现，直接复用**——第二轮基线审查确认）
+  - `plugin/dsh-voice-mode/src/client.tsx:1133`（`html.dshvm-holding` CSS 类已就位）
+  - `plugin/dsh-voice-mode/src/client.tsx:1932`（"按住说话中"录音态视觉反馈）
+  - `plugin/dsh-voice-mode/src/index.ts:166`（`wakeWord` 已接但默认关）
 - **实现路径**：
-  1. `client.tsx` 复用既有 `setHolding(true)` 状态机，新增 `<FloatingBar>` 子组件
-  2. `AudioContext` 提前创建，加 `chime.play()` 钩子
-  3. `tts-queue.ts` chime 仅在 hold mode 触发，toggle mode 不发
+  1. `client.tsx` 复用既有 `setHolding(true)` 状态机 + `beepCtx`，新增 `<FloatingBar>` 子组件
+  2. **无需新 AudioContext**；`playToolBeep` 已可播放 100ms 振荡器
+  3. `strings.ts` 当前**没有** `AUDIO.MIC_OPEN_CHIME_URL` 常量——backlog 命名是规划项，新代码可加
+  4. chime 仅在 hold mode 触发，toggle mode 不发
+- **真实工作量**：0.5-1 人天（纯客户端）
 - **验证**：按住麦克风 → 听到 chime → 浮窗出现 → 松手浮窗消失
-- **关联**：扫描 §A6；垂类子代理 §4 Hey Copilot
+- **关联**：扫描 §A6；垂类子代理 §4 Hey Copilot；`scan-ux-dx-detail-2026-09.md` §1 状态反馈
 
 ### A10 · Ready · AI 主播开场问候
 
@@ -173,14 +189,17 @@
 - **验证**：5 语真机断句（zh/en/ja/es/fr）
 - **关联**：扫描 §B8；垂类子代理 §2 Wispr Flow
 
-### B9 · Ready · Read AI 风"现在听到…"复述
+### B9 · Need-PoC · Read AI 风"现在听到…"复述
 
 - **做什么**：长静音 700ms 触发时，让 AI 一句话复述用户意图（用于校正）
 - **为什么**：Read AI Catch-up 范式
 - **file:line 锚点**：
   - `plugin/dsh-voice-mode/src/asr.ts:640-695`（长静音检测）
-  - `plugin/dsh-voice-mode/src/client.tsx`（`recognition-draft` 字段渲染）
-- **关联**：扫描 §B9；垂类子代理 §1 Read AI
+  - `plugin/dsh-voice-mode/src/client.tsx`（**`recognition-draft` 字段 grep 0 命中——规划项非现状**）
+  - `src/asr-host.ts` 的现有段草稿接口可复用
+- **真实工作量**：第二轮基线审查 ⚠ — `recognition-draft` 字段是规划项非现状。当前仅有 `silenceMs` 默认 1500ms。**0.5-1 人天**（补一个草稿字段即可）+ 等价于 A2/A10 共用 LLM helper 时可合并
+- **验证**：长静音到达 700ms → UI 浮现"我现在听到…"淡入
+- **关联**：扫描 §B9；垂类子代理 §1 Read AI；`scan-baseline-review-2026-09.md` B9 段
 
 ---
 
@@ -272,3 +291,96 @@
 6. **A3 字幕说话人标签**（5-7 天）— pyannote worker 起步
 
 **综述**：P0 共 6 项 ≈ 2 周工时；不修改现有 ADR，新增 ADR-0007（标签 DSL）+ ADR-0009（声音克隆 PoC）。每个 P0 完工后跑 ADR-0005 基准 / `test/` 对应 spec 验证。
+
+---
+
+## 第二轮新增候选（来自扩展调研 + 真机对照基线）
+
+> 本节是第二轮新增 backlog 项，与 backlog 主体合并使用。
+
+### P0-UX · Ready · 双条 SVG 波形 + state 拆 (mode, subState)
+- **来源**：`scan-ux-dx-detail-2026-09.md` §1 状态反馈（红线 5 第 1 条）
+- **做什么**：`client.tsx:2226` `bars` 渲染段扩一对 `botLevels`，让用户看见"AI 何时开始说话 / 何时停"
+- **真实工作量**：<50 行改动
+- **关联**：ElevenLabs Orb / Pipecat Voice UI Kit
+
+### P1-UX · Ready · TTS 失败自动降级 Kokoro + `ttsNotice` 通道
+- **来源**：`scan-ux-dx-detail-2026-09.md` §3 错误降级（红线 5 第 2 条）
+- **做什么**：`tts-queue.ts:304-320` 重试逻辑加 "连续 N 次 Edge 失败 → 临时切到 Kokoro" + 广播 `ttsNotice` 事件
+- **真实工作量**：1-2 人天
+- **关联**：OpenAI Realtime 5xx fallback 实践
+
+### P1-UX · Ready · 字幕字号可调 + ARIA
+- **来源**：`scan-ux-dx-detail-2026-09.md` §2/§9
+- **做什么**：设置卡加 `captionFontSize` 4 档滑块；caption 区加 `aria-live="polite"` + `aria-label`
+- **真实工作量**：1-2 人天
+- **关联**：Otter a11y / Apple Live Captions
+
+### P1-UX · Ready · engine 切换 toast + 数据流向标签
+- **来源**：`scan-ux-dx-detail-2026-09.md` §10 隐私合规（红线 5 第 4 条）
+- **做什么**：切到 Edge 时弹一次"云端合成"提示，设置卡常驻"识别本地 / 朗读云端/本地"数据流向标签
+- **真实工作量**：<1 人天
+- **关联**：Apple Intelligence on-device vs PCC 徽章
+
+### P1-UX · Ready · 状态条加会话计时器
+- **来源**：`scan-ux-dx-detail-2026-09.md` §11 通知/后台（红线 5 第 5 条）
+- **做什么**：实时显示"已说 3:42"，离开 Webview 回看立刻知道节奏
+- **真实工作量**：<0.5 人天
+- **关联**：iOS Live Activity 灵动岛录音指示
+
+### P1 · Need-PoC · per-后端 STT 回退链
+- **来源**：`scan-dsh-plugin-ecosystem-2026-09.md` 红线 1（GooDAnDReaDY 实践）
+- **做什么**：英文/方言/低声学场景下自动切到 Deepgram/Groq 云 STT 兜底
+- **真实工作量**：1-2 周（含 schema migration）
+- **关联**：现有 `modelHost` 镜像切换同款思路
+
+### P2 · Frozen (前置无紧迫需求) · Voice Pack Registry / RVC 音色
+- **状态**：本插件 Kokoro 103 + VITS 5 音色已是中等规模；用户未提需求前不立
+
+### P2 · Frozen (前置 ADR-0004 拍板) · WebSocket 上行 PCM 端口
+- **状态**：ADR-0004 拍板后评估；当前 SSE 契约稳定
+
+### P3 · ❄ Frozen · Spokenly 式 MCP server `voice_ask_user`
+- **状态**：本插件 LLM tool call 已走 dsh 主进程；MCP 暴露非本期范围
+- **关联**：同类 plugin 子代理红线 5
+
+---
+
+## 真机对照基线审查（第二轮 · 必读）
+
+> 来自 `docs/findings/baseline-review-p0-a1-a10.md`（约 1470 字）——主会话**必须**看完再决策 P0 优先级。
+
+**Pass 5 / Concern 3 / Blocker 2：**
+
+| 项 | 结论 | 真实工作量 | 关键发现 |
+|---|---|---|---|
+| **A1 标签 DSL** | **Concern** | 2-3 天 or **6-10 天** | `msedge-tts` 不支持 `style`；需 fork 或自拼 SSML；ADR-0007 必拍 |
+| **A2 摘要卡片** | **Pass** | 1.5-2 天 | 仿 `/config` 路由~40 行 + 折叠面板~60 行 |
+| **A3 说话人标签** | **Blocker** | **2-3 周（不是 5-7 天）** | pyannote 4.x ONNX ~120MB；破坏 finalize 不丢句不变量 |
+| **A5 interruptThresholdMs** | **Pass** | 0.5-1 天 | zod schema 加键零摩擦；无 schema migration 成本 |
+| **A6 浮动状态条** | **Pass** | 0.5-1 天 | 复用现有 `beepCtx` + `playToolBeep`；无需新 AudioContext |
+| **A10 开场问候** | **Pass** | 1.5-2 天 | 与 A2 共用 LLM helper 合并 PR；建议固定 12 字模板不调 LLM |
+| **B3 webrtc APM3** | **Concern** | PoC 1-2 周 | audio-worklet.ts 无 APM 占位；需新 worker |
+| **B5 ADR-0004** | **Concern** | 待 ADR 拍板 | 5 计数器只能塌 3 套（turnGen/q.epoch/resetGen 保留） |
+| **B9 "现在听到…"** | **Blocker** | 0.5-1 天 | `recognition-draft` 字段不存在；需先建字段 |
+| **D1 DSH apply** | **Pass** | 仅复用现有 | 扩 `inject` 数组有兼容成本；复用现有服务 |
+
+**ROI 排序（主会话下一轮最该做的 3 项）**：
+
+🥇 **A5**（≤1 天） — 纯 schema 加键，零不变量风险  
+🥈 **A2**（≤2 天） — 路由 + 折叠面板可复刻 `src/index.ts:506-552` `/config` 模式  
+🥉 **A6**（≤1 天） — 纯客户端；AudioContext 复用 `beepCtx`
+
+合计 **≤4 人天**，本会话可直接动工。其他全部冻结等 ADR / 真机数据。
+
+---
+
+## 第二轮"扩展发散"的边界结论（不应碰 5 大类）
+
+来源 `scan-audio-landscape-2026-09.md` 红线发现：
+
+1. **AI 音乐生成**（Suno/Udio/MiniMax Music/Stable Audio）：本插件不做 BGM/创作
+2. **AI 长篇配音**（Dubbing v2/Audible/Apple Books AI Narration）：异步非实时
+3. **角色陪伴 + 情感化语音**（Character.ai/Replika）：道德风险 + 商业模式错位
+4. **电话外呼平台**（Vapi/Retell/Bland）：电话线 + 拨号流程错位
+5. **实时变声器**（Voicemod/Uberduck）：游戏/直播场景错位
