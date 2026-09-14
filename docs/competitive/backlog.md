@@ -71,7 +71,7 @@
   - `plugin/dsh-voice-mode/src/asr-host.ts:135-160`（既有 `pcmToSamples` 与 `MAX_ASR_BYTES` 入口）
   - `plugin/dsh-voice-mode/src/asr-host.ts:442-466`（**⚠ finalize 同步路径——不丢句不变量**）
   - `plugin/dsh-voice-mode/src/sense-worker.ts:1-203`（可仿写 `pyannote-worker.ts`）
-  - `plugin/dsh-voice-mode/src/asr.ts:71-90`（`SegmentMeta`，加 `speaker?: 0|1`）
+  - `plugin/dsh-voice-mode/src/asr.ts:71-75`（`SegmentMeta` 接口，加 `speaker?: 0|1`）
 - **实现路径**：
   1. 新增 `pyannote-worker.ts` 内嵌 ONNX runtime（web worker）
   2. `asr-host.ts` finalize 路径 1.5s 窗口送 worker → 拿 `speaker_label`（**必须改成 finalize 后台异步，不破坏同步 finalize 不变量**）
@@ -87,7 +87,7 @@
 - **为什么**：本仓当前键命名（CONTEXT.md L46-49）与 Vapi/Retell/Bland/Deepgram 不对齐；用户从这些竞品迁来需要再学一次
 - **file:line 锚点**：
   - `plugin/dsh-voice-mode/src/index.ts:240-280`（`VoiceSettingsSchema` + `Config` 定义）
-  - `plugin/dsh-voice-mode/src/asr.ts:108-130`（既有常量与 `AsrConfig` 接口）
+  - `plugin/dsh-voice-mode/src/asr.ts:108-122`（`SPEECH_RMS`/`LEVEL_CEILING`/`MAX_SEGMENT_MS`/`MIN_SPEECH_MS`/`PRE_PAD_MS`/`PARTIAL_INTERVAL_MS`/`PARTIAL_MIN_S`/`PARTIAL_MAX_S`/`BUFFER_SIZE` 常量定义段）
   - `plugin/dsh-voice-mode/src/settings-form.tsx:54`（设置面板入口，可新增"高级灵敏度"折叠）
 - **实现路径**：
   1. `VoiceSettingsSchema` 加 `interruptThresholdMs?: number`（默认读 `silenceMs`，500ms），`turnEagerness?: 0|1|2|3|4`（默认读 `interruptLevel`）
@@ -442,8 +442,8 @@
 
 - **做什么**：第一次进入语音模式前弹同意对话框；显示数据流向；`localStorage` 持久；设置区可撤销
 - **file:line 锚点**：
-  - `plugin/dsh-voice-mode/src/client.tsx:1710` — enterMode 前置检查 `localStorage['dsh-voice-mode.consent']`
-  - `plugin/dsh-voice-mode/src/client.tsx:1-10` — 新增 `<ConsentDialog>` 子组件（~80 行）
+  - `plugin/dsh-voice-mode/src/client.tsx:1352` — `enterMode` 函数定义；前置检查 `localStorage['dsh-voice-mode.consent']`
+  - **新加 `<ConsentDialog>` 子组件**（暂未存在）：建议位置 `plugin/dsh-voice-mode/src/client.tsx:1-100` 之后的合适空白区，或独立子文件 `plugin/dsh-voice-mode/src/consent-dialog.tsx`（待落地时决定）
   - 数据流向从 `vset.ttsEngine` 读：`识别本地 + 朗读 Edge 云端` / `识别本地 + 朗读本地 VITS` / `识别本地 + 朗读本地 Kokoro`
   - `plugin/dsh-voice-mode/src/settings-form.tsx:54` —「数据与隐私」折叠区 + 「撤销同意」按钮
 - **真实工作量**：2-3 人天（含文案审阅 + 设置面板 + 测试矩阵）
@@ -455,7 +455,7 @@
 - **file:line 锚点**：
   - `plugin/dsh-voice-mode/src/index.ts:470-477` — 让位 prompt 注入点（system-prompt/assemble 复用）
   - `plugin/dsh-voice-mode/src/tts-queue.ts:271-280` — TTS 让位执行点（需新增 `pauseAtBoundary()` 走 epoch 通道，不能直接 engine.interrupt()）
-  - `plugin/dsh-voice-mode/src/client.tsx:1400-1505` — VAD 让位触发点
+  - `plugin/dsh-voice-mode/src/client.tsx:1400-1460` — VAD 让位触发点（hardBreak 函数 + isSpeechTrueCount 复位 L1453）
   - `plugin/dsh-voice-mode/src/segmenter.ts:63-101` — `SentenceSegmenter`（backchannel 检测挂载点）
 - **真实工作量**：2-3 周拿 80% 价值（#1 Backchannel detector + #2 Hume 让位 prompt，并行无依赖）
 - **前置**：ADR-0005 回归基准扩 fixture
