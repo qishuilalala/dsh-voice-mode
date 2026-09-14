@@ -20,8 +20,8 @@
 | `VAD_CONTINUE_RMS` | 0.02 | `src/asr-host.ts:151` |
 | `MIN_SPEECH_MS` | 250 | `src/asr.ts:113` |
 | 确认窗口 | 800 / 350 / 400ms | `src/asr-host.ts:153-156` |
-| delay 置信门 | peak > 0.5 | `src/client.tsx:708` |
-| 迟滞衰减 | 连续 2 拍假才减 1 | `src/client.tsx:1426-1428` |
+| delay 置信门 | peak > 0.5 | `src/client.tsx:713` |
+| 迟滞衰减 | 连续 2 拍假才减 1 | `src/client.tsx:1508-1509` |
 
 每一个都是真机试错的产物，git log 里能看到它们被反复调整（如 2a67df7「迟滞降 confirmMs 566~2796→~500ms」）。
 
@@ -43,10 +43,10 @@
 | `peakDecay` 0.9 | `src/asr.ts:592` | ✅ |
 | `floorAlpha` 0.98 | `src/asr.ts:593` | ✅ |
 | `confirmFrames` 3/2/1 | `src/client.tsx:33` | ✅ |
-| 迟滞连续 2 拍 | `src/client.tsx:1426-1428` | ✅ |
+| 迟滞连续 2 拍 | `src/client.tsx:1508-1509` | ✅ |
 | `SPEECH_RMS` 0.015 | `src/asr.ts:108` | ⏳ 阶段二（分段级联） |
 | `MIN_SPEECH_MS` 250 | `src/asr.ts:113` | ⏳ 阶段二 |
-| delay 置信门 0.5 | `src/client.tsx:708` | ⚠️ 仅间接（经 `playingTailUntil` 影响播放态） |
+| delay 置信门 0.5 | `src/client.tsx:713` | ⚠️ 仅间接（经 `playingTailUntil` 影响播放态） |
 | 检测 VAD 0.35 | `src/asr-host.ts:334` | ❌ host 侧，需独立重放脚本 |
 | 端点 VAD 0.5 | `src/asr-host.ts:296` | ❌ |
 | `VAD_CONTINUE_RMS` 0.02 | `src/asr-host.ts:151` | ❌ |
