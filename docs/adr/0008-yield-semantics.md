@@ -16,7 +16,7 @@ dsh-voice-mode 当前的"让位"仅有两个层：
 
 | 层 | 实现 | 文件:行 |
 |---|---|---|
-| 物理层（声学） | 录音 → VAD → 端点检测 → 硬打断 | `src/asr.ts:634-695`（段累积 + 滚窗超时）+ `src/client.tsx:1400`（hardBreak 函数定义） |
+| 物理层（声学） | 录音 → VAD → 端点检测 → 硬打断 | `src/asr.ts:634-695`（段累积 + 滚窗超时）+ `src/client.tsx:1427`（hardBreak 函数定义） |
 | 物理层（回声门） | echoPeak/echoFloor + echoGateDb 双讲冻结 | `src/asr.ts:546-617`（echoPeak/Floor 跨区）+ ADR-0006 真机结论：原生 AEC 生效时**从未被执行**，因为 VAD 已先拦截 |
 
 **完全缺失的层**：**人格层 / 社会-语用层让位**——LLM 没有"何时该停、停多久、是否该接住用户的'嗯'/'对'/'so'"的指令。
@@ -27,7 +27,7 @@ dsh-voice-mode 当前的"让位"仅有两个层：
 - **真机让位指令 = 0** — `src/index.ts:72-76` 的 `VOICE_SPOKEN_PROMPT` 只注入 4 句口语化规则，无任何让位指令
 - **真机 backchannel 检测 = 0** — 用户插嘴"嗯/对/so"，模型继续说完所有句子（`src/asr.ts:125-127` 的 wakeEnabled 仅在 `/stay wake/` 时启用，与让位不同维度）
 - **真机 silence 主动续话 = 0** — 用户停 6 秒，模型**不会主动 break silence**（这点和 Notion / Spokenly MCP 相反）
-- **硬打断 hardBreak 真机在 `src/client.tsx:1400`**（`function hardBreak = async () => ...`）—— 注意 hardBreak 走**取消路由**（`bus.skipAudio() + bus.cancelTurn()`），是物理层的硬让；本 ADR 提出的 **pauseAtBoundary** 与其正交，走 epoch 通道不做取消
+- **硬打断 hardBreak 真机在 `src/client.tsx:1427`**（`const hardBreak = async () => ...`）—— 注意 hardBreak 走**取消路由**（`bus.skipAudio() + bus.cancelTurn()`），是物理层的硬让；本 ADR 提出的 **pauseAtBoundary** 与其正交，走 epoch 通道不做取消
 
 第一性原理（来自 `scan-2026-09.md` §0.2 + 让位调研 §7）：对话式语音真正难的层面是 **社会-语用层（发言权调度）**，本仓库目前没有对应能力——这是与 ChatGPT Advanced Voice / Gemini Live / Sesame Maya 等头部产品最显著的差距。
 
@@ -120,7 +120,7 @@ YIELDING (let the user interrupt)
 - `src/asr-host.ts:442-466`（finalize 同步路径，"不丢句"不变量）
 - `src/tts-queue.ts:268-307`（cancel() 硬打断；epoch 守卫；不丢句）
 - `src/tts-queue.ts` （`_SSMLTemplate` epoch 通道）
-- `src/client.tsx:1400`（hardBreak 函数定义 + 注释上下文 L1395-1399）
+- `src/client.tsx:1427`（hardBreak 函数定义 + 注释上下文 L1421-1426）
 - `src/client.tsx:1539`（`onAecState` 回调已用，证明回调注入机制成熟）
 - `CONTEXT.md:26`（"打断计数仅在播放期累积"不变量）
 - `CONTEXT.md:27`（"不丢句"不变量）

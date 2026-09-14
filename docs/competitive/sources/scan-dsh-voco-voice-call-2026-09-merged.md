@@ -310,7 +310,7 @@ const fullAccessPolicy = { mode: 'danger-full-access' as const, workspaceRoot: p
 - `plugin/dsh-voice-mode/src/index.ts`（新增文件）`src/tools/offer-call.ts`（~120 行）：
   - `applyOfferCallTool(ctx, { makeDeps })` 调 `ctx.tools.register(defineTool({ name: 'offer_call', ... }))`
   - `runOfferCall` 流程：openCall → ringChannel.ring → settled → accepted 时**直接走本仓 `tts-queue.ts:296 pump` 路径**（不复用 dsh-jobs，避免沙箱策略升级）→ rejected/later 返回决定给 agent
-- `plugin/dsh-voice-mode/src/client.tsx:2197` `VoiceStatusBar` 组件 —— 加一个"来电卡片"挂载点（`shell.overlay` slot 与 voice-call `packages/ui-voice` 同款语义），振铃时显示，accepted 后转"已接听"。
+- `plugin/dsh-voice-mode/src/client.tsx:2224` `VoiceStatusBar`（旧写 L2197 在 R19 加 botBars 渲染后漂移到 L2224） 组件 —— 加一个"来电卡片"挂载点（`shell.overlay` slot 与 voice-call `packages/ui-voice` 同款语义），振铃时显示，accepted 后转"已接听"。
 
 **Phase 2（persona 引导 + 跨设备预留，可选）**：
 
@@ -356,7 +356,7 @@ const fullAccessPolicy = { mode: 'danger-full-access' as const, workspaceRoot: p
 1. **`offer_call` 工具 + 桌面振铃卡片**（Phase 1）
    **一句话**：Agent 通过 `ctx.tools` 注册 `offer_call`，经 `ctx.webServer.register(prefix, '/voice/call/{events,state,answer}')` 三路由把卡片推到所有打开的 web tab；接听后走本仓 `tts-queue.ts:296 pump` 朗读；拒接/稍后把决定返回给 agent。
    **ROI**：~250 行新代码（4 个新文件 + index.ts:507 段 1 处插入 + client.tsx:2197 段 1 处插入）；**新增下载量天花板**：行业里无任何 plugin 提供此能力（voice-call 自己也只是 #18）；**破坏面**：零（不碰 `asr.ts`/`aec.ts`/`tts-queue.ts`/`tts-local.ts`）。
-   **锚点**：`src/index.ts:88`（扩 inject）、`src/index.ts:507`（prefix 注册段）、`src/client.tsx:2197`（VoiceStatusBar）。
+   **锚点**：`src/index.ts:88`（扩 inject）、`src/index.ts:507`（prefix 注册段）、`src/client.tsx:2224`（VoiceStatusBar）。
 2. **`realtime_delegation` 协议 + 后台 Agent 委派**（Phase 1）
    **一句话**：语音 Agent 经 `ctx.agents.get(sessionId).followup(message)` 在独立子 session 启后台 Agent；SSE `/voice/task-events` 透传完成事件；完成/错误时 TTS 一次简短播报（**不引入 send_voice_message 五态**——避免破坏 CONTEXT.md:27 "不丢句"）。
    **ROI**：~150 行新代码；**新增下载量天花板**：voco 用此差异化拿到 #3 语音类第一（4,334 下载），本仓作为姊妹 plugin 同样可挂"语音+后台"卖点。

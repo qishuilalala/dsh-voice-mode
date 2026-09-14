@@ -128,7 +128,7 @@
 2. `src/settings-form.tsx:1061` secRecognition 加 2 行 `Row`（`NumberField` step=2）
 3. `src/client.tsx:2384-2410` `VoiceOverlay` 把 `fontSize: 12` 替换为 `var(--dshvm-caption-fs, 12)`；`maxWidth: 480` 替换为 `min(90vw, var(--dshvm-caption-w, 480))`
 4. `src/client.tsx:2426-2428` span 加 `whiteSpace: 'normal'`（中文不靠 nowrap），保留 `overflow: hidden` + `textOverflow: 'ellipsis'` 兜底
-5. `src/client.tsx:938` `<style>{focusVisibleCss}</style>` 后追加 `.dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }`
+5. `src/client.tsx` `<style>` 节点（**focusVisibleCss 标识符在 client.tsx 0 命中，需先实现或引用现有 <style> 节点；backlog 旧写 L938 不准**）后追加 `.dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }`
 6. `src/strings.ts` 加 `descCaptionFontSize: '字幕字号...'` + en 翻译 ~4 字段
 7. `src/client.tsx:2425-2429` aria-label：`aria-label={`朗读中：${b.ui.playingCaption ?? t('reading')}`}`
 
@@ -156,7 +156,7 @@
 **对位差距**：**功能缺失**。当前无任何同意 UI；`localStorage['dsh-voice-mode.record']`（`src/fixture-recorder.ts:9-11`）是开发用，不展示给用户。
 
 **最小落地步骤**：
-1. `src/client.tsx:1710` 进入语音模式路径最前面检查 `localStorage['dsh-voice-mode.consent']`：缺则弹 `<ConsentDialog>`，同意后写 localStorage + 继续
+1. `src/client.tsx:1710` 实际是 autoResume 注释；enterMode 真源是 `src/client.tsx:1352`（consent 检查应放在那里），这条引用偏差 ~358 行，同意后写 localStorage + 继续
 2. `src/client.tsx:1-10` 新增 `<ConsentDialog>` 子组件（~80 行）：标题 + 详情 + 引擎数据流向标签 + 「同意 / 暂不同意」按钮
 3. **数据流向标签**：从 `vset.ttsEngine` 读出，显示 "识别本地（zipformer2）/ 朗读 Edge 云端（微软）/ 朗读本地 VITS"
 4. `src/settings-form.tsx:54` 加"数据与隐私"折叠区 + 「撤销同意」按钮（清 localStorage）
@@ -247,7 +247,7 @@
 **最小落地步骤**：
 1. `src/index.ts:224-227` schema 加 `audioOutputMuted?: boolean`（默认关）
 2. `src/settings-form.tsx:1051` secInteraction 加 `Row name="audioOutputMuted" desc={tr('descAudioOutputMuted')}` + checkbox
-3. `src/client.tsx:435-500` `captionQueue` 渲染逻辑：mute 模式下不创建 Audio element，**仅推进字幕**；`setUi({ playingCaption: captionQueue[0] })` 仍按原节奏
+3. `src/client.tsx:435-440` 是 `fallbackAudio.play()` + `drainPending` 入口；captionQueue 渲染逻辑实际跨 `src/client.tsx:440-490` 多段（旧行号范围写错），**仅推进字幕**；`setUi({ playingCaption: captionQueue[0] })` 仍按原节奏
 4. `src/strings.ts` 加 `descAudioOutputMuted: '静音输出（仅保留字幕，听障 / 静音环境用）'` ~2 字段
 
 **真实工作量**：1-1.5 人天
@@ -264,7 +264,7 @@
 
 ## #9. 状态条色弱对比度 / 色弱安全状态指示 — **中 ROI · 仅 CSS 变量**
 
-**定位**：当前 `src/client.tsx:2167-2170` 麦克风按钮用 `#f85149` (red) / `#58a6ff` (blue) / `#3fb950` (green) / `#8b949e` (gray) 区分 4 态；`src/client.tsx:2257-2270` 状态条用 `#3fb950` 绿；状态条 `isSpeech` 标 `color: '#ffa657'` 橙（`src/client.tsx:2306-2316`）。**仅靠颜色区分**会让红绿色盲（影响男性约 8%）分不清"识别中"与"异常"。
+**定位**：当前 `src/client.tsx:2196` 麦克风按钮 4 态颜色 `color: holding ? '#f85149' : on ? (holdMode ? '#58a6ff' : '#3fb950') : local === 'pending' ? '#58a6ff' : '#8b949e'`（旧写 L2167-2170 在 R19 之前是 title 属性段，R19 加 botBars 后颜色行漂移到 L2196）；`src/client.tsx:2307-2316` 状态条外层容器（绿底/绿边）；bar 柱形在 `src/client.tsx:2321-2327`（绿），botBar 柱形 `src/client.tsx:2322-2333`（蓝）—— R19 之后 botBars 渲染让 L2257-2270 旧范围失效；状态条 `isSpeech` 标 `color: '#ffa657'` 橙（`src/client.tsx:2306-2316`）。**仅靠颜色区分**会让红绿色盲（影响男性约 8%）分不清"识别中"与"异常"。
 
 **用户规模**：约 8% 男性 + 0.5% 女性色觉异常用户；高对比度环境（户外强光）。
 

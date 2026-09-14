@@ -16,7 +16,7 @@
   → 客户端连续 confirmFrames 次为真 → 回声门控 → hardBreak
 ```
 
-判定信号在 host 产生（`src/asr-host.ts:640-647`，detect 异步函数内 acceptWaveform → isSpeech），客户端只做计数（`src/client.tsx:1384` `INT_CONFIRM_FRAMES[interruptLevel]`）。
+判定信号在 host 产生（`src/asr-host.ts:640-647`，detect 异步函数内 acceptWaveform → isSpeech），客户端只做计数（`src/client.tsx:33` `INT_CONFIRM_FRAMES[interruptLevel]`）。
 
 实测确认延迟 ≈525ms（CONTEXT.md 记录）。拆解：
 
@@ -29,7 +29,7 @@
 
 > **栅格更正（2026-09-02）**：本表初版把确认窗写成 300/200/100ms，**错了**。
 > AudioWorklet 每 1024 样本 = 64ms 投一帧（`src/audio-worklet.ts:804` `new AudioWorkletNode`），而 `src/asr.ts:700` 一带是 `MAX_SEGMENT_MS` 滚窗重置（**与栅格无关**）；真正的派发条件是 `nowMs - lastPollAt >= 100` 且仅在派发时推进 `lastPollAt`——64ms 的帧永远要攒两帧才够 100ms，**稳态派发间隔是 128ms**。
-> 三档确认窗实际为 384 / 256 / 128ms。`src/client.tsx:1355-1359` 的 `isSpeechTrueCount = 0` 与 `setLocalMode('pending')` 注释同样写错，需一并修。
+> 三档确认窗实际为 384 / 256 / 128ms。`src/client.tsx:1382-1386` 的 `isSpeechTrueCount = 0`（进入 enterMode 时的残留计数复位）与 `setLocalMode('pending')` 注释同样写错，需一并修。
 > 复核：`node scripts/bench-echo-gate.mjs` §4。
 > 这也解释了实测的 525ms（384 + Silero 窗口 + 往返），并意味着**下沉能省掉的比原估计更多**。
 

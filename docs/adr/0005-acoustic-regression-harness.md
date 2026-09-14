@@ -21,7 +21,7 @@
 | `MIN_SPEECH_MS` | 250 | `src/asr.ts:113` |
 | 确认窗口 | 800 / 350 / 400ms | `src/asr-host.ts:153-156` |
 | delay 置信门 | peak > 0.5 | `src/client.tsx:713` |
-| 迟滞衰减 | 连续 2 拍假才减 1 | `src/client.tsx:1508-1509` |
+| 迟滞衰减 | 连续 2 拍假才减 1 | `src/client.tsx:1480` |
 
 每一个都是真机试错的产物，git log 里能看到它们被反复调整（如 2a67df7「迟滞降 confirmMs 566~2796→~500ms」）。
 
@@ -43,7 +43,7 @@
 | `peakDecay` 0.9 | `src/asr.ts:592` | ✅ |
 | `floorAlpha` 0.98 | `src/asr.ts:593` | ✅ |
 | `confirmFrames` 3/2/1 | `src/client.tsx:33` | ✅ |
-| 迟滞连续 2 拍 | `src/client.tsx:1508-1509` | ✅ |
+| 迟滞连续 2 拍 | `src/client.tsx:1480` | ✅ |
 | `SPEECH_RMS` 0.015 | `src/asr.ts:108` | ⏳ 阶段二（分段级联） |
 | `MIN_SPEECH_MS` 250 | `src/asr.ts:113` | ⏳ 阶段二 |
 | delay 置信门 0.5 | `src/client.tsx:713` | ⚠️ 仅间接（经 `playingTailUntil` 影响播放态） |
