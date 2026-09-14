@@ -513,8 +513,11 @@
 - **file:line 锚点**：
   - `plugin/dsh-voice-mode/src/index.ts:266-282`（既有 `VOICE_SPOKEN_SECTION` / `VOICE_SPOKEN_PROMPT` 模式）
   - `plugin/dsh-voice-mode/src/index.ts:462-477`（`system-prompt/assemble` 注入点）
+  - `package.json:65-75`（`dsh.client.inject` 9 锚点 = client 侧；与 `src/index.ts:88` 的 host 侧 `inject` 是两个**正交维度**，扩 host `inject` 不破 client 锚点 9 交集）
 - **真实工作量**：30 行（在前两轮出 ADR-0008 让位 prompt 注入的同一处可顺带合并）
 - **关联**：voco `persona` 引导（order:50 PromptSection）；本插件当前 prompt 仅有"内容层口语化"
+- **关键事实（第五轮核对）**：`@deepseek-ai/dsh-system-prompt@0.1.5-rc.1` 是 devDependency（不是 peer）—— 事件通道 `system-prompt/assemble` 已可用（已在 L462-477 订阅），但完整 service（`.tools/.section/.variable`）需要 host `inject` 加 `systemPrompt`
+- **第二轮 D2 误判纠正**：CONTEXT.md L37 "9 anchor 取交集硬约束"是 **client 侧 `dsh.client.inject`**（package.json:65-75 锚定），**与 host 侧 cordis `inject` 数组完全正交**。本插件可大胆扩 host 侧 `inject` 到 `['webServer','settings','sessions','systemPrompt']` 而零兼容性风险。
 
 ### P0 · Ready · 同步自带 skill 到 `~/.dsh/skills/`
 
@@ -534,8 +537,9 @@
   - `voice_change_voice`：`{voice_id}`（未来对接 B1 后可用）
   - `voice_interrupt_settings_read/get/set`：BargeIn 模式查询/修改
 - **file:line 锚点**：
-  - `plugin/dsh-voice-mode/src/index.ts:88`（现有 `inject`）
-  - 参考 audiogen `src/agent-audio-tools.ts:212-560` 模式
+  - `plugin/dsh-voice-mode/src/index.ts:88`（**第五轮核实结论：扩 host `inject` 加 `systemPrompt` 零兼容性风险，因为 client 侧 9 锚点是另一维度**）
+  - `@deepseek-ai/dsh-system-prompt@0.1.5-rc.1/lib/types/index.d.ts:187-218` — `SystemPrompt.section/.context/.tools/.variable/.assemble` 完整 API
+  - `@deepseek-ai/dsh-system-prompt@0.1.5-rc.1/lib/types/index.d.ts:174` — `SystemPrompt` 是 Service，需 inject
 - **真实工作量**：1-2 人天
 - **关联**：P2 阶段：`inject` 加 `'tools'` + `systemPrompt` 后才可注册 `ctx.tools`；前端无需改动
 
@@ -561,11 +565,11 @@
 
 - **做什么**：LLM tool call `offer_call({text, voice})` → 振铃卡片 UI → 接听/拒接/稍后三态 → 决定返回给 agent
 - **file:line 锚点**：
-  - `plugin/dsh-voice-mode/src/index.ts:88`（injection）
+  - `plugin/dsh-voice-mode/src/index.ts:88`（**第五轮纠正：扩 host `inject` 到 `['webServer','settings','sessions','systemPrompt']` 零兼容性风险**——client.inject 9 锚点与 host.inject 完全正交）
   - `plugin/dsh-voice-mode/src/index.ts:507`（既有 `webServer.register(prefix)` 模式，可照搬 CallBoard 三路由）
   - `plugin/dsh-voice-mode/src/client.tsx:2197`（`VoiceStatusBar` 组件，振铃卡片可在此插入）
 - **真实工作量**：~250 行（4 新文件 + 2 处插入）
-- **关键前置**：`inject` 必须扩到 `['webServer','settings','sessions','tools','userQuestions']`（D2 第一轮已警告；本轮可推进）
+- **关键前置**：第四轮的 `tools`/`jobs`/`agents`/`userQuestions` peer **实证**：用 `npm ls @deepseek-ai/dsh-tools` 等四条命令实证 peer 可达性（**`systemPrompt` 已实测可达**）
 - **关联**：本插件 vs voco/voice-call 的差异化卖点 vs 风险——voice-call 是 BYOK 而本插件零 API Key；agent 主动打电话会破坏"双工对话"的产品哲学，应作为可选 opt-in
 - **不变量风险**：voc 的 5 态 `send_voice_message`（voco 路径）— **不学**，会破坏 CONTEXT.md:27 "不丢句"不变量。本插件仅做"两态精简版"（接听 → 即朗读；拒接 → 即返回文本）
 
@@ -595,3 +599,64 @@
 | 🥉 | `offer_call` agent-initiated voice call | 250 行 | PandaPolo voice-call |
 | 🥉 | `realtime_delegation` background Agent delegation | 150 行 | voco |
 | ❄ | 跨设备 push（ADR-0008 占位） | 0 行 | 行业空白 |
+
+---
+
+## 第五轮新增：peer 实证 + 沉睡能力审计（2026-09-15）
+
+> 来源：`scan-sleeping-capabilities-audit-2026-09.md`（第五轮深度审计）
+
+### 1. Peer 实证（5 个 dsh 内部包的真实状态）
+
+| Peer | devDep 版本 | 运行时可 import | 当前 voice-mode 用法 | 修正事实 |
+|---|---|---|---|---|
+| `@deepseek-ai/dsh-system-prompt` | 0.1.5-rc.1 | **是**（9 个 runtime 导出） | type-only + next 钩子 | 可扩 `inject` 加 `systemPrompt` 拿完整 API |
+| `@deepseek-ai/dsh-host-webserver` | 0.1.5-rc.1 | 是（type-only） | 只 import type | 已用全 |
+| `@deepseek-ai/dsh-settings` | 0.1.5-rc.1 | 是 | 只 import type | 已用全 |
+| `@deepseek-ai/dsh-llm` | 0.1.5-rc.1 | **62 个 runtime 导出**（`LlmRuntime` / `assembleAssistantStream` / `BlockAssistantStreamAccumulator` 等） | **完全 0 引用**（CLAUDE.md 第 37 行写"type-only" 错） | **重大机会**：解锁 62 个 API |
+| `@deepseek-ai/cordis` | ^4.0.2 | 是（运行时 peerDep ^4.0.1） | 真正使用（注入 + 事件订阅） | — |
+
+**`/tmp/dsh*-core` 目录实证为空**（CONTEXT.md L37 路径失真），需要修文档或重建镜像。
+
+### 2. README ↔ 真机 真差距
+
+| 字段 | 真机状态 | README 是否提及 | 修正 |
+|---|---|---|---|
+| `autoResume` / `bargeInMode` / `echoGateDb` / `senseVoice` | 完整实现 | **❌ README 表格漏列**（CONTEXT.md L47-48 有） | 改 README |
+| `wakeWord` + `hold` 模式互斥 | `asr.ts:127` 强制禁用 | ⚠️ 未说 | README 增 1 行 |
+| `toolBeep` 首次 200-300ms 抖动 | `client.tsx:1568` 预热失败不阻塞 | ❌ 未说 | README 增 1 行 |
+| `heldHint` / `cursorHint` / `recallAuto` | **src/ grep 0 命中** | ❌ README 误传 | **应从 README 删除** |
+
+### P0 · Ready · 修 README 设置表（4 字段） + 删误传字段
+
+- **做什么**：补 README 设置表的 `autoResume` / `bargeInMode` / `echoGateDb` / `senseVoice`；删 `heldHint` / `cursorHint` / `recallAuto` 误传
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/README.md:71-86`（设置表）
+  - `plugin/dsh-voice-mode/src/index.ts:140-227`（17 个字段的真实 schema）
+- **真实工作量**：1 小时（纯文档 + grep 验证）
+- **关联**：用户决策"什么是误传"——CLAUDE.md G5 evidence rule："结论绑定真机源码"
+
+### P0 · Ready · `normalizeWake` 加语气词白名单
+
+- **做什么**：`src/wakeword.ts:13-18` 扩 `normalizeWake` 把 "嗯/哎/呃/这个/那个/so" 等 5-10 个语气词作为可剥离前缀
+- **真实工作量**：5 行 + 测试
+- **真实命中率提升**：用户说"嗯你好小D"现在归一化后是"嗯你好小d" prefix 不匹配 → 扩后命中
+- **关联**：与已有 hold 模式强制关闭 wakeWord 兼容
+
+### P1 · Ready · `@deepseek-ai/dsh-llm` 运行时 API 接入（62 个能力解锁）
+
+- **做什么**：从"完全 0 引用"状态接入关键 API：
+  - `assembleAssistantStream` 做语音专属流式拼装（替代 `ctx.on('llm/stream', ...)` next 钩子限制）
+  - `BlockAssistantStreamAccumulator` 做"按句"精确控制（已部分由 `SentenceSegmenter` 实现但不在 dsh-llm 标准路径上）
+  - `LlmAdapter` 抽象做 STT/LLM/TTS 拼接器
+- **file:line 锚点**：
+  - `plugin/dsh-voice-mode/src/index.ts:20, 480-489`（现有仅 type-only）
+  - `node_modules/.pnpm/@deepseek-ai+dsh-llm@0.1.5-rc.1_*/node_modules/@deepseek-ai/dsh-llm/lib/index.js`（62 个 runtime 导出）
+- **真实工作量**：1-2 人天
+- **前置**：实测一遍 62 个导出，挑出确实对插件有用的（避免"接入全套"的沉没成本）
+
+### P2 · Frozen · 修 `/tmp/dsh*-core` 路径或重建镜像
+
+- **做什么**：CONTEXT.md L37 路径失真 → 两个选项：① 改文档描述；② 重建 4 个版本的 `/tmp/dsh*-core` 镜像
+- **真实工作量**：0.5-1 人天（若选 ①）或 1-2 人天（若选 ②）
+- **推荐**：先用 ① 改文档；后续 `verify:dual` 失败时再选 ②
