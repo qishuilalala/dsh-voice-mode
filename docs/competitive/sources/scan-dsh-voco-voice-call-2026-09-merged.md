@@ -134,7 +134,7 @@ README "安装后怎么使用" 第 5 条原文：
   - 不复用 session（**不做 isolated/continuous 二态**，只走 isolated，最简单）
 - `plugin/dsh-voice-mode/src/index.ts:507` —— 在 `ctx.webServer.register(prefix, ...)` 段加一条 `POST /voice/delegate`：body 是 `{ text, sessionId }`，handler 调 `agent-bridge.delegateTask`，**同步立即返回** `{ taskSessionId, acceptedAt }`，**不轮询不阻塞**。
 - `plugin/dsh-voice-mode/src/index.ts:730-806` —— 在现有 SSE `/voice-mode/stream` 之外**新增一条** `/voice/task-events` SSE，把后台 Agent 的完成/错误事件透传给客户端（最小：完成时 TTS 一次"任务完成"；错误时 TTS 一次"任务失败"）。
-- `plugin/dsh-voice-mode/src/client.tsx:1358` 附近 —— 加一个状态条上的"后台任务进行中"小红点 + 任务标题（来自 `voice/task-delegated` 事件回显），**不**影响 barge-in 流。
+- `plugin/dsh-voice-mode/src/client.tsx` 状态条渲染段（实际真源 L2224+ 起的 VoiceStatusBar）—— 加一个状态条上的"后台任务进行中"小红点 + 任务标题（**旧写 L1358 在 R19 后是 exitMode 函数入口，不是状态条**）（来自 `voice/task-delegated` 事件回显），**不**影响 barge-in 流。
 
 **Phase 2（语义精修，可选）**：
 

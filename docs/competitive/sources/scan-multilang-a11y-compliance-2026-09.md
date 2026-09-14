@@ -157,7 +157,7 @@
 
 **最小落地步骤**：
 1. `src/client.tsx:1710` 实际是 autoResume 注释；enterMode 真源是 `src/client.tsx:1352`（consent 检查应放在那里），这条引用偏差 ~358 行，同意后写 localStorage + 继续
-2. `src/client.tsx:1-10` 新增 `<ConsentDialog>` 子组件（~80 行）：标题 + 详情 + 引擎数据流向标签 + 「同意 / 暂不同意」按钮
+2. **新加 `<ConsentDialog>` 子组件**（暂未存在；旧写 L1-10 是文件头注释，不是子组件位置）：标题 + 详情 + 引擎数据流向标签 + 「同意 / 暂不同意」按钮（建议位置 `src/client.tsx` 合适空白区或独立子文件 `plugin/dsh-voice-mode/src/consent-dialog.tsx`）
 3. **数据流向标签**：从 `vset.ttsEngine` 读出，显示 "识别本地（zipformer2）/ 朗读 Edge 云端（微软）/ 朗读本地 VITS"
 4. `src/settings-form.tsx:54` 加"数据与隐私"折叠区 + 「撤销同意」按钮（清 localStorage）
 5. `src/strings.ts` 加 `consentTitle / consentBody / consentAgree / consentDecline` 共 ~8 字段（中英两套 = 16 字段）
@@ -298,7 +298,7 @@
 
 **能力清单**：
 - **输入**：设置面板 secInteraction 加"诊断模式"折叠
-- **处理**：当前 telemetry 全关闭时，仅保留：构建版本（`__BUILD_TAG__` `src/client.tsx:135`）+ 错误栈（必要）；其他一律不发
+- **处理**：当前 telemetry 全关闭时，仅保留：构建版本（`BUILD_TAG` `src/client.tsx:138`，旧写 L135 是 `__BUILD_TAG__` 声明位）+ 错误栈（必要）；其他一律不发
 - **输出**：用户可见"未启用 telemetry → 仅收集 X"明示
 
 **对位差距**：**功能已具备但更好（披露不充分）**。当前 `src/client.tsx:138-141` 仅一句"调试开关"注释，UI 无明示。

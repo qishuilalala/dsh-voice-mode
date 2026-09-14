@@ -18,7 +18,7 @@
 ### 1.2 Pipecat Voice UI Kit · VoiceVisualizer + ErrorCard
 - 一句话定位:Pipecat 官方 React 组件库,`VoiceVisualizer` 实时音频条 + `ErrorCard` 独立错误卡;GitHub 800+ stars,BSD-2-Clause。
 - 具体 UX micro-detail:`VoiceVisualizer participantType="bot" | "user"` 同时显示双方;`ErrorCard` 把 reconnect / device 错误做成可重试卡(不是 toast)。
-- 复刻路径:`src/client.tsx:2226` 的 `WAVE_BARS` 数组已经按 levels 渲染(等同 Pipecat 用户侧);新增 `botLevels` 通道——host 把 TTS 当前播放音量经 SSE 回写,client 单独一组 bars。这与现有 `playingCaption`(`client.tsx:435`)共用通道即可,不增加 SSE 事件。
+- 复刻路径:`src/client.tsx:2226` 实际是 R18 加的 `elapsedSec` 声明（old writeup 是 R19 前的 bars 注释位置，R19 加 botBars 后 bars 注释漂移到 `src/client.tsx:2268`）(等同 Pipecat 用户侧);新增 `botLevels` 通道——host 把 TTS 当前播放音量经 SSE 回写,client 单独一组 bars。这与现有 `playingCaption`(`client.tsx:435`)共用通道即可,不增加 SSE 事件。
 - 可量化好处:同时看到"我在说"和"它在说"双条,语音助手最常见的「我说话它没反应」误判投诉可显著下降。
 - 一手 URL:https://github.com/pipecat-ai/voice-ui-kit · https://docs.pipecat.ai/client/voice-ui-kit
 
