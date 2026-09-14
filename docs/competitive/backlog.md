@@ -55,7 +55,7 @@
 - **为什么**：Otter / Fireflies / Granola / NotebookLM 共识；本仓已有 `cancel` 路径与 `recap` 概念无
 - **file:line 锚点**：
   - `plugin/dsh-voice-mode/src/index.ts:507-535` （既有 `webServer.register({kind:'exact', path:'${base}/config'}` 模式，可仿写 `${base}/recap`）
-  - `plugin/dsh-voice-mode/src/client.tsx:2446` 全文件（折叠面板放在状态条旁）
+  - `plugin/dsh-voice-mode/src/client.tsx:2280-2296` `VoiceStatusBar` 函数（折叠面板放在状态条旁；R27 实测：旧写 L2446 是 telemetry `<div>` 结束处，**与"折叠面板"无关**，VoiceStatusBar 真源是 L2280-2296）
 - **实现路径**：
   1. `index.ts` 新增 `recap` 路由：POST 接收 `{sessionId, finalTranscript}` → 调一次 LLM（已通过 dsh 主进程配置的 LLM 端点）→ 返回 `{points: string[], actions: string[]}`
   2. `client.tsx` 在语音态退出时 fetch，调通后折叠面板
@@ -102,9 +102,9 @@
 - **做什么**：长按录音时浮窗 + 启动 80ms chime；纯客户端加法
 - **为什么**：Hey, Copilot + Recall 已示范；用户不开键盘前面也能感知
 - **file:line 锚点**：
-  - `plugin/dsh-voice-mode/src/client.tsx:156-174`（**既有 `beepCtx: AudioContext` + `playToolBeep` 实现，直接复用**——第二轮基线审查确认）
-  - `plugin/dsh-voice-mode/src/client.tsx:1133`（`html.dshvm-holding` CSS 类已就位）
-  - `plugin/dsh-voice-mode/src/client.tsx:1932`（"按住说话中"录音态视觉反馈）
+  - `plugin/dsh-voice-mode/src/client.tsx:160-174`（**既有 `beepCtx: AudioContext` + `playToolBeep` 实现，直接复用**——R27 精化：旧写 L156-174 含文件头注释末行，beepCtx 真源 L160-174；R18 加 elapsedSec 漂移 +27 行）
+  - `plugin/dsh-voice-mode/src/client.tsx:1160`（`html.dshvm-holding` CSS 类已就位；R27 实测：R19 加 elapsedSec 后从 L1133 漂移到 L1160）
+  - `plugin/dsh-voice-mode/src/client.tsx:1959`（"按住说话中"录音态视觉反馈；R27 实测：旧写 L1932 在 R18+R19 后漂移到 L1959）
   - `plugin/dsh-voice-mode/src/index.ts:166`（`wakeWord` 已接但默认关）
 - **实现路径**：
   1. `client.tsx` 复用既有 `setHolding(true)` 状态机 + `beepCtx`，新增 `<FloatingBar>` 子组件
