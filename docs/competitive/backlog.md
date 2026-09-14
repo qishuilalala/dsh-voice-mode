@@ -512,7 +512,7 @@
 
 - **做什么**：让 Agent 在任何会话里知道本插件存在 + 知道使用约束（参考 audiogen `src/index.ts:266-282` 的 `AUDIOGEN_GUIDANCE` 写法）
 - **file:line 锚点**：
-  - `plugin/dsh-voice-mode/src/index.ts:266-282`（既有 `VOICE_SPOKEN_SECTION` / `VOICE_SPOKEN_PROMPT` 模式）
+  - `plugin/dsh-voice-mode/src/index.ts:72-79`（既有 `VOICE_SPEN_SECTION` / `VOICE_SPEN_PROMPT` 模式）—— **backlog 旧写 L266-282 错**，L266-282 是 `Config: z.object({...})` 配置 schema
   - `plugin/dsh-voice-mode/src/index.ts:462-477`（`system-prompt/assemble` 注入点）
   - `package.json:65-75`（`dsh.client.inject` 9 锚点 = client 侧；与 `src/index.ts:88` 的 host 侧 `inject` 是两个**正交维度**，扩 host `inject` 不破 client 锚点 9 交集）
 - **真实工作量**：30 行（在前两轮出 ADR-0008 让位 prompt 注入的同一处可顺带合并）
