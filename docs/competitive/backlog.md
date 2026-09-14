@@ -438,7 +438,7 @@
   - `plugin/dsh-voice-mode/src/client.tsx` 跳过按钮 — 加 `aria-label={`朗读中：${b.ui.playingCaption ?? t('reading')}`}`
 - **真实工作量**：0.5-1 人天
 - **关联**：Otter / Apple Live Captions / Google Meet Captions 标杆
-- **事实勘误**：`aria-live="polite"` 已在 `src/client.tsx:2387`（无需加），但 captionFontSize + 中文换行需补
+- **事实勘误**：`aria-live="polite"` 已在 `src/client.tsx:2470`（无需加；R20 写 L2387 在 R19 后 +83 行已漂移到 L2470），但 `aria-label={朗读中: ${b.ui.playingCaption ?? t('reading')}}` 是待新增；captionFontSize + 中文换行需补（5 处分散）
 
 ### P0 · Ready · 录音同意弹窗（GDPR/CCPA/个保法）
 
