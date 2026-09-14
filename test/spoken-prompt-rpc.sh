@@ -30,10 +30,15 @@ ensure_auth() { # 围栏拦截时换 Cookie；返回 0 表示已就绪（或本�
   echo "  (已用启动令牌换取会话 Cookie)"
 }
 
-rpc() { # rpc <方法，点形> <payload-json>
-  # 回退梯（跨版本）：①点形直排（≤0.1.2）→ ②斜杠形直排（0.1.5 路径）→ ③斜杠+args 直排
-  # （0.1.5 remote 信封）→ ④斜杠+args.request（0.1.5 typert 描述符把字段整体嵌进 request）
-  local m="$1" body="$2" out
+rpc() { # rpc <方法，点形或斜杠形> <payload-json>
+  # 跨版本兼容梯（2026-09-14 实测）：
+  #   ①≤0.1.2：点形 /api/session.create + method "session.create"，payload 裸用 body
+  #   ②≥0.1.5：斜杠形 /api/session/create + method "session/create"，强制 args 信封
+  #   ③内嵌字段：session/create、session/prompt、session/cancel → args.request.{...}
+  #               session/list  → args._request.{...}（下划线开头！）
+  #               settings/describe、llm/listProviders → args:{}（不嵌字段）
+  #   逐端点差异不可"统一化"——rpc() 第 3 参 (可选) 指定内嵌字段名，默认 "request"。
+  local m="$1" body="$2" inner="${3:-request}" out
   call() { # call <方法形> <payload>
     curl -s -b "$COOKIE_FILE" --max-time 30 -X POST "$BASE/api/$1" \
       -H 'content-type: application/json' \
@@ -47,8 +52,9 @@ rpc() { # rpc <方法，点形> <payload-json>
   if printf '%s' "$out" | grep -q "plain-object args field"; then
     out=$(call "$m" "{\"args\":$body}")
   fi
-  if printf '%s' "$out" | grep -qE 'missing .{0,2}request'; then
-    out=$(call "$m" "{\"args\":{\"request\":$body}}")
+  # 逐端点的"missing 'xxx'"信息不同：session/list 是 '_request'，session/prompt 是 'request'
+  if printf '%s' "$out" | grep -qE "missing .{0,2}\"${inner}\""; then
+    out=$(call "$m" "{\"args\":{\"${inner}\":$body}}")
   fi
   printf '%s' "$out"
 }

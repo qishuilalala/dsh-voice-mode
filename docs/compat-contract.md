@@ -162,3 +162,54 @@ mic 实际渲染由真实实例佐证：配置完整的 dsh 0.1.1-rc.2 上 `docu
 - **全版本支持目标（2026-09-10 定案）**：插件的宿主兼容目标从「0.1.1 → 0.1.5 双版本」升级为「**0.1.1-rc.2 起全版本、持续跟进新线**」。锚点回溯实测：9 交集锚点在 0.1.0-rc.8 缺 1、0.0.1-rc.5 缺 2——0.1.0 及更早**结构性不兼容**（锚点包尚不存在），0.1.1-rc.2 即为诚实下界。跨版本分叉清单（回归装置已全部消化，见 `test/spoken-prompt-rpc.sh`）：① RPC 路径 ≤0.1.2 点形（`/api/session.create`）→ 0.1.5 起斜杠形（`/api/session/create`）；② remote 信封要求 `payload.args` 包裹；③ typert 描述符把字段整体嵌进 `args.request`；④ `session/prompt` 的 `requestId` 由可选变**必填**（schema 实证）。集成回归（create → toggle → prompt → SSE audio 帧）已在 0.1.5 线端到端通过（6 帧、0 tts-error），装置本身跨版本自适应。
 - **遗留（2026-09-10 线上复核后更新）**：`settings.plugin.item` 槽位已验证——线上回环浏览器 Settings→Plugins 页 voice-mode 设置表单正常渲染、console/pageerror 0；0.1.5-rc.1 主包上架 npm 后，把全局 dsh 对齐到 rc.1 并重放 `verify:dual`（`/tmp/dsh011-core`、`/tmp/dsh012-core`、`/tmp/dsh015-core` 三份核心已备好，可直接复用）。
 
+## 8. 0.1.5-rc.2 升级复核（2026-09-14，原子升级）
+
+**修正 §7 的一处错误认知**：原 §7.② 说"typert 描述符把字段整体嵌进 `args.request`"——**这是错的**。0.1.5-rc.2 实测发现：**内嵌字段逐端点不同**，不是统一 `request`：
+
+| 端点 | schema 形态（实测）| 实测错误信息（无字段时）|
+|---|---|---|
+| `session/create` | `args.request.{cwd, agentPreset?, ...}` | "missing 'request'; unexpected 'cwd'" |
+| `session/list`   | `args._request.{...}` （**下划线开头**）| "missing '_request'" |
+| `session/cancel` | `args.request.{sessionId, ...}` | "missing 'request'; unexpected '_request'" |
+| `session/prompt` | `args.request.{sessionId, requestId, mode, content}` | accepted=true（24 audio 帧实测）|
+| `settings/describe` | `args:{}` （不嵌字段）| 返回完整 schema |
+| `llm/listProviders` | `args:{}` （不嵌字段）| 返回 4 provider |
+
+> 对 voice-mode 的实际影响：**无**。voice-mode 源码通过 `ctx.get('sessions')` / `ctx.on('llm/stream', ...)` 等服务层契约访问 dsh，不直接发 RPC。
+> 对 `test/spoken-prompt-rpc.sh` 的影响：rpc() 兼容梯已扩展支持第 3 参指定内嵌字段名（默认 `request`）。
+
+### 升级结果（2026-09-14，0.1.5-alpha.2 → 0.1.5-rc.2）
+
+- **方式**：原子升级，`systemd-run --unit=upgrade-dsh-015rc2` 独立单元执行（`/mnt/work/upgrade-dsh-015rc2.sh`），失败自动回滚 `/mnt/work/dsh-0.1.5-alpha.2-pre-rollback-20260914-095242.tar.gz`。
+- **结果**：`STATUS: OK`；`dsh --version=0.1.5-rc.2`；`/voice-mode` 200；NRestarts=0；journal 0 错误关键字。
+- **0.1.5-rc.1 → 0.1.5-rc.2**：tarball 解包 diff 仅 `package.json`（子包依赖版本号 bump），代码层零变更。
+- **Provider 列表**（升级后实测）：`deepseek-official`, `opencode-go`, `openrouter`, `minimax`；agent-default-model = `minimax / MiniMax-M3`。
+- **站点补丁**：`patch.sh`（双形态兼容）落到 rc.2 后仍走"形态二"（`ctx.remote.$host.isLoopback`）——已 applied。
+
+### 4 版本矩阵（2026-09-14 当日实测）
+
+| 版本 | 锚点（9 交集）| typecheck host+client | 隔离冒烟 host+mic | 真实 LLM 端到端 |
+|---|---|---|---|---|
+| 0.1.1-rc.2（/tmp/dsh011-core）| ✅ 9/9 | ✅ host ✅ client | ✅ 三端点 200 + mic | n/a（隔离无 LLM key）|
+| 0.1.2-rc.1（/tmp/dsh012-core）| ✅ 9/9 | ✅ host ✅ client | ✅ 三端点 200 + mic | n/a |
+| 0.1.5-rc.1（/tmp/dsh015-core）| ✅ 9/9 | ✅ host ✅ client | ✅ 三端点 200 + mic | ✅ 线上 0.1.5-rc.1 跑过（UPGRADES.md 09-10 记录，6 帧）|
+| 0.1.5-rc.2（/tmp/dsh015-rc2-core）| ✅ 9/9 | ✅ host ✅ client | ✅ 三端点 200 + mic | ✅ **24 帧、0 tts-error**（本轮新测）|
+
+### 端到端 RPC 形态（0.1.5-rc.2 实证）
+
+```
+session/create:  POST /api/session/create  payload.args.request.{cwd, agentPreset?}
+session/prompt:  POST /api/session/prompt  payload.args.request.{sessionId, requestId, mode, content}
+session/list:    POST /api/session/list    payload.args._request.{...}
+settings/describe: POST /api/settings/describe  payload.args:{}
+llm/listProviders: POST /api/llm/listProviders  payload.args:{}
+```
+
+所有 /api/* 端点必须包 `payload.args` 信封。无 args 报 "Remote payload must contain exactly one plain-object args field"。
+
+### 本轮兼容性结论
+
+- voice-mode 9 交集锚点 + 5 类型包 + 服务层契约 **全部双向兼容 0.1.1-rc.2 → 0.1.5-rc.2**；
+- voice-mode 源码**无变更**——本次升级**只**对基础设施层（dsh 核心、RPC schema、测试脚本注释）做了更新；
+- 跨版本兼容目标维持「0.1.1-rc.2 起全版本、持续跟进新线」（engines.dsh 无上界）。
+

@@ -30,8 +30,10 @@ cordis_ver_for() {
 DEVPKGS=(dsh-host-webserver dsh-llm dsh-settings dsh-system-prompt)
 
 cp package.json package.json.dual-bak
+cp pnpm-lock.yaml pnpm-lock.yaml.dual-bak
 restore() {
   mv package.json.dual-bak package.json
+  mv pnpm-lock.yaml.dual-bak pnpm-lock.yaml
   pnpm install --no-frozen-lockfile >/dev/null 2>&1 || true
 }
 trap restore EXIT
