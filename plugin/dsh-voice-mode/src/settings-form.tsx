@@ -1075,6 +1075,18 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             <Row name="senseVoice" desc={tr('descSenseVoice')}>
               <input type="checkbox" checked={Boolean(value.senseVoice)} onChange={(e) => void scope.set('senseVoice', e.target.checked)} />
             </Row>
+            <Row name="asrHotwords" desc={tr('descAsrHotwords')}>
+              <textarea
+                rows={4}
+                value={typeof value.asrHotwords === 'string' ? value.asrHotwords : ''}
+                placeholder={tr('asrHotwordsPlaceholder')}
+                onChange={(e) => void scope.set('asrHotwords', e.target.value)}
+                style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit', fontSize: 13, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--set-field-border, #3a3a3a)', background: 'var(--set-field-bg, transparent)', color: 'inherit' }}
+              />
+            </Row>
+            <Row name="asrHotwordsScore" desc={tr('descAsrHotwordsScore')}>
+              <NumberField score={scope} field="asrHotwordsScore" value={value.asrHotwordsScore ?? 1.5} min={1} max={5} step={0.1} />
+            </Row>
             <Row name="spokenFormat" desc={tr('descSpokenFormat')}>
               <input type="checkbox" checked={Boolean(value.spokenFormat)} onChange={(e) => void scope.set('spokenFormat', e.target.checked)} />
             </Row>

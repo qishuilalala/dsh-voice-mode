@@ -349,6 +349,21 @@ async function ensureModelTree(opts) {
   return allOk;
 }
 
+// src/asr-hotwords.ts
+function buildHotwordsConfig(rawHw, score) {
+  const hw = rawHw.trim();
+  if (!hw) return {};
+  return {
+    decodingMethod: "modified_beam_search",
+    hotwordsBuf: hw,
+    hotwordsBufSize: Buffer.byteLength(hw, "utf8"),
+    hotwordsScore: score
+  };
+}
+function buildHotwordsKey(rawHw, score) {
+  return `${rawHw.trim()}\0${String(score)}`;
+}
+
 // src/asr-host.ts
 var { createOnlineRecognizer, createVad } = sherpa_onnx;
 var MODEL_REPO = "csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30";
@@ -392,7 +407,7 @@ function rmsOf(samples) {
   return Math.sqrt(sum / samples.length);
 }
 function createAsrRuntime(options) {
-  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, allowCustomHost } = options;
+  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, hotwordsBuf, hotwordsScore, allowCustomHost } = options;
   let lastProgress = null;
   const localBroadcast = (event, payload) => {
     if (event === "asr-progress") lastProgress = payload;
@@ -407,6 +422,7 @@ function createAsrRuntime(options) {
   const finalizing = /* @__PURE__ */ new Map();
   const resetGen = /* @__PURE__ */ new Map();
   let recognizer = null;
+  let recognizerHotwordsKey = "";
   let modelsReady = false;
   let modelsLoading = null;
   let asrFailAt = 0;
@@ -433,7 +449,16 @@ function createAsrRuntime(options) {
   };
   const getRecognizer = async () => {
     if (!await ensureModels()) return null;
-    if (recognizer) return recognizer;
+    const hwKey = buildHotwordsKey(hotwordsBuf(), hotwordsScore());
+    if (recognizer && hwKey === recognizerHotwordsKey) return recognizer;
+    if (recognizer) {
+      try {
+        recognizer.free?.();
+      } catch {
+      }
+      recognizer = null;
+    }
+    recognizerHotwordsKey = hwKey;
     const t = (f) => join2(repoDir, f);
     recognizer = createOnlineRecognizer({
       modelConfig: {
@@ -447,7 +472,7 @@ function createAsrRuntime(options) {
         provider: "cpu",
         debug: 0
       },
-      decodingMethod: "greedy_search"
+      ...buildHotwordsConfig(hotwordsBuf(), hotwordsScore())
     });
     return recognizer;
   };
@@ -1798,7 +1823,9 @@ var VOICE_SETTINGS_DEFAULTS = {
   spokenFormat: true,
   senseVoice: true,
   wakeWord: "",
-  toolBeep: false
+  toolBeep: false,
+  asrHotwords: "",
+  asrHotwordsScore: 1.5
 };
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
@@ -1826,7 +1853,11 @@ function createVoiceSettingsSchema(defs) {
     spokenFormat: z.boolean().default(d.spokenFormat).description("\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u53E3\u8BED\u5316\u77ED\u53E5\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\u66F4\u5FEB\uFF1B\u9ED8\u8BA4\u5F00\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09"),
     senseVoice: z.boolean().default(d.senseVoice).description("\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9+\u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09"),
     wakeWord: z.string().default(d.wakeWord).description("\u5524\u9192\u8BCD\uFF1A\u5728\u5F85\u673A\u6001\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF09"),
-    toolBeep: z.boolean().default(d.toolBeep).description('\u5DE5\u5177\u8C03\u7528\u63D0\u793A\u97F3\uFF08\u9ED8\u8BA4\u5173\uFF09\uFF1A\u5F00\u542F\u540E AI \u8C03\u7528\u5DE5\u5177\u65F6"\u6EF4"\u4E00\u58F0\uFF0C\u5173\u95ED\u5219\u5168\u7A0B\u9759\u9ED8')
+    toolBeep: z.boolean().default(d.toolBeep).description('\u5DE5\u5177\u8C03\u7528\u63D0\u793A\u97F3\uFF08\u9ED8\u8BA4\u5173\uFF09\uFF1A\u5F00\u542F\u540E AI \u8C03\u7528\u5DE5\u5177\u65F6"\u6EF4"\u4E00\u58F0\uFF0C\u5173\u95ED\u5219\u5168\u7A0B\u9759\u9ED8'),
+    asrHotwords: z.string().default(d.asrHotwords).description(
+      "\u8BC6\u522B\u70ED\u8BCD\u504F\u7F6E\uFF08\u6BCF\u884C\u4E00\u4E2A\u8BCD\u6216\u300C\u8BCD:\u5206\u6570\u300D\uFF08\u5982 dsh-voice-mode:2.5\uFF09\uFF1B\u7559\u7A7A\u5173\u95ED = \u884C\u4E3A\u96F6\u53D8\u5316\u3002\u5F00\u542F\u540E\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u751F\u6548\uFF0C\u4F1A\u91CD\u5EFA\u6D41\u5F0F\u8BC6\u522B\u5668\uFF08\u6BEB\u79D2\u7EA7\uFF09"
+    ),
+    asrHotwordsScore: z.number().min(1).max(5).default(d.asrHotwordsScore).description("\u70ED\u8BCD\u57FA\u51C6\u504F\u7F6E\u5206\uFF081.5 \u9ED8\u8BA4\uFF0C\u4E0E sherpa-onnx \u5B98\u65B9\u4E00\u81F4\uFF1B\u8D8A\u5927\u8D8A\u5F3A\uFF0C\u8FC7\u5927\u53EF\u80FD\u4F24\u666E\u901A\u8BC6\u522B\uFF09")
   });
 }
 var VoiceSettingsSchema = createVoiceSettingsSchema();
@@ -1911,6 +1942,9 @@ function apply(ctx, config) {
     senseVoice: () => vset.senseVoice,
     // 断句静音阈值（实时读取）：端点 VAD minSilenceDuration 跟随设置。
     silenceMs: () => vset.silenceMs,
+    // P0 热词（批 1）：实时读取；变更触发 recognizer 重建（key 指纹），空 = 关闭。
+    hotwordsBuf: () => vset.asrHotwords,
+    hotwordsScore: () => vset.asrHotwordsScore,
     allowCustomHost: config.allowCustomModelHost,
     broadcast
   });
