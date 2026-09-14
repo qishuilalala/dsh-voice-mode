@@ -16,8 +16,8 @@ dsh-voice-mode 当前的"让位"仅有两个层：
 
 | 层 | 实现 | 文件:行 |
 |---|---|---|
-| 物理层（声学） | 录音 → VAD → 端点检测 → 硬打断 | `src/asr.ts:640-695`（长静音检测）+ `src/client.tsx:1400`（hardBreak 函数定义） |
-| 物理层（回声门） | echoPeak/echoFloor + echoGateDb 双讲冻结 | `src/asr.ts:585-608`（ADR-0006 真机结论：原生 AEC 生效时**从未被执行**，因为 VAD 已先拦截） |
+| 物理层（声学） | 录音 → VAD → 端点检测 → 硬打断 | `src/asr.ts:634-695`（段累积 + 滚窗超时）+ `src/client.tsx:1400`（hardBreak 函数定义） |
+| 物理层（回声门） | echoPeak/echoFloor + echoGateDb 双讲冻结 | `src/asr.ts:546-617`（echoPeak/Floor 跨区）+ ADR-0006 真机结论：原生 AEC 生效时**从未被执行**，因为 VAD 已先拦截 |
 
 **完全缺失的层**：**人格层 / 社会-语用层让位**——LLM 没有"何时该停、停多久、是否该接住用户的'嗯'/'对'/'so'"的指令。
 
@@ -58,7 +58,7 @@ YIELDING (let the user interrupt)
 |---|---|---|---|
 | 🥇 P0 | **Backchannel detector**（"嗯/哎/so"等 6+ 中英文词检测）+ 半双工暂停（停下 TTS 不 hardBreak，等 1s） | `src/asr.ts` `matchWakeWord` 同位置加 `matchBackchannel`；`src/tts-queue.ts` 新 `pauseAtBoundary()` 走 epoch 通道 | 2-3 天 |
 | 🥈 P0 | **Hume EVI 风格让位 prompt 注入**（48 维 prosody top-3 注入 system prompt） | `src/index.ts:470-477` 的 `system-prompt/assemble` 瀑布扩展；如无云端 emotion2vec，本地替代 0 | 1-2 天 |
-| 🥉 P2 | **Inattentive silence 自动 break**（6s 沉默后模型主动 break silence） | `src/index.ts:1032` `ownerYieldTimer` 旁加 `silenceBreakTimer` | 1-2 天 |
+| 🥉 P2 | **Inattentive silence 自动 break**（6s 沉默后模型主动 break silence） | `src/index.ts:287, 678-680` `ownerYieldTimer` 旁加 `silenceBreakTimer` | 1-2 天 |
 | ❄ | **End-of-turn probability 让位** | 需 ADR-0003 VAD 下沉前置 | 推迟 |
 | ❄ | **让位历史记忆**（环形 buffer） | 配 ADR-0005 fixture，需先扩展 | 推迟 |
 
@@ -115,7 +115,7 @@ YIELDING (let the user interrupt)
 
 - `src/index.ts:72-76`（当前 4 句口语化，无让位指令）
 - `src/index.ts:470-477`（system-prompt/assemble 注入点，可扩展）
-- `src/asr.ts:585-608`（echoFloor/echoPeak + ADR-0006 真机结论）
+- `src/asr.ts:546-617`（echoFloor/echoPeak 跨区 + ADR-0006 真机结论）
 - `src/asr.ts:125-127`（wakeEnabled 强制关闭模式逻辑可参考）
 - `src/asr-host.ts:442-466`（finalize 同步路径，"不丢句"不变量）
 - `src/tts-queue.ts:268-307`（cancel() 硬打断；epoch 守卫；不丢句）
