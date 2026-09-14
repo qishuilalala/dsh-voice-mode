@@ -2196,10 +2196,21 @@ interface StatusBarProps extends VoiceSlotActions {
 
 export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactElement {
   const [b, setB] = useState(() => ({ active: bus.activeSessionId, ui: bus.ui }))
+  // P1-UX 状态条计时器：会话活跃期间按秒递增；会话切走 / 卸载时清零
+  const [elapsedSec, setElapsedSec] = useState(0)
 
   useEffect(() => {
     return bus.subscribe(setB)
   }, [bus])
+
+  useEffect(() => {
+    if (b.active !== sessionId) {
+      setElapsedSec(0)
+      return
+    }
+    const id = setInterval(() => setElapsedSec((s) => s + 1), 1000)
+    return () => clearInterval(id)
+  }, [b.active, sessionId])
 
   const isActive = b.active === sessionId
   if (!isActive) return <></>
@@ -2313,6 +2324,24 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
             }}
           >
             {t('vadDetected')}
+          </span>
+        )}
+        {/* P1-UX 状态条计时器：会话时长（mm:ss），活跃期间按秒递增 */}
+        {elapsedSec > 0 && (
+          <span
+            title={t('elapsedHint')}
+            style={{
+              flexShrink: 0,
+              padding: '0 6px',
+              borderRadius: 8,
+              fontSize: 10,
+              lineHeight: '16px',
+              color: '#8b949e',
+              fontVariantNumeric: 'tabular-nums',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            }}
+          >
+            {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, '0')}
           </span>
         )}
         {b.ui.aecOff === true && (
