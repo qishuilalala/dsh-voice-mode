@@ -395,10 +395,11 @@
 
 - **做什么**：开发者场景下"项目代号 / 函数名 / 包名 / commit SHA"被 ASR 误识别
 - **file:line 锚点**：
-  - `plugin/dsh-voice-mode/src/asr-host.ts:266` — `decodingMethod: 'greedy_search'` 改 `'modified_beam_search'` + 加 `hotwordsFile` + `hotwordsScore`
+  - `plugin/dsh-voice-mode/src/asr-host.ts:266` — `decodingMethod: 'greedy_search'` 改 `'modified_beam_search'` + 加 `hotwordsFile` + `hotwordsScore`（**真源默认 1.5**，**backlog 写 2.0 错**；clamp 1.0-5.0 也可保留）
   - `plugin/dsh-voice-mode/src/asr-host.ts:75-87` — `AsrRuntimeOptions` 加 `hotwordsFile` getter
-  - `plugin/dsh-voice-mode/src/index.ts:240-280` — schema 加 `asrHotwords?: string` + `asrHotwordsScore?: number`（默认 2.0，clamp 1.0-5.0）
+  - `plugin/dsh-voice-mode/src/index.ts:240-280` — schema 加 `asrHotwords?: string` + `asrHotwordsScore?: number`（**真源默认 1.5**，**backlog 写 2.0 错**）
   - `plugin/dsh-voice-mode/src/settings-form.tsx:1062` — secRecognition 加热词文本框
+  - sherpa-onnx 真源：`sherpa-onnx-asr.js:460-465, 493, 507, 517, 542` 接受 `hotwordsFile`/`hotwordsBuf`/`hotwordsScore`(默认 1.5) 三参数
 - **真实工作量**：1.5-2 人天
 - **关联**：sherpa-onnx 官方 hotwords 文档 (transducer + modified_beam_search)；仅与 B1/B6 冲突
 - **事实勘误**：zipformer2 **已具备** hotwords 路径，仅缺开关
