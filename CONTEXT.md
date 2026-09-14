@@ -56,7 +56,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 
 - 原生 AEC 失效兜底（耳机无原生 AEC / Safari）：自研 AEC 的 delay 对齐需 FDLMS+RES；
   该场景**尚无真机数据**，也是回声地板棘轮唯一还可能发作的一格
-- ADR-0006 第一级探测（原生 AEC 未生效 → 自动落 manual）尚未实现
+- ADR-0006 第一级探测**部分实现**：asr.ts:778 已读 `track.getSettings().echoCancellation`，L780 console.warn 但**未自动落 manual**——需接通到 `bargeInMode='manual'` 闸门
 - Ctrl 强制发送在「已停顿但草稿有累积」时不 flush（Minor，需处理 in-flight 定稿竞态）
 - 松手恰在 30s 滚段边界（~1-3s 窗口）的竞态（Rare，需给 hold 引入待发块队列）
 - 发布流程见 ~/.dsh/docs/RELEASE-MEMO.md（git push + npm publish + tag + GitHub release）
