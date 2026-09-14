@@ -39,7 +39,7 @@ README 的排障表实际上是在教用户调声学参数。对"外放的桌面
 
 **第一级 —— 零成本，进入语音模式即可判定**
 
-`getUserMedia` 后读 `track.getSettings().echoCancellation`（现有代码已有此信号，`src/asr.ts` `startRecorder` → `config.onAecState` → `src/client.tsx:1457` `bus.setEchoBypass`）。
+`getUserMedia` 后读 `track.getSettings().echoCancellation`（现有代码已有此信号，`src/asr.ts:751` `startRecorder` → `config.onAecState`(L782) → `src/client.tsx:1539` `bus.setEchoBypass`）。
 
 - `=== false` → 原生 AEC 未生效（耳机无原生 AEC / Safari VoiceProcessingIO 失效）→ **直接判定不具备 auto 条件**，落 `manual`，状态条提示「本机回声消除未生效，已切为长按打断」
 
