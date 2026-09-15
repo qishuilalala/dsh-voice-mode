@@ -1373,13 +1373,16 @@ var zh = {
   skipReading: "\u8DF3\u8FC7\u5F53\u524D\u6717\u8BFB",
   backchannelYield: "\u77ED\u5E94\u7B54\u8BA9\u4F4D",
   descBackchannelYield: "\u6717\u8BFB\u671F\u7528\u6237\u8BF4\u300C\u55EF/\u5BF9\u300D\u7B49\u77ED\u5E94\u7B54\u65F6\u81EA\u52A8\u8BA9\u4F4D\uFF08\u8DF3\u8FC7\u5F53\u524D TTS \u53E5 + \u77ED\u6682\u4E22\u5E27 1.5s\uFF1B\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF1B\u5173 = \u4E0D\u8BA9\u4F4D\uFF0C\u884C\u4E3A\u7B49\u540C\u6539\u9020\u524D\uFF09",
+  // 批 G 任务 3：让位窗口时长（500-3000ms，默认 1500）。
+  yieldMs: "\u8BA9\u4F4D\u7A97\u53E3",
+  descYieldMs: "\u8BA9\u4F4D\u8BED\u4E49\u89E6\u53D1\u540E\u7B49\u5F85\u65F6\u957F\uFF08\u6BEB\u79D2\uFF0C500-3000\uFF0C\u9ED8\u8BA4 1500\uFF1B\u7A97\u53E3\u5185\u7528\u6237\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF0C\u7A97\u53E3\u5230\u70B9\u81EA\u52A8\u6062\u590D\u64AD\u653E\uFF09",
   descMode: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09",
   modeToggle: "\u6301\u7EED\u8046\u542C",
   modeHold: "\u6309\u4F4F\u8BF4\u8BDD",
   descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09",
   wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
-  settingsCardDesc: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3 / \u8BC6\u522B\u70ED\u8BCD / \u70ED\u8BCD\u504F\u7F6E\u5206 / \u8BC6\u522B\u8BED\u79CD / \u9006\u6587\u672C\u5F52\u4E00\u5316 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D",
-  settingsEffectiveNote: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6A21\u578B\u7CBE\u5EA6 / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D \u5373\u65F6\u751F\u6548\uFF1B\u8BC6\u522B\u70ED\u8BCD / \u70ED\u8BCD\u504F\u7F6E\u5206 / \u8BC6\u522B\u8BED\u79CD / \u9006\u6587\u672C\u5F52\u4E00\u5316 \u5373\u65F6\u751F\u6548\uFF08\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u91CD\u5EFA\u6D41\u5F0F\u8BC6\u522B\u5668\uFF09\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
+  settingsCardDesc: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3 / \u8BC6\u522B\u70ED\u8BCD / \u70ED\u8BCD\u504F\u7F6E\u5206 / \u8BC6\u522B\u8BED\u79CD / \u9006\u6587\u672C\u5F52\u4E00\u5316 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3",
+  settingsEffectiveNote: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6A21\u578B\u7CBE\u5EA6 / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3 \u5373\u65F6\u751F\u6548\uFF1B\u8BC6\u522B\u70ED\u8BCD / \u70ED\u8BCD\u504F\u7F6E\u5206 / \u8BC6\u522B\u8BED\u79CD / \u9006\u6587\u672C\u5F52\u4E00\u5316 \u5373\u65F6\u751F\u6548\uFF08\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u91CD\u5EFA\u6D41\u5F0F\u8BC6\u522B\u5668\uFF09\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
   configUnavailable: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528",
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: "\u8BF4\u5B8C",
@@ -1440,9 +1443,14 @@ var zh = {
   captionFontSizeLabel: "\u5B57\u5E55\u5B57\u53F7",
   captionMaxWidthLabel: "\u5B57\u5E55\u5BBD\u5EA6",
   backchannelYieldLabel: "\u77ED\u5E94\u7B54\u8BA9\u4F4D",
+  // 批 G 任务 3：让位窗口（FIELD_LABELS.yieldMs 镜像键，*Label 后缀）。
+  yieldMsLabel: "\u8BA9\u4F4D\u7A97\u53E3",
   // 批 G 任务 2：空闲预警 + 退出提示文案。
   idleWarn30s: "30 \u79D2\u540E\u81EA\u52A8\u9000\u51FA\uFF08\u8BBE\u7F6E\u91CC\u53EF\u8C03\u7A7A\u95F2\u65F6\u957F\uFF09",
-  idleTimeoutQuit: "\u7A7A\u95F2\u8D85\u65F6\u5DF2\u81EA\u52A8\u9000\u51FA\uFF08\u8BBE\u7F6E\u91CC\u53EF\u8C03\u65F6\u957F\uFF09"
+  idleTimeoutQuit: "\u7A7A\u95F2\u8D85\u65F6\u5DF2\u81EA\u52A8\u9000\u51FA\uFF08\u8BBE\u7F6E\u91CC\u53EF\u8C03\u65F6\u957F\uFF09",
+  // 批 G 任务 1：Number 校验红框 + clamp 提示。
+  numberInvalid: "\u6570\u503C\u975E\u6CD5",
+  numberClamped: "\u5DF2\u81EA\u52A8\u8C03\u6574\u4E3A {value}"
 };
 var en = {
   stateVoiceMode: "Voice Mode",
@@ -1556,13 +1564,16 @@ var en = {
   skipReading: "Skip current reading",
   backchannelYield: "Short-answer yielding",
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches pre-batch-5)',
+  // 批 G 任务 3：让位窗口时长（500-3000ms，默认 1500）。
+  yieldMs: "Yield window",
+  descYieldMs: "How long (ms) to drop frames after a yield trigger (500-3000, default 1500; within the window the existing hardBreak takes over if the user really wants to speak; auto-resume after the window expires)",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)",
   modeToggle: "Continue listen",
   modeHold: "Hold to talk",
   descWakeWord: "Wake word (default off; e.g. Hey D)",
   wakePlaceholder: "e.g. Hey D",
-  settingsCardDesc: "Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / hotwords / hotwords score / recognition language / ITN / caption font / caption width / yielding",
-  settingsEffectiveNote: "Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding apply immediately; hotwords / hotwords score / recognition language / ITN apply immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.",
+  settingsCardDesc: "Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / hotwords / hotwords score / recognition language / ITN / caption font / caption width / yielding / yield window",
+  settingsEffectiveNote: "Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding / yield window apply immediately; hotwords / hotwords score / recognition language / ITN apply immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.",
   configUnavailable: "Configuration unavailable",
   telUtteranceEnd: "end",
   telEndpoint: "endpoint",
@@ -1619,9 +1630,14 @@ var en = {
   captionFontSizeLabel: "Font size",
   captionMaxWidthLabel: "Max width",
   backchannelYieldLabel: "Yielding",
+  // 批 G 任务 3：让位窗口（FIELD_LABELS.yieldMs 镜像键，*Label 后缀）。
+  yieldMsLabel: "Yield window",
   // 批 G 任务 2：空闲预警 + 退出提示文案。
   idleWarn30s: "Auto-exit in 30 seconds (adjustable in settings)",
-  idleTimeoutQuit: "Idle timeout \u2014 voice mode auto-exited (adjustable in settings)"
+  idleTimeoutQuit: "Idle timeout \u2014 voice mode auto-exited (adjustable in settings)",
+  // 批 G 任务 1：Number 校验红框 + clamp 提示。
+  numberInvalid: "Invalid number",
+  numberClamped: "Auto-clamped to {value}"
 };
 var guess = () => /^zh\b/i.test(
   typeof document !== "undefined" && document.documentElement.lang || (typeof navigator !== "undefined" ? navigator.language : "") || ""
@@ -1672,7 +1688,10 @@ var FIELD_LABELS = {
   senseITN: "\u9006\u6587\u672C\u5F52\u4E00\u5316",
   captionFontSize: "\u5B57\u5E55\u5B57\u53F7",
   captionMaxWidth: "\u5B57\u5E55\u5BBD\u5EA6",
-  backchannelYield: "\u77ED\u5E94\u7B54\u8BA9\u4F4D"
+  backchannelYield: "\u77ED\u5E94\u7B54\u8BA9\u4F4D",
+  // 批 G 任务 3：让位窗口时长（500-3000ms，默认 1500）。FIELD_LABELS 与 strings.ts
+  // zh 段 yieldMsLabel 同步登记（双轨约束由 strings-coverage 测试兜底）。
+  yieldMs: "\u8BA9\u4F4D\u7A97\u53E3"
 };
 var setHeader = {
   appearance: "none",
@@ -1916,32 +1935,59 @@ function NumberField({
   step
 }) {
   const [draft, setDraft] = (0, import_react.useState)(String(value ?? ""));
+  const [hint, setHint2] = (0, import_react.useState)(null);
   (0, import_react.useEffect)(() => {
     setDraft((d) => d === String(value ?? "") ? d : String(value ?? ""));
+    setHint2(null);
   }, [value]);
   const commit = () => {
-    const n = Number(draft);
-    if (!Number.isFinite(n) || draft.trim() === "") return;
-    const clamped = Math.min(max, Math.max(min, n));
-    setDraft(String(clamped));
-    void score.set(field, clamped);
-  };
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-    "input",
-    {
-      style: inputStyle,
-      type: "number",
-      step,
-      min,
-      max,
-      value: draft,
-      onChange: (e) => setDraft(e.target.value),
-      onBlur: commit,
-      onKeyDown: (e) => {
-        if (e.key === "Enter") commit();
-      }
+    const raw = draft.trim();
+    if (raw === "") {
+      setHint2(t("numberInvalid"));
+      return;
     }
-  );
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+      setHint2(t("numberInvalid"));
+      return;
+    }
+    if (n < min || n > max) {
+      const clamped = Math.min(max, Math.max(min, n));
+      setHint2(t("numberClamped").replace("{value}", String(clamped)));
+      setDraft(String(clamped));
+      void score.set(field, clamped);
+      return;
+    }
+    setHint2(null);
+    void score.set(field, n);
+  };
+  const invalidStyle = hint ? {
+    ...inputStyle,
+    border: "1px solid #d33",
+    background: "rgba(221, 51, 51, 0.08)"
+  } : inputStyle;
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", flexDirection: "column", gap: 3, flexShrink: 0 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "input",
+      {
+        style: invalidStyle,
+        type: "number",
+        step,
+        min,
+        max,
+        value: draft,
+        onChange: (e) => {
+          setDraft(e.target.value);
+          if (hint) setHint2(null);
+        },
+        onBlur: commit,
+        onKeyDown: (e) => {
+          if (e.key === "Enter") commit();
+        }
+      }
+    ),
+    hint && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#d33", fontSize: 11, lineHeight: "14px" }, children: hint })
+  ] });
 }
 function TextField({
   score,
@@ -2737,7 +2783,8 @@ function VoiceSettingsCard({ scope }) {
             ]
           }
         ) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "backchannelYield", desc: t("descBackchannelYield"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.backchannelYield !== false, onChange: (e) => void scope.set("backchannelYield", e.target.checked) }) })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "backchannelYield", desc: t("descBackchannelYield"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.backchannelYield !== false, onChange: (e) => void scope.set("backchannelYield", e.target.checked) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "yieldMs", desc: t("descYieldMs"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "yieldMs", value: value.yieldMs ?? 1500, min: 500, max: 3e3, step: 100 }) })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRecognition"), children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
@@ -2787,7 +2834,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "3ad1c62";
+var BUILD_TAG = "faeb204";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -3094,6 +3141,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     captionFontSize: 0,
     captionMaxWidth: 1,
     backchannelYield: true,
+    yieldMs: 1500,
     // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
     asrHotwords: "",
     asrHotwordsScore: 1.5,
@@ -3606,6 +3654,7 @@ function MicButton({
     captionFontSize: 0,
     captionMaxWidth: 1,
     backchannelYield: true,
+    yieldMs: 1500,
     // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
     asrHotwords: "",
     asrHotwordsScore: 1.5,
@@ -3649,6 +3698,8 @@ function MicButton({
         captionMaxWidth: c.captionMaxWidth === 0 || c.captionMaxWidth === 2 ? c.captionMaxWidth : 1,
         // 批 5：同模式（plan §7.2 表漏列 fetchConfig 字段透传，类批 3 captionFontSize 集成层补丁）
         backchannelYield: c.backchannelYield !== false,
+        // 批 G 任务 3：让位窗口时长（500-3000ms）；类型校验严格 + 默认值兜底。
+        yieldMs: typeof c.yieldMs === "number" && c.yieldMs >= 500 && c.yieldMs <= 3e3 ? c.yieldMs : 1500,
         // 批 B：5 ASR 字段透传（host /config handler 在 c2120d9 已透传 4 字段，本批补 senseVoice + 客户端白名单对齐）。
         // 类型校验严格 + 默认值兜底，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
         asrHotwords: typeof c.asrHotwords === "string" ? c.asrHotwords : "",
@@ -3960,11 +4011,11 @@ function MicButton({
             fixtureRecorder.mark("native-aec", on2 ? "on\uFF08\u81EA\u7814 NLMS \u65C1\u8DEF\uFF09" : "off\uFF08\u81EA\u7814 NLMS \u751F\u6548\uFF09");
           },
           // 批 5 / ADR-0008 Phase 1：backchannel 命中回调——
-          //   立即 skipAudio 终止当前朗读 + 置 1.5s hold 窗口，期间 TTS 帧丢（字幕同帧丢）。
+          //   立即 skipAudio 终止当前朗读 + 置 cfg.yieldMs hold 窗口，期间 TTS 帧丢（字幕同帧丢）。
           //   关 backchannelYield = 不挂回调，行为等同改造前（I10 豁免由 §7.0 ADR-0008 接受）。
           onBackchannel: cfg.backchannelYield ? () => {
             bus.skipAudio();
-            bus.setBackchannelHold(Date.now() + 1500);
+            bus.setBackchannelHold(Date.now() + (cfg.yieldMs ?? 1500));
           } : void 0,
           // 批 F：传 backchannelYield 给 ASR 引擎，让 asr.ts:379 守卫短路 matchBackchannel。
           backchannelYield: cfg.backchannelYield
@@ -4680,8 +4731,12 @@ function VoiceOverlay({ bus }) {
         // 批 3：4 档字号（0/1/2/3 → 12/14/18/24 px）。默认 0=12px 与现状字节等价。
         fontSize: [12, 14, 18, 24][b.ui.boot?.captionFontSize ?? 0],
         fontFamily: "system-ui, sans-serif",
-        pointerEvents: "none",
-        // 浮层不挡输入框/麦克风按钮的点击（仅内部「跳过」按钮可点）
+        // 批 G 任务 5：浮层默认 'auto'——触屏需要命中内部「跳过」按钮；外层无 cursor:
+        // default 由按钮自身 cursor:pointer 表达，文本区不显 pointer。
+        // touchAction: 'manipulation' 阻止双击放大与连续点击 300ms 延迟（保留手势语义）。
+        pointerEvents: "auto",
+        touchAction: "manipulation",
+        cursor: "default",
         background: "rgba(22, 24, 28, 0.85)",
         backdropFilter: "blur(14px)",
         WebkitBackdropFilter: "blur(14px)",
