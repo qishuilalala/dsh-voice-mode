@@ -161,6 +161,7 @@ cd plugin/dsh-voice-mode && node -e '/* P1: hotwordsBuf 中文热词实证；P2:
 | `src/index.ts` | schema/defaults/传参 | 同批 1 模式 | `recognitionLanguage: 'auto'\|'zh'\|'en'\|'ja'\|'ko'\|'yue'` 默认 `'auto'`；`senseITN: boolean` 默认 `true`；createAsrRuntime 传 getter |
 | `src/settings-form.tsx` | secRecognition | SegGroup 6 选项 + ITN checkbox | — |
 | `src/strings.ts` | zh/en 各 +3 键 | — | `recognitionLanguage: '识别语言'` 等 |
+| `src/asr-sense-key.ts`（**批 2 执行时经计划维护者裁决补记的新文件**） | 新文件 | 纯函数模块 | `RECOGNITION_LANGUAGES` 6 项 + `sanitizeRecognitionLanguage` 守卫（非法值降级 `'auto'`，覆盖 `'zh-cn'`/`'AUTO'`/`'auto '`/`'zh;injection'` 等 i18n 边界）+ `buildSenseLangKey`（NUL 分隔，sanitize 后两侧已归一）；无状态无 IO，供 asr-host 与单测共用，**与批 1 `asr-hotwords.ts` 同模式（纯函数承载 sanitize+key 构造，后续可复用）** |
 
 ### 4.3 worker 变更重建（易错点）
 
@@ -184,6 +185,7 @@ onDeath 懒重建机制已有（L388-391）。**开工前核实一点**：`creat
 ### 4.4 验证与 Done
 
 - 新增 `test/sense-lang.test.mjs`：① langKey 不变 → 复用 worker；② 变化 → terminate 被调 + 重建；③ workerData 携带 language/useITN。
+- **集成层豁免**：①② 由 host 接线正确性保证（`asr-host.ts:386-441` 短且直读可验），单测仅覆盖契约层（`buildSenseLangKey` 等值/不等值 + bundle 静态断言字段名）；集成层验证留**批 6 真机冒烟**（修改语种观察 worker 重建 + 旧请求走 zipformer fallback）。
 - **Done** = 单测三绿 + typecheck + npm test 全绿；真机：锁 `en` 后英文段落识别不再抖回中文（用户验收）。
 - 回滚 `git revert`；预计 ~55 行。
 - **I10**：默认 `auto`+`useITN:1` 与现状逐字节等价。

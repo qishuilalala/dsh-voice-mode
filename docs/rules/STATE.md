@@ -121,8 +121,8 @@
 | 0 文档同步 | ✅ | c2980f4 | — |
 | 计划修正+提示词 | ✅ | 42dcd16 | 对抗性审查 10 项修正（V1-V10） |
 | 1 P0 热词 | ✅ | 9467c81 | **两条偏差均裁决接受**：①新文件 `src/asr-hotwords.ts`（可测性抽取，纯函数无状态，已补记计划 §3.2）；②验证顺序计划内部冲突为真（verify-client mtime 断言 vs 初版顺序），定稿 `tsc×2 → build → npm test` 已修计划 §0.2。PoC：P2 free() 实证存在（无需降级）；**P1 端到端 SKIP（开发机无流式模型）——构造层已验（102/102），识别偏置效果待批 6 真机验收**。 |
-| 2 P0 锁语种 | 放行 | — | 计划 §4.3 pending request 核实点须做并写入 commit message |
-| 3 字幕 a11y | 待 | — | — |
+| 2 P0 锁语种 | ✅ | 3025e1b | **审查 subagent Verdict = pass-with-minor**：无 Blocker / Important。**4 条 Minor**：M1 commit message 行号偏 1（`sense-worker.ts:135` → 实际 136，已 commit 不 amend，记录在 STATE 防回查混乱）；M2 schema 严格 + runtime sanitize 轻度冗余（功能正确，保留作未来 schema 放宽兜底）；M3 NUL 分隔测试描述略偏（断言仍成立，下批修正）；M4 commit message「3 次重试覆盖」措辞可更直白（技术正确，不阻断）。**2 条 Open（已裁决）**：**Q1 接受**——补计划 §4.2 `asr-sense-key.ts` 注脚（与批 1 同模式，纯函数模块正式入文档）；**Q2 接受**——补计划 §4.4 集成层豁免说明（①② 由 `asr-host.ts:386-441` 短直读可验保证，集成层留批 6 真机）。§4.3 核实已在 commit message（M1 行号偏差不影响核实有效性）。I10 字节等价、`dsh.client.inject` 9 项未动、不变量 I1-I10 全保。 |
+| 3 字幕 a11y | 放行 | — | — |
 | 4 ADR-0007 步1 | 待 | — | — |
 | 5 ADR-0008 P1 | 待 | — | R4b 短应答边界已声明 |
-| 6 总收口 | 待 | — | 真机冒烟含热词识别效果（批 1 P1 遗留）|
+| 6 总收口 | 待 | — | 真机冒烟含**热词识别效果**（批 1 P1 遗留）+ **语种切换 worker 重建**（批 2 §4.4 集成层豁免）|
