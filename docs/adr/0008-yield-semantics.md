@@ -39,7 +39,7 @@ dsh-voice-mode 当前的"让位"仅有两个层：
 
 **让人格层让位语义在 system prompt 层"承认其存在"，让 LLM 知道有让位维度；信号源（backchannel / end-of-turn / silence 长度）从 ASR 端采集通过 `vset.bus` 事件总线注入。**
 
-### 1. 让位语义 5 块规则（system prompt Layer 2「YIELDING」段落）
+### 1. 让位语义 YIELDING 3 条规则（system prompt Layer 2「YIELDING」段落）
 
 继承第 6 轮设计稿 Layer 2 的 YIELDING 段：
 

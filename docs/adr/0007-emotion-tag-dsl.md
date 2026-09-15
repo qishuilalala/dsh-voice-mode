@@ -126,7 +126,7 @@ export interface TtsEngine {
 
 1. **决策点修正** —— 计划 §6.2 末段决策「处理点全收在 `tts-local.synthesize` 内部」执行到位（`src/emotion.ts` 纯函数 + `src/tts-local.ts:441-498` 多段合成拼 PCM 返回单 WAV）；`tapActiveStream` 完全不动（避免动段切分）；`tts-queue` 完全不动（I4/I5 天然无风险）。
 
-2. **B1 修复（plan §6.2 表漏列，批 4 审查 subagent 抓出）** —— `src/segmenter.ts:27` 原正则 `/<\/?[a-zA-Z][^>]*>/g` 把 emotion 标签一并剥掉，导致 emotion 处理永远不触发。修复方法（§6.2 表「推荐后者」）：① `plainText` 改为白名单 22 个 HTML 标签（`b|i|u|br|p|span|div|strong|em|s|sub|sup|h[1-6]|ul|ol|li|a|img|code|pre|blockquote|hr|table|tr|td|th`）；② `sanitizeForTts` 字符集移除 `<` 和 `>`（闭合 `>` 必须保留）。B1 防回归断言：`test/emotion-integration.test.mjs`（9 项，5 种场景 + 反向断言验证旧正则会让集成测试红）。
+2. **B1 修复（plan §6.2 表漏列，批 4 审查 subagent 抓出）** —— `src/segmenter.ts:27` 原正则 `/<\/?[a-zA-Z][^>]*>/g` 把 emotion 标签一并剥掉，导致 emotion 处理永远不触发。修复方法（§6.2 表「推荐后者」）：① `plainText` 改为白名单 26 个 HTML 标签（`b|i|u|br|p|span|div|strong|em|s|sub|sup|h[1-6]|ul|ol|li|a|img|code|pre|blockquote|hr|table|tr|td|th`）；② `sanitizeForTts` 字符集移除 `<` 和 `>`（闭合 `>` 必须保留）。B1 防回归断言：`test/emotion-integration.test.mjs`（9 项，5 种场景 + 反向断言验证旧正则会让集成测试红）。
 
 3. **whisper 单 → 成对标签语义偏差已落地修正** —— ADR-0007 原文是单标签（`<whisper>` 作用域语义不明），落地改为成对（`<whisper>...</whisper>`）。单标签无明确作用域边界，无法判定增益范围；成对标签语义清晰、可判定。whisper 不平衡（有开无关 / 无关有开）→ 全段退回非 whisper（保守语义：不误降音量）。
 
