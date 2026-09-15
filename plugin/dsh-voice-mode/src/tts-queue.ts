@@ -355,8 +355,10 @@ export class TtsQueue {
         }
       }
     } catch (e) {
-      // 引擎级失败：把句子推回以便重试；每会话只提示一次
-      console.warn(`[dsh-voice-mode] TTS unavailable: ${String(e)}`)
+      // 引擎级失败：把句子推回以便重试；每会话只提示一次。
+      // 批 A：补 sessionId 上下文（item / attempt 是 while/for 内部 const/let，
+      // 外层 catch 不可见——不做捕获重构以保持外科手术式改动）。
+      console.warn(`[dsh-voice-mode] TTS unavailable: sid=${sessionId} err=${String(e)}`)
       if (!q.errorNotified) {
         q.errorNotified = true
         this.onError?.(sessionId)

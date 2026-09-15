@@ -504,8 +504,13 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() => () => void queue.close())
   // 设置变化即时生效（applies 'live'）：音色/语速直接热更换；引擎切换重建引擎并
   // 清空在途队列（fork 新增）；其余在下次进入生效。
+  // 批 A：先取 prev 再赋值 vset（顺序敏感——next.xxx !== prev.xxx 同一引用比较恒 false
+  // 会导致 markStale 永远不被调）；ASR 字段（hotwords/score/language/ITN/senseVoice）
+  // 任一变化 → asr.markStale() 让现有 fingerprint-gated lazy 重建路径（asr-host.ts:267-274
+  // / :396-401）下次自动触发，避开主动 free 破坏 I1 的反模式。
   ctx.effect(() =>
     settingsScope.watch((next) => {
+      const prev = vset
       vset = next
       if (next.ttsEngine !== engineKind) {
         engineKind = next.ttsEngine
@@ -516,6 +521,15 @@ export function apply(ctx: Context, config: Config): void {
         queue.setEngine(makeEngine('kokoro'))
       }
       queue.updateVoice(next.voice, next.rate)
+      if (
+        next.asrHotwords !== prev.asrHotwords ||
+        next.asrHotwordsScore !== prev.asrHotwordsScore ||
+        next.recognitionLanguage !== prev.recognitionLanguage ||
+        next.senseITN !== prev.senseITN ||
+        next.senseVoice !== prev.senseVoice
+      ) {
+        asr.markStale()
+      }
     }),
   )
   /** 当前生效参数（/config 输出给 client 引导；client 每次进入模式重新拉取）。 */

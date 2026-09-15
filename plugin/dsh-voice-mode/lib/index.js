@@ -863,6 +863,13 @@ function createAsrRuntime(options) {
       void ensureVadModel().catch(() => void 0);
       if (senseVoice()) void getSenseWorker().catch(() => void 0);
     },
+    // 批 A：仅清缓存键——不 dispose recognizer/senseWorker，避免破坏 I1（in-flight
+    // finalize 拿到的旧 recognizer 引用被 free 会丢句）。让现有 fingerprint-gated 路径
+    // （getRecognizer:267-274 / getSenseWorker:396-401）下次自然触发重建。
+    markStale: () => {
+      recognizerHotwordsKey = "";
+      senseWorkerLangKey = "";
+    },
     modelStatus: () => {
       const statFile = async (dir, repo, name2) => {
         const st = await stat2(join2(dir, repo, name2)).catch(() => null);
@@ -1286,7 +1293,7 @@ var TtsQueue = class {
         }
       }
     } catch (e) {
-      console.warn(`[dsh-voice-mode] TTS unavailable: ${String(e)}`);
+      console.warn(`[dsh-voice-mode] TTS unavailable: sid=${sessionId} err=${String(e)}`);
       if (!q.errorNotified) {
         q.errorNotified = true;
         this.onError?.(sessionId);
@@ -2121,6 +2128,7 @@ function apply(ctx, config) {
   ctx.effect(() => () => void queue.close());
   ctx.effect(
     () => settingsScope.watch((next) => {
+      const prev = vset;
       vset = next;
       if (next.ttsEngine !== engineKind) {
         engineKind = next.ttsEngine;
@@ -2130,6 +2138,9 @@ function apply(ctx, config) {
         queue.setEngine(makeEngine("kokoro"));
       }
       queue.updateVoice(next.voice, next.rate);
+      if (next.asrHotwords !== prev.asrHotwords || next.asrHotwordsScore !== prev.asrHotwordsScore || next.recognitionLanguage !== prev.recognitionLanguage || next.senseITN !== prev.senseITN || next.senseVoice !== prev.senseVoice) {
+        asr.markStale();
+      }
     })
   );
   const currentVoice = () => vset.voice;

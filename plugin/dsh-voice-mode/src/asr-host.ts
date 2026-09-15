@@ -124,6 +124,12 @@ export interface AsrRuntime {
   /** 预热（非阻塞）：后台加载 zipformer2 recognizer + VAD（+ SenseVoice 若开启），
    *  把「首次开语音 ~5s 模型加载」前移到 host 启动，首次进入语音即时可用。 */
   warmup(): void
+  /** 批 A：标记缓存键过期——仅清 recognizerHotwordsKey + senseWorkerLangKey，
+   *  不主动 dispose recognizer/senseWorker；让现有 fingerprint-gated lazy 路径
+   *  （getRecognizer:267-274 / getSenseWorker:396-401）下次自然重建。设置面板拨滑块
+   *  触发 settingsScope.watch ASR 字段 diff 时调用。守 I1：in-flight finalize 拿到
+   *  旧 recognizer 引用不被 free（否则段定稿丢句）。 */
+  markStale(): void
 }
 
 /** 模型状态返回（/voice-mode/models/status 载荷）。 */
@@ -770,6 +776,13 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       void getRecognizer().catch(() => undefined)
       void ensureVadModel().catch(() => undefined)
       if (senseVoice()) void getSenseWorker().catch(() => undefined)
+    },
+    // 批 A：仅清缓存键——不 dispose recognizer/senseWorker，避免破坏 I1（in-flight
+    // finalize 拿到的旧 recognizer 引用被 free 会丢句）。让现有 fingerprint-gated 路径
+    // （getRecognizer:267-274 / getSenseWorker:396-401）下次自然触发重建。
+    markStale: () => {
+      recognizerHotwordsKey = ''
+      senseWorkerLangKey = ''
     },
     modelStatus: () => {
       const statFile = async (dir: string, repo: string, name: string): Promise<{ exists: boolean; size: number }> => {
