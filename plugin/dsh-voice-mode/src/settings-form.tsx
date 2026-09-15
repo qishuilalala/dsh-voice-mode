@@ -214,6 +214,15 @@ const HOST_OPTIONS: Array<{ v: string; label: string }> = [
   { v: 'https://hf-mirror.com', label: '国内镜像 hf-mirror.com' },
 ]
 
+const LANG_OPTIONS: Array<{ v: string; label: string }> = [
+  { v: 'auto', label: 'auto 自动检测' },
+  { v: 'zh', label: '中文 zh' },
+  { v: 'en', label: '英文 en' },
+  { v: 'ja', label: '日文 ja' },
+  { v: 'ko', label: '韩文 ko' },
+  { v: 'yue', label: '粤语 yue' },
+]
+
 function NumberField({
   score,
   field,
@@ -1086,6 +1095,17 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             </Row>
             <Row name="asrHotwordsScore" desc={tr('descAsrHotwordsScore')}>
               <NumberField score={scope} field="asrHotwordsScore" value={value.asrHotwordsScore ?? 1.5} min={1} max={5} step={0.1} />
+            </Row>
+            <Row name="recognitionLanguage" desc={tr('descRecognitionLanguage')}>
+              <SelectField
+                score={scope}
+                field="recognitionLanguage"
+                value={value.recognitionLanguage ?? 'auto'}
+                options={LANG_OPTIONS}
+              />
+            </Row>
+            <Row name="senseITN" desc={tr('descSenseITN')}>
+              <input type="checkbox" checked={value.senseITN !== false} onChange={(e) => void scope.set('senseITN', e.target.checked)} />
             </Row>
             <Row name="spokenFormat" desc={tr('descSpokenFormat')}>
               <input type="checkbox" checked={Boolean(value.spokenFormat)} onChange={(e) => void scope.set('spokenFormat', e.target.checked)} />

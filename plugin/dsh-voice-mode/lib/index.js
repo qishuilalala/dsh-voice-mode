@@ -99,8 +99,8 @@ function startSenseWorker(data) {
             modelConfig: {
               senseVoice: {
                 model: data.modelDir + "/model.int8.onnx",
-                language: "auto",
-                useInverseTextNormalization: 1
+                language: data.language,
+                useInverseTextNormalization: data.useITN
               },
               tokens: data.modelDir + "/tokens.txt",
               provider: "cpu",
@@ -364,6 +364,15 @@ function buildHotwordsKey(rawHw, score) {
   return `${rawHw.trim()}\0${String(score)}`;
 }
 
+// src/asr-sense-key.ts
+var RECOGNITION_LANGUAGES = ["auto", "zh", "en", "ja", "ko", "yue"];
+function sanitizeRecognitionLanguage(raw) {
+  return RECOGNITION_LANGUAGES.includes(raw) ? raw : "auto";
+}
+function buildSenseLangKey(language, itn) {
+  return `${sanitizeRecognitionLanguage(language)}\0${itn ? "1" : "0"}`;
+}
+
 // src/asr-host.ts
 var { createOnlineRecognizer, createVad } = sherpa_onnx;
 var MODEL_REPO = "csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30";
@@ -407,7 +416,7 @@ function rmsOf(samples) {
   return Math.sqrt(sum / samples.length);
 }
 function createAsrRuntime(options) {
-  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, hotwordsBuf, hotwordsScore, allowCustomHost } = options;
+  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, hotwordsBuf, hotwordsScore, recognitionLanguage, senseITN, allowCustomHost } = options;
   let lastProgress = null;
   const localBroadcast = (event, payload) => {
     if (event === "asr-progress") lastProgress = payload;
@@ -555,8 +564,16 @@ function createAsrRuntime(options) {
   };
   let senseWorker = null;
   let senseWorkerSyncing = null;
+  let senseWorkerLangKey = "";
   const getSenseWorker = async () => {
     if (!senseVoice()) return null;
+    const langKey = buildSenseLangKey(recognitionLanguage(), senseITN());
+    if (senseWorker && langKey !== senseWorkerLangKey) {
+      void senseWorker.terminate();
+      senseWorker = null;
+      senseWorkerSyncing = null;
+    }
+    senseWorkerLangKey = langKey;
     if (senseWorker) return senseWorker;
     if (senseWorkerSyncing) return senseWorkerSyncing;
     senseWorkerSyncing = (async () => {
@@ -565,12 +582,18 @@ function createAsrRuntime(options) {
       try {
         const workerPath = fileURLToPath(new URL("./sense-worker.mjs", import.meta.url));
         const w = new Worker(workerPath, {
-          workerData: { sherpaModule: "sherpa-onnx", modelDir: senseDir }
+          workerData: {
+            sherpaModule: "sherpa-onnx",
+            modelDir: senseDir,
+            language: recognitionLanguage(),
+            useITN: senseITN() ? 1 : 0
+          }
         });
         const client = createSenseWorkerClient(w);
         client.onDeath(() => {
           senseWorker = null;
           senseWorkerSyncing = null;
+          senseWorkerLangKey = "";
         });
         if (!await client.request("create")) {
           await client.terminate();
@@ -1825,7 +1848,9 @@ var VOICE_SETTINGS_DEFAULTS = {
   wakeWord: "",
   toolBeep: false,
   asrHotwords: "",
-  asrHotwordsScore: 1.5
+  asrHotwordsScore: 1.5,
+  recognitionLanguage: "auto",
+  senseITN: true
 };
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
@@ -1857,7 +1882,18 @@ function createVoiceSettingsSchema(defs) {
     asrHotwords: z.string().default(d.asrHotwords).description(
       "\u8BC6\u522B\u70ED\u8BCD\u504F\u7F6E\uFF08\u6BCF\u884C\u4E00\u4E2A\u8BCD\u6216\u300C\u8BCD:\u5206\u6570\u300D\uFF08\u5982 dsh-voice-mode:2.5\uFF09\uFF1B\u7559\u7A7A\u5173\u95ED = \u884C\u4E3A\u96F6\u53D8\u5316\u3002\u5F00\u542F\u540E\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u751F\u6548\uFF0C\u4F1A\u91CD\u5EFA\u6D41\u5F0F\u8BC6\u522B\u5668\uFF08\u6BEB\u79D2\u7EA7\uFF09"
     ),
-    asrHotwordsScore: z.number().min(1).max(5).default(d.asrHotwordsScore).description("\u70ED\u8BCD\u57FA\u51C6\u504F\u7F6E\u5206\uFF081.5 \u9ED8\u8BA4\uFF0C\u4E0E sherpa-onnx \u5B98\u65B9\u4E00\u81F4\uFF1B\u8D8A\u5927\u8D8A\u5F3A\uFF0C\u8FC7\u5927\u53EF\u80FD\u4F24\u666E\u901A\u8BC6\u522B\uFF09")
+    asrHotwordsScore: z.number().min(1).max(5).default(d.asrHotwordsScore).description("\u70ED\u8BCD\u57FA\u51C6\u504F\u7F6E\u5206\uFF081.5 \u9ED8\u8BA4\uFF0C\u4E0E sherpa-onnx \u5B98\u65B9\u4E00\u81F4\uFF1B\u8D8A\u5927\u8D8A\u5F3A\uFF0C\u8FC7\u5927\u53EF\u80FD\u4F24\u666E\u901A\u8BC6\u522B\uFF09"),
+    recognitionLanguage: z.union([
+      z.const("auto"),
+      z.const("zh"),
+      z.const("en"),
+      z.const("ja"),
+      z.const("ko"),
+      z.const("yue")
+    ]).default(d.recognitionLanguage).description(
+      "SenseVoice \u8BC6\u522B\u8BED\u8A00\uFF08\u9ED8\u8BA4 auto \u81EA\u52A8\u68C0\u6D4B\uFF1B\u9501 zh/en/ja/ko/yue \u540E\u53EA\u8BC6\u522B\u8BE5\u8BED\u79CD\uFF1B\u6DF7\u5408\u573A\u666F\u7528 auto\uFF1B\u5207\u6362\u4F1A\u7EC8\u6B62\u5E76\u91CD\u5EFA worker \u7EBF\u7A0B\uFF0C\u6BEB\u79D2\u7EA7\u751F\u6548\uFF09"
+    ),
+    senseITN: z.boolean().default(d.senseITN).description("SenseVoice \u9006\u6587\u672C\u5F52\u4E00\u5316\uFF08\u6570\u5B57/\u65E5\u671F\u89C4\u8303\u5316\uFF0C\u9ED8\u8BA4\u5F00\uFF1B\u5173\u95ED\u540E\u8F93\u51FA\u66F4\u63A5\u8FD1\u53E3\u8BED\u539F\u6587\uFF09")
   });
 }
 var VoiceSettingsSchema = createVoiceSettingsSchema();
@@ -1945,6 +1981,9 @@ function apply(ctx, config) {
     // P0 热词（批 1）：实时读取；变更触发 recognizer 重建（key 指纹），空 = 关闭。
     hotwordsBuf: () => vset.asrHotwords,
     hotwordsScore: () => vset.asrHotwordsScore,
+    // 批 2：SenseVoice 语言/ITN 实时读取；变更触发 worker 重建。
+    recognitionLanguage: () => vset.recognitionLanguage,
+    senseITN: () => vset.senseITN,
     allowCustomHost: config.allowCustomModelHost,
     broadcast
   });

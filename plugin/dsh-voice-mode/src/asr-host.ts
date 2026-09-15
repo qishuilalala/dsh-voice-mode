@@ -49,6 +49,7 @@ const { createOnlineRecognizer, createVad } = sherpa_onnx as unknown as {
 
 import { ensureModelFile, validateModelHost, HOST_PRIMARY, type ModelFileSpec } from './models.ts'
 import { buildHotwordsConfig, buildHotwordsKey } from './asr-hotwords.ts'
+import { buildSenseLangKey } from './asr-sense-key.ts'
 
 /** 模型仓库与文件清单（SHA256 固定，供应链校验）。 */
 export const MODEL_REPO = 'csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30'
@@ -85,6 +86,10 @@ export interface AsrRuntimeOptions {
   hotwordsBuf: () => string
   /** P0 热词基准偏置分（批 1）：getter 实时读设置。 */
   hotwordsScore: () => number
+  /** 批 2：识别语言（getter 实时读设置；auto/zh/en/ja/ko/yue；默认 auto = I10）。 */
+  recognitionLanguage: () => string
+  /** 批 2：SenseVoice 逆文本归一化开关（getter 实时读设置；默认 true = I10）。 */
+  senseITN: () => boolean
   /** 是否允许白名单之外的模型下载源（默认关；仅 https，供应链校验）。 */
   allowCustomHost: boolean
   /** 状态广播（SSE）：{kind:'asr-progress'|'asr-ready', ...} */
@@ -181,7 +186,7 @@ export function rmsOf(samples: Float32Array): number {
 }
 
 export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
-  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, hotwordsBuf, hotwordsScore, allowCustomHost } = options
+  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, hotwordsBuf, hotwordsScore, recognitionLanguage, senseITN, allowCustomHost } = options
   /** 设置面板实时进度：记录最近一次 asr-progress（含 VAD/SenseVoice 下载）。 */
   let lastProgress: { file: string; percent: number } | null = null
   const localBroadcast = (event: string, payload: unknown): void => {
@@ -382,8 +387,18 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   // worker 崩溃/退出/终止后置 null，下次调用懒重建（期间降级 zipformer）。
   let senseWorker: SenseWorkerClient | null = null
   let senseWorkerSyncing: Promise<SenseWorkerClient | null> | null = null
+  /** 批 2：上次建 worker 用的 language+ITN 指纹；变化触发 terminate+重建。 */
+  let senseWorkerLangKey = ''
   const getSenseWorker = async (): Promise<SenseWorkerClient | null> => {
     if (!senseVoice()) return null // P4：开关关闭 → 只用流式 zipformer
+    const langKey = buildSenseLangKey(recognitionLanguage(), senseITN())
+    // 批 2：lang 变化 → 终止旧 worker（createSenseWorkerClient 已 reject pending，见 sense-worker.ts:135）
+    if (senseWorker && langKey !== senseWorkerLangKey) {
+      void senseWorker.terminate()
+      senseWorker = null
+      senseWorkerSyncing = null
+    }
+    senseWorkerLangKey = langKey
     if (senseWorker) return senseWorker
     if (senseWorkerSyncing) return senseWorkerSyncing
     senseWorkerSyncing = (async () => {
@@ -393,13 +408,19 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         // worker 文件与 lib/index.js 同级：相对 bundle 所在目录解析，转绝对路径（Node 拒绝 file:// 字符串）。
         const workerPath = fileURLToPath(new URL('./sense-worker.mjs', import.meta.url))
         const w = new Worker(workerPath, {
-          workerData: { sherpaModule: 'sherpa-onnx', modelDir: senseDir },
+          workerData: {
+            sherpaModule: 'sherpa-onnx',
+            modelDir: senseDir,
+            language: recognitionLanguage(),
+            useITN: senseITN() ? 1 : 0,
+          },
         })
         const client = createSenseWorkerClient(w)
         // 崩溃/退出自动重建：清引用后下次 getSenseWorker 懒重建（防永久降级 zipformer）。
         client.onDeath(() => {
           senseWorker = null
           senseWorkerSyncing = null // 清同步位：否则下次 getSenseWorker 命中旧的已解析 promise，永久降级 zipformer
+          senseWorkerLangKey = '' // 清 lang 指纹：下次重建用最新设置
         })
         // 建 recognizer（worker 内 create；主线程只等回执，不阻塞事件循环）。
         if (!(await client.request('create'))) {

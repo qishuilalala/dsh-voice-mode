@@ -1320,6 +1320,10 @@ var zh = {
   descAsrHotwords: "\u6BCF\u884C\u4E00\u4E2A\u8BCD\u6216\u300C\u8BCD:\u5206\u6570\u300D\uFF08\u5982 dsh-voice-mode:2.5\uFF09\uFF1B\u7559\u7A7A\u5173\u95ED\uFF08\u9ED8\u8BA4 = \u884C\u4E3A\u96F6\u53D8\u5316\uFF09\u3002\u5F00\u542F\u540E\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u751F\u6548",
   descAsrHotwordsScore: "\u70ED\u8BCD\u57FA\u51C6\u504F\u7F6E\u5206\uFF081.5 \u9ED8\u8BA4\uFF0C\u4E0E sherpa-onnx \u5B98\u65B9\u4E00\u81F4\uFF1B\u8D8A\u5927\u8D8A\u5F3A\uFF0C\u8FC7\u5927\u53EF\u80FD\u4F24\u666E\u901A\u8BC6\u522B\uFF09",
   asrHotwordsPlaceholder: "dsh-voice-mode\nsherpa-onnx\n\u5C0F\u7231\u540C\u5B66:2.0",
+  recognitionLanguage: "\u8BC6\u522B\u8BED\u8A00",
+  descRecognitionLanguage: "SenseVoice \u8BC6\u522B\u8BED\u79CD\uFF08\u9ED8\u8BA4 auto \u81EA\u52A8\u68C0\u6D4B\uFF1B\u9501\u8BED\u79CD\u540E\u53EA\u8BC6\u522B\u8BE5\u8BED\u79CD\uFF1B\u6DF7\u5408\u573A\u666F\u4FDD\u6301 auto\uFF1B\u5207\u6362\u4F1A\u91CD\u5EFA worker \u7EBF\u7A0B\uFF09",
+  senseITN: "\u9006\u6587\u672C\u5F52\u4E00\u5316",
+  descSenseITN: "SenseVoice \u6570\u5B57/\u65E5\u671F/\u683C\u5F0F\u89C4\u8303\u5316\uFF08\u9ED8\u8BA4\u5F00\uFF1B\u5173\u95ED\u540E\u8F93\u51FA\u66F4\u63A5\u8FD1\u53E3\u8BED\u539F\u6587\uFF09",
   descMode: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09",
   modeToggle: "\u6301\u7EED\u8046\u542C",
   modeHold: "\u6309\u4F4F\u8BF4\u8BDD",
@@ -1468,6 +1472,10 @@ var en = {
   descAsrHotwords: 'One term per line, or "term:score" (e.g. dsh-voice-mode:2.5). Leave empty to disable (default = no behavioural change). Takes effect next time you enter voice mode.',
   descAsrHotwordsScore: "Hotword baseline bias (default 1.5, matches sherpa-onnx upstream). Higher = stronger bias but may hurt generic recognition.",
   asrHotwordsPlaceholder: "dsh-voice-mode\nsherpa-onnx\nxiaomi:2.0",
+  recognitionLanguage: "Recognition language",
+  descRecognitionLanguage: "SenseVoice language (default auto; lock to zh/en/ja/ko/yue for single-language; mixed scenarios keep auto; switching rebuilds the worker thread)",
+  senseITN: "Inverse text normalization",
+  descSenseITN: "SenseVoice number/date/format normalization (default on; turn off to keep raw spoken form)",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)",
   modeToggle: "Continue listen",
   modeHold: "Hold to talk",
@@ -1789,6 +1797,14 @@ var ENGINE_DEFAULT_VOICE = {
 var HOST_OPTIONS = [
   { v: "https://huggingface.co", label: "\u5B98\u65B9\u6E90 huggingface.co" },
   { v: "https://hf-mirror.com", label: "\u56FD\u5185\u955C\u50CF hf-mirror.com" }
+];
+var LANG_OPTIONS = [
+  { v: "auto", label: "auto \u81EA\u52A8\u68C0\u6D4B" },
+  { v: "zh", label: "\u4E2D\u6587 zh" },
+  { v: "en", label: "\u82F1\u6587 en" },
+  { v: "ja", label: "\u65E5\u6587 ja" },
+  { v: "ko", label: "\u97E9\u6587 ko" },
+  { v: "yue", label: "\u7CA4\u8BED yue" }
 ];
 function NumberField({
   score,
@@ -2498,6 +2514,16 @@ function VoiceSettingsCard({ scope }) {
           }
         ) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "asrHotwordsScore", desc: t("descAsrHotwordsScore"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "asrHotwordsScore", value: value.asrHotwordsScore ?? 1.5, min: 1, max: 5, step: 0.1 }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "recognitionLanguage", desc: t("descRecognitionLanguage"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          SelectField,
+          {
+            score: scope,
+            field: "recognitionLanguage",
+            value: value.recognitionLanguage ?? "auto",
+            options: LANG_OPTIONS
+          }
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseITN", desc: t("descSenseITN"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.senseITN !== false, onChange: (e) => void scope.set("senseITN", e.target.checked) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) })
@@ -2526,7 +2552,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "42dcd16";
+var BUILD_TAG = "5caf457";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

@@ -147,6 +147,10 @@ export interface VoiceSettingsValue {
   asrHotwords: string
   /** P0 热词基准偏置分（1.5 默认；越大越强，过大可能伤普通识别）。 */
   asrHotwordsScore: number
+  /** 批 2：SenseVoice 识别语言（auto=自动检测/zh/en/ja/ko/yue；mixed 用 auto）。 */
+  recognitionLanguage: 'auto' | 'zh' | 'en' | 'ja' | 'ko' | 'yue'
+  /** 批 2：SenseVoice 逆文本归一化（数字/日期规范化，默认 true）。 */
+  senseITN: boolean
 }
 
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
@@ -171,6 +175,8 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   toolBeep: false,
   asrHotwords: '',
   asrHotwordsScore: 1.5,
+  recognitionLanguage: 'auto',
+  senseITN: true,
 }
 
 /** 以平台常量默认构造设置 schema。 */
@@ -248,6 +254,23 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .max(5)
       .default(d.asrHotwordsScore)
       .description('热词基准偏置分（1.5 默认，与 sherpa-onnx 官方一致；越大越强，过大可能伤普通识别）'),
+    recognitionLanguage: z
+      .union([
+        z.const('auto'),
+        z.const('zh'),
+        z.const('en'),
+        z.const('ja'),
+        z.const('ko'),
+        z.const('yue'),
+      ])
+      .default(d.recognitionLanguage)
+      .description(
+        'SenseVoice 识别语言（默认 auto 自动检测；锁 zh/en/ja/ko/yue 后只识别该语种；混合场景用 auto；切换会终止并重建 worker 线程，毫秒级生效）',
+      ),
+    senseITN: z
+      .boolean()
+      .default(d.senseITN)
+      .description('SenseVoice 逆文本归一化（数字/日期规范化，默认开；关闭后输出更接近口语原文）'),
   })
 }
 
@@ -399,6 +422,9 @@ export function apply(ctx: Context, config: Config): void {
     // P0 热词（批 1）：实时读取；变更触发 recognizer 重建（key 指纹），空 = 关闭。
     hotwordsBuf: () => vset.asrHotwords,
     hotwordsScore: () => vset.asrHotwordsScore,
+    // 批 2：SenseVoice 语言/ITN 实时读取；变更触发 worker 重建。
+    recognitionLanguage: () => vset.recognitionLanguage,
+    senseITN: () => vset.senseITN,
     allowCustomHost: config.allowCustomModelHost,
     broadcast,
   })

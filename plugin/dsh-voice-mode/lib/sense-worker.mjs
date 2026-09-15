@@ -86,8 +86,8 @@ function startSenseWorker(data) {
             modelConfig: {
               senseVoice: {
                 model: data.modelDir + "/model.int8.onnx",
-                language: "auto",
-                useInverseTextNormalization: 1
+                language: data.language,
+                useInverseTextNormalization: data.useITN
               },
               tokens: data.modelDir + "/tokens.txt",
               provider: "cpu",

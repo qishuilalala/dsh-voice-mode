@@ -42,6 +42,10 @@ export interface SenseWorkerData {
   sherpaModule: string
   /** SenseVoice 模型目录（model.int8.onnx 与 tokens.txt 所在）。 */
   modelDir: string
+  /** 批 2：识别语言（'auto' | 'zh' | 'en' | 'ja' | 'ko' | 'yue'；默认 'auto'）。 */
+  language: string
+  /** 批 2：是否启用逆文本归一化（ITN；默认 1 = 启用）。 */
+  useITN: number
 }
 
 type WorkerLike = {
@@ -162,8 +166,8 @@ export function startSenseWorker(data: SenseWorkerData): void {
             modelConfig: {
               senseVoice: {
                 model: data.modelDir + '/model.int8.onnx',
-                language: 'auto',
-                useInverseTextNormalization: 1,
+                language: data.language,
+                useInverseTextNormalization: data.useITN,
               },
               tokens: data.modelDir + '/tokens.txt',
               provider: 'cpu',
