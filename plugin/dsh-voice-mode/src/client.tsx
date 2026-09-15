@@ -2589,7 +2589,7 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
             }}
           >
-            {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, '0')}
+            {String(Math.floor(elapsedSec / 60)).padStart(2, '0')}:{String(elapsedSec % 60).padStart(2, '0')}
           </span>
         )}
         {b.ui.aecOff === true && (

@@ -273,6 +273,12 @@ function NumberField({
       setHint(tr('numberInvalid'))
       return
     }
+    // 批 J 任务 3：拒绝 "1." 这种残缺小数串（Number("1.") = 1 但视觉残留 "." 不消失）。
+    // 输入态 "." 是用户中途态，提交时若仍残留则视为非法；多 "." 同样非法。
+    if (raw.endsWith('.') || raw.split('.').length > 2) {
+      setHint(tr('numberInvalid'))
+      return
+    }
     const n = Number(raw)
     if (!Number.isFinite(n)) {
       setHint(tr('numberInvalid'))
@@ -1139,7 +1145,7 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
   return (
     <div data-dshvm-settings="card" style={cardStyle}>
       <style>{focusVisibleCss}</style>
-      <button type="button" aria-expanded={!collapsed} onClick={() => setCollapsed((c) => !c)} style={{ ...setHeader, background: collapsed ? 'transparent' : t.bgOpen }}>
+      <button type="button" aria-expanded={!collapsed} aria-controls="dshvm-settings-card-body" onClick={() => setCollapsed((c) => !c)} style={{ ...setHeader, background: collapsed ? 'transparent' : t.bgOpen }}>
         <span style={setHeadText}>
           <span style={setName}>{tr('stateVoiceMode')}</span>
           <span style={setDesc}>{tr('settingsCardDesc')}</span>
@@ -1152,7 +1158,7 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
       </button>
 
       {!collapsed && (
-        <div style={setBody}>
+        <div id="dshvm-settings-card-body" style={setBody}>
           <div style={{ marginTop: 4 }}>
             <Section title={tr('secRead')}>
             <Row name="ttsEngine" desc={tr('descTtsEngine')}>
