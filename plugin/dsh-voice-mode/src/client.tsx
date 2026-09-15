@@ -186,6 +186,8 @@ interface VoiceBus {
   exit(sessionId: string): Promise<void>
   /** 音频分块帧到达（播放引擎消费前由客户端按句拼帧）。 */
   onAudioFrame(fn: (frame: TtsChunkFrame) => void): () => void
+  /** 批 5：设置/清除 backchannel 让位窗口（hardBreak 路径清 0；onBackchannel 触发设 now+1500）。 */
+  setBackchannelHold(untilMs: number): void
   /** 清播放队列 + 停当前句（本地 skip，打断第一层）。 */
   skipAudio(): void
   /** P3-2：回声消除源（参考窗口 + NLMS），供 ASR 引擎注入。 */
@@ -572,6 +574,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     toolBeep: false,
     captionFontSize: 0,
     captionMaxWidth: 1,
+    backchannelYield: true,
   }
   const ui: VoiceUiState = {
     state: 'idle',
@@ -594,6 +597,10 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   let source: EventSource | null = null
   /** playing 从 true→false 的墙钟时刻（回声尾音宽限起点，见 ECHO_TAIL_MS）。 */
   let playingEndAt = 0
+  /** 批 5 / ADR-0008 Phase 1：backchannel 让位窗口截止时间戳（ms）。
+   *  onBackchannel 触发时 setBackchannelHold(now + 1500)；hold 期间 TTS 帧在 audioListeners 回调内丢弃（字幕同帧丢）；
+   *  hardBreak 路径清 0（真打断优先）；hold 到期后正常播放恢复。 */
+  let backchannelHoldUntil = 0
 
   // --- P1-5 延迟埋点链（开发模式）：一轮「说完→首音」的时间戳收拢。 ---
   const telemetryStages: Partial<Record<TelemetryStage, number>> = {}
@@ -931,6 +938,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     // 防「残余 chunk 重建整句 → 重新入队播放」与新一轮回复叠加。
     const rejectLine = rejectSeqUpTo.get(frame.sessionId)
     if (rejectLine !== undefined && frame.sentenceId <= rejectLine) return
+    // 批 5 / ADR-0008 Phase 1：backchannel hold 窗口内 TTS 帧丢弃（字幕同帧丢弃，避免字幕堆积）。
+    //   I4 帧协议零触碰：final 帧协议与现有 reject/重建逻辑完全保留；hold 解除后正常播放恢复。
+    if (backchannelHoldUntil && Date.now() < backchannelHoldUntil) return
     // P1-5：首 chunk 到达 = 首句合成产出（延迟埋点链里程碑）。
     stampTelemetry('first-tts-chunk')
     if (frame.sentenceId !== curSentenceId) {
@@ -1082,6 +1092,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         audioListeners.delete(fn)
       }
     },
+    setBackchannelHold(untilMs) {
+      backchannelHoldUntil = untilMs
+    },
     skipAudio() {
       doSkipAudio()
     },
@@ -1144,6 +1157,8 @@ interface VoiceBootConfig {
   captionFontSize: 0 | 1 | 2 | 3
   /** 批 3：字幕宽度档位（0=50vw/1=70vw/2=90vw；默认 1）。 */
   captionMaxWidth: 0 | 1 | 2
+  /** 批 5 / ADR-0008 Phase 1：让位语义 backchannel 开关（默认 true = 朗读期说「嗯/对」自动让位）。 */
+  backchannelYield: boolean
 }
 
 let styleInjected = false
@@ -1204,7 +1219,7 @@ export function MicButton({
   /** M2：隐藏 tab 时已暂停收音（可见时恢复）；隐私——避免后台持续录音。 */
   const pausedForHiddenRef = useRef(false)
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
-  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 1500, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, shortcut: 'Ctrl+Shift+V', wakeWord: '', toolBeep: false, captionFontSize: 0, captionMaxWidth: 1 }
+  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 1500, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, shortcut: 'Ctrl+Shift+V', wakeWord: '', toolBeep: false, captionFontSize: 0, captionMaxWidth: 1, backchannelYield: true }
 
   useVoiceCss()
 
@@ -1246,6 +1261,8 @@ export function MicButton({
         // 批 3：fetchConfig 是白名单拼接（plan §5.2 措辞「通用透传」与此处源码不符——见 commit message）
         captionFontSize: c.captionFontSize === 1 || c.captionFontSize === 2 || c.captionFontSize === 3 ? c.captionFontSize : 0,
         captionMaxWidth: c.captionMaxWidth === 0 || c.captionMaxWidth === 2 ? c.captionMaxWidth : 1,
+        // 批 5：同模式（plan §7.2 表漏列 fetchConfig 字段透传，类批 3 captionFontSize 集成层补丁）
+        backchannelYield: c.backchannelYield !== false,
       }
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord })
       return next
@@ -1439,6 +1456,8 @@ export function MicButton({
         // 立即停播 + 恢复音量：不等待慢操作（discardSegment 最多 5s、cancel 最多 3s）。
         bus.skipAudio()
         bus.unduckAudio()
+        // 批 5：真打断优先——清 backchannel 让位窗口，避免 1.5s 丢帧阻塞用户新回合播放。
+        bus.setBackchannelHold(0)
         // 立即取消当前回合（不等 cancelP/discardSegment）：否则其 3~5s 窗口内用户开口的
         // 新回合会被迟到的 cancelTurn 误取消（打断+说话竞态）。
         if (runningRef.current && sidRef.current) {
@@ -1580,6 +1599,15 @@ export function MicButton({
             bus.setUi({ aecOff: !on })
             fixtureRecorder.mark('native-aec', on ? 'on（自研 NLMS 旁路）' : 'off（自研 NLMS 生效）')
           },
+          // 批 5 / ADR-0008 Phase 1：backchannel 命中回调——
+          //   立即 skipAudio 终止当前朗读 + 置 1.5s hold 窗口，期间 TTS 帧丢（字幕同帧丢）。
+          //   关 backchannelYield = 不挂回调，行为等同改造前（I10 豁免由 §7.0 ADR-0008 接受）。
+          onBackchannel: cfg.backchannelYield
+            ? () => {
+                bus.skipAudio()
+                bus.setBackchannelHold(Date.now() + 1500)
+              }
+            : undefined,
         },
         sid,
       )

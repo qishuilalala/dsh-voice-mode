@@ -1104,6 +1104,9 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
                 ]}
               />
             </Row>
+            <Row name="backchannelYield" desc={tr('descBackchannelYield')}>
+              <input type="checkbox" checked={value.backchannelYield !== false} onChange={(e) => void scope.set('backchannelYield', e.target.checked)} />
+            </Row>
             </Section>
             <Section title={tr('secRecognition')}>
             <Row name="senseVoice" desc={tr('descSenseVoice')}>

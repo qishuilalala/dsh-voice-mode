@@ -73,7 +73,10 @@ const VOICE_SPOKEN_PROMPT =
   '【语音模式】当前回复会被语音朗读，请始终用用户所用语言、以口语化的短句直接回答，像面对面聊天一样自然，避免书面语和长难句。' +
   '不要使用任何 Markdown 或排版符号（星号、下划线、反引号、井号、列表与表格标记、代码块等）。' +
   '需要分点说明时用「第一、第二」或连贯的短句表达；除非用户明确要求，不要输出代码片段、完整 URL 或冗长定义，用一两句话概括含义即可。' +
-  '回答简洁直接，不要重复和寒暄。'
+  '回答简洁直接，不要重复和寒暄。' +
+  // 批 5 / ADR-0008 Phase 1 让位 prompt（#2）：补齐 YIELDING 段——与现有 4 句同风格。
+  // 与 onBackchannel 客户端行为配合：朗读期用户说「嗯/对」客户端会自动让位；提示词教模型被让位后留停顿、不连问。
+  '如果用户在你朗读时插话（哪怕只是「嗯/对」这样的短应答），立即停止当前句，把话轮让给用户；回答后留出停顿，不要连问两个问题；用户沉默时不要主动找新话题。'
 
 /** 提示词 section 的稳定名称（注册层按 order 排序；瀑布里 push 即追加到组装结果末尾）。 */
 const VOICE_SPOKEN_SECTION = 'voice-mode:spoken-format'
@@ -155,6 +158,9 @@ export interface VoiceSettingsValue {
   captionFontSize: 0 | 1 | 2 | 3
   /** 批 3：字幕宽度档位 0=50vw/1=70vw/2=90vw（默认 1 = 70vw）。 */
   captionMaxWidth: 0 | 1 | 2
+  /** 批 5 / ADR-0008 Phase 1：让位语义 backchannel（默认 true = 朗读期用户说「嗯/对」自动跳过当前句）。
+   *  关 = 不挂 onBackchannel 回调（行为等同改造前）。I10 豁免：默认开是产品决策，ADR-0008 已接受。 */
+  backchannelYield: boolean
 }
 
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
@@ -185,6 +191,8 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   //   captionMaxWidth 默认 1（70vw）：视口 <686px 时窄于现状 480px；≈686px 时接近；>686px 时宽于 480px（取舍见 schema description）。
   captionFontSize: 0,
   captionMaxWidth: 1,
+  // 批 5：backchannel 默认 true（产品决策；关 = 不挂 onBackchannel 回调，行为等同改造前）。
+  backchannelYield: true,
 }
 
 /** 以平台常量默认构造设置 schema。 */
@@ -290,6 +298,12 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .default(d.captionMaxWidth)
       .description(
         '字幕宽度档位（0=50vw/1=70vw/2=90vw；默认 1；视口 <686px 时窄于现状 480px、≈686px 时接近、>686px 时宽于 480px；切换即时生效）',
+      ),
+    backchannelYield: z
+      .boolean()
+      .default(d.backchannelYield)
+      .description(
+        '让位语义（批 5 / ADR-0008 Phase 1，默认开）：朗读期用户说「嗯/对」等短应答时，自动跳过当前 TTS 句并短暂让位 1.5s——1.5s 内用户真要说则走原 hardBreak 取消回合；关 = 不让位，行为等同改造前',
       ),
   })
 }
@@ -611,6 +625,7 @@ export function apply(ctx: Context, config: Config): void {
             toolBeep: vset.toolBeep,
             captionFontSize: vset.captionFontSize,
             captionMaxWidth: vset.captionMaxWidth,
+            backchannelYield: vset.backchannelYield,
             cacheDir: config.cacheDir,
             ttsEngine: currentEngine(),
             audioMime: queue.mime,

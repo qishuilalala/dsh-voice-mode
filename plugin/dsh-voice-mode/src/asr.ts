@@ -26,6 +26,43 @@ let workletBlobUrl: string | null = null
 export type AsrState = 'idle' | 'listening' | 'wake' | 'speech' | 'transcribing' | 'loading-model'
 
 /**
+ * Backchannel 词表（批 5 / ADR-0008 Phase 1）。
+ * 「朗读期用户说『嗯/对』等短应答 → 让位」语义：用户其实没真正要说，只是回应/确认；
+ * 让位 = 跳过当前 TTS 句，1.5s 内用户真要说则走 hardBreak 取消回合。
+ *
+ * 与 wakeWord 的本质区别：
+ *   - wakeWord：前缀匹配（候选以唤醒词开头）
+ *   - backchannel：**整段**匹配（候选归一化后必须等于词表某一元素）
+ *
+ * 边界（plan §10 R4b）：≤4 归一化字符；不复用 normalizeWake（其会剥前置语气词，
+ *   把「嗯」剥成空串，与本场景语义相反）；独立归一化只去空白/标点/小写。
+ */
+const BACKCHANNEL_WORDS: ReadonlySet<string> = new Set([
+  '嗯', '哎', '呃', '哦', '噢', '对', '好', '行', '是',
+  '嗯嗯', '好好',
+  'so', 'um', 'uh', 'yeah', 'right', 'ok',
+])
+
+/** Backchannel 独立归一化：去空白/标点/小写（不剥前置语气词——词表本身就是语气词）。 */
+function normalizeBackchannel(text: string): string {
+  return String(text ?? '')
+    .replace(/[\s\u3000]+/g, '')
+    .toLowerCase()
+    .replace(/[，。！？!?；;、,.]/g, '')
+}
+
+/**
+ * 整段匹配 backchannel 词表。
+ * @param partial host 返回的段内累计识别文本
+ * @returns 是否命中词表且长度 ≤4 归一化字符
+ */
+export function matchBackchannel(partial: string): boolean {
+  const p = normalizeBackchannel(partial)
+  if (!p || p.length > 4) return false
+  return BACKCHANNEL_WORDS.has(p)
+}
+
+/**
  * P3-2 回声消除参考源（由 client.tsx 组装注入）：采集每帧以 windowAt(墙钟, 长度)
  * 取回对应时刻的 TTS 播放参考，process 用 NLMS 减去回声。缺失（null）时原样透传。
  */
@@ -64,6 +101,8 @@ export interface AsrConfig {
   onSessionExpired?: () => Promise<boolean>
   /** A1：原生 AEC 生效状态回调（getUserMedia 后 track.getSettings().echoCancellation）。 */
   onAecState?: (on: boolean) => void
+  /** 批 5 / ADR-0008 Phase 1：backchannel 命中回调（朗读期用户说「嗯/对」等短应答）。 */
+  onBackchannel?: () => void
   /** 唤醒词（空 = 关）：进入后先在 wake 待机态，说出唤醒词才正式开口。 */
   wakeWord?: string
 }
@@ -333,6 +372,13 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       // P1-4：上传成功后才推进已传水位（失败/重试不推进，下一拍补传）。
       uploadedSamples = Math.max(uploadedSamples, from + samples.length)
       emit(partialListeners, out.text ?? '')
+      // 批 5 / ADR-0008 Phase 1：backchannel 软让位。I2 保护：仅在「朗读期 + 已开口」下才判——
+      //   朗读期（config.isPlaying()）= TTS 在播；speechActive = 本地检测已开口（避免用户自言自语被误让位）。
+      //   partial 文本归一化后整段匹配词表，命中 → 触发 onBackchannel（client 侧 skipAudio + 1.5s hold 丢帧）。
+      //   I3 保护：分支结构不动，只加 if，不动 emit / endpoint / finalizeSegment 等任何现有逻辑。
+      if (speechActive && (config.isPlaying?.() ?? false) && matchBackchannel(out.text ?? '')) {
+        config.onBackchannel?.()
+      }
       // P2-1：host Silero VAD 端点提示（静音 ≥0.5s 判句完成）→ 立即定稿。
       // 客户端静音计时（silenceMs）保留为 VAD 模型缺失/超时兜底。
       // I3：hold 按住期间不判端点（松手才发，防思考停顿被拆句）。

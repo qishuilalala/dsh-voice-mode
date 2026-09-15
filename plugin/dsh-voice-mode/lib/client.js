@@ -353,6 +353,33 @@ var fixtureRecorder = new FixtureRecorder();
 
 // src/asr.ts
 var workletBlobUrl = null;
+var BACKCHANNEL_WORDS = /* @__PURE__ */ new Set([
+  "\u55EF",
+  "\u54CE",
+  "\u5443",
+  "\u54E6",
+  "\u5662",
+  "\u5BF9",
+  "\u597D",
+  "\u884C",
+  "\u662F",
+  "\u55EF\u55EF",
+  "\u597D\u597D",
+  "so",
+  "um",
+  "uh",
+  "yeah",
+  "right",
+  "ok"
+]);
+function normalizeBackchannel(text) {
+  return String(text ?? "").replace(/[\s\u3000]+/g, "").toLowerCase().replace(/[，。！？!?；;、,.]/g, "");
+}
+function matchBackchannel(partial) {
+  const p = normalizeBackchannel(partial);
+  if (!p || p.length > 4) return false;
+  return BACKCHANNEL_WORDS.has(p);
+}
 var SAMPLE_RATE2 = 16e3;
 var SPEECH_RMS = 0.015;
 var LEVEL_CEILING = 0.25;
@@ -527,6 +554,9 @@ function createAsrEngine(config, sessionId) {
       if (state === "loading-model") setState("speech");
       uploadedSamples = Math.max(uploadedSamples, from + samples.length);
       emit(partialListeners, out.text ?? "");
+      if (speechActive && (config.isPlaying?.() ?? false) && matchBackchannel(out.text ?? "")) {
+        config.onBackchannel?.();
+      }
       if (out.endpoint && active && speechActive && !holdActive) finalizeSegment();
     } catch {
     } finally {
@@ -1336,6 +1366,10 @@ var zh = {
   captionWidth70: "\u4E2D",
   captionWidth90: "\u5BBD",
   skipReading: "\u8DF3\u8FC7\u5F53\u524D\u6717\u8BFB",
+  backchannelYield: "\u77ED\u5E94\u7B54\u8BA9\u4F4D",
+  descBackchannelYield: "\u6717\u8BFB\u671F\u7528\u6237\u8BF4\u300C\u55EF/\u5BF9\u300D\u7B49\u77ED\u5E94\u7B54\u65F6\u81EA\u52A8\u8BA9\u4F4D\uFF08\u8DF3\u8FC7\u5F53\u524D TTS \u53E5 + \u77ED\u6682\u4E22\u5E27 1.5s\uFF1B\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF1B\u5173 = \u4E0D\u8BA9\u4F4D\uFF0C\u884C\u4E3A\u7B49\u540C\u6539\u9020\u524D\uFF09",
+  backchannelHint: "\u8BA9\u4F4D prompt",
+  descBackchannelHint: "\u63D0\u793A\u8BCD\u6559\u6A21\u578B\u88AB\u8BA9\u4F4D\u540E\u7559\u51FA\u505C\u987F\u3001\u4E0D\u8FDE\u95EE\u4E24\u4E2A\u95EE\u9898\u3001\u4E0D\u4E3B\u52A8\u627E\u65B0\u8BDD\u9898\uFF08#2 \u8BA9\u4F4D\u8BED\u4E49\uFF09",
   descMode: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09",
   modeToggle: "\u6301\u7EED\u8046\u542C",
   modeHold: "\u6309\u4F4F\u8BF4\u8BDD",
@@ -1500,6 +1534,10 @@ var en = {
   captionWidth70: "Medium",
   captionWidth90: "Wide",
   skipReading: "Skip current reading",
+  backchannelYield: "Short-answer yielding",
+  descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches pre-batch-5)',
+  backchannelHint: "Yield prompt",
+  descBackchannelHint: "The prompt teaches the model to pause after being yielded to, not chain two questions, and not bring up new topics (#2 yielding semantics)",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)",
   modeToggle: "Continue listen",
   modeHold: "Hold to talk",
@@ -2550,7 +2588,8 @@ function VoiceSettingsCard({ scope }) {
               { v: 2, label: t("captionWidth90") }
             ]
           }
-        ) })
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "backchannelYield", desc: t("descBackchannelYield"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.backchannelYield !== false, onChange: (e) => void scope.set("backchannelYield", e.target.checked) }) })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRecognition"), children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
@@ -2603,7 +2642,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "4c42ebd";
+var BUILD_TAG = "76e8e5d";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2908,7 +2947,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     wakeWord: "",
     toolBeep: false,
     captionFontSize: 0,
-    captionMaxWidth: 1
+    captionMaxWidth: 1,
+    backchannelYield: true
   };
   const ui = {
     state: "idle",
@@ -2930,6 +2970,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   const audioListeners = /* @__PURE__ */ new Set();
   let source = null;
   let playingEndAt = 0;
+  let backchannelHoldUntil = 0;
   const telemetryStages = {};
   const stampTelemetry = (stage, at) => {
     if (!telemetryEnabled) return;
@@ -3191,6 +3232,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     if (frame.sessionId !== activeSessionId) return;
     const rejectLine = rejectSeqUpTo.get(frame.sessionId);
     if (rejectLine !== void 0 && frame.sentenceId <= rejectLine) return;
+    if (backchannelHoldUntil && Date.now() < backchannelHoldUntil) return;
     stampTelemetry("first-tts-chunk");
     if (frame.sentenceId !== curSentenceId) {
       curSentenceId = frame.sentenceId;
@@ -3315,6 +3357,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         audioListeners.delete(fn);
       };
     },
+    setBackchannelHold(untilMs) {
+      backchannelHoldUntil = untilMs;
+    },
     skipAudio() {
       doSkipAudio();
     },
@@ -3391,7 +3436,7 @@ function MicButton({
   const manualHoldRef = (0, import_react2.useRef)(false);
   const breakRef = (0, import_react2.useRef)(null);
   const pausedForHiddenRef = (0, import_react2.useRef)(false);
-  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 1500, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, shortcut: "Ctrl+Shift+V", wakeWord: "", toolBeep: false, captionFontSize: 0, captionMaxWidth: 1 };
+  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 1500, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, shortcut: "Ctrl+Shift+V", wakeWord: "", toolBeep: false, captionFontSize: 0, captionMaxWidth: 1, backchannelYield: true };
   useVoiceCss();
   const [, bumpUi] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(
@@ -3425,7 +3470,9 @@ function MicButton({
         toolBeep: c.toolBeep === true,
         // 批 3：fetchConfig 是白名单拼接（plan §5.2 措辞「通用透传」与此处源码不符——见 commit message）
         captionFontSize: c.captionFontSize === 1 || c.captionFontSize === 2 || c.captionFontSize === 3 ? c.captionFontSize : 0,
-        captionMaxWidth: c.captionMaxWidth === 0 || c.captionMaxWidth === 2 ? c.captionMaxWidth : 1
+        captionMaxWidth: c.captionMaxWidth === 0 || c.captionMaxWidth === 2 ? c.captionMaxWidth : 1,
+        // 批 5：同模式（plan §7.2 表漏列 fetchConfig 字段透传，类批 3 captionFontSize 集成层补丁）
+        backchannelYield: c.backchannelYield !== false
       };
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord });
       return next;
@@ -3583,6 +3630,7 @@ function MicButton({
       const hardBreak = async () => {
         bus.skipAudio();
         bus.unduckAudio();
+        bus.setBackchannelHold(0);
         if (runningRef.current && sidRef.current) {
           bus.cancelTurn(sidRef.current);
         }
@@ -3696,7 +3744,14 @@ function MicButton({
             bus.setEchoBypass(on2);
             bus.setUi({ aecOff: !on2 });
             fixtureRecorder.mark("native-aec", on2 ? "on\uFF08\u81EA\u7814 NLMS \u65C1\u8DEF\uFF09" : "off\uFF08\u81EA\u7814 NLMS \u751F\u6548\uFF09");
-          }
+          },
+          // 批 5 / ADR-0008 Phase 1：backchannel 命中回调——
+          //   立即 skipAudio 终止当前朗读 + 置 1.5s hold 窗口，期间 TTS 帧丢（字幕同帧丢）。
+          //   关 backchannelYield = 不挂回调，行为等同改造前（I10 豁免由 §7.0 ADR-0008 接受）。
+          onBackchannel: cfg.backchannelYield ? () => {
+            bus.skipAudio();
+            bus.setBackchannelHold(Date.now() + 1500);
+          } : void 0
         },
         sid
       );
