@@ -44,11 +44,20 @@ t('剥离图片与 HTML', () => {
 })
 
 console.log('sanitizeForTts')
-t('剔除会被英文念出的 markdown 噪声字符', () => {
-  assert.equal(sanitizeForTts('**加粗** _斜体_ ~~删除~~ > 引用 | 表格'), '加粗斜体删除引用表格')
+t('剔除会被英文念出的 markdown 噪声字符（批 4 收口：保留 > 字符——emotion 标签闭合需要）', () => {
+  // 批 4 收口 B1：sanitizeForTts 不再剥 > / < 字符——plainText 已确保不再有合法 HTML 残留，
+  //   剩下的 <...> 一定是 emotion 标签（break/whisper/laugh/sigh/emphasis），闭合 > 必须保留。
+  //   否则 sanitize 会把 <laugh> 变成 <laugh （闭合 > 被吃）。
+  //   副作用：blockquote > / 表头分隔 | 等 markdown 字符不再被剥；emotion 标签完整性优先。
+  assert.equal(sanitizeForTts('**加粗** _斜体_ ~~删除~~ > 引用 | 表格'), '加粗斜体删除 > 引用表格')
   assert.equal(sanitizeForTts('a*b#c`d~e^f=g+h'), 'a b c d e f g h')
   assert.equal(sanitizeForTts('你好，世界。'), '你好，世界。')
   assert.equal(sanitizeForTts('你好 world 世界'), '你好 world 世界')
+})
+t('sanitizeForTts 保留 emotion 标签（闭合 > 与开闭合 < 不被剥）', () => {
+  assert.equal(sanitizeForTts('你好<laugh>世界'), '你好<laugh>世界')
+  assert.equal(sanitizeForTts('<break 300ms>'), '<break 300ms>')
+  assert.equal(sanitizeForTts('<whisper>x</whisper>'), '<whisper>x</whisper>')
 })
 t('流式截断的配对符经分句器后不再残留', () => {
   const s = new SentenceSegmenter()

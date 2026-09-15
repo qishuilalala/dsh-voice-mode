@@ -24,7 +24,10 @@ export function plainText(text: string): string {
     .replace(/\*([^*]+)\*/g, '$1')
     .replace(/^[-*+]\s+/gm, '')
     .replace(/^\d+\.\s+/gm, '')
-    .replace(/<\/?[a-zA-Z][^>]*>/g, ' ')
+    // 批 4 收口 B1 修复：原正则 /<\/?[a-zA-Z][^>]*>/g 把 emotion 标签一并剥掉，导致 emotion.ts 永远收不到标签。
+    // 改为白名单：只剥真正块级 HTML 标签；emotion 标签（break/whisper|/whisper/laugh/sigh/emphasis）保留。
+    // 零信任：未列入 HTML 集合的标签一律不剥（保留原样交给 emotion.ts 解析；非法标签会被 emotion.ts 正则忽略）。
+    .replace(/<\/?(?:b|i|u|br|p|span|div|strong|em|s|sub|sup|h[1-6]|ul|ol|li|a|img|code|pre|blockquote|hr|table|tr|td|th)\b[^>]*>/gi, ' ')
 }
 
 /**
@@ -32,10 +35,15 @@ export function plainText(text: string): string {
  * （asterisk/underscore/greater than/vertical bar…）。
  * plainText 是配对式剥离，流式增量下配对符可能被 chunk 截断（如 `**` 劈成
  * 两半），残留字符会被逐字念出——故对成句文本再做一遍单字符兜底。
+ *
+ * 批 4 收口 B1 修复：从字符集合中移除 `<` 和 `>`——plainText 已确保不再有合法 HTML 残留，
+ * 剩下的 `<...>` 一定是 emotion 标签（break/whisper/laugh/sigh/emphasis），闭合 `>` 是
+ * 标签的一部分，必须保留，否则 sanitize 会把 `<laugh>` 变成 `<laugh `（闭合 `>` 被吃）。
+ * 未列入 emotion 集合的非法 `<xxx>` 一律保留原样（零信任），由 emotion.ts 正则忽略。
  */
 export function sanitizeForTts(text: string): string {
   return String(text)
-    .replace(/[*_#>`|^=+~]/g, ' ')
+    .replace(/[*_#|^=+~`]/g, ' ')
     .replace(/\s{2,}/g, ' ')
     // 汉字之间的空格对中文合成无意义（噪声字符剔除的副产品），塌掉避免怪停顿。
     .replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g, '$1')

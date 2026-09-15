@@ -28,7 +28,7 @@ var import_sherpa_onnx_node = __toESM(require("sherpa-onnx-node"), 1);
 
 // src/segmenter.ts
 function sanitizeForTts(text) {
-  return String(text).replace(/[*_#>`|^=+~]/g, " ").replace(/\s{2,}/g, " ").replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g, "$1").trim();
+  return String(text).replace(/[*_#|^=+~`]/g, " ").replace(/\s{2,}/g, " ").replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g, "$1").trim();
 }
 
 // src/tts-vits-worker.ts
