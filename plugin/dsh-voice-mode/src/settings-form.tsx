@@ -1079,6 +1079,31 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             <Row name="autoResume" desc={tr('descAutoResume')}>
               <input type="checkbox" checked={Boolean(value.autoResume)} onChange={(e) => void scope.set('autoResume', e.target.checked)} />
             </Row>
+            <Row name="captionFontSize" desc={tr('descCaptionFontSize')}>
+              <SegGroup
+                score={scope}
+                field="captionFontSize"
+                value={value.captionFontSize ?? 0}
+                options={[
+                  { v: 0, label: tr('captionSizeS') },
+                  { v: 1, label: tr('captionSizeM') },
+                  { v: 2, label: tr('captionSizeL') },
+                  { v: 3, label: tr('captionSizeXL') },
+                ]}
+              />
+            </Row>
+            <Row name="captionMaxWidth" desc={tr('descCaptionMaxWidth')}>
+              <SegGroup
+                score={scope}
+                field="captionMaxWidth"
+                value={value.captionMaxWidth ?? 1}
+                options={[
+                  { v: 0, label: tr('captionWidth50') },
+                  { v: 1, label: tr('captionWidth70') },
+                  { v: 2, label: tr('captionWidth90') },
+                ]}
+              />
+            </Row>
             </Section>
             <Section title={tr('secRecognition')}>
             <Row name="senseVoice" desc={tr('descSenseVoice')}>

@@ -151,6 +151,10 @@ export interface VoiceSettingsValue {
   recognitionLanguage: 'auto' | 'zh' | 'en' | 'ja' | 'ko' | 'yue'
   /** 批 2：SenseVoice 逆文本归一化（数字/日期规范化，默认 true）。 */
   senseITN: boolean
+  /** 批 3：字幕字号档位 0=小/1=标准/2=大/3=特大（默认 0 = 12px，I10 现状字节等价）。 */
+  captionFontSize: 0 | 1 | 2 | 3
+  /** 批 3：字幕宽度档位 0=50vw/1=70vw/2=90vw（默认 1 = 70vw）。 */
+  captionMaxWidth: 0 | 1 | 2
 }
 
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
@@ -177,6 +181,10 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   asrHotwordsScore: 1.5,
   recognitionLanguage: 'auto',
   senseITN: true,
+  // 批 3：captionFontSize 默认 0（12px），与现状 client.tsx 外层 fontSize:12 视觉零变化；
+  //   captionMaxWidth 默认 1（70vw），在大屏 >686px 时略窄于现状 480px（取舍见 schema description）。
+  captionFontSize: 0,
+  captionMaxWidth: 1,
 }
 
 /** 以平台常量默认构造设置 schema。 */
@@ -271,6 +279,18 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .boolean()
       .default(d.senseITN)
       .description('SenseVoice 逆文本归一化（数字/日期规范化，默认开；关闭后输出更接近口语原文）'),
+    captionFontSize: z
+      .union([z.const(0), z.const(1), z.const(2), z.const(3)])
+      .default(d.captionFontSize)
+      .description(
+        '字幕字号档位（0=12px/1=14px/2=18px/3=24px；默认 0 与现状字节等价；切换即时生效）',
+      ),
+    captionMaxWidth: z
+      .union([z.const(0), z.const(1), z.const(2)])
+      .default(d.captionMaxWidth)
+      .description(
+        '字幕宽度档位（0=50vw/1=70vw/2=90vw；默认 1；屏幕宽 >686px 时略窄于现状 480px；切换即时生效）',
+      ),
   })
 }
 
@@ -589,6 +609,8 @@ export function apply(ctx: Context, config: Config): void {
             shortcut: vset.shortcut,
             wakeWord: vset.wakeWord,
             toolBeep: vset.toolBeep,
+            captionFontSize: vset.captionFontSize,
+            captionMaxWidth: vset.captionMaxWidth,
             cacheDir: config.cacheDir,
             ttsEngine: currentEngine(),
             audioMime: queue.mime,

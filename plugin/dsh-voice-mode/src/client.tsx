@@ -570,6 +570,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     shortcut: 'Ctrl+Shift+V',
     wakeWord: '',
     toolBeep: false,
+    captionFontSize: 0,
+    captionMaxWidth: 1,
   }
   const ui: VoiceUiState = {
     state: 'idle',
@@ -1138,6 +1140,10 @@ interface VoiceBootConfig {
   wakeWord: string
   /** 工具调用提示音（默认关）。 */
   toolBeep: boolean
+  /** 批 3：字幕字号档位（0=12/1=14/2=18/3=24 px；默认 0）。 */
+  captionFontSize: 0 | 1 | 2 | 3
+  /** 批 3：字幕宽度档位（0=50vw/1=70vw/2=90vw；默认 1）。 */
+  captionMaxWidth: 0 | 1 | 2
 }
 
 let styleInjected = false
@@ -1162,6 +1168,8 @@ html.dshvm-holding, html.dshvm-holding * {
   user-select: none !important;
   -webkit-touch-callout: none !important;
 }
+/* 批 3：字幕中文长词/URL 换行（外层 maxHeight:30vh + overflow:hidden 控制高度不溢出）。 */
+.dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }
 `
     document.head.appendChild(el)
   }, [])
@@ -1196,7 +1204,7 @@ export function MicButton({
   /** M2：隐藏 tab 时已暂停收音（可见时恢复）；隐私——避免后台持续录音。 */
   const pausedForHiddenRef = useRef(false)
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
-  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 1500, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, shortcut: 'Ctrl+Shift+V', wakeWord: '', toolBeep: false }
+  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 1500, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, shortcut: 'Ctrl+Shift+V', wakeWord: '', toolBeep: false, captionFontSize: 0, captionMaxWidth: 1 }
 
   useVoiceCss()
 
@@ -1235,6 +1243,9 @@ export function MicButton({
         shortcut: typeof c.shortcut === 'string' ? c.shortcut : cur.shortcut,
         wakeWord: typeof c.wakeWord === 'string' ? c.wakeWord : cur.wakeWord,
         toolBeep: c.toolBeep === true,
+        // 批 3：fetchConfig 是白名单拼接（plan §5.2 措辞「通用透传」与此处源码不符——见 commit message）
+        captionFontSize: c.captionFontSize === 1 || c.captionFontSize === 2 || c.captionFontSize === 3 ? c.captionFontSize : 0,
+        captionMaxWidth: c.captionMaxWidth === 0 || c.captionMaxWidth === 2 ? c.captionMaxWidth : 1,
       }
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord })
       return next
@@ -2478,7 +2489,8 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
         gap: 10,
         padding: '8px 14px',
         borderRadius: 999,
-        fontSize: 12,
+        // 批 3：4 档字号（0/1/2/3 → 12/14/18/24 px）。默认 0=12px 与现状字节等价。
+        fontSize: [12, 14, 18, 24][b.ui.boot?.captionFontSize ?? 0],
         fontFamily: 'system-ui, sans-serif',
         pointerEvents: 'none', // 浮层不挡输入框/麦克风按钮的点击（仅内部「跳过」按钮可点）
         background: 'rgba(22, 24, 28, 0.85)',
@@ -2487,7 +2499,11 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
         border: '1px solid rgba(255, 255, 255, 0.08)',
         boxShadow: '0 8px 28px rgba(0, 0, 0, 0.4)',
         color: '#e6e8eb',
-        maxWidth: 480,
+        // 批 3：3 档宽度（0/1/2 → 50vw/70vw/90vw）。默认 1=70vw。
+        maxWidth: ['50vw', '70vw', '90vw'][b.ui.boot?.captionMaxWidth ?? 1],
+        // 批 3：浮层最大高度（24px 多行时不盖输入框）。maxHeight 30vh + overflow hidden。
+        maxHeight: '30vh',
+        overflow: 'hidden',
         animation: 'dshvm-fadein 0.25s ease',
       }}
     >
@@ -2506,11 +2522,24 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
           />
         ))}
       </span>
-      <span key={b.ui.playingCaption ?? 'idle'} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span
+        key={b.ui.playingCaption ?? 'idle'}
+        className="dshvm-caption"
+        style={{
+          // 批 3：换行（中文长 URL 等场景）。注：whiteSpace:normal + overflowWrap:anywhere 与 ellipsis 互斥（nowrap 才需要 ellipsis），
+          //   接受换行后 ellipsis 失效——计划 §5.2 已显式声明。
+          whiteSpace: 'normal',
+          overflowWrap: 'anywhere',
+          wordBreak: 'break-word',
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
         {b.ui.playingCaption ?? t('reading')}
       </span>
       <button
         onClick={() => bus.skipAudio()}
+        aria-label={t('skipReading')}
         style={{
           border: 'none',
           background: 'rgba(255, 255, 255, 0.14)',

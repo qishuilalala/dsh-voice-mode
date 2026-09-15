@@ -1324,6 +1324,18 @@ var zh = {
   descRecognitionLanguage: "SenseVoice \u8BC6\u522B\u8BED\u79CD\uFF08\u9ED8\u8BA4 auto \u81EA\u52A8\u68C0\u6D4B\uFF1B\u9501\u8BED\u79CD\u540E\u53EA\u8BC6\u522B\u8BE5\u8BED\u79CD\uFF1B\u6DF7\u5408\u573A\u666F\u4FDD\u6301 auto\uFF1B\u5207\u6362\u4F1A\u91CD\u5EFA worker \u7EBF\u7A0B\uFF09",
   senseITN: "\u9006\u6587\u672C\u5F52\u4E00\u5316",
   descSenseITN: "SenseVoice \u6570\u5B57/\u65E5\u671F/\u683C\u5F0F\u89C4\u8303\u5316\uFF08\u9ED8\u8BA4\u5F00\uFF1B\u5173\u95ED\u540E\u8F93\u51FA\u66F4\u63A5\u8FD1\u53E3\u8BED\u539F\u6587\uFF09",
+  captionFontSize: "\u5B57\u5E55\u5B57\u53F7",
+  descCaptionFontSize: "\u6D6E\u5C42\u5B57\u5E55\u5B57\u53F7\u6863\u4F4D\uFF08\u5C0F 12 / \u6807\u51C6 14 / \u5927 18 / \u7279\u5927 24 px\uFF1B\u9ED8\u8BA4\u5C0F\u4E0E\u73B0\u72B6\u5B57\u8282\u7B49\u4EF7\uFF09",
+  captionMaxWidth: "\u5B57\u5E55\u5BBD\u5EA6",
+  descCaptionMaxWidth: "\u6D6E\u5C42\u5B57\u5E55\u5BBD\u5EA6\u6863\u4F4D\uFF0850vw / 70vw / 90vw\uFF1B\u9ED8\u8BA4 70vw\uFF1B24px \u591A\u884C\u65F6\u53D7 30vh \u9AD8\u5EA6\u7EA6\u675F\u4E0D\u76D6\u8F93\u5165\u6846\uFF09",
+  captionSizeS: "\u5C0F",
+  captionSizeM: "\u6807\u51C6",
+  captionSizeL: "\u5927",
+  captionSizeXL: "\u7279\u5927",
+  captionWidth50: "\u7A84",
+  captionWidth70: "\u4E2D",
+  captionWidth90: "\u5BBD",
+  skipReading: "\u8DF3\u8FC7\u5F53\u524D\u6717\u8BFB",
   descMode: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09",
   modeToggle: "\u6301\u7EED\u8046\u542C",
   modeHold: "\u6309\u4F4F\u8BF4\u8BDD",
@@ -1476,6 +1488,18 @@ var en = {
   descRecognitionLanguage: "SenseVoice language (default auto; lock to zh/en/ja/ko/yue for single-language; mixed scenarios keep auto; switching rebuilds the worker thread)",
   senseITN: "Inverse text normalization",
   descSenseITN: "SenseVoice number/date/format normalization (default on; turn off to keep raw spoken form)",
+  captionFontSize: "Caption font size",
+  descCaptionFontSize: "Caption font size (Small 12 / Standard 14 / Large 18 / X-Large 24 px; default Small matches current behavior)",
+  captionMaxWidth: "Caption width",
+  descCaptionMaxWidth: "Caption width (50vw / 70vw / 90vw; default 70vw; capped at 30vh height so multi-line 24px never overlaps the input box)",
+  captionSizeS: "S",
+  captionSizeM: "M",
+  captionSizeL: "L",
+  captionSizeXL: "XL",
+  captionWidth50: "Narrow",
+  captionWidth70: "Medium",
+  captionWidth90: "Wide",
+  skipReading: "Skip current reading",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)",
   modeToggle: "Continue listen",
   modeHold: "Hold to talk",
@@ -2499,7 +2523,34 @@ function VoiceSettingsCard({ scope }) {
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.toolBeep), onChange: (e) => void scope.set("toolBeep", e.target.checked) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoSend), onChange: (e) => void scope.set("autoSend", e.target.checked) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoResume), onChange: (e) => void scope.set("autoResume", e.target.checked) }) })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoResume), onChange: (e) => void scope.set("autoResume", e.target.checked) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "captionFontSize", desc: t("descCaptionFontSize"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          SegGroup,
+          {
+            score: scope,
+            field: "captionFontSize",
+            value: value.captionFontSize ?? 0,
+            options: [
+              { v: 0, label: t("captionSizeS") },
+              { v: 1, label: t("captionSizeM") },
+              { v: 2, label: t("captionSizeL") },
+              { v: 3, label: t("captionSizeXL") }
+            ]
+          }
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "captionMaxWidth", desc: t("descCaptionMaxWidth"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          SegGroup,
+          {
+            score: scope,
+            field: "captionMaxWidth",
+            value: value.captionMaxWidth ?? 1,
+            options: [
+              { v: 0, label: t("captionWidth50") },
+              { v: 1, label: t("captionWidth70") },
+              { v: 2, label: t("captionWidth90") }
+            ]
+          }
+        ) })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRecognition"), children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
@@ -2552,7 +2603,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "5caf457";
+var BUILD_TAG = "71f6889";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2855,7 +2906,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     echoGateDb: 6,
     shortcut: "Ctrl+Shift+V",
     wakeWord: "",
-    toolBeep: false
+    toolBeep: false,
+    captionFontSize: 0,
+    captionMaxWidth: 1
   };
   const ui = {
     state: "idle",
@@ -3311,6 +3364,8 @@ html.dshvm-holding, html.dshvm-holding * {
   user-select: none !important;
   -webkit-touch-callout: none !important;
 }
+/* \u6279 3\uFF1A\u5B57\u5E55\u4E2D\u6587\u957F\u8BCD/URL \u6362\u884C\uFF08\u5916\u5C42 maxHeight:30vh + overflow:hidden \u63A7\u5236\u9AD8\u5EA6\u4E0D\u6EA2\u51FA\uFF09\u3002 */
+.dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }
 `;
     document.head.appendChild(el);
   }, []);
@@ -3336,7 +3391,7 @@ function MicButton({
   const manualHoldRef = (0, import_react2.useRef)(false);
   const breakRef = (0, import_react2.useRef)(null);
   const pausedForHiddenRef = (0, import_react2.useRef)(false);
-  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 1500, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, shortcut: "Ctrl+Shift+V", wakeWord: "", toolBeep: false };
+  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 1500, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, shortcut: "Ctrl+Shift+V", wakeWord: "", toolBeep: false, captionFontSize: 0, captionMaxWidth: 1 };
   useVoiceCss();
   const [, bumpUi] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(
@@ -3367,7 +3422,10 @@ function MicButton({
         echoGateDb: typeof c.echoGateDb === "number" ? Math.min(12, Math.max(3, c.echoGateDb)) : cur.echoGateDb,
         shortcut: typeof c.shortcut === "string" ? c.shortcut : cur.shortcut,
         wakeWord: typeof c.wakeWord === "string" ? c.wakeWord : cur.wakeWord,
-        toolBeep: c.toolBeep === true
+        toolBeep: c.toolBeep === true,
+        // 批 3：fetchConfig 是白名单拼接（plan §5.2 措辞「通用透传」与此处源码不符——见 commit message）
+        captionFontSize: c.captionFontSize === 1 || c.captionFontSize === 2 || c.captionFontSize === 3 ? c.captionFontSize : 0,
+        captionMaxWidth: c.captionMaxWidth === 0 || c.captionMaxWidth === 2 ? c.captionMaxWidth : 1
       };
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord });
       return next;
@@ -4348,7 +4406,8 @@ function VoiceOverlay({ bus }) {
         gap: 10,
         padding: "8px 14px",
         borderRadius: 999,
-        fontSize: 12,
+        // 批 3：4 档字号（0/1/2/3 → 12/14/18/24 px）。默认 0=12px 与现状字节等价。
+        fontSize: [12, 14, 18, 24][b.ui.boot?.captionFontSize ?? 0],
         fontFamily: "system-ui, sans-serif",
         pointerEvents: "none",
         // 浮层不挡输入框/麦克风按钮的点击（仅内部「跳过」按钮可点）
@@ -4358,7 +4417,11 @@ function VoiceOverlay({ bus }) {
         border: "1px solid rgba(255, 255, 255, 0.08)",
         boxShadow: "0 8px 28px rgba(0, 0, 0, 0.4)",
         color: "#e6e8eb",
-        maxWidth: 480,
+        // 批 3：3 档宽度（0/1/2 → 50vw/70vw/90vw）。默认 1=70vw。
+        maxWidth: ["50vw", "70vw", "90vw"][b.ui.boot?.captionMaxWidth ?? 1],
+        // 批 3：浮层最大高度（24px 多行时不盖输入框）。maxHeight 30vh + overflow hidden。
+        maxHeight: "30vh",
+        overflow: "hidden",
         animation: "dshvm-fadein 0.25s ease"
       },
       children: [
@@ -4376,11 +4439,28 @@ function VoiceOverlay({ bus }) {
           },
           i
         )) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: b.ui.playingCaption ?? t("reading") }, b.ui.playingCaption ?? "idle"),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "span",
+          {
+            className: "dshvm-caption",
+            style: {
+              // 批 3：换行（中文长 URL 等场景）。注：whiteSpace:normal + overflowWrap:anywhere 与 ellipsis 互斥（nowrap 才需要 ellipsis），
+              //   接受换行后 ellipsis 失效——计划 §5.2 已显式声明。
+              whiteSpace: "normal",
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+              flex: 1,
+              minWidth: 0
+            },
+            children: b.ui.playingCaption ?? t("reading")
+          },
+          b.ui.playingCaption ?? "idle"
+        ),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
             onClick: () => bus.skipAudio(),
+            "aria-label": t("skipReading"),
             style: {
               border: "none",
               background: "rgba(255, 255, 255, 0.14)",
