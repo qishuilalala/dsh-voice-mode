@@ -81,6 +81,7 @@ const FIELD_LABELS: Record<string, string> = {
   captionFontSize: '字幕字号',
   captionMaxWidth: '字幕宽度',
   backchannelYield: '短应答让位',
+  yieldMs: '让位窗口',
 }
 const setHeader: React.CSSProperties = {
   appearance: 'none',
@@ -1120,6 +1121,9 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             </Row>
             <Row name="backchannelYield" desc={tr('descBackchannelYield')}>
               <input type="checkbox" checked={value.backchannelYield !== false} onChange={(e) => void scope.set('backchannelYield', e.target.checked)} />
+            </Row>
+            <Row name="yieldMs" desc={tr('descYieldMs')}>
+              <NumberField score={scope} field="yieldMs" value={value.yieldMs ?? 1500} min={500} max={3000} step={100} />
             </Row>
             </Section>
             <Section title={tr('secRecognition')}>

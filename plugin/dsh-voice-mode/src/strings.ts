@@ -114,13 +114,15 @@ const zh = {
   skipReading: '跳过当前朗读',
   backchannelYield: '短应答让位',
   descBackchannelYield: '朗读期用户说「嗯/对」等短应答时自动让位（跳过当前 TTS 句 + 短暂丢帧 1.5s；真要说则原 hardBreak 接管；关 = 不让位，行为等同改造前）',
+  yieldMs: '让位窗口',
+  descYieldMs: '短应答让位窗口毫秒数（默认 1500ms；范围 500~3000ms；设大=让位更宽裕、设小=更快恢复朗读）',
   descMode: '交互模式（toggle 持续聆听+静音断句 / hold 按住说话）',
   modeToggle: '持续聆听',
   modeHold: '按住说话',
   descWakeWord: '唤醒词（默认关；如「你好小D」，说出后开始识别）',
   wakePlaceholder: '如：你好小D',
-  settingsCardDesc: '朗读引擎 / 音色 / 语速 / 打断灵敏度 / 打断方式 / 回声门控 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音 / 识别热词 / 热词偏置分 / 识别语种 / 逆文本归一化 / 字幕字号 / 字幕宽度 / 短应答让位',
-  settingsEffectiveNote: '朗读引擎 / 音色 / 语速 / 模型精度 / 口语化提示词 / 重译 / 字幕字号 / 字幕宽度 / 短应答让位 即时生效；识别热词 / 热词偏置分 / 识别语种 / 逆文本归一化 即时生效（下次进入语音模式重建流式识别器）；其余（打断灵敏度 / 打断方式 / 回声门控 / 快捷键 / 静音 / 空闲 / 镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音）下次进入语音模式时生效。',
+  settingsCardDesc: '朗读引擎 / 音色 / 语速 / 打断灵敏度 / 打断方式 / 回声门控 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音 / 识别热词 / 热词偏置分 / 识别语种 / 逆文本归一化 / 字幕字号 / 字幕宽度 / 短应答让位 / 让位窗口',
+  settingsEffectiveNote: '朗读引擎 / 音色 / 语速 / 模型精度 / 口语化提示词 / 重译 / 字幕字号 / 字幕宽度 / 短应答让位 / 让位窗口 即时生效；识别热词 / 热词偏置分 / 识别语种 / 逆文本归一化 即时生效（下次进入语音模式重建流式识别器）；其余（打断灵敏度 / 打断方式 / 回声门控 / 快捷键 / 静音 / 空闲 / 镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音）下次进入语音模式时生效。',
   configUnavailable: '配置暂不可用',
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: '说完',
@@ -181,9 +183,7 @@ const zh = {
   captionFontSizeLabel: '字幕字号',
   captionMaxWidthLabel: '字幕宽度',
   backchannelYieldLabel: '短应答让位',
-  // 批 G 任务 2：空闲预警 + 退出提示文案。
-  idleWarn30s: '30 秒后自动退出（设置里可调空闲时长）',
-  idleTimeoutQuit: '空闲超时已自动退出（设置里可调时长）',
+  yieldMsLabel: '让位窗口',
 } as const
 
 const en: Record<keyof typeof zh, string> = {
@@ -294,13 +294,15 @@ const en: Record<keyof typeof zh, string> = {
   skipReading: 'Skip current reading',
   backchannelYield: 'Short-answer yielding',
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches pre-batch-5)',
+  yieldMs: 'Yield window',
+  descYieldMs: 'Short-answer yielding window in ms (default 1500ms; range 500~3000ms; larger = more room to yield, smaller = faster TTS resume)',
   descMode: 'Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)',
   modeToggle: 'Continue listen',
   modeHold: 'Hold to talk',
   descWakeWord: 'Wake word (default off; e.g. Hey D)',
   wakePlaceholder: 'e.g. Hey D',
-  settingsCardDesc: 'Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / hotwords / hotwords score / recognition language / ITN / caption font / caption width / yielding',
-  settingsEffectiveNote: 'Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding apply immediately; hotwords / hotwords score / recognition language / ITN apply immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.',
+  settingsCardDesc: 'Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / hotwords / hotwords score / recognition language / ITN / caption font / caption width / yielding / yield window',
+  settingsEffectiveNote: 'Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding / yield window apply immediately; hotwords / hotwords score / recognition language / ITN apply immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.',
   configUnavailable: 'Configuration unavailable',
   telUtteranceEnd: 'end',
   telEndpoint: 'endpoint',
@@ -357,9 +359,7 @@ const en: Record<keyof typeof zh, string> = {
   captionFontSizeLabel: 'Font size',
   captionMaxWidthLabel: 'Max width',
   backchannelYieldLabel: 'Yielding',
-  // 批 G 任务 2：空闲预警 + 退出提示文案。
-  idleWarn30s: 'Auto-exit in 30 seconds (adjustable in settings)',
-  idleTimeoutQuit: 'Idle timeout — voice mode auto-exited (adjustable in settings)',
+  yieldMsLabel: 'Yield window',
 }
 
 /**
