@@ -44,11 +44,12 @@ t('剥离图片与 HTML', () => {
 })
 
 console.log('sanitizeForTts')
-t('剔除会被英文念出的 markdown 噪声字符（批 4 收口：保留 > 字符——emotion 标签闭合需要）', () => {
-  // 批 4 收口 B1：sanitizeForTts 不再剥 > / < 字符——plainText 已确保不再有合法 HTML 残留，
-  //   剩下的 <...> 一定是 emotion 标签（break/whisper/laugh/sigh/emphasis），闭合 > 必须保留。
+t('剔除会被英文念出的 markdown 噪声字符（批 4 收口：> 字符不再被剥——emotion 标签闭合需要）', () => {
+  // 批 4 收口 B1：sanitizeForTts 字符集移除 < 和 >——plainText 已确保不再有合法 HTML 残留，
+  //   剩下的 <...> 一定是 emotion 标签（break/whisper/laugh/sigh/emphasis），闭合 > 必须保留，
   //   否则 sanitize 会把 <laugh> 变成 <laugh （闭合 > 被吃）。
-  //   副作用：blockquote > / 表头分隔 | 等 markdown 字符不再被剥；emotion 标签完整性优先。
+  //   注：| 字符仍被剥成空格（字符集 [*_#|^=+~`] 仍含 |，实证见 lib/index.js:1026）——
+  //   只有 > / < 不被剥；副作用 = blockquote `>` 残留可能逐字读出（emotion 完整性优先于 markdown 残留）。
   assert.equal(sanitizeForTts('**加粗** _斜体_ ~~删除~~ > 引用 | 表格'), '加粗斜体删除 > 引用表格')
   assert.equal(sanitizeForTts('a*b#c`d~e^f=g+h'), 'a b c d e f g h')
   assert.equal(sanitizeForTts('你好，世界。'), '你好，世界。')
