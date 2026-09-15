@@ -41,9 +41,17 @@ t('默认值 captionMaxWidth=1（70vw；取舍见 schema description）', () => 
   const m = indexSrc.match(/captionMaxWidth:\s*1,?\s*\}/m) || indexSrc.match(/captionMaxWidth:\s*1,/m)
   assert.ok(m, 'VOICE_SETTINGS_DEFAULTS 缺 captionMaxWidth=1（必须在 defaults 对象字面量中赋值为 1）')
 })
-t('schema description 提及「与现状」+「略窄」（默认值取舍透明）', () => {
+t('schema description 提及「与现状」+「三档视口方向」（默认值取舍透明）', () => {
   assert.ok(indexSrc.includes('captionFontSize') && /默认\s*0\s*与现状/.test(indexSrc), 'captionFontSize description 未解释默认 = 现状字节等价')
-  assert.ok(/略窄于现状\s*480/.test(indexSrc), 'captionMaxWidth description 未说明 >686px 屏幕时取舍')
+  // 批 3 review I1 修复：数学方向必须显式三档——
+  //   视口 <686px 时 70vw (≈视口×70%) < 480px → 窄于现状；
+  //   视口 ≈686px 时 ≈480px → 接近；
+  //   视口 >686px 时 70vw > 480px → 宽于现状。
+  assert.ok(/<686px\s*时\s*窄于/.test(indexSrc), 'captionMaxWidth description 缺「<686px 时窄于」档位说明')
+  assert.ok(/≈686px\s*时\s*接近|≈\s*686px/.test(indexSrc), 'captionMaxWidth description 缺「≈686px 时接近」档位说明')
+  assert.ok(/>686px\s*时\s*宽于/.test(indexSrc), 'captionMaxWidth description 缺「>686px 时宽于」档位说明（数学方向）')
+  // 防回归：旧的「>686px 时略窄于」反向措辞必须不存在
+  assert.ok(!/>686px\s*时\s*略窄于|>686px\s*时\s*窄于/.test(indexSrc), '回归：>686px 时仍写「窄于」（数学方向反；70vw > 480px 应为「宽于」）')
 })
 t('host /config 返回值含 captionFontSize/captionMaxWidth（§5.2 #2）', () => {
   assert.ok(/captionFontSize:\s*vset\.captionFontSize/.test(indexSrc), '/config 路由未返回 captionFontSize')

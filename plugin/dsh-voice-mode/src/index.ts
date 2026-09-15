@@ -182,7 +182,7 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   recognitionLanguage: 'auto',
   senseITN: true,
   // 批 3：captionFontSize 默认 0（12px），与现状 client.tsx 外层 fontSize:12 视觉零变化；
-  //   captionMaxWidth 默认 1（70vw），在大屏 >686px 时略窄于现状 480px（取舍见 schema description）。
+  //   captionMaxWidth 默认 1（70vw）：视口 <686px 时窄于现状 480px；≈686px 时接近；>686px 时宽于 480px（取舍见 schema description）。
   captionFontSize: 0,
   captionMaxWidth: 1,
 }
@@ -289,7 +289,7 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .union([z.const(0), z.const(1), z.const(2)])
       .default(d.captionMaxWidth)
       .description(
-        '字幕宽度档位（0=50vw/1=70vw/2=90vw；默认 1；屏幕宽 >686px 时略窄于现状 480px；切换即时生效）',
+        '字幕宽度档位（0=50vw/1=70vw/2=90vw；默认 1；视口 <686px 时窄于现状 480px、≈686px 时接近、>686px 时宽于 480px；切换即时生效）',
       ),
   })
 }

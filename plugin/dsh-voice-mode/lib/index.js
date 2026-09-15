@@ -1852,7 +1852,7 @@ var VOICE_SETTINGS_DEFAULTS = {
   recognitionLanguage: "auto",
   senseITN: true,
   // 批 3：captionFontSize 默认 0（12px），与现状 client.tsx 外层 fontSize:12 视觉零变化；
-  //   captionMaxWidth 默认 1（70vw），在大屏 >686px 时略窄于现状 480px（取舍见 schema description）。
+  //   captionMaxWidth 默认 1（70vw）：视口 <686px 时窄于现状 480px；≈686px 时接近；>686px 时宽于 480px（取舍见 schema description）。
   captionFontSize: 0,
   captionMaxWidth: 1
 };
@@ -1902,7 +1902,7 @@ function createVoiceSettingsSchema(defs) {
       "\u5B57\u5E55\u5B57\u53F7\u6863\u4F4D\uFF080=12px/1=14px/2=18px/3=24px\uFF1B\u9ED8\u8BA4 0 \u4E0E\u73B0\u72B6\u5B57\u8282\u7B49\u4EF7\uFF1B\u5207\u6362\u5373\u65F6\u751F\u6548\uFF09"
     ),
     captionMaxWidth: z.union([z.const(0), z.const(1), z.const(2)]).default(d.captionMaxWidth).description(
-      "\u5B57\u5E55\u5BBD\u5EA6\u6863\u4F4D\uFF080=50vw/1=70vw/2=90vw\uFF1B\u9ED8\u8BA4 1\uFF1B\u5C4F\u5E55\u5BBD >686px \u65F6\u7565\u7A84\u4E8E\u73B0\u72B6 480px\uFF1B\u5207\u6362\u5373\u65F6\u751F\u6548\uFF09"
+      "\u5B57\u5E55\u5BBD\u5EA6\u6863\u4F4D\uFF080=50vw/1=70vw/2=90vw\uFF1B\u9ED8\u8BA4 1\uFF1B\u89C6\u53E3 <686px \u65F6\u7A84\u4E8E\u73B0\u72B6 480px\u3001\u2248686px \u65F6\u63A5\u8FD1\u3001>686px \u65F6\u5BBD\u4E8E 480px\uFF1B\u5207\u6362\u5373\u65F6\u751F\u6548\uFF09"
     )
   });
 }
