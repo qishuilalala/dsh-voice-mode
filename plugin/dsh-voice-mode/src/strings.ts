@@ -181,9 +181,9 @@ const zh = {
   captionFontSizeLabel: '字幕字号',
   captionMaxWidthLabel: '字幕宽度',
   backchannelYieldLabel: '短应答让位',
-  // 批 G 任务 1：Number 校验 hint 文案。
-  numberInvalid: '数值非法',
-  numberClamped: '已自动调整为 {value}',
+  // 批 G 任务 2：空闲预警 + 退出提示文案。
+  idleWarn30s: '30 秒后自动退出（设置里可调空闲时长）',
+  idleTimeoutQuit: '空闲超时已自动退出（设置里可调时长）',
 } as const
 
 const en: Record<keyof typeof zh, string> = {
@@ -357,9 +357,9 @@ const en: Record<keyof typeof zh, string> = {
   captionFontSizeLabel: 'Font size',
   captionMaxWidthLabel: 'Max width',
   backchannelYieldLabel: 'Yielding',
-  // 批 G 任务 1：Number 校验 hint 文案。
-  numberInvalid: 'Invalid number',
-  numberClamped: 'Adjusted to {value}',
+  // 批 G 任务 2：空闲预警 + 退出提示文案。
+  idleWarn30s: 'Auto-exit in 30 seconds (adjustable in settings)',
+  idleTimeoutQuit: 'Idle timeout — voice mode auto-exited (adjustable in settings)',
 }
 
 /**

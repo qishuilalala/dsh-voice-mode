@@ -66,6 +66,9 @@ interface VoiceUiState {
   echoLevels?: { floorRms: number; residualRms: number }
   /** A1：浏览器原生回声消除是否生效（false 时外放易自打断，状态条提示）。 */
   aecOff?: boolean
+  /** 批 G 任务 2：空闲预警态标记（resetIdle 触发 9:30 预警 → true；用户活动 / clearIdle 复位 → false）。
+   *  状态条据此展示「30 秒后自动退出」toast。 */
+  idleWarn?: boolean
   /** 延迟埋点链各阶段时刻（开发模式状态条展示；null = 未启用/已清空）。 */
   telemetry: Partial<Record<TelemetryStage, number>> | null
   /** 唤醒词（空 = 关）：wake 待机态状态条展示用。 */
@@ -1223,6 +1226,12 @@ export function MicButton({
   /** 累积模式「静音到点才发」的延迟发送计时（区别于 submitTimerRef 的提交重试计时）。 */
   const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 批 G 任务 2：空闲退出前 30 秒提示的预警定时器（到点 setUi({idleWarn:true})）。 */
+  const idleWarnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 批 G 任务 2：当前是否处于「30 秒后退出」预警态（用于 clearIdle 时复位 bus.ui.idleWarn）。 */
+  const idleWarnActiveRef = useRef(false)
+  /** 批 G 任务 2：空闲退出错误提示的自动清除定时器（3 秒后清 error）。 */
+  const idleClearErrorRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const runningRef = useRef(false)
   /** 组件存活守卫：enterMode 异步流程（getUserMedia 权限框）期间卸载时中止收尾。 */
   const mountedRef = useRef(true)
@@ -1336,13 +1345,48 @@ export function MicButton({
       clearTimeout(idleTimerRef.current)
       idleTimerRef.current = null
     }
+    if (idleWarnTimerRef.current) {
+      clearTimeout(idleWarnTimerRef.current)
+      idleWarnTimerRef.current = null
+    }
+    if (idleClearErrorRef.current) {
+      clearTimeout(idleClearErrorRef.current)
+      idleClearErrorRef.current = null
+    }
+    // 批 G 任务 2：清除「30 秒后自动退出」提示（重新进入语音模式或用户活动后复位）。
+    if (idleWarnActiveRef.current) {
+      idleWarnActiveRef.current = false
+      bus.setUi({ idleWarn: false })
+    }
   }
   const resetIdle = (): void => {
     clearIdle()
     const idleMs = (bootNow().idleTimeoutMinutes > 0 ? bootNow().idleTimeoutMinutes : 10) * 60 * 1000
+    // 批 G 任务 2：9:30 弹 toast「30 秒后自动退出」——总时长 ≤ 30s 时跳过预警（避免直接退出又立刻闪提示）。
+    if (idleMs > 30_000) {
+      idleWarnTimerRef.current = setTimeout(() => {
+        idleWarnTimerRef.current = null
+        idleWarnActiveRef.current = true
+        bus.setUi({ idleWarn: true })
+      }, idleMs - 30_000)
+    }
     idleTimerRef.current = setTimeout(() => {
+      idleTimerRef.current = null
       const sid = sidRef.current
-      if (localRef.current === 'on' && sid) void exitModeRef.current('idle')
+      if (localRef.current === 'on' && sid) {
+        // 批 G 任务 2：空闲退出时显示「空闲超时已自动退出（设置里可调时长）」3 秒后清。
+        // 不打断已有的 error（让用户先看到错误）；仅当 error 为空时覆写。
+        bus.setUi({
+          error: bus.ui.error ?? t('idleTimeoutQuit'),
+        })
+        const prevClearError = idleClearErrorRef.current
+        if (prevClearError) clearTimeout(prevClearError)
+        idleClearErrorRef.current = setTimeout(() => {
+          idleClearErrorRef.current = null
+          if (bus.ui.error === t('idleTimeoutQuit')) bus.setUi({ error: null })
+        }, 3000)
+        void exitModeRef.current('idle')
+      }
     }, idleMs)
   }
 
@@ -2452,7 +2496,9 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexGrow: 1 }}>
           {b.ui.error
             ? b.ui.error
-            : b.ui.state === 'loading-model' || b.ui.model
+            : b.ui.idleWarn
+              ? t('idleWarn30s')
+              : b.ui.state === 'loading-model' || b.ui.model
               ? b.ui.model
                 ? `${t('loadingModel')} ${b.ui.model.file} ${b.ui.model.percent}%`
                 : stateText

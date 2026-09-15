@@ -1436,9 +1436,9 @@ var zh = {
   captionFontSizeLabel: "\u5B57\u5E55\u5B57\u53F7",
   captionMaxWidthLabel: "\u5B57\u5E55\u5BBD\u5EA6",
   backchannelYieldLabel: "\u77ED\u5E94\u7B54\u8BA9\u4F4D",
-  // 批 G 任务 1：Number 校验 hint 文案。
-  numberInvalid: "\u6570\u503C\u975E\u6CD5",
-  numberClamped: "\u5DF2\u81EA\u52A8\u8C03\u6574\u4E3A {value}"
+  // 批 G 任务 2：空闲预警 + 退出提示文案。
+  idleWarn30s: "30 \u79D2\u540E\u81EA\u52A8\u9000\u51FA\uFF08\u8BBE\u7F6E\u91CC\u53EF\u8C03\u7A7A\u95F2\u65F6\u957F\uFF09",
+  idleTimeoutQuit: "\u7A7A\u95F2\u8D85\u65F6\u5DF2\u81EA\u52A8\u9000\u51FA\uFF08\u8BBE\u7F6E\u91CC\u53EF\u8C03\u65F6\u957F\uFF09"
 };
 var en = {
   stateVoiceMode: "Voice Mode",
@@ -1611,9 +1611,9 @@ var en = {
   captionFontSizeLabel: "Font size",
   captionMaxWidthLabel: "Max width",
   backchannelYieldLabel: "Yielding",
-  // 批 G 任务 1：Number 校验 hint 文案。
-  numberInvalid: "Invalid number",
-  numberClamped: "Adjusted to {value}"
+  // 批 G 任务 2：空闲预警 + 退出提示文案。
+  idleWarn30s: "Auto-exit in 30 seconds (adjustable in settings)",
+  idleTimeoutQuit: "Idle timeout \u2014 voice mode auto-exited (adjustable in settings)"
 };
 var guess = () => /^zh\b/i.test(
   typeof document !== "undefined" && document.documentElement.lang || (typeof navigator !== "undefined" ? navigator.language : "") || ""
@@ -1908,68 +1908,32 @@ function NumberField({
   step
 }) {
   const [draft, setDraft] = (0, import_react.useState)(String(value ?? ""));
-  const [hint, setHint2] = (0, import_react.useState)(null);
   (0, import_react.useEffect)(() => {
     setDraft((d) => d === String(value ?? "") ? d : String(value ?? ""));
-    setHint2(null);
   }, [value]);
   const commit = () => {
-    const trimmed = draft.trim();
-    if (trimmed === "") {
-      setHint2(null);
-      return;
-    }
-    const n = Number(trimmed);
-    if (!Number.isFinite(n)) {
-      setHint2({ kind: "invalid", text: t("numberInvalid") });
-      return;
-    }
+    const n = Number(draft);
+    if (!Number.isFinite(n) || draft.trim() === "") return;
     const clamped = Math.min(max, Math.max(min, n));
-    if (clamped !== n) {
-      setHint2({ kind: "clamped", text: t("numberClamped").replace("{value}", String(clamped)) });
-      setDraft(String(clamped));
-    } else {
-      setHint2(null);
-    }
+    setDraft(String(clamped));
     void score.set(field, clamped);
   };
-  const invalidStyle = hint ? {
-    ...inputStyle,
-    borderColor: "var(--dsw-alias-state-error-primary)",
-    boxShadow: "0 0 0 2px rgba(248, 81, 73, 0.18)"
-  } : inputStyle;
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "input",
-      {
-        style: invalidStyle,
-        type: "number",
-        step,
-        min,
-        max,
-        value: draft,
-        onChange: (e) => {
-          setDraft(e.target.value);
-          if (hint) setHint2(null);
-        },
-        onBlur: commit,
-        onKeyDown: (e) => {
-          if (e.key === "Enter") commit();
-        }
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "input",
+    {
+      style: inputStyle,
+      type: "number",
+      step,
+      min,
+      max,
+      value: draft,
+      onChange: (e) => setDraft(e.target.value),
+      onBlur: commit,
+      onKeyDown: (e) => {
+        if (e.key === "Enter") commit();
       }
-    ),
-    hint && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "span",
-      {
-        style: {
-          fontSize: 11,
-          lineHeight: "14px",
-          color: hint.kind === "invalid" ? "var(--dsw-alias-state-error-primary)" : "var(--dsw-alias-label-tertiary)"
-        },
-        children: hint.text
-      }
-    )
-  ] });
+    }
+  );
 }
 function TextField({
   score,
@@ -2709,7 +2673,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "f2602a1";
+var BUILD_TAG = "8082909";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -3503,6 +3467,9 @@ function MicButton({
   const submitTimerRef = (0, import_react2.useRef)(null);
   const autoSendTimerRef = (0, import_react2.useRef)(null);
   const idleTimerRef = (0, import_react2.useRef)(null);
+  const idleWarnTimerRef = (0, import_react2.useRef)(null);
+  const idleWarnActiveRef = (0, import_react2.useRef)(false);
+  const idleClearErrorRef = (0, import_react2.useRef)(null);
   const runningRef = (0, import_react2.useRef)(false);
   const mountedRef = (0, import_react2.useRef)(true);
   const holdCtrlRef = (0, import_react2.useRef)(false);
@@ -3587,13 +3554,44 @@ function MicButton({
       clearTimeout(idleTimerRef.current);
       idleTimerRef.current = null;
     }
+    if (idleWarnTimerRef.current) {
+      clearTimeout(idleWarnTimerRef.current);
+      idleWarnTimerRef.current = null;
+    }
+    if (idleClearErrorRef.current) {
+      clearTimeout(idleClearErrorRef.current);
+      idleClearErrorRef.current = null;
+    }
+    if (idleWarnActiveRef.current) {
+      idleWarnActiveRef.current = false;
+      bus.setUi({ idleWarn: false });
+    }
   };
   const resetIdle = () => {
     clearIdle();
     const idleMs = (bootNow().idleTimeoutMinutes > 0 ? bootNow().idleTimeoutMinutes : 10) * 60 * 1e3;
+    if (idleMs > 3e4) {
+      idleWarnTimerRef.current = setTimeout(() => {
+        idleWarnTimerRef.current = null;
+        idleWarnActiveRef.current = true;
+        bus.setUi({ idleWarn: true });
+      }, idleMs - 3e4);
+    }
     idleTimerRef.current = setTimeout(() => {
+      idleTimerRef.current = null;
       const sid = sidRef.current;
-      if (localRef.current === "on" && sid) void exitModeRef.current("idle");
+      if (localRef.current === "on" && sid) {
+        bus.setUi({
+          error: bus.ui.error ?? t("idleTimeoutQuit")
+        });
+        const prevClearError = idleClearErrorRef.current;
+        if (prevClearError) clearTimeout(prevClearError);
+        idleClearErrorRef.current = setTimeout(() => {
+          idleClearErrorRef.current = null;
+          if (bus.ui.error === t("idleTimeoutQuit")) bus.setUi({ error: null });
+        }, 3e3);
+        void exitModeRef.current("idle");
+      }
     }, idleMs);
   };
   (0, import_react2.useEffect)(() => {
@@ -4451,7 +4449,7 @@ function VoiceStatusBar({ bus, sessionId }) {
             },
             i
           )) }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
           b.ui.isSpeech === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "span",
             {
