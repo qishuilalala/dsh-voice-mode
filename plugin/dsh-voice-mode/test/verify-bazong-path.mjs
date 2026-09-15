@@ -1,17 +1,18 @@
-// �?fork 生产代码路径（含 Worker）合�?bazong，测 F0 验证性别
+// 用 fork 生产代码路径(含 Worker) 合成 bazong，测 F0 验证性别
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 const require = createRequire(import.meta.url)
 
-// 直接加载构建产物里的引擎（lib/index.js 未导出，�?src 编译？用 esbuild 打包 tts-local.ts�?const { build } = require('esbuild')
+// 直接加载构建产物里的引擎(lib/index.js 未导出；从 src 编译，用 esbuild 打包 tts-local.ts)
 const { mkdtempSync, copyFileSync, rmSync } = require('node:fs')
-const { tmpdir } = require('node:os')
+const { tmpdir, homedir } = require('node:os')
 const { join } = require('node:path')
 const { pathToFileURL } = require('node:url')
 
-// 临时目录放在 fork 根内（worker 需向上解析 node_modules 里的 sherpa-onnx）�?const tmp = mkdtempSync(join(process.cwd(), '.tmp-tts-'))
+// 临时目录放在 fork 根内(worker 需向上解析 node_modules 里的 sherpa-onnx)
+const tmp = mkdtempSync(join(process.cwd(), '.tmp-tts-'))
 const out = join(tmp, 'tts-local.mjs')
-// 生产构建�?lib/index.js �?lib/tts-vits-worker.cjs 同目录；测试里手动复制�?copyFileSync('lib/tts-vits-worker.cjs', join(tmp, 'tts-vits-worker.cjs'))
+// 生产构建后 lib/index.js 与 lib/tts-vits-worker.cjs 同目录；测试里手动复制
 await build({
   entryPoints: ['src/tts-local.ts'],
   outfile: out,
@@ -26,18 +27,20 @@ const { createSherpaVitsEngine, voiceToSid } = await import(pathToFileURL(out).h
 console.log('voiceToSid(bazong) =', voiceToSid('bazong'))
 console.log('voiceToSid(0) =', voiceToSid('0'), ' voiceToSid(suyingxue) =', voiceToSid('suyingxue'))
 
+// cacheDir 默认 ~/.cache/dsh-voice-mode/models；可由 DSH_VM_MODELS 环境变量覆盖(原硬编码 Windows 路径已删)
+const defaultCacheDir = join(homedir(), '.cache', 'dsh-voice-mode', 'models')
 const engine = createSherpaVitsEngine({
-  cacheDir: 'K:/DSH-plugin-builds/dsh/models',
+  cacheDir: process.env.DSH_VM_MODELS ?? defaultCacheDir,
   modelHost: () => 'https://hf-mirror.com',
   allowCustomHost: false,
   broadcast: () => {},
 })
 
 // 路径 A：显式传 voice（试听路径）
-const wavA = await engine.synthesize('今天天气不错，我们一起去公园散步吧�?, { voice: 'bazong' })
-// 路径 B：updateVoice 后不�?voice（朗读队列路径）
+const wavA = await engine.synthesize('今天天气不错，我们一起去公园散步吧。', { voice: 'bazong' })
+// 路径 B：updateVoice 后不传 voice(朗读队列路径)
 engine.updateVoice('bazong', 1.0)
-const wavB = await engine.synthesize('今天天气不错，我们一起去公园散步吧�?)
+const wavB = await engine.synthesize('今天天气不错，我们一起去公园散步吧。')
 
 function wavF0(wav) {
   const rate = wav.readUInt32LE(24)
@@ -72,8 +75,8 @@ function wavF0(wav) {
 
 const f0A = wavF0(wavA)
 const f0B = wavF0(wavB)
-console.log(`preview 路径 (voice=bazong): f0=${f0A?.toFixed(0)}Hz => ${f0A < 180 ? '�? : '�?}`)
-console.log(`朗读队列路径 (updateVoice): f0=${f0B?.toFixed(0)}Hz => ${f0B < 180 ? '�? : '�?}`)
+console.log(`preview 路径 (voice=bazong): f0=${f0A?.toFixed(0)}Hz => ${f0A < 180 ? '男' : '女'}`)
+console.log(`朗读队列路径 (updateVoice): f0=${f0B?.toFixed(0)}Hz => ${f0B < 180 ? '男' : '女'}`)
 await engine.close()
 rmSync(tmp, { recursive: true, force: true })
 const ok = f0A !== null && f0A < 180 && f0B !== null && f0B < 180
