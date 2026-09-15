@@ -115,3 +115,32 @@ export interface TtsEngine {
 4. Edge 引擎 `rawToFile`/`rawToStream` 路径分支（不破坏 `_SSMLTemplate` 路径）
 5. `settings-form.tsx` 加 `tts.emotionTags: boolean` 设置（默认关）
 6. `test/` 加 `test/emotion-tags.spec.ts`（三引擎 × 5 标签 × 3 样例句）
+
+---
+
+## 落地注记（2026-09-15 批 4 + 批 4 收口 commit 7b94653）
+
+**状态**：ADR-0007「第一步（仅本地引擎）」已落地（commit `959c742`） + 段切分器 B1 修复（commit `7b94653`）。
+
+**落地偏差（plan §6.2 末段决策 vs 实际）**：
+
+1. **决策点修正** —— 计划 §6.2 末段决策「处理点全收在 `tts-local.synthesize` 内部」执行到位（`src/emotion.ts` 纯函数 + `src/tts-local.ts:441-498` 多段合成拼 PCM 返回单 WAV）；`tapActiveStream` 完全不动（避免动段切分）；`tts-queue` 完全不动（I4/I5 天然无风险）。
+
+2. **B1 修复（plan §6.2 表漏列，批 4 审查 subagent 抓出）** —— `src/segmenter.ts:27` 原正则 `/<\/?[a-zA-Z][^>]*>/g` 把 emotion 标签一并剥掉，导致 emotion 处理永远不触发。修复方法（§6.2 表「推荐后者」）：① `plainText` 改为白名单 22 个 HTML 标签（`b|i|u|br|p|span|div|strong|em|s|sub|sup|h[1-6]|ul|ol|li|a|img|code|pre|blockquote|hr|table|tr|td|th`）；② `sanitizeForTts` 字符集移除 `<` 和 `>`（闭合 `>` 必须保留）。B1 防回归断言：`test/emotion-integration.test.mjs`（9 项，5 种场景 + 反向断言验证旧正则会让集成测试红）。
+
+3. **whisper 单 → 成对标签语义偏差已落地修正** —— ADR-0007 原文是单标签（`<whisper>` 作用域语义不明），落地改为成对（`<whisper>...</whisper>`）。单标签无明确作用域边界，无法判定增益范围；成对标签语义清晰、可判定。whisper 不平衡（有开无关 / 无关有开）→ 全段退回非 whisper（保守语义：不误降音量）。
+
+4. **`<break N ms>` 语义落地** —— 段后置静音（EmotionSegment.preBreakMs 标在「break 之前的最后一段」上，语义 = 该段 PCM 合成完后插入的静音毫秒数）。sherpa-onnx 不支持 SSML 时段间停顿标签，落地通过 PCM 后处理实现（`src/tts-local.ts:476-481`）。
+
+5. **`<laugh>/<sigh>/<emphasis>` 剥离不读出** —— 在 `src/emotion.ts:32` 标签处理分支识别后丢弃，不进入段序列。LLM 端若需真实笑声/叹气/强调，等第二步 Edge `rawToFile/rawToStream` 路径（ADR-0007 落地顺序第 2 步，本批未实施）。
+
+**未实施的部分**（按 ADR-0007「落地顺序」第 2 步，留未来）：
+
+- 第二步 Edge `rawToFile` / `rawToStream` 路径（`msedge-tts` `dist/MsEdgeTTS.d.ts:122/132` 公开 API）：`<mstts:express-as style="cheerful/sad/whisper">` 注入。
+- 第一步遗漏项（批 4 审查 I2）：**LLM prompt 注入**（VOICE_SPOKEN_PROMPT 未追加 emotion 标签使用指引）—— 即便修复 B1，端用户也无路径触发 emotion 标签输出。**已在批 6 STATE 记录**，未来如需启用需：(1) host `inject` 加 `systemPrompt`；(2) 追加 emotion 标签使用指引到 `src/index.ts:72` VOICE_SPOKEN_PROMPT；(3) 真机验证 LLM 是否输出 `<laugh>` 等标签。
+
+**真机验收（批 6 §8.4 真机冒烟清单第 4 项）**：
+
+- 让 LLM 输出 `你好<break 300ms>世界` → 本地引擎（vits/kokoro）朗读应有 ~300ms 停顿。
+- `<laugh>` 不被读出。
+- 已确认集成层修复到位（emotion-integration.test.mjs B1 反向断言有效）。

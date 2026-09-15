@@ -1368,8 +1368,6 @@ var zh = {
   skipReading: "\u8DF3\u8FC7\u5F53\u524D\u6717\u8BFB",
   backchannelYield: "\u77ED\u5E94\u7B54\u8BA9\u4F4D",
   descBackchannelYield: "\u6717\u8BFB\u671F\u7528\u6237\u8BF4\u300C\u55EF/\u5BF9\u300D\u7B49\u77ED\u5E94\u7B54\u65F6\u81EA\u52A8\u8BA9\u4F4D\uFF08\u8DF3\u8FC7\u5F53\u524D TTS \u53E5 + \u77ED\u6682\u4E22\u5E27 1.5s\uFF1B\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF1B\u5173 = \u4E0D\u8BA9\u4F4D\uFF0C\u884C\u4E3A\u7B49\u540C\u6539\u9020\u524D\uFF09",
-  backchannelHint: "\u8BA9\u4F4D prompt",
-  descBackchannelHint: "\u63D0\u793A\u8BCD\u6559\u6A21\u578B\u88AB\u8BA9\u4F4D\u540E\u7559\u51FA\u505C\u987F\u3001\u4E0D\u8FDE\u95EE\u4E24\u4E2A\u95EE\u9898\u3001\u4E0D\u4E3B\u52A8\u627E\u65B0\u8BDD\u9898\uFF08#2 \u8BA9\u4F4D\u8BED\u4E49\uFF09",
   descMode: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09",
   modeToggle: "\u6301\u7EED\u8046\u542C",
   modeHold: "\u6309\u4F4F\u8BF4\u8BDD",
@@ -1536,8 +1534,6 @@ var en = {
   skipReading: "Skip current reading",
   backchannelYield: "Short-answer yielding",
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches pre-batch-5)',
-  backchannelHint: "Yield prompt",
-  descBackchannelHint: "The prompt teaches the model to pause after being yielded to, not chain two questions, and not bring up new topics (#2 yielding semantics)",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)",
   modeToggle: "Continue listen",
   modeHold: "Hold to talk",
@@ -2642,7 +2638,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "76e8e5d";
+var BUILD_TAG = "3c1a996";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

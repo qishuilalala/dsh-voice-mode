@@ -184,3 +184,49 @@ YIELDING (let the user interrupt)
   - LiveKit Agents Prompting https://docs.livekit.io/agents/start/prompting/
   - Sesame Crossing the uncanny valley https://www.sesame.com/blog/crossing-the-uncanny-valley-of-voice
   - Full-Duplex-Bench arXiv 2503.04721
+
+---
+
+## 落地注记（2026-09-15 批 5 commit 7f1a09f）
+
+**状态**：ADR-0008 Phase 1 两项均已落地（#1 backchannel detector + #2 Hume 风格让位 prompt 注入）。
+
+**落地 vs 决策**：
+
+| 决策项 | 落地位置 | 状态 |
+|---|---|---|
+| #1 Backchannel detector + 半双工暂停 | `src/asr.ts` 顶层 `matchBackchannel` 纯函数 + 词表 16 项（中文 11 + 英文 5，其中 `right` 5 字符因超 ≤4 长度上限被滤）；`src/client.tsx` `bus.setBackchannelHold(now+1500)` + 帧回调入口丢帧守卫（`backchannelHoldUntil` 闭包变量） | ✅ |
+| #2 让位 prompt 注入（Layer 2 YIELDING） | `src/index.ts:77` `VOICE_SPOKEN_PROMPT` 追加 YIELDING 段（中文，与现有 4 句同风格） | ✅ |
+| #3 Inattentive silence break | 推迟（决策推迟） | ⏸ |
+| #4 End-of-turn probability 让位 | 推迟（依赖 ADR-0003） | ⏸ |
+| #5 让位历史记忆 | 不立项（决策取消） | ❌ |
+
+**关键偏差（与原决策 §7.0 不同）**：
+
+1. **backchannel 让位 = `client 侧帧丢弃`，非 `host pauseAtBoundary()`** —— 原决策 §1 表格写「TTS-queue 影响：pauseAtBoundary()」，实际落地走 `bus.setBackchannelHold + 帧回调入口 return` 静默丢帧（§7.0 末段明确「不动 host 协议、不动 epoch」）。原因：pauseAtBoundary 经 epoch 通道需修改 tts-queue 帧协议（I4 风险），而 client 帧丢弃完全在 audioListeners 回调内（I4 帧协议零触碰）。**这是计划 §7.0 与 §7.2 末段的内在差异裁决结果**——批 5 commit message 已声明。
+
+2. **`matchBackchannel` 不复用 `normalizeWake`** —— `normalizeWake` 会剥前置语气词（`嗯/哎/呃` 等），把 backchannel 词表里的核心词「嗯」剥成空串。落地采用独立 `normalizeBackchannel`（只去空白/标点/小写，保留语气词）。
+
+3. **`backchannelYield` 默认 true 是产品决策（I10 豁免）** —— 关 = onBackchannel 不挂 = 行为等同改造前。**多处置顶显式声明**（`src/index.ts:193/305` defaults + schema + `src/client.tsx:1604` engine config）。
+
+4. **plan §7.2 词表含 `right`(5 字符) 与 §10 R4b ≤4 上限冲突** —— 按 §10 严格执行，`right` 被长度上限滤掉（commit message 显式声明）。批 5 审查 subagent 通过后 plan §7.2 已修（删 right）。
+
+**不变量保护（批 5 commit message 自报）**：
+
+- I1 finalize 幂等 ✓ 未触碰
+- I2 打断计数仅播放期 ✓ backchannel 分支在 `speechActive && config.isPlaying()` 时才判；与 `isSpeechTrueCount` 完全隔离（不读不写）
+- I3 播放门分支不得 return ✓ partial 分支结构不动；只在 emit 后加 if（§7.3 I3 保护）
+- I4 TTS 单 chunk + final 帧协议 ✓ tts-queue 0 行 diff；audioListeners 帧回调只在帧入口加 hold 守卫；final 帧协议 + reject/重建逻辑完全保留
+- I5 epoch 守卫 ✓ onBackchannel 不经 epoch（只通过回调触发 bus.skipAudio + setBackchannelHold）
+- I6 9 锚点 ✓ package.json dsh.client.inject 未改
+- I7 host inject 按需 ✓ 未注入新依赖
+- I8 模型 SHA256 ✓ 未新增模型下载
+- I9 零 API Key ✓ 全本地
+- I10 默认行为与现状一致 — **I10 豁免已声明**：backchannelYield 默认 true 是产品决策（ADR-0008 已接受），关 = 行为等同改造前。
+
+**真机验收（批 6 §8.4 真机冒烟清单第 5 项）**：
+
+- AI 朗读中 → 用户说「嗯」 → 当前句跳过 + 1.5s 内新 TTS 帧不播 + 继续说话 → 走原 hardBreak 取消回合。
+- hold 1500ms 时长是否合适（Q4 留批 6 真机观测）。
+
+**集成层验证**：test/backchannel.test.mjs 30 项（词表 17 项 + hold 窗口 4 项 + 归一化与边界 6 项 + 与 wakeWord 区别 2 项 + 负例 3 项）。

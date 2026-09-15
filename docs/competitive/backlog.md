@@ -662,3 +662,30 @@
 - **做什么**：CONTEXT.md L37 路径失真 → 两个选项：① 改文档描述；② 重建 4 个版本的 `/tmp/dsh*-core` 镜像
 - **真实工作量**：0.5-1 人天（若选 ①）或 1-2 人天（若选 ②）
 - **推荐**：先用 ① 改文档；后续 `verify:dual` 失败时再选 ②
+
+---
+
+## 批次进度（2026-09-15 批 6 收口落地状态）
+
+**批 1-5 落地的 backlog 项状态终态**（批 6 总收口 commit）：
+
+| 批 | 项 | 旧锚点 | 落地 commit | 状态 |
+|---|---|---|---|---|
+| 1 | P0 zipformer2 热词 (hotwords) 暴露 | `asr-host.ts:266` `decodingMethod: greedy_search` → `modified_beam_search` + `hotwordsBuf` | `9467c81` | ✅ 已完成（实际用 `hotwordsBuf` 内存字符串直传，绕过 hotwordsFile temp file 写入机制——计划 §3.0 验证 sherpa-onnx-asr.js:460-465/496/555-567 后修正；净增 ~88 行） |
+| 2 | P0 SenseVoice 语言显式锁定 | `sense-worker.ts:165` 硬编码 `'auto'` + ITN 开关 | `3025e1b` | ✅ 已完成（净增 ~87 行 + 新纯函数模块 `asr-sense-key.ts` 30 行） |
+| 3 | P0 字幕 a11y + captionFontSize + 中文换行 | `index.ts` schema + `client.tsx VoiceOverlay` + `client.tsx VoiceBootConfig` + `client.tsx bootNow` | `0fe3f90` + `a96acd9`（docfix：数学方向三档） | ✅ 已完成（含 docfix：70vw 数学方向修正（<686px 窄 / ≈686px 近 / >686px 宽）；净增 ~108 行 + 测试 20 项） |
+| 4 | ADR-0007 第一步 本地引擎情感标签 | `tts-local.ts` 后处理 + 新建 `src/emotion.ts` + `tapActiveStream` 不动 + `tts-queue` 不动 | `959c742` + `7b94653`（B1 收口：segmenter 误剥 emotion 标签修复 + 集成断言） | ✅ 已完成（仅本地引擎：break/whisper/laugh/sigh/emphasis；Edge `rawToFile/rawToStream` 路径未实施） |
+| 5 | ADR-0008 Phase 1 让位语义 | `index.ts VOICE_SPOKEN_PROMPT` + `asr.ts matchBackchannel` + `client.tsx onBackchannel + 帧守卫 + hardBreak 清 hold` + `backchannelYield` 设置 | `7f1a09f` | ✅ 已完成（#1 backchannel detector + #2 让位 prompt；#3-5 推迟/取消按原决策） |
+
+**未实施项（明确范围外）**：
+
+- **批 4 第二步：Edge `<mstts:express-as>` 注入** —— ADR-0007「落地顺序」第 2 步未实施（独立 1-2 天工作；待用户需要时启动）。
+- **batch 4 审查 I2：LLM prompt 注入 emotion 标签使用指引** —— 已记入 ADR-0007 落地注记（即便修好 B1 端用户也无路径触发；如需启用需在 VOICE_SPOKEN_PROMPT 追加 + host `inject` 加 `systemPrompt`）。
+- **batch 5 Q4：hold 1500ms 时长** —— 留批 6 真机观测（届时按真机数据调整）。
+
+**backlog 旧行保留为回溯参考**（锚点过期、估算偏差、事实勘误均原样保留——后续回查价值高于清空）。批次进度表新增为本文件最新一节，重写式维护（按 CONTEXT.md / STATE.md 同样纪律）。
+
+**未触及的 P0 / P1-UX 项（仍按旧状态推进）**：
+
+- P0 ADR-0007/0008 已完成；A3 字幕说话人标签（pyannote 4.x 仍 blocker）；B1 声音克隆 ❄ 推迟。
+- P1-UX 字幕字号可调 + ARIA 已完成（批 3 落地即此条）；其他 P1-UX 仍 Ready 待评估。
