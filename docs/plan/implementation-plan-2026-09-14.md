@@ -21,11 +21,12 @@
 
 ```bash
 cd /mnt/dsh-voice-mode/plugin/dsh-voice-mode
-node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit        # host 侧
-node node_modules/typescript/bin/tsc -p tsconfig.client.json --noEmit # client 侧
-npm test                                                             # 全量（当前基线 91 项 + 新增）
-node build.mjs                                                       # 重建 lib（R29 教训：改码必须重建）
+node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit        # ① host 侧（类型错最先暴露，成本最低）
+node node_modules/typescript/bin/tsc -p tsconfig.client.json --noEmit # ② client 侧
+node build.mjs                                                       # ③ 重建 lib（npm test 含 verify-client 的 lib mtime ≥ src 断言——src 改后不先 build 必失败；初版顺序此处自相矛盾，2026-09-14 批 1 执行者发现后定稿修正）
+npm test                                                             # ④ 全量（基线随批递增：批 0 后 91，批 1 后 102）
 ```
+**顺序铁律**：tsc×2 → build → npm test。build 必须先于 npm test（verify-client mtime 断言）；tsc 必须最先（类型错最便宜）。
 
 ### 0.3 回滚
 
@@ -93,6 +94,7 @@ R24 评估"需要 temp file 写入机制（~70-100 行）"。**本轮核实 sher
 | `src/index.ts` | `createAsrRuntime` 调用 L374-382 | 传 getter | `hotwordsBuf: () => vset.asrHotwords.trim()` / `hotwordsScore: () => vset.asrHotwordsScore` |
 | `src/asr-host.ts` | `AsrRuntimeOptions` L75-87 | 新增 | `hotwordsBuf: () => string` / `hotwordsScore: () => number` |
 | `src/asr-host.ts` | `getRecognizer` L250-268 | **缓存失效 + 传参** | 见 3.3（本批唯一易错点） |
+| `src/asr-hotwords.ts`（**批 1 执行时经计划维护者裁决补记的新文件**） | 新文件 | 纯函数模块 | `buildHotwordsConfig`（空 hw→`{}` spread 保 I10）+ `buildHotwordsKey`（NUL 分隔指纹）；无状态无 IO，供 asr-host 与单测共用 |
 | `src/settings-form.tsx` | secRecognition（senseVoice Row L1062 后） | 新增 Row | textarea（rows=4，placeholder 每行一词）+ score 数字框 |
 | `src/strings.ts` | zh/en 各加 2 键 | — | `asrHotwords: '识别热词'` / `descAsrHotwords: '每行一个词或「词:分数」…'` + en |
 
