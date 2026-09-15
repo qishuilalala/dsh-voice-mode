@@ -2834,7 +2834,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "ce00ef0";
+var BUILD_TAG = "9d64f45";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -4745,12 +4745,14 @@ function VoiceOverlay({ bus }) {
         pointerEvents: "auto",
         touchAction: "manipulation",
         cursor: "default",
-        background: "rgba(22, 24, 28, 0.85)",
+        // 批 H 任务 2：背景与文字走 dsw-alias 主题变量（与 settings-form.tsx:32 / :35 一致），
+        // 浅色主题下不再硬编码深色，a11y 与可读性同步提升。
+        background: "var(--dsw-alias-bg-layer-3)",
         backdropFilter: "blur(14px)",
         WebkitBackdropFilter: "blur(14px)",
         border: "1px solid rgba(255, 255, 255, 0.08)",
         boxShadow: "0 8px 28px rgba(0, 0, 0, 0.4)",
-        color: "#e6e8eb",
+        color: "var(--dsw-alias-label-primary)",
         // 批 3：3 档宽度（0/1/2 → 50vw/70vw/90vw）。默认 1=70vw。
         maxWidth: ["50vw", "70vw", "90vw"][b.ui.boot?.captionMaxWidth ?? 1],
         // 批 3：浮层最大高度（24px 多行时不盖输入框）。maxHeight 30vh + overflow hidden。
