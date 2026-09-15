@@ -1668,6 +1668,8 @@ export function MicButton({
                 bus.setBackchannelHold(Date.now() + 1500)
               }
             : undefined,
+          // 批 F：传 backchannelYield 给 ASR 引擎，让 asr.ts:379 守卫短路 matchBackchannel。
+          backchannelYield: cfg.backchannelYield,
         },
         sid,
       )

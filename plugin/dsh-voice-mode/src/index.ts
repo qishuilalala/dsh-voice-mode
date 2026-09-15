@@ -63,7 +63,8 @@ const respondJson = (res: ServerResponse, status: number, payload: unknown): voi
 }
 
 /**
- * 语音模式口语化提示词：设置项 spokenFormat（默认关）开启后，作为 system prompt
+ * 语音模式口语化提示词：设置项 spokenFormat（默认开，VOICE_SETTINGS_DEFAULTS.spokenFormat=true；
+ * 见 L182）开启后，作为 system prompt
  * 末尾 section 注入（仅活跃语音会话，见 apply 内 'system-prompt/assemble' 瀑布）。
  * 让模型从源头用自然口语作答、不写 Markdown 排版符号——与 segmenter.plainText
  * 的剥离互补：剥离只管朗读文本，提示词让模型不输出书面结构，TTS 逐句听感更顺、

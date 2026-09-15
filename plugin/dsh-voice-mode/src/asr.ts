@@ -103,6 +103,8 @@ export interface AsrConfig {
   onAecState?: (on: boolean) => void
   /** 批 5 / ADR-0008 Phase 1：backchannel 命中回调（朗读期用户说「嗯/对」等短应答）。 */
   onBackchannel?: () => void
+  /** 批 F：backchannelYield=false 时短路 matchBackchannel（CPU 浪费修复；默认 true，I10 豁免）。 */
+  backchannelYield?: boolean
   /** 唤醒词（空 = 关）：进入后先在 wake 待机态，说出唤醒词才正式开口。 */
   wakeWord?: string
 }
@@ -376,7 +378,14 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       //   朗读期（config.isPlaying()）= TTS 在播；speechActive = 本地检测已开口（避免用户自言自语被误让位）。
       //   partial 文本归一化后整段匹配词表，命中 → 触发 onBackchannel（client 侧 skipAudio + 1.5s hold 丢帧）。
       //   I3 保护：分支结构不动，只加 if，不动 emit / endpoint / finalizeSegment 等任何现有逻辑。
-      if (speechActive && (config.isPlaying?.() ?? false) && matchBackchannel(out.text ?? '')) {
+      // 批 F：backchannelYield=false 时不调 matchBackchannel（CPU 浪费修复；
+      // matchBackchannel 含归一化 + Set 查找，partial 100ms 节拍下 1% CPU/朗读期）
+      if (
+        config.backchannelYield !== false &&  // 默认 true（I10 豁免）；显式 false 时跳过
+        speechActive &&
+        (config.isPlaying?.() ?? false) &&
+        matchBackchannel(out.text ?? '')
+      ) {
         config.onBackchannel?.()
       }
       // P2-1：host Silero VAD 端点提示（静音 ≥0.5s 判句完成）→ 立即定稿。

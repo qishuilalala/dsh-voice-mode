@@ -554,7 +554,8 @@ function createAsrEngine(config, sessionId) {
       if (state === "loading-model") setState("speech");
       uploadedSamples = Math.max(uploadedSamples, from + samples.length);
       emit(partialListeners, out.text ?? "");
-      if (speechActive && (config.isPlaying?.() ?? false) && matchBackchannel(out.text ?? "")) {
+      if (config.backchannelYield !== false && // 默认 true（I10 豁免）；显式 false 时跳过
+      speechActive && (config.isPlaying?.() ?? false) && matchBackchannel(out.text ?? "")) {
         config.onBackchannel?.();
       }
       if (out.endpoint && active && speechActive && !holdActive) finalizeSegment();
@@ -1373,8 +1374,8 @@ var zh = {
   modeHold: "\u6309\u4F4F\u8BF4\u8BDD",
   descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09",
   wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
-  settingsCardDesc: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
-  settingsEffectiveNote: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6A21\u578B\u7CBE\u5EA6 / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 \u5373\u65F6\u751F\u6548\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
+  settingsCardDesc: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3 / \u8BC6\u522B\u70ED\u8BCD / \u70ED\u8BCD\u504F\u7F6E\u5206 / \u8BC6\u522B\u8BED\u79CD / \u9006\u6587\u672C\u5F52\u4E00\u5316 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D",
+  settingsEffectiveNote: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6A21\u578B\u7CBE\u5EA6 / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D \u5373\u65F6\u751F\u6548\uFF1B\u8BC6\u522B\u70ED\u8BCD / \u70ED\u8BCD\u504F\u7F6E\u5206 / \u8BC6\u522B\u8BED\u79CD / \u9006\u6587\u672C\u5F52\u4E00\u5316 \u5373\u65F6\u751F\u6548\uFF08\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u91CD\u5EFA\u6D41\u5F0F\u8BC6\u522B\u5668\uFF09\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
   configUnavailable: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528",
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: "\u8BF4\u5B8C",
@@ -1549,8 +1550,8 @@ var en = {
   modeHold: "Hold to talk",
   descWakeWord: "Wake word (default off; e.g. Hey D)",
   wakePlaceholder: "e.g. Hey D",
-  settingsCardDesc: "Engine / voice / rate / interrupt / barge-in / silence / idle / model host / auto-send / mode / wake word / spoken format",
-  settingsEffectiveNote: "Engine / voice / rate / model precision / spoken format / re-transcribe apply immediately; the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.",
+  settingsCardDesc: "Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / hotwords / hotwords score / recognition language / ITN / caption font / caption width / yielding",
+  settingsEffectiveNote: "Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding apply immediately; hotwords / hotwords score / recognition language / ITN apply immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.",
   configUnavailable: "Configuration unavailable",
   telUtteranceEnd: "end",
   telEndpoint: "endpoint",
@@ -2666,7 +2667,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "6de4aa2";
+var BUILD_TAG = "8e607e1";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -3810,7 +3811,9 @@ function MicButton({
           onBackchannel: cfg.backchannelYield ? () => {
             bus.skipAudio();
             bus.setBackchannelHold(Date.now() + 1500);
-          } : void 0
+          } : void 0,
+          // 批 F：传 backchannelYield 给 ASR 引擎，让 asr.ts:379 守卫短路 matchBackchannel。
+          backchannelYield: cfg.backchannelYield
         },
         sid
       );
