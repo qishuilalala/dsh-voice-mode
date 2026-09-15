@@ -1959,9 +1959,7 @@ var VOICE_SETTINGS_DEFAULTS = {
   captionFontSize: 0,
   captionMaxWidth: 1,
   // 批 5：backchannel 默认 true（产品决策；关 = 不挂 onBackchannel 回调，行为等同改造前）。
-  backchannelYield: true,
-  // 批 G 任务 3：yieldMs 默认 1500ms（与改造前 client.tsx hardcoded 值一致，I10 默认行为零变化）。
-  yieldMs: 1500
+  backchannelYield: true
 };
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
@@ -2013,10 +2011,6 @@ function createVoiceSettingsSchema(defs) {
     ),
     backchannelYield: z.boolean().default(d.backchannelYield).description(
       "\u8BA9\u4F4D\u8BED\u4E49\uFF08\u6279 5 / ADR-0008 Phase 1\uFF0C\u9ED8\u8BA4\u5F00\uFF09\uFF1A\u6717\u8BFB\u671F\u7528\u6237\u8BF4\u300C\u55EF/\u5BF9\u300D\u7B49\u77ED\u5E94\u7B54\u65F6\uFF0C\u81EA\u52A8\u8DF3\u8FC7\u5F53\u524D TTS \u53E5\u5E76\u77ED\u6682\u8BA9\u4F4D 1.5s\u2014\u20141.5s \u5185\u7528\u6237\u771F\u8981\u8BF4\u5219\u8D70\u539F hardBreak \u53D6\u6D88\u56DE\u5408\uFF1B\u5173 = \u4E0D\u8BA9\u4F4D\uFF0C\u884C\u4E3A\u7B49\u540C\u6539\u9020\u524D"
-    ),
-    // 批 G 任务 3：backchannel 让位窗口毫秒数（默认 1500ms；与改造前 hardcoded 值一致，I10 语义守）。
-    yieldMs: z.number().min(500).max(3e3).default(d.yieldMs).description(
-      "\u77ED\u5E94\u7B54\u8BA9\u4F4D\u7A97\u53E3\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 1500ms\uFF0C\u4E0E\u6279 5 \u6539\u9020\u524D\u4E00\u81F4\uFF1B\u8303\u56F4 500~3000ms\uFF1B\u8BBE\u5927=\u8BA9\u4F4D\u66F4\u5BBD\u88D5\u3001\u8BBE\u5C0F=\u66F4\u5FEB\u6062\u590D\u6717\u8BFB\uFF09"
     )
   });
 }
@@ -2242,8 +2236,6 @@ function apply(ctx, config) {
           captionFontSize: vset.captionFontSize,
           captionMaxWidth: vset.captionMaxWidth,
           backchannelYield: vset.backchannelYield,
-          // 批 G 任务 3：让位窗口毫秒数（client 消费，硬编码 1500 已替换为可调）。
-          yieldMs: vset.yieldMs,
           asrHotwords: vset.asrHotwords,
           asrHotwordsScore: vset.asrHotwordsScore,
           recognitionLanguage: vset.recognitionLanguage,
