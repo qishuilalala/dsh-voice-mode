@@ -2834,7 +2834,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "faeb204";
+var BUILD_TAG = "ce00ef0";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -3406,8 +3406,16 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       try {
         const p = JSON.parse(e.data);
         if (p.sessionId === activeSessionId) {
-          ui.ttsNotice = t("ttsNoticeFail");
+          const failMsg = t("ttsNoticeFail");
+          ui.ttsNotice = failMsg;
+          ui.error = failMsg;
           notify();
+          setTimeout(() => {
+            if (ui.error === failMsg) {
+              ui.error = null;
+              notify();
+            }
+          }, 3e3);
         }
       } catch {
       }

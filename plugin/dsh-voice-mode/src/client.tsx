@@ -911,8 +911,19 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       try {
         const p = JSON.parse(e.data) as { sessionId?: string }
         if (p.sessionId === activeSessionId) {
-          ui.ttsNotice = t('ttsNoticeFail')
+          // 批 H 任务 1：TTS 失败时除状态条 ttsNotice 持续提示，再弹一次 3s error toast
+          // （与 idleTimeoutQuit 共用模式：3 秒后清，且仅清与本提示相同的 error，避免冲掉用户输入
+          // 中或别的并发错误）。ttsNotice 保留直到下次成功播音。
+          const failMsg = t('ttsNoticeFail')
+          ui.ttsNotice = failMsg
+          ui.error = failMsg
           notify()
+          setTimeout(() => {
+            if (ui.error === failMsg) {
+              ui.error = null
+              notify()
+            }
+          }, 3000)
         }
       } catch {
         // ignore malformed frame
