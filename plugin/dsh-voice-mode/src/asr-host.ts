@@ -124,6 +124,10 @@ export interface AsrRuntime {
   /** 预热（非阻塞）：后台加载 zipformer2 recognizer + VAD（+ SenseVoice 若开启），
    *  把「首次开语音 ~5s 模型加载」前移到 host 启动，首次进入语音即时可用。 */
   warmup(): void
+  /** 批 E：SenseVoice 预热前置（await 版）——enterMode on 时等待 worker 就绪（5s 上限），
+   *  让用户进 voice mode 时 228MB SenseVoice 模型已完成下载 + worker 已 create，
+   *  避免冷启动撞 finalize 时 20s race timeout（B5 辅因候选 3）。关闭时立即 resolve。 */
+  warmupSense(): Promise<void>
   /** 批 A：标记缓存键过期——仅清 recognizerHotwordsKey + senseWorkerLangKey，
    *  不主动 dispose recognizer/senseWorker；让现有 fingerprint-gated lazy 路径
    *  （getRecognizer:267-274 / getSenseWorker:396-401）下次自然重建。设置面板拨滑块
@@ -165,23 +169,25 @@ const SEGMENT_IDLE_MS = 90000
 // --- P2-2/P2-3 端点确认窗口（host 语义自适应） ---
 /** 静默期内「又开口」判别的 RMS 阈值（续说 → 取消待确认端点）。 */
 const VAD_CONTINUE_RMS = 0.02
-/** 确认窗口：列举连词结尾多等（「然后/还有/以及/并且…」）；长句给缓冲防句内小停顿误切。 */
+/** 确认窗口：列举连词结尾多等（「然后/还有/以及/并且…」）；长句给缓冲防句内小停顿误切；
+ *  短句也给最小 200ms 窗口防「自然换气停顿 ≥silenceMs」即切段（B5 主因候选 1）。 */
 const CONFIRM_CONJUNCTION_MS = 800
 const CONFIRM_LONG_SENTENCE_MS = 350
 const CONFIRM_LONG_SENTENCE_S = 8
-const CONFIRM_MIN_MS = 400
+const CONFIRM_MIN_MS = 200
 /** 列举连词 / 延续词（结尾匹配 → 升档多等，语义端点提示，本地启发式）。
  * 疑问/终止收尾无需处理：默认端点路径（VAD 段完成即端点）已是最快，
  * 语义提示只在「要更慢」的方向上生效（连词/长句）。 */
 export const CONJUNCTION_TAIL = /(然后|还有|以及|并且|而且|此外|再说|接着|然后呢|比方说|比如说|比如|例如|等等|或者|或是|还有呢)$/
 
-/** P2-2/P2-3：VAD 段完成后的确认窗口（毫秒）；0 = 立即端点。
- * 导出供单测（语义判定）：连词结尾升档多等；长句给缓冲防句内小停顿误切。 */
+/** P2-2/P2-3：VAD 段完成后的确认窗口（毫秒）；短句也保底 CONFIRM_MIN_MS（200ms）。
+ * 导出供单测（语义判定）：连词结尾升档多等；长句给缓冲防句内小停顿误切；
+ * 短句防「自然换气停顿 ≥silenceMs」即切段（B5 主因候选 1）。 */
 export function endpointConfirmMs(text: string, spokenMs: number): number {
   const tail = text.trimEnd()
   if (CONJUNCTION_TAIL.test(tail)) return CONFIRM_CONJUNCTION_MS
   if (spokenMs > CONFIRM_LONG_SENTENCE_S * 1000) return CONFIRM_LONG_SENTENCE_MS
-  return 0
+  return CONFIRM_MIN_MS
 }
 /** 静默增量 RMS（判断是否又开口续说）；导出供单测。 */
 export function rmsOf(samples: Float32Array): number {
@@ -535,7 +541,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
             if (rms > VAD_CONTINUE_RMS) {
               seg.pendingEndpoint = null // 又开口/续说：取消端点
             } else if (now - seg.pendingEndpoint.at >= CONFIRM_MIN_MS && text === seg.pendingEndpoint.textAtPending) {
-              // 无新实词且 ≥400ms：提前判完（P2-2 拖尾语气词）
+              // 无新实词且 ≥CONFIRM_MIN_MS（200ms）：提前判完（P2-2 拖尾语气词）
               seg.pendingEndpoint = null
               endpoint = true
             } else if (now - seg.pendingEndpoint.at >= seg.pendingEndpoint.confirmMs) {
@@ -583,11 +589,13 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       // P4-1：SenseVoice 整段重译与 zipformer 定稿并行（端点等待期后起跑；
       // 带标点 + ITN 覆盖定稿文本；模型缺失/失败自然降级 zipformer）。
       const all = seg.allSamples
-      // I1：SenseVoice 重译带超时（10s），超时即降级 zipformer 定稿（不阻塞 finalize）。
+      // I1：SenseVoice 重译带超时（20s），超时即降级 zipformer 定稿（不阻塞 finalize）。
+      // 批 E：10s → 20s——228MB SenseVoice 模型冷启动 + 离线解码长段 30s PCM，慢 CPU
+      // 撞 10s 容易降级 zipformer 流式 token flush 不完整（B5 辅因候选 3）。
       const senseP = all.length > 0
         ? Promise.race([
             senseTranscribe(all),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000)),
           ])
         : Promise.resolve(null)
       // 定稿：尾垫 0.5s 静音让尾部字 flush 出来。
@@ -776,6 +784,16 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       void getRecognizer().catch(() => undefined)
       void ensureVadModel().catch(() => undefined)
       if (senseVoice()) void getSenseWorker().catch(() => undefined)
+    },
+    // 批 E：SenseVoice 预热前置 enterMode——返回 Promise 让 /toggle on=true await，
+    // 内部 5s 上限防止慢模型下载 hang 住 enterMode（失败/超时静默降级走 finalize 时 race）。
+    warmupSense: async (): Promise<void> => {
+      if (!senseVoice()) return // 关闭时不预热（与 warmup() 语义对齐，遵守 I10）
+      // 5s 上限：典型冷启动 2-5s；超过则上层 fallback 不阻塞 /toggle 返回。
+      await Promise.race([
+        getSenseWorker().then(() => undefined).catch(() => undefined),
+        new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+      ])
     },
     // 批 A：仅清缓存键——不 dispose recognizer/senseWorker，避免破坏 I1（in-flight
     // finalize 拿到的旧 recognizer 引用被 free 会丢句）。让现有 fingerprint-gated 路径

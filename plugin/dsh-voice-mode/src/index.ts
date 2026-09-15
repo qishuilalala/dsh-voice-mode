@@ -724,7 +724,7 @@ export function apply(ctx: Context, config: Config): void {
       handler: (req: IncomingMessage, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
-        collectBody(req, res, MAX_JSON_BODY, (body) => {
+        collectBody(req, res, MAX_JSON_BODY, async (body) => {
           let sessionId: string | undefined
           let on: boolean | undefined
           let tabId: string | undefined
@@ -764,6 +764,10 @@ export function apply(ctx: Context, config: Config): void {
               respondJson(res, 403, { error: 'unknown session' })
               return
             }
+            // 批 E：SenseVoice 预热前置 enterMode（5s 上限）——让用户进 voice mode 时
+            // 228MB SenseVoice worker 已就绪，避免冷启动撞 finalize 时 20s race timeout
+            // 降级 zipformer 流式 token flush 不完整（B5 辅因候选 3）。失败/超时静默 fallback。
+            await asr.warmupSense()
             // B1：进入即清该会话可能残留的 host ASR 段（上次中途退出的旧 stream/旧文本），
             // 防重入后新句丢失/幽灵提交。
             asr.reset(sessionId)

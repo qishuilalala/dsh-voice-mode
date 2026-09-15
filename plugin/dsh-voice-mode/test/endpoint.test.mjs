@@ -1,5 +1,7 @@
 /**
- * P2-2/2-3 语义端点判定单测（纯函数，离线）：连词升档 / 长句缓冲 / 普通句立即端点 / RMS。
+ * P2-2/2-3 语义端点判定单测（纯函数，离线）：连词升档 / 长句缓冲 / 普通句最小窗口 / RMS。
+ * 批 E：普通句从「立即端点 0ms」改为「保底 200ms」（CONFIRM_MIN_MS）——B5 主因候选 1
+ * 修复（自然换气停顿 ≥silenceMs 误切段）。最小窗口契约由 endpoint-short.test.mjs 守住。
  */
 import assert from 'node:assert/strict'
 import { endpointConfirmMs, rmsOf, CONJUNCTION_TAIL } from '../src/asr-host.ts'
@@ -7,8 +9,8 @@ import { endpointConfirmMs, rmsOf, CONJUNCTION_TAIL } from '../src/asr-host.ts'
 let passed = 0
 const t = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`) }
 
-t('普通句（句号收尾）→ 确认窗口 0（VAD 段完成即端点，最快路径）', () => {
-  assert.equal(endpointConfirmMs('今天天气不错。', 3000), 0)
+t('普通句（句号收尾）→ 确认窗口 CONFIRM_MIN_MS（200ms，最小窗口防换气停顿误切段）', () => {
+  assert.equal(endpointConfirmMs('今天天气不错。', 3000), 200)
 })
 
 t('列举连词结尾（可能续说）→ 升档多等 800ms', () => {

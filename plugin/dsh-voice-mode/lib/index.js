@@ -401,13 +401,13 @@ var VAD_CONTINUE_RMS = 0.02;
 var CONFIRM_CONJUNCTION_MS = 800;
 var CONFIRM_LONG_SENTENCE_MS = 350;
 var CONFIRM_LONG_SENTENCE_S = 8;
-var CONFIRM_MIN_MS = 400;
+var CONFIRM_MIN_MS = 200;
 var CONJUNCTION_TAIL = /(然后|还有|以及|并且|而且|此外|再说|接着|然后呢|比方说|比如说|比如|例如|等等|或者|或是|还有呢)$/;
 function endpointConfirmMs(text, spokenMs) {
   const tail = text.trimEnd();
   if (CONJUNCTION_TAIL.test(tail)) return CONFIRM_CONJUNCTION_MS;
   if (spokenMs > CONFIRM_LONG_SENTENCE_S * 1e3) return CONFIRM_LONG_SENTENCE_MS;
-  return 0;
+  return CONFIRM_MIN_MS;
 }
 function rmsOf(samples) {
   if (samples.length === 0) return 0;
@@ -708,7 +708,7 @@ function createAsrRuntime(options) {
       const all = seg.allSamples;
       const senseP = all.length > 0 ? Promise.race([
         senseTranscribe(all),
-        new Promise((resolve) => setTimeout(() => resolve(null), 1e4))
+        new Promise((resolve) => setTimeout(() => resolve(null), 2e4))
       ]) : Promise.resolve(null);
       const pad = new Float32Array(rec.config.featConfig.sampleRate / 2);
       seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad);
@@ -862,6 +862,15 @@ function createAsrRuntime(options) {
       void getRecognizer().catch(() => void 0);
       void ensureVadModel().catch(() => void 0);
       if (senseVoice()) void getSenseWorker().catch(() => void 0);
+    },
+    // 批 E：SenseVoice 预热前置 enterMode——返回 Promise 让 /toggle on=true await，
+    // 内部 5s 上限防止慢模型下载 hang 住 enterMode（失败/超时静默降级走 finalize 时 race）。
+    warmupSense: async () => {
+      if (!senseVoice()) return;
+      await Promise.race([
+        getSenseWorker().then(() => void 0).catch(() => void 0),
+        new Promise((resolve) => setTimeout(resolve, 5e3))
+      ]);
     },
     // 批 A：仅清缓存键——不 dispose recognizer/senseWorker，避免破坏 I1（in-flight
     // finalize 拿到的旧 recognizer 引用被 free 会丢句）。让现有 fingerprint-gated 路径
@@ -2297,7 +2306,7 @@ function apply(ctx, config) {
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
-        collectBody(req, res, MAX_JSON_BODY, (body) => {
+        collectBody(req, res, MAX_JSON_BODY, async (body) => {
           let sessionId;
           let on;
           let tabId;
@@ -2331,6 +2340,7 @@ function apply(ctx, config) {
               respondJson2(res, 403, { error: "unknown session" });
               return;
             }
+            await asr.warmupSense();
             asr.reset(sessionId);
             queue.cancel(sessionId);
             const previous = activeVoiceSession;
