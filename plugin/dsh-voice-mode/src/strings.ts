@@ -181,6 +181,9 @@ const zh = {
   captionFontSizeLabel: '字幕字号',
   captionMaxWidthLabel: '字幕宽度',
   backchannelYieldLabel: '短应答让位',
+  // 批 G 任务 1：Number 校验 hint 文案。
+  numberInvalid: '数值非法',
+  numberClamped: '已自动调整为 {value}',
 } as const
 
 const en: Record<keyof typeof zh, string> = {
@@ -354,6 +357,9 @@ const en: Record<keyof typeof zh, string> = {
   captionFontSizeLabel: 'Font size',
   captionMaxWidthLabel: 'Max width',
   backchannelYieldLabel: 'Yielding',
+  // 批 G 任务 1：Number 校验 hint 文案。
+  numberInvalid: 'Invalid number',
+  numberClamped: 'Adjusted to {value}',
 }
 
 /**

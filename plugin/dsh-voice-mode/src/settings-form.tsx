@@ -253,31 +253,74 @@ function NumberField({
   step: number
 }): React.ReactElement {
   const [draft, setDraft] = useState<string>(String(value ?? ''))
+  // 批 G 任务 1：失焦校验状态——非法值红框 + 「数值非法」；clamp 后提示「已自动调整为 X」。
+  //  onChange 不做校验（用户输入中）；仅 commit()（onBlur / Enter）触发并清掉。
+  const [hint, setHint] = useState<{ kind: 'invalid' | 'clamped'; text: string } | null>(null)
   useEffect(() => {
     setDraft((d) => (d === String(value ?? '') ? d : String(value ?? '')))
+    setHint(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value])
   const commit = (): void => {
-    const n = Number(draft)
-    if (!Number.isFinite(n) || draft.trim() === '') return
+    const trimmed = draft.trim()
+    if (trimmed === '') {
+      setHint(null)
+      return
+    }
+    const n = Number(trimmed)
+    if (!Number.isFinite(n)) {
+      setHint({ kind: 'invalid', text: tr('numberInvalid') })
+      return
+    }
     const clamped = Math.min(max, Math.max(min, n))
-    setDraft(String(clamped))
+    if (clamped !== n) {
+      setHint({ kind: 'clamped', text: tr('numberClamped').replace('{value}', String(clamped)) })
+      setDraft(String(clamped))
+    } else {
+      setHint(null)
+    }
     void score.set(field, clamped)
   }
+  const invalidStyle: React.CSSProperties = hint
+    ? {
+        ...inputStyle,
+        borderColor: 'var(--dsw-alias-state-error-primary)',
+        boxShadow: '0 0 0 2px rgba(248, 81, 73, 0.18)',
+      }
+    : inputStyle
   return (
-    <input
-      style={inputStyle}
-      type="number"
-      step={step}
-      min={min}
-      max={max}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') commit()
-      }}
-    />
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+      <input
+        style={invalidStyle}
+        type="number"
+        step={step}
+        min={min}
+        max={max}
+        value={draft}
+        onChange={(e) => {
+          setDraft(e.target.value)
+          if (hint) setHint(null)
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit()
+        }}
+      />
+      {hint && (
+        <span
+          style={{
+            fontSize: 11,
+            lineHeight: '14px',
+            color:
+              hint.kind === 'invalid'
+                ? 'var(--dsw-alias-state-error-primary)'
+                : 'var(--dsw-alias-label-tertiary)',
+          }}
+        >
+          {hint.text}
+        </span>
+      )}
+    </span>
   )
 }
 
