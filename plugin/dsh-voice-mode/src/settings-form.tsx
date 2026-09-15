@@ -47,7 +47,13 @@ const cardStyle: React.CSSProperties = {
   overflow: 'hidden',
 }
 
-/** 字段 key → 中文标签（设置行标题用；未知 key 回退显示 key 本身）。 */
+/** 字段 key → 中文标签（设置行标题用；未知 key 回退显示 key 本身）。
+ *
+ * 临时双轨：FIELD_LABELS 与 src/strings.ts zh 段 *Label 键并行维护同一组中文。
+ * 短期目标：避免用户看到英文 key（asrHotwords 等）作为行标题的体验问题；
+ * 长期目标（计划整合批）：去掉 FIELD_LABELS，全部改用 strings.ts 翻译键 tr() 模式
+ * 统一文案来源，杜绝双轨漂移风险。届时本块只保留枚举接入。
+ */
 const FIELD_LABELS: Record<string, string> = {
   ttsEngine: '朗读引擎',
   kokoroModel: 'Kokoro 模型精度',
@@ -67,6 +73,14 @@ const FIELD_LABELS: Record<string, string> = {
   silenceMs: '静音停顿',
   idleTimeoutMinutes: '空闲超时',
   modelHost: '模型镜像',
+  // 批 C 新增（覆盖批 1-5 新增 UI 字段；详见文件头注释）
+  asrHotwords: '热词',
+  asrHotwordsScore: '热词偏置分',
+  recognitionLanguage: '识别语种',
+  senseITN: '逆文本归一化',
+  captionFontSize: '字幕字号',
+  captionMaxWidth: '字幕宽度',
+  backchannelYield: '短应答让位',
 }
 const setHeader: React.CSSProperties = {
   appearance: 'none',

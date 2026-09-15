@@ -1424,7 +1424,17 @@ var zh = {
   secInteraction: "\u4EA4\u4E92\u4E0E\u8F93\u5165",
   secRecognition: "\u8BC6\u522B\u4E0E\u53E3\u8BED",
   secModel: "\u6A21\u578B\u4E0E\u955C\u50CF",
-  telTotal: "\u5408\u8BA1"
+  telTotal: "\u5408\u8BA1",
+  // 批 C：FIELD_LABELS 镜像键（*Label 后缀；详见 settings-form.tsx 头部注释）。
+  // 临时双轨——与 FIELD_LABELS 并行维护同一组中文，未来整合批去掉 FIELD_LABELS，
+  // 统一改用 tr() 翻译键模式避免双轨漂移风险。en 段对应 stub 见下方 en 对象。
+  asrHotwordsLabel: "\u70ED\u8BCD",
+  asrHotwordsScoreLabel: "\u70ED\u8BCD\u504F\u7F6E\u5206",
+  recognitionLanguageLabel: "\u8BC6\u522B\u8BED\u79CD",
+  senseITNLabel: "\u9006\u6587\u672C\u5F52\u4E00\u5316",
+  captionFontSizeLabel: "\u5B57\u5E55\u5B57\u53F7",
+  captionMaxWidthLabel: "\u5B57\u5E55\u5BBD\u5EA6",
+  backchannelYieldLabel: "\u77ED\u5E94\u7B54\u8BA9\u4F4D"
 };
 var en = {
   stateVoiceMode: "Voice Mode",
@@ -1586,7 +1596,17 @@ var en = {
   secInteraction: "Interaction",
   secRecognition: "Recognition & speech",
   secModel: "Model & mirror",
-  telTotal: "total"
+  telTotal: "total",
+  // 批 C：与 zh 段 *Label 镜像键同步。临时 stub（仅用于满足 Record<keyof typeof zh, string>
+  // 类型约束，避免 tsc 红），由整合批统一替换为正式英文文案。**未对外使用**——当前
+  // settings-form.tsx 通过 FIELD_LABELS 取值，未走 tr()，所以英文用户暂未感知差异。
+  asrHotwordsLabel: "Hotwords",
+  asrHotwordsScoreLabel: "Bias score",
+  recognitionLanguageLabel: "Recognition language",
+  senseITNLabel: "ITN",
+  captionFontSizeLabel: "Font size",
+  captionMaxWidthLabel: "Max width",
+  backchannelYieldLabel: "Yielding"
 };
 var guess = () => /^zh\b/i.test(
   typeof document !== "undefined" && document.documentElement.lang || (typeof navigator !== "undefined" ? navigator.language : "") || ""
@@ -1629,7 +1649,15 @@ var FIELD_LABELS = {
   spokenFormat: "\u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
   silenceMs: "\u9759\u97F3\u505C\u987F",
   idleTimeoutMinutes: "\u7A7A\u95F2\u8D85\u65F6",
-  modelHost: "\u6A21\u578B\u955C\u50CF"
+  modelHost: "\u6A21\u578B\u955C\u50CF",
+  // 批 C 新增（覆盖批 1-5 新增 UI 字段；详见文件头注释）
+  asrHotwords: "\u70ED\u8BCD",
+  asrHotwordsScore: "\u70ED\u8BCD\u504F\u7F6E\u5206",
+  recognitionLanguage: "\u8BC6\u522B\u8BED\u79CD",
+  senseITN: "\u9006\u6587\u672C\u5F52\u4E00\u5316",
+  captionFontSize: "\u5B57\u5E55\u5B57\u53F7",
+  captionMaxWidth: "\u5B57\u5E55\u5BBD\u5EA6",
+  backchannelYield: "\u77ED\u5E94\u7B54\u8BA9\u4F4D"
 };
 var setHeader = {
   appearance: "none",
@@ -2638,7 +2666,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "733ea77";
+var BUILD_TAG = "27eb669";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

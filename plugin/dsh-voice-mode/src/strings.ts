@@ -171,6 +171,16 @@ const zh = {
   secRecognition: '识别与口语',
   secModel: '模型与镜像',
   telTotal: '合计',
+  // 批 C：FIELD_LABELS 镜像键（*Label 后缀；详见 settings-form.tsx 头部注释）。
+  // 临时双轨——与 FIELD_LABELS 并行维护同一组中文，未来整合批去掉 FIELD_LABELS，
+  // 统一改用 tr() 翻译键模式避免双轨漂移风险。en 段对应 stub 见下方 en 对象。
+  asrHotwordsLabel: '热词',
+  asrHotwordsScoreLabel: '热词偏置分',
+  recognitionLanguageLabel: '识别语种',
+  senseITNLabel: '逆文本归一化',
+  captionFontSizeLabel: '字幕字号',
+  captionMaxWidthLabel: '字幕宽度',
+  backchannelYieldLabel: '短应答让位',
 } as const
 
 const en: Record<keyof typeof zh, string> = {
@@ -334,6 +344,16 @@ const en: Record<keyof typeof zh, string> = {
   secRecognition: 'Recognition & speech',
   secModel: 'Model & mirror',
   telTotal: 'total',
+  // 批 C：与 zh 段 *Label 镜像键同步。临时 stub（仅用于满足 Record<keyof typeof zh, string>
+  // 类型约束，避免 tsc 红），由整合批统一替换为正式英文文案。**未对外使用**——当前
+  // settings-form.tsx 通过 FIELD_LABELS 取值，未走 tr()，所以英文用户暂未感知差异。
+  asrHotwordsLabel: 'Hotwords',
+  asrHotwordsScoreLabel: 'Bias score',
+  recognitionLanguageLabel: 'Recognition language',
+  senseITNLabel: 'ITN',
+  captionFontSizeLabel: 'Font size',
+  captionMaxWidthLabel: 'Max width',
+  backchannelYieldLabel: 'Yielding',
 }
 
 /**
