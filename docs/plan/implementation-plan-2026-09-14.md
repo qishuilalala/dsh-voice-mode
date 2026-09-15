@@ -232,8 +232,8 @@ Kokoro/VITS 走 sherpa-onnx offline TTS（纯文本+sid 输入），**不支持 
 
 | 标签 | 本地实现 |
 |---|---|
-| `<break 500ms>` | 单标签；文本切段 → 分段合成 → 段间插 N ms 静音 PCM |
-| `<whisper>...</whisper>` | **成对标签**（作用域 = 闭合内文本；落地修正：ADR-0007 原文是单标签，但单标签无明确作用域边界，成对才是可判定语义——本偏差显式声明并回写 ADR-0007 落地注记）；作用域内段落 PCM 增益 ×0.5 |
+| `<break 500ms>` | 单标签；文本切段 → 分段合成 → **段后**插 N ms 静音 PCM（EmotionSegment.preBreakMs 标在该段，break 之前最后一段） |
+| `<whisper>...</whisper>` | **成对标签**（作用域 = 闭合内文本；落地修正：ADR-0007 原文是单标签，但单标签无明确作用域边界，成对才是可判定语义——本偏差显式声明并回写 ADR-0007 落地注记）；作用域内段落 PCM 增益 ×0.5；不平衡 → 全段退回非 whisper（保守语义） |
 | `<laugh>/<sigh>/<emphasis>` | 单标签；**剥离不读出**（防逐字朗读）；真声音留给第二步 Edge |
 
 ### 6.2 改动清单
@@ -244,13 +244,16 @@ Kokoro/VITS 走 sherpa-onnx offline TTS（纯文本+sid 输入），**不支持 
 | `src/tts-local.ts` synthesize L441-465 | 拿到 PCM 后按段序列处理：段间插静音（`sampleRate*N/1000` 个 0 样本）、gain 段乘系数；最终一次 `pcmToWav`。**<break> 落句内时**：多段各自调底层合成（sherpa generate）再拼 PCM |
 | `src/index.ts` tapActiveStream L1110+ | `chunk.text` 进 `segmenter.feed` **之前**调 `stripEmotionTags`（防标签进 partial 草稿被用户看到）；朗读路径的 enqueue 文本保留标签（由 tts-local 消费）。**实现：feed 前 strip、enqueue 前保留**——需要 tapActiveStream 持有两份文本（strip 后给 segmenter，原文给 queue）。检查 segmenter 输出的句子是从 strip 后文本切的——则 queue 收到的是 strip 后句子，标签丢了！**修正设计：标签解析必须在句子切分后、合成前**——即 tts-queue enqueue 后、pump 调 engine.synthesize 前由 emotion.ts 处理 item.text。tapActiveStream **不动**（避免动段切分）。**这是本批关键设计决策：处理点放 tts-queue pump 内（engine.synthesize(item.text) 改为 emotion 处理后多段合成）** |
 | `src/tts-queue.ts` | **完全不动**（定稿：emotion 处理全部收在 tts-local.synthesize 内部——`synthesize(text)` 收到含标签文本时内部多段合成再拼 PCM 返回单个 WAV；pump 与帧协议零触碰，I4/I5 天然无风险）。Edge 的 EdgeTtsEngine（本文件内）第二步才动 |
+| `src/segmenter.ts` **plainText L16-28** | **批 4 审查 B1 暴露的 plan 前置约束遗漏**：原正则 `/<\/?[a-zA-Z][^>]*>/g` 会把 emotion 标签一并剥掉，导致 emotion 处理永远不触发（单测绕过 segmenter 所以单测绿、集成断裂）。**修法**：扩展 plainText 链尾加一条**豁免**——先按 emotion 标签名集合 `(?<![a-zA-Z])(?:laugh|sigh|emphasis|break\s+\d+\s*ms|whisper|\/whisper)` 用占位符（U+E000 私有区字符）替换 emotion 标签、markdown/HTML 剥离跑完后还原占位符。**或更简单**：把 line 27 通用 HTML 剥离正则改为只剥离**真正块级 HTML** 标签（`<b>`/`<i>`/`<u>`/`<br>` 等），保留 emotion 标签名（emotion 标签集合固定且已知，未列入该集合的标签一律不剥——零信任）。**推荐后者**，可读且零运行时成本。 |
+| `test/emotion-integration.test.mjs`（新） | **批 4 收口必补**——集成断言：`你好<laugh>世界。<break 300ms>见。<whisper>悄悄</whisper>。<sigh>` 经 `SentenceSegmenter` 切分后输出的句子里 emotion.ts 仍能解析（不被 plainText 误剥）。覆盖：纯文本 / 单标签 / 成对标签 / break N ms / 混合五种场景，每种跑 segmenter → emotion.ts 全链路。**B1 防回归断言**。 |
 | `test/emotion.test.mjs`（新） | 解析/剥离/分段/静音插入/增益 8-10 断言 |
 
 ### 6.3 验证与 Done
 
 - typecheck + npm test 全绿（+~10）；**I5 保护**：emotion 处理在 epoch 检查之后、synthesize 之前，失败按原 synthesize 失败路径重试（不新增绕过 epoch 的路径）。
 - Done = `你好<break 300ms>世界` 本地合成 WAV 时长比无标签多 ~300ms（单测断言 PCM 长度）；`<laugh>` 不被读出。
-- 回滚 `git revert`；预计 ~120 行（emotion.ts ~60 + tts-local 后处理 ~40 + 测试 ~20）。
+- **批 4 收口前置门**（**批 4 审查 subagent B1 后追加**）：① `src/segmenter.ts` plainText 已修且豁免 emotion 标签；② `test/emotion-integration.test.mjs` 新增且全绿（覆盖 5 种 emotion 标签场景的 segmenter→emotion.ts 全链路）；③ tsc×2 → build → npm test 全绿（基线 132 + emotion 19 + emotion-integration 5+ = 156+）；④ 真机冒烟：说"你好<break 300ms>世界" LLM 直返含 break 标签的回复，TTS 时长确实多 ~300ms——批 6 真机阶段执行。
+- 回滚 `git revert`；预计 ~120 行（emotion.ts ~60 + tts-local 后处理 ~40 + 测试 ~20）——**实际 ~283 行（含 segmenter 修复 + 集成断言），略超但最小必要。**
 
 ---
 
