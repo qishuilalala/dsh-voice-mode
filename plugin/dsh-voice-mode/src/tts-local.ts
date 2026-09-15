@@ -474,15 +474,17 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
         if (samples.length === 0) continue
         const sr = res.sampleRate || 16000
         if (!resolvedSampleRate) resolvedSampleRate = sr
-        // 段前静音（来自前置 break 标签）
-        if (preBreak > 0 && resolvedSampleRate) {
-          chunks.push(new Float32Array(Math.round((resolvedSampleRate * preBreak) / 1000)))
-        }
         // whisper 作用域内：增益 ×0.5
         if (seg.whisper) {
           for (let j = 0; j < samples.length; j++) samples[j] *= 0.5
         }
+        // 段样本
         chunks.push(samples)
+        // 段后置静音（plan §6.0「段后置静音」语义：preBreakMs 标在「 break 之前的最后一段」上，
+        //   tts-local 合成该段 PCM 后插静音 PCM；末尾 break 由 emotion.ts 收尾挂在 out[last]）。
+        if (preBreak > 0 && resolvedSampleRate) {
+          chunks.push(new Float32Array(Math.round((resolvedSampleRate * preBreak) / 1000)))
+        }
       }
       if (chunks.length === 0) {
         // 全部段都返回了空 samples（罕见——合成器空响应）

@@ -1812,13 +1812,13 @@ function createSherpaLocalEngine(options) {
         if (samples.length === 0) continue;
         const sr = res.sampleRate || 16e3;
         if (!resolvedSampleRate) resolvedSampleRate = sr;
-        if (preBreak > 0 && resolvedSampleRate) {
-          chunks.push(new Float32Array(Math.round(resolvedSampleRate * preBreak / 1e3)));
-        }
         if (seg.whisper) {
           for (let j = 0; j < samples.length; j++) samples[j] *= 0.5;
         }
         chunks.push(samples);
+        if (preBreak > 0 && resolvedSampleRate) {
+          chunks.push(new Float32Array(Math.round(resolvedSampleRate * preBreak / 1e3)));
+        }
       }
       if (chunks.length === 0) {
         return pcmToWav(Buffer.alloc(0), resolvedSampleRate || 16e3);

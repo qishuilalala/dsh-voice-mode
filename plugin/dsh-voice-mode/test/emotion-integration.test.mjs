@@ -37,7 +37,7 @@ await build({
 })
 const emotion = await import(pathToFileURL(join(tmp, 'emotion.js')).href)
 const segMod = await import(pathToFileURL(join(tmp, 'segmenter.js')).href)
-const { parseEmotionTags, stripEmotionTags } = emotion
+const { parseEmotionTags } = emotion
 const { SentenceSegmenter, plainText } = segMod
 
 console.log('plainText 单点守卫（B1 直接触发点）')

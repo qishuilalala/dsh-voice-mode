@@ -27,7 +27,7 @@ const TAG_RE = /<\s*(break\s+(?<ms>\d+)\s*ms|whisper|\/whisper|laugh|sigh|emphas
 /**
  * 将含标签文本解析为段序列（每段带 whisper 状态）。
  * 单标签（laugh/sigh/emphasis/break）：消费但不产生段落，break 的毫秒数作为前一段的 preBreakMs。
- * 成对 <whisper>...</whisper>：消费，作用域内的段落 whisper=true；嵌套/不平衡时降级为「全段当 whisper」。
+ * 成对 <whisper>...</whisper>：消费，作用域内的段落 whisper=true；嵌套/不平衡时降级为「全段退回非 whisper」（保守语义：避免误降音量）。
  * 空段文本会被丢弃（不输出空段）；连续 break 累加到最后一个非空段之前的 preBreakMs。
  */
 export function parseEmotionTags(raw: string): EmotionSegment[] {
@@ -102,14 +102,4 @@ export function parseEmotionTags(raw: string): EmotionSegment[] {
     for (const s of out) s.whisper = false
   }
   return out
-}
-
-/**
- * 剥离所有 emotion 标签，返回纯文本（用于 partial 草稿展示，避免标签进入用户视野）。
- * 解析段序列后只拼接 text 字段；空段丢弃。
- */
-export function stripEmotionTags(raw: string): string {
-  return parseEmotionTags(raw)
-    .map((s) => s.text)
-    .join('')
 }
