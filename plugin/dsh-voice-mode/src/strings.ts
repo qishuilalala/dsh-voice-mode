@@ -44,6 +44,9 @@ const zh = {
   // settings-form
   previewNameFirst: '请先填写音色名（ShortName）',
   previewDisabled: '语音模式已禁用（插件 enabled=false），无法试听',
+  // 批 G 任务 6：本地 TTS 引擎未下载模型时禁用试听按钮 + 提示。
+  previewModelMissing: '请先下载本地模型（见上方「朗读引擎」状态）',
+  previewModelLoading: '本地模型正在下载中，请稍候',
   previewPlayFail: '试听失败：无法播放该音色',
   previewAutoplay: '浏览器拦截了自动播放，请再点一次试听',
   previewCheck: '试听失败：请检查网络或音色名（ShortName）是否正确',
@@ -96,6 +99,7 @@ const zh = {
   descAsrHotwords: '每行一个词或「词:分数」（如 dsh-voice-mode:2.5）；留空关闭（默认 = 行为零变化）。开启后下次进入语音模式生效',
   descAsrHotwordsScore: '热词基准偏置分（1.5 默认，与 sherpa-onnx 官方一致；越大越强，过大可能伤普通识别）',
   asrHotwordsPlaceholder: 'dsh-voice-mode\nsherpa-onnx\n小爱同学:2.0',
+  asrHotwordsInvalid: '第 {line} 行格式错误，应为「词」或「词:分数」',
   recognitionLanguage: '识别语言',
   descRecognitionLanguage: 'SenseVoice 识别语种（默认 auto 自动检测；锁语种后只识别该语种；混合场景保持 auto；切换会重建 worker 线程）',
   senseITN: '逆文本归一化',
@@ -114,15 +118,13 @@ const zh = {
   skipReading: '跳过当前朗读',
   backchannelYield: '短应答让位',
   descBackchannelYield: '朗读期用户说「嗯/对」等短应答时自动让位（跳过当前 TTS 句 + 短暂丢帧 1.5s；真要说则原 hardBreak 接管；关 = 不让位，行为等同改造前）',
-  yieldMs: '让位窗口',
-  descYieldMs: '短应答让位窗口毫秒数（默认 1500ms；范围 500~3000ms；设大=让位更宽裕、设小=更快恢复朗读）',
   descMode: '交互模式（toggle 持续聆听+静音断句 / hold 按住说话）',
   modeToggle: '持续聆听',
   modeHold: '按住说话',
   descWakeWord: '唤醒词（默认关；如「你好小D」，说出后开始识别）',
   wakePlaceholder: '如：你好小D',
-  settingsCardDesc: '朗读引擎 / 音色 / 语速 / 打断灵敏度 / 打断方式 / 回声门控 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音 / 识别热词 / 热词偏置分 / 识别语种 / 逆文本归一化 / 字幕字号 / 字幕宽度 / 短应答让位 / 让位窗口',
-  settingsEffectiveNote: '朗读引擎 / 音色 / 语速 / 模型精度 / 口语化提示词 / 重译 / 字幕字号 / 字幕宽度 / 短应答让位 / 让位窗口 即时生效；识别热词 / 热词偏置分 / 识别语种 / 逆文本归一化 即时生效（下次进入语音模式重建流式识别器）；其余（打断灵敏度 / 打断方式 / 回声门控 / 快捷键 / 静音 / 空闲 / 镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音）下次进入语音模式时生效。',
+  settingsCardDesc: '朗读引擎 / 音色 / 语速 / 打断灵敏度 / 打断方式 / 回声门控 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音 / 识别热词 / 热词偏置分 / 识别语种 / 逆文本归一化 / 字幕字号 / 字幕宽度 / 短应答让位',
+  settingsEffectiveNote: '朗读引擎 / 音色 / 语速 / 模型精度 / 口语化提示词 / 重译 / 字幕字号 / 字幕宽度 / 短应答让位 即时生效；识别热词 / 热词偏置分 / 识别语种 / 逆文本归一化 即时生效（下次进入语音模式重建流式识别器）；其余（打断灵敏度 / 打断方式 / 回声门控 / 快捷键 / 静音 / 空闲 / 镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音）下次进入语音模式时生效。',
   configUnavailable: '配置暂不可用',
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: '说完',
@@ -183,7 +185,9 @@ const zh = {
   captionFontSizeLabel: '字幕字号',
   captionMaxWidthLabel: '字幕宽度',
   backchannelYieldLabel: '短应答让位',
-  yieldMsLabel: '让位窗口',
+  // 批 G 任务 2：空闲预警 + 退出提示文案。
+  idleWarn30s: '30 秒后自动退出（设置里可调空闲时长）',
+  idleTimeoutQuit: '空闲超时已自动退出（设置里可调时长）',
 } as const
 
 const en: Record<keyof typeof zh, string> = {
@@ -225,6 +229,9 @@ const en: Record<keyof typeof zh, string> = {
   configUnavailableNote: ' (settings document not ready; the panel will appear when it is).',
   previewNameFirst: 'Enter a voice ShortName first',
   previewDisabled: 'Voice mode disabled; preview unavailable',
+  // 批 G 任务 6：本地 TTS 引擎未下载模型时禁用试听按钮 + 提示。
+  previewModelMissing: 'Download the local model first (see the engine status above)',
+  previewModelLoading: 'Local model is downloading — please wait',
   previewPlayFail: 'Preview failed: cannot play this voice',
   previewAutoplay: 'Autoplay blocked — click preview again',
   previewCheck: 'Preview failed: check network or ShortName',
@@ -276,6 +283,7 @@ const en: Record<keyof typeof zh, string> = {
   descAsrHotwords: 'One term per line, or "term:score" (e.g. dsh-voice-mode:2.5). Leave empty to disable (default = no behavioural change). Takes effect next time you enter voice mode.',
   descAsrHotwordsScore: 'Hotword baseline bias (default 1.5, matches sherpa-onnx upstream). Higher = stronger bias but may hurt generic recognition.',
   asrHotwordsPlaceholder: 'dsh-voice-mode\nsherpa-onnx\nxiaomi:2.0',
+  asrHotwordsInvalid: 'Line {line} format error: should be "term" or "term:score"',
   recognitionLanguage: 'Recognition language',
   descRecognitionLanguage: 'SenseVoice language (default auto; lock to zh/en/ja/ko/yue for single-language; mixed scenarios keep auto; switching rebuilds the worker thread)',
   senseITN: 'Inverse text normalization',
@@ -294,15 +302,13 @@ const en: Record<keyof typeof zh, string> = {
   skipReading: 'Skip current reading',
   backchannelYield: 'Short-answer yielding',
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches pre-batch-5)',
-  yieldMs: 'Yield window',
-  descYieldMs: 'Short-answer yielding window in ms (default 1500ms; range 500~3000ms; larger = more room to yield, smaller = faster TTS resume)',
   descMode: 'Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)',
   modeToggle: 'Continue listen',
   modeHold: 'Hold to talk',
   descWakeWord: 'Wake word (default off; e.g. Hey D)',
   wakePlaceholder: 'e.g. Hey D',
-  settingsCardDesc: 'Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / hotwords / hotwords score / recognition language / ITN / caption font / caption width / yielding / yield window',
-  settingsEffectiveNote: 'Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding / yield window apply immediately; hotwords / hotwords score / recognition language / ITN apply immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.',
+  settingsCardDesc: 'Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / hotwords / hotwords score / recognition language / ITN / caption font / caption width / yielding',
+  settingsEffectiveNote: 'Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding apply immediately; hotwords / hotwords score / recognition language / ITN apply immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.',
   configUnavailable: 'Configuration unavailable',
   telUtteranceEnd: 'end',
   telEndpoint: 'endpoint',
@@ -359,7 +365,9 @@ const en: Record<keyof typeof zh, string> = {
   captionFontSizeLabel: 'Font size',
   captionMaxWidthLabel: 'Max width',
   backchannelYieldLabel: 'Yielding',
-  yieldMsLabel: 'Yield window',
+  // 批 G 任务 2：空闲预警 + 退出提示文案。
+  idleWarn30s: 'Auto-exit in 30 seconds (adjustable in settings)',
+  idleTimeoutQuit: 'Idle timeout — voice mode auto-exited (adjustable in settings)',
 }
 
 /**

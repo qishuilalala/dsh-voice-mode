@@ -81,7 +81,6 @@ const FIELD_LABELS: Record<string, string> = {
   captionFontSize: '字幕字号',
   captionMaxWidth: '字幕宽度',
   backchannelYield: '短应答让位',
-  yieldMs: '让位窗口',
 }
 const setHeader: React.CSSProperties = {
   appearance: 'none',
@@ -315,6 +314,87 @@ function TextField({
   )
 }
 
+/** 批 G 任务 4：识别热词 textarea——onBlur 时逐行 split + 校验「词」/「词:分数」格式，
+ *  错误时红框 + hint「第 N 行格式错误，应为「词」或「词:分数」」。
+ *  onChange 不做校验（用户输入中）；仅提示，不阻止 scope.set（用户改完可手动修正或保留旧值）。 */
+function AsrHotwordsTextarea({ score, value }: { score: ScopeController; value: string }): React.ReactElement {
+  const [hint, setHint] = useState<string | null>(null)
+  // 与 scope 同步时清空 hint（外部改了值说明用户已经处理过）。
+  useEffect(() => {
+    setHint(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
+  /** 校验一行：返回 null=合法，string=错误消息（携带行号）。空行=合法（忽略）。 */
+  const validate = (text: string): string | null => {
+    const lines = text.split(/\r?\n/)
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+      if (!line) continue
+      // 合法：「词」或「词:分数」（分数必须是有限正数）。
+      const m = /^([^:]+)(?::([0-9]+(?:\.[0-9]+)?))?$/.exec(line)
+      if (!m || !m[1].trim()) {
+        return tr('asrHotwordsInvalid').replace('{line}', String(i + 1))
+      }
+      if (m[2] !== undefined) {
+        const score = Number(m[2])
+        if (!Number.isFinite(score) || score <= 0) {
+          return tr('asrHotwordsInvalid').replace('{line}', String(i + 1))
+        }
+      }
+    }
+    return null
+  }
+  const onBlur = (): void => {
+    const err = validate(value)
+    setHint(err)
+  }
+  const baseTextareaStyle: React.CSSProperties = {
+    width: '100%',
+    resize: 'vertical',
+    fontFamily: 'inherit',
+    fontSize: 13,
+    padding: '6px 8px',
+    borderRadius: 6,
+    border: '1px solid var(--set-field-border, #3a3a3a)',
+    background: 'var(--set-field-bg, transparent)',
+    color: 'inherit',
+  }
+  const textareaStyle: React.CSSProperties = hint
+    ? {
+        ...baseTextareaStyle,
+        borderColor: 'var(--dsw-alias-state-error-primary)',
+        boxShadow: '0 0 0 2px rgba(248, 81, 73, 0.18)',
+      }
+    : baseTextareaStyle
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'stretch', width: 280 }}>
+      <textarea
+        rows={4}
+        value={value}
+        placeholder={tr('asrHotwordsPlaceholder')}
+        onChange={(e) => {
+          void score.set('asrHotwords', e.target.value)
+          // 用户继续编辑时清掉旧 hint，避免提示残留误导。
+          if (hint) setHint(null)
+        }}
+        onBlur={onBlur}
+        style={textareaStyle}
+      />
+      {hint && (
+        <span
+          style={{
+            fontSize: 11,
+            lineHeight: '14px',
+            color: 'var(--dsw-alias-state-error-primary)',
+          }}
+        >
+          {hint}
+        </span>
+      )}
+    </span>
+  )
+}
+
 function SelectField({
   score,
   field,
@@ -504,14 +584,57 @@ function VoiceSelect({
 /**
  * 试听按钮：请求 host /preview 用「当前音色 + 当前语速」一次性合成并播放。
  * Audio 必须在用户手势内创建（自动播放策略）；fetch 完成后仍处短暂激活期内。
+ * 批 G 任务 6：ttsEngine 本地（vits/kokoro）时，若模型未就绪（modelStatus.tts.local?.ready=false），
+ * 按钮 disabled + hint「请先下载本地模型」——避免点试听后等 90s 模型下载再合成。
  */
 function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): React.ReactElement {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  /** 批 G 任务 6：本地引擎模型状态（null=轮询中/未就绪；true=本地 ready；false=本地 not ready）。 */
+  const [localReady, setLocalReady] = useState<boolean | null>(null)
+  /** 批 G 任务 6：当前引擎轮询是否正在下载（true 时按钮禁用）。 */
+  const [ttsLoading, setTtsLoading] = useState(false)
+  useEffect(() => {
+    let alive = true
+    const poll = async (): Promise<void> => {
+      try {
+        const res = await fetch(location.origin + BASE_PATH + '/models/status')
+        if (res.ok && alive) {
+          const st = (await res.json()) as ModelsStatusPayload
+          const tts = st.tts
+          // 本地引擎（vits/kokoro）必须有 local 子字段；edge 引擎 localReady 视为 true（云端无须下载）。
+          if (tts.engine === 'edge') {
+            setLocalReady(true)
+          } else {
+            setLocalReady(!!tts.local?.ready)
+          }
+          setTtsLoading(!!tts.loading)
+        }
+      } catch {
+        // 轮询失败：保持上次状态，不误清 ready。
+      }
+    }
+    void poll()
+    const timer = setInterval(() => void poll(), 3000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [])
+  /** 批 G 任务 6：本地引擎 + 模型未就绪 → 试听按钮 disabled。 */
+  const disabledByModel = localReady === false
 
   const play = (): void => {
     if (busy) return
+    if (disabledByModel) {
+      setNote(tr('previewModelMissing'))
+      return
+    }
+    if (ttsLoading) {
+      setNote(tr('previewModelLoading'))
+      return
+    }
     const v = voice.trim()
     if (!v) {
       setNote(tr('previewNameFirst'))
@@ -598,9 +721,13 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
     fontSize: 12,
     lineHeight: '18px',
   }
+  const btnDisabledStyle: React.CSSProperties = disabledByModel
+    ? { ...btnStyle, opacity: 0.5, cursor: 'default' }
+    : btnStyle
+  const btnTitle = disabledByModel ? tr('previewModelMissing') : tr('previewBtnTitle')
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-      <button type="button" onClick={play} disabled={busy} style={btnStyle} title={tr('previewBtnTitle')}>
+      <button type="button" onClick={play} disabled={busy || disabledByModel} style={btnDisabledStyle} title={btnTitle}>
         <svg viewBox="0 0 16 16" width={11} height={11} aria-hidden="true">
           <path fill="currentColor" d="M4 3l9 5-9 5z" />
         </svg>
@@ -1122,21 +1249,15 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             <Row name="backchannelYield" desc={tr('descBackchannelYield')}>
               <input type="checkbox" checked={value.backchannelYield !== false} onChange={(e) => void scope.set('backchannelYield', e.target.checked)} />
             </Row>
-            <Row name="yieldMs" desc={tr('descYieldMs')}>
-              <NumberField score={scope} field="yieldMs" value={value.yieldMs ?? 1500} min={500} max={3000} step={100} />
-            </Row>
             </Section>
             <Section title={tr('secRecognition')}>
             <Row name="senseVoice" desc={tr('descSenseVoice')}>
               <input type="checkbox" checked={Boolean(value.senseVoice)} onChange={(e) => void scope.set('senseVoice', e.target.checked)} />
             </Row>
             <Row name="asrHotwords" desc={tr('descAsrHotwords')}>
-              <textarea
-                rows={4}
+              <AsrHotwordsTextarea
+                score={scope}
                 value={typeof value.asrHotwords === 'string' ? value.asrHotwords : ''}
-                placeholder={tr('asrHotwordsPlaceholder')}
-                onChange={(e) => void scope.set('asrHotwords', e.target.value)}
-                style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit', fontSize: 13, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--set-field-border, #3a3a3a)', background: 'var(--set-field-bg, transparent)', color: 'inherit' }}
               />
             </Row>
             <Row name="asrHotwordsScore" desc={tr('descAsrHotwordsScore')}>
