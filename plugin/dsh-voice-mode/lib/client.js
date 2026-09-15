@@ -1450,7 +1450,9 @@ var zh = {
   idleTimeoutQuit: "\u7A7A\u95F2\u8D85\u65F6\u5DF2\u81EA\u52A8\u9000\u51FA\uFF08\u8BBE\u7F6E\u91CC\u53EF\u8C03\u65F6\u957F\uFF09",
   // 批 G 任务 1：Number 校验红框 + clamp 提示。
   numberInvalid: "\u6570\u503C\u975E\u6CD5",
-  numberClamped: "\u5DF2\u81EA\u52A8\u8C03\u6574\u4E3A {value}"
+  numberClamped: "\u5DF2\u81EA\u52A8\u8C03\u6574\u4E3A {value}",
+  // 批 H 任务 4：autoResume 关 + 切回上次语音会话时的引导提示（5s 后自动清）。
+  autoResumeHint: "\u53EF\u5728\u8BBE\u7F6E\u4E2D\u5F00\u542F\u300C\u81EA\u52A8\u6062\u590D\u300D\u4EE5\u56DE\u5230\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD"
 };
 var en = {
   stateVoiceMode: "Voice Mode",
@@ -1637,7 +1639,9 @@ var en = {
   idleTimeoutQuit: "Idle timeout \u2014 voice mode auto-exited (adjustable in settings)",
   // 批 G 任务 1：Number 校验红框 + clamp 提示。
   numberInvalid: "Invalid number",
-  numberClamped: "Auto-clamped to {value}"
+  numberClamped: "Auto-clamped to {value}",
+  // 批 H 任务 4：autoResume 关 + 切回上次语音会话时的引导提示（5s 后自动清）。
+  autoResumeHint: 'Enable "Auto-resume" in settings to return to your last voice session'
 };
 var guess = () => /^zh\b/i.test(
   typeof document !== "undefined" && document.documentElement.lang || (typeof navigator !== "undefined" ? navigator.language : "") || ""
@@ -2834,7 +2838,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "350c137";
+var BUILD_TAG = "4bbfa8e";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -3163,7 +3167,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     mode: "toggle",
     telemetry: null,
     turn: "idle",
-    wakeWord: ""
+    wakeWord: "",
+    // 批 H 任务 4：autoResume 引导提示（一次会话内一次）。
+    notice: null
   };
   const listeners = /* @__PURE__ */ new Set();
   const audioListeners = /* @__PURE__ */ new Set();
@@ -4135,13 +4141,25 @@ function MicButton({
     sidRef.current = sessionId;
   }, [sessionId]);
   const autoResumeTriedForRef = (0, import_react2.useRef)(null);
+  const autoResumeHintTimerRef = (0, import_react2.useRef)(null);
   (0, import_react2.useEffect)(() => {
     const sid = sessionId;
     if (!sid || sid === autoResumeTriedForRef.current) return;
     autoResumeTriedForRef.current = sid;
     void (async () => {
       const cfg = await fetchConfig();
-      if (!cfg.autoResume) return;
+      if (!cfg.autoResume) {
+        if (getLastVoiceSession() === sid) {
+          const hint = t("autoResumeHint");
+          if (autoResumeHintTimerRef.current) clearTimeout(autoResumeHintTimerRef.current);
+          bus.setUi({ notice: hint });
+          autoResumeHintTimerRef.current = setTimeout(() => {
+            autoResumeHintTimerRef.current = null;
+            if (bus.ui.notice === hint) bus.setUi({ notice: null });
+          }, 5e3);
+        }
+        return;
+      }
       if (getLastVoiceSession() !== sid) return;
       if (bus.activeSessionId !== null) return;
       if (localRef.current !== "off") return;
@@ -4162,6 +4180,10 @@ function MicButton({
       cancelPendingSubmit();
       cancelAutoSend();
       isSpeechTrueCount = 0;
+      if (autoResumeHintTimerRef.current) {
+        clearTimeout(autoResumeHintTimerRef.current);
+        autoResumeHintTimerRef.current = null;
+      }
       const sid = sidRef.current;
       if ((localRef.current === "on" || localRef.current === "pending") && sid) {
         void engineRef.current?.stop();
@@ -4625,7 +4647,7 @@ function VoiceStatusBar({ bus, sessionId }) {
             },
             i
           )) }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.notice ? b.ui.notice : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
           b.ui.isSpeech === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "span",
             {

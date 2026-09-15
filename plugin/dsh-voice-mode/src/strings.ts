@@ -196,6 +196,8 @@ const zh = {
   // 批 G 任务 1：Number 校验红框 + clamp 提示。
   numberInvalid: '数值非法',
   numberClamped: '已自动调整为 {value}',
+  // 批 H 任务 4：autoResume 关 + 切回上次语音会话时的引导提示（5s 后自动清）。
+  autoResumeHint: '可在设置中开启「自动恢复」以回到上次语音会话',
 } as const
 
 const en: Record<keyof typeof zh, string> = {
@@ -384,6 +386,8 @@ const en: Record<keyof typeof zh, string> = {
   // 批 G 任务 1：Number 校验红框 + clamp 提示。
   numberInvalid: 'Invalid number',
   numberClamped: 'Auto-clamped to {value}',
+  // 批 H 任务 4：autoResume 关 + 切回上次语音会话时的引导提示（5s 后自动清）。
+  autoResumeHint: 'Enable "Auto-resume" in settings to return to your last voice session',
 }
 
 /**

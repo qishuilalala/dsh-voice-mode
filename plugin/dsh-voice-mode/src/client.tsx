@@ -69,6 +69,9 @@ interface VoiceUiState {
   /** 批 G 任务 2：空闲预警态标记（resetIdle 触发 9:30 预警 → true；用户活动 / clearIdle 复位 → false）。
    *  状态条据此展示「30 秒后自动退出」toast。 */
   idleWarn?: boolean
+  /** 批 H 任务 4：一次性提示文案（状态条展示 5s 后自动清；与 idleTimeoutQuit toast 共用模式）。
+   *  当前用于 autoResume 关 + 切回上次会话时引导用户开启自动恢复。 */
+  notice?: string | null
   /** 延迟埋点链各阶段时刻（开发模式状态条展示；null = 未启用/已清空）。 */
   telemetry: Partial<Record<TelemetryStage, number>> | null
   /** 唤醒词（空 = 关）：wake 待机态状态条展示用。 */
@@ -601,6 +604,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     telemetry: null,
     turn: 'idle',
     wakeWord: '',
+    // 批 H 任务 4：autoResume 引导提示（一次会话内一次）。
+    notice: null,
   }
   const listeners = new Set<(b: { active: string | null; ui: VoiceUiState }) => void>()
   const audioListeners = new Set<(frame: TtsChunkFrame) => void>()
@@ -1871,6 +1876,8 @@ export function MicButton({
   // I5：autoResume——切回上次语音会话时自动恢复（默认关；需麦克风权限已授予，失败静默降级）。
   // 按 sessionId 触发（而非仅 mount 一次）：组件跨会话持久时「切回上次会话」才有机会命中。
   const autoResumeTriedForRef = useRef<string | null>(null)
+  /** 批 H 任务 4：autoResume 引导提示的清空计时器句柄（per-sid 切换会话时复位）。 */
+  const autoResumeHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     const sid = sessionId
     if (!sid || sid === autoResumeTriedForRef.current) return
@@ -1880,7 +1887,20 @@ export function MicButton({
     // 先拉真实引导配置再判定（fetchConfig 同时把 boot 写入 bus）。
     void (async () => {
       const cfg = await fetchConfig()
-      if (!cfg.autoResume) return
+      // 批 H 任务 4：autoResume 关 + 切回上次会话 → 状态条一次性提示（5s 后清）。
+      // 与 idleTimeoutQuit toast 共用模式：仅当 notice 仍是本次提示文案才清，避免冲掉用户新提示。
+      if (!cfg.autoResume) {
+        if (getLastVoiceSession() === sid) {
+          const hint = t('autoResumeHint')
+          if (autoResumeHintTimerRef.current) clearTimeout(autoResumeHintTimerRef.current)
+          bus.setUi({ notice: hint })
+          autoResumeHintTimerRef.current = setTimeout(() => {
+            autoResumeHintTimerRef.current = null
+            if (bus.ui.notice === hint) bus.setUi({ notice: null })
+          }, 5000)
+        }
+        return
+      }
       if (getLastVoiceSession() !== sid) return
       if (bus.activeSessionId !== null) return // 已有别的会话在语音模式，不抢
       if (localRef.current !== 'off') return // 已在（或正在进入）语音模式，不重复
@@ -1908,6 +1928,11 @@ export function MicButton({
       cancelPendingSubmit()
       cancelAutoSend()
       isSpeechTrueCount = 0 // 打断根治：卸载重置 isSpeech 计数（防残留）
+      // 批 H 任务 4：autoResume 引导提示定时器兜底清理。
+      if (autoResumeHintTimerRef.current) {
+        clearTimeout(autoResumeHintTimerRef.current)
+        autoResumeHintTimerRef.current = null
+      }
       const sid = sidRef.current
       // 过渡态（pending）也需清理：enterMode 期间卸载时 host 可能已 arm 本会话，
       // 不发 toggle-off 会残留录音/占用（隐私级）。engine 可能尚未创建，用可选链。
@@ -2516,19 +2541,21 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexGrow: 1 }}>
           {b.ui.error
             ? b.ui.error
-            : b.ui.idleWarn
-              ? t('idleWarn30s')
-              : b.ui.state === 'loading-model' || b.ui.model
-              ? b.ui.model
-                ? `${t('loadingModel')} ${b.ui.model.file} ${b.ui.model.percent}%`
-                : stateText
-              : b.ui.playing || b.ui.turn === 'agent-speaking'
-                ? stateText // 朗读/思考中优先显示状态，不显示用户旧的 partial（防遮蔽 thinking/reading）
-                : b.ui.partial
-                  ? b.ui.partial
-                  : b.ui.ttsNotice
-                    ? b.ui.ttsNotice
-                    : stateText}
+            : b.ui.notice
+              ? b.ui.notice
+              : b.ui.idleWarn
+                ? t('idleWarn30s')
+                : b.ui.state === 'loading-model' || b.ui.model
+                ? b.ui.model
+                  ? `${t('loadingModel')} ${b.ui.model.file} ${b.ui.model.percent}%`
+                  : stateText
+                : b.ui.playing || b.ui.turn === 'agent-speaking'
+                  ? stateText // 朗读/思考中优先显示状态，不显示用户旧的 partial（防遮蔽 thinking/reading）
+                  : b.ui.partial
+                    ? b.ui.partial
+                    : b.ui.ttsNotice
+                      ? b.ui.ttsNotice
+                      : stateText}
         </span>
         {b.ui.isSpeech === true && (
           <span
