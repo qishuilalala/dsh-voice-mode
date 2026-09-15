@@ -165,6 +165,8 @@ const NEW_FIELDS = [
   'captionFontSize',
   'captionMaxWidth',
   'backchannelYield',
+  // 批 G 任务 3：yieldMs 让位窗口毫秒数（与批 C 7 字段同等强度的双轨登记要求）。
+  'yieldMs',
 ]
 
 // --- 断言 ---
@@ -228,7 +230,7 @@ for (const field of NEW_FIELDS) {
 console.log('反向断言契约（防删测试）')
 
 t('FIELD_LABELS 含 25 字段（18 原有 + 7 批 C；新增即扩，无意删除即红）', () => {
-  assert.equal(fieldLabelsKeys.size, 25, `FIELD_LABELS 现 ${fieldLabelsKeys.size} 字段，预期 25`)
+  assert.equal(fieldLabelsKeys.size, 26, `FIELD_LABELS 现 ${fieldLabelsKeys.size} 字段，预期 26`)
 })
 
 t('strings.ts zh 段含 167 键（160 原有 + 7 批 C *Label）', () => {

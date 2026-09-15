@@ -162,6 +162,9 @@ export interface VoiceSettingsValue {
   /** 批 5 / ADR-0008 Phase 1：让位语义 backchannel（默认 true = 朗读期用户说「嗯/对」自动跳过当前句）。
    *  关 = 不挂 onBackchannel 回调（行为等同改造前）。I10 豁免：默认开是产品决策，ADR-0008 已接受。 */
   backchannelYield: boolean
+  /** 批 G 任务 3：backchannel 让位窗口毫秒数（默认 1500ms；与改造前 hardcoded 值一致——I10 默认行为零变化）。
+   *  范围 500~3000ms；设大=让位更宽裕（用户「嗯/对」后真要说更不易被截），设小=更快恢复朗读。 */
+  yieldMs: number
 }
 
 /** 平台常量默认（最底层；config base 与用户设置逐层覆盖）。 */
@@ -194,6 +197,8 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   captionMaxWidth: 1,
   // 批 5：backchannel 默认 true（产品决策；关 = 不挂 onBackchannel 回调，行为等同改造前）。
   backchannelYield: true,
+  // 批 G 任务 3：yieldMs 默认 1500ms（与改造前 client.tsx hardcoded 值一致，I10 默认行为零变化）。
+  yieldMs: 1500,
 }
 
 /** 以平台常量默认构造设置 schema。 */
@@ -305,6 +310,15 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .default(d.backchannelYield)
       .description(
         '让位语义（批 5 / ADR-0008 Phase 1，默认开）：朗读期用户说「嗯/对」等短应答时，自动跳过当前 TTS 句并短暂让位 1.5s——1.5s 内用户真要说则走原 hardBreak 取消回合；关 = 不让位，行为等同改造前',
+      ),
+    // 批 G 任务 3：backchannel 让位窗口毫秒数（默认 1500ms；与改造前 hardcoded 值一致，I10 语义守）。
+    yieldMs: z
+      .number()
+      .min(500)
+      .max(3000)
+      .default(d.yieldMs)
+      .description(
+        '短应答让位窗口毫秒数（默认 1500ms，与批 5 改造前一致；范围 500~3000ms；设大=让位更宽裕、设小=更快恢复朗读）',
       ),
   })
 }
@@ -641,6 +655,8 @@ export function apply(ctx: Context, config: Config): void {
             captionFontSize: vset.captionFontSize,
             captionMaxWidth: vset.captionMaxWidth,
             backchannelYield: vset.backchannelYield,
+            // 批 G 任务 3：让位窗口毫秒数（client 消费，硬编码 1500 已替换为可调）。
+            yieldMs: vset.yieldMs,
             asrHotwords: vset.asrHotwords,
             asrHotwordsScore: vset.asrHotwordsScore,
             recognitionLanguage: vset.recognitionLanguage,
