@@ -575,6 +575,12 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     captionFontSize: 0,
     captionMaxWidth: 1,
     backchannelYield: true,
+    // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
+    asrHotwords: '',
+    asrHotwordsScore: 1.5,
+    recognitionLanguage: 'auto',
+    senseITN: true,
+    senseVoice: true,
   }
   const ui: VoiceUiState = {
     state: 'idle',
@@ -1159,6 +1165,16 @@ interface VoiceBootConfig {
   captionMaxWidth: 0 | 1 | 2
   /** 批 5 / ADR-0008 Phase 1：让位语义 backchannel 开关（默认 true = 朗读期说「嗯/对」自动让位）。 */
   backchannelYield: boolean
+  /** 批 B：ASR 热词列表（每行一个热词 + 空格 + 权重；空 = 关）。 */
+  asrHotwords: string
+  /** 批 B：热词权重提升（1-5，默认 1.5）。 */
+  asrHotwordsScore: number
+  /** 批 B：识别语种（auto 自动 / zh 中文 / en 英文 / ja 日文 / ko 韩文 / yue 粤语）。 */
+  recognitionLanguage: 'auto' | 'zh' | 'en' | 'ja' | 'ko' | 'yue'
+  /** 批 B：ITN（逆文本规范化：口语数字 → 书面数字；默认 true）。 */
+  senseITN: boolean
+  /** 批 B：SenseVoice 引擎开关（默认 true = 启用 SenseVoice 模型，否则回退 FunASR）。 */
+  senseVoice: boolean
 }
 
 let styleInjected = false
@@ -1219,7 +1235,30 @@ export function MicButton({
   /** M2：隐藏 tab 时已暂停收音（可见时恢复）；隐私——避免后台持续录音。 */
   const pausedForHiddenRef = useRef(false)
   /** 引导参数读 bus.ui.boot（bus 为单例，组件重挂载不丢；事件时读实时值）。 */
-  const bootNow = (): VoiceBootConfig => bus.ui.boot ?? { basePath: '/voice-mode', silenceMs: 1500, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: 'toggle', bargeInMode: 'auto', echoGateDb: 6, shortcut: 'Ctrl+Shift+V', wakeWord: '', toolBeep: false, captionFontSize: 0, captionMaxWidth: 1, backchannelYield: true }
+  const bootNow = (): VoiceBootConfig =>
+    bus.ui.boot ?? {
+      basePath: '/voice-mode',
+      silenceMs: 1500,
+      interruptLevel: 0,
+      idleTimeoutMinutes: 10,
+      autoSend: true,
+      autoResume: false,
+      mode: 'toggle',
+      bargeInMode: 'auto',
+      echoGateDb: 6,
+      shortcut: 'Ctrl+Shift+V',
+      wakeWord: '',
+      toolBeep: false,
+      captionFontSize: 0,
+      captionMaxWidth: 1,
+      backchannelYield: true,
+      // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
+      asrHotwords: '',
+      asrHotwordsScore: 1.5,
+      recognitionLanguage: 'auto',
+      senseITN: true,
+      senseVoice: true,
+    }
 
   useVoiceCss()
 
@@ -1238,7 +1277,10 @@ export function MicButton({
     setLocal(m)
   }
 
-  /** 每次进入语音模式重新拉取 /config（设置改动即时生效），失败用当前 bus.boot 兜底。 */
+  /** 每次进入语音模式重新拉取 /config（设置改动即时生效），失败用当前 bus.boot 兜底。
+   *  批 B：fetchConfig 白名单补 5 ASR 字段透传（plan §12 批 B 周全修复）；
+   *  host-only 字段 cacheDir / allowLan / audioMime / ttsEngine / modelHost 不透传（对抗性审查 B3 决定）——
+   *  这些字段 host 内部使用，client 不消费，透传暴露抽象边界 + 增加传输体积。 */
   const fetchConfig = async (): Promise<VoiceBootConfig> => {
     try {
       const res = await fetch(`${location.origin}${BASE_PATH}/config`)
@@ -1263,6 +1305,24 @@ export function MicButton({
         captionMaxWidth: c.captionMaxWidth === 0 || c.captionMaxWidth === 2 ? c.captionMaxWidth : 1,
         // 批 5：同模式（plan §7.2 表漏列 fetchConfig 字段透传，类批 3 captionFontSize 集成层补丁）
         backchannelYield: c.backchannelYield !== false,
+        // 批 B：5 ASR 字段透传（host /config handler 在 c2120d9 已透传 4 字段，本批补 senseVoice + 客户端白名单对齐）。
+        // 类型校验严格 + 默认值兜底，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
+        asrHotwords: typeof c.asrHotwords === 'string' ? c.asrHotwords : '',
+        asrHotwordsScore:
+          typeof c.asrHotwordsScore === 'number' && c.asrHotwordsScore >= 1 && c.asrHotwordsScore <= 5
+            ? c.asrHotwordsScore
+            : 1.5,
+        recognitionLanguage:
+          c.recognitionLanguage === 'zh' ||
+          c.recognitionLanguage === 'en' ||
+          c.recognitionLanguage === 'ja' ||
+          c.recognitionLanguage === 'ko' ||
+          c.recognitionLanguage === 'yue' ||
+          c.recognitionLanguage === 'auto'
+            ? c.recognitionLanguage
+            : 'auto',
+        senseITN: c.senseITN === false ? false : true,
+        senseVoice: c.senseVoice === false ? false : true,
       }
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord })
       return next

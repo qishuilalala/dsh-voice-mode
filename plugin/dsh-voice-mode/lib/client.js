@@ -2638,7 +2638,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "0b00856";
+var BUILD_TAG = "733ea77";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2944,7 +2944,13 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     toolBeep: false,
     captionFontSize: 0,
     captionMaxWidth: 1,
-    backchannelYield: true
+    backchannelYield: true,
+    // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
+    asrHotwords: "",
+    asrHotwordsScore: 1.5,
+    recognitionLanguage: "auto",
+    senseITN: true,
+    senseVoice: true
   };
   const ui = {
     state: "idle",
@@ -3432,7 +3438,29 @@ function MicButton({
   const manualHoldRef = (0, import_react2.useRef)(false);
   const breakRef = (0, import_react2.useRef)(null);
   const pausedForHiddenRef = (0, import_react2.useRef)(false);
-  const bootNow = () => bus.ui.boot ?? { basePath: "/voice-mode", silenceMs: 1500, interruptLevel: 0, idleTimeoutMinutes: 10, autoSend: true, autoResume: false, mode: "toggle", bargeInMode: "auto", echoGateDb: 6, shortcut: "Ctrl+Shift+V", wakeWord: "", toolBeep: false, captionFontSize: 0, captionMaxWidth: 1, backchannelYield: true };
+  const bootNow = () => bus.ui.boot ?? {
+    basePath: "/voice-mode",
+    silenceMs: 1500,
+    interruptLevel: 0,
+    idleTimeoutMinutes: 10,
+    autoSend: true,
+    autoResume: false,
+    mode: "toggle",
+    bargeInMode: "auto",
+    echoGateDb: 6,
+    shortcut: "Ctrl+Shift+V",
+    wakeWord: "",
+    toolBeep: false,
+    captionFontSize: 0,
+    captionMaxWidth: 1,
+    backchannelYield: true,
+    // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
+    asrHotwords: "",
+    asrHotwordsScore: 1.5,
+    recognitionLanguage: "auto",
+    senseITN: true,
+    senseVoice: true
+  };
   useVoiceCss();
   const [, bumpUi] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(
@@ -3468,7 +3496,14 @@ function MicButton({
         captionFontSize: c.captionFontSize === 1 || c.captionFontSize === 2 || c.captionFontSize === 3 ? c.captionFontSize : 0,
         captionMaxWidth: c.captionMaxWidth === 0 || c.captionMaxWidth === 2 ? c.captionMaxWidth : 1,
         // 批 5：同模式（plan §7.2 表漏列 fetchConfig 字段透传，类批 3 captionFontSize 集成层补丁）
-        backchannelYield: c.backchannelYield !== false
+        backchannelYield: c.backchannelYield !== false,
+        // 批 B：5 ASR 字段透传（host /config handler 在 c2120d9 已透传 4 字段，本批补 senseVoice + 客户端白名单对齐）。
+        // 类型校验严格 + 默认值兜底，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
+        asrHotwords: typeof c.asrHotwords === "string" ? c.asrHotwords : "",
+        asrHotwordsScore: typeof c.asrHotwordsScore === "number" && c.asrHotwordsScore >= 1 && c.asrHotwordsScore <= 5 ? c.asrHotwordsScore : 1.5,
+        recognitionLanguage: c.recognitionLanguage === "zh" || c.recognitionLanguage === "en" || c.recognitionLanguage === "ja" || c.recognitionLanguage === "ko" || c.recognitionLanguage === "yue" || c.recognitionLanguage === "auto" ? c.recognitionLanguage : "auto",
+        senseITN: c.senseITN === false ? false : true,
+        senseVoice: c.senseVoice === false ? false : true
       };
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord });
       return next;
