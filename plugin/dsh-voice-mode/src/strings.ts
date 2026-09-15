@@ -188,6 +188,9 @@ const zh = {
   // 批 G 任务 2：空闲预警 + 退出提示文案。
   idleWarn30s: '30 秒后自动退出（设置里可调空闲时长）',
   idleTimeoutQuit: '空闲超时已自动退出（设置里可调时长）',
+  // 批 G 任务 1：Number 校验红框 + clamp 提示。
+  numberInvalid: '数值非法',
+  numberClamped: '已自动调整为 {value}',
 } as const
 
 const en: Record<keyof typeof zh, string> = {
@@ -368,6 +371,9 @@ const en: Record<keyof typeof zh, string> = {
   // 批 G 任务 2：空闲预警 + 退出提示文案。
   idleWarn30s: 'Auto-exit in 30 seconds (adjustable in settings)',
   idleTimeoutQuit: 'Idle timeout — voice mode auto-exited (adjustable in settings)',
+  // 批 G 任务 1：Number 校验红框 + clamp 提示。
+  numberInvalid: 'Invalid number',
+  numberClamped: 'Auto-clamped to {value}',
 }
 
 /**

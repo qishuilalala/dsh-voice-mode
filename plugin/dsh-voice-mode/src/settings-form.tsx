@@ -237,6 +237,10 @@ const LANG_OPTIONS: Array<{ v: string; label: string }> = [
   { v: 'yue', label: '粤语 yue' },
 ]
 
+/** 批 G 任务 1：NumberField 加红框校验 + clamp 提示。
+ *  - 非数值/空串：commit() 拒绝（保留 draft，红框 + 「数值非法」hint）。
+ *  - 越界：自动 clamp 到 [min, max] 并提交 scope.set，hint 提示「已自动调整为 X」。
+ *  - 合法值：清 hint，恢复默认 inputStyle。 */
 function NumberField({
   score,
   field,
@@ -253,31 +257,64 @@ function NumberField({
   step: number
 }): React.ReactElement {
   const [draft, setDraft] = useState<string>(String(value ?? ''))
+  const [hint, setHint] = useState<string | null>(null)
   useEffect(() => {
     setDraft((d) => (d === String(value ?? '') ? d : String(value ?? '')))
+    // 外部 value 同步时清 hint（用户已通过其他路径处理过）。
+    setHint(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value])
   const commit = (): void => {
-    const n = Number(draft)
-    if (!Number.isFinite(n) || draft.trim() === '') return
-    const clamped = Math.min(max, Math.max(min, n))
-    setDraft(String(clamped))
-    void score.set(field, clamped)
+    const raw = draft.trim()
+    if (raw === '') {
+      setHint(tr('numberInvalid'))
+      return
+    }
+    const n = Number(raw)
+    if (!Number.isFinite(n)) {
+      setHint(tr('numberInvalid'))
+      return
+    }
+    if (n < min || n > max) {
+      const clamped = Math.min(max, Math.max(min, n))
+      setHint(tr('numberClamped').replace('{value}', String(clamped)))
+      setDraft(String(clamped))
+      void score.set(field, clamped)
+      return
+    }
+    setHint(null)
+    void score.set(field, n)
   }
+  const invalidStyle: React.CSSProperties = hint
+    ? {
+        ...inputStyle,
+        border: '1px solid #d33',
+        background: 'rgba(221, 51, 51, 0.08)',
+      }
+    : inputStyle
   return (
-    <input
-      style={inputStyle}
-      type="number"
-      step={step}
-      min={min}
-      max={max}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') commit()
-      }}
-    />
+    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3, flexShrink: 0 }}>
+      <input
+        style={invalidStyle}
+        type="number"
+        step={step}
+        min={min}
+        max={max}
+        value={draft}
+        onChange={(e) => {
+          setDraft(e.target.value)
+          // 用户继续编辑时清旧 hint，避免残留误导。
+          if (hint) setHint(null)
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit()
+        }}
+      />
+      {hint && (
+        <span style={{ color: '#d33', fontSize: 11, lineHeight: '14px' }}>{hint}</span>
+      )}
+    </span>
   )
 }
 

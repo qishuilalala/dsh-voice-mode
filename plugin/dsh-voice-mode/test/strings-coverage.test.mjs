@@ -231,8 +231,15 @@ t('FIELD_LABELS 含 25 字段（18 原有 + 7 批 C；新增即扩，无意删�
   assert.equal(fieldLabelsKeys.size, 25, `FIELD_LABELS 现 ${fieldLabelsKeys.size} 字段，预期 25`)
 })
 
-t('strings.ts zh 段含 172 键（160 原有 + 7 批 C *Label + 5 批 G 新键：任务 1 number×2 / 任务 2 idle×2 / 任务 4 asrHotwordsInvalid×1）', () => {
-  assert.equal(zhKeys.size, 172, `zh 段现 ${zhKeys.size} 键，预期 172`)
+t('strings.ts zh 段含 174 键（160 原有 + 7 批 C *Label + 7 批 G 新键：任务 1 number×2 / 任务 2 idle×2 / 任务 4 asrHotwordsInvalid×1 / previewModelMissing×1 / previewModelLoading×1）', () => {
+  assert.equal(zhKeys.size, 174, `zh 段现 ${zhKeys.size} 键，预期 174`)
+})
+
+t('zh 段关键键存在（批 G 任务 1 number×2 升级；删任意键即红）', () => {
+  // 批 G 任务 1 专项：NumberField 红框 + clamp 提示需要 numberInvalid / numberClamped；
+  // 之前仅以总数断言守门，本批加具体键校验。
+  assert.ok(zhKeys.has('numberInvalid'), 'zh 段缺 numberInvalid（NumberField 红框文案）')
+  assert.ok(zhKeys.has('numberClamped'), 'zh 段缺 numberClamped（clamp 提示文案）')
 })
 
 t('rowNames 至少 24 项（覆盖所有 Row 行；删 Row 即红）', () => {
