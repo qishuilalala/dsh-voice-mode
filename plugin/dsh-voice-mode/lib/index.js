@@ -1312,6 +1312,66 @@ import { fork } from "node:child_process";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { join as join3 } from "node:path";
 import { statSync as statSync2 } from "node:fs";
+
+// src/emotion.ts
+var TAG_RE = /<\s*(break\s+(?<ms>\d+)\s*ms|whisper|\/whisper|laugh|sigh|emphasis)\s*>/gi;
+function parseEmotionTags(raw) {
+  const out = [];
+  let buf = "";
+  let whisper = false;
+  let pendingBreakMs = 0;
+  const flush = () => {
+    const t = buf.trim();
+    buf = "";
+    if (t.length === 0) return;
+    const seg = { text: t, whisper };
+    out.push(seg);
+  };
+  let lastEnd = 0;
+  for (const m of raw.matchAll(TAG_RE)) {
+    const idx = m.index ?? 0;
+    buf += raw.slice(lastEnd, idx);
+    lastEnd = idx + m[0].length;
+    const tag = (m[1] ?? "").toLowerCase().trim();
+    if (tag.startsWith("break")) {
+      const ms = Number(m.groups?.ms ?? 0);
+      if (!Number.isFinite(ms) || ms <= 0) continue;
+      if (buf.trim().length > 0) {
+        flush();
+      }
+      const last = out[out.length - 1];
+      if (last) {
+        ;
+        last.preBreakMs = (last.preBreakMs ?? 0) + ms;
+      } else {
+        pendingBreakMs += ms;
+      }
+    } else if (tag === "whisper") {
+      flush();
+      whisper = true;
+    } else if (tag === "/whisper") {
+      flush();
+      whisper = false;
+    } else {
+    }
+  }
+  buf += raw.slice(lastEnd);
+  flush();
+  if (pendingBreakMs > 0) {
+    const last = out[out.length - 1];
+    if (last) {
+      ;
+      last.preBreakMs = (last.preBreakMs ?? 0) + pendingBreakMs;
+    }
+    pendingBreakMs = 0;
+  }
+  if (whisper) {
+    for (const s of out) s.whisper = false;
+  }
+  return out;
+}
+
+// src/tts-local.ts
 var TTS_MODEL_REPO = "csukuangfj/sherpa-onnx-vits-zh-ll";
 var KOKORO_MODEL_DIR_INT8 = "csukuangfj/kokoro-int8-multi-lang-v1_1";
 var KOKORO_MODEL_DIR_FP32 = "csukuangfj/kokoro-multi-lang-v1_1";
@@ -1722,21 +1782,48 @@ function createSherpaLocalEngine(options) {
       await ensureReady();
       const sid = spec.toSid(opts.voice ?? voice);
       const spd = typeof opts.rate === "number" && Number.isFinite(opts.rate) ? Math.min(2, Math.max(0.5, opts.rate)) : speed;
-      let res = await call({ type: "synth", text, sid, speed: spd });
-      if (!res.ok && /Aborted/.test(res.error ?? "")) {
-        await respawnChild();
-        res = await call({ type: "synth", text, sid, speed: spd });
+      const segments = parseEmotionTags(text);
+      if (segments.length === 0) {
+        return pcmToWav(Buffer.alloc(0), 16e3);
       }
-      if (!res.ok) throw new Error(res.error ?? "local TTS synthesis failed");
-      if (typeof res.samples !== "string" || res.samples.length === 0) {
-        throw new Error("local TTS produced empty audio");
+      const chunks = [];
+      let resolvedSampleRate = 0;
+      let needsRespawn = true;
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const preBreak = seg.preBreakMs ?? 0;
+        let res = await call({ type: "synth", text: seg.text, sid, speed: spd });
+        if (!res.ok && /Aborted/.test(res.error ?? "") && needsRespawn) {
+          await respawnChild();
+          res = await call({ type: "synth", text: seg.text, sid, speed: spd });
+          needsRespawn = false;
+        }
+        if (!res.ok) throw new Error(res.error ?? "local TTS synthesis failed");
+        if (typeof res.samples !== "string" || res.samples.length === 0) continue;
+        const bytes = Buffer.from(res.samples, "base64");
+        const samples = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+        if (samples.length === 0) continue;
+        const sr = res.sampleRate || 16e3;
+        if (!resolvedSampleRate) resolvedSampleRate = sr;
+        if (preBreak > 0 && resolvedSampleRate) {
+          chunks.push(new Float32Array(Math.round(resolvedSampleRate * preBreak / 1e3)));
+        }
+        if (seg.whisper) {
+          for (let j = 0; j < samples.length; j++) samples[j] *= 0.5;
+        }
+        chunks.push(samples);
       }
-      const bytes = Buffer.from(res.samples, "base64");
-      const samples = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
-      if (samples.length === 0) {
-        throw new Error("local TTS produced empty audio");
+      if (chunks.length === 0) {
+        return pcmToWav(Buffer.alloc(0), resolvedSampleRate || 16e3);
       }
-      return pcmToWav(floatToPcm16(samples), res.sampleRate || 16e3);
+      const total = chunks.reduce((acc, c) => acc + c.length, 0);
+      const merged = new Float32Array(total);
+      let off = 0;
+      for (const c of chunks) {
+        merged.set(c, off);
+        off += c.length;
+      }
+      return pcmToWav(floatToPcm16(merged), resolvedSampleRate || 16e3);
     },
     async close() {
       const c = child;

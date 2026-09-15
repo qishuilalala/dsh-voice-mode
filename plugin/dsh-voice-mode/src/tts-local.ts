@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import { statSync } from 'node:fs'
 import { ensureModelFile, ensureModelTree, type ModelFileSpec } from './models.ts'
 import type { TtsEngine, TtsEngineStatus, TtsFileStatus } from './tts-queue.ts'
+import { parseEmotionTags } from './emotion.ts'
 
 export const TTS_MODEL_REPO = 'csukuangfj/sherpa-onnx-vits-zh-ll'
 export const KOKORO_MODEL_DIR_INT8 = 'csukuangfj/kokoro-int8-multi-lang-v1_1'
@@ -445,24 +446,56 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
         typeof opts.rate === 'number' && Number.isFinite(opts.rate)
           ? Math.min(2, Math.max(0.5, opts.rate))
           : speed
-      let res = await call({ type: 'synth', text, sid, speed: spd })
-      if (!res.ok && /Aborted/.test(res.error ?? '')) {
-        // 运行时 Abort（历史：kokoro WASM；原生引擎不应触发，保留作 vits 兜底）——
-        // 杀掉子进程重启（新进程、新模块实例），再重试一次。
-        await respawnChild()
-        res = await call({ type: 'synth', text, sid, speed: spd })
+      // 批 4 / ADR-0007 步 1：解析 emotion 标签为段序列（break/whisper/laugh/sigh/emphasis）。
+      // 处理点全收在 synthesize 内部，tts-queue pump 与帧协议零触碰（I4/I5 天然无风险）。
+      // 无标签（常规文本）→ 段序列 = [{text, whisper:false}]，行为与改造前逐字节等价（I10）。
+      const segments = parseEmotionTags(text)
+      if (segments.length === 0) {
+        // 全部都是单标签（laugh/sigh/emphasis）—— 不产生音频，返回最短 WAV（44 字节 RIFF 头 + 0 长度 PCM）。
+        return pcmToWav(Buffer.alloc(0), 16000)
       }
-      if (!res.ok) throw new Error(res.error ?? 'local TTS synthesis failed')
-      // 子进程以 base64 字符串传样本（本环境 fork IPC 为 JSON 序列化，二进制会被降级）。
-      if (typeof res.samples !== 'string' || res.samples.length === 0) {
-        throw new Error('local TTS produced empty audio')
+      // 逐段调子进程合成 + 拼 PCM；段间插静音（紧跟 break）；whisper 段乘 0.5。
+      const chunks: Float32Array[] = []
+      let resolvedSampleRate = 0
+      let needsRespawn = true // Aborted 重试只对第一段生效（避免多段重复重启）
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i]
+        const preBreak = (seg as { preBreakMs?: number }).preBreakMs ?? 0
+        let res = await call({ type: 'synth', text: seg.text, sid, speed: spd })
+        if (!res.ok && /Aborted/.test(res.error ?? '') && needsRespawn) {
+          await respawnChild()
+          res = await call({ type: 'synth', text: seg.text, sid, speed: spd })
+          needsRespawn = false
+        }
+        if (!res.ok) throw new Error(res.error ?? 'local TTS synthesis failed')
+        if (typeof res.samples !== 'string' || res.samples.length === 0) continue
+        const bytes = Buffer.from(res.samples, 'base64')
+        const samples = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4)
+        if (samples.length === 0) continue
+        const sr = res.sampleRate || 16000
+        if (!resolvedSampleRate) resolvedSampleRate = sr
+        // 段前静音（来自前置 break 标签）
+        if (preBreak > 0 && resolvedSampleRate) {
+          chunks.push(new Float32Array(Math.round((resolvedSampleRate * preBreak) / 1000)))
+        }
+        // whisper 作用域内：增益 ×0.5
+        if (seg.whisper) {
+          for (let j = 0; j < samples.length; j++) samples[j] *= 0.5
+        }
+        chunks.push(samples)
       }
-      const bytes = Buffer.from(res.samples, 'base64')
-      const samples = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4)
-      if (samples.length === 0) {
-        throw new Error('local TTS produced empty audio')
+      if (chunks.length === 0) {
+        // 全部段都返回了空 samples（罕见——合成器空响应）
+        return pcmToWav(Buffer.alloc(0), resolvedSampleRate || 16000)
       }
-      return pcmToWav(floatToPcm16(samples), res.sampleRate || 16000)
+      const total = chunks.reduce((acc, c) => acc + c.length, 0)
+      const merged = new Float32Array(total)
+      let off = 0
+      for (const c of chunks) {
+        merged.set(c, off)
+        off += c.length
+      }
+      return pcmToWav(floatToPcm16(merged), resolvedSampleRate || 16000)
     },
     async close(): Promise<void> {
       // 先捕获引用再 await：await 期间子进程可能退出、exit 回调把 child 置 null，
