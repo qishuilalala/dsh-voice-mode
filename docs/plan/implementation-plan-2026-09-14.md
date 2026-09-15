@@ -97,6 +97,7 @@ R24 评估"需要 temp file 写入机制（~70-100 行）"。**本轮核实 sher
 | `src/asr-hotwords.ts`（**批 1 执行时经计划维护者裁决补记的新文件**） | 新文件 | 纯函数模块 | `buildHotwordsConfig`（空 hw→`{}` spread 保 I10）+ `buildHotwordsKey`（NUL 分隔指纹）；无状态无 IO，供 asr-host 与单测共用 |
 | `src/settings-form.tsx` | secRecognition（senseVoice Row L1062 后） | 新增 Row | textarea（rows=4，placeholder 每行一词）+ score 数字框 |
 | `src/strings.ts` | zh/en 各加 2 键 | — | `asrHotwords: '识别热词'` / `descAsrHotwords: '每行一个词或「词:分数」…'` + en |
+| `src/index.ts` | `/config` 路由 handler（`${base}/config` 路径，约 L604-635） | **批 7 修复（plan §3.2 遗漏补记）** | **必须**在 respondJson 对象中加 `asrHotwords: vset.asrHotwords` / `asrHotwordsScore: vset.asrHotwordsScore` —— 否则字段在 dsh settings 系统有，但 client 永远拿不到 |
 
 ### 3.3 getRecognizer 缓存失效（易错点，写死步骤）
 
@@ -162,6 +163,7 @@ cd plugin/dsh-voice-mode && node -e '/* P1: hotwordsBuf 中文热词实证；P2:
 | `src/settings-form.tsx` | secRecognition | SegGroup 6 选项 + ITN checkbox | — |
 | `src/strings.ts` | zh/en 各 +3 键 | — | `recognitionLanguage: '识别语言'` 等 |
 | `src/asr-sense-key.ts`（**批 2 执行时经计划维护者裁决补记的新文件**） | 新文件 | 纯函数模块 | `RECOGNITION_LANGUAGES` 6 项 + `sanitizeRecognitionLanguage` 守卫（非法值降级 `'auto'`，覆盖 `'zh-cn'`/`'AUTO'`/`'auto '`/`'zh;injection'` 等 i18n 边界）+ `buildSenseLangKey`（NUL 分隔，sanitize 后两侧已归一）；无状态无 IO，供 asr-host 与单测共用，**与批 1 `asr-hotwords.ts` 同模式（纯函数承载 sanitize+key 构造，后续可复用）** |
+| `src/index.ts` | `/config` 路由 handler（`${base}/config` 路径，约 L604-635） | **批 7 修复（plan §4.2 遗漏补记）** | **必须**在 respondJson 对象中加 `recognitionLanguage: vset.recognitionLanguage` / `senseITN: vset.senseITN` —— 否则字段在 dsh settings 系统有，但 client 永远拿不到（与 §3.2 同坑） |
 
 ### 4.3 worker 变更重建（易错点）
 
