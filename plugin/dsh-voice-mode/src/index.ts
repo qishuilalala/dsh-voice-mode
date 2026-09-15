@@ -51,6 +51,35 @@ type TurnState = 'idle' | 'listening' | 'finalizing' | 'agent-speaking'
 const BASE_PATH = '/voice-mode'
 
 /**
+ * /preview 错误归类（批 I 任务 4/4）：把引擎/网络/合成失败分成三档，
+ * 透传用户友好的归类提示而不暴露 errMsg / 模型路径等内部细节。
+ * 诊断上下文走 console.warn，结构与 tts-queue.ts:357 pump catch 批 A 一致。
+ *
+ * 网络错误：Edge 云端不可达 / DNS / 超时
+ * 引擎错误：本地模型下载/校验失败 / 子进程 init 失败 / 子进程崩溃
+ * 文本错误：合成产出空/非法音频（音色-语种不匹配等）
+ */
+type PreviewErrorCategory = 'network' | 'engine' | 'text' | 'unknown'
+
+const PREVIEW_NETWORK_PATTERN = /fetch failed|ECONN|ENOTFOUND|getaddrinfo|ETIMEDOUT|EAI_AGAIN|network|unreachable|socket hang up|aborted/i
+const PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa/i
+const PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat/i
+
+function classifyPreviewError(msg: string): PreviewErrorCategory {
+  if (PREVIEW_TEXT_PATTERN.test(msg)) return 'text'
+  if (PREVIEW_NETWORK_PATTERN.test(msg)) return 'network'
+  if (PREVIEW_ENGINE_PATTERN.test(msg)) return 'engine'
+  return 'unknown'
+}
+
+const PREVIEW_ERROR_MESSAGES: Record<PreviewErrorCategory, string> = {
+  network: '试听失败：网络不可达（Edge 云端需访问微软语音服务），请检查网络或代理',
+  engine: '试听失败：引擎未就绪（本地模型下载中、初始化失败或子进程异常），请稍后再试或在设置面板查看 TTS 状态',
+  text: '试听失败：合成引擎产出空音频（音色与语种可能不匹配），请更换音色或检查语言设置',
+  unknown: '试听失败：请检查网络、音色名（ShortName）或本地 TTS 模型状态',
+}
+
+/**
  * JSON 响应助手：必须用 writeHead 显式写头。
  * 第三方 gzip 包装器（如 @wingsky-1/dsh-gzip）只拦截 writeHead 路径——
  * 「statusCode + setHeader + end」的隐式头路径会产出「content-encoding: gzip
@@ -721,8 +750,19 @@ export function apply(ctx: Context, config: Config): void {
           try {
             buf = await queue.synthesize(sample, { voice, rate })
           } catch (e) {
-            console.warn(`[dsh-voice-mode] preview synthesis failed: ${String(e)}`)
-            respondJson(res, 502, { error: '预览合成失败：请检查网络或音色名（ShortName）是否正确' })
+            // 批 I 任务 4/4：错误归类 + 诊断上下文（model 状态 / sample 长度 / attempt）；
+            // 模式与 tts-queue.ts:357 pump catch（批 A：补 sessionId + err）一致——日志含上下文，UI 只拿归类提示。
+            const errMsg = e instanceof Error ? e.message : String(e)
+            const category = classifyPreviewError(errMsg)
+            const engineName = currentEngine()
+            const engineStatus = queue.status()
+            const sampleLen = sample.length
+            console.warn(
+              `[dsh-voice-mode] preview synthesis failed: category=${category} engine=${engineName} engineReady=${engineStatus.ready} sampleLen=${sampleLen} attempt=1 voice=${voice} err=${errMsg}`,
+            )
+            // UI 端只暴露归类提示——不传 errMsg / 引擎 ready / sample 长度等诊断细节
+            // （防止 errMsg 泄露模型路径 / 内部错误堆栈 / 第三方 SDK 字面量）。
+            respondJson(res, 502, { error: PREVIEW_ERROR_MESSAGES[category] })
             return
           }
           res.writeHead(200, { 'content-type': queue.mime, 'cache-control': 'no-store' })
