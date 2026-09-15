@@ -1199,11 +1199,11 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
                 options={voiceOptions}
                 placeholder={ENGINE_DEFAULT_VOICE[engine] ?? 'zh-CN-XiaoxiaoNeural'}
                 showCustom={engine === 'edge'}
-                footer={(v) => <VoicePreviewButton voice={v} rate={Number(value.rate ?? 1)} />}
+                footer={(v) => <VoicePreviewButton voice={v} rate={Number(value.rate ?? 1.1)} />}
               />
             </Row>
             <Row name="rate" desc={tr('descRate')}>
-              <NumberField score={scope} field="rate" value={value.rate ?? 1} min={0.5} max={2} step={0.1} />
+              <NumberField score={scope} field="rate" value={value.rate ?? 1.1} min={0.5} max={2} step={0.1} />
             </Row>
             </Section>
             <Section title={tr('secInterrupt')}>
@@ -1324,7 +1324,7 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
               <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 1500} min={500} max={30000} step={100} />
             </Row>
             <Row name="idleTimeoutMinutes" desc={tr('descIdle')}>
-              <NumberField score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 10} min={1} max={120} step={1} />
+              <NumberField score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 5} min={1} max={120} step={1} />
             </Row>
             </Section>
             <Section title={tr('secModel')}>

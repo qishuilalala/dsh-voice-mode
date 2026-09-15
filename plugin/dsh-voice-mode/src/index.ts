@@ -201,10 +201,10 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   ttsEngine: 'edge',
   kokoroModel: 'int8',
   voice: 'zh-CN-XiaoxiaoNeural',
-  rate: 1.0,
+  rate: 1.1,
   interruptLevel: 0,
   silenceMs: 1500,
-  idleTimeoutMinutes: 10,
+  idleTimeoutMinutes: 5,
   modelHost: '',
   autoSend: true,
   autoResume: false,
@@ -252,13 +252,15 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .description(
         '朗读音色（按 ttsEngine 取值：vits 用说话人名 suyingxue/gunian/fushiyu/bingjiao/bazong；kokoro 用 0-102 编号或中文名 zf_xiaobei/zf_xiaoni/zf_xiaoxiao/zf_xiaoyi；edge 用 Edge ShortName 如 zh-CN-XiaoxiaoNeural 晓晓·女，完整清单见 scripts/list-voices.mjs）',
       ),
-    rate: z.number().min(0.5).max(2).default(d.rate).description('朗读语速倍率（0.5 = 慢速，2.0 = 快速，1.0 = 正常）'),
+    rate: z.number().min(0.5).max(2).default(d.rate).description('朗读语速倍率（0.5 = 慢速，2.0 = 快速，1.1 = 默认；让回复更紧凑）'),
     interruptLevel: z
       .union([z.const(0), z.const(1), z.const(2)])
       .default(d.interruptLevel)
-      .description('发声打断灵敏度：0 高门槛（安静环境，默认）/ 1 中 / 2 低（嘈杂环境更容易打断）'),
+      .description(
+        '发声打断灵敏度：0 = 高门槛（≈300ms 确认，最稳，默认；quiet 推荐）/ 1 = 中门槛（≈200ms）/ 2 = 低门槛（≈100ms，最灵敏；嘈杂环境）；值越低门槛越高，越难打断',
+      ),
     silenceMs: z.number().min(500).max(30000).default(d.silenceMs).description('说完整一句的静音停顿毫秒数（默认 1500 毫秒，给思考停顿留空间；至少 250ms 语音才判句，防短促噪声误触发）'),
-    idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description('无活动自动退出语音模式的分钟数（默认 10）'),
+    idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description('无活动自动退出语音模式的分钟数（默认 5；批 G 任务 2 已加 30s 倒数预警）'),
     modelHost: z.string().default(d.modelHost).description('ASR 模型下载源（留空用默认源；国内网络可填 https://hf-mirror.com）'),
     autoSend: z.boolean().default(d.autoSend).description('静音到点自动发送（连续多段拼成一条消息；关闭则只进草稿供编辑；按住 Ctrl / hold 松手仍会发送）'),
     autoResume: z.boolean().default(d.autoResume).description('切换回上次语音会话时自动恢复语音模式（默认关，需麦克风权限已授予；关闭则每次切换会话后需重新点麦克风）'),
@@ -391,10 +393,10 @@ export const Config: z<Config> = z.object({
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
   voice: z.string().default('zh-CN-XiaoxiaoNeural'),
-  rate: z.number().default(1.0),
+  rate: z.number().default(1.1),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(1500),
-  idleTimeoutMinutes: z.number().default(10),
+  idleTimeoutMinutes: z.number().default(5),
 })
 
 export function apply(ctx: Context, config: Config): void {
