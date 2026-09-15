@@ -2634,7 +2634,12 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
         // 批 3：4 档字号（0/1/2/3 → 12/14/18/24 px）。默认 0=12px 与现状字节等价。
         fontSize: [12, 14, 18, 24][b.ui.boot?.captionFontSize ?? 0],
         fontFamily: 'system-ui, sans-serif',
-        pointerEvents: 'none', // 浮层不挡输入框/麦克风按钮的点击（仅内部「跳过」按钮可点）
+        // 批 G 任务 5：浮层默认 'auto'——触屏需要命中内部「跳过」按钮；外层无 cursor:
+        // default 由按钮自身 cursor:pointer 表达，文本区不显 pointer。
+        // touchAction: 'manipulation' 阻止双击放大与连续点击 300ms 延迟（保留手势语义）。
+        pointerEvents: 'auto',
+        touchAction: 'manipulation',
+        cursor: 'default',
         background: 'rgba(22, 24, 28, 0.85)',
         backdropFilter: 'blur(14px)',
         WebkitBackdropFilter: 'blur(14px)',
