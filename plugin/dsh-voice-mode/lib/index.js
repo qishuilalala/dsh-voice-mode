@@ -1923,6 +1923,21 @@ var RateLimiter = class {
 var name = "voice-mode";
 var NS_VOICE_MODE = "voice-mode";
 var BASE_PATH = "/voice-mode";
+var PREVIEW_NETWORK_PATTERN = /fetch failed|ECONN|ENOTFOUND|getaddrinfo|ETIMEDOUT|EAI_AGAIN|network|unreachable|socket hang up|aborted/i;
+var PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa/i;
+var PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat/i;
+function classifyPreviewError(msg) {
+  if (PREVIEW_TEXT_PATTERN.test(msg)) return "text";
+  if (PREVIEW_NETWORK_PATTERN.test(msg)) return "network";
+  if (PREVIEW_ENGINE_PATTERN.test(msg)) return "engine";
+  return "unknown";
+}
+var PREVIEW_ERROR_MESSAGES = {
+  network: "\u8BD5\u542C\u5931\u8D25\uFF1A\u7F51\u7EDC\u4E0D\u53EF\u8FBE\uFF08Edge \u4E91\u7AEF\u9700\u8BBF\u95EE\u5FAE\u8F6F\u8BED\u97F3\u670D\u52A1\uFF09\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u4EE3\u7406",
+  engine: "\u8BD5\u542C\u5931\u8D25\uFF1A\u5F15\u64CE\u672A\u5C31\u7EEA\uFF08\u672C\u5730\u6A21\u578B\u4E0B\u8F7D\u4E2D\u3001\u521D\u59CB\u5316\u5931\u8D25\u6216\u5B50\u8FDB\u7A0B\u5F02\u5E38\uFF09\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5\u6216\u5728\u8BBE\u7F6E\u9762\u677F\u67E5\u770B TTS \u72B6\u6001",
+  text: "\u8BD5\u542C\u5931\u8D25\uFF1A\u5408\u6210\u5F15\u64CE\u4EA7\u51FA\u7A7A\u97F3\u9891\uFF08\u97F3\u8272\u4E0E\u8BED\u79CD\u53EF\u80FD\u4E0D\u5339\u914D\uFF09\uFF0C\u8BF7\u66F4\u6362\u97F3\u8272\u6216\u68C0\u67E5\u8BED\u8A00\u8BBE\u7F6E",
+  unknown: "\u8BD5\u542C\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u3001\u97F3\u8272\u540D\uFF08ShortName\uFF09\u6216\u672C\u5730 TTS \u6A21\u578B\u72B6\u6001"
+};
 var respondJson2 = (res, status, payload) => {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(payload));
@@ -1935,10 +1950,10 @@ var VOICE_SETTINGS_DEFAULTS = {
   ttsEngine: "edge",
   kokoroModel: "int8",
   voice: "zh-CN-XiaoxiaoNeural",
-  rate: 1,
+  rate: 1.1,
   interruptLevel: 0,
   silenceMs: 1500,
-  idleTimeoutMinutes: 10,
+  idleTimeoutMinutes: 5,
   modelHost: "",
   autoSend: true,
   autoResume: false,
@@ -1975,10 +1990,12 @@ function createVoiceSettingsSchema(defs) {
     voice: z.string().default(d.voice).description(
       "\u6717\u8BFB\u97F3\u8272\uFF08\u6309 ttsEngine \u53D6\u503C\uFF1Avits \u7528\u8BF4\u8BDD\u4EBA\u540D suyingxue/gunian/fushiyu/bingjiao/bazong\uFF1Bkokoro \u7528 0-102 \u7F16\u53F7\u6216\u4E2D\u6587\u540D zf_xiaobei/zf_xiaoni/zf_xiaoxiao/zf_xiaoyi\uFF1Bedge \u7528 Edge ShortName \u5982 zh-CN-XiaoxiaoNeural \u6653\u6653\xB7\u5973\uFF0C\u5B8C\u6574\u6E05\u5355\u89C1 scripts/list-voices.mjs\uFF09"
     ),
-    rate: z.number().min(0.5).max(2).default(d.rate).description("\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 = \u6162\u901F\uFF0C2.0 = \u5FEB\u901F\uFF0C1.0 = \u6B63\u5E38\uFF09"),
-    interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(d.interruptLevel).description("\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF1A0 \u9AD8\u95E8\u69DB\uFF08\u5B89\u9759\u73AF\u5883\uFF0C\u9ED8\u8BA4\uFF09/ 1 \u4E2D / 2 \u4F4E\uFF08\u5608\u6742\u73AF\u5883\u66F4\u5BB9\u6613\u6253\u65AD\uFF09"),
+    rate: z.number().min(0.5).max(2).default(d.rate).description("\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 = \u6162\u901F\uFF0C2.0 = \u5FEB\u901F\uFF0C1.1 = \u9ED8\u8BA4\uFF1B\u8BA9\u56DE\u590D\u66F4\u7D27\u51D1\uFF09"),
+    interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(d.interruptLevel).description(
+      "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF1A0 = \u9AD8\u95E8\u69DB\uFF08\u2248300ms \u786E\u8BA4\uFF0C\u6700\u7A33\uFF0C\u9ED8\u8BA4\uFF1Bquiet \u63A8\u8350\uFF09/ 1 = \u4E2D\u95E8\u69DB\uFF08\u2248200ms\uFF09/ 2 = \u4F4E\u95E8\u69DB\uFF08\u2248100ms\uFF0C\u6700\u7075\u654F\uFF1B\u5608\u6742\u73AF\u5883\uFF09\uFF1B\u503C\u8D8A\u4F4E\u95E8\u69DB\u8D8A\u9AD8\uFF0C\u8D8A\u96BE\u6253\u65AD"
+    ),
     silenceMs: z.number().min(500).max(3e4).default(d.silenceMs).description("\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 1500 \u6BEB\u79D2\uFF0C\u7ED9\u601D\u8003\u505C\u987F\u7559\u7A7A\u95F4\uFF1B\u81F3\u5C11 250ms \u8BED\u97F3\u624D\u5224\u53E5\uFF0C\u9632\u77ED\u4FC3\u566A\u58F0\u8BEF\u89E6\u53D1\uFF09"),
-    idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description("\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09"),
+    idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description("\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 5\uFF1B\u6279 G \u4EFB\u52A1 2 \u5DF2\u52A0 30s \u5012\u6570\u9884\u8B66\uFF09"),
     modelHost: z.string().default(d.modelHost).description("ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u7559\u7A7A\u7528\u9ED8\u8BA4\u6E90\uFF1B\u56FD\u5185\u7F51\u7EDC\u53EF\u586B https://hf-mirror.com\uFF09"),
     autoSend: z.boolean().default(d.autoSend).description("\u9759\u97F3\u5230\u70B9\u81EA\u52A8\u53D1\u9001\uFF08\u8FDE\u7EED\u591A\u6BB5\u62FC\u6210\u4E00\u6761\u6D88\u606F\uFF1B\u5173\u95ED\u5219\u53EA\u8FDB\u8349\u7A3F\u4F9B\u7F16\u8F91\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u4F1A\u53D1\u9001\uFF09"),
     autoResume: z.boolean().default(d.autoResume).description("\u5207\u6362\u56DE\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD\u65F6\u81EA\u52A8\u6062\u590D\u8BED\u97F3\u6A21\u5F0F\uFF08\u9ED8\u8BA4\u5173\uFF0C\u9700\u9EA6\u514B\u98CE\u6743\u9650\u5DF2\u6388\u4E88\uFF1B\u5173\u95ED\u5219\u6BCF\u6B21\u5207\u6362\u4F1A\u8BDD\u540E\u9700\u91CD\u65B0\u70B9\u9EA6\u514B\u98CE\uFF09"),
@@ -2029,10 +2046,10 @@ var Config = z.object({
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
   voice: z.string().default("zh-CN-XiaoxiaoNeural"),
-  rate: z.number().default(1),
+  rate: z.number().default(1.1),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(1500),
-  idleTimeoutMinutes: z.number().default(10)
+  idleTimeoutMinutes: z.number().default(5)
 });
 function apply(ctx, config) {
   let activeVoiceSession = null;
@@ -2295,8 +2312,15 @@ function apply(ctx, config) {
           try {
             buf = await queue.synthesize(sample, { voice, rate });
           } catch (e) {
-            console.warn(`[dsh-voice-mode] preview synthesis failed: ${String(e)}`);
-            respondJson2(res, 502, { error: "\u9884\u89C8\u5408\u6210\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u97F3\u8272\u540D\uFF08ShortName\uFF09\u662F\u5426\u6B63\u786E" });
+            const errMsg = e instanceof Error ? e.message : String(e);
+            const category = classifyPreviewError(errMsg);
+            const engineName = currentEngine();
+            const engineStatus = queue.status();
+            const sampleLen = sample.length;
+            console.warn(
+              `[dsh-voice-mode] preview synthesis failed: category=${category} engine=${engineName} engineReady=${engineStatus.ready} sampleLen=${sampleLen} attempt=1 voice=${voice} err=${errMsg}`
+            );
+            respondJson2(res, 502, { error: PREVIEW_ERROR_MESSAGES[category] });
             return;
           }
           res.writeHead(200, { "content-type": queue.mime, "cache-control": "no-store" });

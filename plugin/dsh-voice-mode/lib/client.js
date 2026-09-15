@@ -1315,19 +1315,15 @@ var zh = {
   // settings rows
   voicePrev: "\u4E0A\u4E00\u97F3\u8272",
   voiceNext: "\u4E0B\u4E00\u97F3\u8272",
-  modeBtnToggle: "\u6301\u7EED\u8046\u542C",
-  modeBtnHold: "\u6309\u4F4F\u8BF4",
-  modeBtnTitle: "\u70B9\u51FB\u5207\u6362\u4EA4\u4E92\u6A21\u5F0F\uFF08\u4FDD\u5B58\u5230\u8BBE\u7F6E\uFF09",
   descVoice: "Edge \u4E91\u7AEF\u97F3\u8272\uFF08\u8FDB\u5165\u65F6\u81EA\u52A8\u52A0\u8F7D\u5FAE\u8F6F\u5168\u90E8\u97F3\u8272\uFF0C\u5E38\u7528\u4E2D\u6587\u97F3\u8272\u7F6E\u9876\uFF0C\u4E0B\u62C9\u6216 \u25C0\u25B6 \u9009\uFF1B\u4E5F\u53EF\u300C\u81EA\u5B9A\u4E49\u300D\u586B ShortName\uFF09",
   descVoiceLocal: "\u672C\u5730\u97F3\u8272\uFF08vits \u4E94\u4E2A\u8BF4\u8BDD\u4EBA\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B\u65E0\u9700\u81EA\u5B9A\u4E49\uFF09",
-  ttsEngine: "\u6717\u8BFB\u5F15\u64CE",
   descTtsEngine: "\u672C\u5730 VITS\uFF08\u7EAF\u4E2D\u6587\uFF09/ \u672C\u5730 Kokoro\uFF08\u4E2D\u82F1\u5747\u53EF\uFF09/ Edge \u4E91\u7AEF\uFF08\u97F3\u8D28\u6700\u81EA\u7136\uFF0C\u6587\u672C\u4E0A\u5FAE\u8F6F\uFF09",
   engineVits: "\u672C\u5730 VITS",
   engineKokoro: "\u672C\u5730\u4E2D\u82F1",
   engineEdge: "Edge \u4E91\u7AEF",
   descVoiceKokoro: "Kokoro \u4E2D\u82F1\u97F3\u8272\uFF08103 \u4E2A\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B48-51 \u4E2D\u6587\u540D\uFF0C\u5176\u4F59\u6309\u7F16\u53F7+\u5B9E\u6D4B\u6027\u522B\u6807\u6CE8\uFF0C\u4E2D\u82F1\u6DF7\u8BFB\u5747\u53EF\uFF09",
-  descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.0 \u6B63\u5E38\uFF09",
-  descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB / 1 \u4E2D / 2 \u4F4E\uFF1B\u53D1\u58F0\u786E\u8BA4\u7EA6 0.3/0.2/0.1 \u79D2\uFF09",
+  descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.1 \u9ED8\u8BA4\uFF1B\u8BA9\u56DE\u590D\u66F4\u7D27\u51D1\uFF09",
+  descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB \u22480.3s \u786E\u8BA4 / 1 \u4E2D\u95E8\u69DB \u22480.2s / 2 \u4F4E\u95E8\u69DB \u22480.1s\uFF0C\u6700\u7075\u654F\uFF09\uFF1B\u503C\u8D8A\u4F4E\u95E8\u69DB\u8D8A\u9AD8\uFF0C\u8D8A\u96BE\u6253\u65AD",
   descBargeIn: "\u6253\u65AD\u65B9\u5F0F\uFF08auto \u81EA\u52A8\u6253\u65AD\uFF1A\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u8033\u673A/\u5B89\u9759\u73AF\u5883\u63A8\u8350\uFF1Bmanual \u624B\u52A8\u6253\u65AD\uFF1A\u5916\u653E\u63A8\u8350\u2014\u2014\u56DE\u58F0\u4E0D\u4F1A\u8BEF\u89E6\u53D1\u81EA\u6253\u65AD\uFF0C\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u663E\u5F0F\u6253\u65AD\uFF09",
   bargeInAuto: "\u81EA\u52A8",
   bargeInManual: "\u624B\u52A8",
@@ -1343,7 +1339,7 @@ var zh = {
   sev1: "1 \u4E2D",
   sev2: "2 \u4F4E",
   descSilence: "\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 1500 \u6BEB\u79D2\uFF0C\u7ED9\u601D\u8003\u505C\u987F\u7559\u7A7A\u95F4\uFF1B\u81F3\u5C11 250ms \u8BED\u97F3\u624D\u5224\u53E5\uFF0C\u9632\u77ED\u4FC3\u566A\u58F0\u8BEF\u89E6\u53D1\uFF09",
-  descIdle: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 10\uFF09",
+  descIdle: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 5\uFF1B\u6279 G \u4EFB\u52A1 2 \u5DF2\u52A0 30s \u5012\u6570\u9884\u8B66\uFF09",
   descModelHost: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u5B98\u65B9\u6E90 / \u56FD\u5185\u955C\u50CF\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u586B\u4EFB\u610F\u955C\u50CF\uFF09",
   descAutoSend: "\u9759\u97F3\u5230\u70B9\u81EA\u52A8\u53D1\u9001\uFF08\u8FDE\u7EED\u591A\u6BB5\u62FC\u6210\u4E00\u6761\uFF1B\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09",
   descAutoResume: "\u5207\u6362\u56DE\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD\u65F6\u81EA\u52A8\u6062\u590D\u8BED\u97F3\u6A21\u5F0F\uFF08\u9ED8\u8BA4\u5173\uFF0C\u9700\u9EA6\u514B\u98CE\u6743\u9650\u5DF2\u6388\u4E88\uFF1B\u7701\u53BB\u6BCF\u6B21\u5207\u6362\u4F1A\u8BDD\u540E\u91CD\u65B0\u70B9\u9EA6\u514B\u98CE\uFF09",
@@ -1355,13 +1351,10 @@ var zh = {
   descAsrHotwordsScore: "\u70ED\u8BCD\u57FA\u51C6\u504F\u7F6E\u5206\uFF081.5 \u9ED8\u8BA4\uFF0C\u4E0E sherpa-onnx \u5B98\u65B9\u4E00\u81F4\uFF1B\u8D8A\u5927\u8D8A\u5F3A\uFF0C\u8FC7\u5927\u53EF\u80FD\u4F24\u666E\u901A\u8BC6\u522B\uFF09",
   asrHotwordsPlaceholder: "dsh-voice-mode\nsherpa-onnx\n\u5C0F\u7231\u540C\u5B66:2.0",
   asrHotwordsInvalid: "\u7B2C {line} \u884C\u683C\u5F0F\u9519\u8BEF\uFF0C\u5E94\u4E3A\u300C\u8BCD\u300D\u6216\u300C\u8BCD:\u5206\u6570\u300D",
-  recognitionLanguage: "\u8BC6\u522B\u8BED\u8A00",
   descRecognitionLanguage: "SenseVoice \u8BC6\u522B\u8BED\u79CD\uFF08\u9ED8\u8BA4 auto \u81EA\u52A8\u68C0\u6D4B\uFF1B\u9501\u8BED\u79CD\u540E\u53EA\u8BC6\u522B\u8BE5\u8BED\u79CD\uFF1B\u6DF7\u5408\u573A\u666F\u4FDD\u6301 auto\uFF1B\u5207\u6362\u4F1A\u91CD\u5EFA worker \u7EBF\u7A0B\uFF09",
   senseITN: "\u9006\u6587\u672C\u5F52\u4E00\u5316",
   descSenseITN: "SenseVoice \u6570\u5B57/\u65E5\u671F/\u683C\u5F0F\u89C4\u8303\u5316\uFF08\u9ED8\u8BA4\u5F00\uFF1B\u5173\u95ED\u540E\u8F93\u51FA\u66F4\u63A5\u8FD1\u53E3\u8BED\u539F\u6587\uFF09",
-  captionFontSize: "\u5B57\u5E55\u5B57\u53F7",
   descCaptionFontSize: "\u6D6E\u5C42\u5B57\u5E55\u5B57\u53F7\u6863\u4F4D\uFF08\u5C0F 12 / \u6807\u51C6 14 / \u5927 18 / \u7279\u5927 24 px\uFF1B\u9ED8\u8BA4\u5C0F\u4E0E\u73B0\u72B6\u5B57\u8282\u7B49\u4EF7\uFF09",
-  captionMaxWidth: "\u5B57\u5E55\u5BBD\u5EA6",
   descCaptionMaxWidth: "\u6D6E\u5C42\u5B57\u5E55\u5BBD\u5EA6\u6863\u4F4D\uFF0850vw / 70vw / 90vw\uFF1B\u9ED8\u8BA4 70vw\uFF1B24px \u591A\u884C\u65F6\u53D7 30vh \u9AD8\u5EA6\u7EA6\u675F\u4E0D\u76D6\u8F93\u5165\u6846\uFF09",
   captionSizeS: "\u5C0F",
   captionSizeM: "\u6807\u51C6",
@@ -1410,11 +1403,7 @@ var zh = {
   engineLoading: "\u52A0\u8F7D\u4E2D\u2026",
   engineReady: "\u5C31\u7EEA",
   engineError: "\u52A0\u8F7D\u5931\u8D25",
-  engineIdle: "\u53EF\u8BD5\u542C",
   ttsModelsMissing: "\u672C\u5730\u6A21\u578B\u672A\u5C31\u7EEA",
-  ttsRedownload: "\u91CD\u65B0\u4E0B\u8F7D",
-  ttsRedownloadHint: "\u6E05\u7406\u8BE5\u5F15\u64CE\u6A21\u578B\u7F13\u5B58\u5E76\u91CD\u65B0\u4E0B\u8F7D",
-  ttsCleaning: "\u6E05\u7406\u4E2D\u2026",
   ttsDownload: "\u4E0B\u8F7D",
   ttsDelete: "\u5220\u9664",
   ttsDownloading: "\u4E0B\u8F7D\u4E2D\u2026",
@@ -1508,19 +1497,15 @@ var en = {
   custom: "Custom",
   voicePrev: "Previous voice",
   voiceNext: "Next voice",
-  modeBtnToggle: "Continuous",
-  modeBtnHold: "Hold to talk",
-  modeBtnTitle: "Click to switch interaction mode (saved to settings)",
   descVoice: "Edge cloud voices (auto-loads all Microsoft voices; common Chinese voices pinned on top; \u25C0\u25B6 or dropdown; custom ShortName allowed)",
   descVoiceLocal: "Local voice (vits, all 5 speakers listed; dropdown or \u25C0\u25B6; no custom needed)",
-  ttsEngine: "Read-aloud engine",
   descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft)",
   engineVits: "Local VITS",
   engineKokoro: "Local zh-en",
   engineEdge: "Edge cloud",
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
-  descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.0 normal)",
-  descInterrupt: "Interrupt sensitivity (0 high barrier / 1 medium / 2 low; ~0.3/0.2/0.1 s speech confirmation)",
+  descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
+  descInterrupt: "Interrupt sensitivity (0 high \u22480.3 s confirm / 1 medium \u22480.2 s / 2 low \u22480.1 s, most responsive); lower = higher barrier = harder to interrupt",
   descBargeIn: "Barge-in mode (auto: interrupt by speaking \u2014 headphones/quiet; manual: for loudspeaker, no echo-triggered self-interrupt \u2014 hold mic/Ctrl to interrupt)",
   bargeInAuto: "Auto",
   bargeInManual: "Manual",
@@ -1536,7 +1521,7 @@ var en = {
   sev1: "1 medium",
   sev2: "2 low",
   descSilence: "Silence pause before a sentence is committed (default 1500 ms; at least 250 ms of speech required, guards against noise triggers)",
-  descIdle: "Auto-exit voice mode after idle minutes (default 10)",
+  descIdle: "Auto-exit voice mode after idle minutes (default 5; batch G added 30 s warning before exit)",
   descModelHost: "ASR model download source (official source / mirror, or any custom URL)",
   descAutoSend: "Auto-send once quiet (consecutive segments join into one message; off = draft only; Ctrl / hold still sends)",
   descAutoResume: "Auto-resume voice mode when switching back to the last voice session (default off, requires granted mic permission)",
@@ -1548,13 +1533,10 @@ var en = {
   descAsrHotwordsScore: "Hotword baseline bias (default 1.5, matches sherpa-onnx upstream). Higher = stronger bias but may hurt generic recognition.",
   asrHotwordsPlaceholder: "dsh-voice-mode\nsherpa-onnx\nxiaomi:2.0",
   asrHotwordsInvalid: 'Line {line} format error: should be "term" or "term:score"',
-  recognitionLanguage: "Recognition language",
   descRecognitionLanguage: "SenseVoice language (default auto; lock to zh/en/ja/ko/yue for single-language; mixed scenarios keep auto; switching rebuilds the worker thread)",
   senseITN: "Inverse text normalization",
   descSenseITN: "SenseVoice number/date/format normalization (default on; turn off to keep raw spoken form)",
-  captionFontSize: "Caption font size",
   descCaptionFontSize: "Caption font size (Small 12 / Standard 14 / Large 18 / X-Large 24 px; default Small matches current behavior)",
-  captionMaxWidth: "Caption width",
   descCaptionMaxWidth: "Caption width (50vw / 70vw / 90vw; default 70vw; capped at 30vh height so multi-line 24px never overlaps the input box)",
   captionSizeS: "S",
   captionSizeM: "M",
@@ -1600,11 +1582,7 @@ var en = {
   engineLoading: "loading\u2026",
   engineReady: "ready",
   engineError: "failed",
-  engineIdle: "ready to preview",
   ttsModelsMissing: "local models missing",
-  ttsRedownload: "Re-download",
-  ttsRedownloadHint: "Clear this engine model cache and re-download",
-  ttsCleaning: "Clearing\u2026",
   ttsDownload: "Download",
   ttsDelete: "Delete",
   ttsDownloading: "Downloading\u2026",
@@ -1947,6 +1925,10 @@ function NumberField({
   const commit = () => {
     const raw = draft.trim();
     if (raw === "") {
+      setHint2(t("numberInvalid"));
+      return;
+    }
+    if (raw.endsWith(".") || raw.split(".").length > 2) {
       setHint2(t("numberInvalid"));
       return;
     }
@@ -2653,14 +2635,14 @@ function VoiceSettingsCard({ scope }) {
   }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: cardStyle, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: focusVisibleCss }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-expanded": !collapsed, onClick: () => setCollapsed((c) => !c), style: { ...setHeader, background: collapsed ? "transparent" : t2.bgOpen }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-expanded": !collapsed, "aria-controls": "dshvm-settings-card-body", onClick: () => setCollapsed((c) => !c), style: { ...setHeader, background: collapsed ? "transparent" : t2.bgOpen }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: setHeadText, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setName, children: t("stateVoiceMode") }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setDesc, children: t("settingsCardDesc") })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...setChevron, transform: collapsed ? "rotate(0deg)" : "rotate(180deg)" }, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 14, height: 14, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 6l4 4 4-4z" }) }) })
     ] }),
-    !collapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: setBody, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
+    !collapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { id: "dshvm-settings-card-body", style: setBody, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRead"), children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "ttsEngine", desc: t("descTtsEngine"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           SegGroup,
@@ -2707,12 +2689,12 @@ function VoiceSettingsCard({ scope }) {
                 options: voiceOptions,
                 placeholder: ENGINE_DEFAULT_VOICE[engine] ?? "zh-CN-XiaoxiaoNeural",
                 showCustom: engine === "edge",
-                footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1) })
+                footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1.1) })
               }
             )
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1, min: 0.5, max: 2, step: 0.1 }) })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1.1, min: 0.5, max: 2, step: 0.1 }) })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secInterrupt"), children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: t("descInterrupt"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -2812,7 +2794,7 @@ function VoiceSettingsCard({ scope }) {
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseITN", desc: t("descSenseITN"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.senseITN !== false, onChange: (e) => void scope.set("senseITN", e.target.checked) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 10, min: 1, max: 120, step: 1 }) })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 5, min: 1, max: 120, step: 1 }) })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Section, { title: t("secModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("settingsEffectiveNote") }),
@@ -2838,7 +2820,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "4bbfa8e";
+var BUILD_TAG = "ca9f005";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -3133,7 +3115,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     basePath: BASE_PATH2,
     silenceMs: 1500,
     interruptLevel: 0,
-    idleTimeoutMinutes: 10,
+    idleTimeoutMinutes: 5,
     autoSend: true,
     autoResume: false,
     mode: "toggle",
@@ -3656,7 +3638,7 @@ function MicButton({
     basePath: "/voice-mode",
     silenceMs: 1500,
     interruptLevel: 0,
-    idleTimeoutMinutes: 10,
+    idleTimeoutMinutes: 5,
     autoSend: true,
     autoResume: false,
     mode: "toggle",
@@ -4680,7 +4662,7 @@ function VoiceStatusBar({ bus, sessionId }) {
                 fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace"
               },
               children: [
-                Math.floor(elapsedSec / 60),
+                String(Math.floor(elapsedSec / 60)).padStart(2, "0"),
                 ":",
                 String(elapsedSec % 60).padStart(2, "0")
               ]
