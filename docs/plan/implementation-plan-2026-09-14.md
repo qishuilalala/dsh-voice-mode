@@ -336,3 +336,99 @@ systemctl restart dsh.service && curl -s -o /dev/null -w '%{http_code}' http://1
 | 4 | `feat(tts): ADR-0007 步1 本地引擎情感标签（break/whisper/剥离）` |
 | 5 | `feat(voice): ADR-0008 P1 让位语义（YIELDING prompt + backchannel 软让位）` |
 | 6 | `chore(收口): 批1-5 build+test 全绿 + restart 验证 + 状态回写` |
+| 7 | `fix(host): markStale 接口 + watch ASR 字段 diff + pump catch 上下文`（批 A） |
+| 7a | `feat(client): VoiceBootConfig + fetchConfig 透传 5 ASR 字段`（批 B） |
+| 7b | `feat(ui): FIELD_LABELS 7 中文 + strings.ts 同步`（批 C） |
+| 7c | `fix(tts): <break> 段后置静音 + emotion 注释 + stripEmotionTags 处置`（批 D） |
+| 7d | `feat(asr): endpointConfirmMs 短句 confirm 200ms + SenseVoice 预热前置 + timeout 20s`（批 E） |
+| 7e | `chore: spokenFormat 注释 + matchBackchannel 守卫 + effectiveNote 文案`（批 F） |
+| 7f | `feat(ux): Number 校验 + idle 预警 + yieldMs + textarea 校验 + 跳过 disable + 引擎切换下载`（批 G） |
+| 7g | `feat(a11y): console.warn toast + 浅色字幕 + mic 对比 + 联动 + autoResume`（批 H） |
+| 7h | `chore(docs): verify-bazong 编码 + ADR 22→26 + README 同步 + /preview 错误`（批 I） |
+| 7i | `chore(minor): 死代码清理 + 默认值微调 + a11y`（批 J） |
+| 7z | `chore(收口): 真机冒烟 21 项 + 文档回写 + release tag`（收口批） |
+
+---
+
+## 12. 批 7 周全修复（2026-09-15 真机反馈触发的全功能审查深挖）
+
+### 12.0 触发背景
+
+用户真机反馈「批 1/批 2 设置改了不生效」「批 3 OK」「批 5 体感不明显」「连续说 60s 只识别出不连续短句」→ 派 8 个 subagent 协同深挖（5 第一轮：配置/功能链路/代码质量/体验优化/B5 长段；3 第二轮：修复对抗/批次拆分/真机验收）→ 出最终周全修复计划 → 用户批准 → 按 10 批次串行执行。
+
+### 12.1 关键对抗性纠正（来自第二轮审查）
+
+1. **B2 settings 触发 rebuild**——**禁止新增 `rebuild()` 方法**。改为：asr-host.ts 暴露最小 `markStale()`（仅清缓存键 + 不主动 dispose），让现有 fingerprint-gated lazy 重建（asr-host.ts:267-274 / :396-401）自然生效。
+2. **B3 client fetchConfig**——先字段分类再透传：host-only 字段（cacheDir/allowLan/audioMime/ttsEngine/modelHost）**不要透传**；只透传 client 真消费的 5 ASR 字段 + 补 kokoroModel/spokenFormat（按需）。
+3. **B4 批 4 `<break>` 静音位置**——**选 1**：修 `tts-local.ts:477-486` 把 `chunks.push(silence)` 移到 `chunks.push(samples)` **之后**。选 2 严禁（改 emotion.ts 让 bug 更隐蔽）。
+4. **B5 长段丢失**——**不要默认改 `silenceMs`**（1500ms 不改，依赖用户自定义）。改 `endpointConfirmMs` 短句 confirm `0 → 200ms` + SenseVoice 预热前置 `enterMode` + timeout `10s → 20s`。
+5. **B1 UI 标签本地化**——避免 FIELD_LABELS + strings.ts 双轨漂移：短期双补 + commit message 警示后续整合。
+
+### 12.2 批次依赖图
+
+```
+A → B → F
+A → D / E（独立）
+C → G → H
+I / J 独立可并行
+```
+
+### 12.3 批次定义（详见 docs/qa/real-machine-acceptance-checklist.md）
+
+| 批 | 范围 | commit |
+|---|---|---|
+| **A** | markStale 接口 + watch ASR 字段 diff + pump catch 上下文 | 3 |
+| **B** | /config + fetchConfig 透传 5 字段 + VoiceBootConfig 扩 | 2 |
+| **C** | FIELD_LABELS 7 中文 + strings.ts 同步 | 1 |
+| **D** | tts-local 拼帧 + emotion 注释 + stripEmotionTags 处置 | 3 |
+| **E** | endpointConfirmMs 短句 confirm + enterMode 预热 + timeout 放宽 | 3 |
+| **F** | spokenFormat 注释 + matchBackchannel 守卫 + effectiveNote 文案 | 1 |
+| **G** | Number 校验 + idle 预警 + yieldMs 可调 + textarea 校验 + 跳过 disable + 引擎切换下载 | 5 |
+| **H** | console.warn → toast / 浅色字幕 / mic 对比 / 联动提示 / autoResume | 4 |
+| **I** | verify-bazong 编码 + ADR 22→26 + README 同步 + /preview 错误 | 4 |
+| **J** | 死代码清理 + 默认值微调 + a11y | 4 |
+
+**总 commit 数**：26-30 commit
+
+### 12.4 缺口测试补建（4 项必补）
+
+- `test/asr-host-rebuild.test.mjs` —— mock fingerprint + 断言 markStale() 不 free/terminate（**B2 防回归**）
+- `test/emotion-tts-local.test.mjs` —— mock parseEmotionTags + 断言 WAV 时长 = 段时长 + 静音累计（**B4 防回归**）
+- `test/fixtures/zh-60s.wav` + 扩展 `test/asr-e2e.js` —— 60s 中文断言 finalize ≥ 95% 输入（**B5 防回归**）
+- `test/strings-coverage.test.mjs` —— 遍历 settings-form.tsx 引用 vs strings.ts 7 键完整性（**B1 防回归**）
+
+### 12.5 真机冒烟（21 项 / 7 阶段 / 36 分钟）
+
+详见 `docs/qa/real-machine-acceptance-checklist.md`（385 行）。重点：
+- **阶段 6**（10 分钟）—— B5 长段话 60s 不丢字（最高优先级真机回归）
+- **阶段 4.1**（2 分钟）—— B4 `<break>` 静音位置（最易测的回归点）
+
+### 12.6 决策项（用户已批准推荐方案）
+
+| 决策项 | 推荐 | 备选 |
+|---|---|---|
+| B2 markStale 命名 | `markStale()` | invalidateRecognizerCache / clearBuildCache |
+| B5 silenceMs 默认 | **不改** | 改 2000/2500ms |
+| C UI 标签短期方案 | FIELD_LABELS + strings.ts 双补 | 单 FIELD_LABELS |
+| F spokenFormat 处置 | 仅注释修正 | schema 删 spokenFormat |
+| J 默认空闲 10→5min | 推 5min + 30s 预警 | 仅加 30s 预警 |
+| J rate 1.0→1.1 | 改 | 保持 1.0 |
+
+### 12.7 执行约束（主会话 = 计划 + 管理；执行 / 审查 = subagent）
+
+- 主会话：派 subagent + 看回报 + 裁决 + 文档维护（plan/STATE/ADR/CONTEXT/qa/backlog）
+- 执行 subagent：实施每批代码 + build + restart dsh
+- 审查 subagent：验证每批 + 真机冒烟清单
+- 主会话不直接写源码 / 改 lib / systemctl（除文档类纯文件操作）
+
+### 12.8 不变量保护
+
+| I | 策略 |
+|---|---|
+| I1 finalize 幂等 | 批 A `markStale()` 不 dispose → in-flight 安全 |
+| I2/I3 计数 + 播放门 | 不触碰 |
+| I4 TTS 帧协议 | 批 D 改 tts-local.ts 在 chunk 拼接层，pump 与帧协议零触碰 |
+| I5 epoch 守卫 | 批 A 不绕 epoch |
+| I6 client.inject 9 锚点 | 每批 grep package.json |
+| I7/I8/I9 | 不扩 cordis / 不引入模型 / 不引入云 |
+| I10 默认行为 | schema defaults 守 |
