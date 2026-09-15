@@ -2355,7 +2355,10 @@ export function MicButton({
         gap: 6,
         fontSize: 12,
         fontFamily: 'system-ui, sans-serif',
-        color: holding ? '#f85149' : on ? (holdMode ? '#58a6ff' : '#3fb950') : local === 'pending' ? '#58a6ff' : '#8b949e',
+        color: holding ? '#f85149' : on ? (holdMode ? '#58a6ff' : '#2ea043') : local === 'pending' ? '#58a6ff' : '#8b949e',
+        // 批 H 任务 3：toggle 模式「语音中」绿字加深（#3fb950 → #2ea043）+ fontWeight:600 双保险，
+        // 浅色主题下与浅绿底 (rgba 63,185,80,.16) 对比度 ≥ 4.5:1（WCAG AA 文本级）。
+        fontWeight: on && !holdMode ? 600 : undefined,
         transition: 'background 0.15s ease, color 0.2s ease, border-color 0.15s ease',
         touchAction: 'none', // 触摸设备上让 pointer 事件独占（滑出取消可用）
         userSelect: 'none',
