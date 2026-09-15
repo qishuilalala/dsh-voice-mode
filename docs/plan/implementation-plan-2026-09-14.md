@@ -208,18 +208,19 @@ onDeath 懒重建机制已有（L388-391）。**开工前核实一点**：`creat
 | 4 | `src/client.tsx` | `bootNow()` 默认对象 L1199 | 加 `captionFontSize: 1, captionMaxWidth: 1` |
 | 5 | `src/client.tsx` | `VoiceOverlay` L2457+ 渲染 | `fontSize: 12` → `const FS=[12,14,18,24][b.ui.boot?.captionFontSize ?? 1]`；`maxWidth: 480` → `['50vw','70vw','90vw'][... ?? 1]`；caption span `whiteSpace:'normal' + overflowWrap:'anywhere'`（**注意：换行后 ellipsis 失效是正常行为，不要试图同时保留——`text-overflow:ellipsis` 需要 nowrap，与中文换行互斥**）；浮层加 `maxHeight: '30vh' + overflow:'hidden'`（防 24px 多行盖住输入框） |
 | 6 | `src/client.tsx` | `<style>` 注入区（useVoiceCss L1142+） | `.dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }` |
+| 7 | `src/client.tsx` | `fetchConfig` 字段白名单拼接（`boot: next` 路径，L1233-1249 一带） | **批 3 执行时计划维护者裁决补记的第 7 处桥接**：plan 原表漏列——plan 第 215 行写「通用透传」与源码显式白名单矛盾；executor 补两字段 `captionFontSize` / `captionMaxWidth` 处理，否则 /config 字段不可达 client。修后措辞见下「注意」。 |
 | + | `src/client.tsx` | 跳过按钮（VoiceOverlay 内） | `aria-label` = 朗读中文案（`t('skipReading')` 新键） |
 | + | `src/settings-form.tsx` | secInteraction | 两个 SegGroup（字号 4 档 / 宽度 3 档，纯展示标签「小/标准/大/特大」） |
 | + | `src/strings.ts` | zh/en | `captionFontSize/captionMaxWidth/skipReading` 等 ~6 键 |
 
-**注意**：`fetchConfig → setUi({boot: next})`（L1239 一带）是通用透传（next 整对象来自 /config），**无需改动**——只要 /config 返回了新字段、类型对上，boot 自动携带。这是本批链路比 R21 预估简单的点。
+**注意**：`fetchConfig → setUi({boot: next})`（L1233-1249 一带）是**逐字段白名单拼接**（非通用透传——每字段独立处理 + 类型守卫）——bridge #2（`/config` 返回新字段）+ bridge #7（client 白名单消费新字段）共同保证新字段 host→client 可达。
 
 ### 5.3 验证与 Done
 
 - 新增 `test/caption-a11y.test.mjs`（node 侧验 /config 返回含新键 + 默认值；client 侧用 verify-client 模式 grep lib/client.js 含 `word-break` 与 `aria-label`）。
 - **Done** = typecheck 双过 + npm test 全绿 + 构建后 lib/client.js 含新 CSS/aria；真机：调 24px 字幕变大且中文长 URL 换行不溢出。
 - 回滚 `git revert`；预计 ~70 行。
-- I6：不动 package.json inject；I10：默认 1/1 与现状（12px/480px）**有轻微视觉差**——现状 fontSize:12、maxWidth:480。为保 I10 严格，**默认改 0/1**（12px + 70%vw≈与 480px 接近）？——决策：**默认 captionFontSize=0（12px）**，与现状视觉零变化；`captionMaxWidth=1`（70vw）在大屏 >686px 时略窄于 480px，取舍说明写入 schema description。
+- I6：不动 package.json inject；I10：默认 1/1 与现状（12px/480px）**有轻微视觉差**——现状 fontSize:12、maxWidth:480。为保 I10 严格，**默认改 0/1**（12px + 70%vw≈与 480px 接近）？——决策：**默认 captionFontSize=0（12px）**，与现状视觉零变化；`captionMaxWidth=1`（70vw）**取舍：自适应视口宽度**，70vw ≈ 0.7 × viewportWidth——viewport ≈ 686px 时 ≈ 480px（与现状接近），>686px 时**略宽于** 480px（变宽，传递信息密度更大），<686px 时**略窄于** 480px（变窄，更省横向空间）。取舍说明写入 schema description（**批 3 审查发现原措辞"略窄"方向反了——批 4 开工前 docfix commit 同步修三处：plan §5.3 / index.ts:185 注释 / index.ts:292 schema description**）。
 
 ---
 
