@@ -96,6 +96,12 @@ dsh plugin --profile web add dsh-voice-mode
 | 口语化回复 | `spokenFormat` | `true` | 语音会话的回复更口语、短句、无 Markdown 符号（朗读更顺更快） |
 | 唤醒词 | `wakeWord` | 空（关） | 待机态说出后激活；空串 = 关闭 |
 | 工具提示音 | `toolBeep` | `false` | AI 调用工具时滴一声 |
+| 识别热词 | `asrHotwords` / `asrHotwordsScore` | 空 / `1.5` | 每行一词或「词:分数」（如 `dsh-voice-mode:2.5`）；变更触发 recognizer 重建；空 = 关闭 |
+| 识别语种 | `recognitionLanguage` | `auto` | SenseVoice 多语：`auto` / `zh` / `en` / `ja` / `ko` / `yue`；切换终止并重建 worker |
+| 逆文本归一化 | `senseITN` | `true` | SenseVoice 数字/日期/货币规范化（默认开，关掉保留原文） |
+| 字幕字号 | `captionFontSize` | `0` | 档位 0=12px / 1=14px / 2=18px / 3=24px |
+| 字幕宽度 | `captionMaxWidth` | `1` | 档位 0=50vw / 1=70vw / 2=90vw |
+| 让位语义 | `backchannelYield` | `true` | 朗读期说「嗯/对」自动让位 1.5s，真要说走硬打断（ADR-0008） |
 | 模型镜像 | `modelHost` | 默认源 | 国内网络填 `https://hf-mirror.com` |
 | 空闲退出 | `idleTimeoutMinutes` | `10` | 无活动自动退出语音模式 |
 
@@ -109,6 +115,10 @@ dsh plugin --profile web add dsh-voice-mode
 
 - **朗读**：默认 Edge 云端；本地 VITS（纯中文 5 说话人）/ Kokoro（中英混读 103 音色，int8 默认 / fp32 可选），独立子进程、崩溃自愈
 - **流式识别**：**zipformer2** 流式（边说边出字）+ SenseVoice 定稿（带标点 / 数字归一化）
+- **识别热词偏置**（批 1）：每行一词或「词:分数」（如 `dsh-voice-mode:2.5`）显著提升专有名词识别准确率；空 = 关闭（I10 默认行为零变化）
+- **多语种 + ITN**（批 2）：SenseVoice auto/zh/en/ja/ko/yue 五语种 + 默认开 ITN（数字/日期/货币规范化）
+- **字幕档位**（批 3）：字号 4 档（12/14/18/24px）+ 宽度 3 档（50/70/90vw），对视口自适应
+- **让位语义**（批 5）：朗读期用户插话「嗯/对」自动让位 1.5s，真要说走硬打断；让 LLM 主动让出话轮（ADR-0008）
 - **开口即打断（barge-in）**：自适应阈值（滚动噪声地板）+ 朗读时自动超灵敏；本地静音 + 合成队列作废 + 正在运行的回合取消
 - **两种交互**：`toggle` 持续聆听自动断句 / `hold` 按住说话、松手即发；输入框旁模式切换按钮
 - **模型预热 + 懒下载**：ASR 模型 host 启动即后台预热（首次开语音零冷启动）；本地 TTS 懒下载，`.part` 断点续传 + 镜像回退，状态条实时显示进度
@@ -133,6 +143,9 @@ dsh plugin --profile web add dsh-voice-mode
 | 语音模式进不去 | 检查插件 `enabled`；多标签页时确认当前会话为活动会话 |
 | 识别到但不是我要说的 | 环境噪声：降低音量或提高 `interruptLevel`（高门槛） |
 | 打不断（朗读中开口无反应） | 调高 `interruptLevel`（更敏感档）或检查麦克风权限；**不要**调 `echoGateDb`——原生 AEC 生效时它从未被执行（详见 ADR-0006） |
+| 热词不生效 | 检查 `asrHotwords` 是否为空（空 = 关闭）；热词变更触发 recognizer 重建，下次进入语音模式生效；热词评分过低（<1.0）几乎无效，建议 ≥1.5 |
+| 字幕被输入框挡住 | 默认 `captionMaxWidth=1`（70vw）+ `captionFontSize=0`（12px）在窄屏可能与底部输入框重叠；调整档位，或关闭语音模式后点状态条浮层右上角「×」收起 |
+| 让位行为异常（朗读期说「嗯」不停 / 真话被打断） | 「嗯/对」类短词触发让位 1.5s（hold）后继续朗读；继续说真话会走硬打断；如不要让位语义把 `backchannelYield` 关闭即可恢复改造前行为（ADR-0008） |
 
 > **已知限制**：`Ctrl+Shift+V` 会覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍用 `Ctrl+V`）；识别为简体中文优先；**Safari / iOS** 需 HTTPS 或 localhost、首次需授权麦克风、后台 / 锁屏会暂停识别与朗读。
 

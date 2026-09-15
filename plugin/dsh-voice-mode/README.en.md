@@ -32,6 +32,10 @@
   - `toggle` (default) continuous listening: RMS VAD segmentation → streaming zipformer2 ASR (words appear as you speak, live caption preview) → automatic sentence split after 1500 ms of silence into the draft, consecutive segments joined into one message, then auto-sent after ~1500 ms more of silence (≈3 s total); hold `Ctrl` to force an immediate send
   - `hold` push-to-talk: short tap to enter/exit, **hold the mic button to talk, release to send** (swipe up to cancel, `Esc`/blur abandons the segment; pauses do not split while held, up to 10 min); hold `Ctrl` to record-by-keyboard, release to send
 - **Wake word (optional, off by default)**: after setting `wakeWord`, entering voice mode starts in standby, and recognition only begins once the wake word is spoken (e.g. `你好小D`), preventing accidental triggers
+- **Hotword biasing (batch 1)**: set `asrHotwords` (one token per line, or `token:score` like `dsh-voice-mode:2.5`) + `asrHotwordsScore` (base bias, default 1.5, matches sherpa-onnx upstream) to lift proper-name accuracy; empty = off (I10: default behavior unchanged); changes trigger recognizer rebuild
+- **Multi-language + ITN (batch 2)**: `recognitionLanguage` = `auto` / `zh` / `en` / `ja` / `ko` / `yue` (switching terminates and rebuilds the worker thread); `senseITN` on by default (number / date / currency normalization)
+- **Caption tiers (batch 3)**: `captionFontSize` 4 levels (0=12px / 1=14px / 2=18px / 3=24px) + `captionMaxWidth` 3 levels (0=50vw / 1=70vw / 2=90vw); adapts to narrow viewports
+- **Yield semantics (batch 5 / ADR-0008)**: `backchannelYield` on by default (I10-exempt) — saying `嗯 / 对 / right` while the AI is reading auto-pauses for 1.5 s; genuine speech still triggers hard barge-in; lets the LLM yield the turn
 - **Output pipeline**: only the final answer's `text-delta` is read (reasoning/tool calls are skipped), streamed sentence-by-sentence (Edge cloud by default; local VITS / Kokoro, int8/fp32, optional) with a live caption overlay at the bottom-right; tool calls trigger a beep; the full text is still written to the chat; in voice mode a spoken-format system prompt is injected (short natural sentences, no Markdown decoration), and the reader side strips markers as well for a smoother listening experience
 - **Barge-in**: three sensitivity levels of voice-onset detection → local mute + host synth queue invalidation (epoch) + running turn cancellation (the half-finished part is kept and naturally flows into your new message)
 - **Lazy model download with progress**: the zipformer2 Chinese streaming model (~160 MB, `.part` resumable) is downloaded on first use with live progress in the status bar; `npm run prefetch` can pre-download it
@@ -109,6 +113,13 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | `autoSend` | `true` | Auto-send once quiet (consecutive segments join into one message); when off, text only goes to the draft (hold `Ctrl` / release in hold mode still sends) |
 | `mode` | `toggle` | Interaction mode: `toggle` continuous listening + 1500 ms silence split; `hold` push-to-talk, release to send (short tap exits) |
 | `wakeWord` | empty (off) | Wake word (e.g. `你好小D`): speak it after entering to activate, avoiding accidental triggers; empty = off |
+| `asrHotwords` | empty (off) | Hotword biasing (batch 1 P0): one token per line, or `token:score` (e.g. `dsh-voice-mode:2.5`); changes trigger recognizer rebuild, applied on next voice-mode entry; empty = off |
+| `asrHotwordsScore` | `1.5` | Hotword base bias (matches sherpa-onnx upstream; higher = stronger, 1.5-2.5 recommended) |
+| `recognitionLanguage` | `auto` | Batch 2 P0: SenseVoice multi-language (`auto` / `zh` / `en` / `ja` / `ko` / `yue`); switching terminates and rebuilds the worker thread |
+| `senseITN` | `true` | Batch 2 P0: SenseVoice inverse text normalization (number / date / currency; on by default) |
+| `captionFontSize` | `0` | Batch 3 P0: caption font tier 0=12px / 1=14px / 2=18px / 3=24px (default 0 is byte-equivalent to legacy) |
+| `captionMaxWidth` | `1` | Batch 3 P0: caption width tier 0=50vw / 1=70vw / 2=90vw |
+| `backchannelYield` | `true` | Batch 5 P1: yield semantics (ADR-0008); saying `嗯 / 对` while reading auto-pauses for 1.5 s; genuine speech still triggers hard barge-in. I10-exempt (default-on is a product decision); off = behavior identical to pre-change |
 
 Effect timing: `voice`/`rate`/`ttsEngine`/`kokoroModel`/`spokenFormat` take effect **immediately** (TTS hot-swap); the rest apply on the next voice-mode entry. Defaults come from the plugin config (`base` layer) — they follow the config unless explicitly changed.
 
@@ -219,6 +230,9 @@ input:  mic ──RMS VAD (1500 ms silence split)──▶ POST /voice-mode/asr 
 | Poor recognition | Get closer to the mic, reduce ambient noise; if echo remains, raise the interrupt sensitivity by one step |
 | Hold mode has no effect | Make sure hold mode is active and you're in voice mode (button shows `按住说话`); the browser window must be in the foreground |
 | Preview button reports synthesis failure | Edge TTS unreachable (overseas) or the ShortName doesn't exist: verify the name (`node scripts/list-voices.mjs` lists all) and retry later |
+| Hotwords do not take effect | Check that `asrHotwords` is non-empty; changes trigger recognizer rebuild, applied on next voice-mode entry; bias < 1.0 is nearly ineffective (≥1.5 recommended); each line is one entry or `token:score` |
+| Caption is hidden behind the input box | Default `captionMaxWidth=1` (70vw) + `captionFontSize=0` (12px) can overlap the bottom input on narrow viewports; raise the tier or click the caption's `×` to dismiss |
+| Yield behavior is wrong (saying `嗯` doesn't pause / real speech gets hard-barge) | Short backchannel words (`嗯 / 对`) auto-pause 1.5 s then reading resumes; continuing to speak triggers hard barge-in; disable `backchannelYield` to restore pre-change behavior (ADR-0008) |
 
 ## Development
 
