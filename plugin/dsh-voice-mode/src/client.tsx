@@ -578,6 +578,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     captionFontSize: 0,
     captionMaxWidth: 1,
     backchannelYield: true,
+    yieldMs: 1500,
     // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
     asrHotwords: '',
     asrHotwordsScore: 1.5,
@@ -1168,6 +1169,8 @@ interface VoiceBootConfig {
   captionMaxWidth: 0 | 1 | 2
   /** 批 5 / ADR-0008 Phase 1：让位语义 backchannel 开关（默认 true = 朗读期说「嗯/对」自动让位）。 */
   backchannelYield: boolean
+  /** 批 G 任务 3：让位窗口时长（ms，500-3000，默认 1500）。onBackchannel 命中后 TTS 丢帧持续时间。 */
+  yieldMs: number
   /** 批 B：ASR 热词列表（每行一个热词 + 空格 + 权重；空 = 关）。 */
   asrHotwords: string
   /** 批 B：热词权重提升（1-5，默认 1.5）。 */
@@ -1261,6 +1264,7 @@ export function MicButton({
       captionFontSize: 0,
       captionMaxWidth: 1,
       backchannelYield: true,
+      yieldMs: 1500,
       // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
       asrHotwords: '',
       asrHotwordsScore: 1.5,
@@ -1314,6 +1318,8 @@ export function MicButton({
         captionMaxWidth: c.captionMaxWidth === 0 || c.captionMaxWidth === 2 ? c.captionMaxWidth : 1,
         // 批 5：同模式（plan §7.2 表漏列 fetchConfig 字段透传，类批 3 captionFontSize 集成层补丁）
         backchannelYield: c.backchannelYield !== false,
+        // 批 G 任务 3：让位窗口时长（500-3000ms）；类型校验严格 + 默认值兜底。
+        yieldMs: typeof c.yieldMs === 'number' && c.yieldMs >= 500 && c.yieldMs <= 3000 ? c.yieldMs : 1500,
         // 批 B：5 ASR 字段透传（host /config handler 在 c2120d9 已透传 4 字段，本批补 senseVoice + 客户端白名单对齐）。
         // 类型校验严格 + 默认值兜底，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
         asrHotwords: typeof c.asrHotwords === 'string' ? c.asrHotwords : '',
@@ -1704,12 +1710,12 @@ export function MicButton({
             fixtureRecorder.mark('native-aec', on ? 'on（自研 NLMS 旁路）' : 'off（自研 NLMS 生效）')
           },
           // 批 5 / ADR-0008 Phase 1：backchannel 命中回调——
-          //   立即 skipAudio 终止当前朗读 + 置 1.5s hold 窗口，期间 TTS 帧丢（字幕同帧丢）。
+          //   立即 skipAudio 终止当前朗读 + 置 cfg.yieldMs hold 窗口，期间 TTS 帧丢（字幕同帧丢）。
           //   关 backchannelYield = 不挂回调，行为等同改造前（I10 豁免由 §7.0 ADR-0008 接受）。
           onBackchannel: cfg.backchannelYield
             ? () => {
                 bus.skipAudio()
-                bus.setBackchannelHold(Date.now() + 1500)
+                bus.setBackchannelHold(Date.now() + (cfg.yieldMs ?? 1500))
               }
             : undefined,
           // 批 F：传 backchannelYield 给 ASR 引擎，让 asr.ts:379 守卫短路 matchBackchannel。

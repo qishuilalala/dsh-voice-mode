@@ -227,12 +227,12 @@ for (const field of NEW_FIELDS) {
 
 console.log('反向断言契约（防删测试）')
 
-t('FIELD_LABELS 含 25 字段（18 原有 + 7 批 C；新增即扩，无意删除即红）', () => {
-  assert.equal(fieldLabelsKeys.size, 25, `FIELD_LABELS 现 ${fieldLabelsKeys.size} 字段，预期 25`)
+t('FIELD_LABELS 含 26 字段（18 原有 + 7 批 C + 1 批 G 任务 3 yieldMs；新增即扩，无意删除即红）', () => {
+  assert.equal(fieldLabelsKeys.size, 26, `FIELD_LABELS 现 ${fieldLabelsKeys.size} 字段，预期 26`)
 })
 
-t('strings.ts zh 段含 174 键（160 原有 + 7 批 C *Label + 7 批 G 新键：任务 1 number×2 / 任务 2 idle×2 / 任务 4 asrHotwordsInvalid×1 / previewModelMissing×1 / previewModelLoading×1）', () => {
-  assert.equal(zhKeys.size, 174, `zh 段现 ${zhKeys.size} 键，预期 174`)
+t('strings.ts zh 段含 177 键（160 原有 + 7 批 C *Label + 10 批 G 新键：任务 1 number×2 / 任务 2 idle×2 / 任务 3 yieldMs×2 + yieldMsLabel×1 / 任务 4 asrHotwordsInvalid×1 / previewModelMissing×1 / previewModelLoading×1）', () => {
+  assert.equal(zhKeys.size, 177, `zh 段现 ${zhKeys.size} 键，预期 177`)
 })
 
 t('zh 段关键键存在（批 G 任务 1 number×2 升级；删任意键即红）', () => {
@@ -240,6 +240,20 @@ t('zh 段关键键存在（批 G 任务 1 number×2 升级；删任意键即红�
   // 之前仅以总数断言守门，本批加具体键校验。
   assert.ok(zhKeys.has('numberInvalid'), 'zh 段缺 numberInvalid（NumberField 红框文案）')
   assert.ok(zhKeys.has('numberClamped'), 'zh 段缺 numberClamped（clamp 提示文案）')
+})
+
+t('zh 段关键键存在（批 G 任务 3 yieldMs×2 + 双轨闭包一致性；删任意键即红）', () => {
+  // 批 G 任务 3 专项：让位窗口时长字段需要 yieldMs / descYieldMs；FIELD_LABELS 镜像键
+  // yieldMsLabel 必须与 zh 段值一致（双轨闭包检查）。
+  assert.ok(zhKeys.has('yieldMs'), 'zh 段缺 yieldMs（让位窗口标题）')
+  assert.ok(zhKeys.has('descYieldMs'), 'zh 段缺 descYieldMs（让位窗口描述）')
+  assert.ok(zhKeys.has('yieldMsLabel'), 'zh 段缺 yieldMsLabel（FIELD_LABELS 镜像键）')
+  // 双轨闭包：FIELD_LABELS.yieldMs 与 tr('yieldMsLabel') 中文必须一致（防双轨漂移）。
+  assert.equal(
+    fieldLabelsKeys.has('yieldMs') && zhKeys.has('yieldMsLabel'),
+    true,
+    'FIELD_LABELS.yieldMs 与 zh.yieldMsLabel 双轨闭包丢失',
+  )
 })
 
 t('rowNames 至少 24 项（覆盖所有 Row 行；删 Row 即红）', () => {
