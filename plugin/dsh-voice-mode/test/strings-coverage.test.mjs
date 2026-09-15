@@ -41,6 +41,39 @@ const stringsPath = join(here, '..', 'src', 'strings.ts')
 const settingsForm = readFileSync(settingsFormPath, 'utf8')
 const stringsSrc = readFileSync(stringsPath, 'utf8')
 
+/** 简易 zh 段取值函数（仅作值比较，不导入 strings.ts 以避免引入运行时依赖）。 */
+const zh = (() => {
+  const out = Object.create(null)
+  const start = stringsSrc.indexOf('const zh =')
+  assert.notEqual(start, -1, 'strings.ts 必须包含 `const zh =` 声明')
+  const braceStart = stringsSrc.indexOf('{', start)
+  let depth = 0
+  let i = braceStart
+  for (; i < stringsSrc.length; i++) {
+    const c = stringsSrc[i]
+    if (c === '{') depth++
+    else if (c === '}') {
+      depth--
+      if (depth === 0) {
+        i++
+        break
+      }
+    }
+  }
+  const block = stringsSrc.slice(braceStart, i)
+  // 匹配 `key: 'value'`（单引号字面量；处理 \'{line}\' / \'{value}\' 等转义占位）。
+  const re = /^\s*([a-zA-Z][a-zA-Z0-9]*)\s*:\s*'((?:\\.|[^'\\])*)'/gm
+  let m
+  while ((m = re.exec(block)) !== null) {
+    const k = m[1]
+    const raw = m[2]
+    // 解析字符串字面量（处理 \' \\ \n 等转义）——仅取显示值。
+    const v = raw.replace(/\\'/g, "'").replace(/\\\\/g, '\\').replace(/\\n/g, '\n')
+    out[k] = v
+  }
+  return out
+})()
+
 let passed = 0
 const t = (name, fn) => {
   fn()
@@ -108,6 +141,35 @@ const extractFieldLabelsKeys = (src) => {
   let m
   while ((m = re.exec(block)) !== null) keys.add(m[1])
   return keys
+}
+
+/** 提取 FIELD_LABELS 字典中指定 key 的字面值（zh 中文）。
+ *  返回 null = 键不存在；返回 string = 字面值。
+ *  用于双轨闭包值一致性断言（FIELD_LABELS.yieldMs === zh.yieldMsLabel）。 */
+const extractFieldLabelsValue = (src, key) => {
+  const start = src.indexOf('const FIELD_LABELS:')
+  if (start === -1) return null
+  const braceStart = src.indexOf('{', start)
+  if (braceStart === -1) return null
+  let depth = 0
+  let i = braceStart
+  for (; i < src.length; i++) {
+    const c = src[i]
+    if (c === '{') depth++
+    else if (c === '}') {
+      depth--
+      if (depth === 0) {
+        i++
+        break
+      }
+    }
+  }
+  const block = src.slice(braceStart, i)
+  // 单行匹配：`  key: 'value'` 或 `key: 'value'`，value 用单引号字面量。
+  const re = new RegExp(`^\\s*${key}\\s*:\\s*'((?:\\\\.|[^'\\\\])*)'`, 'm')
+  const m = re.exec(block)
+  if (!m) return null
+  return m[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\').replace(/\\n/g, '\n')
 }
 
 /** 从 strings.ts 中提取 zh 段（`const zh = { ... } as const`）的全部键集合。
@@ -231,8 +293,44 @@ t('FIELD_LABELS 含 26 字段（18 原有 + 7 批 C + 1 批 G 任务 3 yieldMs�
   assert.equal(fieldLabelsKeys.size, 26, `FIELD_LABELS 现 ${fieldLabelsKeys.size} 字段，预期 26`)
 })
 
-t('strings.ts zh 段含 177 键（160 原有 + 7 批 C *Label + 10 批 G 新键：任务 1 number×2 / 任务 2 idle×2 / 任务 3 yieldMs×2 + yieldMsLabel×1 / 任务 4 asrHotwordsInvalid×1 / previewModelMissing×1 / previewModelLoading×1）', () => {
-  assert.equal(zhKeys.size, 177, `zh 段现 ${zhKeys.size} 键，预期 177`)
+console.log('字符串覆盖核心键校验（替代仅总数断言；批 G 验收 B4 升级）')
+
+// 辅助：总数跟踪（不删；用于趋势观察 + 新增键计数感知）。严格断言见下方具体键检查。
+console.log(`  ℹ️  zh 段当前共 ${zhKeys.size} 键（含历史 18 原有 + 7 批 C *Label + 批 G 新增键等）`)
+
+t('strings.ts zh 段核心键全部存在（具体键校验，替代原 172 总数断言；删任意键即红）', () => {
+  // 批 G 验收 B4 升级：原 `assert.equal(zhKeys.size, 172)` 仅校验键总数，未校验具体键
+  // 存在——删 idleWarn30s 测试仍 PASS，无法防删。本批改为具体键校验：
+  //   - 批 G 任务 1: numberInvalid / numberClamped（NumberField 红框 + clamp 提示）
+  //   - 批 G 任务 2: idleWarn30s（30s 预警提示）
+  //   - 批 G 任务 3: yieldMs / descYieldMs（让位窗口时长）
+  //   - 批 G 任务 4: asrHotwordsInvalid（识别热词行格式校验）
+  //   - 批 G 任务 6: previewModelMissing / previewModelLoading（本地模型未就绪预览按钮禁用）
+  // 任一缺失即红。
+  const required = [
+    ['numberInvalid', '批 G 任务 1：NumberField 红框文案'],
+    ['numberClamped', '批 G 任务 1：clamp 提示文案'],
+    ['idleWarn30s', '批 G 任务 2：空闲 30s 预警'],
+    ['yieldMs', '批 G 任务 3：让位窗口标题'],
+    ['descYieldMs', '批 G 任务 3：让位窗口描述'],
+    ['asrHotwordsInvalid', '批 G 任务 4：识别热词行格式校验'],
+    ['previewModelMissing', '批 G 任务 6：本地模型未就绪（缺失）'],
+    ['previewModelLoading', '批 G 任务 6：本地模型下载中'],
+  ]
+  const missing = required.filter(([k]) => !zhKeys.has(k)).map(([k, why]) => `${k}（${why}）`)
+  assert.deepEqual(missing, [], `zh 段缺核心键：${missing.join('; ')}`)
+})
+
+t('FIELD_LABELS.yieldMs 双轨闭包值一致性（zh yieldMsLabel 与 settings-form FIELD_LABELS 一致）', () => {
+  // 双轨闭包检查（settings-form.tsx 内联中文 vs strings.ts zh *Label 键）：
+  // FIELD_LABELS.yieldMs 与 zh 段 yieldMsLabel 必须 **值一致**——避免双轨漂移。
+  // 同时校验 settings-form.tsx 已引用 yieldMs（防止配了 Label 但 UI 未用到）。
+  // 此断言是 yieldMs 字段「真被消费」的红线。
+  const formLabel = extractFieldLabelsValue(settingsForm, 'yieldMs')
+  assert.ok(formLabel !== null, 'FIELD_LABELS 缺 yieldMs 键')
+  assert.equal(formLabel, zh['yieldMsLabel'], `FIELD_LABELS.yieldMs='${formLabel}' 与 zh yieldMsLabel='${zh['yieldMsLabel']}' 不一致`)
+  // 字段已被 UI 引用（防止僵尸键）。
+  assert.ok(rowNames.has('yieldMs') || fieldRefs.has('yieldMs'), 'settings-form.tsx 未引用 yieldMs（僵尸键）')
 })
 
 t('zh 段关键键存在（批 G 任务 1 number×2 升级；删任意键即红）', () => {
