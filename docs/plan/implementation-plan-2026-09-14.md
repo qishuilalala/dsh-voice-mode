@@ -269,13 +269,13 @@ Kokoro/VITS 走 sherpa-onnx offline TTS（纯文本+sid 输入），**不支持 
 | 文件 | 位置 | 动作 |
 |---|---|---|
 | `src/index.ts` | `VOICE_SPOKEN_PROMPT` L72-76 | 追加 YIELDING 段（中文，与现有 4 句同风格）：`「如果用户在你朗读时插话（哪怕只是"嗯/对"这样的短应答），立即停止当前句，把话轮让给用户；回答后留出停顿，不要连问两个问题；用户沉默时不要主动找新话题。」` |
-| `src/asr.ts` | 顶层（wakeword import 旁） | `matchBackchannel(partial: string): boolean`——归一化（复用 normalizeWake）后**整段**匹配词表：`嗯/哎/呃/哦/噢/对/好/行/是/嗯嗯/好好/so/um/uh/yeah/right/ok`，且长度 ≤4 归一化字符。**整段匹配，非前缀**（与 wakeWord 的本质区别） |
+| `src/asr.ts` | 顶层（wakeword import 旁） | `matchBackchannel(partial: string): boolean`——**独立归一化**（仅去空白/标点/小写，保留语气词——不复用 normalizeWake：其剥前置语气词会把「嗯」剥成空串，与本场景语义相反）后**整段**匹配词表：`嗯/哎/呃/哦/噢/对/好/行/是/嗯嗯/好好/so/um/uh/yeah/ok`（15 项，**不含 right**——right 5 字符超 §10 R4b ≤4 上限被长度过滤），且归一化后长度 ≤4 字符。**整段匹配，非前缀**（与 wakeWord 的本质区别） |
 | `src/asr.ts` | partial 响应处理 L310+（`state==='speech' && playingNow` 时） | 命中 → 触发新回调 `config.onBackchannel?.()`（AsrConfig 加可选回调，与 onAecState 同模式） |
 | `src/client.tsx` | engine config 组装 L1380+（onAecState 旁） | `onBackchannel: () => { skipAudioRef?(); setBackchannelHold(Date.now()+1500); }`——skipAudio 复用现有 bus.skipAudio |
 | `src/client.tsx` | 帧回调 L926 入口 | `if (backchannelHoldUntil && Date.now() < backchannelHoldUntil) return`——静默丢帧（字幕同帧丢弃，避免字幕堆积） |
 | `src/client.tsx` | hardBreak 路径 | 现有逻辑前清 `backchannelHoldUntil=0`（真打断优先） |
-| `src/index.ts` schema | 新设置 | `backchannelYield: boolean` 默认 `true`（关 = onBackchannel 不挂） |
-| `src/settings-form.tsx` / `strings.ts` | secInteraction + zh/en | 开关 + `backchannelHint` 等 ~4 键 |
+| `src/index.ts` schema | 新设置 | `backchannelYield: boolean` 默认 `true`（关 = onBackchannel 不挂；I10 豁免已声明：默认开是产品决策，ADR-0008 已接受） |
+| `src/settings-form.tsx` / `strings.ts` | secInteraction + zh/en | 开关 + `backchannelYield` / `descBackchannelYield` 共 2 键（**原计划表「~4 键」含 `backchannelHint` 是范围溢出**——settings-form 未使用，死代码，批 6 收口清理） |
 | `test/backchannel.test.mjs`（新） | 词表正/负例（"嗯"✓/"嗯你好小D"✗——那是 wake 不是 backchannel/"好的没问题"✗ 长度>4）+ hold 丢帧逻辑 |
 
 ### 7.3 验证与 Done
