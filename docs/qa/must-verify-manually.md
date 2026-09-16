@@ -9,7 +9,7 @@
 ## 何时需要看本清单
 
 - 发版前 / 用户报修复后 / 关键不变量被改动后，由用户亲跑闭环
-- 不重复 `user-experience-flow.md`（12 步用户旅程）与 `real-machine-acceptance-checklist.md`（21 项全量）—— 后两者包含 AI 可自动验证的项，对用户多余
+- 不重复 `real-machine-acceptance-checklist.md`（21 项全量）—— 后者包含 AI 可自动验证的项，对用户多余
 - 三类「AI 无法验证」= 麦克风输入 / 语音输出听感 / 用户主观判断
 
 ---
@@ -64,6 +64,5 @@
 ## 出处与锚点
 
 - 完整 21 项体验验收 → `real-machine-acceptance-checklist.md`（本目录）
-- 完整 12 步用户旅程 → `user-experience-flow.md`（本目录）
 - 不变量定义 → `docs/rules/STATE.md` 与 `docs/adr/`
 - 基线 HEAD = `a944552`（`git rev-parse --short HEAD` 校对）

@@ -1,6 +1,6 @@
 # 截图资产清单（MANIFEST）
 
-> 12 张截图与 12 步体验流程 1:1 对应（真源：`docs/qa/user-experience-flow.md`）。
+> 12 张截图覆盖核心 UI 流程（截图源对应 `docs/qa/real-machine-acceptance-checklist.md` 21 项真机验收清单）。
 > 状态列说明：`模板 + 实测可跑` = 无需麦克风，可在 dsh Web 真机直接跑 `screenshots/scripts/capture.mjs` 实测落盘；`模板 + 待真机` = 需要麦克风/屏录等真实语音交互，脚本模板已就绪，待真机操作后补拍。
 > 截图文件命名：`S<ID>-<slug>.png`（slug 见 `capture.mjs` 内 SHOTS 定义），统一落在 `screenshots/` 下，不覆盖 `assets/` 现有 5 张 PNG。
 

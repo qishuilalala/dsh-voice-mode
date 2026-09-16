@@ -53,7 +53,7 @@ nav:
   - 真机验收:
       - docs/qa/README.md
       - docs/qa/real-machine-acceptance-checklist.md
-      - docs/qa/user-experience-flow.md
+      - docs/qa/must-verify-manually.md
   - 规则:
       - docs/rules/README.md
       - docs/rules/STATE.md
