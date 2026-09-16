@@ -87,7 +87,8 @@ const zh = {
   descIdle: '无活动自动退出语音模式的分钟数（默认 5；批 G 任务 2 已加 30s 倒数预警）',
   descModelHost: 'ASR 模型下载源（官方源 / 国内镜像，或选「自定义」填任意镜像）',
   descAutoSend: '静音到点自动发送（连续多段拼成一条；关=只进草稿；按住 Ctrl / hold 松手仍发送）',
-  descAutoResume: '切换回上次语音会话时自动恢复语音模式（默认关；开启后自动进入语音模式 + 恢复上次会话；关闭则需手动按 Ctrl+Shift+V 重新进入）',
+  // 批 7N 重做 5/5：明确「开启后下次进入语音会话即生效」——消除「点完为何不立即恢复」的预期差。
+  descAutoResume: '切换回上次语音会话时自动恢复语音模式（默认关；开启后下次进入语音会话即生效——自动进入语音模式 + 恢复上次会话；关闭则需手动按 Ctrl+Shift+V 重新进入）',
   descSpokenFormat: '语音会话注入口语化提示词（回复口语化、短句、不用 Markdown 排版符号，朗读更顺更快；默认开，改动即时生效）',
   descSenseVoice: '定稿用 SenseVoice 重译（带标点 + 数字归一化、识别更准；默认开。关闭可省 228MB 模型，只走流式识别）',
   descToolBeep: '工具调用提示音（默认关）：AI 思考/调用工具时"滴"一声；嫌吵就保持关闭',
@@ -262,7 +263,8 @@ const en: Record<keyof typeof zh, string> = {
   descIdle: 'Auto-exit voice mode after idle minutes (default 5; batch G added 30 s warning before exit)',
   descModelHost: 'ASR model download source (official source / mirror, or any custom URL)',
   descAutoSend: 'Auto-send once quiet (consecutive segments join into one message; off = draft only; Ctrl / hold still sends)',
-  descAutoResume: 'Auto-resume voice mode when switching back to the last voice session (default off; when enabled, automatically re-enters voice mode and restores the last session; when disabled, you must press Ctrl+Shift+V to re-enter)',
+  // 批 7N 重做 5/5：clarify that toggling takes effect on next session entry (not the current one).
+  descAutoResume: 'Auto-resume voice mode when switching back to the last voice session (default off; takes effect on next session entry — auto-enters voice mode and restores the last session; when disabled, you must press Ctrl+Shift+V to re-enter)',
   descSpokenFormat: 'Inject spoken-format prompt into voice replies (colloquial, short sentences, no Markdown; default on, live)',
   descSenseVoice: 'Re-transcribe the finalized utterance with SenseVoice (punctuation + ITN, more accurate; default on — turn off to skip the 228 MB model and keep streaming only)',
   descToolBeep: 'Tool-call beep (default off): beep when the agent is thinking/calling tools; keep off if it annoys you',

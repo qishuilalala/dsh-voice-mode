@@ -254,7 +254,8 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
     idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description('无活动自动退出语音模式的分钟数（默认 5；批 G 任务 2 已加 30s 倒数预警）'),
     modelHost: z.string().default(d.modelHost).description('ASR 模型下载源（留空用默认源；国内网络可填 https://hf-mirror.com）'),
     autoSend: z.boolean().default(d.autoSend).description('静音到点自动发送（连续多段拼成一条消息；关闭则只进草稿供编辑；按住 Ctrl / hold 松手仍会发送）'),
-    autoResume: z.boolean().default(d.autoResume).description('切换回上次语音会话时自动恢复语音模式（默认关；开启后自动进入语音模式 + 恢复上次会话；关闭则需手动按 Ctrl+Shift+V 重新进入）'),
+    // 批 7N 重做 5/5：与 strings.ts descAutoResume 同步——明确「下次进入语音会话即生效」。
+    autoResume: z.boolean().default(d.autoResume).description('切换回上次语音会话时自动恢复语音模式（默认关；开启后下次进入语音会话即生效——自动进入语音模式 + 恢复上次会话；关闭则需手动按 Ctrl+Shift+V 重新进入）'),
     mode: z
       .union([z.const('toggle'), z.const('hold')])
       .default(d.mode)

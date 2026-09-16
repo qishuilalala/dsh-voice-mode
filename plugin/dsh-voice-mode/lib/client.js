@@ -1346,7 +1346,8 @@ var zh = {
   descIdle: "\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 5\uFF1B\u6279 G \u4EFB\u52A1 2 \u5DF2\u52A0 30s \u5012\u6570\u9884\u8B66\uFF09",
   descModelHost: "ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u5B98\u65B9\u6E90 / \u56FD\u5185\u955C\u50CF\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u586B\u4EFB\u610F\u955C\u50CF\uFF09",
   descAutoSend: "\u9759\u97F3\u5230\u70B9\u81EA\u52A8\u53D1\u9001\uFF08\u8FDE\u7EED\u591A\u6BB5\u62FC\u6210\u4E00\u6761\uFF1B\u5173=\u53EA\u8FDB\u8349\u7A3F\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u53D1\u9001\uFF09",
-  descAutoResume: "\u5207\u6362\u56DE\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD\u65F6\u81EA\u52A8\u6062\u590D\u8BED\u97F3\u6A21\u5F0F\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5F00\u542F\u540E\u81EA\u52A8\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F + \u6062\u590D\u4E0A\u6B21\u4F1A\u8BDD\uFF1B\u5173\u95ED\u5219\u9700\u624B\u52A8\u6309 Ctrl+Shift+V \u91CD\u65B0\u8FDB\u5165\uFF09",
+  // 批 7N 重做 5/5：明确「开启后下次进入语音会话即生效」——消除「点完为何不立即恢复」的预期差。
+  descAutoResume: "\u5207\u6362\u56DE\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD\u65F6\u81EA\u52A8\u6062\u590D\u8BED\u97F3\u6A21\u5F0F\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5F00\u542F\u540E\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u4F1A\u8BDD\u5373\u751F\u6548\u2014\u2014\u81EA\u52A8\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F + \u6062\u590D\u4E0A\u6B21\u4F1A\u8BDD\uFF1B\u5173\u95ED\u5219\u9700\u624B\u52A8\u6309 Ctrl+Shift+V \u91CD\u65B0\u8FDB\u5165\uFF09",
   descSpokenFormat: "\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u56DE\u590D\u53E3\u8BED\u5316\u3001\u77ED\u53E5\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\u66F4\u5FEB\uFF1B\u9ED8\u8BA4\u5F00\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09",
   descSenseVoice: "\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9 + \u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09",
   descToolBeep: '\u5DE5\u5177\u8C03\u7528\u63D0\u793A\u97F3\uFF08\u9ED8\u8BA4\u5173\uFF09\uFF1AAI \u601D\u8003/\u8C03\u7528\u5DE5\u5177\u65F6"\u6EF4"\u4E00\u58F0\uFF1B\u5ACC\u5435\u5C31\u4FDD\u6301\u5173\u95ED',
@@ -1520,7 +1521,8 @@ var en = {
   descIdle: "Auto-exit voice mode after idle minutes (default 5; batch G added 30 s warning before exit)",
   descModelHost: "ASR model download source (official source / mirror, or any custom URL)",
   descAutoSend: "Auto-send once quiet (consecutive segments join into one message; off = draft only; Ctrl / hold still sends)",
-  descAutoResume: "Auto-resume voice mode when switching back to the last voice session (default off; when enabled, automatically re-enters voice mode and restores the last session; when disabled, you must press Ctrl+Shift+V to re-enter)",
+  // 批 7N 重做 5/5：clarify that toggling takes effect on next session entry (not the current one).
+  descAutoResume: "Auto-resume voice mode when switching back to the last voice session (default off; takes effect on next session entry \u2014 auto-enters voice mode and restores the last session; when disabled, you must press Ctrl+Shift+V to re-enter)",
   descSpokenFormat: "Inject spoken-format prompt into voice replies (colloquial, short sentences, no Markdown; default on, live)",
   descSenseVoice: "Re-transcribe the finalized utterance with SenseVoice (punctuation + ITN, more accurate; default on \u2014 turn off to skip the 228 MB model and keep streaming only)",
   descToolBeep: "Tool-call beep (default off): beep when the agent is thinking/calling tools; keep off if it annoys you",
@@ -2709,7 +2711,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "d667ffb";
+var BUILD_TAG = "ee4312b";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
