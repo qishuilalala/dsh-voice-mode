@@ -9,6 +9,10 @@
 > 真实运行态：Silero VAD 位于 host 侧（`src/asr-host.ts:640-647` detect 异步函数内 `acceptWaveform` → `isSpeech`），
 > 客户端只做计数（`src/client.tsx:33` `INT_CONFIRM_FRAMES`）。本 ADR 的「下沉」是**未实施的提议**，
 > 故重命名为 `0003-server-side-vad.md`，标题同步纠正；正文「决策（提议）」段保留原提议内容（搬迁方向与代价分析）。
+>
+> **批 7N 落地（2026-09-16）**：
+> - **批 7M 🔴 砍 `recognitionLanguage` 已落地**（commit `4532b48`）—— schema 退回 `auto` 单值，根因：锁 en 后英文段仍识别为中文（zipformer-zh-int8 模型词表以中文为主）。
+> - **批 7N 🟡 重做 1/5 `bargeInMode='manual'` 接通已落地**（commit `8278097`）—— ADR-0006 第一级探测（asr.ts:778 已读 `track.getSettings().echoCancellation`）接通 `bargeInMode='manual'` 闸门：asr-host.ts AsrRuntimeOptions 加 `bargeInMode` getter + feed() 加 `manualPressed` 守卫（manual + !pressed early return `{text: ''}`）+ handleAsrRequest 透传 `?manual=1`；asr.ts AsrConfig 加 `bargeInMode?` + handleAudio 入口守卫 + asrUrl `&manual=1`；client.tsx createAsrEngine 透传。新增 `test/barge-in-manual.test.mjs` 8 项 esbuild bundle 真源码测试。**I10 默认行为守恒**（默认 auto = 原行为零变化）。
 
 ## 背景
 

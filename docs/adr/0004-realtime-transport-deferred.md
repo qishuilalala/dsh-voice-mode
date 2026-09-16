@@ -8,6 +8,11 @@
 > 真实运行态：上行 `POST /voice-mode/asr`（100ms 轮询）+ 下行 SSE `/voice-mode/stream`（详见背景段与「决策（提议）」段）。
 > 本 ADR 的 WebSocket 改造是**未实施的提议（deferred）**，故重命名为 `0004-realtime-transport-deferred.md`，标题同步纠正；
 > 正文「决策（提议）」段保留原提议内容（改造方向与代价分析）。
+>
+> **批 7M + 批 7N 落地（2026-09-16）**：
+> - **批 7M 🔴 砍 4 项已落地**：`recognitionLanguage`（`4532b48`）/ `asrHotwords`+`asrHotwordsScore`+模块（`e3423ef`）/ `docs/qa/user-experience-flow.md`（`6bed6d4`）+ lib rebuild（`735e997`）；schema 字段 25→23 项砍除，本 ADR 依赖的传输层无改动（仍 HTTP/3 SSE）。
+> - **批 7N 🟡 重做 5 项已落地**：`bargeInMode='manual'` 接通（`8278097`）/ echoGateDb + autoResume 描述对齐（`d667ffb`+`5b6019b`）/ 端到端补测 3 项 yieldMs + zh-60s + matchBackchannel（`58f6d77`+`b0e45fe`+`ee4312b`）/ ADR-0003 + 本 ADR 重命名（`0564a51`+`0cacd88`）/ autoResume 文案统一（`f883b35`）。
+> - **不动传输层**：批 7M + 批 7N 均未触动 WebSocket 改造；ADR-0004 仍 deferred，前置条件 #1（核实宿主 `@deepseek-ai/dsh-host-webserver` 支持 WebSocket upgrade，2026-09-14 真机核对已满足）保持——本 ADR 现在可推进，但批量 go 推迟等用户决策。
 
 ## 背景
 
