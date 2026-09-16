@@ -741,3 +741,58 @@
 | J rate 1.0→1.1 | 改（批 J 实现） | 保持 1.0 |
 
 **已知未决定 Open Questions**（来自批 F/L 后续登记，不在 §12.6 内）：zh settingsEffectiveNote 段 2 用户文案歧义 / 覆盖率统计 53%+10%+8%+4% = 75% ≠ 100% / 「31 commits」vs「31 项修复」口径区分。
+
+---
+
+## 批 7M 🔴 砍 + 批 7N 🟡 重做 完成状态（2026-09-16）
+
+> **触发**：用户批准 glm-5.3 对抗性功能价值审查（`.scratch/adversarial-review-2026-09-16.md`）→ 4 项 🔴 砍 + 5 项 🟡 重做 + 4 项文档同步收口；总计 11 commit 入库（ahead origin/main = 51，未 push）。
+> **纪律**：仅源码砍除 / 文档同步 / 注释清理；零新增功能（用户原话「完全砍掉吧」「全流程体验文档完全多余」「重做描述与真机限制对齐」）。
+> **不变量**：I1-I10 全部守恒（仅文案与字段砍除，无 runtime 行为变化）。
+
+### 4 项 🔴 砍 commit 哈希 + 用户原话
+
+| 砍除项 | commit | 用户原话 / 根因 |
+|---|---|---|
+| `recognitionLanguage` 字段（schema 退回 `auto` 单值）| `4532b48` | **锁 en 后英文段仍识别为中文**（zipformer-zh-int8 流式模型词表以中文为主，markStale 懒加载不重建）；schema `union → z.const('auto')` 单值回退，I10 守恒 |
+| `asrHotwords` + `asrHotwordsScore` 字段（含 `src/asr-hotwords.ts` 模块 + `test/hotwords.test.mjs`）| `e3423ef` | 「**完全砍掉吧，正常也不会识别不到**」——用户决定彻底砍除；正常场景识别已够用，热词词表限制 + UI 误导陷阱；测试数 254→245 |
+| `docs/qa/user-experience-flow.md`（666 行整文件）| `6bed6d4` | 「**全流程体验文档完全多余**」——与 `real-machine-acceptance-checklist.md` 70% 重复 + 与 `must-verify-manually.md` 70% 重复；文档代码比 13:1 → 目标 ≤ 9:1 |
+| chore lib rebuild 收尾 | `735e997` | 按 STATE.md M5 既定工作流（build 在源码砍除 commit 后跑，lib 产物作为 chore(lib) commit 收尾）—— `lib/index.js` 删 `hotwordsBuf/hotwordsScore` + `recognitionLanguage` getter + 相关 schema 引用 |
+
+**回归门**：grep `asrHotwords\|asrHotwordsScore\|recognitionLanguage` in `src/` = 0 命中；`git ls-files | grep asr-hotwords` = 0 命中；`git ls-files | grep user-experience-flow` = 0 命中；`grep hotwordsBuf\|recognitionLanguage lib/index.js` = 0 命中；npm test scripts 链无 hotwords（基线 245 项全绿）。
+
+### 5 项 🟡 重做 commit 哈希（量化描述与真机限制对齐 + ⚪ 加 manual 接通）
+
+| 重做项 | commit | 改进点 |
+|---|---|---|
+| ⚪ **加：bargeInMode='manual' 真接通** | `8278097` | ADR-0006 第一级探测（asr.ts:778 `track.getSettings().echoCancellation`）→ 接通 `bargeInMode='manual'` 闸门。改动：asr-host.ts AsrRuntimeOptions 加 `bargeInMode` getter + feed() 加 `manualPressed` 守卫（manual + !pressed early return）+ handleAsrRequest 透传 `?manual=1`；asr.ts AsrConfig 加 `bargeInMode?` + handleAudio 入口守卫 + asrUrl `&manual=1`；client.tsx createAsrEngine 透传；index.ts 实时 getter 透传 createAsrRuntime。**新增 `test/barge-in-manual.test.mjs` 8 项**（esbuild bundle 真源码测试）|
+| **echoGateDb 描述与真机限制对齐** | `d667ffb` | zod schema description 改写「**当前 ASR 模型默认 AEC 生效时闲置；Safari/耳机无原生 AEC 环境兜底生效**」——与 2026-09-14 2×2 fixture 实证 0/937 帧判回声为语音一致；strings.ts descEchoGate zh+en 同步 |
+| **autoResume 引导文案改写** | `5b6019b` | strings.ts autoResumeHint zh+en 新文案「关闭后切换回上次会话不会自动恢复语音模式（需手动 Ctrl+Shift+V）；开启后自动恢复上次语音会话」 |
+| **端到端补测 3 项**（批 G M4 + 批 E Q1 + 批 F I1+I2 缺口登记）| `58f6d77` + `b0e45fe` + `ee4312b` | ① `yield-ms-wiring.test.mjs` esbuild bundle 真 client.tsx + asr-host.ts 端到端测试，验证 9 处 yieldMs 对称修改 wiring 路径通；② `test/fixtures/zh-60s.wav` 60s 中文 fixture（mock sine 600Hz + silence 模式 16kHz/mono/16bit PCM + 6 语音段×8s + 5 停顿×2s = 60s）+ 扩展 `asr-e2e.js` 跑 B5 长段话 finalize ≥ 95% 输入；③ `matchBackchannel.test.mjs` esbuild bundle 真 asr.ts 守卫端到端测试（undefined 默认走通 + 词表 15 项正/负例 + 守卫反向断言）|
+| **ADR-0003 / ADR-0004 重命名 + 命名纠正注释** | `0564a51` + `0cacd88` | ① `git mv 0003-client-side-vad.md → 0003-server-side-vad.md` + 顶部状态 Proposed→Accepted + 命名纠正「真实运行态 Silero VAD 位于 host 侧 asr-host.ts:640-647」+ 标题「Client-Side VAD」→「Server-Side VAD (Silero)」；② `git mv 0004-realtime-transport.md → 0004-realtime-transport-deferred.md` + 命名纠正「真实运行态上行 POST /voice-mode/asr 100ms 轮询 + 下行 SSE /voice-mode/stream」+ 标题「Real-Time Transport」→「Real-Time Transport (Deferred)」。原文件名误导性「提议」被误读为「已实施」——命名纠正让 ADR 状态与运行态一致 |
+| **autoResume 文案统一 + descAutoResume 时机说明** | `f883b35` | strings.ts zh+en `descAutoResume` 加「下次进入语音会话即生效」时机说明；index.ts zod schema autoResume description 对齐；settings-form.tsx autoResume Row desc 自动同步 `tr('descAutoResume')` |
+
+### 文档同步 4 commit 哈希（🔴 砍 4 项审查报告 IM-1+IM-2/IM-3/IM-4 + M1-M3 注释）
+
+| 文档同步项 | commit | 改动面 |
+|---|---|---|
+| **IM-1+IM-2** 截图脚本 + MANIFEST | `98bae1e` | `screenshots/scripts/capture.mjs` CONFIG_FIELDS 7→4 字段（senseITN/captionFontSize/captionMaxWidth/backchannelYield）；`screenshots/MANIFEST.md` S03/S04 删整行（S01-S02 + S05-S12 共 10 张）|
+| **IM-3** 用户面向 README + CONTEXT | `2bb6f72` | 根 `CONTEXT.md` 设置语义表删 asrHotwords/asrHotwordsScore/recognitionLanguage 三行；`plugin/README.md` + `plugin/README.en.md` 中英对照 8 处已删字段引用删（含故障排查「热词不生效」）|
+| **IM-4** 真机验收门禁 | `bbd5a67` | `docs/qa/must-verify-manually.md` 5 项必过表 → 精简为 3 项（字幕 / 让位 / 60s 长段）；`docs/qa/real-machine-acceptance-checklist.md` 阶段 2 砍 2.1/2.2 + 默认值表 7→4 + 阶段标题「批 1-5」→「批 2/3/5」|
+| **M1-M3** 注释 / symbol 残留清理 | `76cab3b` | `test/strings-coverage.test.mjs` 顶部注释与 NEW_FIELDS 一致化（7→4）+ L254-255 示例改用未砍字段（asrHotwords → senseITN）；`src/asr-host.ts` markStale jsdoc 删 getRecognizer:267-274 路径引用（M3 no-op，grep 实证 0 命中）|
+
+### 真机冒烟 21 项精简为 3 项必过（批 1/2 已砍）
+
+批 1（热词）+ 批 2（锁语种）已砍除字段后，真机冒烟 21 项 → 精简为 3 项必过（`docs/qa/must-verify-manually.md` 必过表已更新）：
+
+| # | 项 | 操作 | 预期 |
+|---|---|---|---|
+| 1 | 批 3 字幕 a11y | 切特大字号（24px）+ 宽（50vw）+ 中文长 URL | 字幕变大且自动换行 |
+| 2 | 批 5 让位语义 | AI 朗读中 + 用户说「嗯」 | AI 跳当前句 + 1.5s 静默 + 字幕丢 |
+| 3 | 60s 长段 B5 | cold start + 60s 中文连续说（含自然换气 5-6 次）| final 完整 ≥ 95%，无卡顿 |
+
+时间预算：3 项核心必过约 8 分钟（含三类体验扩展 ≤ 20 分钟）。
+
+### 1 Open 转用户亲跑实测（不修，登记）
+
+**Q1** 旧 settings 持久化文件 zod 删除字段后加载路径行为——src/index.ts schema（批 1/批 2 砍字段后 zod 已不再 declare asrHotwords/asrHotwordsScore/recognitionLanguage）但 zod parse 默认是 strip 模式还是 strict 模式？旧 user `~/.dsh/settings.yaml` 含这 3 个键时是否会被静默 strip / warn / throw？需用户在生产环境亲跑一次 `curl -X POST /voice-mode/config` 或直接保存含已删字段的 settings 验证。**建议补 `test/settings-load.test.mjs`**：mock 旧 settings payload（{asrHotwords: 'x', recognitionLanguage: 'en', ...}）+ 断言 zod parse 不抛 + 断言 strip 行为可预期；当前未补（与批 G I1 / 批 F I1+I2 同模式：运行时行为契约无单测）。
