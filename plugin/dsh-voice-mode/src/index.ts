@@ -268,7 +268,9 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .min(3)
       .max(12)
       .default(d.echoGateDb)
-      .description('回声门控阈值（dB，默认 6）：自动打断要求残差高于回声地板此值；外放仍误打断调大（8~10），太难打断调小（3~4）'),
+      .description(
+        '回声门控阈值（dB，默认 6）：自动打断要求残差高于回声地板此值。当前 ASR 模型默认原生 AEC 生效时此门控闲置；Safari / 耳机等无原生 AEC 环境会兜底生效。外放仍误打断调大（8~10），太难打断调小（3~4）',
+      ),
     shortcut: z
       .string()
       .default(d.shortcut)
