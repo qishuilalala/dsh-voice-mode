@@ -48,7 +48,6 @@ const { createOnlineRecognizer, createVad } = sherpa_onnx as unknown as {
 }
 
 import { ensureModelFile, validateModelHost, HOST_PRIMARY, type ModelFileSpec } from './models.ts'
-import { buildHotwordsConfig, buildHotwordsKey } from './asr-hotwords.ts'
 import { buildSenseLangKey } from './asr-sense-key.ts'
 
 /** 模型仓库与文件清单（SHA256 固定，供应链校验）。 */
@@ -82,10 +81,6 @@ export interface AsrRuntimeOptions {
   senseVoice: () => boolean
   /** 断句静音阈值（getter 实时读设置，毫秒）：驱动端点 VAD 的 minSilenceDuration。 */
   silenceMs: () => number
-  /** P0 热词（批 1）：getter 实时读设置；空字符串 = 关闭 = I10 默认行为。trim 后空即关闭。 */
-  hotwordsBuf: () => string
-  /** P0 热词基准偏置分（批 1）：getter 实时读设置。 */
-  hotwordsScore: () => number
   /** 批 2：SenseVoice 逆文本归一化开关（getter 实时读设置；默认 true = I10）。 */
   senseITN: () => boolean
   /** 是否允许白名单之外的模型下载源（默认关；仅 https，供应链校验）。 */
@@ -126,9 +121,9 @@ export interface AsrRuntime {
    *  让用户进 voice mode 时 228MB SenseVoice 模型已完成下载 + worker 已 create，
    *  避免冷启动撞 finalize 时 20s race timeout（B5 辅因候选 3）。关闭时立即 resolve。 */
   warmupSense(): Promise<void>
-  /** 批 A：标记缓存键过期——仅清 recognizerHotwordsKey + senseWorkerLangKey，
+  /** 批 A：标记缓存键过期——仅清 senseWorkerLangKey，
    *  不主动 dispose recognizer/senseWorker；让现有 fingerprint-gated lazy 路径
-   *  （getRecognizer:267-274 / getSenseWorker:396-401）下次自然重建。设置面板拨滑块
+   *  （getSenseWorker:396-401）下次自然重建。设置面板拨滑块
    *  触发 settingsScope.watch ASR 字段 diff 时调用。守 I1：in-flight finalize 拿到
    *  旧 recognizer 引用不被 free（否则段定稿丢句）。 */
   markStale(): void
@@ -196,7 +191,7 @@ export function rmsOf(samples: Float32Array): number {
 }
 
 export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
-  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, hotwordsBuf, hotwordsScore, senseITN, allowCustomHost } = options
+  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, senseITN, allowCustomHost } = options
   /** 设置面板实时进度：记录最近一次 asr-progress（含 VAD/SenseVoice 下载）。 */
   let lastProgress: { file: string; percent: number } | null = null
   const localBroadcast = (event: string, payload: unknown): void => {
@@ -236,8 +231,6 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   const resetGen = new Map<string, number>()
 
   let recognizer: SherpaRecognizer | null = null
-  /** 批 1：上次建 recognizer 用的热词指纹（hw + score），变更触发重建。 */
-  let recognizerHotwordsKey = ''
   let modelsReady = false
   let modelsLoading: Promise<boolean> | null = null
   /** ASR 模型下载失败退避（与 vad/sense 一致）：源不可达时 60s 内不重试，
@@ -271,18 +264,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
 
   const getRecognizer = async (): Promise<SherpaRecognizer | null> => {
     if (!(await ensureModels())) return null
-    // 批 1：热词变更 → 重建 recognizer（缓存失效）；key 不变 → 复用单例（保 I10）。
-    const hwKey = buildHotwordsKey(hotwordsBuf(), hotwordsScore())
-    if (recognizer && hwKey === recognizerHotwordsKey) return recognizer
-    if (recognizer) {
-      try {
-        recognizer.free?.()
-      } catch {
-        /* ignore: 已销毁或 WASM 句柄失效不应阻塞重建 */
-      }
-      recognizer = null
-    }
-    recognizerHotwordsKey = hwKey
+    if (recognizer) return recognizer
     const t = (f: string): string => join(repoDir, f)
     recognizer = createOnlineRecognizer({
       modelConfig: {
@@ -296,7 +278,6 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         provider: 'cpu',
         debug: 0,
       },
-      ...buildHotwordsConfig(hotwordsBuf(), hotwordsScore()),
     })
     return recognizer
   }
@@ -795,9 +776,8 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     },
     // 批 A：仅清缓存键——不 dispose recognizer/senseWorker，避免破坏 I1（in-flight
     // finalize 拿到的旧 recognizer 引用被 free 会丢句）。让现有 fingerprint-gated 路径
-    // （getRecognizer:267-274 / getSenseWorker:396-401）下次自然触发重建。
+    // （getSenseWorker:396-401）下次自然触发重建。
     markStale: () => {
-      recognizerHotwordsKey = ''
       senseWorkerLangKey = ''
     },
     modelStatus: () => {

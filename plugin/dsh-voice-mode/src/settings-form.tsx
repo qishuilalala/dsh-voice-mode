@@ -50,7 +50,7 @@ const cardStyle: React.CSSProperties = {
 /** 字段 key → 中文标签（设置行标题用；未知 key 回退显示 key 本身）。
  *
  * 临时双轨：FIELD_LABELS 与 src/strings.ts zh 段 *Label 键并行维护同一组中文。
- * 短期目标：避免用户看到英文 key（asrHotwords 等）作为行标题的体验问题；
+ * 短期目标：避免用户看到英文 key 作为行标题的体验问题；
  * 长期目标（计划整合批）：去掉 FIELD_LABELS，全部改用 strings.ts 翻译键 tr() 模式
  * 统一文案来源，杜绝双轨漂移风险。届时本块只保留枚举接入。
  */
@@ -74,8 +74,6 @@ const FIELD_LABELS: Record<string, string> = {
   idleTimeoutMinutes: '空闲超时',
   modelHost: '模型镜像',
   // 批 C 新增（覆盖批 1-5 新增 UI 字段；详见文件头注释）
-  asrHotwords: '热词',
-  asrHotwordsScore: '热词偏置分',
   senseITN: '逆文本归一化',
   captionFontSize: '字幕字号',
   captionMaxWidth: '字幕宽度',
@@ -347,87 +345,6 @@ function TextField({
         if (e.key === 'Enter') commit()
       }}
     />
-  )
-}
-
-/** 批 G 任务 4：识别热词 textarea——onBlur 时逐行 split + 校验「词」/「词:分数」格式，
- *  错误时红框 + hint「第 N 行格式错误，应为「词」或「词:分数」」。
- *  onChange 不做校验（用户输入中）；仅提示，不阻止 scope.set（用户改完可手动修正或保留旧值）。 */
-function AsrHotwordsTextarea({ score, value }: { score: ScopeController; value: string }): React.ReactElement {
-  const [hint, setHint] = useState<string | null>(null)
-  // 与 scope 同步时清空 hint（外部改了值说明用户已经处理过）。
-  useEffect(() => {
-    setHint(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value])
-  /** 校验一行：返回 null=合法，string=错误消息（携带行号）。空行=合法（忽略）。 */
-  const validate = (text: string): string | null => {
-    const lines = text.split(/\r?\n/)
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim()
-      if (!line) continue
-      // 合法：「词」或「词:分数」（分数必须是有限正数）。
-      const m = /^([^:]+)(?::([0-9]+(?:\.[0-9]+)?))?$/.exec(line)
-      if (!m || !m[1].trim()) {
-        return tr('asrHotwordsInvalid').replace('{line}', String(i + 1))
-      }
-      if (m[2] !== undefined) {
-        const score = Number(m[2])
-        if (!Number.isFinite(score) || score <= 0) {
-          return tr('asrHotwordsInvalid').replace('{line}', String(i + 1))
-        }
-      }
-    }
-    return null
-  }
-  const onBlur = (): void => {
-    const err = validate(value)
-    setHint(err)
-  }
-  const baseTextareaStyle: React.CSSProperties = {
-    width: '100%',
-    resize: 'vertical',
-    fontFamily: 'inherit',
-    fontSize: 13,
-    padding: '6px 8px',
-    borderRadius: 6,
-    border: '1px solid var(--set-field-border, #3a3a3a)',
-    background: 'var(--set-field-bg, transparent)',
-    color: 'inherit',
-  }
-  const textareaStyle: React.CSSProperties = hint
-    ? {
-        ...baseTextareaStyle,
-        borderColor: 'var(--dsw-alias-state-error-primary)',
-        boxShadow: '0 0 0 2px rgba(248, 81, 73, 0.18)',
-      }
-    : baseTextareaStyle
-  return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'stretch', width: 280 }}>
-      <textarea
-        rows={4}
-        value={value}
-        placeholder={tr('asrHotwordsPlaceholder')}
-        onChange={(e) => {
-          void score.set('asrHotwords', e.target.value)
-          // 用户继续编辑时清掉旧 hint，避免提示残留误导。
-          if (hint) setHint(null)
-        }}
-        onBlur={onBlur}
-        style={textareaStyle}
-      />
-      {hint && (
-        <span
-          style={{
-            fontSize: 11,
-            lineHeight: '14px',
-            color: 'var(--dsw-alias-state-error-primary)',
-          }}
-        >
-          {hint}
-        </span>
-      )}
-    </span>
   )
 }
 
@@ -1292,15 +1209,6 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             <Section title={tr('secRecognition')}>
             <Row name="senseVoice" desc={tr('descSenseVoice')}>
               <input type="checkbox" checked={Boolean(value.senseVoice)} onChange={(e) => void scope.set('senseVoice', e.target.checked)} />
-            </Row>
-            <Row name="asrHotwords" desc={tr('descAsrHotwords') + '\n' + tr('descAsrHotwordsModelLimit')}>
-              <AsrHotwordsTextarea
-                score={scope}
-                value={typeof value.asrHotwords === 'string' ? value.asrHotwords : ''}
-              />
-            </Row>
-            <Row name="asrHotwordsScore" desc={tr('descAsrHotwordsScore')}>
-              <NumberField score={scope} field="asrHotwordsScore" value={value.asrHotwordsScore ?? 1.5} min={1} max={5} step={0.1} />
             </Row>
             <Row name="senseITN" desc={tr('descSenseITN')}>
               <input type="checkbox" checked={value.senseITN !== false} onChange={(e) => void scope.set('senseITN', e.target.checked)} />

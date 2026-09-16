@@ -118,8 +118,6 @@ const runtime = createAsrRuntime({
   modelHost: () => 'huggingface.co',
   senseVoice: () => false, // 关闭：避免 getSenseWorker 触发 worker 文件解析（独立 .mjs）
   silenceMs: () => 1500,
-  hotwordsBuf: () => '',
-  hotwordsScore: () => 1.5,
   senseITN: () => true,
   allowCustomHost: false,
   broadcast: () => {},

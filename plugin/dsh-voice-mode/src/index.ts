@@ -176,10 +176,6 @@ export interface VoiceSettingsValue {
   wakeWord: string
   /** 工具调用提示音（默认关）：开启后 AI 调用工具时"滴"一声。 */
   toolBeep: boolean
-  /** P0 热词偏置（批 1）：每行一个词或「词:分数」；空 = 关闭（I10 默认行为零变化）。 */
-  asrHotwords: string
-  /** P0 热词基准偏置分（1.5 默认；越大越强，过大可能伤普通识别）。 */
-  asrHotwordsScore: number
   /** 批 2：SenseVoice 逆文本归一化（数字/日期规范化，默认 true）。 */
   senseITN: boolean
   /** 批 3：字幕字号档位 0=小/1=标准/2=大/3=特大（默认 0 = 12px，I10 现状字节等价）。 */
@@ -214,8 +210,6 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   senseVoice: true,
   wakeWord: '',
   toolBeep: false,
-  asrHotwords: '',
-  asrHotwordsScore: 1.5,
   senseITN: true,
   // 批 3：captionFontSize 默认 0（12px），与现状 client.tsx 外层 fontSize:12 视觉零变化；
   //   captionMaxWidth 默认 1（70vw）：视口 <686px 时窄于现状 480px；≈686px 时接近；>686px 时宽于 480px（取舍见 schema description）。
@@ -292,18 +286,6 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .boolean()
       .default(d.toolBeep)
       .description('工具调用提示音（默认关）：开启后 AI 调用工具时"滴"一声，关闭则全程静默'),
-    asrHotwords: z
-      .string()
-      .default(d.asrHotwords)
-      .description(
-        '识别热词偏置（每行一个词或「词:分数」（如 dsh-voice-mode:2.5）；留空关闭 = 行为零变化。开启后下次进入语音模式生效，会重建流式识别器（毫秒级）',
-      ),
-    asrHotwordsScore: z
-      .number()
-      .min(1)
-      .max(5)
-      .default(d.asrHotwordsScore)
-      .description('热词基准偏置分（1.5 默认，与 sherpa-onnx 官方一致；越大越强，过大可能伤普通识别）'),
     senseITN: z
       .boolean()
       .default(d.senseITN)
@@ -482,9 +464,6 @@ export function apply(ctx: Context, config: Config): void {
     senseVoice: () => vset.senseVoice,
     // 断句静音阈值（实时读取）：端点 VAD minSilenceDuration 跟随设置。
     silenceMs: () => vset.silenceMs,
-    // P0 热词（批 1）：实时读取；变更触发 recognizer 重建（key 指纹），空 = 关闭。
-    hotwordsBuf: () => vset.asrHotwords,
-    hotwordsScore: () => vset.asrHotwordsScore,
     // 批 2：SenseVoice ITN 实时读取；变更触发 worker 重建。
     senseITN: () => vset.senseITN,
     allowCustomHost: config.allowCustomModelHost,
@@ -533,9 +512,9 @@ export function apply(ctx: Context, config: Config): void {
   // 设置变化即时生效（applies 'live'）：音色/语速直接热更换；引擎切换重建引擎并
   // 清空在途队列（fork 新增）；其余在下次进入生效。
   // 批 A：先取 prev 再赋值 vset（顺序敏感——next.xxx !== prev.xxx 同一引用比较恒 false
-  // 会导致 markStale 永远不被调）；ASR 字段（hotwords/score/language/ITN/senseVoice）
-  // 任一变化 → asr.markStale() 让现有 fingerprint-gated lazy 重建路径（asr-host.ts:267-274
-  // / :396-401）下次自动触发，避开主动 free 破坏 I1 的反模式。
+  // 会导致 markStale 永远不被调）；ASR 字段（ITN/senseVoice）
+  // 任一变化 → asr.markStale() 让现有 fingerprint-gated lazy 重建路径（asr-host.ts:396-401）
+  // 下次自动触发，避开主动 free 破坏 I1 的反模式。
   ctx.effect(() =>
     settingsScope.watch((next) => {
       const prev = vset
@@ -550,8 +529,6 @@ export function apply(ctx: Context, config: Config): void {
       }
       queue.updateVoice(next.voice, next.rate)
       if (
-        next.asrHotwords !== prev.asrHotwords ||
-        next.asrHotwordsScore !== prev.asrHotwordsScore ||
         next.senseITN !== prev.senseITN ||
         next.senseVoice !== prev.senseVoice
       ) {
@@ -668,8 +645,6 @@ export function apply(ctx: Context, config: Config): void {
             captionMaxWidth: vset.captionMaxWidth,
             backchannelYield: vset.backchannelYield,
             yieldMs: vset.yieldMs,
-            asrHotwords: vset.asrHotwords,
-            asrHotwordsScore: vset.asrHotwordsScore,
             senseITN: vset.senseITN,
             cacheDir: config.cacheDir,
             ttsEngine: currentEngine(),

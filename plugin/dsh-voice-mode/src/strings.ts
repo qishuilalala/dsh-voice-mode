@@ -91,12 +91,6 @@ const zh = {
   descSpokenFormat: '语音会话注入口语化提示词（回复口语化、短句、不用 Markdown 排版符号，朗读更顺更快；默认开，改动即时生效）',
   descSenseVoice: '定稿用 SenseVoice 重译（带标点 + 数字归一化、识别更准；默认开。关闭可省 228MB 模型，只走流式识别）',
   descToolBeep: '工具调用提示音（默认关）：AI 思考/调用工具时"滴"一声；嫌吵就保持关闭',
-  asrHotwords: '识别热词',
-  descAsrHotwords: '每行一个词或「词:分数」（如 小爱同学:2.5）；留空关闭（默认 = 行为零变化）。开启后下次进入语音模式生效',
-  descAsrHotwordsModelLimit: '当前 ASR 模型（zipformer-zh-int8）仅支持中文热词，英文/拉丁词条会被 sherpa 静默跳过',
-  descAsrHotwordsScore: '热词基准偏置分（1.5 默认，与 sherpa-onnx 官方一致；越大越强，过大可能伤普通识别）',
-  asrHotwordsPlaceholder: '小爱同学\n智能助手\nDSH 助手',
-  asrHotwordsInvalid: '第 {line} 行格式错误，应为「词」或「词:分数」',
   senseITN: '逆文本归一化',
   descSenseITN: 'SenseVoice 数字/日期/格式规范化（默认开；关闭后输出更接近口语原文）',
   descCaptionFontSize: '浮层字幕字号档位（小 12 / 标准 14 / 大 18 / 特大 24 px；默认小与现状字节等价）',
@@ -119,8 +113,8 @@ const zh = {
   modeHold: '按住说话',
   descWakeWord: '唤醒词（默认关；如「你好小D」，说出后开始识别）',
   wakePlaceholder: '如：你好小D',
-  settingsCardDesc: '朗读引擎 / 音色 / 语速 / 打断灵敏度 / 打断方式 / 回声门控 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音 / 识别热词 / 热词偏置分 / 逆文本归一化 / 字幕字号 / 字幕宽度 / 短应答让位 / 让位窗口',
-  settingsEffectiveNote: '朗读引擎 / 音色 / 语速 / 模型精度 / 口语化提示词 / 重译 / 字幕字号 / 字幕宽度 / 短应答让位 / 让位窗口 即时生效；识别热词 / 热词偏置分 / 逆文本归一化 即时生效（下次进入语音模式重建流式识别器）；其余（打断灵敏度 / 打断方式 / 回声门控 / 快捷键 / 静音 / 空闲 / 镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音）下次进入语音模式时生效。',
+  settingsCardDesc: '朗读引擎 / 音色 / 语速 / 打断灵敏度 / 打断方式 / 回声门控 / 静音停顿 / 空闲超时 / 模型镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音 / 逆文本归一化 / 字幕字号 / 字幕宽度 / 短应答让位 / 让位窗口',
+  settingsEffectiveNote: '朗读引擎 / 音色 / 语速 / 模型精度 / 口语化提示词 / 重译 / 字幕字号 / 字幕宽度 / 短应答让位 / 让位窗口 即时生效；逆文本归一化 即时生效（下次进入语音模式重建流式识别器）；其余（打断灵敏度 / 打断方式 / 回声门控 / 快捷键 / 静音 / 空闲 / 镜像 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音）下次进入语音模式时生效。',
   configUnavailable: '配置暂不可用',
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: '说完',
@@ -170,8 +164,6 @@ const zh = {
   // 批 C：FIELD_LABELS 镜像键（*Label 后缀；详见 settings-form.tsx 头部注释）。
   // 临时双轨——与 FIELD_LABELS 并行维护同一组中文，未来整合批去掉 FIELD_LABELS，
   // 统一改用 tr() 翻译键模式避免双轨漂移风险。en 段对应 stub 见下方 en 对象。
-  asrHotwordsLabel: '热词',
-  asrHotwordsScoreLabel: '热词偏置分',
   senseITNLabel: '逆文本归一化',
   captionFontSizeLabel: '字幕字号',
   captionMaxWidthLabel: '字幕宽度',
@@ -273,12 +265,6 @@ const en: Record<keyof typeof zh, string> = {
   descSpokenFormat: 'Inject spoken-format prompt into voice replies (colloquial, short sentences, no Markdown; default on, live)',
   descSenseVoice: 'Re-transcribe the finalized utterance with SenseVoice (punctuation + ITN, more accurate; default on — turn off to skip the 228 MB model and keep streaming only)',
   descToolBeep: 'Tool-call beep (default off): beep when the agent is thinking/calling tools; keep off if it annoys you',
-  asrHotwords: 'ASR hotwords',
-  descAsrHotwords: 'One term per line, or "term:score" (e.g. Xiao Ai:2.5). Leave empty to disable (default = no behavioural change). Takes effect next time you enter voice mode.',
-  descAsrHotwordsModelLimit: 'Current ASR model (zipformer-zh-int8) only supports Chinese hotwords; English/Latin terms are silently skipped by sherpa',
-  descAsrHotwordsScore: 'Hotword baseline bias (default 1.5, matches sherpa-onnx upstream). Higher = stronger bias but may hurt generic recognition.',
-  asrHotwordsPlaceholder: 'Xiao Ai\nSmart Assistant\nDSH Helper\n(Chinese preferred)',
-  asrHotwordsInvalid: 'Line {line} format error: should be "term" or "term:score"',
   senseITN: 'Inverse text normalization',
   descSenseITN: 'SenseVoice number/date/format normalization (default on; turn off to keep raw spoken form)',
   descCaptionFontSize: 'Caption font size (Small 12 / Standard 14 / Large 18 / X-Large 24 px; default Small matches current behavior)',
@@ -301,8 +287,8 @@ const en: Record<keyof typeof zh, string> = {
   modeHold: 'Hold to talk',
   descWakeWord: 'Wake word (default off; e.g. Hey D)',
   wakePlaceholder: 'e.g. Hey D',
-  settingsCardDesc: 'Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / hotwords / hotwords score / ITN / caption font / caption width / yielding / yield window',
-  settingsEffectiveNote: 'Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding / yield window apply immediately; hotwords / hotwords score / ITN apply immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.',
+  settingsCardDesc: 'Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / ITN / caption font / caption width / yielding / yield window',
+  settingsEffectiveNote: 'Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding / yield window apply immediately; ITN applies immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.',
   configUnavailable: 'Configuration unavailable',
   telUtteranceEnd: 'end',
   telEndpoint: 'endpoint',
@@ -348,8 +334,6 @@ const en: Record<keyof typeof zh, string> = {
   // 批 C：与 zh 段 *Label 镜像键同步。临时 stub（仅用于满足 Record<keyof typeof zh, string>
   // 类型约束，避免 tsc 红），由整合批统一替换为正式英文文案。**未对外使用**——当前
   // settings-form.tsx 通过 FIELD_LABELS 取值，未走 tr()，所以英文用户暂未感知差异。
-  asrHotwordsLabel: 'Hotwords',
-  asrHotwordsScoreLabel: 'Bias score',
   senseITNLabel: 'ITN',
   captionFontSizeLabel: 'Font size',
   captionMaxWidthLabel: 'Max width',

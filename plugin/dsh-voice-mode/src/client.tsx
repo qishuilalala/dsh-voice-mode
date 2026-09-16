@@ -583,8 +583,6 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     backchannelYield: true,
     yieldMs: 1500,
     // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
-    asrHotwords: '',
-    asrHotwordsScore: 1.5,
     senseITN: true,
     senseVoice: true,
   }
@@ -1186,10 +1184,6 @@ interface VoiceBootConfig {
   backchannelYield: boolean
   /** 批 G 任务 3：让位窗口时长（ms，500-3000，默认 1500）。onBackchannel 命中后 TTS 丢帧持续时间。 */
   yieldMs: number
-  /** 批 B：ASR 热词列表（每行一个热词 + 空格 + 权重；空 = 关）。 */
-  asrHotwords: string
-  /** 批 B：热词权重提升（1-5，默认 1.5）。 */
-  asrHotwordsScore: number
   /** 批 B：ITN（逆文本规范化：口语数字 → 书面数字；默认 true）。 */
   senseITN: boolean
   /** 批 B：SenseVoice 引擎开关（默认 true = 启用 SenseVoice 模型，否则回退 FunASR）。 */
@@ -1279,8 +1273,6 @@ export function MicButton({
       backchannelYield: true,
       yieldMs: 1500,
       // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
-      asrHotwords: '',
-      asrHotwordsScore: 1.5,
       senseITN: true,
       senseVoice: true,
     }
@@ -1334,11 +1326,6 @@ export function MicButton({
         yieldMs: typeof c.yieldMs === 'number' && c.yieldMs >= 500 && c.yieldMs <= 3000 ? c.yieldMs : 1500,
         // 批 B：5 ASR 字段透传（host /config handler 在 c2120d9 已透传 4 字段，本批补 senseVoice + 客户端白名单对齐）。
         // 类型校验严格 + 默认值兜底，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
-        asrHotwords: typeof c.asrHotwords === 'string' ? c.asrHotwords : '',
-        asrHotwordsScore:
-          typeof c.asrHotwordsScore === 'number' && c.asrHotwordsScore >= 1 && c.asrHotwordsScore <= 5
-            ? c.asrHotwordsScore
-            : 1.5,
         senseITN: c.senseITN === false ? false : true,
         senseVoice: c.senseVoice === false ? false : true,
       }

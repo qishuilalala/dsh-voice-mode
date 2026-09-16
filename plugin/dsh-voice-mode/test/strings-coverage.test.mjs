@@ -20,7 +20,7 @@
  *     描述都有中文）。
  *  3) settings-form.tsx 所有 Row name → 必须在 strings.ts zh 段出现为「字段名本身」
  *     或「字段名 + Label 后缀」（让整合批改用 tr() 时能直接命中）。
- *  4) 批 C 专项：7 新字段（asrHotwords/asrHotwordsScore/
+ *  4) 批 C 专项：7 新字段（
  *     senseITN/captionFontSize/captionMaxWidth/backchannelYield）必须在
  *     FIELD_LABELS + strings.ts zh *Label 键 双侧都登记。
  *  5) 反向红：删任意一项（FIELD_LABELS 行 / zh *Label 键 / zh desc 键）即失败。
@@ -220,8 +220,6 @@ const referencedFields = new Set([...rowNames, ...fieldRefs])
 // 批 C 新增 7 字段（FIELD_LABELS + strings.ts zh *Label 同步登记的）。
 // 提前到此处声明，避免后续断言闭包里 TDZ。
 const NEW_FIELDS = [
-  'asrHotwords',
-  'asrHotwordsScore',
   'senseITN',
   'captionFontSize',
   'captionMaxWidth',
@@ -288,8 +286,8 @@ for (const field of NEW_FIELDS) {
 
 console.log('反向断言契约（防删测试）')
 
-t('FIELD_LABELS 含 25 字段（18 原有 + 6 批 C + 1 批 G 任务 3 yieldMs；新增即扩，无意删除即红）', () => {
-  assert.equal(fieldLabelsKeys.size, 25, `FIELD_LABELS 现 ${fieldLabelsKeys.size} 字段，预期 25`)
+t('FIELD_LABELS 含 23 字段（18 原有 + 4 批 C + 1 批 G 任务 3 yieldMs；新增即扩，无意删除即红）', () => {
+  assert.equal(fieldLabelsKeys.size, 23, `FIELD_LABELS 现 ${fieldLabelsKeys.size} 字段，预期 23`)
 })
 
 console.log('字符串覆盖核心键校验（替代仅总数断言；批 G 验收 B4 升级）')
@@ -303,7 +301,6 @@ t('strings.ts zh 段核心键全部存在（具体键校验，替代原 172 总�
   //   - 批 G 任务 1: numberInvalid / numberClamped（NumberField 红框 + clamp 提示）
   //   - 批 G 任务 2: idleWarn30s（30s 预警提示）
   //   - 批 G 任务 3: yieldMs / descYieldMs（让位窗口时长）
-  //   - 批 G 任务 4: asrHotwordsInvalid（识别热词行格式校验）
   //   - 批 G 任务 6: previewModelMissing / previewModelLoading（本地模型未就绪预览按钮禁用）
   // 任一缺失即红。
   const required = [
@@ -312,7 +309,6 @@ t('strings.ts zh 段核心键全部存在（具体键校验，替代原 172 总�
     ['idleWarn30s', '批 G 任务 2：空闲 30s 预警'],
     ['yieldMs', '批 G 任务 3：让位窗口标题'],
     ['descYieldMs', '批 G 任务 3：让位窗口描述'],
-    ['asrHotwordsInvalid', '批 G 任务 4：识别热词行格式校验'],
     ['previewModelMissing', '批 G 任务 6：本地模型未就绪（缺失）'],
     ['previewModelLoading', '批 G 任务 6：本地模型下载中'],
   ]
@@ -353,12 +349,12 @@ t('zh 段关键键存在（批 G 任务 3 yieldMs×2 + 双轨闭包一致性；�
   )
 })
 
-t('rowNames 至少 24 项（覆盖所有 Row 行；删 Row 即红）', () => {
-  assert.ok(rowNames.size >= 24, `rowNames 仅 ${rowNames.size} 项；预期 ≥ 24`)
+t('rowNames 至少 22 项（覆盖所有 Row 行；删 Row 即红）', () => {
+  assert.ok(rowNames.size >= 22, `rowNames 仅 ${rowNames.size} 项；预期 ≥ 22`)
 })
 
-t('descRefs 至少 26 项（覆盖所有 desc tr() 引用；漏 desc 即红）', () => {
-  assert.ok(descRefs.size >= 26, `descRefs 仅 ${descRefs.size} 项；预期 ≥ 26`)
+t('descRefs 至少 24 项（覆盖所有 desc tr() 引用；漏 desc 即红）', () => {
+  assert.ok(descRefs.size >= 24, `descRefs 仅 ${descRefs.size} 项；预期 ≥ 24`)
 })
 
 t('referencedFields ⊆ FIELD_LABELS ⊆ zh*Label ∪ zh（双轨闭包检查）', () => {
