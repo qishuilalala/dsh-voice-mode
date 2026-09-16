@@ -1,8 +1,13 @@
-# ADR-0004：实时环路改用单会话 WebSocket，收敛代际计数器
+# ADR-0004：实时环路维持 HTTP/3 SSE（提议改用单会话 WebSocket，deferred）
 
-- 状态：**提议**（待决策）
-- 日期：2026-08-30
+- 状态：**提议 / Deferred**（WebSocket transport 未实施，仍 HTTP/3 SSE）
+- 日期：2026-08-30（2026-09-16 命名纠正）
 - 决策人：待定
+
+> **命名纠正（2026-09-16）**：原文件名 `0004-realtime-transport.md` 暗示 WebSocket transport 已落地，与实际不符。
+> 真实运行态：上行 `POST /voice-mode/asr`（100ms 轮询）+ 下行 SSE `/voice-mode/stream`（详见背景段与「决策（提议）」段）。
+> 本 ADR 的 WebSocket 改造是**未实施的提议（deferred）**，故重命名为 `0004-realtime-transport-deferred.md`，标题同步纠正；
+> 正文「决策（提议）」段保留原提议内容（改造方向与代价分析）。
 
 ## 背景
 

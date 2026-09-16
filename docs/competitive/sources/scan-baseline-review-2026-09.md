@@ -92,9 +92,9 @@
 
 ## 8. B5 ADR-0004 协议骨架升级 — **Concern（ADR 拍板前不要动）**
 
-**结论**：backlog 与 ADR-0004 文本（`docs/adr/0004-realtime-transport.md`）一致：5 套代际计数器确实存在，但 ADR-0004 §决策 已经明确指出"**预计可塌缩 3 套计数器 + 2 套水位**"——不是 5 套全塌缩。逐项核对：① `segmentEpoch`（`src/asr.ts:185`）和 `detectGeneration`（`:197`）——**同一传输层**（`/asr` POST 请求 + 在途响应），有状态 WebSocket 替换为有序通道后**可合并为 1 套 sessionId-scoped seq**；② `resetGen`（`src/asr-host.ts:216`）——**是 host 内部状态**，与会话重置有关，WebSocket 替请求-响应后**仍然需要**（重连 = reset）；③ `turnGen`（`src/index.ts:300, 490`）——ADR-0004 §决策 明文"**保留**"（LLM 回合语义，与传输无关）；④ TTS `q.epoch`（`src/tts-queue.ts:173, 253, 263`）——ADR-0004 明文"**保留**"（打断语义，与传输无关）。**3 个上传字节水位**（`uploadedSamples`、`seg.fed`、`detectSent`）—— ADR-0004 §配套建议提 `f32→int16`，**没说全砍**，WebSocket 帧顺序天然保证后这些水位用于"包可能重复/丢失"幂等——若承诺重连=弃段（ADR-0004 §预期后果），则水位确实可去。
+**结论**：backlog 与 ADR-0004 文本（`docs/adr/0004-realtime-transport-deferred.md`）一致：5 套代际计数器确实存在，但 ADR-0004 §决策 已经明确指出"**预计可塌缩 3 套计数器 + 2 套水位**"——不是 5 套全塌缩。逐项核对：① `segmentEpoch`（`src/asr.ts:185`）和 `detectGeneration`（`:197`）——**同一传输层**（`/asr` POST 请求 + 在途响应），有状态 WebSocket 替换为有序通道后**可合并为 1 套 sessionId-scoped seq**；② `resetGen`（`src/asr-host.ts:216`）——**是 host 内部状态**，与会话重置有关，WebSocket 替请求-响应后**仍然需要**（重连 = reset）；③ `turnGen`（`src/index.ts:300, 490`）——ADR-0004 §决策 明文"**保留**"（LLM 回合语义，与传输无关）；④ TTS `q.epoch`（`src/tts-queue.ts:173, 253, 263`）——ADR-0004 明文"**保留**"（打断语义，与传输无关）。**3 个上传字节水位**（`uploadedSamples`、`seg.fed`、`detectSent`）—— ADR-0004 §配套建议提 `f32→int16`，**没说全砍**，WebSocket 帧顺序天然保证后这些水位用于"包可能重复/丢失"幂等——若承诺重连=弃段（ADR-0004 §预期后果），则水位确实可去。
 
-**证据**：`docs/adr/0004-realtime-transport.md:43`（"保留 turnGen / q.epoch，预计可塌缩 3 套计数器 + 2 套水位"）；`src/asr.ts:185-197`（段代际 + 检测代际）；`src/asr-host.ts:216 resetGen`（会话重置用）；`src/index.ts:300 turnGen`（LLM 回合用）；`src/tts-queue.ts:253, 263 q.epoch`（打断用）。
+**证据**：`docs/adr/0004-realtime-transport-deferred.md:43`（"保留 turnGen / q.epoch，预计可塌缩 3 套计数器 + 2 套水位"）；`src/asr.ts:185-197`（段代际 + 检测代际）；`src/asr-host.ts:216 resetGen`（会话重置用）；`src/index.ts:300 turnGen`（LLM 回合用）；`src/tts-queue.ts:253, 263 q.epoch`（打断用）。
 
 **工作量重估**：backlog "Need-ADR"——**0 行代码**，纯 ADR 拍板。落地按 ADR-0004 §决策 + §预期后果（横跨 `asr.ts` / `asr-host.ts` / `index.ts` / `client.tsx` 4 文件）**6-10 周**，远超 P0。
 

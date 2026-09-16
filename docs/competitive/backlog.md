@@ -156,7 +156,7 @@
   - `plugin/dsh-voice-mode/src/asr-host.ts`（`resetGen`）
   - `plugin/dsh-voice-mode/src/index.ts:485`（`turnGen`）
   - `plugin/dsh-voice-mode/src/tts-queue.ts`（`q.epoch`）
-  - `docs/adr/0004-realtime-transport.md`（ADR-0004 当前状态为"提议"）
+  - `docs/adr/0004-realtime-transport-deferred.md`（ADR-0004 当前状态为"提议 / Deferred"）
 - **前置 ADR**：主会话需先**拍板 ADR-0004**（升级到"已接受"），然后本项落地
 - **实现路径**：见 ADR-0004 §决策 + §预期后果
 - **关联**：扫描 §B5；开源栈子代理 §OpenAI Realtime / Gemini Live / Pipecat

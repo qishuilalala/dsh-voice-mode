@@ -127,7 +127,7 @@ TTS 下行单元：`sentenceId`（句序）+ `chunkId`（句内块序）+ `final
 持有活跃会话的浏览器标签。失联超时后 host 让出会话（`yieldActiveSession`）。
 
 **代际计数器（epoch / generation）**
-在无序传输上维持顺序语义的守卫。当前有 5 套：`segmentEpoch`、`detectGeneration`、`resetGen`、`turnGen`、TTS `q.epoch`。[ADR-0004](adr/0004-realtime-transport.md) 提议用 WebSocket 塌缩其中 3 套。
+在无序传输上维持顺序语义的守卫。当前有 5 套：`segmentEpoch`、`detectGeneration`、`resetGen`、`turnGen`、TTS `q.epoch`。[ADR-0004](adr/0004-realtime-transport-deferred.md) 提议用 WebSocket 塌缩其中 3 套（未实施，deferred）。
 
 **水位（fed / uploadedSamples / detectSent）**
 增量上传的幂等基准：客户端记"已传到第几个采样"，host 记"已喂到第几个采样"，只处理二者差集。
@@ -143,6 +143,6 @@ TTS 下行单元：`sentenceId`（句序）+ `chunkId`（句内块序）+ `final
 - [ADR-0001 回声消除以浏览器原生 AEC 为主](adr/0001-native-aec-primary.md)
 - [ADR-0002 客户端注入锚点取新旧版本交集](adr/0002-dual-version-compat.md)
 - [ADR-0003 打断 VAD 服务端 Silero（提议下沉客户端）](adr/0003-server-side-vad.md)
-- [ADR-0004 实时环路改用单会话 WebSocket](adr/0004-realtime-transport.md)
+- [ADR-0004 实时环路维持 HTTP/3 SSE（提议改用单会话 WebSocket，deferred）](adr/0004-realtime-transport-deferred.md)
 - [ADR-0005 建立离线声学回归基准](adr/0005-acoustic-regression-harness.md)（已接受）
 - [ADR-0006 打断模式自动探测降级](adr/0006-barge-in-auto-degrade.md)（已接受）

@@ -7,7 +7,7 @@
 - 真机数据支撑（[findings/2026-09-14-fixture-verdict.md](../findings/2026-09-14-fixture-verdict.md)）：打断窗口覆盖率仅 42-50%、检测通道被宿主忙时拖长——**软让位（pauseAtBoundary，句边界停而非硬打断）在检测稀疏窗口价值更高**；confirmMs 517/488ms 真机基线已锁定。
 - 前置：
   - [ADR-0001](0001-native-aec-primary.md)（声学边界，决定让位语义能依赖的信号源）
-  - [ADR-0004](0004-realtime-transport.md)（协议骨架，提议状态，前置 #1 `WebUpgradeRoute` 已满足）
+  - [ADR-0004](0004-realtime-transport-deferred.md)（协议骨架，提议 / Deferred 状态，前置 #1 `WebUpgradeRoute` 已满足）
   - [ADR-0006](0006-barge-in-auto-degrade.md)（打断模式，**让位是软让（语义让位）+ 硬打断（barge-in）的两套独立机制**）
   - [ADR-0007](0007-emotion-tag-dsl.md)（表情/情感标签，与让位语义正交但互补）
 - 后置（依赖本 ADR 的下游）：P0 system prompt 注入 + P1 MCP `voice_*` 工具

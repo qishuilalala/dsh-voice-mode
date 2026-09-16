@@ -9,7 +9,7 @@
 | [0001](0001-native-aec-primary.md) | 回声消除以浏览器原生 AEC 为主 | 已接受 |
 | [0002](0002-dual-version-compat.md) | 双版本兼容策略（dsh 0.1.1-rc.2 / 0.1.5-rc.1） | 已接受 |
 | [0003](0003-server-side-vad.md) | 打断 VAD 服务端 Silero（提议下沉客户端，未实施） | 已接受 |
-| [0004](0004-realtime-transport.md) | WebSocket transport（提议） | 提议 |
+| [0004](0004-realtime-transport-deferred.md) | 实时环路维持 HTTP/3 SSE（提议 WebSocket，deferred） | 提议 / Deferred |
 | [0005](0005-acoustic-regression-harness.md) | 声学回归基准（合成压力档 + 真机 fixture） | 已接受 |
 | [0006](0006-barge-in-auto-degrade.md) | 打断模式自动探测（bargeInMode auto/manual） | 已接受（部分实现） |
 | [0007](0007-emotion-tag-dsl.md) | 情感标签 DSL（`<emotion>` / `<break>` / `<whisper>`） | 已接受（先本地后 Edge 分两步） |

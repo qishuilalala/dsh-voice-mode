@@ -111,7 +111,7 @@ CI 策略：**先只报告不拦截**（跑够 2 周建立信心），再改为"
 
 **正面**
 - 12 个魔数从"不敢碰"变成"可以改，改坏了 CI 会说"
-- [ADR-0003](0003-server-side-vad.md)（服务端 Silero VAD + 提议下沉客户端）和 [ADR-0004](0004-realtime-transport.md)（提议换 WebSocket transport）才具备"证明行为等价"的手段——**没有本 ADR，那两个都是裸奔**
+- [ADR-0003](0003-server-side-vad.md)（服务端 Silero VAD + 提议下沉客户端）和 [ADR-0004](0004-realtime-transport-deferred.md)（提议 WebSocket transport，deferred）才具备"证明行为等价"的手段——**没有本 ADR，那两个都是裸奔**
 - ADR-0001 遗留的"自研 AEC 未根治"有了收敛判据（ERLE 数字），可以决定是修还是降级（评审 §2.2 S4）
 - 参数调优从"真机试 + 主观体感"变成"跑一次脚本看表"，迭代速度数量级提升
 
