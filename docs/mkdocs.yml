@@ -1,0 +1,98 @@
+# mkdocs.yml —— dsh-voice-mode 文档站（GitHub Pages，仅文档，不引入 CI）
+# 部署：本地 `mkdocs build` 产出 site/，由人工或一次性 `mkdocs gh-deploy` 推送 gh-pages 分支
+# 真源数字：v0.7.7 · 254 测试 · 兼容 dsh 0.1.1-rc.2 → 0.1.5-rc.2
+site_name: dsh-voice-mode
+site_description: DeepSeek Harness 全双工语音插件文档 —— 边说边出字 · 按句朗读 · 开口即打断
+site_author: qishuilalala
+site_url: https://qishuilalala.github.io/dsh-voice-mode/
+repo_url: https://github.com/qishuilalala/dsh-voice-mode
+repo_name: qishuilalala/dsh-voice-mode
+edit_uri: edit/main/docs/
+
+copyright: Copyright &copy; 2026 dsh-voice-mode contributors · MIT License
+
+theme:
+  name: material
+  language: zh
+  # GitHub 深色风，与 social preview 配色一致（#0d1117 / #2ea043 / #58a6ff）
+  palette:
+    scheme: slate
+    primary: green
+    accent: light blue
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - navigation.top
+    - navigation.sections
+    - navigation.indexes
+    - navigation.tracking
+    - toc.follow
+    - search.highlight
+
+nav:
+  - 首页: README.md
+  - 项目上下文: CONTEXT.md
+  - 词汇表: glossary.md
+  - 兼容契约: compat-contract.md
+  - 架构决策:
+      - docs/adr/README.md
+      - docs/adr/0001-native-aec-primary.md
+      - docs/adr/0002-dual-version-compat.md
+      - docs/adr/0003-client-side-vad.md
+      - docs/adr/0004-realtime-transport.md
+      - docs/adr/0005-acoustic-regression-harness.md
+      - docs/adr/0006-barge-in-auto-degrade.md
+      - docs/adr/0007-emotion-tag-dsl.md
+      - docs/adr/0008-yield-semantics.md
+  - 实施计划:
+      - docs/plan/README.md
+      - docs/plan/implementation-plan-2026-09-14.md
+      - docs/plan/beautification-plan-2026-09-16.md
+  - 真机验收:
+      - docs/qa/README.md
+      - docs/qa/real-machine-acceptance-checklist.md
+      - docs/qa/user-experience-flow.md
+  - 规则:
+      - docs/rules/README.md
+      - docs/rules/STATE.md
+  - 调研:
+      - docs/research/audio-landscape-2026-09-14.md
+      - docs/research/azure-speech-competitive-analysis.md
+      - docs/research/dsh-audiogen-market-leader.md
+      - docs/research/elevenlabs-competitive-analysis.md
+      - docs/research/google-cloud-tts-competitive-analysis-2026-05.md
+      - docs/research/ux-dx-deep-dive-2026-09-14.md
+  - 竞品:
+      - docs/competitive/README.md
+      - docs/competitive/competitive-tts-landscape-2026-05.md
+      - docs/competitive/scan-2026-09.md
+      - docs/competitive/round6-summary.md
+      - docs/competitive/backlog.md
+  - 发现:
+      - docs/findings/README.md
+      - docs/findings/2026-09-02-barge-in-latency-stall.md
+      - docs/findings/2026-09-02-echo-gate-ratchet.md
+      - docs/findings/2026-09-14-fixture-verdict.md
+      - docs/findings/2026-09-15-sleeping-capabilities-audit.md
+      - docs/findings/2026-09-15-yield-semantics-research.md
+      - docs/findings/baseline-review-p0-a1-a10.md
+      - docs/findings/dsh-llm-runtime-inventory-2026-09.md
+      - docs/findings/multilang-a11y-compliance-baseline.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+
+plugins:
+  - search:
+      lang: zh
