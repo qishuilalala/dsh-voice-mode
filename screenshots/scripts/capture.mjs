@@ -50,8 +50,8 @@ const DSH_COOKIE = process.env.DSH_COOKIE || '';
 
 // 12 张截图定义（与 screenshots/MANIFEST.md、plan §2.2 一一对应）
 const SHOTS = [
-  { id: 'S01', file: 'S01-install-config-7fields.png',  status: 'ready',  desc: '安装成功 + /voice-mode/config 返回 7 字段' },
-  { id: 'S02', file: 'S02-settings-chinese-labels.png', status: 'ready',  desc: '设置面板中文标签（7 项）' },
+  { id: 'S01', file: 'S01-install-config-7fields.png',  status: 'ready',  desc: '安装成功 + /voice-mode/config 返回 4 字段' },
+  { id: 'S02', file: 'S02-settings-chinese-labels.png', status: 'ready',  desc: '设置面板中文标签（字幕字号/字幕宽度等新字段）' },
   { id: 'S03', file: 'S03-hotword-partial.png',         status: 'manual', desc: '热词即时生效：partial 显示 dsh-voice-mode（需麦克风）' },
   { id: 'S04', file: 'S04-language-lock-en.png',        status: 'manual', desc: '锁 en 不抖回中文：final 全英文（需麦克风）' },
   { id: 'S05', file: 'S05-caption-24px-90vw.png',       status: 'ready',  desc: '字幕 24px + 90vw（先在设置里把字幕字号调到特大）' },
@@ -64,11 +64,8 @@ const SHOTS = [
   { id: 'S12', file: 'S12-autoresume-hint.png',         status: 'ready',  desc: 'autoResume 引导 notice（人工切会话后截屏）' },
 ];
 
-// S01 校验的 7 个字段（真源：docs/qa/user-experience-flow.md 步骤 1）
+// S01 校验的 4 个字段（真源：docs/qa/real-machine-acceptance-checklist.md 阶段 7.4）
 const CONFIG_FIELDS = [
-  { key: 'asrHotwords',        type: 'string' },
-  { key: 'asrHotwordsScore',   type: 'number' },
-  { key: 'recognitionLanguage',type: 'string' },
   { key: 'senseITN',           type: 'boolean' },
   { key: 'captionFontSize',    type: 'number' },
   { key: 'captionMaxWidth',    type: 'number' },
@@ -166,7 +163,7 @@ async function main() {
       const outPath = outputDir + shot.file;
 
       if (shot.id === 'S01') {
-        // S01：先用 Node 原生 fetch 校验 /voice-mode/config 的 7 个字段，再截页面
+        // S01：先用 Node 原生 fetch 校验 /voice-mode/config 的 4 个字段，再截页面
         let ok = true;
         try {
           const res = await fetch(`${DSH_URL}/voice-mode/config`);
@@ -177,7 +174,7 @@ async function main() {
             console.warn(`警告：S01 字段校验异常：${bad.map((b) => `${b.key}(期望 ${b.type})`).join('、')}`);
             ok = false;
           } else {
-            console.log('S01 /voice-mode/config 7 字段全部非 null 且类型正确 ✓');
+            console.log('S01 /voice-mode/config 4 字段全部非 null 且类型正确 ✓');
           }
         } catch (err) {
           console.warn(`警告：S01 config 请求失败：${err.message}（仍会截屏当前页面）`);
