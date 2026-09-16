@@ -2,7 +2,9 @@
 
 > **本文件角色**：跨文档索引 + 项目心智模型；状态变化改对应链接/锚点，不追加流水账。
 > **真源层级**：根 `CONTEXT.md`（开发者上下文，重写式 ~60 行）/ `docs/rules/STATE.md`（唯一恢复点）/ `docs/adr/`（决策）。
-> **基准 HEAD**：`1041929`（批 7L 收口文档锚点同步后），lib BUILD_TAG 同步。
+> **基准 HEAD**：`f883b35`（批 7N 🟡 重做 5/5 后），lib BUILD_TAG 同步。
+> **批 7M 🔴 砍落地（2026-09-16）**：4 项砍除——`recognitionLanguage`（4532b48）/ `asrHotwords`+`asrHotwordsScore`+模块（e3423ef）/ `docs/qa/user-experience-flow.md`（6bed6d4）；本文件设置键表 11 行→8 行（识别热词 / 热词偏置分 / 识别语种三行已砍）。
+> **批 7N 🟡 重做落地（2026-09-16）**：5 项重做——`bargeInMode='manual'` 接通（8278097）/ echoGateDb + autoResume 描述对齐（d667ffb+5b6019b）/ 端到端补测 3 项（58f6d77+b0e45fe+ee4312b）/ ADR-0003+0004 重命名（0564a51+0cacd88）/ autoResume 文案统一（f883b35）；详见下方设置键表。
 
 ## 项目心智模型（一段话）
 
@@ -27,15 +29,12 @@ bridge /voice-mode SSE：owner=sessionId，/config + /preview + assembleStream
 | 键 | 类型 | 默认 | 含义 |
 |---|---|---|---|
 | `ttsEngine` / `kokoroModel` / `voice` | enum | `edge` / `int8` / 按引擎 | 引擎 + 精度 + 说话人（即时） |
-| `bargeInMode` / `echoGateDb` / `interruptLevel` | enum/num | `auto` / `6` / `0` | 打断模式 + 门控 dB + 确认帧 3/2/1 |
+| `bargeInMode` / `echoGateDb` / `interruptLevel` | enum/num | `auto` / `6` / `0` | 打断模式（批 7N 接通 manual 闸门）+ 门控 dB（批 7N 描述与真机限制对齐：AEC 生效时闲置）+ 确认帧 3/2/1 |
 | `silenceMs` | number | `1500` | 端点 VAD minSilenceDuration（守恒） |
-| `asrHotwords` | string | `''` | **批 1** P0：每行一词或「词:分数」；空=greedy（I10）；变更重建 recognizer |
-| `asrHotwordsScore` | number | `1.5` | **批 1** P0：sherpa 真源默认；1-5 |
-| `recognitionLanguage` | enum | `'auto'` | **批 2** P0：auto/zh/en/ja/ko/yue；切换重建 worker |
 | `senseITN` | boolean | `true` | **批 2** P0：逆文本归一化 |
 | `captionFontSize` | enum | `0` | **批 3** P0：0=12px/1=14px/2=18px/3=24px（0 与现状字节等价） |
 | `captionMaxWidth` | enum | `1` | **批 3** P0：0=50vw/1=70vw/2=90vw |
-| `backchannelYield` | boolean | `true` | **批 5** P1：让位语义（ADR-0008），I10 豁免 |
+| `backchannelYield` | boolean | `true` | **批 5** P1：让位语义（ADR-0008），I10 豁免；**批 7N 重做 3/5** 新增 `matchBackchannel` 守卫单测 |
 
 ## 代码产物映射
 
@@ -43,10 +42,10 @@ bridge /voice-mode SSE：owner=sessionId，/config + /preview + assembleStream
   - `index.ts`（路由/SSE/owner/schema）/ `asr-host.ts`（ASR runtime）/ `asr.ts`（采集/门控/打断）
   - `client.tsx`（UI/播放/参考池）/ `settings-form.tsx`（设置面板）/ `strings.ts`（zh/en 文案）
   - `tts-local.ts`（本地 TTS + emotion 后处理）/ `tts-queue.ts`（队列/epoch）/ `aec.ts`（NLMS 兜底）
-  - `emotion.ts`（批 4）/ `asr-hotwords.ts`+`asr-sense-key.ts`（纯函数 sanitize/key）
+  - `emotion.ts`（批 4）/ `asr-sense-key.ts`（纯函数 sanitize/key；批 7M 砍除 `asr-hotwords.ts`）
   - `sense-worker.ts` / `wakeword.ts` / `segmenter.ts` / `fixture-recorder.ts` 等
 - **`plugin/dsh-voice-mode/lib/`** —— esbuild 产物（`build.mjs` 重建，**不手改**）
-- **`plugin/dsh-voice-mode/test/`** —— 24 个 `.mjs`（npm test 18 文件 / 254 项全绿）
+- **`plugin/dsh-voice-mode/test/`** —— 26 个 `.mjs`（npm test 23 文件 / **245 项全绿**；批 7M 砍 `hotwords.test.mjs` + 批 7N 新增 3 项 `barge-in-manual` / `yield-ms-wiring` / `matchBackchannel`）
 - **`docs/competitive/sources/scan-*.md`** —— 18 份子代理扫描报告
 
 ## 诊断开关
@@ -71,16 +70,16 @@ cd plugin/dsh-voice-mode && \
 ## 发版流程（批 K 收口 + L 文档同步验证通过的工作流）
 
 1. `git status --short` 仓干净
-2. `npm run typecheck && npm run build && npm test` 全绿
-3. `systemctl restart dsh.service && curl /voice-mode/config` 验 7 字段非 null
-4. 真机冒烟 21 项 / 7 阶段 / 36 分钟（`docs/qa/real-machine-acceptance-checklist.md`）
-5. 文档回写：`STATE.md` + 根 `CONTEXT.md` + `backlog.md` + ADR 落地注记
-6. **收口不 push**：ahead origin/main 由用户拍板发布节奏
+2. `npm run typecheck && npm run build && npm test` 全绿（245 项基线 + 批 7N 新增 3 项）
+3. `systemctl restart dsh.service && curl /voice-mode/config` 验 4 字段非 null（senseITN/captionFontSize/captionMaxWidth/backchannelYield）
+4. 真机冒烟 **3 项必过** / **~8 分钟**（`docs/qa/must-verify-manually.md`：字幕 / 让位 / 60s 长段）
+5. 文档回写：`STATE.md` + 根 `CONTEXT.md` + `backlog.md` + ADR 落地注记（批 7M 砍 4 项 + 批 7N 重做 5 项已完成）
+6. **收口不 push**：ahead origin/main 由用户拍板发布节奏（当前 ahead = 51）
 
 ## 索引
 
-- 决策：`docs/adr/0001-0008`
-- 状态：`docs/rules/STATE.md`（批 7A-L 全 PASS-WITH-MINOR）
-- 真机：`docs/qa/real-machine-acceptance-checklist.md`（21 项 / 7 阶段）
+- 决策：`docs/adr/0001-0008`（ADR-0003 `server-side-vad` / ADR-0004 `realtime-transport-deferred` 命名纠正 2026-09-16）
+- 状态：`docs/rules/STATE.md`（批 7A-L + 批 7M 🔴 砍 + 批 7N 🟡 重做 全 PASS-WITH-MINOR）
+- 真机：`docs/qa/real-machine-acceptance-checklist.md`（精简到批 2/3/5 三阶段 + 批 7N 真机验收门禁 3 项）+ `docs/qa/must-verify-manually.md`（3 项必过）
 - 心智：根 `CONTEXT.md`（不重复内容）
-- 缺口：`zh-60s.wav` fixture / `backchannel-yield` 守卫 / `preview-error-classify` / `yieldMs` wiring E2E（见 backlog 末尾登记）
+- 缺口：`zh-60s.wav` fixture（批 7N 已补 b0e45fe）/ `backchannel-yield` 守卫（批 7N 已补 ee4312b）/ `preview-error-classify` / `yieldMs` wiring E2E（批 7N 已补 58f6d77）/ `settings-load` zod strip 模式（Q1 待用户实测，见 backlog.md 末节）
