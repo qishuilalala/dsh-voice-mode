@@ -51,9 +51,6 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 | echoGateDb | 6 | 打断要求 peak 高于 floor 此 dB；打不断降 3-4、噪音误打断升 8-10 |
 | interruptLevel | 0 | 确认帧数 3/2/1，越低越稳越慢 |
 | mode / silenceMs / shortcut / autoResume | toggle/1500/Ctrl+Shift+V/false | 交互/静音断句/快捷键/切回自动恢复 |
-| asrHotwords | '' | 批 1 P0：识别热词偏置（每行一词或「词:分数」如 `dsh-voice-mode:2.5`）；空 = 关闭（I10 默认行为零变化）。变更触发 recognizer 重建 |
-| asrHotwordsScore | 1.5 | 批 1 P0：热词基准偏置分（1.5 默认 = sherpa-onnx 官方一致；越大越强） |
-| recognitionLanguage | 'auto' | 批 2 P0：SenseVoice 识别语言 auto/zh/en/ja/ko/yue；切换终止并重建 worker 线程 |
 | senseITN | true | 批 2 P0：SenseVoice 逆文本归一化（数字/日期规范化；默认开） |
 | captionFontSize | 0 | 批 3 P0：字幕字号档位 0=12px/1=14px/2=18px/3=24px（默认 0 与现状字节等价） |
 | captionMaxWidth | 1 | 批 3 P0：字幕宽度档位 0=50vw/1=70vw/2=90vw；视口 <686px 窄于 480px、≈686px 接近、>686px 宽于 480px |
