@@ -1,7 +1,7 @@
-# 真机验收清单（dsh-voice-mode 批 1-5 + 批 7 /config 修复）
+# 真机验收清单（dsh-voice-mode 批 1-5 + 批 7 周全修复（10 批次 A-J））
 
-> **基准**：HEAD = `c2120d9`，lib BUILD_TAG = `c2120d9`（实证 `curl /voice-mode/config` 返回 7 个新字段非 null）。
-> **范围**：5 审计轴（B1 UI Row 本地化 / B2 settings 即时生效 / B3 fetchConfig 白名单 / B4 break 静音错位 / B5 长段话丢失）+ 31 项修复的可重复真机验证步骤。
+> **基准**：HEAD = `15be91a`，lib BUILD_TAG = `15be91a`（实证 `curl /voice-mode/config` 返回 7 个新字段非 null）。
+> **范围**：5 审计轴（B1 UI Row 本地化 / B2 settings 即时生效 / B3 fetchConfig 白名单 / B4 break 静音错位 / B5 长段话丢失）+ 10 批次周全修复 31 个 commit（A-J 含 7 docs(state) 验收 + 6 docs/adr + 3 chore(lib)+release 收口）共 42 commits 的可重复真机验证步骤。
 > **目的**：每次发版前由用户亲跑 30 分钟闭环验证；所有失败项对应源码行号定位。
 > **纪律**：每步单点验证，不依赖其他步骤状态；预期/失败信号给到具体用户可识别现象。
 
@@ -26,7 +26,7 @@
 - **步骤**：
   1. 浏览器 F12 打开 Console
   2. 输入 `localStorage.setItem('dsh-voice-mode.telemetry','1')` 并刷新页面
-  3. 看 Console 第一行 `[dsh-voice] build=c2120d9`（或更新）
+  3. 看 Console 第一行 `[dsh-voice] build=15be91a`（或更新）
 - **预期**：`build=` 后跟 7 字符 commit 短哈希 = `git rev-parse --short HEAD` 输出
 - **失败信号**：build= 显示 `undefined` / 显示旧版哈希 ≠ `git log --oneline -1` / build 行缺失
 - **回退**：执行 `cd plugin/dsh-voice-mode && node build.mjs && systemctl restart dsh.service`
@@ -40,7 +40,7 @@
   3. 滚动查看所有 Row
 - **预期**：7 个新 Row 标签都是中文：
   - 「识别热词」/「热词偏置分」（asrHotwords / asrHotwordsScore）
-  - 「识别语言」/「ITN 数字规范化」（recognitionLanguage / senseITN）
+  - 「识别语种」/「逆文本归一化」（recognitionLanguage / senseITN；与 `src/strings.ts:175-176` + `src/settings-form.tsx:79-80` 一致）
   - 「字幕字号」/「字幕宽度」（captionFontSize / captionMaxWidth）
   - 「短应答让位」（backchannelYield）
 - **失败信号**：Row 标签显示 `asrHotwords` / `recognitionLanguage` / `captionFontSize` 等原始 key 而非中文
@@ -50,11 +50,11 @@
 ### [ ] 1.3 基础语音往返（中文识别 + 中文朗读）
 - **前置**：1.2 通过
 - **步骤**：
-  1. 按住 `Ctrl+Shift+V` 进入语音模式（听到「滴」声即就绪）
-  2. 说「你好小D」（wake word）或直接说话
+  1. 按一次 `Ctrl+Shift+V` 进入语音模式（mode='toggle'；默认 toolBeep=false 无提示音，听不到「滴」声属预期）
+  2. 直接说话触发识别（wakeWord 默认空未配置，无 wake word 守门）
   3. 停顿 ~2 秒（默认 silenceMs=1500ms）
   4. 看 AI 是否回复中文
-  5. 再按住 `Ctrl+Shift+V` 退出
+  5. 再按一次 `Ctrl+Shift+V` 退出（mode='toggle'）
 - **预期**：partial → final 流式显示中文文本；AI 用中文语音回复（Edge 默认 zh-CN-XiaoxiaoNeural）
 - **失败信号**：partial 显示空 / final 缺失 / AI 用英文朗读 / wake word 不触发
 - **回退**：检查 `/voice-mode/config` 返回 `ttsEngine: 'edge'`、`voice: 'zh-CN-XiaoxiaoNeural'`
@@ -85,7 +85,7 @@
 ### [ ] 2.2 切 recognitionLanguage=en 后说英文（**批 2 修复**）
 - **前置**：1.3 通过
 - **步骤**：
-  1. 进设置 → 「识别语言」选择 `English (en)`
+  1. 进设置 → 「识别语种」选择 `English (en)`
   2. **不退出语音模式**，直接说："Hello world, this is a test sentence for language lock"
   3. 观察 partial 文本 → final 文本
 - **预期**：final 文本完整是英文（不抖回中文），AI 也用英文回复
@@ -96,7 +96,7 @@
 ### [ ] 2.3 关闭 ITN（senseITN=false）看数字格式
 - **前置**：1.3 通过
 - **步骤**：
-  1. 进设置 → 「ITN 数字规范化」取消勾选
+  1. 进设置 → 「逆文本归一化」取消勾选
   2. **不退出语音模式**，说："我有三个苹果"
   3. 看 final 文本
 - **预期**：final 文本保留「三个」（不变成「3 个」）
@@ -296,6 +296,8 @@
   | captionMaxWidth | `1`（70vw ≈ 现状 480px）| 批 3 |
   | backchannelYield | `true`（I10 豁免已声明）| 批 5 |
 
+> 注：上述为源码 schema 默认值；用户配置过的值以 `curl /voice-mode/config` 实际返回为准（实测典型：captionMaxWidth=2 即 90vw；详见下方「最近一次实测记录」段）。
+
 - **失败信号**：任一字段默认值漂移（与上表不符）
 - **时间**：30 秒
 
@@ -305,7 +307,7 @@
 
 | ID | 修复项 | 操作命令/UI 步骤 | 预期信号 | 失败反馈 | 时间 |
 |---|---|---|---|---|---|
-| 1.1 | 版本对齐 | `localStorage.setItem(...)` + 刷新 | `[dsh-voice] build=c2120d9` | build= undefined | 30s |
+| 1.1 | 版本对齐 | `localStorage.setItem(...)` + 刷新 | `[dsh-voice] build=15be91a` | build= undefined | 30s |
 | 1.2 | B1 Row 本地化 | 进设置面板 | 7 个 Row 标签中文 | 显示原始 key | 1m |
 | 1.3 | L1 中文识别+TTS | `Ctrl+Shift+V` + 说话 | partial/final 中文 + AI 中文朗读 | 英文 / 缺失 | 1.5m |
 | 2.1 | 批 1 热词 | 设置 → asrHotwords 填 2 词 | `dsh-voice-mode` 完整识别 | 被拆字 | 2m |
@@ -338,15 +340,15 @@
 | 1.1 build 版本对齐 | 无（手动） | `test/build-tag.test.mjs`（curl /voice-mode 200 + grep build=） | **缺**：版本一致性测试 |
 | 1.2 B1 Row 本地化 | `caption-a11y.test.mjs` 20 项（部分覆盖） | 扩 7 Row 全字段遍历 | **缺**：strings.ts 7 键 vs settings-form Row label 全覆盖断言 |
 | 1.3 L1 中文识别+TTS | `endpoint.test.mjs` 7 项 + `asr-e2e.js` 113 行 | 无 | **够用**：endpoint 覆盖 `/voice-mode` 200 + JSON schema |
-| 2.1 改 asrHotwords 立即生效 | `hotwords.test.mjs` 11 项 | **缺 host 端 rebuild 行为测试** | 需 mock `recognizerHotwordsKey` + 断言 free() 调用 |
-| 2.2 切 en 后 worker 重建 | `sense-lang.test.mjs` 10 项 | **缺 host 端 rebuild 行为测试** | 需 mock `senseLangKey` + 断言 terminate() 调用 |
+| 2.1 改 asrHotwords 立即生效 | `hotwords.test.mjs` 11 项 + `asr-host-rebuild.test.mjs` 9 项 | 已覆盖：mock `recognizerHotwordsKey` + 断言 free() 调用 | **够用** |
+| 2.2 切 en 后 worker 重建 | `sense-lang.test.mjs` 10 项 + `asr-host-rebuild.test.mjs` 9 项 | 已覆盖：mock `senseLangKey` + 断言 terminate() 调用 | **够用** |
 | 2.3 ITN 开关 | `sense-worker.test.mjs` 8 项（部分覆盖） | 加 senseITN false 路径 | **够用**：worker level 已测 |
 | 3.1 字幕字号 24px | `caption-a11y.test.mjs` 20 项 + `verify-client` 40 项 | 无 | **够用**：client 端 `[12,14,18,24][...]` 已 grep 命中 |
 | 3.2 字幕宽度 | 同 3.1 | 无 | **够用** |
 | 3.3 aria 标签 | `verify-client` 40 项 | 加 aria-label 中文断言 | **缺**：中文 aria-label 字符串匹配断言 |
 | 4.1 **B4 break 顺序** | `emotion-integration.test.mjs` 9 项 | **缺 tts-local 拼帧顺序测试** | **缺**：`test/emotion-tts-local.test.mjs`（mock `parseEmotionTags` 返多段 + 断言生成 PCM 顺序） |
-| 4.2 whisper 增益 | `emotion.test.mjs` 19 项 | 加 PCM 振幅断言 | **够用**：parseEmotionTags 已测 whisper 字段 |
-| 4.3 标签剥离 | `emotion.test.mjs` 19 项 + `segmenter.test.mjs` 13 项 | 无 | **够用** |
+| 4.2 whisper 增益 | `emotion.test.mjs` 16 项 | 加 PCM 振幅断言 | **够用**：parseEmotionTags 已测 whisper 字段 |
+| 4.3 标签剥离 | `emotion.test.mjs` 16 项 + `segmenter.test.mjs` 13 项 | 无 | **够用** |
 | 5.1 backchannel 让位 | `backchannel.test.mjs` 30 项 | **缺 host 端 onBackchannel 回调测试** | 需 mock `config.onBackchannel` + 断言 skipAudio + hold 设置 |
 | 5.2 hardBreak 优先 | 无（手动） | `test/hardbreak-vs-backchannel.test.mjs` | **缺**：分叉逻辑断言（完整句走 hardBreak vs backchannel） |
 | 5.3 让位 prompt | 无（手动） | 静态断言 VOICE_SPOKEN_PROMPT 含 YIELDING | **缺**：`grep "YIELDING\|让位" src/index.ts` 断言 |
@@ -357,21 +359,21 @@
 | 7.3 浅色主题 | `verify-client` 部分 | 无 | **够用**：CSS grep 已验 |
 | 7.4 默认值 | 无（手动） | `test/defaults-snapshot.test.mjs` | **缺**：7 字段默认值快照断言 |
 
-**自动化覆盖率统计**（191 项单测）：
-- 已覆盖：~135 项（71%）
-- 缺 host 端集成：~25 项（13%）— 全部为 settings 改变触发 rebuild 类
-- 缺 fixture/场景：~20 项（10%）— 长段话 / 真机音频流
-- 缺 UX 静态断言：~11 项（6%）— aria / idle / 错误归类
+**自动化覆盖率统计**（254 项单测）：
+- 已覆盖：~135 项（53%）
+- 缺 host 端集成：~25 项（10%）— 全部为 settings 改变触发 rebuild 类
+- 缺 fixture/场景：~20 项（8%）— 长段话 / 真机音频流
+- 缺 UX 静态断言：~11 项（4%）— aria / idle / 错误归类
 
 ---
 
 ## Verdict
 
 - **L1 阶段 1+ 阶段 6 必过**（核心通路 + 60s 不丢字）。任一 fail = 阻断发版。
-- **L2 阶段 2-5 对应 5 个批次的修复**：单测矩阵已覆盖契约层（hotwords 11 + sense-lang 10 + caption-a11y 20 + emotion 19 + emotion-integration 9 + backchannel 30 = 99 项）；真机冒烟仅验证集成层 + UX 观察。
+- **L2 阶段 2-5 对应 5 个批次的修复**：单测矩阵已覆盖契约层（hotwords 11 + sense-lang 10 + caption-a11y 20 + emotion 16 + emotion-integration 9 + backchannel 30 = 96 项；emotion 19 → 16 系批 D 删除 4 项 + 1 项守门 = 净 -3）；真机冒烟仅验证集成层 + UX 观察。
 - **L3 阶段 7 为 backlog**：浅色主题 / idle 预警 / 错误归类不进 release 阻断，记下一轮。
 - **缺口识别**：
-  1. **host 端 rebuild 行为测试全缺**（asrHotwords change → recognizer 重建 / recognitionLanguage change → worker 重建）—— 需新建 `test/asr-host-rebuild.test.mjs`（mock asr-host 内部 key + 断言 free/terminate）
+  1. **host 端 rebuild 行为测试已补 `test/asr-host-rebuild.test.mjs` 9 项**（asrHotwords change → recognizer 重建 / recognitionLanguage change → worker 重建均已 mock + 断言 free/terminate；批 G 验收补齐）；仍缺真机音频 fixture 验证（mock 不替代真实 mic + VAD 路径）
   2. **长段话 fixture 缺失**——需 `test/fixtures/zh-60s.wav` + 扩展 `asr-e2e.js` 验证 finalize 不丢
   3. **TTS 本地拼帧顺序缺断言**——`test/emotion-tts-local.test.mjs` mock segments 返有序段 + 断言生成 WAV 时长 = 段时长 + 静音累计
   4. **B1 7 Row 全遍历断言缺**——`test/strings-coverage.test.mjs` 遍历 settings-form.tsx 引用 vs strings.ts 键值完整性
@@ -379,8 +381,14 @@
   - 发版前必跑 L1（阶段 1 + 6），约 13 分钟
   - 每个批次独立发版前跑对应阶段，约 5 分钟
   - 全量 L1+L2+L3 = 36 分钟（含 idle 跳过可压到 26 分钟）
-- **基线状态**（2026-09-15 HEAD = `c2120d9`）：
-  - `npm test` 191/191 全绿
+- **基线状态**（HEAD = `15be91a`，批 K 周全修复收口）：
+  - `npm test` 254/254 全绿
   - `/voice-mode/config` 返回 7 字段非 null（实证）
-  - lib BUILD_TAG = `c2120d9`（与 HEAD 一致）
-  - 用户实测配置：asrHotwords=「dsh-voice-mode\n」、captionMaxWidth=2（90vw）
+  - lib BUILD_TAG = `15be91a`（与 HEAD 一致）
+
+## 最近一次实测记录（非基线默认值，仅供参考）
+
+> 以下为最近一次真机验证时 `curl /voice-mode/config` 返回的用户配置快照；与上方「默认值」表是两套不同语义，请勿混读。
+
+- asrHotwords：「dsh-voice-mode\n」
+- captionMaxWidth：2（90vw；用户在默认 1=70vw 基础上放宽）
