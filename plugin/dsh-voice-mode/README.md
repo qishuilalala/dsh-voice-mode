@@ -1,9 +1,9 @@
 # dsh-voice-mode
 
-[![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square)](https://www.npmjs.com/package/dsh-voice-mode)
-[![License](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square)](LICENSE)
-[![dsh-plugin](https://img.shields.io/badge/dsh--plugin-voice-brightgreen?style=flat-square)](https://github.com/topics/dsh-plugin)
-[![awesome-dsh-plugin](https://img.shields.io/badge/awesome--dsh--plugin-listed-2ea043?style=flat-square)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin#plugins)
+[![License: MIT](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases)](https://github.com/qishuilalala/dsh-voice-mode/releases)
+[![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange)](https://www.npmjs.com/package/dsh-voice-mode)
+[![Tests: 254 passing](https://img.shields.io/badge/tests-254%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
 
 DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（真 barge-in）。无需 API Key，识别模型在本地宿主端推理。
 
@@ -13,11 +13,13 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 
 ![语音模式：实时字幕与状态条](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/screenshot-voice.png)
 
-> **版本说明（0.6.0）**：朗读默认 **Edge 云端**（快速自然），本地 TTS（VITS / Kokoro）可选（隐私优先）+ HTTP 安全加固 + 模型 SHA256 固定为合入核心；Kokoro 新增**模型精度可选**（`int8` 默认 109MB / `fp32` 音质更好 311MB）；`wakeWord`（唤醒词）与 `toolBeep`（工具提示音）已完整接入；早期 fork 的 `asrModel`（双语 paraformer）与 `punctuate`（神经标点）已移除——SenseVoice 定稿本身已带标点，流式识别固定为 zipformer2。静音断句默认 1500 毫秒。
+> **版本说明（v0.7.7，2026-09-14）**：朗读默认 **Edge 云端**（快速自然），本地 TTS（VITS / Kokoro）可选（隐私优先）+ HTTP 安全加固 + 模型 SHA256 固定为合入核心；Kokoro 新增**模型精度可选**（`int8` 默认 109MB / `fp32` 音质更好 311MB）；**11 批次周全修复完成**（识别热词 / 锁语种 / 字幕档位 / 让位语义 / 默认值微调 等）；`wakeWord`（唤醒词）与 `toolBeep`（工具提示音）已完整接入；早期 fork 的 `asrModel`（双语 paraformer）与 `punctuate`（神经标点）已移除——SenseVoice 定稿本身已带标点，流式识别固定为 zipformer2。静音断句默认 1500 毫秒。
 
-## Fork 增强（本仓库新增）
+---
 
-本仓库在上游基础上加入了大量增强，核心如下（完整清单见 git 历史与迭代记录）：
+## 🤝 Fork 增强（本仓库新增）
+
+本仓库在上游 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice) 基础上加入了大量增强，核心如下（完整清单见 git 历史与 [docs/rules/STATE.md](../../docs/rules/STATE.md)）：
 
 - **朗读默认 Edge 云端；本地 TTS 可选（隐私优先）**：选本地则回复文本不出本机——
   - 本地 VITS（`sherpa-onnx-vits-zh-ll`，纯中文，5 说话人）；
@@ -32,7 +34,9 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 
 > ⚠️ 上文截图与 `assets/demo.gif` 为**上游旧版界面**（单按钮时期）；当前界面在语音按钮旁多一颗「模式切换」按钮。
 
-## 功能
+---
+
+## ✨ 功能
 
 - **语音模式**：输入框工具排麦克风按钮或全局快捷键 `Ctrl+Shift+V` 进入/退出；全局单活（同一时刻仅一个会话处于语音模式，切换会话自动让出）
 - **两种交互模式（输入框旁按钮或设置可切换，切换即持久化）**：
@@ -49,9 +53,11 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 - **设置**：设置 → Plugins → 插件配置 → 语音模式（voice-mode），可调朗读引擎/音色/语速/打断灵敏度/静音停顿/空闲超时/模型镜像/自动发送/交互模式/唤醒词/口语化提示词/识别热词/识别语种/字幕档位/让位语义；**音色可试听**（按当前音色+语速即时合成预览，自定义 ShortName 亦可）
 - **界面语言**：跟随浏览器语言（中文 / English；切换后刷新页面生效）
 - **容错**：麦克风被拒红点提示、模型下载失败可见提示、TTS 连接失败状态条提示（自动退避重试）、提交失败文字留在草稿、SSE 断线自动重连
-- **空闲退出**：10 分钟无活动自动退出并释放麦克风（**正在朗读计为活动**，长朗读不会中途下线）
+- **空闲退出**：5 分钟无活动自动退出并释放麦克风（**正在朗读计为活动**，长朗读不会中途下线；批 J 已微调默认 10→5）
 
-## 安装
+---
+
+## 🚀 5 分钟上手（Quick Start）
 
 ```sh
 dsh plugin --profile web add dsh-voice-mode
@@ -59,7 +65,15 @@ dsh plugin --profile web add dsh-voice-mode
 
 bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；其他平台重启 dsh 进程）。
 
-## 操作手势
+**第一次用**：
+
+1. 进入任一会话，按 `Ctrl+Shift+V`（或点输入区麦克风按钮）进入语音模式，状态条显示「聆听中…」；
+2. 说一句完整的话（如「帮我看看今天的天气」）→ 实时字幕立即出现，停顿后自动发送；
+3. AI 回复开始朗读时，**开口说话 → 朗读即刻停止，你的话被听见**（这就是 barge-in）。
+
+---
+
+## ⌨️ 操作手势
 
 | 手势 | 作用 |
 | --- | --- |
@@ -72,17 +86,19 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | 点状态条「退出」 | 退出语音模式 |
 | 点字幕浮层「跳过」 | 跳过当前句朗读 |
 
-## 设置（设置 → Plugins → 插件配置 → 语音模式）
+---
+
+## ⚙️ 设置（设置 → Plugins → 插件配置 → 语音模式）
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
 | `ttsEngine` | `edge` | 朗读引擎：`edge` 微软云端（默认，快）/ `vits` 本地中文 / `kokoro` 本地中英；**即时生效** |
 | `kokoroModel` | `int8` | Kokoro 模型精度：`int8`（默认，109MB，纯 CPU/低带宽推荐）/ `fp32`（311MB，音质更好，独显/大内存推荐）；两档共用 103 音色，**即时生效** |
 | `voice` | 按引擎 | 音色：VITS 五说话人；Kokoro 103 个（下拉+◀▶，62 深沉/68 浑厚/75 清亮/76 磁性置顶）；Edge 进入时自动加载全量 322 个。行内「试听」可即时预览 |
-| `rate` | `1.0` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
-| `interruptLevel` | `0` | 发声打断灵敏度（服务端 VAD 帧级检测 + 回声门控）：0 高门槛 / 1 中 / 2 低 |
+| `rate` | `1.1` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效**（批 J 1.0→1.1） |
+| `interruptLevel` | `0` | 发声打断灵敏度（服务端 VAD 帧级检测 + 回声门控）：0 高门槛（3 帧）/ 1 中（2 帧）/ 2 低（1 帧） |
 | `silenceMs` | `1500` | 说完整一句的静音停顿毫秒数 |
-| `idleTimeoutMinutes` | `10` | 无活动自动退出语音模式的分钟数（朗读计为活动） |
+| `idleTimeoutMinutes` | `5` | 无活动自动退出语音模式的分钟数（朗读计为活动；批 J 10→5） |
 | `modelHost` | 默认源 | 模型下载源（国内网络填 `https://hf-mirror.com`） |
 | `autoSend` | `true` | 静音到点自动发送（连续多段拼成一条消息）；关闭则只进草稿（按住 `Ctrl` / hold 松手仍会发送） |
 | `mode` | `toggle` | 交互模式：`toggle` 持续聆听 + 1500ms 静音断句；`hold` 按住说话、松手发送（短按退出） |
@@ -122,22 +138,69 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 
 `voice-mode` 命名空间配置可直接写入 `~/.dsh/settings.yaml`；插件总开关 `enabled`（默认 `true`）、模型缓存目录 `cacheDir`、在安装配置中设置。
 
-## 工作原理
+---
 
-```
-麦克风(16kHz, AEC) ─▶ 浏览器 VAD 分段 ─▶ HOST zipformer2 流式识别(本地 WASM, 增量传输)
-                                        │
-                                        ▼
-用户说话 ◀── 打断 ◀── 音箱 ◀── 逐句合成 ◀── 分句(text-delta 过滤) ◀── SenseVoice 标点定稿
-                          │
-           本地 VITS / 本地 Kokoro(原生 addon, 子进程) / Edge 云端(可选)
+## 🏛️ 工作原理（Architecture）
+
+```mermaid
+flowchart LR
+    subgraph Client[浏览器 Client]
+        Mic[麦克风 16kHz<br/>AudioWorklet<br/>echoCancellation:true] --> VAD[客户端 VAD<br/>RMS 分段]
+        VAD -->|partial 0.9s| UI[状态条 + 字幕浮层]
+    end
+
+    subgraph Host[宿主 dsh.host]
+        ASR[zipformer2 流式识别<br/>host 端 WASM]
+        SV[SenseVoice 定稿<br/>+ ITN + 标点]
+        Tap[llm/stream tap<br/>仅观察·不阻塞]
+        Seg[sentence segmenter]
+        Q[TtsQueue<br/>epoch 打断]
+        TTS{引擎}
+        Edge[Edge 云端]
+        Vits[本地 VITS WASM]
+        Kokoro[本地 Kokoro<br/>原生 addon]
+    end
+
+    UI -->|audio f32 PCM<br/>POST /voice-mode/asr| ASR
+    ASR --> SV
+    SV --> Draft[composer draft<br/>autoSend]
+    Draft --> Tap
+    Tap --> Seg
+    Seg --> Q
+    Q --> TTS
+    TTS -->|edge| Edge
+    TTS -->|vits| Vits
+    TTS -->|kokoro| Kokoro
+    Edge -.->|SSE audio frame| UI
+    Vits -.->|SSE audio frame| UI
+    Kokoro -.->|SSE audio frame| UI
+    VAD -.->|唤醒词/打断| Q
 ```
 
 - 识别在 **host 端本地运行**（zipformer2 中文 int8 WASM + SenseVoice 定稿，模型懒下载），音频不上传第三方；识别定稿由 SenseVoice 补标点；
 - 朗读默认 **Edge 云端**；本地 VITS 纯中文 / Kokoro 原生中英（跑在独立子进程、崩溃自愈）可选（隐私优先）；
 - 同一时间仅一个会话处于语音模式（全局单活）；LLM 流被无损观察（不阻塞）。
 
-## 已知限制
+详细架构决策：见 [`docs/adr/`](../../docs/adr/README.md) 8 个 ADR。
+
+---
+
+## 🔍 与 dsh 内置语音模式对比
+
+| 维度 | dsh 内置 | dsh-voice-mode（本插件） |
+| --- | --- | --- |
+| 识别模型 | 云端 API（需 key） | **本地 zipformer2 + SenseVoice**（零 key） |
+| 多语种 | 英文为主 | **6 语种 auto/zh/en/ja/ko/yue + ITN** |
+| 朗读引擎 | 云端 TTS | **Edge 云端 + 本地 VITS/Kokoro** 三选一 |
+| 打断检测 | 基础 VAD | **三档灵敏度 + 回声门控 + 让位语义** |
+| 热词偏置 | 无 | **sherpa-onnx 热词 + 偏置分** |
+| 字幕 a11y | 无 | **4 档字号 + 3 档宽度 + 主题跟随** |
+| 唤醒词 | 无 | **轻量流式匹配 + 前缀语气词白名单** |
+| 兼容 dsh | — | **0.1.1-rc.2 → 0.1.5-rc.2 全版本** |
+
+---
+
+## 🚧 已知限制
 
 - 发声打断依赖浏览器回声消除（`echoCancellation`）；扬声器音量过大时可能漏声到麦克风
 - `Ctrl+Shift+V` 会覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍可用 `Ctrl+V`）
@@ -154,7 +217,9 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
   - iOS 后台/锁屏时识别与朗读暂停，回前台自动恢复（可能丢句）；建议语音模式期间保持前台
 - **安全说明**：插件 HTTP 面（`/voice-mode/*`）遵循宿主安全模型——请勿将 dsh 端口直接暴露公网；经反向代理发布时由代理层（如 basic auth）鉴权；插件侧对敏感操作保留会话归属校验
 
-## 故障排查
+---
+
+## 🛠️ 故障排查
 
 | 现象 | 处理 |
 | --- | --- |
@@ -168,8 +233,24 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | 热词不生效 | 检查 `asrHotwords` 是否为空（空 = 关闭）；热词变更触发 recognizer 重建，下次进入语音模式生效；评分过低（<1.0）几乎无效，建议 ≥1.5；词表每行一词或「词:分数」格式 |
 | 字幕被输入框挡住 | 默认 `captionMaxWidth=1`（70vw）+ `captionFontSize=0`（12px）在窄屏可能与底部输入框重叠；调高档位或点字幕浮层「×」收起 |
 | 让位行为异常（朗读期说「嗯」不停 / 真话被打断） | 「嗯/对」类短词触发让位 1.5s 后继续朗读；继续说真话会走硬打断；不要时关 `backchannelYield` 即可恢复改造前行为（ADR-0008） |
+| 朗读期说「嗯」没让位 | 确认 `backchannelYield=true`（默认开）；hold 模式松手后让位 1.5s 内继续说话会变硬打断 |
+| 空闲 5 分钟自动退出（不想退） | 调高 `idleTimeoutMinutes`（默认 5 分钟，**朗读计为活动**） |
 
-## 开发
+---
+
+## 🛣️ 路线图（Roadmap）
+
+完整 backlog（43 项 P0-P3）见 [`docs/competitive/backlog.md`](../../docs/competitive/backlog.md)。
+
+- ✅ **已完成（v0.7.7）**：11 批次周全修复（识别热词 / 锁语种 / 字幕档位 / 让位语义 / 模型预热 / 默认值微调 / 死代码清理等）
+- 🚧 **P0（近期）**：ADR-0003 VAD 下沉 / ADR-0006 第一级探测接通 manual / F1 emotion DSL 全量上线
+- 📋 **P1（中期）**：MCP `voice_*` 工具集 / 卡片表单 draft validate / 状态条 idle 优化
+- 💡 **P2（远期）**：声音克隆（用户已决定推迟）/ ADR-0004 WebSocket transport
+- ⏸️ **已推迟**：xAI fallback / C1 人格层（用户已决定推迟）
+
+---
+
+## 🛠️ 开发
 
 ```sh
 pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js（browser）
@@ -193,8 +274,10 @@ src/client.tsx       client：麦克风按钮 + 模式切换按钮 + 状态条 +
 src/strings.ts       client：中英文案字典（navigator.language）
 ```
 
-## License
+---
 
-[MIT](LICENSE)
+## 📄 License
+
+[MIT](../../LICENSE)
 
 > 部分实现借鉴 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)（派生声明见子包 LICENSE）。
