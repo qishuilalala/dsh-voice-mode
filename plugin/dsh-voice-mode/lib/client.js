@@ -1346,13 +1346,6 @@ var zh = {
   descSpokenFormat: "\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u56DE\u590D\u53E3\u8BED\u5316\u3001\u77ED\u53E5\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\u66F4\u5FEB\uFF1B\u9ED8\u8BA4\u5F00\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09",
   descSenseVoice: "\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9 + \u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09",
   descToolBeep: '\u5DE5\u5177\u8C03\u7528\u63D0\u793A\u97F3\uFF08\u9ED8\u8BA4\u5173\uFF09\uFF1AAI \u601D\u8003/\u8C03\u7528\u5DE5\u5177\u65F6"\u6EF4"\u4E00\u58F0\uFF1B\u5ACC\u5435\u5C31\u4FDD\u6301\u5173\u95ED',
-  asrHotwords: "\u8BC6\u522B\u70ED\u8BCD",
-  descAsrHotwords: "\u6BCF\u884C\u4E00\u4E2A\u8BCD\u6216\u300C\u8BCD:\u5206\u6570\u300D\uFF08\u5982 \u5C0F\u7231\u540C\u5B66:2.5\uFF09\uFF1B\u7559\u7A7A\u5173\u95ED\uFF08\u9ED8\u8BA4 = \u884C\u4E3A\u96F6\u53D8\u5316\uFF09\u3002\u5F00\u542F\u540E\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u751F\u6548",
-  descAsrHotwordsModelLimit: "\u5F53\u524D ASR \u6A21\u578B\uFF08zipformer-zh-int8\uFF09\u4EC5\u652F\u6301\u4E2D\u6587\u70ED\u8BCD\uFF0C\u82F1\u6587/\u62C9\u4E01\u8BCD\u6761\u4F1A\u88AB sherpa \u9759\u9ED8\u8DF3\u8FC7",
-  descAsrHotwordsScore: "\u70ED\u8BCD\u57FA\u51C6\u504F\u7F6E\u5206\uFF081.5 \u9ED8\u8BA4\uFF0C\u4E0E sherpa-onnx \u5B98\u65B9\u4E00\u81F4\uFF1B\u8D8A\u5927\u8D8A\u5F3A\uFF0C\u8FC7\u5927\u53EF\u80FD\u4F24\u666E\u901A\u8BC6\u522B\uFF09",
-  asrHotwordsPlaceholder: "\u5C0F\u7231\u540C\u5B66\n\u667A\u80FD\u52A9\u624B\nDSH \u52A9\u624B",
-  asrHotwordsInvalid: "\u7B2C {line} \u884C\u683C\u5F0F\u9519\u8BEF\uFF0C\u5E94\u4E3A\u300C\u8BCD\u300D\u6216\u300C\u8BCD:\u5206\u6570\u300D",
-  descRecognitionLanguage: "SenseVoice \u8BC6\u522B\u8BED\u79CD\uFF08\u9ED8\u8BA4 auto \u81EA\u52A8\u68C0\u6D4B\uFF1B\u9501\u8BED\u79CD\u540E\u53EA\u8BC6\u522B\u8BE5\u8BED\u79CD\uFF1B\u6DF7\u5408\u573A\u666F\u4FDD\u6301 auto\uFF1B\u5207\u6362\u4F1A\u91CD\u5EFA worker \u7EBF\u7A0B\uFF09",
   senseITN: "\u9006\u6587\u672C\u5F52\u4E00\u5316",
   descSenseITN: "SenseVoice \u6570\u5B57/\u65E5\u671F/\u683C\u5F0F\u89C4\u8303\u5316\uFF08\u9ED8\u8BA4\u5F00\uFF1B\u5173\u95ED\u540E\u8F93\u51FA\u66F4\u63A5\u8FD1\u53E3\u8BED\u539F\u6587\uFF09",
   descCaptionFontSize: "\u6D6E\u5C42\u5B57\u5E55\u5B57\u53F7\u6863\u4F4D\uFF08\u5C0F 12 / \u6807\u51C6 14 / \u5927 18 / \u7279\u5927 24 px\uFF1B\u9ED8\u8BA4\u5C0F\u4E0E\u73B0\u72B6\u5B57\u8282\u7B49\u4EF7\uFF09",
@@ -1375,8 +1368,8 @@ var zh = {
   modeHold: "\u6309\u4F4F\u8BF4\u8BDD",
   descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09",
   wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
-  settingsCardDesc: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3 / \u8BC6\u522B\u70ED\u8BCD / \u70ED\u8BCD\u504F\u7F6E\u5206 / \u8BC6\u522B\u8BED\u79CD / \u9006\u6587\u672C\u5F52\u4E00\u5316 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3",
-  settingsEffectiveNote: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6A21\u578B\u7CBE\u5EA6 / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3 \u5373\u65F6\u751F\u6548\uFF1B\u8BC6\u522B\u70ED\u8BCD / \u70ED\u8BCD\u504F\u7F6E\u5206 / \u8BC6\u522B\u8BED\u79CD / \u9006\u6587\u672C\u5F52\u4E00\u5316 \u5373\u65F6\u751F\u6548\uFF08\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u91CD\u5EFA\u6D41\u5F0F\u8BC6\u522B\u5668\uFF09\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
+  settingsCardDesc: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3 / \u9006\u6587\u672C\u5F52\u4E00\u5316 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3",
+  settingsEffectiveNote: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6A21\u578B\u7CBE\u5EA6 / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3 \u5373\u65F6\u751F\u6548\uFF1B\u9006\u6587\u672C\u5F52\u4E00\u5316 \u5373\u65F6\u751F\u6548\uFF08\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u91CD\u5EFA\u6D41\u5F0F\u8BC6\u522B\u5668\uFF09\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
   configUnavailable: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528",
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: "\u8BF4\u5B8C",
@@ -1426,9 +1419,6 @@ var zh = {
   // 批 C：FIELD_LABELS 镜像键（*Label 后缀；详见 settings-form.tsx 头部注释）。
   // 临时双轨——与 FIELD_LABELS 并行维护同一组中文，未来整合批去掉 FIELD_LABELS，
   // 统一改用 tr() 翻译键模式避免双轨漂移风险。en 段对应 stub 见下方 en 对象。
-  asrHotwordsLabel: "\u70ED\u8BCD",
-  asrHotwordsScoreLabel: "\u70ED\u8BCD\u504F\u7F6E\u5206",
-  recognitionLanguageLabel: "\u8BC6\u522B\u8BED\u79CD",
   senseITNLabel: "\u9006\u6587\u672C\u5F52\u4E00\u5316",
   captionFontSizeLabel: "\u5B57\u5E55\u5B57\u53F7",
   captionMaxWidthLabel: "\u5B57\u5E55\u5BBD\u5EA6",
@@ -1529,13 +1519,6 @@ var en = {
   descSpokenFormat: "Inject spoken-format prompt into voice replies (colloquial, short sentences, no Markdown; default on, live)",
   descSenseVoice: "Re-transcribe the finalized utterance with SenseVoice (punctuation + ITN, more accurate; default on \u2014 turn off to skip the 228 MB model and keep streaming only)",
   descToolBeep: "Tool-call beep (default off): beep when the agent is thinking/calling tools; keep off if it annoys you",
-  asrHotwords: "ASR hotwords",
-  descAsrHotwords: 'One term per line, or "term:score" (e.g. Xiao Ai:2.5). Leave empty to disable (default = no behavioural change). Takes effect next time you enter voice mode.',
-  descAsrHotwordsModelLimit: "Current ASR model (zipformer-zh-int8) only supports Chinese hotwords; English/Latin terms are silently skipped by sherpa",
-  descAsrHotwordsScore: "Hotword baseline bias (default 1.5, matches sherpa-onnx upstream). Higher = stronger bias but may hurt generic recognition.",
-  asrHotwordsPlaceholder: "Xiao Ai\nSmart Assistant\nDSH Helper\n(Chinese preferred)",
-  asrHotwordsInvalid: 'Line {line} format error: should be "term" or "term:score"',
-  descRecognitionLanguage: "SenseVoice language (default auto; lock to zh/en/ja/ko/yue for single-language; mixed scenarios keep auto; switching rebuilds the worker thread)",
   senseITN: "Inverse text normalization",
   descSenseITN: "SenseVoice number/date/format normalization (default on; turn off to keep raw spoken form)",
   descCaptionFontSize: "Caption font size (Small 12 / Standard 14 / Large 18 / X-Large 24 px; default Small matches current behavior)",
@@ -1558,8 +1541,8 @@ var en = {
   modeHold: "Hold to talk",
   descWakeWord: "Wake word (default off; e.g. Hey D)",
   wakePlaceholder: "e.g. Hey D",
-  settingsCardDesc: "Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / hotwords / hotwords score / recognition language / ITN / caption font / caption width / yielding / yield window",
-  settingsEffectiveNote: "Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding / yield window apply immediately; hotwords / hotwords score / recognition language / ITN apply immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.",
+  settingsCardDesc: "Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / ITN / caption font / caption width / yielding / yield window",
+  settingsEffectiveNote: "Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding / yield window apply immediately; ITN applies immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.",
   configUnavailable: "Configuration unavailable",
   telUtteranceEnd: "end",
   telEndpoint: "endpoint",
@@ -1605,9 +1588,6 @@ var en = {
   // 批 C：与 zh 段 *Label 镜像键同步。临时 stub（仅用于满足 Record<keyof typeof zh, string>
   // 类型约束，避免 tsc 红），由整合批统一替换为正式英文文案。**未对外使用**——当前
   // settings-form.tsx 通过 FIELD_LABELS 取值，未走 tr()，所以英文用户暂未感知差异。
-  asrHotwordsLabel: "Hotwords",
-  asrHotwordsScoreLabel: "Bias score",
-  recognitionLanguageLabel: "Recognition language",
   senseITNLabel: "ITN",
   captionFontSizeLabel: "Font size",
   captionMaxWidthLabel: "Max width",
@@ -1666,9 +1646,6 @@ var FIELD_LABELS = {
   idleTimeoutMinutes: "\u7A7A\u95F2\u8D85\u65F6",
   modelHost: "\u6A21\u578B\u955C\u50CF",
   // 批 C 新增（覆盖批 1-5 新增 UI 字段；详见文件头注释）
-  asrHotwords: "\u70ED\u8BCD",
-  asrHotwordsScore: "\u70ED\u8BCD\u504F\u7F6E\u5206",
-  recognitionLanguage: "\u8BC6\u522B\u8BED\u79CD",
   senseITN: "\u9006\u6587\u672C\u5F52\u4E00\u5316",
   captionFontSize: "\u5B57\u5E55\u5B57\u53F7",
   captionMaxWidth: "\u5B57\u5E55\u5BBD\u5EA6",
@@ -1902,14 +1879,6 @@ var HOST_OPTIONS = [
   { v: "https://huggingface.co", label: "\u5B98\u65B9\u6E90 huggingface.co" },
   { v: "https://hf-mirror.com", label: "\u56FD\u5185\u955C\u50CF hf-mirror.com" }
 ];
-var LANG_OPTIONS = [
-  { v: "auto", label: "auto \u81EA\u52A8\u68C0\u6D4B" },
-  { v: "zh", label: "\u4E2D\u6587 zh" },
-  { v: "en", label: "\u82F1\u6587 en" },
-  { v: "ja", label: "\u65E5\u6587 ja" },
-  { v: "ko", label: "\u97E9\u6587 ko" },
-  { v: "yue", label: "\u7CA4\u8BED yue" }
-];
 function NumberField({
   score,
   field,
@@ -2003,77 +1972,6 @@ function TextField({
       }
     }
   );
-}
-function AsrHotwordsTextarea({ score, value }) {
-  const [hint, setHint2] = (0, import_react.useState)(null);
-  (0, import_react.useEffect)(() => {
-    setHint2(null);
-  }, [value]);
-  const validate = (text) => {
-    const lines = text.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      const m = /^([^:]+)(?::([0-9]+(?:\.[0-9]+)?))?$/.exec(line);
-      if (!m || !m[1].trim()) {
-        return t("asrHotwordsInvalid").replace("{line}", String(i + 1));
-      }
-      if (m[2] !== void 0) {
-        const score2 = Number(m[2]);
-        if (!Number.isFinite(score2) || score2 <= 0) {
-          return t("asrHotwordsInvalid").replace("{line}", String(i + 1));
-        }
-      }
-    }
-    return null;
-  };
-  const onBlur = () => {
-    const err = validate(value);
-    setHint2(err);
-  };
-  const baseTextareaStyle = {
-    width: "100%",
-    resize: "vertical",
-    fontFamily: "inherit",
-    fontSize: 13,
-    padding: "6px 8px",
-    borderRadius: 6,
-    border: "1px solid var(--set-field-border, #3a3a3a)",
-    background: "var(--set-field-bg, transparent)",
-    color: "inherit"
-  };
-  const textareaStyle = hint ? {
-    ...baseTextareaStyle,
-    borderColor: "var(--dsw-alias-state-error-primary)",
-    boxShadow: "0 0 0 2px rgba(248, 81, 73, 0.18)"
-  } : baseTextareaStyle;
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "stretch", width: 280 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "textarea",
-      {
-        rows: 4,
-        value,
-        placeholder: t("asrHotwordsPlaceholder"),
-        onChange: (e) => {
-          void score.set("asrHotwords", e.target.value);
-          if (hint) setHint2(null);
-        },
-        onBlur,
-        style: textareaStyle
-      }
-    ),
-    hint && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "span",
-      {
-        style: {
-          fontSize: 11,
-          lineHeight: "14px",
-          color: "var(--dsw-alias-state-error-primary)"
-        },
-        children: hint
-      }
-    )
-  ] });
 }
 function SelectField({
   score,
@@ -2776,23 +2674,6 @@ function VoiceSettingsCard({ scope }) {
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRecognition"), children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "asrHotwords", desc: t("descAsrHotwords") + "\n" + t("descAsrHotwordsModelLimit"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          AsrHotwordsTextarea,
-          {
-            score: scope,
-            value: typeof value.asrHotwords === "string" ? value.asrHotwords : ""
-          }
-        ) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "asrHotwordsScore", desc: t("descAsrHotwordsScore"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "asrHotwordsScore", value: value.asrHotwordsScore ?? 1.5, min: 1, max: 5, step: 0.1 }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "recognitionLanguage", desc: t("descRecognitionLanguage"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          SelectField,
-          {
-            score: scope,
-            field: "recognitionLanguage",
-            value: value.recognitionLanguage ?? "auto",
-            options: LANG_OPTIONS
-          }
-        ) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseITN", desc: t("descSenseITN"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.senseITN !== false, onChange: (e) => void scope.set("senseITN", e.target.checked) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
@@ -2822,7 +2703,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "1b1869f";
+var BUILD_TAG = "6bed6d4";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -3131,9 +3012,6 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     backchannelYield: true,
     yieldMs: 1500,
     // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
-    asrHotwords: "",
-    asrHotwordsScore: 1.5,
-    recognitionLanguage: "auto",
     senseITN: true,
     senseVoice: true
   };
@@ -3654,9 +3532,6 @@ function MicButton({
     backchannelYield: true,
     yieldMs: 1500,
     // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
-    asrHotwords: "",
-    asrHotwordsScore: 1.5,
-    recognitionLanguage: "auto",
     senseITN: true,
     senseVoice: true
   };
@@ -3700,9 +3575,6 @@ function MicButton({
         yieldMs: typeof c.yieldMs === "number" && c.yieldMs >= 500 && c.yieldMs <= 3e3 ? c.yieldMs : 1500,
         // 批 B：5 ASR 字段透传（host /config handler 在 c2120d9 已透传 4 字段，本批补 senseVoice + 客户端白名单对齐）。
         // 类型校验严格 + 默认值兜底，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
-        asrHotwords: typeof c.asrHotwords === "string" ? c.asrHotwords : "",
-        asrHotwordsScore: typeof c.asrHotwordsScore === "number" && c.asrHotwordsScore >= 1 && c.asrHotwordsScore <= 5 ? c.asrHotwordsScore : 1.5,
-        recognitionLanguage: c.recognitionLanguage === "zh" || c.recognitionLanguage === "en" || c.recognitionLanguage === "ja" || c.recognitionLanguage === "ko" || c.recognitionLanguage === "yue" || c.recognitionLanguage === "auto" ? c.recognitionLanguage : "auto",
         senseITN: c.senseITN === false ? false : true,
         senseVoice: c.senseVoice === false ? false : true
       };
