@@ -75,7 +75,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 - `npm run analyze:fixture -- <fixture.json>`：真机录制分析（覆盖率/停顿归因/confirmMs）
 - 录制开关 `localStorage['dsh-voice-mode.record']=meta|full`，用法见 docs/fixture-recording.md
 - **真机 fixture 已起步**：4 条 2×2 矩阵（2026-09-14，含音轨，不进公开仓）
-- 决策记录：ADR-0003 VAD 下沉（提议，fixture 已实证必要性）· ADR-0004 WebSocket（提议）·
+- 决策记录：ADR-0003 VAD 服务端 Silero（已接受，提议下沉客户端待决策；fixture 已实证必要性）· ADR-0004 WebSocket transport（提议，deferred）·
   ADR-0005 回归基准（已接受）· ADR-0006 打断模式自动探测（已接受）·
   ADR-0007 情感标签 DSL（**已接受 2026-09-14，先本地后 Edge 分两步**）·
   ADR-0008 让位语义（**已接受 Phase 1 2026-09-14，#1 backchannel + #2 让位 prompt，#3-5 砍/推迟**）

@@ -142,7 +142,7 @@ TTS 下行单元：`sentenceId`（句序）+ `chunkId`（句内块序）+ `final
 - [评审：当前得失与推进方向](review-2026-08-30.md)
 - [ADR-0001 回声消除以浏览器原生 AEC 为主](adr/0001-native-aec-primary.md)
 - [ADR-0002 客户端注入锚点取新旧版本交集](adr/0002-dual-version-compat.md)
-- [ADR-0003 打断 VAD 下沉到客户端](adr/0003-client-side-vad.md)
+- [ADR-0003 打断 VAD 服务端 Silero（提议下沉客户端）](adr/0003-server-side-vad.md)
 - [ADR-0004 实时环路改用单会话 WebSocket](adr/0004-realtime-transport.md)
 - [ADR-0005 建立离线声学回归基准](adr/0005-acoustic-regression-harness.md)（已接受）
 - [ADR-0006 打断模式自动探测降级](adr/0006-barge-in-auto-degrade.md)（已接受）

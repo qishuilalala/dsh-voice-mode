@@ -413,7 +413,7 @@ const fullAccessPolicy = { mode: 'danger-full-access' as const, workspaceRoot: p
 - `CONTEXT.md`：本机路径 `/mnt/dsh-voice-mode/CONTEXT.md`
 - ADR 文件：
   - `/mnt/dsh-voice-mode/docs/adr/0001-native-aec-primary.md`
-  - `/mnt/dsh-voice-mode/docs/adr/0003-client-side-vad.md`
+  - `/mnt/dsh-voice-mode/docs/adr/0003-server-side-vad.md`
   - `/mnt/dsh-voice-mode/docs/adr/0005-acoustic-regression-harness.md`
   - `/mnt/dsh-voice-mode/docs/adr/0006-barge-in-auto-degrade.md`
   - `/mnt/dsh-voice-mode/docs/adr/0007-emotion-tag-dsl.md`

@@ -164,4 +164,4 @@ ADR-0003 里那段「本 ADR 分量因此上调」的话要撤回。
 ## 相关
 
 - [2026-09-02-echo-gate-ratchet.md](2026-09-02-echo-gate-ratchet.md)（同一批录制）
-- [ADR-0003 打断 VAD 下沉到客户端](../adr/0003-client-side-vad.md)
+- [ADR-0003 打断 VAD 服务端 Silero（提议下沉客户端）](../adr/0003-server-side-vad.md)

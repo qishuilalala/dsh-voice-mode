@@ -1,9 +1,14 @@
-# ADR-0003：打断 VAD 下沉到客户端，host VAD 退为兜底
+# ADR-0003：打断 VAD 维持服务端 Silero（提议下沉客户端，未实施）
 
-- 状态：**提议**（待决策）
-- 日期：2026-08-30
-- 决策人：待定
+- 状态：**已接受**（服务端 Silero VAD 当前实施；下沉客户端为未实施的「决策（提议）」段，保留作未来选项）
+- 日期：2026-08-30（2026-09-16 命名纠正）
+- 决策人：服务端 Silero VAD = 实施态；下沉客户端 = 待决策
 - 前置：[ADR-0001](0001-native-aec-primary.md)
+
+> **命名纠正（2026-09-16）**：原文件名 `0003-client-side-vad.md` 暗示 VAD 已下沉到客户端，与实际不符。
+> 真实运行态：Silero VAD 位于 host 侧（`src/asr-host.ts:640-647` detect 异步函数内 `acceptWaveform` → `isSpeech`），
+> 客户端只做计数（`src/client.tsx:33` `INT_CONFIRM_FRAMES`）。本 ADR 的「下沉」是**未实施的提议**，
+> 故重命名为 `0003-server-side-vad.md`，标题同步纠正；正文「决策（提议）」段保留原提议内容（搬迁方向与代价分析）。
 
 ## 背景
 

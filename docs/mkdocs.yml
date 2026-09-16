@@ -40,7 +40,7 @@ nav:
       - docs/adr/README.md
       - docs/adr/0001-native-aec-primary.md
       - docs/adr/0002-dual-version-compat.md
-      - docs/adr/0003-client-side-vad.md
+      - docs/adr/0003-server-side-vad.md
       - docs/adr/0004-realtime-transport.md
       - docs/adr/0005-acoustic-regression-harness.md
       - docs/adr/0006-barge-in-auto-degrade.md

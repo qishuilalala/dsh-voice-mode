@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | [0001](0001-native-aec-primary.md) | 回声消除以浏览器原生 AEC 为主 | 已接受 |
 | [0002](0002-dual-version-compat.md) | 双版本兼容策略（dsh 0.1.1-rc.2 / 0.1.5-rc.1） | 已接受 |
-| [0003](0003-client-side-vad.md) | 客户端 VAD 下沉（提议） | 提议 |
+| [0003](0003-server-side-vad.md) | 打断 VAD 服务端 Silero（提议下沉客户端，未实施） | 已接受 |
 | [0004](0004-realtime-transport.md) | WebSocket transport（提议） | 提议 |
 | [0005](0005-acoustic-regression-harness.md) | 声学回归基准（合成压力档 + 真机 fixture） | 已接受 |
 | [0006](0006-barge-in-auto-degrade.md) | 打断模式自动探测（bargeInMode auto/manual） | 已接受（部分实现） |
