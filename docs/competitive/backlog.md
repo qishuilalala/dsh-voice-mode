@@ -689,3 +689,55 @@
 
 - P0 ADR-0007/0008 已完成；A3 字幕说话人标签（pyannote 4.x 仍 blocker）；B1 声音克隆 ❄ 推迟。
 - P1-UX 字幕字号可调 + ARIA 已完成（批 3 落地即此条）；其他 P1-UX 仍 Ready 待评估。
+
+---
+
+## 11 批次周全修复完成状态（2026-09-15）
+
+> **触发**：用户真机反馈「批 1/批 2 设置改了不生效 / 批 3 OK / 批 5 体感不明显 / 60s 长段话只出不连续短句」→ 8 subagent 深挖（5 第一轮：配置/功能链路/代码质量/体验优化/B5 长段 + 3 第二轮：修复对抗/批次拆分/真机验收）→ 出最终周全修复计划 → 用户批准 → 按 10 批次 + 收口批 + 文档锚点同步共 12 commit batch 执行完毕（HEAD = `1041929`，lib BUILD_TAG 同步）。
+> **依据**：`docs/plan/implementation-plan-2026-09-14.md` §12（434 行）/ `docs/rules/STATE.md` / `docs/qa/real-machine-acceptance-checklist.md`（21 项 / 7 阶段 / 36 分钟）/ 根 `CONTEXT.md` 设置表 7 新键已落盘。
+
+### 11 批次 commit 哈希 + 验收 verdict（批 A-K + L 文档锚点同步）
+
+| 批 | 主题 | commit | verdict | 不变量 |
+|---|---|---|---|---|
+| A | markStale + watch ASR 字段 diff + pump catch 上下文 | `78574ad` | PASS | I1-I10 全保 |
+| B | client fetchConfig + VoiceBootConfig 5 ASR 字段透传 | `e952583` | PASS-WITH-MINOR (M1-M2) | I6 9 锚点零改 |
+| C | FIELD_LABELS 7 中文 + strings.ts 同步 + 防回归 | `44b6775` | PASS-WITH-MINOR (I1+4M) | I10 默认行为守恒 |
+| D | tts-local 拼帧段后置 + emotion.ts 注释反向 + strip 删除 | `2d247f6` | PASS-WITH-MINOR (I1+2M) | I4 帧协议零碰 |
+| E | endpointConfirmMs 200ms + SenseVoice 预热 + timeout 20s | `921334e` | PASS | I4/I6/I10 全保 |
+| F | spokenFormat 注释 + matchBackchannel 守卫 + effectiveNote | `5ded5d4` | PASS-WITH-MINOR (2I+3M) | I10 字节等价 |
+| G | Number 校验 + idle 预警 + yieldMs + textarea + 跳过 + 下载 | 重做后 `d979b8e` | PASS-WITH-MINOR (6M) | I6 9 锚点 + I10 全保 |
+| H | TTS toast + 浅色字幕 + mic 对比 + autoResume onboarding | `80ea993` | PASS-WITH-MINOR (3M+2Q) | I1/I4/I6 守恒 |
+| I | UTF-8 重建 + ADR 22→26 + README 同步 + /preview 错误归类 | `6572883` | PASS-WITH-MINOR (4M) | I1/I4/I6 守恒 |
+| J | 死代码清理 12 键 + 默认值微调 (idle 10→5, rate 1.0→1.1) + a11y | `2d646d9` | PASS-WITH-MINOR (6M) | I1-I10 全保 |
+| **K 收口** | 真机冒烟 21 项 + docs(qa) 锚点 + 254 项测试 + restart dsh | `15be91a` | PASS-WITH-MINOR (4I+7M+3Q) | 全部已交付批 L 修 |
+| **L 文档同步** | qa 文档 baseline 锚点 + 测试数 + 中英文案同步 | `d5c13c1` | PASS-WITH-MINOR (3M+3Q) | 文档与代码一致 |
+
+### 真机冒烟 21 项 / 7 阶段 / 36 分钟路径
+
+详见 `docs/qa/real-machine-acceptance-checklist.md`：阶段 1 基础（3 项 L1）→ 2 批 1+2 即时生效（3 项 L2）→ 3 字幕 a11y（3 项 L2）→ 4 emotion 标签（3 项 L2）→ 5 让位语义（3 项 L2）→ 6 长段话 B5（2 项 L1）→ 7 体验（4 项 L3）。**关键回归门**：6.1 60s 中文不丢字（10 分钟，最高优先级）+ 4.1 `<break>` 段后置静音（2 分钟，最易测回归）。
+
+### 8 份子代理报告（5 第一轮 + 3 第二轮）
+
+第一轮（5）：配置深挖 / 功能链路审计 / 代码质量 / 体验优化 / B5 长段话 → 主扫描合成 10 批次依赖图 + 对抗性纠正。第二轮（3）：修复方案对抗审查 / 批次拆分（含 I1-I3 抢救约束）/ 真机验收清单编排 → 5 Blocker + 3 Important + 11 Minor 收敛。
+
+### 4 缺口测试登记（已识别但未实施，建议下一批补）
+
+1. **`zh-60s.wav` fixture** + 扩展 `asr-e2e.js` —— 批 E Q1 登记，B5 长段话端到端防回归核心；60s 中文 + 5-6 换气 + 断言 finalize ≥ 95% 输入
+2. **`backchannel-yield` 守卫单测** —— 批 F I1+I2 登记，`asr.ts:383-390` 守卫 + `AsrConfig.backchannelYield` 字段无自动化回归门
+3. **`preview-error-classify` 单测** —— 批 I M3 登记，`classifyPreviewError` 正则分类器（network/engine/text）无 snapshot 测试
+4. **`yieldMs` wiring 端到端** —— 批 G M4 登记，9 处对称修改无捕获自动化测试覆盖 runtime 路径
+
+### 6 Open Questions（plan §12.6 决策表登记，全部已决定并落地）
+
+| 决策项 | 推荐方案（已落地） | 备选 |
+|---|---|---|
+| B2 markStale 命名 | `markStale()`（仅清缓存键 + 不主动 dispose） | invalidateRecognizerCache / clearBuildCache |
+| B5 silenceMs 默认 | **不改**（1500ms 守恒） | 改 2000/2500ms |
+| C UI 标签短期方案 | FIELD_LABELS + strings.ts 双补（**双轨漂移已知风险，留整合批统一收敛**） | 单 FIELD_LABELS |
+| F spokenFormat 处置 | 仅注释修正（不删 schema） | schema 删 spokenFormat |
+| J 默认空闲 10→5min + 30s 预警 | 推 5min + 30s 预警（批 G 实现） | 仅加 30s 预警 |
+| J rate 1.0→1.1 | 改（批 J 实现） | 保持 1.0 |
+
+**已知未决定 Open Questions**（来自批 F/L 后续登记，不在 §12.6 内）：zh settingsEffectiveNote 段 2 用户文案歧义 / 覆盖率统计 53%+10%+8%+4% = 75% ≠ 100% / 「31 commits」vs「31 项修复」口径区分。
