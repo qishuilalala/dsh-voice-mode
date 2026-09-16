@@ -1590,6 +1590,8 @@ export function MicButton({
           mode: cfg.mode,
           wakeWord: cfg.wakeWord,
           echoGateDb: cfg.echoGateDb,
+          // 批 7N（ADR-0006）：打断方式透传——manual 时 handleAudio 仅在 holdActive 期间入流。
+          bargeInMode: cfg.bargeInMode,
           echo: bus.echoForAsr(),
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
           isPlaying: () => bus.ui.playing || Date.now() < bus.playingTailUntil(),

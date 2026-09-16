@@ -401,7 +401,7 @@ function rmsOf(samples) {
   return Math.sqrt(sum / samples.length);
 }
 function createAsrRuntime(options) {
-  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, senseITN, allowCustomHost } = options;
+  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, senseITN, allowCustomHost, bargeInMode } = options;
   let lastProgress = null;
   const localBroadcast = (event, payload) => {
     if (event === "asr-progress") lastProgress = payload;
@@ -602,7 +602,10 @@ function createAsrRuntime(options) {
       return null;
     }
   };
-  const feed = async (sessionId, samples, final, offset = 0, epoch = 0) => {
+  const feed = async (sessionId, samples, final, offset = 0, epoch = 0, manualPressed = false) => {
+    if (bargeInMode() === "manual" && !manualPressed) {
+      return { text: "" };
+    }
     const rec = await getRecognizer();
     if (!rec) return { text: "", loading: true };
     if (!final && senseVoice()) {
@@ -991,7 +994,7 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
       });
       return;
     }
-    void asr.feed(sessionId, samples, final, offset, epoch).then((out) => {
+    void asr.feed(sessionId, samples, final, offset, epoch, url.searchParams.get("manual") === "1").then((out) => {
       if (out.loading) {
         respondJson(res, 202, { loading: true });
         return;
@@ -2077,7 +2080,9 @@ function apply(ctx, config) {
     // 批 2：SenseVoice ITN 实时读取；变更触发 worker 重建。
     senseITN: () => vset.senseITN,
     allowCustomHost: config.allowCustomModelHost,
-    broadcast
+    broadcast,
+    // 批 7N（ADR-0006）：打断方式 getter（实时读设置）；manual 模式下 feed 需 manualPressed=true。
+    bargeInMode: () => vset.bargeInMode
   });
   ctx.effect(() => () => asr.dispose());
   void asr.warmup();

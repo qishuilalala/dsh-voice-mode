@@ -444,7 +444,10 @@ function createAsrEngine(config, sessionId) {
   let detectSent = 0;
   let detectInFlight = false;
   let detectGeneration = 0;
-  const asrUrl = (final, offset, epoch) => `${location.origin}${config.basePath.replace(/\/+$/, "")}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` + (offset !== void 0 ? `&offset=${offset}` : "") + (epoch !== void 0 ? `&epoch=${epoch}` : "");
+  const asrUrl = (final, offset, epoch) => `${location.origin}${config.basePath.replace(/\/+$/, "")}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` + (offset !== void 0 ? `&offset=${offset}` : "") + (epoch !== void 0 ? `&epoch=${epoch}` : "") + // 批 7N（ADR-0006）：manual 模式下上传带 &manual=1，host 服务端据此放行（防御性守卫）。
+  // handleAudio 入口已先在 manual + !holdActive 时 early return，所以能到这儿的帧必然
+  // holdActive=true；带 manual=1 仅是冗余信号（host 拿不到 holdActive 状态）。
+  (config.bargeInMode === "manual" ? "&manual=1" : "");
   const setState = (s) => {
     state = s;
     for (const fn of stateListeners) {
@@ -725,6 +728,7 @@ function createAsrEngine(config, sessionId) {
   let echoPeak = 0;
   const handleAudio = (raw) => {
     if (!active || inFlush) return;
+    if (config.bargeInMode === "manual" && !holdActive) return;
     let data = ctxRate !== SAMPLE_RATE2 ? resampleLinear(raw, ctxRate, SAMPLE_RATE2) : raw;
     const recMicPre = data;
     let recRef = null;
@@ -2703,7 +2707,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "6bed6d4";
+var BUILD_TAG = "735e997";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -3789,6 +3793,8 @@ function MicButton({
           mode: cfg.mode,
           wakeWord: cfg.wakeWord,
           echoGateDb: cfg.echoGateDb,
+          // 批 7N（ADR-0006）：打断方式透传——manual 时 handleAudio 仅在 holdActive 期间入流。
+          bargeInMode: cfg.bargeInMode,
           echo: bus.echoForAsr(),
           // 回声尾音宽限：playing 或尾音窗口内均视为朗读中，防句播完瞬间的残响漏入 ASR。
           isPlaying: () => bus.ui.playing || Date.now() < bus.playingTailUntil(),

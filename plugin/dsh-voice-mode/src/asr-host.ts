@@ -87,6 +87,10 @@ export interface AsrRuntimeOptions {
   allowCustomHost: boolean
   /** 状态广播（SSE）：{kind:'asr-progress'|'asr-ready', ...} */
   broadcast: (event: string, payload: unknown) => void
+  /** 批 7N（ADR-0006）：打断方式（getter 实时读设置）。manual 模式下需 manualPressed=true
+   *  才允许 feed 进入 ASR 流；auto 模式忽略 manualPressed。外放自打断根治：
+   *  manual = 用户按住 mic/Ctrl 才视为在说话。 */
+  bargeInMode: () => 'auto' | 'manual'
 }
 
 export interface AsrRuntime {
@@ -94,6 +98,8 @@ export interface AsrRuntime {
    * 处理一段 PCM：final=false 返回 partial；final=true 返回定稿并销毁该段流。
    * offset：本包在段内的绝对样本起始索引（P1-4 增量上行；缺省 0 = 全量上传，
    * 与旧客户端兼容——host 始终只喂 [offset, offset+len) 中尚未喂过的部分）。
+   * manualPressed（批 7N/ADR-0006）：manual 模式下必须为 true 才入流；
+   * auto 模式忽略。未传视为 false（默认 deny，manual 模式默认拒收）。
    */
   feed(
     sessionId: string,
@@ -102,6 +108,8 @@ export interface AsrRuntime {
     offset?: number,
     /** 客户端段身份（epoch = segmentEpoch 快照；旧世代请求被忽略/清理）。 */
     epoch?: number,
+    /** 批 7N：manual 模式下用户是否按住 mic/Ctrl。auto 模式忽略。 */
+    manualPressed?: boolean,
   ): Promise<{ text: string; loading?: boolean; endpoint?: boolean; isSpeech?: boolean }>
   /** 播放期打断检测通道（vadOnly）：AI 朗读中客户端常规 partial 断流，
    *  此方法只喂独立检测 VAD（不进 ASR 流、不碰端点 VAD），返回帧级 isSpeech。 */
@@ -191,7 +199,7 @@ export function rmsOf(samples: Float32Array): number {
 }
 
 export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
-  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, senseITN, allowCustomHost } = options
+  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, senseITN, allowCustomHost, bargeInMode } = options
   /** 设置面板实时进度：记录最近一次 asr-progress（含 VAD/SenseVoice 下载）。 */
   let lastProgress: { file: string; percent: number } | null = null
   const localBroadcast = (event: string, payload: unknown): void => {
@@ -457,7 +465,15 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     final: boolean,
     offset = 0,
     epoch = 0,
+    manualPressed = false,
   ): Promise<{ text: string; loading?: boolean; endpoint?: boolean; isSpeech?: boolean }> => {
+    // 批 7N（ADR-0006）：manual 模式下用户必须按住 mic/Ctrl 才允许 feed 入流。
+    // 外放回声不会触发 VAD 自动打断，但常规 ASR 仍会拾取回声入段——所以 manual 模式
+    // 默认拒绝未按住帧（防御性服务端守卫；客户端 asr.ts:handleAudio 已先做同样守卫）。
+    // auto 模式不限制（保持原行为不变；不变量 I2 不动）。
+    if (bargeInMode() === 'manual' && !manualPressed) {
+      return { text: '' }
+    }
     const rec = await getRecognizer()
     if (!rec) return { text: '', loading: true }
     // 预热 SenseVoice recognizer：说话早期即并行创建（228MB 加载 2-5s 阻塞事件循环，
@@ -948,7 +964,7 @@ export function handleAsrRequest(
       return
     }
     void asr
-      .feed(sessionId, samples, final, offset, epoch)
+      .feed(sessionId, samples, final, offset, epoch, url.searchParams.get('manual') === '1')
       .then((out) => {
         if (out.loading) {
           respondJson(res, 202, { loading: true })

@@ -468,6 +468,8 @@ export function apply(ctx: Context, config: Config): void {
     senseITN: () => vset.senseITN,
     allowCustomHost: config.allowCustomModelHost,
     broadcast,
+    // 批 7N（ADR-0006）：打断方式 getter（实时读设置）；manual 模式下 feed 需 manualPressed=true。
+    bargeInMode: () => vset.bargeInMode,
   })
   // 卸载/热重载时释放 ASR runtime（清段 + 定时器，防悬挂）。
   ctx.effect(() => () => asr.dispose())

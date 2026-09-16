@@ -107,6 +107,9 @@ export interface AsrConfig {
   backchannelYield?: boolean
   /** 唤醒词（空 = 关）：进入后先在 wake 待机态，说出唤醒词才正式开口。 */
   wakeWord?: string
+  /** 批 7N（ADR-0006）：打断方式。manual = 仅在 holdActive 期间才处理音频（外放不自打断）。
+   *  缺省视为 'auto'——保持原行为不变（向后兼容，未传此字段的旧调用方不被影响）。 */
+  bargeInMode?: 'auto' | 'manual'
 }
 
 export interface SegmentMeta {
@@ -241,7 +244,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   const asrUrl = (final: boolean, offset?: number, epoch?: number): string =>
     `${location.origin}${config.basePath.replace(/\/+$/, '')}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` +
     (offset !== undefined ? `&offset=${offset}` : '') +
-    (epoch !== undefined ? `&epoch=${epoch}` : '')
+    (epoch !== undefined ? `&epoch=${epoch}` : '') +
+    // 批 7N（ADR-0006）：manual 模式下上传带 &manual=1，host 服务端据此放行（防御性守卫）。
+    // handleAudio 入口已先在 manual + !holdActive 时 early return，所以能到这儿的帧必然
+    // holdActive=true；带 manual=1 仅是冗余信号（host 拿不到 holdActive 状态）。
+    (config.bargeInMode === 'manual' ? '&manual=1' : '')
 
   const setState = (s: AsrState): void => {
     state = s
@@ -605,6 +612,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
 
   const handleAudio = (raw: Float32Array): void => {
     if (!active || inFlush) return
+    // 批 7N（ADR-0006）：manual 模式仅在 holdActive（按住 mic / Ctrl）期间才处理音频。
+    // 外放不自打断根治：非按压期间麦克风持续拾取会进段、partial 会拾取环境音+回声，
+    // 既污染识别结果又触发自打断错觉；manual 直接丢弃非按压帧。
+    // auto 模式不限制（保持原行为；不变量 I2 不动——打断仍按 VAD 走）。
+    if (config.bargeInMode === 'manual' && !holdActive) return
     // 跨平台守卫：Safari 等浏览器会忽略 AudioContext({sampleRate}) 选项，
     // 实际按 44.1k/48k 输出。非 16k 时先线性重采样，保证 host zipformer2
     // 始终收到 16k PCM（避免识别错乱）。
