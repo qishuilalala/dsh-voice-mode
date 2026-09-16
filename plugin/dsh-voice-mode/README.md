@@ -44,7 +44,7 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
   - `hold` 按住说话：短按进入/退出，**按住麦克风按钮说话、松手即发**（滑出取消、`Esc`/失焦放弃本段）；按住期间停顿不断句（上限 10 分钟）；`Ctrl` 按住即录、松开即发
 - **唤醒词（可选，默认关）**：设置 `wakeWord` 后进入待机态，说出唤醒词才开始识别（如「你好小D」）
 - **识别热词偏置**（批 1）：设置 `asrHotwords`（每行一词或「词:分数」如 `dsh-voice-mode:2.5`）+ `asrHotwordsScore`（基准偏置分，默认 1.5 = sherpa-onnx 官方一致）显著提升专有名词识别准确率；空 = 关闭（I10 默认行为零变化）；变更触发 recognizer 重建
-- **多语种 + ITN**（批 2）：`recognitionLanguage` = auto/zh/en/ja/ko/yue 五语种（切换终止并重建 worker 线程）；`senseITN` 默认开（数字/日期/货币规范化），关掉保留原文
+- **多语种 + ITN**（批 2）：`recognitionLanguage` = auto/zh/en/ja/ko/yue 六语种（切换终止并重建 worker 线程）；`senseITN` 默认开（数字/日期/货币规范化），关掉保留原文
 - **字幕档位**（批 3）：`captionFontSize` 4 档（0=12px / 1=14px / 2=18px / 3=24px）+ `captionMaxWidth` 3 档（0=50vw / 1=70vw / 2=90vw），窄屏自适应
 - **让位语义**（批 5 / ADR-0008）：`backchannelYield` 默认开（I10 豁免）—— 朗读期用户插话「嗯/对」自动让位 1.5s，真要说走硬打断；让 LLM 主动让出话轮（人格层让位）；关掉恢复改造前行为
 - **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式朗读（默认 Edge 云端；可切本地 VITS/Kokoro，中英混读选 Kokoro）+ 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录；口语化提示词（设置 `spokenFormat`，默认开）让回复为自然短句、不带 Markdown 排版符号
