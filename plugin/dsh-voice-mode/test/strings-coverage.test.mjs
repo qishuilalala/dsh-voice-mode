@@ -4,7 +4,7 @@
  *
  * 背景：settings-form.tsx 的字段行用 `<Row name="..." desc={tr('descXxx')}>` 与
  * 子控件 `<input ... field="..." />`；行标题来自 `FIELD_LABELS[name] ?? name`——
- * 若字段未在 FIELD_LABELS 登记，用户看到的行标题就是英文 key（asrHotwords 等），
+ * 若字段未在 FIELD_LABELS 登记，用户看到的行标题就是英文 key（senseITN 等），
  * 体验坏。settings.ts 同时通过 tr() 取 desc 文案，若 desc 键缺失，运行时会拿到
  * 'undefined'，体验同样坏。
  *
@@ -20,7 +20,7 @@
  *     描述都有中文）。
  *  3) settings-form.tsx 所有 Row name → 必须在 strings.ts zh 段出现为「字段名本身」
  *     或「字段名 + Label 后缀」（让整合批改用 tr() 时能直接命中）。
- *  4) 批 C 专项：7 新字段（
+ *  4) 批 C 专项：4 新字段（
  *     senseITN/captionFontSize/captionMaxWidth/backchannelYield）必须在
  *     FIELD_LABELS + strings.ts zh *Label 键 双侧都登记。
  *  5) 反向红：删任意一项（FIELD_LABELS 行 / zh *Label 键 / zh desc 键）即失败。
@@ -251,18 +251,18 @@ console.log('settings-form.tsx Row name → strings.ts zh 段映射（双轨入�
 
 t('所有 Row name 字段在 strings.ts zh 段都有对应 Label 键（直接命名或 Label 后缀）', () => {
   // 双轨：字段名在 zh 中以两种合法形式出现——
-  //   ① 字段名本身（如 asrHotwords 已存在 '识别热词'）；
-  //   ② 字段名 + Label 后缀（如 asrHotwordsLabel = '热词'）。
+  //   ① 字段名本身（如 senseITN 已存在 '逆文本归一化'）；
+  //   ② 字段名 + Label 后缀（如 senseITNLabel = '逆文本归一化'）。
   // 满足任一即 PASS。
   //
-  // 注：本断言是「整合批完成态」的目标契约。当前阶段（批 C）只保证 7 新字段有
-  // Label 键；其余 18 字段暂以「直接命名」形式覆盖（部分尚未覆盖；详见下方
-  // 「批 C 7 新字段专项」段更严格的断言）。
+  // 注：本断言是「整合批完成态」的目标契约。当前阶段（批 C）只保证 4 新字段有
+  // Label 键；其余字段暂以「直接命名」形式覆盖（部分尚未覆盖；详见下方
+  // 「批 C 4 新字段专项」段更严格的断言）。
   const missing = [...rowNames].filter((k) => !zhKeys.has(k) && !zhKeys.has(k + 'Label'))
-  // 容许：18 原有字段中缺 zh 直接命名或 Label 的子集（迁移期容差）。
-  // 批 C 红线只盯 7 新字段——专项段会逐项强校验。
+  // 容许：原有字段中缺 zh 直接命名或 Label 的子集（迁移期容差）。
+  // 批 C 红线只盯 4 新字段——专项段会逐项强校验。
   const newFieldMissing = missing.filter((k) => NEW_FIELDS.includes(k))
-  assert.deepEqual(newFieldMissing, [], `7 新字段缺 Label 映射：${newFieldMissing.join(', ')}`)
+  assert.deepEqual(newFieldMissing, [], `4 新字段缺 Label 映射：${newFieldMissing.join(', ')}`)
   if (missing.length > 0) {
     console.log(`  ℹ️  整合批迁移期内未覆盖字段（暂不阻塞）：${missing.join(', ')}`)
   }
@@ -278,7 +278,7 @@ for (const field of NEW_FIELDS) {
     assert.ok(zhKeys.has(field + 'Label'), `strings.ts zh 段缺 ${field}Label`)
   })
   t(`settings-form.tsx 引用了 ${field}（${rowNames.has(field) || fieldRefs.has(field) ? 'PASS' : 'RED'}）`, () => {
-    // 反向红线：确保 7 新字段真的在 settings-form.tsx 被引用，避免「配了 Label
+    // 反向红线：确保 4 新字段真的在 settings-form.tsx 被引用，避免「配了 Label
     // 但 UI 没用到」的僵尸键；同时防有人误删 Row/field 行后本测试失盲。
     assert.ok(rowNames.has(field) || fieldRefs.has(field), `settings-form.tsx 未引用 ${field}`)
   })
@@ -361,11 +361,11 @@ t('referencedFields ⊆ FIELD_LABELS ⊆ zh*Label ∪ zh（双轨闭包检查）
   // 端到端闭包：UI 引用 → FIELD_LABELS → strings.ts zh（双轨之一）。
   const missingInFieldLabels = [...referencedFields].filter((k) => !fieldLabelsKeys.has(k))
   assert.deepEqual(missingInFieldLabels, [], `FIELD_LABELS 漏：${missingInFieldLabels.join(', ')}`)
-  // zh 段覆盖检查只盯 7 新字段（其余 18 字段属迁移期遗留，详见上方容差说明）。
+  // zh 段覆盖检查只盯 4 新字段（其余字段属迁移期遗留，详见上方容差说明）。
   const newFieldMissingInZh = [...referencedFields]
     .filter((k) => NEW_FIELDS.includes(k))
     .filter((k) => !zhKeys.has(k) && !zhKeys.has(k + 'Label'))
-  assert.deepEqual(newFieldMissingInZh, [], `7 新字段 zh 漏：${newFieldMissingInZh.join(', ')}`)
+  assert.deepEqual(newFieldMissingInZh, [], `4 新字段 zh 漏：${newFieldMissingInZh.join(', ')}`)
 })
 
 console.log(`\nstrings-coverage：${passed} 项通过`)
