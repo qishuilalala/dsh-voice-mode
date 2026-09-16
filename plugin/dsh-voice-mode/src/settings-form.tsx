@@ -1303,7 +1303,7 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             <Row name="senseVoice" desc={tr('descSenseVoice')}>
               <input type="checkbox" checked={Boolean(value.senseVoice)} onChange={(e) => void scope.set('senseVoice', e.target.checked)} />
             </Row>
-            <Row name="asrHotwords" desc={tr('descAsrHotwords')}>
+            <Row name="asrHotwords" desc={tr('descAsrHotwords') + '\n' + tr('descAsrHotwordsModelLimit')}>
               <AsrHotwordsTextarea
                 score={scope}
                 value={typeof value.asrHotwords === 'string' ? value.asrHotwords : ''}

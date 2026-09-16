@@ -1347,9 +1347,10 @@ var zh = {
   descSenseVoice: "\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9 + \u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09",
   descToolBeep: '\u5DE5\u5177\u8C03\u7528\u63D0\u793A\u97F3\uFF08\u9ED8\u8BA4\u5173\uFF09\uFF1AAI \u601D\u8003/\u8C03\u7528\u5DE5\u5177\u65F6"\u6EF4"\u4E00\u58F0\uFF1B\u5ACC\u5435\u5C31\u4FDD\u6301\u5173\u95ED',
   asrHotwords: "\u8BC6\u522B\u70ED\u8BCD",
-  descAsrHotwords: "\u6BCF\u884C\u4E00\u4E2A\u8BCD\u6216\u300C\u8BCD:\u5206\u6570\u300D\uFF08\u5982 dsh-voice-mode:2.5\uFF09\uFF1B\u7559\u7A7A\u5173\u95ED\uFF08\u9ED8\u8BA4 = \u884C\u4E3A\u96F6\u53D8\u5316\uFF09\u3002\u5F00\u542F\u540E\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u751F\u6548",
+  descAsrHotwords: "\u6BCF\u884C\u4E00\u4E2A\u8BCD\u6216\u300C\u8BCD:\u5206\u6570\u300D\uFF08\u5982 \u5C0F\u7231\u540C\u5B66:2.5\uFF09\uFF1B\u7559\u7A7A\u5173\u95ED\uFF08\u9ED8\u8BA4 = \u884C\u4E3A\u96F6\u53D8\u5316\uFF09\u3002\u5F00\u542F\u540E\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u751F\u6548",
+  descAsrHotwordsModelLimit: "\u5F53\u524D ASR \u6A21\u578B\uFF08zipformer-zh-int8\uFF09\u4EC5\u652F\u6301\u4E2D\u6587\u70ED\u8BCD\uFF0C\u82F1\u6587/\u62C9\u4E01\u8BCD\u6761\u4F1A\u88AB sherpa \u9759\u9ED8\u8DF3\u8FC7",
   descAsrHotwordsScore: "\u70ED\u8BCD\u57FA\u51C6\u504F\u7F6E\u5206\uFF081.5 \u9ED8\u8BA4\uFF0C\u4E0E sherpa-onnx \u5B98\u65B9\u4E00\u81F4\uFF1B\u8D8A\u5927\u8D8A\u5F3A\uFF0C\u8FC7\u5927\u53EF\u80FD\u4F24\u666E\u901A\u8BC6\u522B\uFF09",
-  asrHotwordsPlaceholder: "dsh-voice-mode\nsherpa-onnx\n\u5C0F\u7231\u540C\u5B66:2.0",
+  asrHotwordsPlaceholder: "\u5C0F\u7231\u540C\u5B66\n\u667A\u80FD\u52A9\u624B\nDSH \u52A9\u624B",
   asrHotwordsInvalid: "\u7B2C {line} \u884C\u683C\u5F0F\u9519\u8BEF\uFF0C\u5E94\u4E3A\u300C\u8BCD\u300D\u6216\u300C\u8BCD:\u5206\u6570\u300D",
   descRecognitionLanguage: "SenseVoice \u8BC6\u522B\u8BED\u79CD\uFF08\u9ED8\u8BA4 auto \u81EA\u52A8\u68C0\u6D4B\uFF1B\u9501\u8BED\u79CD\u540E\u53EA\u8BC6\u522B\u8BE5\u8BED\u79CD\uFF1B\u6DF7\u5408\u573A\u666F\u4FDD\u6301 auto\uFF1B\u5207\u6362\u4F1A\u91CD\u5EFA worker \u7EBF\u7A0B\uFF09",
   senseITN: "\u9006\u6587\u672C\u5F52\u4E00\u5316",
@@ -1529,9 +1530,10 @@ var en = {
   descSenseVoice: "Re-transcribe the finalized utterance with SenseVoice (punctuation + ITN, more accurate; default on \u2014 turn off to skip the 228 MB model and keep streaming only)",
   descToolBeep: "Tool-call beep (default off): beep when the agent is thinking/calling tools; keep off if it annoys you",
   asrHotwords: "ASR hotwords",
-  descAsrHotwords: 'One term per line, or "term:score" (e.g. dsh-voice-mode:2.5). Leave empty to disable (default = no behavioural change). Takes effect next time you enter voice mode.',
+  descAsrHotwords: 'One term per line, or "term:score" (e.g. Xiao Ai:2.5). Leave empty to disable (default = no behavioural change). Takes effect next time you enter voice mode.',
+  descAsrHotwordsModelLimit: "Current ASR model (zipformer-zh-int8) only supports Chinese hotwords; English/Latin terms are silently skipped by sherpa",
   descAsrHotwordsScore: "Hotword baseline bias (default 1.5, matches sherpa-onnx upstream). Higher = stronger bias but may hurt generic recognition.",
-  asrHotwordsPlaceholder: "dsh-voice-mode\nsherpa-onnx\nxiaomi:2.0",
+  asrHotwordsPlaceholder: "Xiao Ai\nSmart Assistant\nDSH Helper\n(Chinese preferred)",
   asrHotwordsInvalid: 'Line {line} format error: should be "term" or "term:score"',
   descRecognitionLanguage: "SenseVoice language (default auto; lock to zh/en/ja/ko/yue for single-language; mixed scenarios keep auto; switching rebuilds the worker thread)",
   senseITN: "Inverse text normalization",
@@ -2774,7 +2776,7 @@ function VoiceSettingsCard({ scope }) {
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRecognition"), children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "asrHotwords", desc: t("descAsrHotwords"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "asrHotwords", desc: t("descAsrHotwords") + "\n" + t("descAsrHotwordsModelLimit"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           AsrHotwordsTextarea,
           {
             score: scope,
@@ -2820,7 +2822,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "0b69c38";
+var BUILD_TAG = "1b1869f";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
