@@ -120,7 +120,6 @@ const runtime = createAsrRuntime({
   silenceMs: () => 1500,
   hotwordsBuf: () => '',
   hotwordsScore: () => 1.5,
-  recognitionLanguage: () => 'auto',
   senseITN: () => true,
   allowCustomHost: false,
   broadcast: () => {},

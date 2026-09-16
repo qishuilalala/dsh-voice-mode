@@ -76,7 +76,6 @@ const FIELD_LABELS: Record<string, string> = {
   // 批 C 新增（覆盖批 1-5 新增 UI 字段；详见文件头注释）
   asrHotwords: '热词',
   asrHotwordsScore: '热词偏置分',
-  recognitionLanguage: '识别语种',
   senseITN: '逆文本归一化',
   captionFontSize: '字幕字号',
   captionMaxWidth: '字幕宽度',
@@ -229,15 +228,6 @@ const ENGINE_DEFAULT_VOICE: Record<string, string> = {
 const HOST_OPTIONS: Array<{ v: string; label: string }> = [
   { v: 'https://huggingface.co', label: '官方源 huggingface.co' },
   { v: 'https://hf-mirror.com', label: '国内镜像 hf-mirror.com' },
-]
-
-const LANG_OPTIONS: Array<{ v: string; label: string }> = [
-  { v: 'auto', label: 'auto 自动检测' },
-  { v: 'zh', label: '中文 zh' },
-  { v: 'en', label: '英文 en' },
-  { v: 'ja', label: '日文 ja' },
-  { v: 'ko', label: '韩文 ko' },
-  { v: 'yue', label: '粤语 yue' },
 ]
 
 /** 批 G 任务 1：NumberField 加红框校验 + clamp 提示。
@@ -1311,14 +1301,6 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
             </Row>
             <Row name="asrHotwordsScore" desc={tr('descAsrHotwordsScore')}>
               <NumberField score={scope} field="asrHotwordsScore" value={value.asrHotwordsScore ?? 1.5} min={1} max={5} step={0.1} />
-            </Row>
-            <Row name="recognitionLanguage" desc={tr('descRecognitionLanguage')}>
-              <SelectField
-                score={scope}
-                field="recognitionLanguage"
-                value={value.recognitionLanguage ?? 'auto'}
-                options={LANG_OPTIONS}
-              />
             </Row>
             <Row name="senseITN" desc={tr('descSenseITN')}>
               <input type="checkbox" checked={value.senseITN !== false} onChange={(e) => void scope.set('senseITN', e.target.checked)} />

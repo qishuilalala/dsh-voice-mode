@@ -20,7 +20,7 @@
  *     描述都有中文）。
  *  3) settings-form.tsx 所有 Row name → 必须在 strings.ts zh 段出现为「字段名本身」
  *     或「字段名 + Label 后缀」（让整合批改用 tr() 时能直接命中）。
- *  4) 批 C 专项：7 新字段（asrHotwords/asrHotwordsScore/recognitionLanguage/
+ *  4) 批 C 专项：7 新字段（asrHotwords/asrHotwordsScore/
  *     senseITN/captionFontSize/captionMaxWidth/backchannelYield）必须在
  *     FIELD_LABELS + strings.ts zh *Label 键 双侧都登记。
  *  5) 反向红：删任意一项（FIELD_LABELS 行 / zh *Label 键 / zh desc 键）即失败。
@@ -222,7 +222,6 @@ const referencedFields = new Set([...rowNames, ...fieldRefs])
 const NEW_FIELDS = [
   'asrHotwords',
   'asrHotwordsScore',
-  'recognitionLanguage',
   'senseITN',
   'captionFontSize',
   'captionMaxWidth',
@@ -289,8 +288,8 @@ for (const field of NEW_FIELDS) {
 
 console.log('反向断言契约（防删测试）')
 
-t('FIELD_LABELS 含 26 字段（18 原有 + 7 批 C + 1 批 G 任务 3 yieldMs；新增即扩，无意删除即红）', () => {
-  assert.equal(fieldLabelsKeys.size, 26, `FIELD_LABELS 现 ${fieldLabelsKeys.size} 字段，预期 26`)
+t('FIELD_LABELS 含 25 字段（18 原有 + 6 批 C + 1 批 G 任务 3 yieldMs；新增即扩，无意删除即红）', () => {
+  assert.equal(fieldLabelsKeys.size, 25, `FIELD_LABELS 现 ${fieldLabelsKeys.size} 字段，预期 25`)
 })
 
 console.log('字符串覆盖核心键校验（替代仅总数断言；批 G 验收 B4 升级）')

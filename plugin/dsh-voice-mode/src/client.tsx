@@ -585,7 +585,6 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
     asrHotwords: '',
     asrHotwordsScore: 1.5,
-    recognitionLanguage: 'auto',
     senseITN: true,
     senseVoice: true,
   }
@@ -1191,8 +1190,6 @@ interface VoiceBootConfig {
   asrHotwords: string
   /** 批 B：热词权重提升（1-5，默认 1.5）。 */
   asrHotwordsScore: number
-  /** 批 B：识别语种（auto 自动 / zh 中文 / en 英文 / ja 日文 / ko 韩文 / yue 粤语）。 */
-  recognitionLanguage: 'auto' | 'zh' | 'en' | 'ja' | 'ko' | 'yue'
   /** 批 B：ITN（逆文本规范化：口语数字 → 书面数字；默认 true）。 */
   senseITN: boolean
   /** 批 B：SenseVoice 引擎开关（默认 true = 启用 SenseVoice 模型，否则回退 FunASR）。 */
@@ -1284,7 +1281,6 @@ export function MicButton({
       // 批 B：5 ASR 字段默认值，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
       asrHotwords: '',
       asrHotwordsScore: 1.5,
-      recognitionLanguage: 'auto',
       senseITN: true,
       senseVoice: true,
     }
@@ -1343,15 +1339,6 @@ export function MicButton({
           typeof c.asrHotwordsScore === 'number' && c.asrHotwordsScore >= 1 && c.asrHotwordsScore <= 5
             ? c.asrHotwordsScore
             : 1.5,
-        recognitionLanguage:
-          c.recognitionLanguage === 'zh' ||
-          c.recognitionLanguage === 'en' ||
-          c.recognitionLanguage === 'ja' ||
-          c.recognitionLanguage === 'ko' ||
-          c.recognitionLanguage === 'yue' ||
-          c.recognitionLanguage === 'auto'
-            ? c.recognitionLanguage
-            : 'auto',
         senseITN: c.senseITN === false ? false : true,
         senseVoice: c.senseVoice === false ? false : true,
       }

@@ -180,8 +180,6 @@ export interface VoiceSettingsValue {
   asrHotwords: string
   /** P0 热词基准偏置分（1.5 默认；越大越强，过大可能伤普通识别）。 */
   asrHotwordsScore: number
-  /** 批 2：SenseVoice 识别语言（auto=自动检测/zh/en/ja/ko/yue；mixed 用 auto）。 */
-  recognitionLanguage: 'auto' | 'zh' | 'en' | 'ja' | 'ko' | 'yue'
   /** 批 2：SenseVoice 逆文本归一化（数字/日期规范化，默认 true）。 */
   senseITN: boolean
   /** 批 3：字幕字号档位 0=小/1=标准/2=大/3=特大（默认 0 = 12px，I10 现状字节等价）。 */
@@ -218,7 +216,6 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   toolBeep: false,
   asrHotwords: '',
   asrHotwordsScore: 1.5,
-  recognitionLanguage: 'auto',
   senseITN: true,
   // 批 3：captionFontSize 默认 0（12px），与现状 client.tsx 外层 fontSize:12 视觉零变化；
   //   captionMaxWidth 默认 1（70vw）：视口 <686px 时窄于现状 480px；≈686px 时接近；>686px 时宽于 480px（取舍见 schema description）。
@@ -307,19 +304,6 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .max(5)
       .default(d.asrHotwordsScore)
       .description('热词基准偏置分（1.5 默认，与 sherpa-onnx 官方一致；越大越强，过大可能伤普通识别）'),
-    recognitionLanguage: z
-      .union([
-        z.const('auto'),
-        z.const('zh'),
-        z.const('en'),
-        z.const('ja'),
-        z.const('ko'),
-        z.const('yue'),
-      ])
-      .default(d.recognitionLanguage)
-      .description(
-        'SenseVoice 识别语言（默认 auto 自动检测；锁 zh/en/ja/ko/yue 后只识别该语种；混合场景用 auto；切换会终止并重建 worker 线程，毫秒级生效）',
-      ),
     senseITN: z
       .boolean()
       .default(d.senseITN)
@@ -501,8 +485,7 @@ export function apply(ctx: Context, config: Config): void {
     // P0 热词（批 1）：实时读取；变更触发 recognizer 重建（key 指纹），空 = 关闭。
     hotwordsBuf: () => vset.asrHotwords,
     hotwordsScore: () => vset.asrHotwordsScore,
-    // 批 2：SenseVoice 语言/ITN 实时读取；变更触发 worker 重建。
-    recognitionLanguage: () => vset.recognitionLanguage,
+    // 批 2：SenseVoice ITN 实时读取；变更触发 worker 重建。
     senseITN: () => vset.senseITN,
     allowCustomHost: config.allowCustomModelHost,
     broadcast,
@@ -569,7 +552,6 @@ export function apply(ctx: Context, config: Config): void {
       if (
         next.asrHotwords !== prev.asrHotwords ||
         next.asrHotwordsScore !== prev.asrHotwordsScore ||
-        next.recognitionLanguage !== prev.recognitionLanguage ||
         next.senseITN !== prev.senseITN ||
         next.senseVoice !== prev.senseVoice
       ) {
@@ -688,7 +670,6 @@ export function apply(ctx: Context, config: Config): void {
             yieldMs: vset.yieldMs,
             asrHotwords: vset.asrHotwords,
             asrHotwordsScore: vset.asrHotwordsScore,
-            recognitionLanguage: vset.recognitionLanguage,
             senseITN: vset.senseITN,
             cacheDir: config.cacheDir,
             ttsEngine: currentEngine(),

@@ -86,8 +86,6 @@ export interface AsrRuntimeOptions {
   hotwordsBuf: () => string
   /** P0 热词基准偏置分（批 1）：getter 实时读设置。 */
   hotwordsScore: () => number
-  /** 批 2：识别语言（getter 实时读设置；auto/zh/en/ja/ko/yue；默认 auto = I10）。 */
-  recognitionLanguage: () => string
   /** 批 2：SenseVoice 逆文本归一化开关（getter 实时读设置；默认 true = I10）。 */
   senseITN: () => boolean
   /** 是否允许白名单之外的模型下载源（默认关；仅 https，供应链校验）。 */
@@ -198,7 +196,7 @@ export function rmsOf(samples: Float32Array): number {
 }
 
 export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
-  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, hotwordsBuf, hotwordsScore, recognitionLanguage, senseITN, allowCustomHost } = options
+  const { cacheDir, modelHost, broadcast, senseVoice, silenceMs, hotwordsBuf, hotwordsScore, senseITN, allowCustomHost } = options
   /** 设置面板实时进度：记录最近一次 asr-progress（含 VAD/SenseVoice 下载）。 */
   let lastProgress: { file: string; percent: number } | null = null
   const localBroadcast = (event: string, payload: unknown): void => {
@@ -403,7 +401,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   let senseWorkerLangKey = ''
   const getSenseWorker = async (): Promise<SenseWorkerClient | null> => {
     if (!senseVoice()) return null // P4：开关关闭 → 只用流式 zipformer
-    const langKey = buildSenseLangKey(recognitionLanguage(), senseITN())
+    const langKey = buildSenseLangKey('auto', senseITN())
     // 批 2：lang 变化 → 终止旧 worker（createSenseWorkerClient 已 reject pending，见 sense-worker.ts:135）
     if (senseWorker && langKey !== senseWorkerLangKey) {
       void senseWorker.terminate()
@@ -423,7 +421,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
           workerData: {
             sherpaModule: 'sherpa-onnx',
             modelDir: senseDir,
-            language: recognitionLanguage(),
+            language: 'auto',
             useITN: senseITN() ? 1 : 0,
           },
         })
