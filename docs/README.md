@@ -21,7 +21,7 @@
 | [findings/](findings/README.md) | 真机测量与发现（fixture verdict / 竞品 baseline / 多语 a11y） |
 | [plan/](plan/README.md) | 实施计划（11 批次周全修复 + 计划模板 + 执行/审查提示词） |
 | [qa/](qa/README.md) | 真机验收 / 体验流程（21 项验收 + 12 步用户旅程） |
-| [research/](research/README.md) | 调研资料（音频 / TTS 竞品 / UX/DX 深挖） |
+| ~~research/~~ | 调研资料（gitignored；本地参考，不入库） |
 | [rules/](rules/README.md) | 状态同步任务帐本（STATE.md + 重写式维护） |
 
 ## 按角色
