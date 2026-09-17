@@ -1,9 +1,9 @@
 # 必须人工复核最小清单
 
 > **定位**：AI 已自动验证 254 项 npm test（基线 → 245 项 after 批 7M 砍 hotwords + 批 7N 新增 3 项）+ tsc 0 错 + verify:dual 4 版（锚点/typecheck/host 3 端点/client mic/console）+ 不变量 I1-I10 + `/voice-mode/config` 4 字段全 non-null（senseITN/captionFontSize/captionMaxWidth/backchannelYield）。仅剩「AI 无法验证」项需人工。
-> **基线**：HEAD = `f883b35`（批 7N 🟡 重做 5/5 后）；**完整 3 项必过**精简自原 21 项（批 1 热词 / 批 2 锁语种已砍，详见 `real-machine-acceptance-checklist.md` 头部删项说明 + `docs/competitive/backlog.md`「批 7M 🔴 砍 + 批 7N 🟡 重做 完成状态」节）。
+> **基线**：HEAD = `f883b35`（批 7N 🟡 重做 5/5 后）；**完整 4 项必过**＝精简自原 21 项 + 批 7N 新增 manual 项（批 1 热词 / 批 2 锁语种已砍，详见 `real-machine-acceptance-checklist.md` 头部删项说明 + `docs/competitive/backlog.md`「批 7M 🔴 砍 + 批 7N 🟡 重做 完成状态」节）。
 > **纪律**：每项单点验证；失败即停发版，回滚对应 commit。
-> **批 7M 🔴 砍 + 批 7N 🟡 重做 落地注记（2026-09-16）**：4 项砍除（`recognitionLanguage` / `asrHotwords`+`asrHotwordsScore`+模块 / `docs/qa/user-experience-flow.md`）+ 5 项重做（`bargeInMode='manual'` 接通 / echoGateDb+autoResume 描述对齐 / 端到端补测 3 项 / ADR-0003+0004 重命名 / autoResume 文案统一）；本清单「3 项必过」已对齐砍后 src/ 现状。
+> **批 7M 🔴 砍 + 批 7N 🟡 重做 落地注记（2026-09-16）**：4 项砍除（`recognitionLanguage` / `asrHotwords`+`asrHotwordsScore`+模块 / `docs/qa/user-experience-flow.md`）+ 5 项重做（`bargeInMode='manual'` 接通 / echoGateDb+autoResume 描述对齐 / 端到端补测 3 项 / ADR-0003+0004 重命名 / autoResume 文案统一）；本清单「4 项必过」已对齐砍后 src/ 现状。
 
 ---
 
@@ -40,19 +40,20 @@
 
 ---
 
-## 真机验收 3 项必过（发版门禁）
+## 真机验收 4 项必过（发版门禁）
 
 | # | 项 | 操作 | 预期 |
 |---|---|---|---|
 | 1 | 批 3 字幕 | 切特大字号（24px）+ 宽（50vw）+ 中文长 URL | 字幕变大且自动换行 |
 | 2 | 批 5 让位 | AI 朗读中 + 用户说「嗯」 | AI 跳当前句 + 1.5s 静默 + 字幕丢 |
 | 3 | 60s 长段 | cold start + 60s 中文连续说（含自然换气 5-6 次） | final 完整 ≥ 95%，无卡顿 |
+| 4 | 批 7N manual 外放 | 设置切 `bargeInMode=manual` + 外放：AI 朗读全程不说话；再按住 mic 说话 | 全程不发生自打断；按住说话识别入草稿 |
 
 ---
 
 ## 时间预算
 
-- **3 项核心必过**：约 8 分钟
+- **4 项核心必过**：约 10 分钟（第 4 项 manual 外放验收预期 ~2 分钟）
 - **三类体验扩展**（听感 + 主观）：约 10 分钟
 - **总计**：≤ 20 分钟（vs 全量 21 项 30 分钟，去除 AI 可自动项后压缩）
 
