@@ -111,3 +111,7 @@
 
 - **4 缺口测试已全补**：`zh-60s.wav` fixture（批 7N `b0e45fe`）/ `backchannel-yield` 守卫（批 7N `ee4312b`）/ `yieldMs` wiring E2E（批 7N `58f6d77`）/ `preview-error-classify`（批 7O `cbcdd61`）+ `settings-load` zod strip（批 7O `390f292`）。
 - **Q1**：旧 settings 持久化文件含已砍键时 zod strip 行为——批 7O 已补 `test/settings-load.test.mjs` 自动化断言；生产环境亲跑仍待用户实测。
+- **P3 登记（批 7P，只登记不实现）**：
+  - host 侧 VAD 重放脚本（待真机 fixture；锚点 `src/asr-host.ts:116` detect 接口 / `scripts/analyze-fixture.mjs`）。
+  - ADR-0006 二级标定（待真机样本；`docs/findings/2026-09-14-fixture-verdict.md` 现仅单设备样本，需更多设备）。
+  - fixture-recorder 单测 vs 书面豁免二选一（C；锚点 `src/fixture-recorder.ts`）。
