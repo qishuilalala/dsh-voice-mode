@@ -32,7 +32,7 @@ node screenshots/scripts/capture.mjs --all      # 全部 12 张（待真机的�
 
 | ID | 截图前的人工操作 |
 |---|---|
-| S01 | 无需操作，脚本自动 `fetch /voice-mode/config` 校验 7 字段后截屏 |
+| S01 | 无需操作，脚本自动 `fetch /voice-mode/config` 校验 4 字段后截屏 |
 | S02 | 打开 dsh Web → 「设置」→ 滚到「语音模式 / Voice Mode」分组，让 7 项中文 Row 可见 |
 | S05 | 设置 →「字幕字号」选「特大（3）」→ 进入语音模式让浮层/字幕可见 |
 | S09 | 设置 →「朗读引擎」选「本地 Kokoro / VITS」→ 触发下载，**下载进行中**截屏 |

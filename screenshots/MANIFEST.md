@@ -4,6 +4,7 @@
 > 状态列说明：`模板 + 实测可跑` = 无需麦克风，可在 dsh Web 真机直接跑 `screenshots/scripts/capture.mjs` 实测落盘；`模板 + 待真机` = 需要麦克风/屏录等真实语音交互，脚本模板已就绪，待真机操作后补拍。
 > 截图文件命名：`S<ID>-<slug>.png`（slug 见 `capture.mjs` 内 SHOTS 定义），统一落在 `screenshots/` 下，不覆盖 `assets/` 现有 5 张 PNG。
 > 删项说明（S03 / S04 已砍）：原「热词即时生效」「锁 en 不抖回中文」两张截图对应的批 1 热词、批 2 锁 en 功能已在 🔴 砍 4 项审查（2026-09-16）中移除，截图与 S01 字段校验同步精简。
+> S01 重拍待办：`capture.mjs` file 名已改 `S01-install-config-4fields.png`，磁盘 PNG 仍为 `S01-install-config-7fields.png` 旧内容，**待重拍**（环境未就绪：playwright + chromium 未安装 + 运行中 dsh 服务仍返回已砍字段旧代码，需重启后重拍）。
 
 | ID | 标题 | 步骤 | 预期 | 工具 | 状态 |
 |---|---|---|---|---|---|

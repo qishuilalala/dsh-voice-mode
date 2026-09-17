@@ -50,7 +50,7 @@ const DSH_COOKIE = process.env.DSH_COOKIE || '';
 
 // 12 张截图定义（与 screenshots/MANIFEST.md、plan §2.2 一一对应）
 const SHOTS = [
-  { id: 'S01', file: 'S01-install-config-7fields.png',  status: 'ready',  desc: '安装成功 + /voice-mode/config 返回 4 字段' },
+  { id: 'S01', file: 'S01-install-config-4fields.png',  status: 'ready',  desc: '安装成功 + /voice-mode/config 返回 4 字段' },
   { id: 'S02', file: 'S02-settings-chinese-labels.png', status: 'ready',  desc: '设置面板中文标签（字幕字号/字幕宽度等新字段）' },
   { id: 'S03', file: 'S03-hotword-partial.png',         status: 'manual', desc: '热词即时生效：partial 显示 dsh-voice-mode（需麦克风）' },
   { id: 'S04', file: 'S04-language-lock-en.png',        status: 'manual', desc: '锁 en 不抖回中文：final 全英文（需麦克风）' },
