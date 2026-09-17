@@ -1,5 +1,7 @@
 # dsh-voice-mode 项目美化计划（2026-09-16）—— 6 角色协同
 
+> **⚠️ SUPERSEDED（2026-09-17，批 7P 登记）：本计划已过期——基线 HEAD、测试数（254→325）、 idle 默认（10→5）、bargeInMode 默认（auto→detect）等数字均已漂移，仅作历史存档；正文不动。现真值见 `docs/rules/STATE.md` 批 7O 行 + 根 `CONTEXT.md`。**
+
 > **范围**：本次美化仅触及文档/传播物料。**严禁改动** `plugin/dsh-voice-mode/src/` `plugin/dsh-voice-mode/lib/` `plugin/dsh-voice-mode/package.json` `plugin/dsh-voice-mode/tsconfig*.json` `plugin/dsh-voice-mode/test/` `plugin/dsh-voice-mode/scripts/` `plugin/dsh-voice-mode/build.mjs`。
 > **可改 / 可新增**：`README.md` `plugin/dsh-voice-mode/README.{md,en.md}` `CHANGELOG.md` `RELEASE-NOTES.md` `screenshots/` `demos/` `assets/`（仅新增） `blog/` `.github/` `docs/`（仅 README 索引与缺失子目录 README 补齐，不动现有 ADR/plan/qa/rules 内容）。
 > **基线**：HEAD = `b2fd752`（ahead origin/main = 0），main 已 push，254 项测试全绿，11 批次周全修复完成。
@@ -557,7 +559,7 @@ commit 3（角色 3 仓库美化）      ──┘
 - [ ] demos/RECORDING-SCRIPT.md 3 段脚本
 - [ ] `.github/SOCIAL-PREVIEW.txt` ASCII 草图
 - [ ] `docs/mkdocs.yml` 语法正确（不实际跑 build）
-- [ ] 254 项测试仍全绿（**不动 src/ 测试不受影响**）
+- [ ] 325 项测试仍全绿（**不动 src/ 测试不受影响**；原写 254 系当时 18 文件真值，现 25 文件/325 项）
 - [ ] 不打 release tag
 - [ ] **等用户明确说 push 再 push**
 

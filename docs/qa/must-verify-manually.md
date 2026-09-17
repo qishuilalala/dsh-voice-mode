@@ -63,5 +63,5 @@
 
 - 完整体验验收 → `real-machine-acceptance-checklist.md`（批 2/3/5 三阶段，批 7M 砍 4 项后精简）
 - 不变量定义 → `docs/rules/STATE.md` 与 `docs/adr/`
-- 基线 HEAD = `5e2d34f`（批 7O 代码块收口，src+lib 一致；`git rev-parse --short HEAD` 应 ≥ 5e2d34f——块 3 纯文档/资产 commit 前进不改代码态）
+- 基线 HEAD = `5e2d34f`（批 7O 代码块收口，src+lib 一致；`git diff 5e2d34f..HEAD -- src/ lib/` 应为空——后续 commit 与基线差集仅文档/资产，哈希不可比大小）
 - 批 7M + 批 7N 完成状态 → `docs/rules/STATE.md` 批次进度表 + `docs/competitive/backlog.md`「已落地对照区」节

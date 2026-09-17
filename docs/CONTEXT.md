@@ -24,12 +24,12 @@ bridge /voice-mode SSE：owner=sessionId，/config + /preview + assembleStream
 
 ## 设置键语义（I1-I10 摘要 + 关键字段）
 
-**不变量 I1-I10**（plan §0.4）：I1 finalize 幂等 / I2 打断计数仅播放期 / I3 播放门不得 return / I4 TTS 单 chunk+final 帧协议 / I5 epoch 守卫 / I6 client.inject 9 锚点取交集 / I7 cordis 按需 / I8 模型 SHA256 固定 / I9 零 API Key / I10 默认行为与现状字节等价（**批 5 `backchannelYield` 唯一豁免**）。
+**不变量 I1-I10**（plan §0.4）：I1 finalize 幂等 / I2 打断计数仅播放期 / I3 播放门不得 return / I4 TTS 单 chunk+final 帧协议 / I5 epoch 守卫 / I6 client.inject 9 锚点取交集 / I7 cordis 按需 / I8 模型 SHA256 固定 / I9 零 API Key / I10 默认行为与现状字节等价（**批 5 `backchannelYield` + 批 7O `bargeInMode` detect 两处豁免**）。
 
 | 键 | 类型 | 默认 | 含义 |
 |---|---|---|---|
 | `ttsEngine` / `kokoroModel` / `voice` | enum | `edge` / `int8` / 按引擎 | 引擎 + 精度 + 说话人（即时） |
-| `bargeInMode` / `echoGateDb` / `interruptLevel` | enum/num | `detect` / `6` / `0` | 打断模式三值 auto/manual/detect（批 7O 默认 detect 自动探测：原生 AEC 开→auto / 关→manual；批 7N 接通 manual 闸门）+ 门控 dB（批 7N 描述与真机限制对齐：AEC 生效时闲置）+ 确认帧 3/2/1 |
+| `bargeInMode` / `echoGateDb` / `interruptLevel` | enum/num | `detect` / `6` / `0` | 打断模式三值 auto/manual/detect（批 7O 默认 detect 自动探测：原生 AEC 开→auto / 关→manual；批 7N 接通 manual 闸门；I10 豁免，ADR-0006 已 accepted 拍板）+ 门控 dB（批 7N 描述与真机限制对齐：AEC 生效时闲置）+ 确认帧 3/2/1 |
 | `silenceMs` | number | `1500` | 端点 VAD minSilenceDuration（守恒） |
 | `senseITN` | boolean | `true` | **批 2** P0：逆文本归一化 |
 | `captionFontSize` | enum | `0` | **批 3** P0：0=12px/1=14px/2=18px/3=24px（0 与现状字节等价） |
@@ -44,7 +44,7 @@ bridge /voice-mode SSE：owner=sessionId，/config + /preview + assembleStream
   - `tts-local.ts`（本地 TTS + emotion 后处理）/ `tts-queue.ts`（队列/epoch）/ `aec.ts`（NLMS 兜底）
   - `emotion.ts`（批 4）/ `asr-sense-key.ts`（纯函数 sanitize/key；批 7M 砍除 `asr-hotwords.ts`）
   - `sense-worker.ts` / `wakeword.ts` / `segmenter.ts` / `fixture-recorder.ts` 等
-- **`plugin/dsh-voice-mode/lib/`** —— esbuild 产物（`build.mjs` 重建，**不手改**）
+- **`plugin/dsh-voice-mode/lib/`** —— esbuild 产物（`build.mjs` 重建，**不手改**；BUILD_TAG=`c9e9cc4`≠HEAD 但其后 src 零 diff，plugin 零 diff 免重建）
 - **`plugin/dsh-voice-mode/test/`** —— 30 个 `.mjs`（npm test 25 文件 / **325 项全绿**；批 7M 砍 `hotwords.test.mjs` + 批 7N 新增 3 文件 `barge-in-manual` / `yield-ms-wiring` / `matchBackchannel` + 批 7O 新增 5 文件 `settings-load` / `preview-error` / `hold-clear` / `barge-in-detect` / `wakeword`）
 - **`docs/competitive/sources/scan-*.md`** —— 18 份子代理扫描报告
 

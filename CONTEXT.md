@@ -47,14 +47,14 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 | ttsEngine | edge | 朗读引擎 edge / vits / kokoro（即时） |
 | kokoroModel | int8 | Kokoro 精度 int8（109MB，CPU）/ fp32（311MB，音质更好）；即时切换，两档共用 103 音色 |
 | voice | 按引擎 | VITS 说话人名 / Kokoro sid 或中文名 / Edge ShortName（即时） |
-| bargeInMode | auto | auto 自动打断 / manual 长按打断（外放推荐） |
+| bargeInMode | detect | detect 自动打断（批 7O 默认，src/index.ts:208 真源）/ manual 长按打断（外放推荐） |
 | echoGateDb | 6 | 打断要求 peak 高于 floor 此 dB；打不断降 3-4、噪音误打断升 8-10 |
 | interruptLevel | 0 | 确认帧数 3/2/1，越低越稳越慢 |
 | mode / silenceMs / shortcut / autoResume | toggle/1500/Ctrl+Shift+V/false | 交互/静音断句/快捷键/切回自动恢复 |
 | senseITN | true | 批 2 P0：SenseVoice 逆文本归一化（数字/日期规范化；默认开） |
 | captionFontSize | 0 | 批 3 P0：字幕字号档位 0=12px/1=14px/2=18px/3=24px（默认 0 与现状字节等价） |
 | captionMaxWidth | 1 | 批 3 P0：字幕宽度档位 0=50vw/1=70vw/2=90vw；视口 <686px 窄于 480px、≈686px 接近、>686px 宽于 480px |
-| backchannelYield | true | 批 5 P1：让位语义（ADR-0008）；朗读期说「嗯/对」自动让位 1.5s + 真要说走 hardBreak。I10 豁免（默认开是产品决策） |
+| backchannelYield | true | 批 5 P1：让位语义（ADR-0008）；朗读期说「嗯/对」自动让位 1.5s + 真要说走 hardBreak。I10 豁免（默认开是产品决策；体例同 bargeInMode 批 7O 豁免，R2 称半句已有） |
 
 ## 诊断
 

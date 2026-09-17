@@ -1,6 +1,6 @@
 # 真机验收清单（dsh-voice-mode 批 2/3/5 + 批 7 周全修复（10 批次 A-J））
 
-> **基准**：HEAD = `15be91a`，lib BUILD_TAG = `15be91a`（实证 `curl /voice-mode/config` 返回 4 个新字段非 null）。
+> **基准**：代码基线 = `5e2d34f`（批 7O 代码块收口，src+lib 一致；HEAD = `0b63a13`，`git diff 5e2d34f..HEAD -- src/ lib/` 为空即纯文档/资产差集）。
 > **范围**：5 审计轴（B1 UI Row 本地化 / B2 settings 即时生效 / B3 fetchConfig 白名单 / B4 break 静音错位 / B5 长段话丢失）+ 10 批次周全修复 31 个 commit（A-J 含 7 docs(state) 验收 + 6 docs/adr + 3 chore(lib)+release 收口）共 42 commits 的可重复真机验证步骤。
 > **目的**：每次发版前由用户亲跑 30 分钟闭环验证；所有失败项对应源码行号定位。
 > **纪律**：每步单点验证，不依赖其他步骤状态；预期/失败信号给到具体用户可识别现象。
@@ -27,8 +27,8 @@
 - **步骤**：
   1. 浏览器 F12 打开 Console
   2. 输入 `localStorage.setItem('dsh-voice-mode.telemetry','1')` 并刷新页面
-  3. 看 Console 第一行 `[dsh-voice] build=15be91a`（或更新）
-- **预期**：`build=` 后跟 7 字符 commit 短哈希 = `git rev-parse --short HEAD` 输出
+  3. 看 Console 第一行 `[dsh-voice] build=c9e9cc4`（其后 src 零 diff，免重建；见 STATE 口径澄清）
+- **预期**：`build=` 后跟 7 字符 commit 短哈希；若与 `git rev-parse --short HEAD` 不一致，先查 `git log <BUILD_TAG>..HEAD -- src/ lib/` 为空即免重建通过（见 STATE TAG 口径）
 - **失败信号**：build= 显示 `undefined` / 显示旧版哈希 ≠ `git log --oneline -1` / build 行缺失
 - **回退**：执行 `cd plugin/dsh-voice-mode && node build.mjs && systemctl restart dsh.service`
 - **时间**：30 秒
@@ -147,7 +147,7 @@
   2. 听朗读 + 看字幕
 - **预期**：TTS 不读出「laugh」「sigh」字面（直接跳过）；TTS 不读「emphasis」字面
 - **失败信号**：听到「laugh」「sigh」「emphasis」字面被朗读
-- **回退**：检查 `src/emotion.ts` `stripEmotionTags` 调用点 + `tts-local.ts:441-465` 标签剥离
+- **回退**：检查 `src/tts-local.ts:452` `parseEmotionTags` 调用点 + `src/segmenter.ts:16` `plainText` 配对式剥离链路（`stripEmotionTags` 已于 2d247f6 删除，切勿按旧名回查）
 - **时间**：1.5 分钟
 
 ---
@@ -164,7 +164,7 @@
   3. 观察 AI 是否立即停止 + 1.5s 内新内容不播
 - **预期**：当前句立即停止；1.5s 内保持静音（不读新内容）；用户说新内容 → AI 收 + 取消回合
 - **失败信号**：AI 继续朗读完整长段 / 1.5s 后直接接着读 / 「嗯」未生效
-- **回退**：检查 `src/asr.ts:59 matchBackchannel` + `src/client.tsx:943` 帧守卫 + `src/client.tsx:1096 backchannelHoldUntil`
+- **回退**：检查 `src/asr.ts:59 matchBackchannel` + `src/client.tsx:967-968` 帧守卫 + `src/client.tsx:1140 setBackchannelHold`
 - **时间**：2 分钟
 
 ### [ ] 5.2 hardBreak 真打断优先于让位
@@ -228,9 +228,9 @@
 ### [ ] 7.1 idle 静默退出有预警
 - **前置**：1.3 通过
 - **步骤**：
-  1. 进语音模式后静默 9 分钟（接近 `idleTimeoutMinutes=10` 默认）
+  1. 进语音模式后静默 4 分钟（接近 `idleTimeoutMinutes=5` 默认，src/index.ts:201 真源）
   2. 看是否有预警 toast / 字幕提示
-- **预期**：~9 分钟时有「语音模式即将退出」提示，10 分钟时自动退出
+- **预期**：~4 分钟时有「语音模式即将退出」提示，5 分钟时自动退出
 - **失败信号**：静默到 10 分钟直接消失（无预警）
 - **时间**：10 分钟（可跳过，记 backlog）
 
@@ -277,7 +277,7 @@
 
 | ID | 修复项 | 操作命令/UI 步骤 | 预期信号 | 失败反馈 | 时间 |
 |---|---|---|---|---|---|
-| 1.1 | 版本对齐 | `localStorage.setItem(...)` + 刷新 | `[dsh-voice] build=15be91a` | build= undefined | 30s |
+| 1.1 | 版本对齐 | `localStorage.setItem(...)` + 刷新 | `[dsh-voice] build=c9e9cc4` | build= undefined | 30s |
 | 1.2 | B1 Row 本地化 | 进设置面板 | 4 个 Row 标签中文 | 显示原始 key | 1m |
 | 1.3 | L1 中文识别+TTS | `Ctrl+Shift+V` + 说话 | partial/final 中文 + AI 中文朗读 | 英文 / 缺失 | 1.5m |
 | 2.1 | 批 2 ITN 关 | 设置 → senseITN=false | 「三个」不变成「3」 | 数字归一 | 1.5m |
@@ -292,7 +292,7 @@
 | 5.3 | 批 5 让位 prompt | 问 AI 问题 | AI 不连问 | 连续 2+ 问号 | 1.5m |
 | 6.1 | **B5 60s 不丢字** | 60s 中文 + 5-6 换气 | final 完整 60s | 缺段 / draft <4 | 10m |
 | 6.2 | 长段 partial 不卡 | 60s 同步观察 | partial 2s 内必有更新 | ≥3s 静默 | (合并 6.1) |
-| 7.1 | idle 预警 | 静默 9 分钟 | 预警 toast | 无预警直接退出 | 10m |
+| 7.1 | idle 预警 | 静默 4 分钟 | 预警 toast | 无预警直接退出 | 5m |
 | 7.2 | TTS 错误归类 | 模型缺失触发 | 错误信息明确 | 通用错误 | 1m |
 | 7.3 | 浅色主题 | 切浅色 + 进语音 | 对比度 ≥4.5:1 | 白底白字 | 1m |
 | 7.4 | 默认值抽查 | `curl /config` | 7 字段全部符合预期表 | 任一漂移 | 30s |
@@ -346,10 +346,10 @@
   - 发版前必跑 L1（阶段 1 + 6），约 13 分钟
   - 每个批次独立发版前跑对应阶段，约 5 分钟
   - 全量 L1+L2+L3 = 33 分钟（含 idle 跳过可压到 23 分钟）
-- **基线状态**（HEAD = `15be91a`，批 K 周全修复收口）：
-  - `npm test` 254/254 全绿
+- **基线状态**（代码基线 = `5e2d34f`，批 7O 收口；HEAD = `0b63a13`，块 3 纯文档/资产）：
+  - `npm test` 325/325 全绿（25 文件串联）
   - `/voice-mode/config` 返回 4 字段非 null（实证）
-  - lib BUILD_TAG = `15be91a`（与 HEAD 一致）
+  - lib BUILD_TAG = `c9e9cc4`（其后 src 零 diff，plugin 零 diff 免重建；见 STATE 口径澄清）
 
 ## 最近一次实测记录（非基线默认值，仅供参考）
 
