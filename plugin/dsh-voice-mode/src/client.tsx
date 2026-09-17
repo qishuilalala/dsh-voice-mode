@@ -232,6 +232,9 @@ const ECHO_DELAY_MS = 0
 /** playing 从 true→false 后的回声尾音宽限（扬声器残响/硬件缓冲仍会被麦克风采到）。
  *  此窗口内 isPlaying 仍判 true，防「句播完瞬间的残响」漏入 ASR → 自聊/多重声音。 */
 const ECHO_TAIL_MS = 400
+/** 批 7O M8：backchannel 让位窗口内累计说话帧数阈值——≥2 帧说明 AI 正在播长句（非明确短应答），
+ *  清 hold 让完整句播完；让位只作用于明确短应答（避免 1.5s hold 截断 AI 完整句）。 */
+const HOLD_CLEAR_FRAMES = 2
 const WAVE_BARS = 14
 const SUBMIT_DELAY_MS = 600
 /** 插件 HTTP 命名空间（与 host 侧 BASE_PATH 常量一致，固定不可配置）。 */
@@ -613,6 +616,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
    *  onBackchannel 触发时 setBackchannelHold(now + 1500)；hold 期间 TTS 帧在 audioListeners 回调内丢弃（字幕同帧丢）；
    *  hardBreak 路径清 0（真打断优先）；hold 到期后正常播放恢复。 */
   let backchannelHoldUntil = 0
+  /** 批 7O M8：hold 窗口内累计收到的说话帧数（TTS 帧，audioListeners 回调内计数）；
+   *  达 HOLD_CLEAR_FRAMES 即清 hold（让完整句播完）+ 重置。 */
+  let holdSpeechFrames = 0
 
   // --- P1-5 延迟埋点链（开发模式）：一轮「说完→首音」的时间戳收拢。 ---
   const telemetryStages: Partial<Record<TelemetryStage, number>> = {}
@@ -963,7 +969,18 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     if (rejectLine !== undefined && frame.sentenceId <= rejectLine) return
     // 批 5 / ADR-0008 Phase 1：backchannel hold 窗口内 TTS 帧丢弃（字幕同帧丢弃，避免字幕堆积）。
     //   I4 帧协议零触碰：final 帧协议与现有 reject/重建逻辑完全保留；hold 解除后正常播放恢复。
-    if (backchannelHoldUntil && Date.now() < backchannelHoldUntil) return
+    // 批 7O M8：hold 窗口内计数说话帧——≥HOLD_CLEAR_FRAMES 说明 AI 在播长句（非明确短应答），
+    //   清 hold 让完整句播完（本帧起恢复播放）；让位只作用于明确短应答。
+    if (backchannelHoldUntil && Date.now() < backchannelHoldUntil) {
+      holdSpeechFrames += 1
+      if (holdSpeechFrames >= HOLD_CLEAR_FRAMES) {
+        backchannelHoldUntil = 0
+        holdSpeechFrames = 0
+        // 本帧不丢弃，继续走正常拼帧/播放流程（hold 已清，后续帧亦正常播放）
+      } else {
+        return
+      }
+    }
     // P1-5：首 chunk 到达 = 首句合成产出（延迟埋点链里程碑）。
     stampTelemetry('first-tts-chunk')
     if (frame.sentenceId !== curSentenceId) {
@@ -1117,6 +1134,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     },
     setBackchannelHold(untilMs) {
       backchannelHoldUntil = untilMs
+      // 批 7O M8：每次设置新 hold 窗口（含 hardBreak 清 0）都重置说话帧计数，避免跨窗口残留。
+      holdSpeechFrames = 0
     },
     skipAudio() {
       doSkipAudio()
