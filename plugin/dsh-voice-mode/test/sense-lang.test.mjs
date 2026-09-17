@@ -1,15 +1,21 @@
 /**
- * SenseVoice 锁语种配置单测（批 2，纯函数）。运行：node test/sense-lang.test.mjs
- * 覆盖 §4.4 三断言：langKey 不变复用 / 变化触发重建 / workerData 携带 language+useITN。
- * 实际重建逻辑由 host 端 getSenseWorker 在接线时用同一组函数保证；
- * 此处只验证「何时会重建」的契约（key 一致/不一致）+ workerData 字段形状。
+ * SenseVoice 锁语种配置单测（批 2 → 批 7O 收缩后）。
+ * 运行：node test/sense-lang.test.mjs（npm test 串联）
+ *
+ * 批 7O 收缩：批 7M 砍 recognitionLanguage 后语言固定 'auto'，asr-sense-key.ts 的
+ * buildSenseLangKey 只剩一层包装（唯一调用 asr-host.ts 传死值 'auto'）。本批把
+ * buildSenseLangKey 内联进 asr-host.ts（`auto\0{itn}`），删除 asr-sense-key.ts。
+ *
+ * 覆盖：
+ *  ① asr-host.ts 内联 langKey 指纹（语言固定 'auto'，仅 ITN 一维驱动 worker 重建）；
+ *  ② sense-worker.ts workerData 字段形状（language + useITN 透传）。
  */
 import assert from 'node:assert/strict'
 import { build } from 'esbuild'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 
@@ -20,51 +26,15 @@ const t = (name, fn) => {
   console.log(`  ✓ ${name}`)
 }
 
-console.log('buildSenseLangKey/sanitize（asr-sense-key.ts）')
-const tmp1 = mkdtempSync(join(tmpdir(), 'dsh-vm-skl-'))
-const out1 = join(tmp1, 'asr-sense-key.mjs')
-await build({
-  entryPoints: [join(here, '..', 'src', 'asr-sense-key.ts')],
-  outfile: out1,
-  bundle: false,
-  format: 'esm',
-  platform: 'node',
-  logLevel: 'silent',
-})
-const { buildSenseLangKey, sanitizeRecognitionLanguage, RECOGNITION_LANGUAGES } = await import(
-  pathToFileURL(out1).href
-)
+console.log('asr-host.ts 内联 langKey 指纹（语言固定 auto，仅 ITN 驱动重建）')
+const asrHostSrc = readFileSync(join(here, '..', 'src', 'asr-host.ts'), 'utf8')
 
-t('RECOGNITION_LANGUAGES 集合 = 6 项（auto/zh/en/ja/ko/yue）', () => {
-  assert.deepEqual([...RECOGNITION_LANGUAGES], ['auto', 'zh', 'en', 'ja', 'ko', 'yue'])
+t('langKey 内联为 `auto\\u0000${ITN}`（NUL 分隔 + 仅 ITN 一维）', () => {
+  assert.ok(asrHostSrc.includes('auto\\u0000'), 'asr-host.ts 缺内联 langKey 的 auto\\u0000 分隔符')
+  assert.ok(/senseITN\(\)\s*\?/.test(asrHostSrc), 'asr-host.ts langKey 未读 senseITN')
 })
-t('sanitize：合法字符串原样返回', () => {
-  for (const l of ['auto', 'zh', 'en', 'ja', 'ko', 'yue']) {
-    assert.equal(sanitizeRecognitionLanguage(l), l)
-  }
-})
-t('sanitize：非法/越界一律降级 auto（关键守卫）', () => {
-  for (const bad of ['', 'fr', 'zh-cn', 'AUTO', 'auto ', 'zh;injection']) {
-    assert.equal(sanitizeRecognitionLanguage(bad), 'auto')
-  }
-})
-t('buildSenseLangKey：相同 (lang, itn) → 相同 key', () => {
-  assert.equal(buildSenseLangKey('zh', true), buildSenseLangKey('zh', true))
-  assert.equal(buildSenseLangKey('auto', false), buildSenseLangKey('auto', false))
-})
-t('buildSenseLangKey：lang 变 → key 变（getSenseWorker 触发重建）', () => {
-  assert.notEqual(buildSenseLangKey('zh', true), buildSenseLangKey('en', true))
-})
-t('buildSenseLangKey：ITN 变 → key 变', () => {
-  assert.notEqual(buildSenseLangKey('zh', true), buildSenseLangKey('zh', false))
-})
-t('buildSenseLangKey：sanitize 后生效（非法值 → auto → 相同 key）', () => {
-  assert.equal(buildSenseLangKey('fr', true), buildSenseLangKey('auto', true))
-})
-t('buildSenseLangKey：\\0 分隔（防 (zh)(true) 与 (zh\\0true) 碰撞）', () => {
-  const k1 = buildSenseLangKey('zh', true)
-  const k2 = buildSenseLangKey('zh\u0000true', true)
-  assert.notEqual(k1, k2)
+t('asr-host.ts 不再 import asr-sense-key（模块已收缩删除）', () => {
+  assert.ok(!asrHostSrc.includes("from './asr-sense-key.ts'"), 'asr-host.ts 仍 import 已删除的 asr-sense-key')
 })
 
 console.log('workerData 字段（sense-worker.ts，编译产物断言）')
@@ -102,5 +72,4 @@ t('bundle 已不再硬编码 \'auto\' 作为 useInverseTextNormalization 值', (
 })
 
 console.log(`\nsense-lang：${passed} 项通过`)
-rmSync(tmp1, { recursive: true, force: true })
 rmSync(tmp2, { recursive: true, force: true })

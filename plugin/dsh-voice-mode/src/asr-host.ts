@@ -48,7 +48,6 @@ const { createOnlineRecognizer, createVad } = sherpa_onnx as unknown as {
 }
 
 import { ensureModelFile, validateModelHost, HOST_PRIMARY, type ModelFileSpec } from './models.ts'
-import { buildSenseLangKey } from './asr-sense-key.ts'
 
 /** 模型仓库与文件清单（SHA256 固定，供应链校验）。 */
 export const MODEL_REPO = 'csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30'
@@ -391,7 +390,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   let senseWorkerLangKey = ''
   const getSenseWorker = async (): Promise<SenseWorkerClient | null> => {
     if (!senseVoice()) return null // P4：开关关闭 → 只用流式 zipformer
-    const langKey = buildSenseLangKey('auto', senseITN())
+    // 批 7O：语言已固定 'auto'（批 7M 砍 recognitionLanguage），指纹仅剩 ITN 一维——
+    // buildSenseLangKey 内联为 `auto\0{itn}`（asr-sense-key.ts 半死模块收缩）。
+    const langKey = `auto\u0000${senseITN() ? '1' : '0'}`
     // 批 2：lang 变化 → 终止旧 worker（createSenseWorkerClient 已 reject pending，见 sense-worker.ts:135）
     if (senseWorker && langKey !== senseWorkerLangKey) {
       void senseWorker.terminate()
