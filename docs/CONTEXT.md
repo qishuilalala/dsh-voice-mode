@@ -58,7 +58,7 @@ localStorage.setItem('dsh-voice-mode.telemetry','1') && 刷新页面
 # 宿主
 systemctl is-active dsh                              # active
 journalctl -u dsh --since "1 min ago" -p err         # 空 = 健康
-curl -s http://127.0.0.1:3018/voice-mode/config | jq # 7 新字段非 null
+curl -s http://127.0.0.1:3018/voice-mode/config | jq # 4 字段非 null
 
 # 验证四连
 cd plugin/dsh-voice-mode && \
@@ -72,7 +72,7 @@ cd plugin/dsh-voice-mode && \
 1. `git status --short` 仓干净
 2. `npm run typecheck && npm run build && npm test` 全绿（npm test 281 项 / 20 文件）
 3. `systemctl restart dsh.service && curl /voice-mode/config` 验 4 字段非 null（senseITN/captionFontSize/captionMaxWidth/backchannelYield）
-4. 真机冒烟 **3 项必过** / **~8 分钟**（`docs/qa/must-verify-manually.md`：字幕 / 让位 / 60s 长段）
+4. 真机冒烟 **4 项必过** / **~10 分钟**（`docs/qa/must-verify-manually.md`：字幕 / 让位 / 60s 长段 / manual 外放）
 5. 文档回写：`STATE.md` + 根 `CONTEXT.md` + `backlog.md` + ADR 落地注记（批 7M 砍 4 项 + 批 7N 重做 5 项已完成）
 6. **push 节奏由用户拍板**：批 7N 后已 push，ahead=0；后续批次收口后单次 push
 
@@ -80,6 +80,6 @@ cd plugin/dsh-voice-mode && \
 
 - 决策：`docs/adr/0001-0008`（ADR-0003 `server-side-vad` / ADR-0004 `realtime-transport-deferred` 命名纠正 2026-09-16）
 - 状态：`docs/rules/STATE.md`（批 7A-L + 批 7M 🔴 砍 + 批 7N 🟡 重做 全 PASS-WITH-MINOR）
-- 真机：`docs/qa/real-machine-acceptance-checklist.md`（精简到批 2/3/5 三阶段 + 批 7N 真机验收门禁 3 项）+ `docs/qa/must-verify-manually.md`（3 项必过）
+- 真机：`docs/qa/real-machine-acceptance-checklist.md`（精简到批 2/3/5 三阶段 + 批 7N 真机验收门禁 3 项）+ `docs/qa/must-verify-manually.md`（4 项必过）
 - 心智：根 `CONTEXT.md`（不重复内容）
 - 缺口：`zh-60s.wav` fixture（批 7N 已补 b0e45fe）/ `backchannel-yield` 守卫（批 7N 已补 ee4312b）/ `preview-error-classify` / `yieldMs` wiring E2E（批 7N 已补 58f6d77）/ `settings-load` zod strip 模式（Q1 待用户实测，见 backlog.md 末节）

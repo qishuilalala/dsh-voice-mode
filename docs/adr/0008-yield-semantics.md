@@ -109,7 +109,7 @@ YIELDING (let the user interrupt)
 ### 负面 / 成本
 
 - **TTFT 可能上升**：第二层 system prompt 注入 + 7 个 variable provider 重算，估算 +50-200ms TTFT（首 token 时延）
-- **vset 字段扩展需要 schema migration**：新 `recognitionLanguage` + `captionOnly` 字段如果某用户依赖默认 `zod` 行为，可能需要 reload 一次 schema —— 已与第一轮基线审查的 `interruptThresholdMs` 处理思路一致（"保留旧键 + 新增数值键 + alias 文档化"）
+- **vset 字段扩展需要 schema migration**：新 `recognitionLanguage` + `captionOnly` 字段如果某用户依赖默认 `zod` 行为，可能需要 reload 一次 schema —— 已与第一轮基线审查的 `interruptThresholdMs` 处理思路一致（"保留旧键 + 新增数值键 + alias 文档化"）（recognitionLanguage 已于批 7M 砍除）
 - **不让位的语义错误**：LLM 收到"用户说嗯，别抢"指令后，**不一定真的会让位**（这是LLM 行为问题不是确定性问题）——需要 A/B 测试（先在 hold 模式 + 长静音场景做小样本验证）
 - **不解决跨设备 push 通知**（行业空白，README ADR-0008 占位项）——本 ADR 范围仅限桌面 webview
 
