@@ -180,6 +180,8 @@
 
 ### B8 · Need-PoC · Wispr 100+ 语种入口
 
+> ⚠️ 已失效（2026-09-16 批 7M）：本节依赖的 recognitionLanguage 字段已砍除（4532b48），本节仅存档，不再实施
+
 - **做什么**：`settings-form.tsx` 加 50 语种下拉（SenseVoice 已支持 50 语种），把 `recognitionLanguage` 字段透传 SenseVoice
 - **为什么**：本仓 ASR 已底层具备；仅缺 UI 暴露
 - **file:line 锚点**：
@@ -393,6 +395,8 @@
 
 ### P0 · 🟢 已批准开工（2026-09-14 用户拍板「批量 go」）· zipformer2 热词 (hotwords) 暴露
 
+> ⚠️ 已失效（2026-09-16 批 7M）：recognitionLanguage / asrHotwords / asrHotwordsScore 已砍除（4532b48 + e3423ef），本节仅存档，不再实施
+
 - **做什么**：开发者场景下"项目代号 / 函数名 / 包名 / commit SHA"被 ASR 误识别
 - **file:line 锚点**：
   - `plugin/dsh-voice-mode/src/asr-host.ts:266` — `decodingMethod: 'greedy_search'` 改 `'modified_beam_search'` + 加 `hotwordsFile` + `hotwordsScore`（**真源默认 1.5**，**backlog 写 2.0 错**；clamp 1.0-5.0 也可保留）
@@ -406,6 +410,8 @@
 - **事实勘误**：zipformer2 **已具备** hotwords 路径，仅缺开关（**+ 缺 temp file 写入 + 缺 UI 热词输入框**）
 
 ### P0 · 🟢 已批准开工（2026-09-14）· SenseVoice 语言显式锁定
+
+> ⚠️ 已失效（2026-09-16 批 7M）：recognitionLanguage / asrHotwords / asrHotwordsScore 已砍除（4532b48 + e3423ef），本节仅存档，不再实施
 
 - **做什么**：把 `src/sense-worker.ts:165` 硬编码 `'auto'` 改成 getter；用户可锁定 `zh/en/ja/ko/yue`
 - **file:line 锚点**：
@@ -676,6 +682,8 @@
 | 3 | P0 字幕 a11y + captionFontSize + 中文换行 | `index.ts` schema + `client.tsx VoiceOverlay` + `client.tsx VoiceBootConfig` + `client.tsx bootNow` | `0fe3f90` + `a96acd9`（docfix：数学方向三档） | ✅ 已完成（含 docfix：70vw 数学方向修正（<686px 窄 / ≈686px 近 / >686px 宽）；净增 ~108 行 + 测试 20 项） |
 | 4 | ADR-0007 第一步 本地引擎情感标签 | `tts-local.ts` 后处理 + 新建 `src/emotion.ts` + `tapActiveStream` 不动 + `tts-queue` 不动 | `959c742` + `7b94653`（B1 收口：segmenter 误剥 emotion 标签修复 + 集成断言） | ✅ 已完成（仅本地引擎：break/whisper/laugh/sigh/emphasis；Edge `rawToFile/rawToStream` 路径未实施） |
 | 5 | ADR-0008 Phase 1 让位语义 | `index.ts VOICE_SPOKEN_PROMPT` + `asr.ts matchBackchannel` + `client.tsx onBackchannel + 帧守卫 + hardBreak 清 hold` + `backchannelYield` 设置 | `7f1a09f` | ✅ 已完成（#1 backchannel detector + #2 让位 prompt；#3-5 推迟/取消按原决策） |
+
+> ⚠️ 已失效（2026-09-16 批 7M）：上表批 1（热词暴露）与批 2（语言显式锁定）落地的 asrHotwords / asrHotwordsScore / recognitionLanguage 字段已砍除（4532b48 + e3423ef），该两行仅存档。
 
 **未实施项（明确范围外）**：
 
