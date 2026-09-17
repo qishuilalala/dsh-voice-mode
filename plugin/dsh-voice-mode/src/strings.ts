@@ -73,8 +73,6 @@ const zh = {
   bargeInDetect: '自动探测',
   bargeInAuto: '自动',
   bargeInManual: '手动',
-  // 批 7O（ADR-0006）：detect 取值说明 + 第一级探测降级提示。
-  descBargeInDetect: '自动探测本机回声消除状态（默认）：原生回声消除生效时等同自动打断，未生效时自动切为长按打断，并在状态条说明原因',
   descEchoGate: '回声门控阈值（dB，默认 6）：自动打断要求残差高于回声地板此值。当前 ASR 模型默认原生 AEC 生效时此门控闲置；Safari / 耳机等无原生 AEC 环境会兜底生效。外放仍误打断调大（8~10），太难打断调小（3~4）',
   descShortcut: '进入/退出语音模式的快捷键（形如 Ctrl+Shift+V；留空禁用快捷键，只用麦克风按钮；避免浏览器保留组合如 Ctrl+W/N/T）',
   vadDetected: 'VAD 检测到语音',
@@ -254,8 +252,6 @@ const en: Record<keyof typeof zh, string> = {
   bargeInDetect: 'Auto-detect',
   bargeInAuto: 'Auto',
   bargeInManual: 'Manual',
-  // 批 7O（ADR-0006）：detect 取值说明（英文）。
-  descBargeInDetect: 'Auto-probe native echo cancellation (default): acts like Auto when native echo cancellation is active, otherwise automatically switches to Manual (hold-to-talk) with a status-bar note',
   descEchoGate: 'Echo gate threshold (dB, default 6): auto barge-in requires the residual to exceed the echo floor by this value. With the native browser AEC active, this gate is idle; it kicks in as a fallback in Safari or environments without native AEC (e.g. some headphones). Raise (8-10) if speaker echo still interrupts, lower (3-4) if hard to interrupt',
   descShortcut: 'Shortcut to enter/exit voice mode (e.g. Ctrl+Shift+V; empty disables it, mic button only; avoid browser-reserved combos like Ctrl+W/N/T)',
   vadDetected: 'VAD speech',

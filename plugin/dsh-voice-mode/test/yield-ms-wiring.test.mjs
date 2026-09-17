@@ -403,7 +403,7 @@ const cfg = await (async () => {
     autoSend: c.autoSend ?? true,
     autoResume: c.autoResume === true,
     mode: c.mode === 'hold' ? 'hold' : 'toggle',
-    bargeInMode: c.bargeInMode === 'manual' ? 'manual' : 'auto',
+    bargeInMode: c.bargeInMode === 'manual' ? 'manual' : c.bargeInMode === 'detect' ? 'detect' : 'auto',
     echoGateDb: typeof c.echoGateDb === 'number' ? Math.min(12, Math.max(3, c.echoGateDb)) : 6,
     shortcut: typeof c.shortcut === 'string' ? c.shortcut : '',
     wakeWord: typeof c.wakeWord === 'string' ? c.wakeWord : '',
