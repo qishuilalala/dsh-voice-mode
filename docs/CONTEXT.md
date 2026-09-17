@@ -44,7 +44,7 @@ bridge /voice-mode SSE：owner=sessionId，/config + /preview + assembleStream
   - `tts-local.ts`（本地 TTS + emotion 后处理）/ `tts-queue.ts`（队列/epoch）/ `aec.ts`（NLMS 兜底）
   - `emotion.ts`（批 4）/ `asr-sense-key.ts`（纯函数 sanitize/key；批 7M 砍除 `asr-hotwords.ts`）
   - `sense-worker.ts` / `wakeword.ts` / `segmenter.ts` / `fixture-recorder.ts` 等
-- **`plugin/dsh-voice-mode/lib/`** —— esbuild 产物（`build.mjs` 重建，**不手改**；BUILD_TAG=`c9e9cc4`≠HEAD 但其后 src 零 diff，plugin 零 diff 免重建）
+- **`plugin/dsh-voice-mode/lib/`** —— esbuild 产物（`build.mjs` 重建，**不手改**；批 7P P2 起 lib 随每批 rebuild 对齐 BUILD_TAG=HEAD，旧「免重建」口径已证伪作废）
 - **`plugin/dsh-voice-mode/test/`** —— 30 个 `.mjs`（npm test 25 文件 / **325 项全绿**；批 7M 砍 `hotwords.test.mjs` + 批 7N 新增 3 文件 `barge-in-manual` / `yield-ms-wiring` / `matchBackchannel` + 批 7O 新增 5 文件 `settings-load` / `preview-error` / `hold-clear` / `barge-in-detect` / `wakeword`）
 - **`docs/competitive/sources/scan-*.md`** —— 18 份子代理扫描报告
 

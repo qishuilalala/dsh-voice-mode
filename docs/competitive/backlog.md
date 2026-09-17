@@ -57,26 +57,26 @@
 
 | 条目 | 状态 | 估算 | 关键锚点（file:line） | 推迟原因 / 触发条件 |
 |---|---|---|---|---|
-| A2 会后「3 条要点 + 行动项」摘要卡片 | Ready | 1.5-2 天 | `index.ts:507-535` 仿 `/recap` + `client.tsx:2280-2296` VoiceStatusBar | 无需求牵引推迟 |
-| A5 `interruptThreshold_ms` + `eagerness` 暴露 | Ready | 0.5-1 天 | `index.ts:240-280` schema + `asr.ts:108-122` + `settings-form.tsx:54` | 无需求牵引推迟（竞品对齐，本仓无迁移用户） |
-| A6 浮动状态条 + 启动 chime | Ready | 0.5-1 天 | `client.tsx:160-174` beepCtx + `client.tsx:1160` holding + `client.tsx:1959` | 无需求牵引推迟 |
-| A10 AI 主播开场问候 | Ready | 1.5-2 天 | `index.ts:507-535` 仿 `/greeting` + `tts-queue.ts:268-307` enqueue | 无需求牵引推迟（建议固定模板不调 LLM） |
-| B3 WebRTC APM3 替代自研 NLMS | Need-PoC | PoC 1-2 周 | `aec.ts` setEchoBypass + `audio-worklet.ts` + ADR-0001/0005 | 需 PoC 实证 ERLE > 自研 NLMS |
-| B5 ADR-0004 协议骨架升级（WebSocket + seq/ts） | Need-ADR | 待 ADR | `asr.ts:185,197` segmentEpoch/detectGeneration + `index.ts:485` turnGen + `tts-queue.ts` q.epoch | 需 ADR-0004 拍板（升级 accepted） |
-| B6 NotebookLM Interactive mode（播放中提问） | Need-PoC | 1-2 周 | `tts-queue.ts:268-307` cancel + `asr.ts:640-695` RMS | 需 PoC 实证「朗读期保留 ASR」不破坏 AEC |
-| B9 Read AI 风「现在听到…」复述 | Need-PoC | 0.5-1 天 | `asr.ts:640-695` 长静音 + `client.tsx`（`recognition-draft` 0 命中） | 需先建 recognition-draft 字段（需真机） |
+| A2 会后「3 条要点 + 行动项」摘要卡片 | Ready | 1.5-2 天 | `index.ts:629-664` `/config` exact 路由仿 `/recap` + `client.tsx:2423` VoiceStatusBar（旧 507-535/2280-2296 已漂移） | 无需求牵引推迟 |
+| A5 `interruptThreshold_ms` + `eagerness` 暴露 | Ready | 0.5-1 天 | `index.ts:240-280` schema + `asr.ts:108-122` + `settings-form.tsx:52` 头部 FIELD_LABELS 注释（旧 :54 漂移 ±2） | 无需求牵引推迟（竞品对齐，本仓无迁移用户） |
+| A6 浮动状态条 + 启动 chime | Ready | 0.5-1 天 | `client.tsx:168-174` beepCtx + `client.tsx:1233` holding CSS + `client.tsx:2156` holding state（旧 :1160/:1959 已漂移） | 无需求牵引推迟 |
+| A10 AI 主播开场问候 | Ready | 1.5-2 天 | `index.ts:629-664` `/config` exact 路由仿 `/greeting` + `tts-queue.ts:254-268` enqueue（旧 507-535/268-307 已漂移） | 无需求牵引推迟（建议固定模板不调 LLM） |
+| B3 WebRTC APM3 替代自研 NLMS | Need-PoC | PoC 1-2 周 | `aec.ts`（NLMS 自研兜底，无 bypass 开关，按符号定位） + `audio-worklet.ts` + ADR-0001/0005 | 需 PoC 实证 ERLE > 自研 NLMS |
+| B5 ADR-0004 协议骨架升级（WebSocket + seq/ts） | Need-ADR | 待 ADR | `asr.ts:235,247` segmentEpoch/detectGeneration + `index.ts:391` turnGen + `tts-queue.ts:174-182` q.epoch（旧 185,197/485 已漂移） | 需 ADR-0004 拍板（升级 accepted） |
+| B6 NotebookLM Interactive mode（播放中提问） | Need-PoC | 1-2 周 | `tts-queue.ts:270-285` cancel + `asr.ts:640-648` RMS（旧 268-307/640-695 已漂移） | 需 PoC 实证「朗读期保留 ASR」不破坏 AEC |
+| B9 Read AI 风「现在听到…」复述 | Need-PoC | 0.5-1 天 | `asr.ts:640-648` 长静音 + `client.tsx`（`recognition-draft` 0 命中） | 需先建 recognition-draft 字段（需真机） |
 | C4 DTLN-AEC 残差监控器（朗读期 dry 阀门） | Need-PoC | 待真机 | `asr.ts` dry 阀门路径 | 无 dry false-negative 证据不立（需真机） |
-| P1-UX TTS 失败自动降级 Kokoro + `ttsNotice` | Ready | 1-2 天 | `tts-queue.ts:304-320` 重试 | 无需求牵引推迟 |
+| P1-UX TTS 失败自动降级 Kokoro + `ttsNotice` | Ready | 1-2 天 | `tts-queue.ts:306-320` 重试（旧 304-320 漂移 ±2） | 无需求牵引推迟 |
 | P1 per-后端 STT 回退链 | Need-PoC | 1-2 周 | `modelHost` 镜像切换同款 | 需 PoC（含 schema migration） |
-| Edge TTS `<lang>` 中英混读 | Ready | 2-3 天 | `segmenter.ts:60+` splitMixedLang + `tts-queue.ts:120-141` synthesize + `index.ts:1110-1115` tapActiveStream | 无需求牵引推迟 |
-| 录音同意弹窗（GDPR/CCPA/个保法） | Ready | 2-3 天 | `client.tsx:1379` enterMode + 新增 ConsentDialog + `settings-form.tsx:54` | 无需求牵引推迟（需文案审阅 + 测试矩阵） |
-| ARIA 全链路补全 | Ready | 0.5 天 | `client.tsx:2256` + `client.tsx:2335-2349` + `settings-form.tsx:579` + `settings-form.tsx:825-845` | 无需求牵引推迟 |
-| 纯字幕模式（a11y 听障用户） | Ready | 1-1.5 天 | `index.ts:224-227` audioOutputMuted + `client.tsx:435-500` captionQueue | 无需求牵引推迟 |
-| 色弱对比度 + telemetry 关闭披露 | Ready | 0.5-1 天 | `client.tsx:2167-2186` + `client.tsx:2257-2270` + `index.ts:224-227` diagnostics | 无需求牵引推迟 |
-| 插件能力结构化注入 system prompt | Ready | 30 行 | `index.ts:72-79` VOICE_SPEN_SECTION + `index.ts:462-477` assemble | 无需求牵引推迟（可与让位注入处合并） |
-| 同步自带 skill 到 `~/.dsh/skills/` | Ready | 30 行 + 4-6 SKILL.md | `index.ts` apply 入口 L282+ | 无需求牵引推迟 |
-| 注册 MCP `voice_*` 工具 | Ready | 1-2 天 | `index.ts:88` host inject + `systemPrompt` | 需 peer 实证 tools/jobs/agents 可达性 |
-| 设置卡 CardForm draft/validate 模式 | Ready | 150 行 | `settings-form.tsx:1-1088` | 无需求牵引推迟 |
+| Edge TTS `<lang>` 中英混读 | Ready | 2-3 天 | `segmenter.ts:60-65` splitMixedLang + `tts-queue.ts:122-141` synthesize + `index.ts:1099-1115` tapActiveStream（旧 1110-1115 漂移 ±9） | 无需求牵引推迟 |
+| 录音同意弹窗（GDPR/CCPA/个保法） | Ready | 2-3 天 | `client.tsx:1531` enterMode + 新增 ConsentDialog + `settings-form.tsx:52`（旧 :1379/:54 已漂移） | 无需求牵引推迟（需文案审阅 + 测试矩阵） |
+| ARIA 全链路补全 | Ready | 0.5 天 | `client.tsx:2256` hold 指针守卫 + `client.tsx:2339` MicButton + `settings-form.tsx:579` 试听行 + `settings-form.tsx:825-845`（旧 2335-2349 已漂移 ±4） | 无需求牵引推迟 |
+| 纯字幕模式（a11y 听障用户） | Ready | 1-1.5 天 | `index.ts:224` audioOutputMuted 缺省（旧 224-227 段已无该键，待新设） + `client.tsx:394` captionQueue | 无需求牵引推迟 |
+| 色弱对比度 + telemetry 关闭披露 | Ready | 0.5-1 天 | `client.tsx:2167` hold 手势 + `client.tsx:2256` hold 指针守卫 + `index.ts` diagnostics（旧 2257-2270/224-227 已漂移，diagnostics 键待新设） | 无需求牵引推迟 |
+| 插件能力结构化注入 system prompt | Ready | 30 行 | `index.ts:112` VOICE_SPOKEN_SECTION + `index.ts:446` settingsScope.register（旧 72-79/462-477 已漂移） | 无需求牵引推迟（可与让位注入处合并） |
+| 同步自带 skill 到 `~/.dsh/skills/` | Ready | 30 行 + 4-6 SKILL.md | `index.ts:373` apply 入口（旧 L282+ 已漂移） | 无需求牵引推迟 |
+| 注册 MCP `voice_*` 工具 | Ready | 1-2 天 | `index.ts:121` host inject（`export const inject`，旧 :88 巧合仍近，按符号定位） + `systemPrompt` | 需 peer 实证 tools/jobs/agents 可达性 |
+| 设置卡 CardForm draft/validate 模式 | Ready | 150 行 | `settings-form.tsx:250-330` draft/commit NumberField（全文件 1240 行，旧 1-1088 已漂移） | 无需求牵引推迟 |
 | 全局并发闸门 + AbortSignal 队列 | Ready | 80 行 | `index.ts:88` apply 入口 | 无需求牵引推迟（与 tts-queue epoch 协同） |
 | 修 README 设置表（4 字段）+ 删误传字段 | Ready | 1 小时 | `plugin/README.md:71-86` + `index.ts:140-227` | 需 grep 验证误传字段（heldHint/cursorHint/recallAuto） |
 | `normalizeWake` 加语气词白名单 | Ready | 5 行 + 测试 | `wakeword.ts:13-18` | 无需求牵引推迟（与 hold 关闭 wakeWord 兼容） |
@@ -89,7 +89,7 @@
 
 ## 三、❄ Frozen（各一行冻结原因）
 
-- **pyannote 说话人分离**（A3 + B7 VAD 旁路）：pyannote 4.x ONNX ~120MB（segmentation+embedding），200-500ms 推理破坏 `asr-host.ts:442-466` finalize「不丢句」同步路径不变量。
+- **pyannote 说话人分离**（A3 + B7 VAD 旁路）：pyannote 4.x ONNX ~120MB（segmentation+embedding），200-500ms 推理破坏 `asr-host.ts:233-236` finalized 缓存「不丢句」不变量（旧 442-466 实指 senseTranscribe 段）。
 - **声音克隆**（B1 OpenVoice v2 + A9 授权弹窗 + P2 授权弹窗）：~150MB 权重分发 + 5-30s 样本版权/合规授权未拍板（ADR-0009）。
 - **sherpa KWS 专用模型**（wakeword 远期）：当前 wakeWord 仅 partial 文本前缀匹配，非专用 KWS 引擎；专用 sherpa-onnx keyword spotting 模型列为远期（`wakeword.ts:9`）。
 - **APM3 全链路**（C3 + B4 DTLN/NKF-AEC 后置链）：前置依赖 B3（APM3）+ B4（DTLN），B3 需 ERLE 实证，当前不立。

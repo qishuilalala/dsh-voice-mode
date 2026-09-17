@@ -1276,7 +1276,6 @@ var zh = {
   sendFailKept: "\u53D1\u9001\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u5728\u8349\u7A3F",
   micDenied: "\u9EA6\u514B\u98CE\u88AB\u62D2\u7EDD\uFF1A\u8BF7\u5728\u6D4F\u89C8\u5668\u5730\u5740\u680F\u5141\u8BB8\u9EA6\u514B\u98CE\u6743\u9650",
   micUnavailable: "\u9EA6\u514B\u98CE\u4E0D\u53EF\u7528",
-  hold: "\u6309\u4F4F",
   recognizing: "\u8BC6\u522B\u4E2D\u2026",
   holdToTalk: "\u6309\u4F4F\u8BF4\u8BDD",
   releaseToSend: "\u677E\u5F00\u53D1\u9001",
@@ -1456,7 +1455,6 @@ var en = {
   sendFailKept: "Send failed; text kept in draft",
   micDenied: "Microphone denied: allow mic access for this site",
   micUnavailable: "Microphone unavailable",
-  hold: "Hold",
   recognizing: "Recognizing\u2026",
   holdToTalk: "Hold to talk",
   releaseToSend: "Release to send",
@@ -2723,7 +2721,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "c9e9cc4";
+var BUILD_TAG = "a364656";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

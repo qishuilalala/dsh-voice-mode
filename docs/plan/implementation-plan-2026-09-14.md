@@ -36,7 +36,7 @@ npm test                                                             # ④ 全�
 
 | # | 不变量 | 锚点 | 含义 |
 |---|---|---|---|
-| I1 | finalize 不丢句（幂等 + 并发守卫） | `asr-host.ts:442-466` | 不改 finalized 缓存/resetGen 语义 |
+| I1 | finalize 不丢句（幂等 + 并发守卫） | `asr-host.ts:233-236`（finalized 真址；旧锚实指 senseTranscribe 段） | 不改 finalized 缓存/resetGen 语义 |
 | I2 | 打断计数仅播放期累积 | `client.tsx` isSpeechTrueCount 复位分支 | 不把非播放期计数带进开播 |
 | I3 | 播放门分支不得 return | `asr.ts:728-747` 轮询块 | 改动不得在该分支引入 return |
 | I4 | TTS 单 chunk + final 帧协议 | `tts-queue.ts` pump 帧结构 | 客户端拼帧逻辑不动 |
@@ -410,6 +410,7 @@ I / J 独立可并行
 | B2 markStale 命名 | `markStale()` | invalidateRecognizerCache / clearBuildCache |
 | B5 silenceMs 默认 | **不改** | 改 2000/2500ms |
 | C UI 标签短期方案 | FIELD_LABELS + strings.ts 双补 | 单 FIELD_LABELS |
+| C 注记（批 7P P2，代码不动） | FIELD_LABELS 真源 `settings-form.tsx:52` 头部注释 + 镜像键 `strings.ts:168` `*Label` 后缀段；整合口径沿用本表推荐（短期双补），整合批另开 | — |
 | F spokenFormat 处置 | 仅注释修正 | schema 删 spokenFormat |
 | J 默认空闲 10→5min | 推 5min + 30s 预警 | 仅加 30s 预警 |
 | J rate 1.0→1.1 | 改 | 保持 1.0 |

@@ -27,8 +27,8 @@
 - **步骤**：
   1. 浏览器 F12 打开 Console
   2. 输入 `localStorage.setItem('dsh-voice-mode.telemetry','1')` 并刷新页面
-  3. 看 Console 第一行 `[dsh-voice] build=c9e9cc4`（其后 src 零 diff，免重建；见 STATE 口径澄清）
-- **预期**：`build=` 后跟 7 字符 commit 短哈希；若与 `git rev-parse --short HEAD` 不一致，先查 `git log <BUILD_TAG>..HEAD -- src/ lib/` 为空即免重建通过（见 STATE TAG 口径）
+  3. 看 Console 第一行 `[dsh-voice] build=<HEAD短哈希>`（批 7P P2 起 lib 随每批 rebuild 对齐；见 STATE TAG 口径）
+- **预期**：`build=` 后跟 7 字符 commit 短哈希，应等于 `git rev-parse --short HEAD`；若不一致，执行 `cd plugin/dsh-voice-mode && node build.mjs` 重建后复验（见 STATE TAG 口径）
 - **失败信号**：build= 显示 `undefined` / 显示旧版哈希 ≠ `git log --oneline -1` / build 行缺失
 - **回退**：执行 `cd plugin/dsh-voice-mode && node build.mjs && systemctl restart dsh.service`
 - **时间**：30 秒
@@ -164,7 +164,7 @@
   3. 观察 AI 是否立即停止 + 1.5s 内新内容不播
 - **预期**：当前句立即停止；1.5s 内保持静音（不读新内容）；用户说新内容 → AI 收 + 取消回合
 - **失败信号**：AI 继续朗读完整长段 / 1.5s 后直接接着读 / 「嗯」未生效
-- **回退**：检查 `src/asr.ts:59 matchBackchannel` + `src/client.tsx:972/978` 帧守卫 + `src/client.tsx:1140 setBackchannelHold`
+- **回退**：检查 `src/asr.ts:59 matchBackchannel` + `src/client.tsx:972/978` 帧守卫 + `src/client.tsx:1139 setBackchannelHold`
 - **时间**：2 分钟
 
 ### [ ] 5.2 hardBreak 真打断优先于让位
@@ -277,7 +277,7 @@
 
 | ID | 修复项 | 操作命令/UI 步骤 | 预期信号 | 失败反馈 | 时间 |
 |---|---|---|---|---|---|
-| 1.1 | 版本对齐 | `localStorage.setItem(...)` + 刷新 | `[dsh-voice] build=c9e9cc4` | build= undefined | 30s |
+| 1.1 | 版本对齐 | `localStorage.setItem(...)` + 刷新 | `[dsh-voice] build=<HEAD短哈希>` | build= undefined | 30s |
 | 1.2 | B1 Row 本地化 | 进设置面板 | 4 个 Row 标签中文 | 显示原始 key | 1m |
 | 1.3 | L1 中文识别+TTS | `Ctrl+Shift+V` + 说话 | partial/final 中文 + AI 中文朗读 | 英文 / 缺失 | 1.5m |
 | 2.1 | 批 2 ITN 关 | 设置 → senseITN=false | 「三个」不变成「3」 | 数字归一 | 1.5m |
@@ -349,7 +349,7 @@
 - **基线状态**（代码基线 = `5e2d34f`，批 7O 收口；HEAD = `0b63a13`，块 3 纯文档/资产）：
   - `npm test` 325/325 全绿（25 文件串联）
   - `/voice-mode/config` 返回 4 字段非 null（实证）
-  - lib BUILD_TAG = `c9e9cc4`（其后 src 零 diff 免重建；见 STATE 口径澄清）
+  - lib BUILD_TAG = HEAD 短哈希（批 7P P2 起每批 rebuild 对齐；见 STATE 口径澄清）
 
 ## 最近一次实测记录（非基线默认值，仅供参考）
 

@@ -37,7 +37,7 @@
 | Silero 自身窗口 | ~32ms/帧 | 模型固有 |
 
 > **栅格更正（2026-09-02）**：本表初版把确认窗写成 300/200/100ms，**错了**。
-> AudioWorklet 每 1024 样本 = 64ms 投一帧（`src/audio-worklet.ts:804` `new AudioWorkletNode`），而 `src/asr.ts:700` 一带是 `MAX_SEGMENT_MS` 滚窗重置（**与栅格无关**）；真正的派发条件是 `nowMs - lastPollAt >= 100` 且仅在派发时推进 `lastPollAt`——64ms 的帧永远要攒两帧才够 100ms，**稳态派发间隔是 128ms**。
+> AudioWorklet 每 1024 样本 = 64ms 投一帧（`src/audio-worklet.ts:31-32` CHUNK 口径；真 worklet 接线在 `src/asr.ts:879-888`，`new AudioWorkletNode` 在 :883——旧行号误指，worklet 文件实长 73 行），而 `src/asr.ts:700` 一带是 `MAX_SEGMENT_MS` 滚窗重置（**与栅格无关**）；真正的派发条件是 `nowMs - lastPollAt >= 100` 且仅在派发时推进 `lastPollAt`——64ms 的帧永远要攒两帧才够 100ms，**稳态派发间隔是 128ms**。
 > 三档确认窗实际为 384 / 256 / 128ms。`src/client.tsx:1382-1386` 的 `isSpeechTrueCount = 0`（进入 enterMode 时的残留计数复位）与 `setLocalMode('pending')` 注释同样写错，需一并修。
 > 复核：`node scripts/bench-echo-gate.mjs` §4。
 > 这也解释了实测的 525ms（384 + Silero 窗口 + 往返），并意味着**下沉能省掉的比原估计更多**。

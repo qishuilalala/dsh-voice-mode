@@ -122,5 +122,5 @@ README 的排障表实际上是在教用户调声学参数。对"外放的桌面
 ## 落地注记（2026-09-17）
 
 1. **manual 闸门已接通**（commit `8278097`，批 7N 🟡 重做 1/5）：`asr-host.ts` `feed()` 加 `manualPressed` 守卫 + URL `?manual=1` 透传（host 侧防御守卫）；新增 `test/barge-in-manual.test.mjs` 8 项回归。
-2. **`detect` 取值仍未进 schema**：`bargeInMode` 仍为 `'auto' | 'manual'` 二值（`src/index.ts` zod union），本 ADR §1 的新默认取值未实施。
+2. **`detect` 取值已进 schema**（批 7O 落地）：`bargeInMode` 为 `'auto' | 'manual' | 'detect'` 三值（`src/asr.ts:114` 类型真源；`src/index.ts` zod union 同步），默认 `detect`。
 3. **第一级自动探测仍未实现**（`echoCancellation === false` → 自动落 `manual`）：`src/asr.ts:845-848` 已读信号但仅 console.warn，不改变打断模式；已登记批 7O 代码块实施。
