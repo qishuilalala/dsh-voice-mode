@@ -972,14 +972,15 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     if (rejectLine !== undefined && frame.sentenceId <= rejectLine) return
     // 批 5 / ADR-0008 Phase 1：backchannel hold 窗口内 TTS 帧丢弃（字幕同帧丢弃，避免字幕堆积）。
     //   I4 帧协议零触碰：final 帧协议与现有 reject/重建逻辑完全保留；hold 解除后正常播放恢复。
-    // 批 7O M8：hold 窗口内计数说话帧——≥HOLD_CLEAR_FRAMES 说明 AI 在播长句（非明确短应答），
-    //   清 hold 让完整句播完（本帧起恢复播放）；让位只作用于明确短应答。
+    // 批 7O M8：hold 短路约一句时长——每句恒 2 帧（data+final），达到 HOLD_CLEAR_FRAMES(=2)
+    //   前的帧（含首句 data+final；final 撞 :998 完整性守卫）仍被丢弃，达到阈值后清 hold，
+    //   第二句起恢复播放。让位只作用于明确短应答。
     if (backchannelHoldUntil && Date.now() < backchannelHoldUntil) {
       holdSpeechFrames += 1
       if (holdSpeechFrames >= HOLD_CLEAR_FRAMES) {
         backchannelHoldUntil = 0
         holdSpeechFrames = 0
-        // 本帧不丢弃，继续走正常拼帧/播放流程（hold 已清，后续帧亦正常播放）
+        // 本帧不再因 hold 丢弃，继续走拼帧/完整性校验（首句 final 帧会被 :998 守卫丢弃，第二句起正常播放）
       } else {
         return
       }
