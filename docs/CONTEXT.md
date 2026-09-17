@@ -82,4 +82,4 @@ cd plugin/dsh-voice-mode && \
 - 状态：`docs/rules/STATE.md`（批 7A-L + 批 7M 🔴 砍 + 批 7N 🟡 重做 全 PASS-WITH-MINOR）
 - 真机：`docs/qa/real-machine-acceptance-checklist.md`（精简到批 2/3/5 三阶段 + 真机验收门禁 2 项（阶段 1+阶段 6））+ `docs/qa/must-verify-manually.md`（4 项必过）
 - 心智：根 `CONTEXT.md`（不重复内容）
-- 缺口：`zh-60s.wav` fixture（批 7N 已补 b0e45fe）/ `backchannel-yield` 守卫（批 7N 已补 ee4312b）/ `preview-error-classify` / `yieldMs` wiring E2E（批 7N 已补 58f6d77）/ `settings-load` zod strip 模式（Q1 待用户实测，见 backlog.md 末节）
+- 缺口：`zh-60s.wav` fixture（批 7N 已补 b0e45fe）/ `backchannel-yield` 守卫（批 7N 已补 ee4312b）/ `preview-error-classify`（批 7O 已补 cbcdd61）/ `yieldMs` wiring E2E（批 7N 已补 58f6d77）/ `settings-load` zod strip 模式（批 7O 已补自动化断言 390f292；生产环境亲跑仍待用户，见 backlog.md 末节）

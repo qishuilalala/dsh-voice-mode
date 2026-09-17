@@ -3,7 +3,7 @@
 //
 // 用法：
 //   node screenshots/scripts/capture.mjs --id S01    # 只截 S01 一张
-//   node screenshots/scripts/capture.mjs --all       # 全部 12 张
+//   node screenshots/scripts/capture.mjs --all       # 全部 10 张
 //   node screenshots/scripts/capture.mjs --help      # 帮助（不报错，不初始化任何重资源）
 //
 // 环境变量：
@@ -27,7 +27,7 @@ function printHelp() {
 
 用法:
   node screenshots/scripts/capture.mjs --id <ID>   截指定一张（如 --id S01）
-  node screenshots/scripts/capture.mjs --all       截全部 12 张（manual 状态的会跳过并提示）
+  node screenshots/scripts/capture.mjs --all       截全部 10 张（manual 状态的会跳过并提示）
   node screenshots/scripts/capture.mjs --help      显示本帮助
 
 环境变量:
@@ -48,12 +48,10 @@ if (RAW_ARGS.includes('--help') || RAW_ARGS.includes('-h')) {
 const DSH_URL = (process.env.DSH_URL || 'http://127.0.0.1:3018').replace(/\/+$/, '');
 const DSH_COOKIE = process.env.DSH_COOKIE || '';
 
-// 12 张截图定义（与 screenshots/MANIFEST.md、plan §2.2 一一对应）
+// 10 张截图定义（与 screenshots/MANIFEST.md、plan §2.2 一一对应）
 const SHOTS = [
   { id: 'S01', file: 'S01-install-config-4fields.png',  status: 'ready',  desc: '安装成功 + /voice-mode/config 返回 4 字段' },
   { id: 'S02', file: 'S02-settings-chinese-labels.png', status: 'ready',  desc: '设置面板中文标签（字幕字号/字幕宽度等新字段）' },
-  { id: 'S03', file: 'S03-hotword-partial.png',         status: 'manual', desc: '热词即时生效：partial 显示 dsh-voice-mode（需麦克风）' },
-  { id: 'S04', file: 'S04-language-lock-en.png',        status: 'manual', desc: '锁 en 不抖回中文：final 全英文（需麦克风）' },
   { id: 'S05', file: 'S05-caption-24px-90vw.png',       status: 'ready',  desc: '字幕 24px + 90vw（先在设置里把字幕字号调到特大）' },
   { id: 'S06', file: 'S06-backchannel-yield.png',       status: 'manual', desc: '让位语义「嗯」跳句（需麦克风）' },
   { id: 'S07', file: 'S07-emotion-tag-order.png',       status: 'manual', desc: 'emotion 标签顺序（需屏录）' },
