@@ -164,7 +164,7 @@
   3. 观察 AI 是否立即停止 + 1.5s 内新内容不播
 - **预期**：当前句立即停止；1.5s 内保持静音（不读新内容）；用户说新内容 → AI 收 + 取消回合
 - **失败信号**：AI 继续朗读完整长段 / 1.5s 后直接接着读 / 「嗯」未生效
-- **回退**：检查 `src/asr.ts:59 matchBackchannel` + `src/client.tsx:967-968` 帧守卫 + `src/client.tsx:1140 setBackchannelHold`
+- **回退**：检查 `src/asr.ts:59 matchBackchannel` + `src/client.tsx:972/978` 帧守卫 + `src/client.tsx:1140 setBackchannelHold`
 - **时间**：2 分钟
 
 ### [ ] 5.2 hardBreak 真打断优先于让位
@@ -349,7 +349,7 @@
 - **基线状态**（代码基线 = `5e2d34f`，批 7O 收口；HEAD = `0b63a13`，块 3 纯文档/资产）：
   - `npm test` 325/325 全绿（25 文件串联）
   - `/voice-mode/config` 返回 4 字段非 null（实证）
-  - lib BUILD_TAG = `c9e9cc4`（其后 src 零 diff，plugin 零 diff 免重建；见 STATE 口径澄清）
+  - lib BUILD_TAG = `c9e9cc4`（其后 src 零 diff 免重建；见 STATE 口径澄清）
 
 ## 最近一次实测记录（非基线默认值，仅供参考）
 

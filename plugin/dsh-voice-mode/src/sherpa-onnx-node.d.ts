@@ -9,10 +9,6 @@ declare module 'sherpa-onnx-node' {
       free(): void
     }
     GenerationConfig: new (opts: Record<string, unknown>) => unknown
-    OfflinePunctuation: new (config: Record<string, unknown>) => {
-      addPunct(text: string): string
-    }
-    writeWave(filename: string, audio: { samples: Float32Array; sampleRate: number }): void
   }
   export default mod
 }

@@ -118,6 +118,7 @@ export class EdgeTtsEngine implements TtsEngine {
   }
 
   async synthesize(text: string, options: { voice?: string; rate?: number } = {}): Promise<Buffer> {
+    // Edge 直传云端，SSML 未启用，strip 另开批。
     const tts = new MsEdgeTTS()
     try {
       await tts.setMetadata(
