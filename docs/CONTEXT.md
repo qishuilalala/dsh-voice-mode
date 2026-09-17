@@ -2,7 +2,7 @@
 
 > **本文件角色**：跨文档索引 + 项目心智模型；状态变化改对应链接/锚点，不追加流水账。
 > **真源层级**：根 `CONTEXT.md`（开发者上下文，重写式 ~60 行）/ `docs/rules/STATE.md`（唯一恢复点）/ `docs/adr/`（决策）。
-> **基准 HEAD**：`f883b35`（批 7N 🟡 重做 5/5 后），lib BUILD_TAG 同步。
+> **基准 HEAD**：`66e1951`（批 7O 收口前），lib BUILD_TAG 同步。
 > **批 7M 🔴 砍落地（2026-09-16）**：4 项砍除——`recognitionLanguage`（4532b48）/ `asrHotwords`+`asrHotwordsScore`+模块（e3423ef）/ `docs/qa/user-experience-flow.md`（6bed6d4）；本文件设置键表 11 行→8 行（识别热词 / 热词偏置分 / 识别语种三行已砍）。
 > **批 7N 🟡 重做落地（2026-09-16）**：5 项重做——`bargeInMode='manual'` 接通（8278097）/ echoGateDb + autoResume 描述对齐（d667ffb+5b6019b）/ 端到端补测 3 项（58f6d77+b0e45fe+ee4312b）/ ADR-0003+0004 重命名（0564a51+0cacd88）/ autoResume 文案统一（f883b35）；详见下方设置键表。
 
@@ -45,7 +45,7 @@ bridge /voice-mode SSE：owner=sessionId，/config + /preview + assembleStream
   - `emotion.ts`（批 4）/ `asr-sense-key.ts`（纯函数 sanitize/key；批 7M 砍除 `asr-hotwords.ts`）
   - `sense-worker.ts` / `wakeword.ts` / `segmenter.ts` / `fixture-recorder.ts` 等
 - **`plugin/dsh-voice-mode/lib/`** —— esbuild 产物（`build.mjs` 重建，**不手改**）
-- **`plugin/dsh-voice-mode/test/`** —— 26 个 `.mjs`（npm test 23 文件 / **245 项全绿**；批 7M 砍 `hotwords.test.mjs` + 批 7N 新增 3 项 `barge-in-manual` / `yield-ms-wiring` / `matchBackchannel`）
+- **`plugin/dsh-voice-mode/test/`** —— 26 个 `.mjs`（npm test 20 文件 / **281 项全绿**；批 7M 砍 `hotwords.test.mjs` + 批 7N 新增 3 项 `barge-in-manual` / `yield-ms-wiring` / `matchBackchannel`）
 - **`docs/competitive/sources/scan-*.md`** —— 18 份子代理扫描报告
 
 ## 诊断开关
@@ -70,11 +70,11 @@ cd plugin/dsh-voice-mode && \
 ## 发版流程（批 K 收口 + L 文档同步验证通过的工作流）
 
 1. `git status --short` 仓干净
-2. `npm run typecheck && npm run build && npm test` 全绿（245 项基线 + 批 7N 新增 3 项）
+2. `npm run typecheck && npm run build && npm test` 全绿（npm test 281 项 / 20 文件）
 3. `systemctl restart dsh.service && curl /voice-mode/config` 验 4 字段非 null（senseITN/captionFontSize/captionMaxWidth/backchannelYield）
 4. 真机冒烟 **3 项必过** / **~8 分钟**（`docs/qa/must-verify-manually.md`：字幕 / 让位 / 60s 长段）
 5. 文档回写：`STATE.md` + 根 `CONTEXT.md` + `backlog.md` + ADR 落地注记（批 7M 砍 4 项 + 批 7N 重做 5 项已完成）
-6. **收口不 push**：ahead origin/main 由用户拍板发布节奏（当前 ahead = 51）
+6. **push 节奏由用户拍板**：批 7N 后已 push，ahead=0；后续批次收口后单次 push
 
 ## 索引
 
