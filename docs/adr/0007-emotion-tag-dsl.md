@@ -144,3 +144,10 @@ export interface TtsEngine {
 - 让 LLM 输出 `你好<break 300ms>世界` → 本地引擎（vits/kokoro）朗读应有 ~300ms 停顿。
 - `<laugh>` 不被读出。
 - 已确认集成层修复到位（emotion-integration.test.mjs B1 反向断言有效）。
+
+---
+
+## 落地注记（2026-09-17）
+
+- **本地引擎已实装**：VITS / Kokoro 路径 `<break Nms>` / `<whisper>...</whisper>`（成对作用域）/ `<laugh>` `<sigh>` `<emphasis>` 标签剥离均已落地——`tts-local.ts` `synthesize` 段合成 PCM 后处理（段间插静音 + whisper 段增益 ×0.5，tts-queue 零触碰）+ `test/emotion-integration.test.mjs` 9 项集成回归。
+- **Edge 云端路径情感标签未实装**：本 ADR 第二步 `<mstts:express-as>` 注入未实施——Edge SSML 情感标签支持边界待验证，推迟，无实施计划。

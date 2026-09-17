@@ -69,7 +69,7 @@ YIELDING (let the user interrupt)
 **先建 vset 字段再注模板（顺序敏感）**——这是让第 6 轮设计稿可实施的关键：
 
 1. **第一步（vset 字段新建）**：
-   - `vset.recognitionLanguage?: 'auto' | 'zh' | 'en' | 'ja' | 'ko' | 'yue'`（默认 `auto`）——为 Layer 4 variable 准备
+   - `vset.recognitionLanguage?: 'auto' | 'zh' | 'en' | 'ja' | 'ko' | 'yue'`（默认 `auto`）——为 Layer 4 variable 准备（recognitionLanguage 已于批 7M 砍除）
    - `vset.captionOnly?: boolean`（默认 `false`）——为 Layer 4 variable 准备
    - **同步改 `src/asr-host.ts` / `src/sense-worker.ts` / `src/settings-form.tsx`** 接收 + 暴露 2 个新字段
    - 真机当前 grep 0 命中（K-2 已知 — backlog 锚点 `index.ts:224-227` 是错的）
