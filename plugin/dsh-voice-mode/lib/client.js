@@ -393,6 +393,7 @@ var BUFFER_SIZE = 1024;
 function createAsrEngine(config, sessionId) {
   const wakeWord = (config.wakeWord ?? "").trim().toLowerCase().replace(/[\s\u3000]+/g, "");
   const wakeEnabled = wakeWord !== "" && config.mode !== "hold";
+  let runtimeBargeInMode = config.bargeInMode ?? "auto";
   let state = "idle";
   const stateListeners = /* @__PURE__ */ new Set();
   const errorListeners = /* @__PURE__ */ new Set();
@@ -447,7 +448,8 @@ function createAsrEngine(config, sessionId) {
   const asrUrl = (final, offset, epoch) => `${location.origin}${config.basePath.replace(/\/+$/, "")}/asr?sessionId=${encodeURIComponent(sessionId)}&final=${final ? 1 : 0}` + (offset !== void 0 ? `&offset=${offset}` : "") + (epoch !== void 0 ? `&epoch=${epoch}` : "") + // 批 7N（ADR-0006）：manual 模式下上传带 &manual=1，host 服务端据此放行（防御性守卫）。
   // handleAudio 入口已先在 manual + !holdActive 时 early return，所以能到这儿的帧必然
   // holdActive=true；带 manual=1 仅是冗余信号（host 拿不到 holdActive 状态）。
-  (config.bargeInMode === "manual" ? "&manual=1" : "");
+  // 批 7O：detect 经探测落 manual 时同样带 manual=1（runtimeBargeInMode 已解析）。
+  (runtimeBargeInMode === "manual" ? "&manual=1" : "");
   const setState = (s) => {
     state = s;
     for (const fn of stateListeners) {
@@ -728,7 +730,7 @@ function createAsrEngine(config, sessionId) {
   let echoPeak = 0;
   const handleAudio = (raw) => {
     if (!active || inFlush) return;
-    if (config.bargeInMode === "manual" && !holdActive) return;
+    if (runtimeBargeInMode === "manual" && !holdActive) return;
     let data = ctxRate !== SAMPLE_RATE2 ? resampleLinear(raw, ctxRate, SAMPLE_RATE2) : raw;
     const recMicPre = data;
     let recRef = null;
@@ -892,6 +894,9 @@ function createAsrEngine(config, sessionId) {
     const aecOn = stream.getAudioTracks()[0]?.getSettings().echoCancellation === true;
     if (!aecOn) {
       console.warn("[dsh-voice-mode] \u6D4F\u89C8\u5668\u539F\u751F echoCancellation \u672A\u751F\u6548\uFF08\u5916\u653E\u53EF\u80FD\u81EA\u6253\u65AD\uFF09\uFF0C\u5EFA\u8BAE\u7528\u8033\u673A\u6216\u300C\u624B\u52A8\u6253\u65AD\u300D");
+    }
+    if (config.bargeInMode === "detect") {
+      runtimeBargeInMode = aecOn ? "auto" : "manual";
     }
     config.onAecState?.(aecOn);
     const AC = window.AudioContext ?? window.webkitAudioContext;
@@ -1328,14 +1333,19 @@ var zh = {
   descVoiceKokoro: "Kokoro \u4E2D\u82F1\u97F3\u8272\uFF08103 \u4E2A\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B48-51 \u4E2D\u6587\u540D\uFF0C\u5176\u4F59\u6309\u7F16\u53F7+\u5B9E\u6D4B\u6027\u522B\u6807\u6CE8\uFF0C\u4E2D\u82F1\u6DF7\u8BFB\u5747\u53EF\uFF09",
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.1 \u9ED8\u8BA4\uFF1B\u8BA9\u56DE\u590D\u66F4\u7D27\u51D1\uFF09",
   descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB \u22480.3s \u786E\u8BA4 / 1 \u4E2D\u95E8\u69DB \u22480.2s / 2 \u4F4E\u95E8\u69DB \u22480.1s\uFF0C\u6700\u7075\u654F\uFF09\uFF1B\u503C\u8D8A\u4F4E\u95E8\u69DB\u8D8A\u9AD8\uFF0C\u8D8A\u96BE\u6253\u65AD",
-  descBargeIn: "\u6253\u65AD\u65B9\u5F0F\uFF08auto \u81EA\u52A8\u6253\u65AD\uFF1A\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u8033\u673A/\u5B89\u9759\u73AF\u5883\u63A8\u8350\uFF1Bmanual \u624B\u52A8\u6253\u65AD\uFF1A\u5916\u653E\u63A8\u8350\u2014\u2014\u56DE\u58F0\u4E0D\u4F1A\u8BEF\u89E6\u53D1\u81EA\u6253\u65AD\uFF0C\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u663E\u5F0F\u6253\u65AD\uFF09",
+  descBargeIn: "\u6253\u65AD\u65B9\u5F0F\uFF08detect \u81EA\u52A8\u63A2\u6D4B\u672C\u673A\u56DE\u58F0\u6D88\u9664\u72B6\u6001\u3001\u672A\u751F\u6548\u65F6\u5207\u4E3A\u957F\u6309\u6253\u65AD\uFF0C\u9ED8\u8BA4\uFF1Bauto \u5F3A\u5236\u81EA\u52A8\u6253\u65AD\uFF1A\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u8033\u673A/\u5B89\u9759\u73AF\u5883\u63A8\u8350\uFF1Bmanual \u624B\u52A8\u6253\u65AD\uFF1A\u5916\u653E\u63A8\u8350\u2014\u2014\u56DE\u58F0\u4E0D\u4F1A\u8BEF\u89E6\u53D1\u81EA\u6253\u65AD\uFF0C\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u663E\u5F0F\u6253\u65AD\uFF09",
+  bargeInDetect: "\u81EA\u52A8\u63A2\u6D4B",
   bargeInAuto: "\u81EA\u52A8",
   bargeInManual: "\u624B\u52A8",
+  // 批 7O（ADR-0006）：detect 取值说明 + 第一级探测降级提示。
+  descBargeInDetect: "\u81EA\u52A8\u63A2\u6D4B\u672C\u673A\u56DE\u58F0\u6D88\u9664\u72B6\u6001\uFF08\u9ED8\u8BA4\uFF09\uFF1A\u539F\u751F\u56DE\u58F0\u6D88\u9664\u751F\u6548\u65F6\u7B49\u540C\u81EA\u52A8\u6253\u65AD\uFF0C\u672A\u751F\u6548\u65F6\u81EA\u52A8\u5207\u4E3A\u957F\u6309\u6253\u65AD\uFF0C\u5E76\u5728\u72B6\u6001\u6761\u8BF4\u660E\u539F\u56E0",
   descEchoGate: "\u56DE\u58F0\u95E8\u63A7\u9608\u503C\uFF08dB\uFF0C\u9ED8\u8BA4 6\uFF09\uFF1A\u81EA\u52A8\u6253\u65AD\u8981\u6C42\u6B8B\u5DEE\u9AD8\u4E8E\u56DE\u58F0\u5730\u677F\u6B64\u503C\u3002\u5F53\u524D ASR \u6A21\u578B\u9ED8\u8BA4\u539F\u751F AEC \u751F\u6548\u65F6\u6B64\u95E8\u63A7\u95F2\u7F6E\uFF1BSafari / \u8033\u673A\u7B49\u65E0\u539F\u751F AEC \u73AF\u5883\u4F1A\u515C\u5E95\u751F\u6548\u3002\u5916\u653E\u4ECD\u8BEF\u6253\u65AD\u8C03\u5927\uFF088~10\uFF09\uFF0C\u592A\u96BE\u6253\u65AD\u8C03\u5C0F\uFF083~4\uFF09",
   descShortcut: "\u8FDB\u5165/\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5FEB\u6377\u952E\uFF08\u5F62\u5982 Ctrl+Shift+V\uFF1B\u7559\u7A7A\u7981\u7528\u5FEB\u6377\u952E\uFF0C\u53EA\u7528\u9EA6\u514B\u98CE\u6309\u94AE\uFF1B\u907F\u514D\u6D4F\u89C8\u5668\u4FDD\u7559\u7EC4\u5408\u5982 Ctrl+W/N/T\uFF09",
   vadDetected: "VAD \u68C0\u6D4B\u5230\u8BED\u97F3",
   aecOff: "\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548",
   aecOffHint: "\u6D4F\u89C8\u5668\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548\uFF08\u5916\u653E\u53EF\u80FD\u81EA\u6253\u65AD\uFF09\uFF0C\u5EFA\u8BAE\u7528\u8033\u673A\u6216\u5207\u6362\u300C\u624B\u52A8\u6253\u65AD\u300D",
+  // 批 7O（ADR-0006）：detect 模式第一级探测降级提示（状态条）。
+  bargeInDetectFallback: "\u672C\u673A\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548\uFF0C\u5DF2\u5207\u4E3A\u957F\u6309\u6253\u65AD",
   elapsedHint: "\u5F53\u524D\u8BED\u97F3\u4F1A\u8BDD\u5DF2\u7528\u65F6\u957F",
   botLevelsHint: "AI \u6717\u8BFB\u97F3\u91CF\uFF08\u84DD\u8272\u6761 = \u6717\u8BFB\uFF0C\u7EFF\u8272\u6761 = \u9EA6\u514B\u98CE\uFF09",
   interruptConfirm: "\u6253\u65AD\u786E\u8BA4",
@@ -1371,7 +1381,7 @@ var zh = {
   descMode: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD\uFF09",
   modeToggle: "\u6301\u7EED\u8046\u542C",
   modeHold: "\u6309\u4F4F\u8BF4\u8BDD",
-  descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF09",
+  descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF0C\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF1B\u4EC5\u6D41\u5F0F partial \u6587\u672C\u524D\u7F00\u5339\u914D\uFF0C\u975E\u4E13\u7528 KWS \u5F15\u64CE\uFF0C\u5608\u6742\u73AF\u5883\u53EF\u80FD\u5EF6\u8FDF\u6216\u8BEF\u6FC0\u6D3B\uFF09",
   wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
   settingsCardDesc: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3 / \u9006\u6587\u672C\u5F52\u4E00\u5316 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3",
   settingsEffectiveNote: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6A21\u578B\u7CBE\u5EA6 / \u53E3\u8BED\u5316\u63D0\u793A\u8BCD / \u91CD\u8BD1 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3 \u5373\u65F6\u751F\u6548\uFF1B\u9006\u6587\u672C\u5F52\u4E00\u5316 \u5373\u65F6\u751F\u6548\uFF08\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u91CD\u5EFA\u6D41\u5F0F\u8BC6\u522B\u5668\uFF09\uFF1B\u5176\u4F59\uFF08\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u9759\u97F3 / \u7A7A\u95F2 / \u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3\uFF09\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\u3002",
@@ -1503,14 +1513,19 @@ var en = {
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
   descInterrupt: "Interrupt sensitivity (0 high \u22480.3 s confirm / 1 medium \u22480.2 s / 2 low \u22480.1 s, most responsive); lower = higher barrier = harder to interrupt",
-  descBargeIn: "Barge-in mode (auto: interrupt by speaking \u2014 headphones/quiet; manual: for loudspeaker, no echo-triggered self-interrupt \u2014 hold mic/Ctrl to interrupt)",
+  descBargeIn: "Barge-in mode (detect: auto-probe native echo cancellation, fall back to hold-to-talk when inactive \u2014 default; auto: force interrupt by speaking \u2014 headphones/quiet; manual: for loudspeaker, no echo-triggered self-interrupt \u2014 hold mic/Ctrl to interrupt)",
+  bargeInDetect: "Auto-detect",
   bargeInAuto: "Auto",
   bargeInManual: "Manual",
+  // 批 7O（ADR-0006）：detect 取值说明（英文）。
+  descBargeInDetect: "Auto-probe native echo cancellation (default): acts like Auto when native echo cancellation is active, otherwise automatically switches to Manual (hold-to-talk) with a status-bar note",
   descEchoGate: "Echo gate threshold (dB, default 6): auto barge-in requires the residual to exceed the echo floor by this value. With the native browser AEC active, this gate is idle; it kicks in as a fallback in Safari or environments without native AEC (e.g. some headphones). Raise (8-10) if speaker echo still interrupts, lower (3-4) if hard to interrupt",
   descShortcut: "Shortcut to enter/exit voice mode (e.g. Ctrl+Shift+V; empty disables it, mic button only; avoid browser-reserved combos like Ctrl+W/N/T)",
   vadDetected: "VAD speech",
   aecOff: "Native AEC off",
   aecOffHint: "Native echo cancellation is not active (speaker echo may self-interrupt); use headphones or Manual barge-in",
+  // 批 7O（ADR-0006）：detect 模式第一级探测降级提示（英文）。
+  bargeInDetectFallback: "Native echo cancellation is off \u2014 switched to hold-to-talk barge-in",
   elapsedHint: "Current voice session duration",
   botLevelsHint: "AI playback level (blue bar = TTS playback, green bar = microphone)",
   interruptConfirm: "interrupt confirm",
@@ -1546,7 +1561,7 @@ var en = {
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)",
   modeToggle: "Continue listen",
   modeHold: "Hold to talk",
-  descWakeWord: "Wake word (default off; e.g. Hey D)",
+  descWakeWord: "Wake word (default off; e.g. Hey D; streamed partial text prefix match only, not a dedicated KWS engine \u2014 noisy environments may delay or falsely trigger)",
   wakePlaceholder: "e.g. Hey D",
   settingsCardDesc: "Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / ITN / caption font / caption width / yielding / yield window",
   settingsEffectiveNote: "Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding / yield window apply immediately; ITN applies immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.",
@@ -2625,6 +2640,7 @@ function VoiceSettingsCard({ scope }) {
             field: "bargeInMode",
             value: value.bargeInMode,
             options: [
+              { v: "detect", label: t("bargeInDetect") },
               { v: "auto", label: t("bargeInAuto") },
               { v: "manual", label: t("bargeInManual") }
             ]
@@ -2711,7 +2727,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "ee4312b";
+var BUILD_TAG = "0a672e7";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2743,6 +2759,7 @@ function playToolBeep() {
 var SAMPLE_RATE_16K = 16e3;
 var ECHO_DELAY_MS = 0;
 var ECHO_TAIL_MS = 400;
+var HOLD_CLEAR_FRAMES = 2;
 var WAVE_BARS = 14;
 var BASE_PATH2 = "/voice-mode";
 function getTabId() {
@@ -3010,7 +3027,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     autoSend: true,
     autoResume: false,
     mode: "toggle",
-    bargeInMode: "auto",
+    // 批 7O（ADR-0006）：默认 detect（与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐）。
+    bargeInMode: "detect",
     echoGateDb: 6,
     shortcut: "Ctrl+Shift+V",
     wakeWord: "",
@@ -3046,6 +3064,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   let source = null;
   let playingEndAt = 0;
   let backchannelHoldUntil = 0;
+  let holdSpeechFrames = 0;
   const telemetryStages = {};
   const stampTelemetry = (stage, at) => {
     if (!telemetryEnabled) return;
@@ -3315,7 +3334,15 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     if (frame.sessionId !== activeSessionId) return;
     const rejectLine = rejectSeqUpTo.get(frame.sessionId);
     if (rejectLine !== void 0 && frame.sentenceId <= rejectLine) return;
-    if (backchannelHoldUntil && Date.now() < backchannelHoldUntil) return;
+    if (backchannelHoldUntil && Date.now() < backchannelHoldUntil) {
+      holdSpeechFrames += 1;
+      if (holdSpeechFrames >= HOLD_CLEAR_FRAMES) {
+        backchannelHoldUntil = 0;
+        holdSpeechFrames = 0;
+      } else {
+        return;
+      }
+    }
     stampTelemetry("first-tts-chunk");
     if (frame.sentenceId !== curSentenceId) {
       curSentenceId = frame.sentenceId;
@@ -3442,6 +3469,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     },
     setBackchannelHold(untilMs) {
       backchannelHoldUntil = untilMs;
+      holdSpeechFrames = 0;
     },
     skipAudio() {
       doSkipAudio();
@@ -3530,7 +3558,8 @@ function MicButton({
     autoSend: true,
     autoResume: false,
     mode: "toggle",
-    bargeInMode: "auto",
+    // 批 7O（ADR-0006）：bootNow 兜底默认与 VOICE_SETTINGS_DEFAULTS 对齐为 detect。
+    bargeInMode: "detect",
     echoGateDb: 6,
     shortcut: "Ctrl+Shift+V",
     wakeWord: "",
@@ -3569,7 +3598,7 @@ function MicButton({
         autoSend: c.autoSend ?? cur.autoSend,
         autoResume: c.autoResume === true,
         mode: c.mode === "hold" ? "hold" : "toggle",
-        bargeInMode: c.bargeInMode === "manual" ? "manual" : "auto",
+        bargeInMode: c.bargeInMode === "manual" ? "manual" : c.bargeInMode === "detect" ? "detect" : "auto",
         echoGateDb: typeof c.echoGateDb === "number" ? Math.min(12, Math.max(3, c.echoGateDb)) : cur.echoGateDb,
         shortcut: typeof c.shortcut === "string" ? c.shortcut : cur.shortcut,
         wakeWord: typeof c.wakeWord === "string" ? c.wakeWord : cur.wakeWord,
@@ -3760,7 +3789,7 @@ function MicButton({
       const silenceMs = cfg.silenceMs;
       const interruptLevel = cfg.interruptLevel;
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2;
-      const bargeInMode = cfg.bargeInMode;
+      let bargeInMode = cfg.bargeInMode;
       debugLog("enter", {
         build: BUILD_TAG,
         mode: cfg.mode,
@@ -3889,6 +3918,10 @@ function MicButton({
             bus.setEchoBypass(on2);
             bus.setUi({ aecOff: !on2 });
             fixtureRecorder.mark("native-aec", on2 ? "on\uFF08\u81EA\u7814 NLMS \u65C1\u8DEF\uFF09" : "off\uFF08\u81EA\u7814 NLMS \u751F\u6548\uFF09");
+            if (cfg.bargeInMode === "detect") {
+              bargeInMode = on2 ? "auto" : "manual";
+              bus.setUi({ boot: { ...bus.ui.boot, bargeInMode }, bargeInDetectFallback: !on2 });
+            }
           },
           // 批 5 / ADR-0008 Phase 1：backchannel 命中回调——
           //   立即 skipAudio 终止当前朗读 + 置 cfg.yieldMs hold 窗口，期间 TTS 帧丢（字幕同帧丢）。
@@ -4555,7 +4588,7 @@ function VoiceStatusBar({ bus, sessionId }) {
           b.ui.aecOff === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "span",
             {
-              title: t("aecOffHint"),
+              title: b.ui.bargeInDetectFallback ? t("bargeInDetectFallback") : t("aecOffHint"),
               style: {
                 flexShrink: 0,
                 padding: "0 6px",
@@ -4566,7 +4599,7 @@ function VoiceStatusBar({ bus, sessionId }) {
                 background: "rgba(255, 166, 87, 0.15)",
                 border: "1px solid rgba(255, 166, 87, 0.35)"
               },
-              children: t("aecOff")
+              children: b.ui.bargeInDetectFallback ? t("bargeInDetectFallback") : t("aecOff")
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
