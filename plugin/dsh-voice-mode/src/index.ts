@@ -158,8 +158,8 @@ export interface VoiceSettingsValue {
   autoResume: boolean
   /** 交互模式：toggle 持续聆听+自动端点断句；hold 按住说话、松手发送。 */
   mode: 'toggle' | 'hold'
-  /** 打断方式：auto 自动打断（开口即打断，耳机/安静环境）；manual 手动打断（外放推荐——外放回声会误触发自动打断，改显式手势打断）。 */
-  bargeInMode: 'auto' | 'manual'
+  /** 打断方式：detect 自动探测本机回声消除状态（默认，未生效时切为长按打断）；auto 强制自动打断；manual 手动打断（外放推荐）。 */
+  bargeInMode: 'auto' | 'manual' | 'detect'
   /** 回声门控阈值（dB）：自动打断要求残差高于回声地板此值（外放回声误打断调大、难打断调小）。 */
   echoGateDb: number
   /** 进入/退出语音模式的快捷键（形如 Ctrl+Shift+V；留空则禁用快捷键）。 */
@@ -203,7 +203,9 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   autoSend: true,
   autoResume: false,
   mode: 'toggle',
-  bargeInMode: 'auto',
+  // 批 7O（ADR-0006）：bargeInMode 默认 'auto' → 'detect'（I10 豁免：ADR-0006 已 accepted 拍板，
+  // 老用户显式 auto 不受影响，新用户/未调过的用户开箱即对）。
+  bargeInMode: 'detect',
   echoGateDb: 6,
   shortcut: 'Ctrl+Shift+V',
   spokenFormat: true,
@@ -261,9 +263,9 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .default(d.mode)
       .description('交互模式：toggle 持续聆听 + 静音自动断句（默认）；hold 按住说话、松手发送（短按退出）'),
     bargeInMode: z
-      .union([z.const('auto'), z.const('manual')])
+      .union([z.const('auto'), z.const('manual'), z.const('detect')])
       .default(d.bargeInMode)
-      .description('打断方式：auto 自动打断（开口即打断，耳机/安静环境推荐）；manual 手动打断（外放推荐——外放回声会误触发自动打断，改按住麦克风/Ctrl 显式打断，永不自打断）'),
+      .description('打断方式：detect 自动探测本机原生回声消除状态（默认，未生效时切为长按打断）；auto 强制自动打断（开口即打断，耳机/安静环境推荐）；manual 手动打断（外放推荐——按住麦克风/Ctrl 显式打断，永不自打断）'),
     echoGateDb: z
       .number()
       .min(3)

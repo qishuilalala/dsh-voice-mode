@@ -108,8 +108,10 @@ export interface AsrConfig {
   /** 唤醒词（空 = 关）：进入后先在 wake 待机态，说出唤醒词才正式开口。 */
   wakeWord?: string
   /** 批 7N（ADR-0006）：打断方式。manual = 仅在 holdActive 期间才处理音频（外放不自打断）。
-   *  缺省视为 'auto'——保持原行为不变（向后兼容，未传此字段的旧调用方不被影响）。 */
-  bargeInMode?: 'auto' | 'manual'
+   *  缺省视为 'auto'——保持原行为不变（向后兼容，未传此字段的旧调用方不被影响）。
+   *  批 7O（ADR-0006）：detect = 第一级自动探测（getUserMedia 后读 echoCancellation），
+   *  false → 运行时落 manual、true → auto。 */
+  bargeInMode?: 'auto' | 'manual' | 'detect'
 }
 
 export interface SegmentMeta {
@@ -169,6 +171,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   const wakeWord = (config.wakeWord ?? '').trim().toLowerCase().replace(/[\s\u3000]+/g, '')
   /** 唤醒词门仅在 toggle 模式生效（hold 模式按住即说，无需唤醒词门，避免状态条误显「说唤醒词」）。 */
   const wakeEnabled = wakeWord !== '' && config.mode !== 'hold'
+  /** 批 7O（ADR-0006）：运行时打断方式。detect 模式下经第一级探测（echoCancellation）在
+   *  startRecorder 内落为 'auto'/'manual'；auto/manual 显式取值保持原样。 */
+  let runtimeBargeInMode: 'auto' | 'manual' | 'detect' = config.bargeInMode ?? 'auto'
   let state: AsrState = 'idle'
   const stateListeners = new Set<(s: AsrState) => void>()
   const errorListeners = new Set<(msg: string) => void>()
@@ -248,7 +253,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // 批 7N（ADR-0006）：manual 模式下上传带 &manual=1，host 服务端据此放行（防御性守卫）。
     // handleAudio 入口已先在 manual + !holdActive 时 early return，所以能到这儿的帧必然
     // holdActive=true；带 manual=1 仅是冗余信号（host 拿不到 holdActive 状态）。
-    (config.bargeInMode === 'manual' ? '&manual=1' : '')
+    // 批 7O：detect 经探测落 manual 时同样带 manual=1（runtimeBargeInMode 已解析）。
+    (runtimeBargeInMode === 'manual' ? '&manual=1' : '')
 
   const setState = (s: AsrState): void => {
     state = s
@@ -616,7 +622,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // 外放不自打断根治：非按压期间麦克风持续拾取会进段、partial 会拾取环境音+回声，
     // 既污染识别结果又触发自打断错觉；manual 直接丢弃非按压帧。
     // auto 模式不限制（保持原行为；不变量 I2 不动——打断仍按 VAD 走）。
-    if (config.bargeInMode === 'manual' && !holdActive) return
+    // 批 7O：detect 经探测落 manual 时同样丢弃非按压帧（runtimeBargeInMode 已解析）。
+    if (runtimeBargeInMode === 'manual' && !holdActive) return
     // 跨平台守卫：Safari 等浏览器会忽略 AudioContext({sampleRate}) 选项，
     // 实际按 44.1k/48k 输出。非 16k 时先线性重采样，保证 host zipformer2
     // 始终收到 16k PCM（避免识别错乱）。
@@ -845,6 +852,11 @@ const startRecorder = async (): Promise<void> => {
     const aecOn = stream.getAudioTracks()[0]?.getSettings().echoCancellation === true
     if (!aecOn) {
       console.warn('[dsh-voice-mode] 浏览器原生 echoCancellation 未生效（外放可能自打断），建议用耳机或「手动打断」')
+    }
+    // 批 7O（ADR-0006）第一级自动探测：detect 模式根据原生 AEC 实际状态落运行时打断方式。
+    //   false → manual（不自打断，配合状态条提示）；true → auto。auto/manual 显式取值不探测。
+    if (config.bargeInMode === 'detect') {
+      runtimeBargeInMode = aecOn ? 'auto' : 'manual'
     }
     config.onAecState?.(aecOn)
     const AC: typeof AudioContext =

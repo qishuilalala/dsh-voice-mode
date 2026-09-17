@@ -1138,6 +1138,7 @@ export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.
                 field="bargeInMode"
                 value={value.bargeInMode}
                 options={[
+                  { v: 'detect', label: tr('bargeInDetect') },
                   { v: 'auto', label: tr('bargeInAuto') },
                   { v: 'manual', label: tr('bargeInManual') },
                 ]}

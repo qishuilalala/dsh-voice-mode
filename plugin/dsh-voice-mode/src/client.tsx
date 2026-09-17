@@ -66,6 +66,8 @@ interface VoiceUiState {
   echoLevels?: { floorRms: number; residualRms: number }
   /** A1：浏览器原生回声消除是否生效（false 时外放易自打断，状态条提示）。 */
   aecOff?: boolean
+  /** 批 7O（ADR-0006）：detect 模式第一级探测落 manual（原生 AEC 未生效）时的状态条提示标记。 */
+  bargeInDetectFallback?: boolean
   /** 批 G 任务 2：空闲预警态标记（resetIdle 触发 9:30 预警 → true；用户活动 / clearIdle 复位 → false）。
    *  状态条据此展示「30 秒后自动退出」toast。 */
   idleWarn?: boolean
@@ -576,7 +578,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     autoSend: true,
     autoResume: false,
     mode: 'toggle',
-    bargeInMode: 'auto',
+    // 批 7O（ADR-0006）：默认 detect（与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐）。
+    bargeInMode: 'detect',
     echoGateDb: 6,
     shortcut: 'Ctrl+Shift+V',
     wakeWord: '',
@@ -1185,8 +1188,8 @@ interface VoiceBootConfig {
   /** 切换回上次语音会话时自动恢复（默认关）。 */
   autoResume: boolean
   mode: 'toggle' | 'hold'
-  /** 打断方式：auto 自动（VAD 开口打断）；manual 手动（外放推荐，回声不误触发自打断）。 */
-  bargeInMode: 'auto' | 'manual'
+  /** 打断方式：detect 自动探测（默认）；auto 自动（VAD 开口打断）；manual 手动（外放推荐，回声不误触发自打断）。 */
+  bargeInMode: 'auto' | 'manual' | 'detect'
   /** 回声门控阈值（dB，默认 6）。 */
   echoGateDb: number
   /** 进入/退出语音模式的快捷键（如 Ctrl+Shift+V；空 = 禁用）。 */
@@ -1282,7 +1285,8 @@ export function MicButton({
       autoSend: true,
       autoResume: false,
       mode: 'toggle',
-      bargeInMode: 'auto',
+      // 批 7O（ADR-0006）：bootNow 兜底默认与 VOICE_SETTINGS_DEFAULTS 对齐为 detect。
+      bargeInMode: 'detect',
       echoGateDb: 6,
       shortcut: 'Ctrl+Shift+V',
       wakeWord: '',
@@ -1331,7 +1335,7 @@ export function MicButton({
         autoSend: c.autoSend ?? cur.autoSend,
         autoResume: c.autoResume === true,
         mode: c.mode === 'hold' ? 'hold' : 'toggle',
-        bargeInMode: c.bargeInMode === 'manual' ? 'manual' : 'auto',
+        bargeInMode: c.bargeInMode === 'manual' ? 'manual' : c.bargeInMode === 'detect' ? 'detect' : 'auto',
         echoGateDb: typeof c.echoGateDb === 'number' ? Math.min(12, Math.max(3, c.echoGateDb)) : cur.echoGateDb,
         shortcut: typeof c.shortcut === 'string' ? c.shortcut : cur.shortcut,
         wakeWord: typeof c.wakeWord === 'string' ? c.wakeWord : cur.wakeWord,
@@ -1556,7 +1560,9 @@ export function MicButton({
       const silenceMs = cfg.silenceMs
       const interruptLevel = cfg.interruptLevel
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2
-      const bargeInMode = cfg.bargeInMode
+      // 批 7O（ADR-0006）：detect 模式下由 onAecState（第一级探测）在 getUserMedia 后
+      // 改写为 'auto'/'manual'；auto/manual 显式取值保持不变。
+      let bargeInMode = cfg.bargeInMode
       debugLog('enter', {
         build: BUILD_TAG,
         mode: cfg.mode,
@@ -1719,6 +1725,13 @@ export function MicButton({
             bus.setEchoBypass(on) // 原生 AEC 生效时旁路自研 NLMS（防错位尖峰）
             bus.setUi({ aecOff: !on })
             fixtureRecorder.mark('native-aec', on ? 'on（自研 NLMS 旁路）' : 'off（自研 NLMS 生效）')
+            // 批 7O（ADR-0006）第一级自动探测：detect 模式据原生 AEC 实际状态落运行时打断方式。
+            //   false → 落 manual（不自打断）+ 状态条提示；true → auto。auto/manual 显式取值不探测。
+            if (cfg.bargeInMode === 'detect') {
+              bargeInMode = on ? 'auto' : 'manual'
+              // 改写 boot 供手势（Ctrl 按住打断）读实时生效的打断方式；非 detect 不触碰 boot。
+              bus.setUi({ boot: { ...bus.ui.boot, bargeInMode }, bargeInDetectFallback: !on })
+            }
           },
           // 批 5 / ADR-0008 Phase 1：backchannel 命中回调——
           //   立即 skipAudio 终止当前朗读 + 置 cfg.yieldMs hold 窗口，期间 TTS 帧丢（字幕同帧丢）。
@@ -2589,7 +2602,7 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
         )}
         {b.ui.aecOff === true && (
           <span
-            title={t('aecOffHint')}
+            title={b.ui.bargeInDetectFallback ? t('bargeInDetectFallback') : t('aecOffHint')}
             style={{
               flexShrink: 0,
               padding: '0 6px',
@@ -2601,7 +2614,7 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
               border: '1px solid rgba(255, 166, 87, 0.35)',
             }}
           >
-            {t('aecOff')}
+            {b.ui.bargeInDetectFallback ? t('bargeInDetectFallback') : t('aecOff')}
           </span>
         )}
         <button

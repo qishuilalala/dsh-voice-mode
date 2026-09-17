@@ -89,8 +89,9 @@ export interface AsrRuntimeOptions {
   broadcast: (event: string, payload: unknown) => void
   /** 批 7N（ADR-0006）：打断方式（getter 实时读设置）。manual 模式下需 manualPressed=true
    *  才允许 feed 进入 ASR 流；auto 模式忽略 manualPressed。外放自打断根治：
-   *  manual = 用户按住 mic/Ctrl 才视为在说话。 */
-  bargeInMode: () => 'auto' | 'manual'
+   *  manual = 用户按住 mic/Ctrl 才视为在说话。批 7O：detect 取值仅透传，
+   *  host 侧闸门仍只判 === 'manual'（detect 的运行时降级由客户端第一级探测决定）。 */
+  bargeInMode: () => 'auto' | 'manual' | 'detect'
 }
 
 export interface AsrRuntime {
