@@ -116,3 +116,11 @@ README 的排障表实际上是在教用户调声学参数。对"外放的桌面
 - **A：保持现状，靠 README 教用户调参**——被用户的"都是第一用户"直接否掉
 - **B：默认改成 `manual`，想要 auto 的自己开**——对耳机用户是明显的体验倒退（他们的 `auto` 本来就能用），把问题从一类用户转移到另一类，不解决
 - **C：不加 `detect` 取值，直接让 `auto` 内部自动降级**——实现更省事，但语义混乱："我明明设了 auto，为什么是长按？" 三值方案让"我要的"和"系统判断的"可区分
+
+---
+
+## 落地注记（2026-09-17）
+
+1. **manual 闸门已接通**（commit `8278097`，批 7N 🟡 重做 1/5）：`asr-host.ts` `feed()` 加 `manualPressed` 守卫 + URL `?manual=1` 透传（host 侧防御守卫）；新增 `test/barge-in-manual.test.mjs` 8 项回归。
+2. **`detect` 取值仍未进 schema**：`bargeInMode` 仍为 `'auto' | 'manual'` 二值（`src/index.ts` zod union），本 ADR §1 的新默认取值未实施。
+3. **第一级自动探测仍未实现**（`echoCancellation === false` → 自动落 `manual`）：`src/asr.ts:845-848` 已读信号但仅 console.warn，不改变打断模式；已登记批 7O 代码块实施。
