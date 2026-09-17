@@ -2,7 +2,7 @@
 
 > **本文件角色**：跨文档索引 + 项目心智模型；状态变化改对应链接/锚点，不追加流水账。
 > **真源层级**：根 `CONTEXT.md`（开发者上下文，重写式 ~60 行）/ `docs/rules/STATE.md`（唯一恢复点）/ `docs/adr/`（决策）。
-> **基准 HEAD**：`66e1951`（批 7O 收口前），lib BUILD_TAG 同步。
+> **基准 HEAD**：`5e2d34f`（批 7O 代码块收口，src+lib 一致；其后块 3 纯文档/资产 commit 不改代码态）。
 > **批 7M 🔴 砍落地（2026-09-16）**：4 项砍除——`recognitionLanguage`（4532b48）/ `asrHotwords`+`asrHotwordsScore`+模块（e3423ef）/ `docs/qa/user-experience-flow.md`（6bed6d4）；本文件设置键表砍 3 行（识别热词 / 热词偏置分 / 识别语种）后剩 7 个数据行。
 > **批 7N 🟡 重做落地（2026-09-16）**：5 项重做——`bargeInMode='manual'` 接通（8278097）/ echoGateDb + autoResume 描述对齐（d667ffb+5b6019b）/ 端到端补测 3 项（58f6d77+b0e45fe+ee4312b）/ ADR-0003+0004 重命名（0564a51+0cacd88）/ autoResume 文案统一（f883b35）；详见下方设置键表。
 
@@ -29,7 +29,7 @@ bridge /voice-mode SSE：owner=sessionId，/config + /preview + assembleStream
 | 键 | 类型 | 默认 | 含义 |
 |---|---|---|---|
 | `ttsEngine` / `kokoroModel` / `voice` | enum | `edge` / `int8` / 按引擎 | 引擎 + 精度 + 说话人（即时） |
-| `bargeInMode` / `echoGateDb` / `interruptLevel` | enum/num | `auto` / `6` / `0` | 打断模式（批 7N 接通 manual 闸门）+ 门控 dB（批 7N 描述与真机限制对齐：AEC 生效时闲置）+ 确认帧 3/2/1 |
+| `bargeInMode` / `echoGateDb` / `interruptLevel` | enum/num | `detect` / `6` / `0` | 打断模式三值 auto/manual/detect（批 7O 默认 detect 自动探测：原生 AEC 开→auto / 关→manual；批 7N 接通 manual 闸门）+ 门控 dB（批 7N 描述与真机限制对齐：AEC 生效时闲置）+ 确认帧 3/2/1 |
 | `silenceMs` | number | `1500` | 端点 VAD minSilenceDuration（守恒） |
 | `senseITN` | boolean | `true` | **批 2** P0：逆文本归一化 |
 | `captionFontSize` | enum | `0` | **批 3** P0：0=12px/1=14px/2=18px/3=24px（0 与现状字节等价） |
@@ -45,7 +45,7 @@ bridge /voice-mode SSE：owner=sessionId，/config + /preview + assembleStream
   - `emotion.ts`（批 4）/ `asr-sense-key.ts`（纯函数 sanitize/key；批 7M 砍除 `asr-hotwords.ts`）
   - `sense-worker.ts` / `wakeword.ts` / `segmenter.ts` / `fixture-recorder.ts` 等
 - **`plugin/dsh-voice-mode/lib/`** —— esbuild 产物（`build.mjs` 重建，**不手改**）
-- **`plugin/dsh-voice-mode/test/`** —— 26 个 `.mjs`（npm test 20 文件 / **281 项全绿**；批 7M 砍 `hotwords.test.mjs` + 批 7N 新增 3 个测试文件 `barge-in-manual` / `yield-ms-wiring` / `matchBackchannel`）
+- **`plugin/dsh-voice-mode/test/`** —— 30 个 `.mjs`（npm test 25 文件 / **325 项全绿**；批 7M 砍 `hotwords.test.mjs` + 批 7N 新增 3 文件 `barge-in-manual` / `yield-ms-wiring` / `matchBackchannel` + 批 7O 新增 5 文件 `settings-load` / `preview-error` / `hold-clear` / `barge-in-detect` / `wakeword`）
 - **`docs/competitive/sources/scan-*.md`** —— 18 份子代理扫描报告
 
 ## 诊断开关
@@ -70,7 +70,7 @@ cd plugin/dsh-voice-mode && \
 ## 发版流程（批 K 收口 + L 文档同步验证通过的工作流）
 
 1. `git status --short` 仓干净
-2. `npm run typecheck && npm run build && npm test` 全绿（npm test 281 项 / 20 文件）
+2. `npm run typecheck && npm run build && npm test` 全绿（npm test 325 项 / 25 文件）
 3. `systemctl restart dsh.service && curl /voice-mode/config` 验 4 字段非 null（senseITN/captionFontSize/captionMaxWidth/backchannelYield）
 4. 真机冒烟 **4 项必过** / **~10 分钟**（`docs/qa/must-verify-manually.md`：字幕 / 让位 / 60s 长段 / manual 外放）
 5. 文档回写：`STATE.md` + 根 `CONTEXT.md` + `backlog.md` + ADR 落地注记（批 7M 砍 4 项 + 批 7N 重做 5 项已完成）
