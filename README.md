@@ -35,8 +35,6 @@
 
 | # | 痛点 | 我们的应对 |
 | --- | --- | --- |
-| 1 | **专有名词识别不对** —— 「dsh-voice-mode」总识别成「DSH voice 模式」 | 识别热词偏置 `asrHotwords: "dsh-voice-mode:2.5"` —— 显著提升专有名词召回 |
-| 2 | **语种乱漂** —— 中英混说时句子中途跳英文 / 一锁 en 又跳回中文 | `recognitionLanguage` = `auto/zh/en/ja/ko/yue` 6 语种锁定 + 重建 worker |
 | 3 | **字幕看不清** —— 字小、窄屏被输入框挡住 | `captionFontSize` 4 档（12/14/18/24px）+ `captionMaxWidth` 3 档（50/70/90vw） |
 | 4 | **让位误打断** —— AI 朗读时插一句「嗯/对」就被硬打断 | `backchannelYield` 让位语义：短词自动让位 1.5s，真要说走才硬打断 |
 | 5 | **本地 TTS 太机械** —— 一句话读完停顿 3-5 秒 | 本地 VITS / Kokoro 原生 addon + epoch 队列管理，按句流式朗读、句间无停顿 |
@@ -45,7 +43,7 @@
 
 ## ✨ 功能（按用户价值）
 
-1. 🎙️ **识别准** —— 热词偏置 + SenseVoice 多语种 + ITN（数字/日期/货币自动规范化）
+1. 🎙️ **识别准** —— SenseVoice 多语种定稿 + ITN（数字/日期/货币自动规范化）
 3. 🗣️ **不说错** —— 唤醒词待机、唤醒词前缀语气词白名单（`嗯`/`那个` 不再误触）
 5. 🤝 **让位** —— 让位语义 + 三档打断灵敏度（`interruptLevel`），外放也能精准打断
 7. 💬 **有感情** —— 本地 Kokoro 103 音色 + Edge 322 音色，行内可试听；分段朗读不漏句
@@ -99,8 +97,6 @@ systemctl restart dsh   # Linux；其他平台重启 dsh 进程
 
 | 你想调什么 | 改哪个键 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| 识别热词 | `asrHotwords` / `asrHotwordsScore` | 空 / `1.5` | 每行一词或「词:分数」（如 `dsh-voice-mode:2.5`）；变更触发 recognizer 重建 |
-| 识别语种 | `recognitionLanguage` | `auto` | SenseVoice 多语：`auto` / `zh` / `en` / `ja` / `ko` / `yue`；切换终止并重建 worker |
 | 逆文本归一化 | `senseITN` | `true` | SenseVoice 数字/日期/货币规范化（默认开，关掉保留原文） |
 | 字幕字号 | `captionFontSize` | `0` | 档位 0=12px / 1=14px / 2=18px / 3=24px |
 | 字幕宽度 | `captionMaxWidth` | `1` | 档位 0=50vw / 1=70vw / 2=90vw |
@@ -162,7 +158,7 @@ flowchart LR
 | 多语种 | 英文为主 | **6 语种 auto/zh/en/ja/ko/yue + ITN** |
 | 朗读引擎 | 云端 TTS | **Edge 云端 + 本地 VITS/Kokoro** 三选一 |
 | 打断检测 | 基础 VAD | **三档灵敏度 + 回声门控 + 让位语义** |
-| 热词偏置 | 无 | **sherpa-onnx 热词 + 偏置分** |
+| 热词偏置 | 无 | 无（已移除） |
 | 字幕 a11y | 无 | **4 档字号 + 3 档宽度 + 主题跟随** |
 | 唤醒词 | 无 | **轻量流式匹配 + 前缀语气词白名单** |
 | 兼容 dsh | — | **0.1.1-rc.2 → 0.1.5-rc.2 全版本** |
@@ -179,7 +175,6 @@ flowchart LR
 | 语音模式进不去 | 检查插件 `enabled`；多标签页时确认当前会话为活动会话 |
 | 识别到但不是我要说的 | 环境噪声：降低音量或提高 `interruptLevel`（高门槛） |
 | 打不断（朗读中开口无反应） | 调高 `interruptLevel`（更敏感档）或检查麦克风权限；**不要**调 `echoGateDb`——原生 AEC 生效时它从未被执行（详见 ADR-0006） |
-| 热词不生效 | 检查 `asrHotwords` 是否为空（空 = 关闭）；热词变更触发 recognizer 重建，下次进入语音模式生效；热词评分过低（<1.0）几乎无效，建议 ≥1.5 |
 | 字幕被输入框挡住 | 默认 `captionMaxWidth=1`（70vw）+ `captionFontSize=0`（12px）在窄屏可能与底部输入框重叠；调整档位，或关闭语音模式后点状态条浮层右上角「×」收起 |
 | 让位行为异常（朗读期说「嗯」不停 / 真话被打断） | 「嗯/对」类短词触发让位 1.5s（hold）后继续朗读；继续说真话会走硬打断；如不要让位语义把 `backchannelYield` 关闭即可恢复改造前行为（ADR-0008） |
 | 朗读期说「嗯」没让位 | 确认 `backchannelYield=true`（默认开）；hold 模式松手后让位 1.5s 内继续说话会变硬打断 |
@@ -193,7 +188,7 @@ flowchart LR
 
 完整 backlog（43 项 P0-P3）见 [`docs/competitive/backlog.md`](docs/competitive/backlog.md)。
 
-- ✅ **已完成（v0.7.7）**：11 批次周全修复（识别热词 / 锁语种 / 字幕档位 / 让位语义 / 模型预热 / 默认值微调 / 死代码清理等）
+- ✅ **已完成（v0.7.7）**：11 批次周全修复（字幕档位 / 让位语义 / 模型预热 / 默认值微调 / 死代码清理等）
 - 🚧 **P0（近期）**：ADR-0003 VAD 下沉 / ADR-0006 第一级探测接通 manual / F1 emotion DSL 全量上线
 - 📋 **P1（中期）**：MCP `voice_*` 工具集 / 卡片表单 draft validate / 状态条 idle 优化
 - 💡 **P2（远期）**：声音克隆（用户已决定推迟）/ ADR-0004 WebSocket transport
