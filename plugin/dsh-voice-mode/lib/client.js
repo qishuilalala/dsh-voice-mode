@@ -1337,8 +1337,6 @@ var zh = {
   bargeInDetect: "\u81EA\u52A8\u63A2\u6D4B",
   bargeInAuto: "\u81EA\u52A8",
   bargeInManual: "\u624B\u52A8",
-  // 批 7O（ADR-0006）：detect 取值说明 + 第一级探测降级提示。
-  descBargeInDetect: "\u81EA\u52A8\u63A2\u6D4B\u672C\u673A\u56DE\u58F0\u6D88\u9664\u72B6\u6001\uFF08\u9ED8\u8BA4\uFF09\uFF1A\u539F\u751F\u56DE\u58F0\u6D88\u9664\u751F\u6548\u65F6\u7B49\u540C\u81EA\u52A8\u6253\u65AD\uFF0C\u672A\u751F\u6548\u65F6\u81EA\u52A8\u5207\u4E3A\u957F\u6309\u6253\u65AD\uFF0C\u5E76\u5728\u72B6\u6001\u6761\u8BF4\u660E\u539F\u56E0",
   descEchoGate: "\u56DE\u58F0\u95E8\u63A7\u9608\u503C\uFF08dB\uFF0C\u9ED8\u8BA4 6\uFF09\uFF1A\u81EA\u52A8\u6253\u65AD\u8981\u6C42\u6B8B\u5DEE\u9AD8\u4E8E\u56DE\u58F0\u5730\u677F\u6B64\u503C\u3002\u5F53\u524D ASR \u6A21\u578B\u9ED8\u8BA4\u539F\u751F AEC \u751F\u6548\u65F6\u6B64\u95E8\u63A7\u95F2\u7F6E\uFF1BSafari / \u8033\u673A\u7B49\u65E0\u539F\u751F AEC \u73AF\u5883\u4F1A\u515C\u5E95\u751F\u6548\u3002\u5916\u653E\u4ECD\u8BEF\u6253\u65AD\u8C03\u5927\uFF088~10\uFF09\uFF0C\u592A\u96BE\u6253\u65AD\u8C03\u5C0F\uFF083~4\uFF09",
   descShortcut: "\u8FDB\u5165/\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5FEB\u6377\u952E\uFF08\u5F62\u5982 Ctrl+Shift+V\uFF1B\u7559\u7A7A\u7981\u7528\u5FEB\u6377\u952E\uFF0C\u53EA\u7528\u9EA6\u514B\u98CE\u6309\u94AE\uFF1B\u907F\u514D\u6D4F\u89C8\u5668\u4FDD\u7559\u7EC4\u5408\u5982 Ctrl+W/N/T\uFF09",
   vadDetected: "VAD \u68C0\u6D4B\u5230\u8BED\u97F3",
@@ -1517,8 +1515,6 @@ var en = {
   bargeInDetect: "Auto-detect",
   bargeInAuto: "Auto",
   bargeInManual: "Manual",
-  // 批 7O（ADR-0006）：detect 取值说明（英文）。
-  descBargeInDetect: "Auto-probe native echo cancellation (default): acts like Auto when native echo cancellation is active, otherwise automatically switches to Manual (hold-to-talk) with a status-bar note",
   descEchoGate: "Echo gate threshold (dB, default 6): auto barge-in requires the residual to exceed the echo floor by this value. With the native browser AEC active, this gate is idle; it kicks in as a fallback in Safari or environments without native AEC (e.g. some headphones). Raise (8-10) if speaker echo still interrupts, lower (3-4) if hard to interrupt",
   descShortcut: "Shortcut to enter/exit voice mode (e.g. Ctrl+Shift+V; empty disables it, mic button only; avoid browser-reserved combos like Ctrl+W/N/T)",
   vadDetected: "VAD speech",
@@ -2727,7 +2723,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "0a672e7";
+var BUILD_TAG = "c9e9cc4";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
