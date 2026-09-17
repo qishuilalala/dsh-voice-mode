@@ -3,7 +3,7 @@
 > **本文件角色**：跨文档索引 + 项目心智模型；状态变化改对应链接/锚点，不追加流水账。
 > **真源层级**：根 `CONTEXT.md`（开发者上下文，重写式 ~60 行）/ `docs/rules/STATE.md`（唯一恢复点）/ `docs/adr/`（决策）。
 > **基准 HEAD**：`66e1951`（批 7O 收口前），lib BUILD_TAG 同步。
-> **批 7M 🔴 砍落地（2026-09-16）**：4 项砍除——`recognitionLanguage`（4532b48）/ `asrHotwords`+`asrHotwordsScore`+模块（e3423ef）/ `docs/qa/user-experience-flow.md`（6bed6d4）；本文件设置键表 11 行→8 行（识别热词 / 热词偏置分 / 识别语种三行已砍）。
+> **批 7M 🔴 砍落地（2026-09-16）**：4 项砍除——`recognitionLanguage`（4532b48）/ `asrHotwords`+`asrHotwordsScore`+模块（e3423ef）/ `docs/qa/user-experience-flow.md`（6bed6d4）；本文件设置键表 11 行→7 行（识别热词 / 热词偏置分 / 识别语种三行已砍）。
 > **批 7N 🟡 重做落地（2026-09-16）**：5 项重做——`bargeInMode='manual'` 接通（8278097）/ echoGateDb + autoResume 描述对齐（d667ffb+5b6019b）/ 端到端补测 3 项（58f6d77+b0e45fe+ee4312b）/ ADR-0003+0004 重命名（0564a51+0cacd88）/ autoResume 文案统一（f883b35）；详见下方设置键表。
 
 ## 项目心智模型（一段话）
@@ -45,7 +45,7 @@ bridge /voice-mode SSE：owner=sessionId，/config + /preview + assembleStream
   - `emotion.ts`（批 4）/ `asr-sense-key.ts`（纯函数 sanitize/key；批 7M 砍除 `asr-hotwords.ts`）
   - `sense-worker.ts` / `wakeword.ts` / `segmenter.ts` / `fixture-recorder.ts` 等
 - **`plugin/dsh-voice-mode/lib/`** —— esbuild 产物（`build.mjs` 重建，**不手改**）
-- **`plugin/dsh-voice-mode/test/`** —— 26 个 `.mjs`（npm test 20 文件 / **281 项全绿**；批 7M 砍 `hotwords.test.mjs` + 批 7N 新增 3 项 `barge-in-manual` / `yield-ms-wiring` / `matchBackchannel`）
+- **`plugin/dsh-voice-mode/test/`** —— 26 个 `.mjs`（npm test 20 文件 / **281 项全绿**；批 7M 砍 `hotwords.test.mjs` + 批 7N 新增 3 个测试文件 `barge-in-manual` / `yield-ms-wiring` / `matchBackchannel`）
 - **`docs/competitive/sources/scan-*.md`** —— 18 份子代理扫描报告
 
 ## 诊断开关
@@ -80,6 +80,6 @@ cd plugin/dsh-voice-mode && \
 
 - 决策：`docs/adr/0001-0008`（ADR-0003 `server-side-vad` / ADR-0004 `realtime-transport-deferred` 命名纠正 2026-09-16）
 - 状态：`docs/rules/STATE.md`（批 7A-L + 批 7M 🔴 砍 + 批 7N 🟡 重做 全 PASS-WITH-MINOR）
-- 真机：`docs/qa/real-machine-acceptance-checklist.md`（精简到批 2/3/5 三阶段 + 批 7N 真机验收门禁 3 项）+ `docs/qa/must-verify-manually.md`（4 项必过）
+- 真机：`docs/qa/real-machine-acceptance-checklist.md`（精简到批 2/3/5 三阶段 + 真机验收门禁 2 项（阶段 1+阶段 6））+ `docs/qa/must-verify-manually.md`（4 项必过）
 - 心智：根 `CONTEXT.md`（不重复内容）
 - 缺口：`zh-60s.wav` fixture（批 7N 已补 b0e45fe）/ `backchannel-yield` 守卫（批 7N 已补 ee4312b）/ `preview-error-classify` / `yieldMs` wiring E2E（批 7N 已补 58f6d77）/ `settings-load` zod strip 模式（Q1 待用户实测，见 backlog.md 末节）

@@ -1,7 +1,7 @@
 # 必须人工复核最小清单
 
-> **定位**：AI 已自动验证 281 项 npm test（曾记 245/254 已过时；实测 = 批 7M 砍后 245 基线 + 批 7N 新增 3 个测试文件 36 项）+ tsc 0 错 + verify:dual 4 版（锚点/typecheck/host 3 端点/client mic/console）+ 不变量 I1-I10 + `/voice-mode/config` 4 字段全 non-null（senseITN/captionFontSize/captionMaxWidth/backchannelYield）。仅剩「AI 无法验证」项需人工。
-> **基线**：HEAD = `a277b6b`（批 7O 文档块后）；**完整 4 项必过**＝精简自原 21 项 + 批 7N 新增 manual 项（批 1 热词 / 批 2 锁语种已砍，详见 `real-machine-acceptance-checklist.md` 头部删项说明 + `docs/competitive/backlog.md`「批 7M 🔴 砍 + 批 7N 🟡 重做 完成状态」节）。
+> **定位**：AI 已自动验证 281 项 npm test（曾记 245/254 已过时；实测 = 批 7M 砍后 234 基线（17 个既有文件求和）+ 批 7N 新增 3 个测试文件 47 项（barge-in-manual 8 + yield-ms-wiring 13 + matchBackchannel 26））+ tsc 0 错 + verify:dual 4 版（锚点/typecheck/host 3 端点/client mic/console）+ 不变量 I1-I10 + `/voice-mode/config` 4 字段全 non-null（senseITN/captionFontSize/captionMaxWidth/backchannelYield）。仅剩「AI 无法验证」项需人工。
+> **基线**：HEAD = `66e1951`（批 7O 收口前代码基线；其后 docs-only commit 不改代码态）；**完整 4 项必过**＝精简自原 21 项 + 批 7N 新增 manual 项（批 1 热词 / 批 2 锁语种已砍，详见 `real-machine-acceptance-checklist.md` 头部删项说明 + `docs/competitive/backlog.md`「批 7M 🔴 砍 + 批 7N 🟡 重做 完成状态」节）。
 > **纪律**：每项单点验证；失败即停发版，回滚对应 commit。
 > **批 7M 🔴 砍 + 批 7N 🟡 重做 落地注记（2026-09-16）**：4 项砍除（`recognitionLanguage` / `asrHotwords`+`asrHotwordsScore`+模块 / `docs/qa/user-experience-flow.md`）+ 5 项重做（`bargeInMode='manual'` 接通 / echoGateDb+autoResume 描述对齐 / 端到端补测 3 项 / ADR-0003+0004 重命名 / autoResume 文案统一）；本清单「4 项必过」已对齐砍后 src/ 现状。
 
@@ -63,5 +63,5 @@
 
 - 完整体验验收 → `real-machine-acceptance-checklist.md`（批 2/3/5 三阶段，批 7M 砍 4 项后精简）
 - 不变量定义 → `docs/rules/STATE.md` 与 `docs/adr/`
-- 基线 HEAD = `a277b6b`（`git rev-parse --short HEAD` 校对，批 7O 文档块后）
+- 基线 HEAD = `66e1951`（批 7O 收口前代码基线；`git rev-parse --short HEAD` 应 ≥ 66e1951——docs-only commit 前进不改代码态）
 - 批 7M + 批 7N 完成状态 → `docs/rules/STATE.md` 批次进度表 + `docs/competitive/backlog.md`「批 7M 🔴 砍 + 批 7N 🟡 重做 完成状态（2026-09-16）」节
