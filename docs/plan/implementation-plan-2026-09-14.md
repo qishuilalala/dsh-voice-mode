@@ -429,7 +429,7 @@ I / J 独立可并行
 | I2/I3 计数 + 播放门 | 不触碰 |
 | I4 TTS 帧协议 | 批 D 改 tts-local.ts 在 chunk 拼接层，pump 与帧协议零触碰 |
 | I5 epoch 守卫 | 批 A 不绕 epoch |
-| I6 client.inject 9 锚点 | 每批 grep package.json |
+| I6 client.inject 9 锚点 | 每批 `node -e "console.log(require('./package.json').dsh.client.inject.length)"` = 9（字面 grep 不可用：JSON 嵌套键无 `dsh.client.inject` 字面串） |
 | I7/I8/I9 | 不扩 cordis / 不引入模型 / 不引入云 |
 | I10 默认行为 | schema defaults 守 |
 
