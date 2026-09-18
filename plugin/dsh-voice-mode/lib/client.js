@@ -671,6 +671,28 @@ function createAsrEngine(config, sessionId) {
       release();
     })();
   };
+  const trimPrePad = () => {
+    let total = 0;
+    let cut = 0;
+    for (let i = prePad.length - 1; i >= 0; i--) {
+      total += prePad[i].length / SAMPLE_RATE2 * 1e3;
+      if (total > PRE_PAD_MS) {
+        cut = i + 1;
+        break;
+      }
+    }
+    if (cut > 0) prePad = prePad.slice(cut);
+  };
+  const clearWakeSegment = () => {
+    segmentEpoch++;
+    segment = [];
+    segmentMs = 0;
+    silenceMs = 0;
+    wakeSilenceMs = 0;
+    prePad = [];
+    uploadedSamples = 0;
+    void resetHostStream();
+  };
   const finalizeSegment = (force = false) => {
     if (segment.length === 0) return;
     if (config.isPlaying?.() && !forcePending && !force) return;
@@ -838,30 +860,26 @@ function createAsrEngine(config, sessionId) {
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
     } else if (config.mode === "hold") {
     } else if (state === "wake") {
-      if (rms > SPEECH_RMS) {
+      if (config.isPlaying?.()) {
+        if (segment.length > 0) clearWakeSegment();
+        prePad = [];
+      } else if (rms > SPEECH_RMS) {
+        if (segment.length === 0) {
+          for (const p of prePad) segment.push(p);
+        }
+        prePad = [];
         segmentMs += durationMs;
         segment.push(data);
         wakeSilenceMs = 0;
-        if (segmentMs > MAX_SEGMENT_MS) {
-          segmentEpoch++;
-          segment = [];
-          segmentMs = 0;
-          silenceMs = 0;
-          wakeSilenceMs = 0;
-          uploadedSamples = 0;
-          void resetHostStream();
-        }
+        if (segmentMs > MAX_SEGMENT_MS) clearWakeSegment();
       } else if (segment.length > 0) {
+        segmentMs += durationMs;
+        segment.push(data);
         wakeSilenceMs += durationMs;
-        if (wakeSilenceMs >= config.silenceMs) {
-          segmentEpoch++;
-          segment = [];
-          segmentMs = 0;
-          silenceMs = 0;
-          wakeSilenceMs = 0;
-          uploadedSamples = 0;
-          void resetHostStream();
-        }
+        if (wakeSilenceMs >= config.silenceMs) clearWakeSegment();
+      } else {
+        prePad.push(data);
+        trimPrePad();
       }
     } else if (rms > SPEECH_RMS) {
       if (config.isPlaying?.()) {
@@ -910,16 +928,7 @@ function createAsrEngine(config, sessionId) {
       }
     } else {
       prePad.push(data);
-      let total = 0;
-      let cut = 0;
-      for (let i = prePad.length - 1; i >= 0; i--) {
-        total += prePad[i].length / SAMPLE_RATE2 * 1e3;
-        if (total > PRE_PAD_MS) {
-          cut = i + 1;
-          break;
-        }
-      }
-      if (cut > 0) prePad = prePad.slice(cut);
+      trimPrePad();
     }
     const nowMs = Date.now();
     if (nowMs - lastPollAt >= PARTIAL_INTERVAL_MS) {
@@ -2787,7 +2796,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "46e0988";
+var BUILD_TAG = "103c9fe";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

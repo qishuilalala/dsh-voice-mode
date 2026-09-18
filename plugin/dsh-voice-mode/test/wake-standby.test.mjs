@@ -98,14 +98,37 @@ t('② wakeSilenceMs 静音弃段逻辑存在（含阈值 config.silenceMs）', 
   assert.ok(/wakeSilenceMs >= config\.silenceMs/.test(asrSrc), 'bundle 缺静音弃段阈值判断')
 })
 
-t('② wake 分支两处 reset 均递增 segmentEpoch（滚窗 + 静音弃段）', () => {
-  // 提取 state === 'wake' 分支块，检查两个 reset 路径前都有 epoch++
+t('② 待机段清空共用 clearWakeSegment（含 segmentEpoch++ / 水位归零 / host 清流）', () => {
+  const helperIdx = asrSrc.indexOf('const clearWakeSegment = ')
+  assert.ok(helperIdx >= 0, 'bundle 缺 clearWakeSegment 辅助——待机段清空逻辑被拆散')
+  const helper = asrSrc.slice(helperIdx, helperIdx + 600)
+  assert.ok(helper.includes('segmentEpoch++'), 'clearWakeSegment 缺 segmentEpoch++——在途 partial 会回写旧水位')
+  assert.ok(helper.includes('uploadedSamples = 0'), 'clearWakeSegment 缺水位置零')
+  assert.ok(helper.includes('resetHostStream()'), 'clearWakeSegment 缺 host 流清场')
   const handleAudioIdx = asrSrc.indexOf('runtimeBargeInMode === "manual" && !holdActive')
   const wakeBranch = asrSrc.indexOf('else if (state === "wake")', handleAudioIdx)
   assert.ok(wakeBranch > 0, 'handleAudio 缺 wake 分支')
-  const block = asrSrc.slice(wakeBranch, wakeBranch + 2400)
-  const epochCount = (block.match(/segmentEpoch\+\+/g) || []).length
-  assert.ok(epochCount >= 2, `wake 分支 reset 路径应有 ≥2 处 segmentEpoch++（实际 ${epochCount}）——在途 partial 会回写旧水位`)
+  const block = asrSrc.slice(wakeBranch, wakeBranch + 2800)
+  const calls = (block.match(/clearWakeSegment\(\)/g) || []).length
+  assert.ok(calls >= 3, `wake 分支应有 ≥3 处 clearWakeSegment()（朗读清残留 / 滚窗 / 静音弃段），实际 ${calls}`)
+})
+
+t('② wake 分支三条真机不变量（自聊守卫 / prePad 起始音 / 尾随静音入段）', () => {
+  const handleAudioIdx = asrSrc.indexOf('runtimeBargeInMode === "manual" && !holdActive')
+  const wakeBranch = asrSrc.indexOf('else if (state === "wake")', handleAudioIdx)
+  const block = asrSrc.slice(wakeBranch, wakeBranch + 2800)
+  assert.ok(
+    /config\.isPlaying\?\.\(\)/.test(block),
+    'wake 分支缺 isPlaying 自聊守卫——TTS 回声进待机段，朗读后首次 partial 上传「AI 的话+唤醒词」，头部锚定必失配',
+  )
+  assert.ok(
+    /for \(const p of prePad\) segment\.push\(p\)/.test(block),
+    'wake 分支缺 prePad 起始音补齐——唤醒词弱起音会被门限切掉',
+  )
+  assert.ok(
+    /wakeSilenceMs \+= durationMs/.test(block),
+    'wake 分支缺「已开口 → 尾随静音入段」路径——用户停口后无新帧，解码器 flush 不出尾字',
+  )
 })
 
 t('③ reset 门存在（resetGate 串行 + requestPartial 等待）', () => {
@@ -127,26 +150,31 @@ t('③ discardSegment 清 wakeSilenceMs（打断后回待机不残留计时）',
 // --------------------------------------------------------------------------
 console.log('静音弃段纯逻辑（与源码同形重建）')
 
-/** 与 asr.ts wake 分支同形的弃段决策器（纯函数重建）。 */
+/** 与 asr.ts wake 分支同形的待机段组装器（纯函数重建，含 prePad 与尾随静音）。 */
 function createWakeStandbySim(silenceMs) {
-  let segmentMs = 0
   let frames = []
   let wakeSilenceMs = 0
   let resets = 0
+  let prePad = []
   return {
     frame(rms, durationMs) {
       if (rms > 0.015) {
-        segmentMs += durationMs
+        if (frames.length === 0) frames = frames.concat(prePad) // 起始音补齐
+        prePad = []
         frames.push(1)
         wakeSilenceMs = 0
       } else if (frames.length > 0) {
+        frames.push(1) // 尾随静音也入段（保连续 + 让解码器 flush 尾字）
         wakeSilenceMs += durationMs
         if (wakeSilenceMs >= silenceMs) {
           resets++
           frames = []
-          segmentMs = 0
           wakeSilenceMs = 0
+          prePad = []
         }
+      } else {
+        prePad.push(1) // 未开口：prePad 环（≈最近 250ms）
+        if (prePad.length > 4) prePad.shift()
       }
     },
     get segmentFrames() {
@@ -173,12 +201,12 @@ t('停满 silenceMs 即弃段——待机段首毒化被清（issue #10「喊 2-
   assert.equal(sim.resetCount, 1)
 })
 
-t('静音不足 silenceMs 不弃段（快说场景不被打断）', () => {
+t('静音不足 silenceMs 不弃段（短停顿保留，静音帧照常入段）', () => {
   const sim = createWakeStandbySim(1500)
   for (let i = 0; i < 20; i++) sim.frame(0.05, 64)
   for (let i = 0; i < 10; i++) sim.frame(0.001, 64) // 0.64s 短停顿
-  assert.equal(sim.segmentFrames, 20, '短停顿不应弃段')
-  assert.equal(sim.resetCount, 0)
+  assert.equal(sim.resetCount, 0, '短停顿不应弃段')
+  assert.equal(sim.segmentFrames, 30, '静音帧也应入段（音频连续，解码器才能 flush 尾字）')
 })
 
 t('弃段后再说唤醒词从段首起算（头部锚定可达）', () => {

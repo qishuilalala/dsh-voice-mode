@@ -506,6 +506,35 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     })()
   }
 
+  /** prePad 环裁剪：只保留最近 PRE_PAD_MS 的帧（起始音补齐用，wake 与正常聆听共用）。 */
+  const trimPrePad = (): void => {
+    let total = 0
+    let cut = 0
+    for (let i = prePad.length - 1; i >= 0; i--) {
+      total += (prePad[i].length / SAMPLE_RATE) * 1000
+      if (total > PRE_PAD_MS) {
+        cut = i + 1
+        break
+      }
+    }
+    if (cut > 0) prePad = prePad.slice(cut)
+  }
+
+  /** 清空 wake 待机段（本地缓冲 + 段纪元 + host 流），三处触发共用：
+   *  朗读开始（自聊防护）/ 静音到点（停口重开）/ 30s 滚窗（上限兜底）。
+   *  `segmentEpoch++` 作废在途 partial 响应——否则其会把已归零的 uploadedSamples
+   *  水位写回旧值，后续增量对重置后的空 host 流只发尾部（段丢头）。 */
+  const clearWakeSegment = (): void => {
+    segmentEpoch++
+    segment = []
+    segmentMs = 0
+    silenceMs = 0
+    wakeSilenceMs = 0
+    prePad = []
+    uploadedSamples = 0
+    void resetHostStream()
+  }
+
   /** 定稿当前段：POST final=1（含 0.5s 尾垫由 host 补齐协议侧不需要）。
    *  force=true：绕过播放门（仅用于「播放前开着的真人声段在播放开始后收口」——
    *  段内全是播放前语音，无回声风险；见 handleAudio 播放门分支）。 */
@@ -734,38 +763,40 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     } else if (config.mode === 'hold') {
       // hold 模式且未按住：不持续聆听（不建段、不 auto-send），底部 ticker 照跑（无数据自然跳过）。
     } else if (state === 'wake') {
-      // wake 待机：有人声才累积（满足 partial 门槛），但不置 speech、不 finalize；
-      // 唤醒词匹配在 requestPartial 结果上做，命中后由它重置。
-      if (rms > SPEECH_RMS) {
+      // wake 待机段：音频组装与正常聆听路径**同构**（prePad 补起始音 + 开口后连续帧含
+      // 尾随静音），但不置 speechActive、不 finalize——唤醒词匹配在 partial 响应上做。
+      // 三条真机实证不变量（唤醒词「几乎无法触发」的两个流程根因，见 test/wake-flow）：
+      // 1) 朗读期不入段并清残留（自聊防护，对齐下方 rms>SPEECH_RMS 分支的 isPlaying 守卫）：
+      //    否则 TTS 回声进待机段，朗读结束后第一次 partial 把「AI 的话 + 唤醒词」整段上传，
+      //    host 累计文本以 AI 的话开头 → 唤醒词头部锚定（startsWith/lead 窗口）永远失配。
+      // 2) 开口后静音帧照常入段上传：流式解码器要尾随音频才 flush 得出尾字；只发超门限帧
+      //    会让用户一停口就没有新帧、不再发 partial，文本停在半截（4 字唤醒词只剩 2 字 →
+      //    编辑距离 2 → 失配）。
+      // 3) 起始音补齐（prePad）：唤醒词首字常是弱起音，直接上门限会被切掉。
+      if (config.isPlaying?.()) {
+        if (segment.length > 0) clearWakeSegment()
+        prePad = [] // 朗读期不积累起始音环（防朗读前残留帧混进下一次唤醒）
+      } else if (rms > SPEECH_RMS) {
+        if (segment.length === 0) {
+          for (const p of prePad) segment.push(p) // 起始音补齐（对齐正常路径）
+        }
+        prePad = []
         segmentMs += durationMs
         segment.push(data)
         wakeSilenceMs = 0
         // 上限兜底：滚窗重置（防无唤醒词时无界累积）。
-        if (segmentMs > MAX_SEGMENT_MS) {
-          // issue #10：作废在途 partial 响应——否则其会把已归零的 uploadedSamples
-          // 水位写回旧值，后续增量对重置后的空 host 流只发尾部（段丢头）。
-          segmentEpoch++
-          segment = []
-          segmentMs = 0
-          silenceMs = 0
-          wakeSilenceMs = 0
-          uploadedSamples = 0
-          void resetHostStream()
-        }
+        if (segmentMs > MAX_SEGMENT_MS) clearWakeSegment()
       } else if (segment.length > 0) {
-        // 静音弃段（issue #10 问题 1/3）：待机段首残留的非唤醒词语音会让头部锚定
-        // （startsWith + lead 窗口）永远够不着——「喊了 2-3 次才生效」的根因之一。
-        // 停满一个断句静音即清窗重开，下一句从段首起算；同时自愈任何 host 流丢头。
+        // 已开口：尾随静音照常入段上传（保音频连续 + 让 host flush 尾字）。
+        // 停满一个断句静音即清窗重开（下一句从段首起算），兼自愈任何 host 流丢头。
+        segmentMs += durationMs
+        segment.push(data)
         wakeSilenceMs += durationMs
-        if (wakeSilenceMs >= config.silenceMs) {
-          segmentEpoch++
-          segment = []
-          segmentMs = 0
-          silenceMs = 0
-          wakeSilenceMs = 0
-          uploadedSamples = 0
-          void resetHostStream()
-        }
+        if (wakeSilenceMs >= config.silenceMs) clearWakeSegment()
+      } else {
+        // 尚未开口：维护 prePad 环（只留最近 PRE_PAD_MS）。
+        prePad.push(data)
+        trimPrePad()
       }
     } else if (rms > SPEECH_RMS) {
       // 根治自聊：AI 朗读期间 VAD 入段丢弃（回声经 AEC 残留仍超 threshold 会被误识为语音）。
@@ -829,16 +860,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       }
     } else {
       prePad.push(data)
-      let total = 0
-      let cut = 0
-      for (let i = prePad.length - 1; i >= 0; i--) {
-        total += (prePad[i].length / SAMPLE_RATE) * 1000
-        if (total > PRE_PAD_MS) {
-          cut = i + 1
-          break
-        }
-      }
-      if (cut > 0) prePad = prePad.slice(cut)
+      trimPrePad()
     }
 
     // partial / 检测通道轮询：墙钟节拍（名义 100ms；条件不满足时不清节拍，
