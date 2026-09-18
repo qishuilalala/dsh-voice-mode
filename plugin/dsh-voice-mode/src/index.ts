@@ -508,6 +508,8 @@ export function apply(ctx: Context, config: Config): void {
   const queue = new TtsQueue({
     engine: makeEngine(engineKind),
     onError: (sessionId) => broadcast('tts-error', { sessionId }),
+    // 单句重试耗尽被跳过：显式下行（客户端提示 + 诊断），不再静默丢句。
+    onSkip: (sessionId, text) => broadcast('tts-skip', { sessionId, text: text.slice(0, 80) }),
   })
   // fork 修复：启动时把当前设置的音色/语速应用到引擎——
   // 此前引擎默认硬编码为素映雪，朗读直到"设置变化"才更新（重启后朗读一直女声的根因）。

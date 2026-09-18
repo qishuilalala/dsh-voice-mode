@@ -1373,6 +1373,7 @@ function estimateBulkDelay(mic, ref, opts = {}) {
 var zh = {
   stateVoiceMode: "\u8BED\u97F3\u6A21\u5F0F",
   ttsNoticeFail: "\u6717\u8BFB\u8FDE\u63A5\u5931\u8D25\uFF1A\u6B63\u5728\u91CD\u8BD5\u2026",
+  ttsSkipNotice: "\u6709\u4E00\u53E5\u6717\u8BFB\u5931\u8D25\uFF0C\u5DF2\u8DF3\u8FC7\uFF08\u4E91\u7AEF\u6717\u8BFB\u7F51\u7EDC\u6296\u52A8\uFF0C\u53EF\u91CD\u53D1\u8FD9\u6761\u6D88\u606F\uFF09",
   enterFail: "\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5931\u8D25",
   disabled: "\u8BED\u97F3\u6A21\u5F0F\u5DF2\u7981\u7528\uFF08\u63D2\u4EF6 enabled=false\uFF09",
   sendFailKept: "\u53D1\u9001\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u5728\u8349\u7A3F",
@@ -1552,6 +1553,7 @@ var zh = {
 var en = {
   stateVoiceMode: "Voice Mode",
   ttsNoticeFail: "Read-aloud connection lost: retrying\u2026",
+  ttsSkipNotice: "One sentence failed to read and was skipped (cloud TTS network hiccup \u2014 resend the message to retry)",
   enterFail: "Failed to enter voice mode",
   disabled: "Voice mode disabled (plugin enabled=false)",
   sendFailKept: "Send failed; text kept in draft",
@@ -2823,7 +2825,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "3a98e88";
+var BUILD_TAG = "c90ec29";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2907,6 +2909,11 @@ function setLastVoiceSession(id) {
 }
 function apply(ctx) {
   const bus = createVoiceBus(void 0, ctx);
+  if (typeof document !== "undefined") {
+    const resumeAudio = () => bus.warmAudio();
+    document.addEventListener("pointerdown", resumeAudio, { passive: true });
+    document.addEventListener("keydown", resumeAudio, { passive: true });
+  }
   ctx.slots.inject(
     "conversation.input.right",
     () => ctx.slots.register(
@@ -3080,6 +3087,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
   };
   return {
     push(frame) {
+      warm();
       if (fallback || !ctx) {
         pending.push(frame);
         if (fallbackAudio.paused) playFallback();
@@ -3393,6 +3401,16 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       } catch {
       }
     });
+    source.addEventListener("tts-skip", (e) => {
+      try {
+        const p = JSON.parse(e.data);
+        if (p.sessionId !== activeSessionId) return;
+        ui.ttsNotice = t("ttsSkipNotice");
+        notify();
+        debugLog("tts-skip", { text: (p.text ?? "").slice(0, 40) });
+      } catch {
+      }
+    });
     source.addEventListener("tts-error", (e) => {
       try {
         const p = JSON.parse(e.data);
@@ -3448,6 +3466,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     }
     if (frame.final) {
       if (frame.chunkId !== curChunkCount) {
+        debugLog("tts-drop-sentence", { got: frame.chunkId, have: curChunkCount, sentenceId: frame.sentenceId });
         curSentenceId = null;
         curChunks = [];
         curBytes = 0;

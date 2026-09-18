@@ -192,10 +192,17 @@ export class TtsQueue {
   private engine: TtsEngine
   /** TTS 全体不可达通知（每会话去重，成功后复位）。 */
   private readonly onError?: (sessionId: string) => void
+  /** 单句合成重试耗尽被跳过通知（每句一次；此前是静默丢句——真机「回复偶尔不朗读」根因之一）。 */
+  private readonly onSkip?: (sessionId: string, text: string) => void
 
-  constructor(options: { engine: TtsEngine; onError?: (sessionId: string) => void }) {
+  constructor(options: {
+    engine: TtsEngine
+    onError?: (sessionId: string) => void
+    onSkip?: (sessionId: string, text: string) => void
+  }) {
     this.engine = options.engine
     this.onError = options.onError
+    this.onSkip = options.onSkip
   }
 
   /** 当前引擎音频 MIME（/preview 的 Content-Type 也用它）。 */
@@ -317,7 +324,12 @@ export class TtsQueue {
           }
         }
         if (item.epoch !== q.epoch) continue
-        if (buf === null) continue // 重试耗尽：跳过该句（不阻塞队列）
+        if (buf === null) {
+          // 重试耗尽：跳过该句（不阻塞队列），但**显式通知**调用方——静默丢句在真机上
+          // 表现为「AI 回复偶尔整条/某句不朗读」，用户无从判断是网络还是功能坏了。
+          this.onSkip?.(sessionId, item.text)
+          continue
+        }
         q.errorNotified = false // 有帧成功：复位不可达提示
         q.backoff = 0 // 成功后退避清零，防下次失败时退避窗口无限递增
         const sentenceId = q.seq++

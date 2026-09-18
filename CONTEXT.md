@@ -43,6 +43,12 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
   台架 LAG=3000ms 实证 0 条定稿）；⑥ **只喊唤醒词不关命令窗口**（D5：剥完为空时保持聆听，
   否则「唤醒词…停顿…命令」的命令会被当待机音频丢弃）。待机段计入 `speechMs`（过 MIN_SPEECH_MS）。
   真机台架 `test/wake-flow.test.mjs`（假浏览器+假 host 驱动真引擎；D1-D5 每处都有反向验证）。
+- **输出链路静默丢音（2026-09-18 真机「AI 回复偶尔不朗读」）**：三类原因——① 云端 TTS 单句重试
+  （3 次/退避）耗尽后**静默跳句**（`tts-queue.ts` pump）→ 现 `onSkip` → host `tts-skip` → 客户端
+  状态条提示，不再静默；② 浏览器挂起 AudioContext 后播放被调度但**无声**（UI 仍显示朗读中、字幕照走）
+  → 现 `push()` 先 `warm()`（resume）+ 全局 pointerdown/keydown 恢复；③ SSE 丢帧致整句不完整
+  → 按设计丢弃坏句（`chunkId !== curChunkCount`），留 `tts-drop-sentence` 诊断。`engine.duck()` 为
+  未启用预留挂点（增益恒 1，无静音风险）。回合 aborted 时不 flush 残句 = 有意（用户打断了不想听）。
 - **断句静音阈值由设置 silenceMs 真实驱动**（端点 VAD minSilenceDuration = silenceMs/1000，默认 1500ms；
   客户端静音计时仅作 VAD 缺失兜底）。**发送为累积模式**：定稿进草稿，再静音一个 silenceMs 或 Ctrl/hold 才发，
   连续多段拼成一条消息（内部仍按 30s 分块识别、跨块拼接）。

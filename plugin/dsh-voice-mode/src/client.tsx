@@ -305,6 +305,15 @@ function setLastVoiceSession(id: string | null): void {
 export function apply(ctx: any): void {
   const bus = createVoiceBus(undefined, ctx)
 
+  // C3 加固：浏览器挂起 AudioContext 后，只有用户交互能可靠恢复播放（Safari/Chrome 的
+  // 自动播放策略）。挂一次性手势监听——用户回到标签页点一下/按一下键即恢复朗读，
+  // 避免「回到页面后 AI 回复无声、UI 却显示朗读中」。
+  if (typeof document !== 'undefined') {
+    const resumeAudio = (): void => bus.warmAudio()
+    document.addEventListener('pointerdown', resumeAudio, { passive: true })
+    document.addEventListener('keydown', resumeAudio, { passive: true })
+  }
+
   ctx.slots.inject('conversation.input.right', () =>
     ctx.slots.register(
       {
@@ -532,6 +541,10 @@ function createAudioEngine(
 
   return {
     push(frame) {
+      // C3 静默播放根治：浏览器会在后台标签页/长时间静音后挂起 AudioContext——此时播放
+      // 被正常调度但**无声**（UI 仍显示「朗读中」、字幕照走），真机表现为「AI 回复偶尔
+      // 不朗读」。每次入队先尝试 resume（用户已与页面交互过，粘性激活下可即时生效）。
+      warm()
       if (fallback || !ctx) {
         pending.push(frame)
         // 已在播则等 onended/onerror 链续播（与原引擎 paused 守卫同语义）。
@@ -918,6 +931,19 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         // ignore malformed frame
       }
     })
+    // 单句重试耗尽被跳过（host tts-skip）：显式提示，不再静默丢句（真机「回复偶尔
+    // 不朗读」根因之一）。ttsNotice 由下一次成功播音清除（play 路径 setUi ttsNotice:null）。
+    source.addEventListener('tts-skip', (e: MessageEvent<string>) => {
+      try {
+        const p = JSON.parse(e.data) as { sessionId?: string; text?: string }
+        if (p.sessionId !== activeSessionId) return
+        ui.ttsNotice = t('ttsSkipNotice')
+        notify()
+        debugLog('tts-skip', { text: (p.text ?? '').slice(0, 40) })
+      } catch {
+        // ignore malformed frame
+      }
+    })
     source.addEventListener('tts-error', (e: MessageEvent<string>) => {
       try {
         const p = JSON.parse(e.data) as { sessionId?: string }
@@ -997,6 +1023,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       // P1-1/M1：host final 帧的 chunkId = 已发 chunk 总数；少收说明 SSE 丢帧，
       // 丢弃坏句（仅凭首字节 0xff 校验可被流内任意帧头蒙混）。
       if (frame.chunkId !== curChunkCount) {
+        // C2：SSE 断线/丢帧导致整句不完整 → 丢弃该句（宁可少一句也不播坏音频），
+        // 但留诊断痕迹（telemetry=1 时可见），否则表现为「莫名其妙少读一句」。
+        debugLog('tts-drop-sentence', { got: frame.chunkId, have: curChunkCount, sentenceId: frame.sentenceId })
         curSentenceId = null
         curChunks = []
         curBytes = 0

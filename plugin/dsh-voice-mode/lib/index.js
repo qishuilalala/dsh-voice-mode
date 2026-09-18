@@ -1131,9 +1131,12 @@ var TtsQueue = class {
   engine;
   /** TTS 全体不可达通知（每会话去重，成功后复位）。 */
   onError;
+  /** 单句合成重试耗尽被跳过通知（每句一次；此前是静默丢句——真机「回复偶尔不朗读」根因之一）。 */
+  onSkip;
   constructor(options) {
     this.engine = options.engine;
     this.onError = options.onError;
+    this.onSkip = options.onSkip;
   }
   /** 当前引擎音频 MIME（/preview 的 Content-Type 也用它）。 */
   get mime() {
@@ -1233,7 +1236,10 @@ var TtsQueue = class {
           }
         }
         if (item.epoch !== q.epoch) continue;
-        if (buf === null) continue;
+        if (buf === null) {
+          this.onSkip?.(sessionId, item.text);
+          continue;
+        }
         q.errorNotified = false;
         q.backoff = 0;
         const sentenceId = q.seq++;
@@ -2104,7 +2110,9 @@ function apply(ctx, config) {
   let activeKokoroModel = vset.kokoroModel;
   const queue = new TtsQueue({
     engine: makeEngine(engineKind),
-    onError: (sessionId) => broadcast("tts-error", { sessionId })
+    onError: (sessionId) => broadcast("tts-error", { sessionId }),
+    // 单句重试耗尽被跳过：显式下行（客户端提示 + 诊断），不再静默丢句。
+    onSkip: (sessionId, text) => broadcast("tts-skip", { sessionId, text: text.slice(0, 80) })
   });
   queue.updateVoice(vset.voice, vset.rate);
   const unsubscribe = queue.subscribe((frame) => broadcast("audio", frame));

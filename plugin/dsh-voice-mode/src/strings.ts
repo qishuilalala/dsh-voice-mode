@@ -7,6 +7,7 @@
 const zh = {
   stateVoiceMode: '语音模式',
   ttsNoticeFail: '朗读连接失败：正在重试…',
+  ttsSkipNotice: '有一句朗读失败，已跳过（云端朗读网络抖动，可重发这条消息）',
   enterFail: '进入语音模式失败',
   disabled: '语音模式已禁用（插件 enabled=false）',
   sendFailKept: '发送失败，已保留在草稿',
@@ -187,6 +188,7 @@ const zh = {
 const en: Record<keyof typeof zh, string> = {
   stateVoiceMode: 'Voice Mode',
   ttsNoticeFail: 'Read-aloud connection lost: retrying…',
+  ttsSkipNotice: 'One sentence failed to read and was skipped (cloud TTS network hiccup — resend the message to retry)',
   enterFail: 'Failed to enter voice mode',
   disabled: 'Voice mode disabled (plugin enabled=false)',
   sendFailKept: 'Send failed; text kept in draft',
