@@ -60,8 +60,32 @@ function resampleLinear(src, srcRate, dstRate) {
 }
 
 // src/wakeword.ts
+var WAKE_LEAD_CHARS = 3;
+var WAKE_MAX_EDITS = 1;
 function normalizeWake(text) {
   return String(text ?? "").replace(/[\s\u3000]+/g, "").toLowerCase().replace(/[，。！？!?；;、,.]/g, "").replace(/^(嗯+|哎+|呃+|这个+|那个+|so|um|uh|er|well)[，。！？!?；;、,.\s\u3000]*/, "");
+}
+function editDistanceWithin(a, b, max) {
+  const la = a.length;
+  const lb = b.length;
+  if (Math.abs(la - lb) > max) return max + 1;
+  let prev = new Array(lb + 1);
+  let cur = new Array(lb + 1);
+  for (let j = 0; j <= lb; j++) prev[j] = j;
+  for (let i = 1; i <= la; i++) {
+    cur[0] = i;
+    let rowMin = cur[0];
+    for (let j = 1; j <= lb; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      if (cur[j] < rowMin) rowMin = cur[j];
+    }
+    if (rowMin > max) return max + 1;
+    const tmp = prev;
+    prev = cur;
+    cur = tmp;
+  }
+  return prev[lb];
 }
 function matchWakeWord(partial, wakeWord) {
   const w = normalizeWake(wakeWord);
@@ -69,6 +93,18 @@ function matchWakeWord(partial, wakeWord) {
   const p = normalizeWake(partial);
   if (!p) return false;
   if (p.startsWith(w)) return true;
+  if (w.length < 2) return false;
+  const maxStart = Math.min(WAKE_LEAD_CHARS, p.length - 1);
+  for (let start = 0; start <= maxStart; start++) {
+    const available = p.length - start;
+    const minLen = Math.max(1, w.length - WAKE_MAX_EDITS);
+    const maxLen = Math.min(w.length + WAKE_MAX_EDITS, available);
+    for (let len = minLen; len <= maxLen; len++) {
+      if (len < 2 && w.length >= 2) continue;
+      const window2 = p.slice(start, start + len);
+      if (editDistanceWithin(window2, w, WAKE_MAX_EDITS) <= WAKE_MAX_EDITS) return true;
+    }
+  }
   return false;
 }
 
@@ -438,7 +474,9 @@ function createAsrEngine(config, sessionId) {
   const echo = config.echo;
   let lastPollAt = 0;
   let partialInFlight = false;
+  let resetGate = Promise.resolve();
   let segmentEpoch = 0;
+  let wakeSilenceMs = 0;
   let forcePending = false;
   let uploadedSamples = 0;
   let detectChunks = [];
@@ -488,6 +526,8 @@ function createAsrEngine(config, sessionId) {
   };
   const sliceSince = (from) => sliceChunks(segment, from);
   const requestPartial = async () => {
+    if (partialInFlight || segment.length === 0) return;
+    await resetGate;
     if (partialInFlight || segment.length === 0) return;
     const total = segment.reduce((n, c) => n + c.length, 0);
     const seconds = total / SAMPLE_RATE2;
@@ -541,6 +581,7 @@ function createAsrEngine(config, sessionId) {
       if (epoch !== segmentEpoch) return;
       if (state === "wake" && wakeEnabled) {
         uploadedSamples = Math.max(uploadedSamples, from + samples.length);
+        emit(partialListeners, out.text ?? "");
         if (matchWakeWord(out.text ?? "", wakeWord)) {
           segmentEpoch++;
           segment = [];
@@ -615,11 +656,20 @@ function createAsrEngine(config, sessionId) {
       }
     }
   };
-  const resetHostStream = async () => {
-    try {
-      await fetch(`${asrUrl(false)}&reset=1`, { method: "POST", signal: AbortSignal.timeout(5e3) });
-    } catch {
-    }
+  const resetHostStream = () => {
+    const prev = resetGate;
+    let release;
+    resetGate = new Promise((r) => {
+      release = r;
+    });
+    return (async () => {
+      await prev;
+      try {
+        await fetch(`${asrUrl(false)}&reset=1`, { method: "POST", signal: AbortSignal.timeout(5e3) });
+      } catch {
+      }
+      release();
+    })();
   };
   const finalizeSegment = (force = false) => {
     if (segment.length === 0) return;
@@ -791,10 +841,24 @@ function createAsrEngine(config, sessionId) {
       if (rms > SPEECH_RMS) {
         segmentMs += durationMs;
         segment.push(data);
+        wakeSilenceMs = 0;
         if (segmentMs > MAX_SEGMENT_MS) {
+          segmentEpoch++;
           segment = [];
           segmentMs = 0;
           silenceMs = 0;
+          wakeSilenceMs = 0;
+          uploadedSamples = 0;
+          void resetHostStream();
+        }
+      } else if (segment.length > 0) {
+        wakeSilenceMs += durationMs;
+        if (wakeSilenceMs >= config.silenceMs) {
+          segmentEpoch++;
+          segment = [];
+          segmentMs = 0;
+          silenceMs = 0;
+          wakeSilenceMs = 0;
           uploadedSamples = 0;
           void resetHostStream();
         }
@@ -948,6 +1012,7 @@ function createAsrEngine(config, sessionId) {
     silenceMs = 0;
     segmentMs = 0;
     speechMs = 0;
+    wakeSilenceMs = 0;
     uploadedSamples = 0;
     prePad = [];
     detectChunks = [];
@@ -1053,6 +1118,7 @@ function createAsrEngine(config, sessionId) {
       segmentMs = 0;
       speechMs = 0;
       silenceMs = 0;
+      wakeSilenceMs = 0;
       speechActive = false;
       prePad = [];
       uploadedSamples = 0;
@@ -2721,7 +2787,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "ff7f3c9";
+var BUILD_TAG = "6e785d4";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -4540,7 +4606,7 @@ function VoiceStatusBar({ bus, sessionId }) {
             },
             i
           )) }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.notice ? b.ui.notice : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 }, children: b.ui.error ? b.ui.error : b.ui.notice ? b.ui.notice : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.state === "wake" && b.ui.partial ? `${stateText} \xB7 ${b.ui.partial}` : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText }),
           b.ui.isSpeech === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "span",
             {
