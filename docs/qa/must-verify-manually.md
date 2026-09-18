@@ -1,6 +1,6 @@
 # 必须人工复核最小清单
 
-> **定位**：AI 已自动验证 355 项 npm test（曾记 245/254/281/325/354 已过时；实测 = 批 7O 后 325 基线 + issue #10 唤醒词批 wakeword 11→31（容错慢路径扩 19 + 连带吸收钉测 1）+ 新增 wake-standby 10）+ tsc 0 错 + verify:dual 4 版（锚点/typecheck/host 3 端点/client mic/console）+ 不变量 I1-I10 + `/voice-mode/config` 4 字段全 non-null（senseITN/captionFontSize/captionMaxWidth/backchannelYield）。仅剩「AI 无法验证」项需人工。
+> **定位**：AI 已自动验证 372 项 npm test（曾记 245/254/281/325/354/355/362/371 已过时；实测 = 批 7O 后 325 基线 + issue #10 唤醒词批（wakeword 11→38、新增 wake-standby 11 + wake-flow 9：假浏览器+假 host 驱动真引擎的唤醒流程台架））+ tsc 0 错 + verify:dual 4 版（锚点/typecheck/host 3 端点/client mic/console）+ 不变量 I1-I10 + `/voice-mode/config` 4 字段全 non-null（senseITN/captionFontSize/captionMaxWidth/backchannelYield）。仅剩「AI 无法验证」项需人工。
 > **基线**：HEAD = `5e2d34f`（批 7O 代码块收口，src+lib 一致；其后块 3 纯文档/资产 commit 不改代码态）；**完整 4 项必过**＝精简自原 21 项 + 批 7N 新增 manual 项（批 1 热词 / 批 2 锁语种已砍，详见 `real-machine-acceptance-checklist.md` 头部删项说明 + `docs/competitive/backlog.md`「已落地对照区」节）。
 > **纪律**：每项单点验证；失败即停发版，回滚对应 commit。
 > **批 7M 🔴 砍 + 批 7N 🟡 重做 落地注记（2026-09-16）**：4 项砍除（`recognitionLanguage` / `asrHotwords`+`asrHotwordsScore`+模块 / `docs/qa/user-experience-flow.md`）+ 5 项重做（`bargeInMode='manual'` 接通 / echoGateDb+autoResume 描述对齐 / 端到端补测 3 项 / ADR-0003+0004 重命名 / autoResume 文案统一）；本清单「4 项必过」已对齐砍后 src/ 现状。
@@ -22,7 +22,15 @@
 - **批 5 让位语义**：AI 朗读中（任意句） → 用户说「嗯」 → AI 跳当前句 + 字幕立刻消失 + 1.5s 静默
 - **批 4 emotion 标签**：让 LLM 输出 `你好<break 300ms>世界` → 听顺序为你好 + 300ms 静音 + 世界（非「你好世界」连读）
 - **中文识别基线**：说中文日常句 → partial 字幕实时显示中文 + final 准确 ≥ 95%（cold start 后立刻可用）
-- **唤醒词**（可选，issue #10 修复后含容错链）：配置 wakeWord（建议 3-4 字；2 字词容错会连带唤醒所有同首字 2 字词）后 → ① 5 步后退 1 步距离说 wake word → 3 次 ≥ 2 次触发；② 同音字容错：换说一个同音字版本（如「小莫」说成「小墨」）→ 仍唤醒；③ 待机反馈：待机态说话 → 状态条显示「说『x』开始 · 实时转写」；④ 段首毒化：先说一句无关话，停顿 ≥1.5s，再说唤醒词 → 唤醒；⑤ 打断后：AI 朗读中开口打断 → 回待机态（状态条显示「说『x』开始」），重说唤醒词后继续说话可识别（默认 wakeWord 为空，未配置则跳过）
+- **唤醒词**（可选，issue #10 + 2026-09-18 真机修复后）：配置 wakeWord（建议 3-4 字，如「你好小李」）后 →
+① **连说**：一口气说「你好小李，帮我查下天气」→ 草稿应为「帮我查下天气」（唤醒词被自动剥掉、**不截断**、不含唤醒词）；
+② 同音字容错：把唤醒词首字/某字说错一个（如「你好小里」）→ 仍能唤醒；
+③ 待机反馈：待机态说话 → 状态条显示「说『x』开始 · 实时转写」；
+④ **唤醒后长停顿**：只说「你好小李」，停 2-3 秒再补命令 → 命令仍被识别（命令窗口，不回待机）；⑤ **朗读后立即喊**：等 AI 刚朗读完就立刻说「你好小李，<命令>」→ 能唤醒且命令完整（修复前此场景必挂：TTS 回声污染段首）；
+⑥ 打断后：AI 朗读中开口打断 → 回待机态，重说唤醒词 + 命令 → 完整识别；
+⑦ 段首毒化：先说一句无关话，停顿 ≥1.5s，再说唤醒词 + 命令 → 唤醒且只发命令；
+⑧ 边界确认：切到 `hold` 或 `manual` 打断 → 唤醒词不再生效（预期，非 bug）；朗读期只说唤醒词不打断（预期）。
+（默认 wakeWord 为空，未配置则跳过）
 
 ### 2. 语音输出听感（AI 无法听 TTS 质量）
 

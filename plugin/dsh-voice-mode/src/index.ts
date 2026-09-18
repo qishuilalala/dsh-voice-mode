@@ -286,7 +286,7 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .boolean()
       .default(d.senseVoice)
       .description('定稿用 SenseVoice 重译（带标点+数字归一化、识别更准；默认开。关闭可省 228MB 模型，只走流式识别）'),
-    wakeWord: z.string().default(d.wakeWord).description('唤醒词：在待机态说出后开始识别（默认关；如「你好小D」；仅流式 partial 文本前缀匹配，非专用 KWS 引擎，嘈杂环境可能延迟或误激活）'),
+    wakeWord: z.string().default(d.wakeWord).description('唤醒词：在待机态说出后开始识别（默认关；如「你好小D」）。可与命令连说——词头自动剥掉不进消息；每句断句/打断后需重说；仅 toggle 模式生效（hold/手动打断下不生效）；朗读期说唤醒词不触发（打断按 VAD）；匹配带容错（同音字/前导语气词），建议 3-4 字；非专用 KWS 引擎，嘈杂环境可能延迟或误激活'),
     toolBeep: z
       .boolean()
       .default(d.toolBeep)

@@ -42,7 +42,8 @@ globalThis.location = { origin: 'http://127.0.0.1:3018' }
 const SR = 16000
 const FRAME = 1024 // 64ms
 const SPEECH_RMS = 0.015 // 与 asr.ts 一致
-const LAG_MS = 300 // host 流式解码滞后（尾字需要后续音频才 flush）
+let LAG_MS = 300 // host 流式解码滞后（尾字需要后续音频才 flush）；用例可调
+const setLag = (ms) => { LAG_MS = ms }
 const SYLLABLE_MS = 200
 const ECHO_AMP = 0.3 // >0.2 → AI 朗读（回声）
 const CMD_AMP = 0.1 // 0.08~0.2 → 命令语音（与唤醒词可区分）
@@ -119,7 +120,7 @@ function pull(st, n) {
   return out
 }
 
-function feed(epoch, offset, samples, final) {
+function feed(epoch, offset, samples, final, padMs = 0) {
   let st = streams.get(epoch)
   if (!st) {
     if (samples.length === 0 && final) return ''
@@ -149,10 +150,14 @@ function feed(epoch, offset, samples, final) {
       st.pending.push({ endMs, ch })
     }
   }
-  // 流式滞后：只有在该块之后又收到 LAG_MS 音频，该字才吐出来（flush 语义）
+  // 定稿尾垫（host 真实行为：final 时 acceptWaveform(0.5s 静音) + decode，让尾字 flush）
+  if (padMs > 0) st.recvMs += padMs
+  // 流式滞后：partial 时只有在该块之后又收到 LAG_MS 音频，该字才吐出来（flush 语义）；
+  // final 时尾垫足以让所有待吐字落定（真实 host 会 decode 到 not-ready，模型同此）。
   let text = ''
   for (const p of st.pending) {
-    if (p.ch && st.recvMs >= p.endMs + LAG_MS) text += p.ch
+    const need = final ? p.endMs : p.endMs + LAG_MS
+    if (p.ch && st.recvMs >= need) text += p.ch
   }
   st.lastText = text
   return text
@@ -176,7 +181,7 @@ globalThis.fetch = async (url, init = {}) => {
   }
   if (final) {
     hostLog.finals++
-    return new Response(JSON.stringify({ text: feed(epoch, offset, raw, true) }), { status: 200 })
+    return new Response(JSON.stringify({ text: feed(epoch, offset, raw, true, 500) }), { status: 200 })
   }
   hostLog.partials++
   return new Response(JSON.stringify({ text: feed(epoch, offset, raw, false), endpoint: false }), {
@@ -233,6 +238,7 @@ function makeEngine({ wakeWord = WAKE, isPlaying = () => false } = {}) {
   hostLog.partials = hostLog.resets = hostLog.detects = hostLog.finals = 0
   let state = 'idle'
   const segments = []
+  const partials = []
   const engine = createAsrEngine(
     {
       silenceMs: 1500,
@@ -249,9 +255,11 @@ function makeEngine({ wakeWord = WAKE, isPlaying = () => false } = {}) {
     state = s
   })
   engine.onSegment((t) => segments.push(t))
+  engine.onPartial((t) => partials.push(t))
   return {
     engine,
     segments,
+    partials,
     get state() {
       return state
     },
@@ -343,6 +351,11 @@ await t('连续说「唤醒词+命令」→ 定稿必须含完整命令（不得
     !h.segments[0].includes(WAKE),
     `定稿不应把唤醒词发出去（实际 "${h.segments[0]}"）——定稿应剥掉词头`,
   )
+  const lastPartial = h.partials[h.partials.length - 1] ?? ''
+  assert.ok(
+    !lastPartial.includes(WAKE),
+    `唤醒后的实时字幕也应剥掉唤醒词（最后一条 "${lastPartial}"）——字幕与将发出的内容保持一致`,
+  )
   await h.engine.stop()
 })
 
@@ -356,6 +369,43 @@ await t('停顿分说（唤醒词 … 停顿 … 命令）→ 定稿同样只含
   assert.equal(h.segments.length, 1, `应产出 1 条定稿（实际 ${JSON.stringify(h.segments)}）`)
   assert.ok(h.segments[0].includes(COMMAND), `定稿应含完整命令（实际 "${h.segments[0]}"）`)
   assert.ok(!h.segments[0].includes(WAKE), `定稿不应含唤醒词（实际 "${h.segments[0]}"）`)
+  await h.engine.stop()
+})
+
+await t('唤醒词在停口后才被识别 → 命令仍必须定稿送出（不得悬挂）', async () => {
+  setLag(3000) // 大滞后：唤醒词直到用户停口后才出现在识别文本里
+  try {
+    const h = makeEngine()
+    await h.engine.start()
+    await say(SPEECH_AMP, 200 * 4)
+    await say(CMD_AMP, 200 * COMMAND.length)
+    await say(SIL_AMP, 3000)
+    assert.equal(
+      h.segments.length,
+      1,
+      `应产出 1 条定稿（实际 ${h.segments.length} 条：${JSON.stringify(h.segments)}）——命中后若 speechActive 未置位，尾随静音不会定稿，命令悬挂到下一句`,
+    )
+    assert.ok(h.segments[0].includes(COMMAND), `定稿应含完整命令（实际 "${h.segments[0]}"）`)
+  } finally {
+    setLag(300)
+  }
+  const h = makeEngine()
+  await h.engine.stop()
+})
+
+await t('唤醒词…长停顿（> silenceMs）…命令 → 命令仍须被识别（命令窗口）', async () => {
+  const h = makeEngine()
+  await h.engine.start()
+  await say(SPEECH_AMP, 200 * 4) // 你好小李
+  await say(SIL_AMP, 2500) // 长停顿（只喊了唤醒词就停下想事情）
+  await say(CMD_AMP, 200 * COMMAND.length) // 想好了再说命令
+  await say(SIL_AMP, 2500)
+  assert.equal(
+    h.segments.length,
+    1,
+    `应产出 1 条定稿（实际 ${h.segments.length} 条：${JSON.stringify(h.segments)}）——只喊唤醒词后停顿不应把命令窗口关掉`,
+  )
+  assert.ok(h.segments[0].includes(COMMAND), `定稿应含完整命令（实际 "${h.segments[0]}"）`)
   await h.engine.stop()
 })
 

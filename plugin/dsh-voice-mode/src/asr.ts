@@ -387,6 +387,13 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           // 整段丢弃会把它一起吃掉、只剩尾部几个字（「完全无法使用」根因）。
           // 改为保留音频继续识别，由定稿时的 stripWakePrefix 从文本头部剥掉唤醒词。
           wakeConsumed = true
+          // 待机段本身就是真实用户语音：置位 speechActive，让正常路径的静音/端点判据接管。
+          // 否则「唤醒词直到用户停口后才被识别」时尾随静音落进 prePad 分支 → 永不定稿
+          // → 命令悬挂到下一句才发出（真机台架 LAG=3000ms 实证 0 条定稿）。
+          speechActive = true
+          // 待机期已积累的尾随静音计入 silenceMs：命令在命中前就说完时，端点不必再从 0
+          // 等满一个 silenceMs（最多省一个静音窗才把命令发出去）。
+          silenceMs = wakeSilenceMs
           if (active) setState('listening')
         }
         return
@@ -397,7 +404,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       if (state === 'loading-model') setState('speech')
       // P1-4：上传成功后才推进已传水位（失败/重试不推进，下一拍补传）。
       uploadedSamples = Math.max(uploadedSamples, from + samples.length)
-      emit(partialListeners, out.text ?? '')
+      // 唤醒后（wakeConsumed）实时字幕同样剥掉词头：字幕与「实际会发出的内容」保持一致
+      // （待机期的字幕不剥——那正是「它听到了什么」的诊断反馈）。
+      emit(partialListeners, wakeConsumed ? stripWakePrefix(out.text ?? '', wakeWord) : (out.text ?? ''))
       // 批 5 / ADR-0008 Phase 1：backchannel 软让位。I2 保护：仅在「朗读期 + 已开口」下才判——
       //   朗读期（config.isPlaying()）= TTS 在播；speechActive = 本地检测已开口（避免用户自言自语被误让位）。
       //   partial 文本归一化后整段匹配词表，命中 → 触发 onBackchannel（client 侧 skipAudio + 1.5s hold 丢帧）。
@@ -526,6 +535,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     segmentEpoch++
     segment = []
     segmentMs = 0
+    speechMs = 0
     silenceMs = 0
     wakeSilenceMs = 0
     wakeConsumed = false
@@ -661,7 +671,14 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         // 找不到唤醒词时 stripWakePrefix 原样返回——宁可不剥也不丢命令内容。
         const rawText = out.text ?? ''
         const finalText = consumedWake ? stripWakePrefix(rawText, wakeWord) : rawText
-        if (finalText) emit(transcriptListeners, finalText, meta)
+        if (finalText) {
+          emit(transcriptListeners, finalText, meta)
+        } else if (consumedWake && active && !speechActive && !holdActive) {
+          // D5：本段只说了唤醒词（剥完为空）→ **不关命令窗口**，保持聆听等用户补命令。
+          // 「唤醒词…停顿（> silenceMs）…命令」是高频交互；若回待机态，后面的命令会被当
+          // 待机音频丢弃（真机台架实证 0 条定稿）。restoreState 刚置的 'wake' 在此覆盖。
+          setState('listening')
+        }
         return
       }
       // 3 次重试耗尽仍失败：触发 onError → 状态条「识别失败，请重试」（防静默丢句）。
@@ -788,6 +805,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         }
         prePad = []
         segmentMs += durationMs
+        speechMs += durationMs // 待机段同样是纯语音：计入时长，命中定稿时过 MIN_SPEECH_MS
         segment.push(data)
         wakeSilenceMs = 0
         // 上限兜底：滚窗重置（防无唤醒词时无界累积）。
