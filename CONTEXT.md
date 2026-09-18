@@ -25,6 +25,12 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 - 检测 VAD 阈值 0.35（灵敏），端点 VAD 阈值 0.5（保守断句）。
 - 打断计数**仅在播放期累积**（非播放期清零），否则用户说自己的话的残留计数会在 AI 开播瞬间误打断。
 - 段生命周期：host 按 sessionId→epoch 嵌套 Map；finalize 幂等（缓存定稿文本 + 并发守卫），client 对瞬时失败有界重试（3 次）——不丢句。
+- **唤醒词链（issue #10）**：匹配 = startsWith 快路径 + 容错慢路径（lead ≤3 字符平移 + Levenshtein ≤1，
+  窗口 w±1 且 ≥2 字；单字词不走慢路径）。待机态 partial 也上屏（「说『x』开始 · 转写」复合显示）；
+  待机段**静音 ≥ silenceMs 即弃段**（防段首毒化——「喊 2-3 次才生效」根因 + 自愈 host 流丢头）；
+  wake 内所有 reset（滚窗/静音弃段/打断弃段）都 `segmentEpoch++`（防在途 partial 回写旧水位）。
+  `resetGate` 保证「host 清场先落地、partial 后上行」——hardBreak 的 /cancel asr.reset 与 reset=1
+  双清场竞态是「打断后卡住」根因。打断门控是 VAD 与唤醒词无关；每句断句/打断后回待机需重说唤醒词。
 - **断句静音阈值由设置 silenceMs 真实驱动**（端点 VAD minSilenceDuration = silenceMs/1000，默认 1500ms；
   客户端静音计时仅作 VAD 缺失兜底）。**发送为累积模式**：定稿进草稿，再静音一个 silenceMs 或 Ctrl/hold 才发，
   连续多段拼成一条消息（内部仍按 30s 分块识别、跨块拼接）。

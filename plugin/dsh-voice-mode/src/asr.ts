@@ -231,8 +231,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   // 确认帧时长口径（约 0.3/0.2/0.1s）得以精确成立） ---
   let lastPollAt = 0
   let partialInFlight = false
+  /** reset 门（issue #10 问题 3）：host 清场与 partial 上行的顺序约束（见 resetHostStream）。 */
+  let resetGate: Promise<void> = Promise.resolve()
   /** 段纪元：finalize/stop 后迟到的 partial 丢弃。 */
   let segmentEpoch = 0
+  /** wake 待机段静音累计（issue #10：待机段静音弃段用；有语音即清零）。 */
+  let wakeSilenceMs = 0
   /** Ctrl 强制发送标记（随本段定稿的 meta 传递）。 */
   let forcePending = false
   /** P1-4：本段已上传的样本数（增量水位；partial/定稿只传新增部分）。 */
@@ -307,6 +311,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
    */
   const requestPartial = async (): Promise<void> => {
     if (partialInFlight || segment.length === 0) return
+    // reset 门（issue #10 问题 3）：等在途 host 清场先落地再上行——hardBreak 会并发
+    // 两个清场（/cancel 的 asr.reset + 本引擎 reset=1），任一晚于新 partial 到达都会
+    // 把已喂样本抹掉而客户端水位已推进，后续增量对空流只发尾部（段丢头根因）。
+    await resetGate
+    // 等待期间段可能已被清（静音弃段/打断弃段）：重查守卫。
+    if (partialInFlight || segment.length === 0) return
     const total = segment.reduce((n, c) => n + c.length, 0)
     const seconds = total / SAMPLE_RATE
     if (seconds < PARTIAL_MIN_S || seconds > PARTIAL_MAX_S) return
@@ -366,6 +376,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       // 唤醒词门：wake 待机态下 partial 只用于匹配，命中 → 清本地与 host 流 → 激活。
       if (state === 'wake' && wakeEnabled) {
         uploadedSamples = Math.max(uploadedSamples, from + samples.length)
+        // 待机态也显示实时转写（issue #10 问题 2）：用户看见「它听到了什么」，唤醒
+        // 成败可自查；命中瞬间本条 partial 同时充当「已听到唤醒词」的确认反馈。
+        emit(partialListeners, out.text ?? '')
         if (matchWakeWord(out.text ?? '', wakeWord)) {
           segmentEpoch++
           segment = []
@@ -471,14 +484,26 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
   }
 
-  /** 清 host 识别流（弃段 / 滚窗清场）。 */
-  const resetHostStream = async (): Promise<void> => {
-    try {
-      // 超时防挂起：reset 是 fire-and-forget 语义，挂起不得阻塞 discardSegment/hardBreak。
-      await fetch(`${asrUrl(false)}&reset=1`, { method: 'POST', signal: AbortSignal.timeout(5000) })
-    } catch {
-      // 重置失败：下次 partial 走增量仍可续（host 流健壮）
-    }
+  /** 清 host 识别流（弃段 / 滚窗清场）。
+   *  issue #10 问题 3：经 resetGate 串行排队，且 requestPartial 上行前等门开
+   *  （reset 先落地、partial 后上行）——防清场晚到把已喂样本抹掉（host 流丢头）。
+   *  返回的 Promise 在本轮 reset 落地（或超时兜底）后 resolve。 */
+  const resetHostStream = (): Promise<void> => {
+    const prev = resetGate
+    let release!: () => void
+    resetGate = new Promise<void>((r) => {
+      release = r
+    })
+    return (async () => {
+      await prev // 多次 reset FIFO 串行
+      try {
+        // 超时防挂起：reset 是 fire-and-forget 语义，挂起不得阻塞 discardSegment/hardBreak。
+        await fetch(`${asrUrl(false)}&reset=1`, { method: 'POST', signal: AbortSignal.timeout(5000) })
+      } catch {
+        // 重置失败：下次 partial 走增量仍可续（host 流健壮）
+      }
+      release()
+    })()
   }
 
   /** 定稿当前段：POST final=1（含 0.5s 尾垫由 host 补齐协议侧不需要）。
@@ -714,11 +739,30 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       if (rms > SPEECH_RMS) {
         segmentMs += durationMs
         segment.push(data)
+        wakeSilenceMs = 0
         // 上限兜底：滚窗重置（防无唤醒词时无界累积）。
         if (segmentMs > MAX_SEGMENT_MS) {
+          // issue #10：作废在途 partial 响应——否则其会把已归零的 uploadedSamples
+          // 水位写回旧值，后续增量对重置后的空 host 流只发尾部（段丢头）。
+          segmentEpoch++
           segment = []
           segmentMs = 0
           silenceMs = 0
+          wakeSilenceMs = 0
+          uploadedSamples = 0
+          void resetHostStream()
+        }
+      } else if (segment.length > 0) {
+        // 静音弃段（issue #10 问题 1/3）：待机段首残留的非唤醒词语音会让头部锚定
+        // （startsWith + lead 窗口）永远够不着——「喊了 2-3 次才生效」的根因之一。
+        // 停满一个断句静音即清窗重开，下一句从段首起算；同时自愈任何 host 流丢头。
+        wakeSilenceMs += durationMs
+        if (wakeSilenceMs >= config.silenceMs) {
+          segmentEpoch++
+          segment = []
+          segmentMs = 0
+          silenceMs = 0
+          wakeSilenceMs = 0
           uploadedSamples = 0
           void resetHostStream()
         }
@@ -918,6 +962,7 @@ const startRecorder = async (): Promise<void> => {
     silenceMs = 0
     segmentMs = 0
     speechMs = 0
+    wakeSilenceMs = 0 // issue #10：待机静音计时随会话清场
     uploadedSamples = 0 // P1-4：会话结束清除已传水位
     prePad = []
     detectChunks = [] // 打断根治：退出清检测通道
@@ -1038,6 +1083,7 @@ const startRecorder = async (): Promise<void> => {
       segmentMs = 0
       speechMs = 0
       silenceMs = 0
+      wakeSilenceMs = 0 // issue #10：待机静音计时不跨打断残留
       speechActive = false
       prePad = []
       uploadedSamples = 0

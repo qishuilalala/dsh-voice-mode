@@ -1,5 +1,6 @@
 /**
  * 唤醒词匹配单测（纯函数，无依赖）。运行：node test/wakeword.test.mjs
+ * Issue #10 扩展：容错慢路径用例表（同音字/首字错/前导噪声/负例）。
  */
 import assert from 'node:assert/strict'
 import { build } from 'esbuild'
@@ -62,17 +63,101 @@ t('中段偶然子串不命中', () => {
   assert.equal(matchWakeWord('小张说他认识你好小d', '你好小D'), false)
 })
 t('候选短于唤醒词（未说完）不命中', () => {
+  // 注：距离 ≥2 的短候选仍不命中；仅差 1 字（1 编辑距离）在慢路径命中（见下方翻转用例）
   assert.equal(matchWakeWord('你好', '你好小D'), false)
-  assert.equal(matchWakeWord('你好小', '你好小D'), false)
 })
-t('同音近形不误命中（缺少首字）', () => {
-  assert.equal(matchWakeWord('好小d', '你好小D'), false)
+t('缺首字在容错窗口内命中（issue #10：首字被转错/吞字）', () => {
+  // 旧规则 ❌ → 新规则 ✅：'好小d' = 唤醒词缺首字（1 删除编辑），起点 0 的等长-1 窗口可达
+  assert.equal(matchWakeWord('好小d', '你好小D'), true)
+})
+t('缺尾字在容错窗口内命中（issue #10：正在说、尾字未出）', () => {
+  // 旧规则 ❌ → 新规则 ✅：'你好小' = 唤醒词缺尾字（1 删除编辑），提前一拍唤醒
+  assert.equal(matchWakeWord('你好小', '你好小D'), true)
+})
+t('同音近形（缺 2 字）不命中', () => {
+  assert.equal(matchWakeWord('好小', '你好小D'), false)
 })
 t('唤醒词为空白不命中', () => {
   assert.equal(matchWakeWord('你好小d', '   '), false)
 })
 t('英文唤醒词大小写不敏感', () => {
   assert.equal(matchWakeWord('Hey dsh, start now', 'hey dsh'), true)
+})
+
+console.log('容错慢路径（issue #10 问题 1，唤醒词「小莫」）')
+t('正例：同音字替换（小墨/小末/小漠/小么）', () => {
+  for (const p of ['小墨', '小末', '小漠', '小么']) {
+    assert.equal(matchWakeWord(p, '小莫'), true, `"${p}" 应命中（1 编辑距离）`)
+  }
+})
+t('正例：首字错（晓莫）', () => {
+  assert.equal(matchWakeWord('晓莫', '小莫'), true)
+})
+t('正例：前导语气词白名单（呃/那个）走快路径', () => {
+  assert.equal(matchWakeWord('呃小莫', '小莫'), true)
+  assert.equal(matchWakeWord('那个小莫', '小莫'), true)
+})
+t('正例：白名单外的双层前导（嗯那个小莫）走慢路径', () => {
+  // normalizeWake 只剥一层白名单（嗯），剩余「那个小莫」由 lead 窗口平移吸收
+  assert.equal(matchWakeWord('嗯那个小莫', '小莫'), true)
+})
+t('正例：非白名单前导字符（喂/我说/我说了）', () => {
+  assert.equal(matchWakeWord('喂小莫', '小莫'), true)
+  assert.equal(matchWakeWord('我说小莫', '小莫'), true)
+  assert.equal(matchWakeWord('我说了小莫呀', '小莫'), true)
+})
+t('正例：命中后仍有内容（小莫你）', () => {
+  assert.equal(matchWakeWord('小莫你', '小莫'), true)
+})
+t('正例：重复唤醒词（小莫小莫 / 小莫，小莫）', () => {
+  assert.equal(matchWakeWord('小莫小莫', '小莫'), true)
+  assert.equal(matchWakeWord('小莫，小莫', '小莫'), true)
+})
+t('负例：普通短句（你好）不误触发', () => {
+  assert.equal(matchWakeWord('你好', '小莫'), false)
+})
+t('负例：单字候选（小/想——实测转写）不误触发', () => {
+  assert.equal(matchWakeWord('小', '小莫'), false)
+  assert.equal(matchWakeWord('想', '小莫'), false)
+})
+t('负例：字序颠倒（莫小）不误触发', () => {
+  assert.equal(matchWakeWord('莫小', '小莫'), false)
+})
+t('负例：空候选不误触发', () => {
+  assert.equal(matchWakeWord('', '小莫'), false)
+})
+t('lead 边界：3 前导字符内命中（呀呀呀你好小d）', () => {
+  assert.equal(matchWakeWord('呀呀呀你好小d', '你好小D'), true)
+})
+t('负例：深位中段子串不误触发（lead 窗口够不着）', () => {
+  assert.equal(matchWakeWord('他说呀呀呀你好小d', '你好小D'), false) // 「你好小」出现在第 5 位
+  assert.equal(matchWakeWord('小张说他认识你好小d', '你好小D'), false)
+})
+
+console.log('容错边界（窗口长度 / 单字唤醒词 / 长词预算）')
+t('四字唤醒词：1 处同音字命中', () => {
+  assert.equal(matchWakeWord('小墨小莫', '小莫小莫'), true)
+  assert.equal(matchWakeWord('小莫小末', '小莫小莫'), true)
+})
+t('四字唤醒词：2 处同音字不命中（编辑预算 1 的既定取舍）', () => {
+  assert.equal(matchWakeWord('小墨小末', '小莫小莫'), false)
+})
+t('2 字词连带吸收（同首字 1 编辑距离 = 文本级与同音字不可分，README 已警示）', () => {
+  // 实测证据：小张/小猫/小狗 与 小墨/小末 在 edits=1 下同构——固有取舍，钉住防悄然变化
+  assert.equal(matchWakeWord('小张', '小莫'), true)
+  assert.equal(matchWakeWord('小猫', '小莫'), true)
+  assert.equal(matchWakeWord('小狗', '小莫'), true)
+  // 不同首字的 2 字词仍不误触发
+  assert.equal(matchWakeWord('张三', '小莫'), false)
+  assert.equal(matchWakeWord('你好', '小莫'), false)
+})
+t('单字唤醒词不走慢路径（1 编辑距离 = 全匹配，保持精确匹配）', () => {
+  assert.equal(matchWakeWord('小', '小'), true) // 快路径精确命中
+  assert.equal(matchWakeWord('小小', '小'), true) // 快路径前缀命中
+  assert.equal(matchWakeWord('墨', '小'), false) // 同音字不慢路径命中
+})
+t('英文唤醒词同音近形（hey dash）', () => {
+  assert.equal(matchWakeWord('hey dash', 'hey dsh'), true) // 1 插入编辑
 })
 
 console.log(`\nwakeword：${passed} 项通过`)

@@ -2560,6 +2560,8 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
                   : stateText
                 : b.ui.playing || b.ui.turn === 'agent-speaking'
                   ? stateText // 朗读/思考中优先显示状态，不显示用户旧的 partial（防遮蔽 thinking/reading）
+                  : b.ui.state === 'wake' && b.ui.partial
+                  ? `${stateText} · ${b.ui.partial}` // wake 待机：提示 + 实时转写并存（issue #10 问题 2，唤醒成败可自查）
                   : b.ui.partial
                     ? b.ui.partial
                     : b.ui.ttsNotice
