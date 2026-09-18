@@ -85,8 +85,6 @@ systemctl restart dsh   # Linux；其他平台重启 dsh 进程
 | 点状态条「退出」 | 退出语音模式 |
 | 点字幕浮层「跳过」 | 跳过当前句朗读 |
 
-![全双工语音体验（概念示意）](assets/voice-experience.png)
-
 ---
 
 ## ⚙️ 配置（4 新设置字段 + 5 默认值微调）
@@ -213,7 +211,7 @@ flowchart LR
 
 **License**: [MIT](LICENSE)
 
-**Contributing**: PR 欢迎，但请先读 [`docs/adr/`](docs/adr/README.md) 8 个 ADR + [`CONTEXT.md`](CONTEXT.md) + [`docs/rules/STATE.md`](docs/rules/STATE.md)；仓库遵循 [CLAUDE.md](CLAUDE.md) 的维护纪律（CLAUDE.md / AGENTS.md 仅存本机，不入库）。
+**Contributing**: PR 欢迎，但请先读 [`docs/adr/`](docs/adr/README.md) 8 个 ADR + [`CONTEXT.md`](CONTEXT.md) + [`docs/rules/STATE.md`](docs/rules/STATE.md)。
 
 **Acknowledgments**：
 
