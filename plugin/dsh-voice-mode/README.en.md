@@ -14,7 +14,7 @@ interrupts playback and the running turn. No API key.
 
 ![dsh-voice-mode full-duplex voice conversation](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/hero-banner.png)
 
-> **Version note (v0.7.8, 2026-09-18)**: **Wake-word three-part UX fix** (Issue #10) — ① fault-tolerant matching (homophone substitutions / wrong first char / leading fillers are absorbed; a 3-4 char wake word is recommended); ② standby now live-shows "what it heard", making wake success/failure self-diagnosable; ③ post-barge-in state consistency fixed (host-reset race resolved — no more getting stuck after an interrupt). Otherwise as v0.7.7: Edge cloud TTS by default, local TTS (VITS / Kokoro) optional; `wakeWord` / `toolBeep` fully wired; silence split defaults to 1500 ms.
+> **Version note (v0.7.9, 2026-09-18)**: **Wake-word pipeline overhaul** (Issue #10 + real-machine retest) — a harness driving the real engine pinpointed and fixed five flow defects: ① TTS echo polluting the standby segment while the agent reads (could not wake); ② only above-threshold frames uploaded, so trailing characters never flushed (wake word truncated); ③ discarding the whole segment on a wake hit (saying "wake word + command" in one breath sent only the tail); ④ the command hanging when the hit arrived after you stopped speaking; ⑤ pausing after the wake word closed the command window (command lost). **The wake word may now be said together with your command — it is stripped and never sent**, standby live-shows what it heard, and "wake word … pause … command" works. Otherwise as v0.7.7: Edge cloud TTS by default, local TTS (VITS / Kokoro) optional; silence split defaults to 1500 ms.
 
 ---
 
