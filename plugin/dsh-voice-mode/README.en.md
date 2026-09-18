@@ -14,7 +14,7 @@ interrupts playback and the running turn. No API key.
 
 ![dsh-voice-mode full-duplex voice conversation](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/hero-banner.png)
 
-> **Version note (v0.7.7, 2026-09-14)**: Edge cloud TTS by default (fast & natural); local TTS (VITS / Kokoro, privacy-first) optional + HTTP hardening + model SHA256 pinning form the merged core; Kokoro adds a model-precision choice (`int8` default 109 MB / `fp32` better quality 311 MB); **11 batches of comprehensive fixes** landed (caption tiers / yield semantics / defaults micro-adjust / etc.); `wakeWord` (wake word) and `toolBeep` (tool-call beep) are fully wired; the early fork's `asrModel` (bilingual paraformer) and `punctuate` (neural punctuation) were removed — SenseVoice finalization already adds punctuation, and streaming ASR is fixed to zipformer2. Silence split defaults to 1500 ms.
+> **Version note (v0.7.8, 2026-09-18)**: **Wake-word three-part UX fix** (Issue #10) — ① fault-tolerant matching (homophone substitutions / wrong first char / leading fillers are absorbed; a 3-4 char wake word is recommended); ② standby now live-shows "what it heard", making wake success/failure self-diagnosable; ③ post-barge-in state consistency fixed (host-reset race resolved — no more getting stuck after an interrupt). Otherwise as v0.7.7: Edge cloud TTS by default, local TTS (VITS / Kokoro) optional; `wakeWord` / `toolBeep` fully wired; silence split defaults to 1500 ms.
 
 ---
 

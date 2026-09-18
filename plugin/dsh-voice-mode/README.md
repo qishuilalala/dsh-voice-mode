@@ -13,7 +13,7 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 
 ![语音模式：实时字幕与状态条](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/screenshot-voice.png)
 
-> **版本说明（v0.7.7，2026-09-14）**：朗读默认 **Edge 云端**（快速自然），本地 TTS（VITS / Kokoro）可选（隐私优先）+ HTTP 安全加固 + 模型 SHA256 固定为合入核心；Kokoro 新增**模型精度可选**（`int8` 默认 109MB / `fp32` 音质更好 311MB）；**11 批次周全修复完成**（字幕档位 / 让位语义 / 默认值微调 等）；`wakeWord`（唤醒词）与 `toolBeep`（工具提示音）已完整接入；早期 fork 的 `asrModel`（双语 paraformer）与 `punctuate`（神经标点）已移除——SenseVoice 定稿本身已带标点，流式识别固定为 zipformer2。静音断句默认 1500 毫秒。
+> **版本说明（v0.7.8，2026-09-18）**：**唤醒词三项体验修复**（Issue #10）——① 匹配带容错（同音字替换 / 首字错 / 前置语气词自动吸收，建议唤醒词 3-4 字）；② 待机态实时显示「它听到了什么」，唤醒成败可自查；③ 打断后状态一致性根治（host 清场竞态修复，打断后不再卡住）。其余同 v0.7.7：朗读默认 Edge 云端，本地 TTS（VITS / Kokoro）可选；`wakeWord` / `toolBeep` 完整接入；静音断句默认 1500 毫秒。
 
 ---
 
