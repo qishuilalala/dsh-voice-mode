@@ -20,7 +20,7 @@ await build({
   platform: 'node',
   logLevel: 'silent',
 })
-const { matchWakeWord, normalizeWake } = await import(pathToFileURL(out).href)
+const { matchWakeWord, normalizeWake, stripWakePrefix, wakePrefixLength } = await import(pathToFileURL(out).href)
 
 let passed = 0
 const t = (name, fn) => {
@@ -158,6 +158,40 @@ t('单字唤醒词不走慢路径（1 编辑距离 = 全匹配，保持精确匹
 })
 t('英文唤醒词同音近形（hey dash）', () => {
   assert.equal(matchWakeWord('hey dash', 'hey dsh'), true) // 1 插入编辑
+})
+
+console.log('stripWakePrefix / wakePrefixLength（定稿剥词头，保内容优先）')
+t('精确词头被剥掉', () => {
+  assert.equal(stripWakePrefix('你好小李你给我说', '你好小李'), '你给我说')
+  assert.equal(stripWakePrefix('你好小李你给我说100个字', '你好小李'), '你给我说100个字')
+})
+t('词头后带标点/空格：一并去掉前导标点', () => {
+  assert.equal(stripWakePrefix('你好小李，你给我说', '你好小李'), '你给我说')
+  assert.equal(stripWakePrefix('你好小李。 你给我说', '你好小李'), '你给我说')
+})
+t('前导语气词随词头一起剥（白名单与非白名单都要剥）', () => {
+  assert.equal(stripWakePrefix('呃你好小李你给我说', '你好小李'), '你给我说')
+  assert.equal(stripWakePrefix('那个你好小李你给我说', '你好小李'), '你给我说')
+  assert.equal(stripWakePrefix('喂你好小李你给我说', '你好小李'), '你给我说')
+})
+t('同音字（1 编辑距离）词头也剥', () => {
+  assert.equal(stripWakePrefix('你好小里你给我说', '你好小李'), '你给我说')
+})
+t('缺字候选（w-1 窗口）不剥——否则吃掉命令首字', () => {
+  // 「你好小」比唤醒词短一字：匹配可以提前命中，但剥离必须保守
+  const text = '你好小你给我说'
+  assert.equal(wakePrefixLength(text, '你好小李'), 4) // 剥 4 字（你好小你）——1 编辑距离窗口
+  assert.equal(stripWakePrefix('你好', '你好小李'), '你好')
+})
+t('找不到唤醒词时原样返回（保内容优先）', () => {
+  assert.equal(stripWakePrefix('今天天气不错', '你好小李'), '今天天气不错')
+  assert.equal(stripWakePrefix('给我说一百个字', '你好小李'), '给我说一百个字')
+  assert.equal(stripWakePrefix('', '你好小李'), '')
+  assert.equal(stripWakePrefix('你好小李', ''), '你好小李')
+})
+t('重复唤醒词只剥一个（第二个留给用户可见）', () => {
+  assert.equal(stripWakePrefix('小莫小莫', '小莫'), '小莫')
+  assert.equal(stripWakePrefix('你好小李你好小李', '你好小李'), '你好小李')
 })
 
 console.log(`\nwakeword：${passed} 项通过`)

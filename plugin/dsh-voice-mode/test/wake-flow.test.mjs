@@ -45,10 +45,12 @@ const SPEECH_RMS = 0.015 // 与 asr.ts 一致
 const LAG_MS = 300 // host 流式解码滞后（尾字需要后续音频才 flush）
 const SYLLABLE_MS = 200
 const ECHO_AMP = 0.3 // >0.2 → AI 朗读（回声）
-const SPEECH_AMP = 0.06 // 用户语音（超门限）
+const CMD_AMP = 0.1 // 0.08~0.2 → 命令语音（与唤醒词可区分）
+const SPEECH_AMP = 0.06 // 唤醒词语音（超门限）
 const SIL_AMP = 0.0005 // 静音（低于门限）
 const AI_PHRASE = '我明白了'
 const WAKE = '你好小李'
+const COMMAND = '给我说一百个字'
 
 let capturedNode = null
 class FakeAudioWorkletNode {
@@ -97,7 +99,7 @@ const meanAbs = (arr) => {
 }
 
 function newStream() {
-  return { q: [], qLen: 0, fedPos: 0, recvMs: 0, pending: [], aiIdx: 0, wakeIdx: 0, echoSamples: 0, firstAmp: null }
+  return { q: [], qLen: 0, fedPos: 0, recvMs: 0, pending: [], aiIdx: 0, wakeIdx: 0, cmdIdx: 0, echoSamples: 0, firstAmp: null }
 }
 
 /** 从队列取 n 个样本（不足返回 null）。 */
@@ -142,6 +144,7 @@ function feed(epoch, offset, samples, final) {
       const amp = meanAbs(block)
       let ch = ''
       if (amp > 0.2) ch = AI_PHRASE[st.aiIdx++ % AI_PHRASE.length]
+      else if (amp >= 0.08) ch = COMMAND[st.cmdIdx++ % COMMAND.length]
       else if (amp >= SPEECH_RMS) ch = WAKE[st.wakeIdx++ % WAKE.length]
       st.pending.push({ endMs, ch })
     }
@@ -322,6 +325,37 @@ await t('（现状语义）断句后回待机：下一条命令需重说唤醒�
   await say(SIL_AMP, 2500) // 静音断句 → 定稿
   await sleep(500)
   assert.equal(h.state, 'wake', `断句后应回待机（现状），实际 ${h.state}`)
+  await h.engine.stop()
+})
+
+await t('连续说「唤醒词+命令」→ 定稿必须含完整命令（不得只剩尾部）', async () => {
+  const h = makeEngine()
+  await h.engine.start()
+  await say(SPEECH_AMP, 200 * 4) // 你好小李
+  await say(CMD_AMP, 200 * COMMAND.length) // 命令（与唤醒词连说、中间不停顿）
+  await say(SIL_AMP, 2500) // 停口断句 → 定稿
+  assert.equal(h.segments.length, 1, `应产出 1 条定稿（实际 ${h.segments.length} 条：${JSON.stringify(h.segments)}）`)
+  assert.ok(
+    h.segments[0].includes(COMMAND),
+    `定稿应含完整命令「${COMMAND}」（实际 "${h.segments[0]}"）——唤醒命中时丢掉整段会吃掉命令前半句`,
+  )
+  assert.ok(
+    !h.segments[0].includes(WAKE),
+    `定稿不应把唤醒词发出去（实际 "${h.segments[0]}"）——定稿应剥掉词头`,
+  )
+  await h.engine.stop()
+})
+
+await t('停顿分说（唤醒词 … 停顿 … 命令）→ 定稿同样只含命令', async () => {
+  const h = makeEngine()
+  await h.engine.start()
+  await say(SPEECH_AMP, 200 * 4) // 你好小李
+  await sleep(600) // 短停顿（不足 silenceMs，不触发弃段）
+  await say(CMD_AMP, 200 * COMMAND.length)
+  await say(SIL_AMP, 2500)
+  assert.equal(h.segments.length, 1, `应产出 1 条定稿（实际 ${JSON.stringify(h.segments)}）`)
+  assert.ok(h.segments[0].includes(COMMAND), `定稿应含完整命令（实际 "${h.segments[0]}"）`)
+  assert.ok(!h.segments[0].includes(WAKE), `定稿不应含唤醒词（实际 "${h.segments[0]}"）`)
   await h.engine.stop()
 })
 

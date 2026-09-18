@@ -57,6 +57,34 @@ function editDistanceWithin(a: string, b: string, max: number): number {
 }
 
 /**
+ * 唤醒词在段文本头部占用的**原始字符数**（定稿时剥词头用）。
+ * 容错口径与 matchWakeWord 一致（前导语气词剥离 + 编辑距离 ≤ WAKE_MAX_EDITS），
+ * 但**要求归一化长度 ≥ 唤醒词全长**——不取「w-1 提前命中」的窗口，否则会把命令
+ * 首字一起切掉。找不到（如定稿文本与流式 partial 不一致）返回 0：宁可不剥，也不丢内容。
+ */
+export function wakePrefixLength(text: string, wakeWord: string): number {
+  const w = normalizeWake(wakeWord)
+  if (!w || w.length < 2) return 0
+  const raw = String(text ?? '')
+  for (let i = 1; i <= raw.length; i++) {
+    const p = normalizeWake(raw.slice(0, i))
+    if (p.length < w.length) continue
+    if (p.length > w.length + WAKE_MAX_EDITS) break // 归一化长度单调不减：再长也不可能命中
+    if (editDistanceWithin(p, w, WAKE_MAX_EDITS) <= WAKE_MAX_EDITS) return i
+  }
+  return 0
+}
+
+/** 剥掉段文本头部的唤醒词（含前导语气词），再去掉残留的前导空白/标点。
+ *  找不到唤醒词时原样返回——**保内容优先**（多留一个词好过丢一句命令）。 */
+export function stripWakePrefix(text: string, wakeWord: string): string {
+  const n = wakePrefixLength(text, wakeWord)
+  const raw = String(text ?? '')
+  if (n <= 0) return raw
+  return raw.slice(n).replace(/^[\s\u3000，。！？!?；;、,.]+/, '')
+}
+
+/**
  * 匹配唤醒词：唤醒词归一化后是候选文本的一个**前缀**（允许前导标点/语气词
  * 被剥离），即候选串去掉尾部多余字后以唤醒词开头 → 命中。
  * 快路径未命中走容错慢路径（前导平移 + 编辑距离；见文件头）。

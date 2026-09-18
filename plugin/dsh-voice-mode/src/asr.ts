@@ -16,7 +16,7 @@
  */
 
 import { resampleLinear } from './resample.ts'
-import { matchWakeWord } from './wakeword.ts'
+import { matchWakeWord, stripWakePrefix } from './wakeword.ts'
 import { fixtureRecorder } from './fixture-recorder.ts'
 
 // AudioWorklet 源码字符串（build.mjs 经 esbuild define 注入）：运行时转 Blob URL 供 addModule。
@@ -237,6 +237,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let segmentEpoch = 0
   /** wake 待机段静音累计（issue #10：待机段静音弃段用；有语音即清零）。 */
   let wakeSilenceMs = 0
+  /** 本段已消费唤醒词（命中后置位；定稿时从文本头部剥掉词头，防唤醒词进消息）。 */
+  let wakeConsumed = false
   /** Ctrl 强制发送标记（随本段定稿的 meta 传递）。 */
   let forcePending = false
   /** P1-4：本段已上传的样本数（增量水位；partial/定稿只传新增部分）。 */
@@ -373,22 +375,18 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       if (!res.ok) return
       const out = (await res.json()) as { text?: string; endpoint?: boolean; isSpeech?: boolean }
       if (epoch !== segmentEpoch) return
-      // 唤醒词门：wake 待机态下 partial 只用于匹配，命中 → 清本地与 host 流 → 激活。
+      // 唤醒词门：wake 待机态下 partial 只用于匹配，命中 → 转入聆听（**不丢段**）。
       if (state === 'wake' && wakeEnabled) {
         uploadedSamples = Math.max(uploadedSamples, from + samples.length)
         // 待机态也显示实时转写（issue #10 问题 2）：用户看见「它听到了什么」，唤醒
         // 成败可自查；命中瞬间本条 partial 同时充当「已听到唤醒词」的确认反馈。
         emit(partialListeners, out.text ?? '')
         if (matchWakeWord(out.text ?? '', wakeWord)) {
-          segmentEpoch++
-          segment = []
-          segmentMs = 0
-          speechMs = 0
-          silenceMs = 0
-          prePad = []
-          uploadedSamples = 0
-          utteranceEndAt = null
-          await resetHostStream()
+          // 真机实证（2026-09-18）：**不得清段/清 host 流**。用户常把命令与唤醒词连说
+          // （「你好小李你给我说100个字的中文」），命中时命令前半句已在同一段里；
+          // 整段丢弃会把它一起吃掉、只剩尾部几个字（「完全无法使用」根因）。
+          // 改为保留音频继续识别，由定稿时的 stripWakePrefix 从文本头部剥掉唤醒词。
+          wakeConsumed = true
           if (active) setState('listening')
         }
         return
@@ -530,6 +528,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     segmentMs = 0
     silenceMs = 0
     wakeSilenceMs = 0
+    wakeConsumed = false
     prePad = []
     uploadedSamples = 0
     void resetHostStream()
@@ -561,6 +560,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     const epochSnapshot = segmentEpoch
     segmentEpoch++
     const meta: SegmentMeta = { force: forcePending }
+    // 本段若消费过唤醒词（连说「你好小李+命令」），定稿时剥掉文本头部唤醒词再进草稿。
+    const consumedWake = wakeConsumed
+    wakeConsumed = false
     forcePending = false
     speechMs = 0 // P1-3：新段重新起算纯语音时长
     uploadedSamples = 0
@@ -655,7 +657,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         // 校验本段世代（快照+1）：仅当定稿期间又推进（新段/打断/stop）时作废；
         // 历史 bug：比较快照本身（snap!==now）必然不等 → 定稿恒被丢弃 → onSegment 永不触发。
         if (segmentEpoch !== epochSnapshot + 1) return
-        if (out.text) emit(transcriptListeners, out.text, meta)
+        // 唤醒词头剥离（content-preserving）：连说场景下词头仍在段首，剥掉后再进草稿；
+        // 找不到唤醒词时 stripWakePrefix 原样返回——宁可不剥也不丢命令内容。
+        const rawText = out.text ?? ''
+        const finalText = consumedWake ? stripWakePrefix(rawText, wakeWord) : rawText
+        if (finalText) emit(transcriptListeners, finalText, meta)
         return
       }
       // 3 次重试耗尽仍失败：触发 onError → 状态条「识别失败，请重试」（防静默丢句）。
@@ -985,6 +991,7 @@ const startRecorder = async (): Promise<void> => {
     segmentMs = 0
     speechMs = 0
     wakeSilenceMs = 0 // issue #10：待机静音计时随会话清场
+    wakeConsumed = false // 会话清场即作废词头消费标记
     uploadedSamples = 0 // P1-4：会话结束清除已传水位
     prePad = []
     detectChunks = [] // 打断根治：退出清检测通道
@@ -1084,6 +1091,7 @@ const startRecorder = async (): Promise<void> => {
       // 不在此置 forcePending：hold 期间 30s 滚段定稿应只累积（松手才发），
       // force 统一由 endHeld 松手时置位，避免按住 >30s 被提前发送。
       segmentEpoch++ // 作废迟到的 wake/旧段 partial
+      wakeConsumed = false // 新段重新起算词头消费
       utteranceEndAt = null // P1-5：新按压段重新起算说完时刻
       segment = []
       segmentMs = 0
@@ -1106,6 +1114,7 @@ const startRecorder = async (): Promise<void> => {
       speechMs = 0
       silenceMs = 0
       wakeSilenceMs = 0 // issue #10：待机静音计时不跨打断残留
+      wakeConsumed = false // 弃段即作废词头消费标记
       speechActive = false
       prePad = []
       uploadedSamples = 0

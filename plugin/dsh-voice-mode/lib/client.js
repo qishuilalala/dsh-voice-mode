@@ -87,6 +87,24 @@ function editDistanceWithin(a, b, max) {
   }
   return prev[lb];
 }
+function wakePrefixLength(text, wakeWord) {
+  const w = normalizeWake(wakeWord);
+  if (!w || w.length < 2) return 0;
+  const raw = String(text ?? "");
+  for (let i = 1; i <= raw.length; i++) {
+    const p = normalizeWake(raw.slice(0, i));
+    if (p.length < w.length) continue;
+    if (p.length > w.length + WAKE_MAX_EDITS) break;
+    if (editDistanceWithin(p, w, WAKE_MAX_EDITS) <= WAKE_MAX_EDITS) return i;
+  }
+  return 0;
+}
+function stripWakePrefix(text, wakeWord) {
+  const n = wakePrefixLength(text, wakeWord);
+  const raw = String(text ?? "");
+  if (n <= 0) return raw;
+  return raw.slice(n).replace(/^[\s\u3000，。！？!?；;、,.]+/, "");
+}
 function matchWakeWord(partial, wakeWord) {
   const w = normalizeWake(wakeWord);
   if (!w) return false;
@@ -477,6 +495,7 @@ function createAsrEngine(config, sessionId) {
   let resetGate = Promise.resolve();
   let segmentEpoch = 0;
   let wakeSilenceMs = 0;
+  let wakeConsumed = false;
   let forcePending = false;
   let uploadedSamples = 0;
   let detectChunks = [];
@@ -583,15 +602,7 @@ function createAsrEngine(config, sessionId) {
         uploadedSamples = Math.max(uploadedSamples, from + samples.length);
         emit(partialListeners, out.text ?? "");
         if (matchWakeWord(out.text ?? "", wakeWord)) {
-          segmentEpoch++;
-          segment = [];
-          segmentMs = 0;
-          speechMs = 0;
-          silenceMs = 0;
-          prePad = [];
-          uploadedSamples = 0;
-          utteranceEndAt = null;
-          await resetHostStream();
+          wakeConsumed = true;
           if (active) setState("listening");
         }
         return;
@@ -689,6 +700,7 @@ function createAsrEngine(config, sessionId) {
     segmentMs = 0;
     silenceMs = 0;
     wakeSilenceMs = 0;
+    wakeConsumed = false;
     prePad = [];
     uploadedSamples = 0;
     void resetHostStream();
@@ -707,6 +719,8 @@ function createAsrEngine(config, sessionId) {
     const epochSnapshot = segmentEpoch;
     segmentEpoch++;
     const meta = { force: forcePending };
+    const consumedWake = wakeConsumed;
+    wakeConsumed = false;
     forcePending = false;
     speechMs = 0;
     uploadedSamples = 0;
@@ -791,7 +805,9 @@ function createAsrEngine(config, sessionId) {
           continue;
         }
         if (segmentEpoch !== epochSnapshot + 1) return;
-        if (out.text) emit(transcriptListeners, out.text, meta);
+        const rawText = out.text ?? "";
+        const finalText = consumedWake ? stripWakePrefix(rawText, wakeWord) : rawText;
+        if (finalText) emit(transcriptListeners, finalText, meta);
         return;
       }
       emitError("recognitionFail");
@@ -1022,6 +1038,7 @@ function createAsrEngine(config, sessionId) {
     segmentMs = 0;
     speechMs = 0;
     wakeSilenceMs = 0;
+    wakeConsumed = false;
     uploadedSamples = 0;
     prePad = [];
     detectChunks = [];
@@ -1107,6 +1124,7 @@ function createAsrEngine(config, sessionId) {
       if (!active || holdActive) return;
       holdActive = true;
       segmentEpoch++;
+      wakeConsumed = false;
       utteranceEndAt = null;
       segment = [];
       segmentMs = 0;
@@ -1128,6 +1146,7 @@ function createAsrEngine(config, sessionId) {
       speechMs = 0;
       silenceMs = 0;
       wakeSilenceMs = 0;
+      wakeConsumed = false;
       speechActive = false;
       prePad = [];
       uploadedSamples = 0;
@@ -2796,7 +2815,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "c5975a1";
+var BUILD_TAG = "3e9fbfb";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
