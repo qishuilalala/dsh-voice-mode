@@ -62,7 +62,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
   detect 通道 `detectInFlight` 串行化，ADR-0003 必要性实证）；耳机用户语音 crest 9.5dB < 残差 12.8dB
   （ADR-0001 物理边界形态实证）。详见 docs/findings/2026-09-14-fixture-verdict.md。
 - 本地 TTS 模型：就绪以「模型文件已下载」为准（跨引擎持久，非子进程 init）；`/models/download` 触发下载、`/models/clean` 删除本地；int8/fp32 分目录缓存、切换不重下。
-- **宿主兼容 0.1.1-rc.2 → 0.1.5-rc.2**（全版本支持，engines.dsh>=0.1.1-rc.2 无上界）：9 个 `dsh.client.inject` 锚点取交集；升级 dsh 前先 `npm run check:anchors` 预检，回归用 `npm run verify:dual`（多版本 typecheck + 隔离冒烟，核心备于 /tmp/dsh011/012/015/015-rc2-core）；RPC 端点 schema 实证表见 docs/compat-contract.md §8（逐端点：session/list 用 `args._request`；session/create|prompt|cancel 用 `args.request`；settings/describe、llm/listProviders 不嵌字段；所有 /api/* 强制 args 信封）。
+- **宿主兼容 0.1.1-rc.2 → 0.1.5-rc.2 + 0.1.6-alpha.2 预览**（全版本支持，engines.dsh>=0.1.1-rc.2 无上界）：9 个 `dsh.client.inject` 锚点取交集；升级 dsh 前先 `npm run check:anchors` 预检，回归用 `npm run verify:dual`（多版本 typecheck + 隔离冒烟，核心备于 /tmp/dsh011/012/015/015-rc2/016a2-core）；RPC 端点 schema 实证表见 docs/compat-contract.md §8（逐端点：session/list 用 `args._request`；session/create|prompt|cancel 用 `args.request`；settings/describe、llm/listProviders 不嵌字段；所有 /api/* 强制 args 信封）；2026-09-18 alpha 复核见 §9。
 
 ## 设置语义
 

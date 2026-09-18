@@ -213,3 +213,70 @@ llm/listProviders: POST /api/llm/listProviders  payload.args:{}
 - voice-mode 源码**无变更**——本次升级**只**对基础设施层（dsh 核心、RPC schema、测试脚本注释）做了更新；
 - 跨版本兼容目标维持「0.1.1-rc.2 起全版本、持续跟进新线」（engines.dsh 无上界）。
 
+---
+
+## 9. 0.1.6-alpha.2 复核（2026-09-18，preview 通道实证）
+
+### 「最新版本」口径明文化
+
+```
+npm view @deepseek-ai/dsh dist-tags     # 复算命令
+# 稳定最新 (latest/next)：0.1.5-rc.2  ← 与本机 dsh --version 一致 ✅
+# 绝对最新 (alpha)：        0.1.6-alpha.2  ← 本节实证覆盖
+# 绝对最新 (beta)：        （空）
+```
+
+本机 dsh 与 npm 稳定最新已对齐。预览通道 alpha 是上游尚未升 RC 的下一档，本节即为其兼容核验。
+
+### 实证矩阵（2026-09-18 当日）
+
+| 维度 | 0.1.6-alpha.2 结果 | 判据 |
+|---|---|---|
+| 锚点 9 交集 | ✅ **9/9 存在** | `node scripts/check-anchors.mjs 0.1.6-alpha.2` → exit 0 |
+| typecheck host | ✅ 0 error | `tsc -p tsconfig.json --noEmit`（cordis 4.0.2，P3 修复后） |
+| typecheck client | ✅ 0 error | `tsc -p tsconfig.client.json --noEmit` |
+| 隔离冒烟 boot | ✅ | `DSH_HOME=/tmp/dsh-smoke-XXXXX` boot → URL 就绪 |
+| `/voice-mode` | ✅ 200 + `"ok":true` | curl 实证 |
+| `/voice-mode/config` | ✅ 200 + `ttsEngine` | curl 实证 |
+| `/voice-mode/models/status` | ✅ 200 + `asr` | curl 实证 |
+| client mic 渲染 | ✅ | `document.querySelector('[data-dshvm="mic"]')` 存在 |
+| client console | ✅ 0 error | playwright 捕获 |
+| 集成回归（真实 LLM）| n/a（隔离无 key）| 由 0.1.5-rc.2 端到端 6 帧 / 0 tts-error 代证（基线 P1）|
+
+### 与 §8（0.1.5-rc.2）差异
+
+- **零差异**：9 交集锚点全部存在；RPC 形态仍走 `args.request.{...}` + 强制 args 信封。
+- **新增实证**：alpha 通道子包 `peerDependencies.@deepseek-ai/cordis` 已升至 `^4.0.2`（0.1.1 线的 `^4.0.1` 不复存在），本仓库 cordis 映射同步扩到 `0.1.2-*|0.1.3-*|0.1.4-*|0.1.5-*|0.1.6-*|0.1.7-*|0.1.8-*|0.1.9-*|0.1.10-*` → `4.0.2`。
+- **无 breaking**：voice-mode 源码未触碰，业务行为未变化。
+
+### engines.dsh 语义澄清（修正 §7 错误认知）
+
+§7 的「区间经 dshmarket `satisfiesRange(includePrerelease)` 端到端实证」是**对的**，但容易被误读为「`engines.dsh` 在 semver 默认语义下也匹配所有 prereleases」。实测澄清：
+
+| range | dshmarket `satisfiesRange(host, range, {includePrerelease:true})` |
+|---|---|
+| `>=0.1.1-rc.2` | 0.1.1-rc.2 ✅ / 0.1.2-rc.1 ✅ / 0.1.5-rc.2 ✅ / 0.1.6-alpha.2 ✅ |
+
+`engines.dsh` 在 semver 默认规则下确实匹配不到 `0.1.5-rc.2` / `0.1.6-alpha.2`（prerelease 排斥），但 **dshmarket 用自己的 `includePrerelease:true` 判定**，本机 `dshmarket/lib/check.js` 实测对 0.1.6-alpha.2 返回 `true`。dsh 核心全库无 `engines` 字段访问；npm 不校验自定义 engine 键。**因此 `engines.dsh = ">=0.1.1-rc.2"` 不需要改**——改它会引入无意义的 churn。
+
+### 隔离核心获取（可复用步骤）
+
+```bash
+mkdir -p /tmp/dsh016a2-core && cd /tmp/dsh016a2-core && pnpm init >/dev/null
+NODE_OPTIONS=--max-old-space-size=4096 pnpm add @deepseek-ai/dsh@0.1.6-alpha.2
+# 验证：bin.js 与 package.json 版本号
+ls node_modules/@deepseek-ai/dsh/lib/bin.js
+node -e "console.log(require('./node_modules/@deepseek-ai/dsh/package.json').version)"  # 0.1.6-alpha.2
+```
+
+### §7 / §8 漂移修正（顺手）
+
+- §7 表行：「0.1.5-rc.1（/tmp/dsh015-core）」→ 实测 `/tmp/dsh015-core` 为 `0.1.5-alpha.2`（由 0.1.5-alpha.2 升级预检时遗存的回滚 tar 解出，**未**对齐到 0.1.5-rc.1）。本轮 §9 alpha 复核改用 `/tmp/dsh016a2-core` 提供真 alpha 隔离核验，避免与该核心混用。
+- §7 末段「0.1.5-rc.1 主包上架 npm 后把全局 dsh 对齐到 rc.1 并重放 verify:dual」—— 已过期：§8 实测为 `0.1.5-rc.2`，且 verify:dual 当前 4 版本矩阵已通过（含 0.1.5-rc.1 / 0.1.5-rc.2 两档）。
+
+### 本轮兼容性结论（更新到 §7 的「全版本支持目标」）
+
+- voice-mode 9 交集锚点 + 5 类型包 + 服务层契约 **全部双向兼容 0.1.1-rc.2 → 0.1.6-alpha.2**；
+- 本轮 voice-mode 业务源码**零变更**；唯一代码改动是 `scripts/typecheck-dual.sh` 的 cordis 映射扩展（消除未知版本线静默错配的隐患）；
+- 跨版本兼容目标维持「0.1.1-rc.2 起全版本、持续跟进新线」（engines.dsh 无上界）。
+

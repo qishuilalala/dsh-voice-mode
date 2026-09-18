@@ -53,7 +53,8 @@ rpc() { # rpc <方法，点形或斜杠形> <payload-json>
     out=$(call "$m" "{\"args\":$body}")
   fi
   # 逐端点的"missing 'xxx'"信息不同：session/list 是 '_request'，session/prompt 是 'request'
-  if printf '%s' "$out" | grep -qE "missing .{0,2}\"${inner}\""; then
+  # 兼容 JSON 转义（0.1.5-rc.2 实测响应中字段名带 \"...\" 转义）：放宽到任意位置出现字段名即触发 envelope。
+  if printf '%s' "$out" | grep -qE "missing .{0,12}${inner}"; then
     out=$(call "$m" "{\"args\":{\"${inner}\":$body}}")
   fi
   printf '%s' "$out"
@@ -61,8 +62,8 @@ rpc() { # rpc <方法，点形或斜杠形> <payload-json>
 
 ensure_auth || exit 1
 
-# 1. 新会话
-CREATE=$(rpc session.create '{"cwd":"/mnt/dsh-voice-mode"}')
+# 1. 新会话（0.1.5+ schema：args.request.{cwd}，§8 compat-contract 实测表）
+CREATE=$(rpc session.create '{"cwd":"/mnt/dsh-voice-mode"}' request)
 echo "CREATE: ${CREATE:0:200}"
 SID=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); r=d.get('result',{}); print(r.get('sessionId') or r.get('value',{}).get('sessionId') or '')" "$CREATE" 2>/dev/null)
 if [ -z "$SID" ]; then

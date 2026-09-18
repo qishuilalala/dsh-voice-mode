@@ -7,11 +7,40 @@
 
 ## [Unreleased]
 
-### 美化批次（规划中）
+### 规划中（v0.7.12+）
 
 - F1：emotion 标签 DSL 全量上线（LLM 侧标签使用指引注入 + 真机验收）
 - ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
 - 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
+
+> 说明：本仓库历史 CHANGELOG 仅记录到 0.7.7；v0.7.8 / v0.7.9 / v0.7.10 三版已发布但缺 CHANGELOG 段（事实漂移，本轮不补——属独立治理批次，由用户后续决定是否回填）。
+
+## [0.7.11] - 2026-09-18
+
+### Added
+
+- **`scripts/full-e2e.sh`**：五版本 dsh 真流程端到端测试装置——隔离 DSH_HOME + profile（dsh-base + dsh-web-app + dsh-voice-mode link）+ 注入 `DEEPSEEK_API_KEY`（值仅进进程 env，不落盘）→ boot → 围栏换 Cookie → 三端点断言 → 真实 LLM `session/prompt` → 读 `SSE audio 帧数` + `tts-error` 判据。复用 `test/spoken-prompt-rpc.sh` 并在临时副本里替换 `ensure_auth()` 为 `return 0`（隔离环境无 systemd journalctl，避免覆盖已准备的 Cookie）。
+
+### Changed
+
+- 兼容声明：`package.json` description 中英文同步加 `0.1.6-alpha.2 preview` 措辞；测试基线从「91 项 / 254 项 / 325 项」刷为 **385 项 / 28 套件**（2026-09-18 实测）；README 兼容列表扩为含 `0.1.6-alpha.2`。
+- `CONTEXT.md` 宿主兼容行扩为 `0.1.1-rc.2 → 0.1.5-rc.2 + 0.1.6-alpha.2 预览`，引 `docs/compat-contract.md §9`。
+- `docs/compat-contract.md` 新增 §9（顶端三档最新版本口径 + 0.1.6-alpha.2 实证矩阵 + 与 §8 差异 + engines 语义澄清 + 隔离核心获取步骤 + §7/§8 漂移修正）。
+
+### Fixed
+
+- **`scripts/typecheck-dual.sh` 历史隐患**：cordis 映射对未知 dsh 版本线**静默回退 4.0.1**——0.1.6-alpha.2 子包 peerDeps 是 `^4.0.2`，用错 cordis 类型面静默通过 typecheck。扩 cordis 映射到 `0.1.6-*`（4.0.2）；未知版本线**显式报错 + `exit 1`**，不再 `continue` 把后续版本线当成"已通过"跑了。
+- **`test/spoken-prompt-rpc.sh` `rpc()` 兼容性**：0.1.5-rc.2 服务端响应里字段名带 `\"request\"` JSON 转义，原正则 `missing .{0,2}"request"` 不匹配；放宽到 `missing .{0,12}${inner}`。CREATE 显式传 `inner=request`（语义对齐 §8 schema）。
+
+### Compatibility Matrix（2026-09-18 当日实测，含真 LLM 端到端）
+
+| dsh 版本 | 三端点 | 真实 LLM 端到端（deepseek-v4-pro）|
+|---|---|---|
+| 0.1.1-rc.2 | ✅ 200 | ✅ 2 audio 帧 / 0 tts-error |
+| 0.1.2-rc.1 | ✅ 200 | ✅ 4 audio 帧 / 0 tts-error |
+| 0.1.5-alpha.2（`/tmp/dsh015-core`）| ✅ 200 | ✅ 2 audio 帧 / 0 tts-error |
+| 0.1.5-rc.2 | ✅ 200 | ✅ 2 audio 帧 / 0 tts-error |
+| **0.1.6-alpha.2** | ✅ 200 | ✅ **4 audio 帧 / 0 tts-error** |
 
 ## [0.7.7] - 2026-09-14
 

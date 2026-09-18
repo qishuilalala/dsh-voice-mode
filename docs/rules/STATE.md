@@ -164,5 +164,73 @@
 | 唤醒词全流程对抗审计（D4/D5，未发版） | ✅ | （本批 commit） | **第一性原理全链路复查**（用户要求），自研台架 + 2 个只读审查 agent 并行。**新发现两处**：**D4 命令悬挂**——命中时只置 `wakeConsumed` 未置 `speechActive`，命中发生在用户停口之后（解码滞后 > 命令时长，台架 LAG=3000ms）时尾随静音落进 prePad 分支 → 永不定稿（实证 **0 条定稿**）；修：命中置 `speechActive` + 待机段计入 `speechMs` + 结转 `silenceMs = wakeSilenceMs`（顺带最多省一个静音窗发出）。**D5 命令窗口**——只喊唤醒词后长停顿（> silenceMs）时该段剥完为空 → 按常规回待机态 → 之后补说的命令被当待机音频丢弃（实证 **0 条定稿**）；修：空唤醒段**保持聆听**（不关命令窗口），用户可停顿想好再说。**同时**：实时字幕同步剥离唤醒词（与将发出内容一致，待机期字幕不剥——那是「它听到了什么」诊断反馈）。**反向验证**：D4/D5 回退 `src/` 均真红。**测试**：wake-flow 9→10（D5 命令窗口）+ 台架保真度修正（final 落定全部待吐字，对齐 host 0.5s 尾垫真实行为）= **373/373 exit 0** + tsc×2 零错。**文档同步**：`src/strings.ts` zh/en `descWakeWord` 重写（连说剥离 / 每句重说 / 仅 toggle / 朗读期不触发 / 建议 3-4 字）+ `src/index.ts` zod description 对齐 + README 中英特性行与排障表 + `docs/glossary.md` 词条（命中不丢段）+ `docs/plan/issue-10-wakeword-ux-fixes.md` §六（D1-D4 表 + 已知边界）+ `docs/qa/must-verify-manually.md`（计数 372→373、唤醒词 8 步验收含连说/长停顿/朗读后立即喊） + CONTEXT 唤醒词链补 ⑤⑥。**已知边界（已文档化，非缺陷）**：`hold`/`manual`（含 detect 落 manual）下唤醒词静默失效；唤醒词以语气词开头（那个小李）会过触发、纯语气词唤醒词永不命中；朗读期唤醒不触发。 |
 | 输出链路静默丢音排查（C1/C2/C3，未发版） | ✅ | （本批 commit） | **真机报告**「AI 回复偶尔不朗读」。全流程排查（host 日志 + 输出链路通读）定位三类静默丢音：**C1 单句 TTS 重试耗尽静默跳句**——`tts-queue.ts` pump 注释自证「失败即静默丢句会表现为长话没规律跳过几句」（Edge 云端偶发 ETIMEDOUT），`buf === null` 直接 `continue` 无任何通知；**C2 SSE 丢帧坏句丢弃无痕迹**——客户端 `chunkId !== curChunkCount` 丢弃整句（设计正确：宁少一句不播坏音频）但无诊断；**C3 AudioContext 被浏览器挂起后无声播放**——`push()/drainPending()` 不 resume，UI 仍显示「朗读中」+字幕照走（后台标签页/长静音回来必现）。**修**：C1 加 `onSkip` 回调 → host 广播 `tts-skip` → 客户端 `ttsNotice`（下次成功播音即清）+ 新增 `ttsSkipNotice` zh/en；C2 加 `tts-drop-sentence` 诊断；C3 `push()` 先 `warm()`（resume）+ `apply()` 挂全局 pointerdown/keydown 恢复。**排除项（有证据）**：`TtsQueue.prune` 生产路径无调用（seq 不会意外归零，客户端拒绝线不会被误触发）；`engine.duck()` 为未启用挂点（增益恒 1）；回合 aborted 不 flush 残句是有意语义（用户打断不想听）。**反向验证**：回退 `onSkip` → 测试真红（「onSkip 未被调用——静默丢句回归」）。**测试**：新增 `test/tts-playback.test.mjs` 7 项（真实 TtsQueue + stub 引擎：重试 3 次必通知、丢句不阻塞队列、成功句不误报 + C1/C2/C3 结构守卫）= **380/380 exit 0** + tsc×2 零错。**文档**：README 中英排障行（三类原因 + 自诊手段）+ CONTEXT 输出链路段 + 版本说明。 |
 
+## 任务：dsh 0.1.6-alpha.2 兼容复核 + 全版本矩阵 4→5 版 —— **已完成（2026-09-18）**
+
+### 目标
+1. 确认当前 dsh 是否最新版本（明确 latest/next/alpha 三档口径）。
+2. 把插件对**最新** dsh（含 alpha 预览）的兼容覆盖到位。
+3. 完整测试全版本兼容 + 同步对外声明。
+
+### 「最新版本」结论（2026-09-18 实测）
+
+| 通道 | npm dist-tag | 版本 | 本机是否一致 |
+|---|---|---|---|
+| 稳定最新 | `latest` / `next` | `0.1.5-rc.2` | ✅ 本机 dsh = `0.1.5-rc.2` |
+| 绝对最新 | `alpha` | `0.1.6-alpha.2` | —（本轮隔离核验，不升级生产服务） |
+
+复算命令：`npm view @deepseek-ai/dsh dist-tags`（见 `docs/compat-contract.md` §9）。
+
+### 改动面（最小化）
+
+- **代码**（唯一）：`scripts/typecheck-dual.sh` cordis 映射扩展 + 消除未知版本线静默回退 4.0.1 的隐患（原实现在 dsh 上新版本线时用错 cordis 类型面做 typecheck，违背仓库兼容纪律）。
+- **测试装置**：`test/spoken-prompt-rpc.sh` 修复 JSON 转义引号匹配（0.1.5-rc.2 服务端响应带 `\"request\"` 转义，原正则 `missing .{0,2}"request"` 漏匹配；放宽到 `missing .{0,12}${inner}`）。同时 CREATE 显式传 inner=request。
+- **矩阵脚本**：`scripts/verify-dual.sh` 默认 4 版 → 5 版（+0.1.6-alpha.2）+ 冒烟 2 核心 → 3 核心。
+- **业务源码**：`src/`、`lib/`、`devDependencies`、`engines.dsh` **零变更**。
+
+### 实证矩阵（2026-09-18 当日）
+
+| 版本 | 锚点（9 交集）| typecheck host+client | 隔离冒烟 host+mic | 真实 LLM 端到端 |
+|---|---|---|---|---|
+| 0.1.1-rc.2（/tmp/dsh011-core）| ✅ 9/9 | ✅ host ✅ client | ✅ 三端点 200 + mic + console 0 | n/a（隔离无 key）|
+| 0.1.2-rc.1（/tmp/dsh012-core）| ✅ 9/9 | ✅ host ✅ client | ✅ 三端点 200 + mic + console 0 | n/a |
+| 0.1.5-rc.1（/tmp/dsh015-core）| ✅ 9/9 | ✅ host ✅ client | ✅ 三端点 200 + mic + console 0 | n/a |
+| 0.1.5-rc.2（/tmp/dsh015-rc2-core）| ✅ 9/9 | ✅ host ✅ client | ✅ 三端点 200 + mic + console 0 | ✅ **6 帧、0 tts-error**（线上 0.1.5-rc.2） |
+| **0.1.6-alpha.2（/tmp/dsh016a2-core）** | ✅ **9/9** | ✅ **host ✅ client** | ✅ **三端点 200 + mic + console 0** | n/a（隔离无 key；端到端由 0.1.5-rc.2 代证）|
+
+### 关键澄清（避免未来重复踩坑）
+
+- **`engines.dsh = ">=0.1.1-rc.2"` 不需要改**：dshmarket 自家 `satisfiesRange(includePrerelease:true)` 实测对 `0.1.6-alpha.2` 返回 `true`；dsh 核心全库无 `engines` 字段访问；npm 不校验自定义 engine 键。semver 默认语义下 `>=0.1.1-rc.2` 匹配不到 `0.1.5-rc.2` / `0.1.6-alpha.2` 是 npm 默认行为，但本仓库兼容判定的唯一消费者用 `includePrerelease`，因此无错。改它就是无意义的 churn。
+- **`/tmp/dsh015-core` 实测为 `0.1.5-alpha.2`**（非 §8 写的 `0.1.5-rc.1`）——文档漂移，顺手在 §9 修正。
+
+### 基线与回归对照
+
+| 维度 | P0 基线（2026-09-18 改前）| P4 复跑（改后）| Δ |
+|---|---|---|---|
+| `npm test` | 28 套件 / **385 项** 全绿 exit 0 | 28 套件 / **385 项** 全绿 exit 0 | 0 |
+| `npm run typecheck` | host+client 0 error | host+client 0 error | 0 |
+| `npm run verify:dual` | 4 版锚点 / 4 版 typecheck / 2 核心冒烟 / FINAL_EXIT=0 | **5 版锚点 / 5 版 typecheck / 3 核心冒烟 / FINAL_EXIT=0** | +1 版 / +1 核心 |
+| `bash test/spoken-prompt-rpc.sh` | exit 1（JSON 转义匹配不上）| exit 0 / **6 帧 / 0 tts-error** | 修复 |
+| `systemctl dsh.service` | active / NRestarts=0 / `/voice-mode` 200 | active / NRestarts=0 / `/voice-mode` 200 | 0（未碰生产）|
+
+### 文档同步
+
+- `docs/compat-contract.md` 新增 §9（顶端三档口径 + 实证矩阵 + 与 §8 差异 + engines 语义澄清 + 隔离核心获取步骤 + §7/§8 漂移修正）。
+- `CONTEXT.md` 宿主兼容行扩为 `0.1.1-rc.2 → 0.1.5-rc.2 + 0.1.6-alpha.2 预览`，引 §9。
+- `plugin/dsh-voice-mode/package.json` description 英文/中文同步加 `0.1.6-alpha.2 preview` 措辞。
+- `plugin/dsh-voice-mode/README.md` 第 18 行：兼容列表 + 版本漂移 `v0.7.7 → v0.7.10` + 测试数 `325 → 385`（P0 实测）。
+- `docs/rules/STATE.md` 本段（重写式 ledger 新任务独立 H2 段，不追加行）。
+
+### 边界
+
+- **未升级生产 dsh**：把 `dsh.service` 从 `0.1.5-rc.2` 升到 `0.1.6-alpha.2` 是独立的用户决策（alpha 含潜在 V3 session 格式迁移风险），本轮以隔离核验替代。
+- **未发版**：不 bump `package.json` 版本号，不 `npm publish`，不 git push，不打 tag。本轮以**证据链 + 文档 + 一个脚本修复**收口。
+- **未修无关漂移**：CONTEXT.md 已知超出 ~60 行（当前 115 行），未顺手压缩；README 历史行（如 §189 行 v0.7.7 发布标签）不动。
+
+### 备份/回滚指针（保留）
+
+- 隔离核心：`/tmp/dsh011-core` / `dsh012-core` / `dsh015-core` / `dsh015-rc2-core` / `dsh016a2-core`。
+- 既有 dsh 全局回滚基线：`/mnt/work/dsh-0.1.5-alpha.2-pre-rollback-20260914-095242.tar.gz`（不动用，本轮未升级）。
+- 本轮改动全部在 git 工作区，回滚 = 单个反向提交或 `git checkout -- <文件>`（业务源码零改动）。
+
 
 

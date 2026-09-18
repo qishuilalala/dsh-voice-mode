@@ -84,3 +84,65 @@
 ## 数字真源对齐声明
 
 本文全部数字与现行真源一致：测试 **254** / 60 天 / **0.7.7** / 兼容 **0.1.1-rc.2 → 0.1.5-rc.2** / **11** 批次周全修复 / stars **10** / watcher **2** / fork **4** / open issue **0** / npm `dsh-voice-mode@0.7.7`。若有出入，以 `docs/rules/STATE.md` 与 `plugin/dsh-voice-mode/src/` 为准。
+
+---
+
+# RELEASE-NOTES —— dsh-voice-mode v0.7.11 · 五版本真流程实测
+
+> 仓库：https://github.com/qishuilalala/dsh-voice-mode
+> npm：`dsh-voice-mode@0.7.11` · GitHub Release：https://github.com/qishuilalala/dsh-voice-mode/releases/tag/v0.7.11
+> 兼容：dsh `0.1.1-rc.2 → 0.1.5-rc.2 + 0.1.6-alpha.2`（五版本真实 LLM 端到端验证）· 测试：28 套件 / 385 项基线
+
+## 总览
+
+| 指标 | 数值 |
+| --- | --- |
+| 版本 | v0.7.11（patch：兼容治理 + 测试装置 + 文档，无 feature/breaking） |
+| 测试基线 | **28 套件 / 385 项**（`npm test` exit 0） |
+| typecheck | host + client tsc 双 **0 error** |
+| 五版锚点 | 5 版 × 9 = **45/45** 全在 |
+| 五版 typecheck | 5 版 × host+client = **10/10** 全过 |
+| 五版隔离冒烟（`smoke-runtime.sh`）| **3 核心** boot + 三端点 200 + mic + console 0 error |
+| 五版真流程（`full-e2e.sh`）| **5 核心** create→toggle→prompt→**deepseek-v4-pro** SSE audio 帧 + tts-error=0 |
+| 真实 LLM 端到端（线上 0.1.5-rc.2 + 隔离 4 版）| 累计 **14 audio 帧 / 0 tts-error** |
+| 业务源码 | **零变更**（仅测试装置 + 文档 + 一个测试脚本修复） |
+
+## 五版本真流程实测矩阵（2026-09-18）
+
+新增 `scripts/full-e2e.sh` 装置：隔离 DSH_HOME + 注入 `DEEPSEEK_API_KEY`（仅进进程 env）+ boot 目标核心 + 真实 `session/prompt` + 读 SSE 帧数判据。
+
+| dsh 版本 | 隔离核心路径 | 帧 | tts-error |
+|---|---|---|---|
+| 0.1.1-rc.2 | `/tmp/dsh011-core` | **2** | 0 |
+| 0.1.2-rc.1 | `/tmp/dsh012-core` | **4** | 0 |
+| 0.1.5-alpha.2 | `/tmp/dsh015-core`（注：实为 alpha.2，非 §8 写的 rc.1） | **2** | 0 |
+| 0.1.5-rc.2 | `/tmp/dsh015-rc2-core` | **2** | 0 |
+| **0.1.6-alpha.2** | `/tmp/dsh016a2-core` | **4** | **0** |
+
+> 帧数差异由 LLM 回复长度自然波动（PROMPT 三句话自我介绍）；0 tts-error 是稳定判据。
+
+## 关键澄清（避免未来误判）
+
+- **`engines.dsh = ">=0.1.1-rc.2"` 不需要改**——dshmarket `satisfiesRange(includePrerelease:true)` 实测对 `0.1.6-alpha.2` 返回 `true`；dsh 核心全库无 `engines` 字段访问；npm 不校验自定义 engine 键。改它就是无意义 churn。
+- **「最新版本」三档口径**：`stable = latest/next = 0.1.5-rc.2`（与本机一致）；`absolute = alpha = 0.1.6-alpha.2`（已隔离核验）；复算命令 `npm view @deepseek-ai/dsh dist-tags`。
+- **真 LLM 通道**：`deepseek-official` 由 dsh-base 内置 `dsh-llm-deepseek` adapter 提供，env 注入 `DEEPSEEK_API_KEY`；`agent-default-model = deepseek-official / deepseek-v4-pro`。
+
+## 改动面（最小化）
+
+- **唯一代码**：`scripts/typecheck-dual.sh` 修 cordis 映射（消除未知版本线静默回退 4.0.1 的隐患）。
+- **测试装置修复**：`test/spoken-prompt-rpc.sh` 修 JSON 转义引号匹配（兼容 0.1.5-rc.2 响应中字段名 `\"request\"`）。
+- **新增测试装置**：`scripts/full-e2e.sh`（不进 npm `files`）。
+- **矩阵扩展**：`scripts/verify-dual.sh` 默认 4 版 → 5 版（+0.1.6-alpha.2）+ 冒烟 2 核心 → 3 核心。
+- **文档**：CHANGELOG / RELEASE-NOTES / STATE.md / CONTEXT.md / README 同步到发版事实。
+
+## 不变量 / 边界
+
+- 生产 `dsh.service`（`0.1.5-rc.2`）**未触碰**——NRestarts=0 / `/voice-mode` 200。
+- 业务源码（`src/`、`lib/` 业务代码）**零变更**——BUILD_TAG 二次 commit 对齐。
+- devDependencies / `engines.dsh` / settings schema **零变化**——与 v0.7.10 完全向后兼容。
+- token / key 走进程 env，**不落盘、不进文档、不进 commit**。
+
+## 备份指针
+
+- 隔离核心：`/tmp/dsh011-core` / `dsh012-core` / `dsh015-core` / `dsh015-rc2-core` / `dsh016a2-core`（5 份保留供下次复核）。
+- 既有回滚基线（**不动用**）：`/mnt/work/dsh-0.1.5-alpha.2-pre-rollback-20260914-095242.tar.gz`。
