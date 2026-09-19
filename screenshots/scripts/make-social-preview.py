@@ -104,8 +104,10 @@ def build() -> str:
               font=f_code, fill=ACCENT_BLUE)
 
     # 7) 右上角胶囊徽章
+    #    刻意**不写版本号**：社交卡是手动上传的静态图，写死版本会在下次发版后立即过期
+    #    （v0.7.11 已实际过期一次）。版本由 README 的动态 npm 徽章承担。
     f_badge = font(FONT_LATIN_REG, 18)
-    badge = "MIT · v0.7.11"
+    badge = "MIT · DSH Plugin"
     tw = draw.textlength(badge, font=f_badge)
     bx, by = W - pad - tw - 34, 30
     draw.rounded_rectangle((bx, by, W - pad, by + 34), radius=17, fill=(24, 30, 41),
