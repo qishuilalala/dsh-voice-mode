@@ -1,0 +1,120 @@
+name: 缺陷报告 / Bug report
+description: 报告语音模式的问题（识别、朗读、打断、字幕、设置等）
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！语音问题多半与**环境**（浏览器 AEC、麦克风、外放/耳机）强相关，
+        请尽量填全下面的诊断信息，能显著加快定位。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 现象
+      description: 发生了什么？你期望发生什么？
+      placeholder: 例如：AI 朗读到第三句时突然没声音，字幕仍在走。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 越具体越好（说了什么、当时在朗读还是聆听、是否外放）
+      placeholder: |
+        1. 进入语音模式
+        2. 说「……」
+        3. 观察到 ……
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: 插件版本 / build
+      description: '状态条诊断行或控制台里的 `build=<短哈希>`；也可填设置页显示的版本号'
+      placeholder: "v0.7.11 build=46e0988"
+    validations:
+      required: true
+
+  - type: input
+    id: dsh-version
+    attributes:
+      label: dsh 版本
+      description: '`dsh --version` 的输出（兼容性问题高度依赖版本）'
+      placeholder: "0.1.5-rc.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: 浏览器
+      options:
+        - Chrome / Edge (Chromium)
+        - Safari
+        - Firefox
+        - iOS Safari
+        - 其他（请在下方补充）
+    validations:
+      required: true
+
+  - type: dropdown
+    id: audio-route
+    attributes:
+      label: 音频输出方式
+      description: 打断与回声门控的行为高度依赖这一项
+      options:
+        - 外放（扬声器）
+        - 耳机
+        - 不确定
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tts-engine
+    attributes:
+      label: 朗读引擎
+      options:
+        - edge（云端默认）
+        - vits（本地）
+        - kokoro（本地）
+        - 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: telemetry
+    attributes:
+      label: 诊断日志（强烈建议）
+      description: |
+        在页面控制台执行下面一行后**刷新页面**，再复现一次问题，把控制台里 `[dsh-voice]` 开头的日志贴进来：
+
+        ```js
+        localStorage.setItem('dsh-voice-mode.telemetry','1')
+        ```
+
+        状态条上的诊断行（delay / floor / resid / peak）也请一并附上。
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 截图 / 录屏 / 其他设置项（如 `interruptLevel`、`bargeInMode`、`wakeWord`）
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索过现有 issue，确认不是重复报告
+          required: true
+        - label: 我已附上插件版本与 dsh 版本
+          required: true

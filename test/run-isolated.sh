@@ -9,7 +9,9 @@ echo "[isolated] home=$HOME_ROOT profile=$PROFILE port=$PORT"
 mkdir -p "$HOME_ROOT/profiles"
 # profile 首次创建（幂等）：官方 dsh plugin 命令
 if [ ! -d "$HOME_ROOT/profiles/$PROFILE" ]; then
-  cp -r /home/www/.dsh/profiles/$PROFILE "$HOME_ROOT/profiles/" 2>/dev/null || echo "note: copy profile template first: dsh plugin --profile $PROFILE add <plugin>"
+  # 模板 profile 来源可用 DSH_PROFILE_SRC 覆盖（默认取本机 dsh home）
+  SRC_PROFILE="${DSH_PROFILE_SRC:-${DSH_HOME:-$HOME/.dsh}/profiles/$PROFILE}"
+  cp -r "$SRC_PROFILE" "$HOME_ROOT/profiles/" 2>/dev/null || echo "note: copy profile template first: dsh plugin --profile $PROFILE add <plugin>"
 fi
 # 工作区种子（schema 必填 createdAt/updatedAt）
 mkdir -p "$HOME_ROOT/storages" /tmp/dsh-vtest-work

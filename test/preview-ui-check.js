@@ -5,13 +5,13 @@
 // 2. 预设音色试听：点击 -> POST /voice-mode/preview 200 audio/mpeg -> audio.play() 被调
 // 3. 自定义音色（zh-HK-HiuGaaiNeural，不在预设列表）试听同样成功
 // 4. 非法音色名 -> 页面出现「试听失败」提示（随后恢复原 voice）
-const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
+const { chromium } = require('./_playwright')
 const BASE = process.env.BASE || 'http://127.0.0.1:3018'
 const PRESET = ['zh-CN-XiaoxiaoNeural', 'zh-CN-XiaoyiNeural', 'zh-CN-YunxiNeural', 'zh-CN-YunjianNeural', 'zh-CN-YunyangNeural', 'zh-CN-YunxiaNeural', 'zh-CN-liaoning-XiaobeiNeural', 'zh-CN-shaanxi-XiaoniNeural', 'zh-HK-HiuMaanNeural', 'zh-HK-WanLungNeural', 'zh-TW-HsiaoYuNeural', 'zh-TW-YunJheNeural', 'en-US-AriaNeural', 'en-US-GuyNeural']
 
 async function main() {
   const browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',
+    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
     args: ['--autoplay-policy=user-gesture-required'],
   })
   const page = await browser.newPage()

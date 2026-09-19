@@ -3,11 +3,21 @@
  * Edge TTS 合成 mp3 → 无头浏览器 decodeAudioData（原生 MP3 解码）→ 线性重采样 16k → wav。
  * 用法: node test/make-real-voice.mjs <输出wav> [句子]
  * 产出后可用 test/sherpa-direct.js 与 test/asr-e2e.js 验证识别（词级对照）。
+ *
+ * 浏览器依赖：需可用的 Chromium（`npx playwright install chromium`）。
+ * 若 Playwright 自动解析不到，可用 CHROME_PATH 指定可执行文件。
  */
 import { writeFileSync } from 'node:fs'
-import { MsEdgeTTS } from '/mnt/dsh-voice-mode/plugin/dsh-voice-mode/node_modules/msedge-tts/dist/index.js'
-import { chromium } from '/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core/index.mjs'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
+const pluginDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin', 'dsh-voice-mode')
+const req = createRequire(join(pluginDir, 'package.json'))
+const { MsEdgeTTS } = req('msedge-tts')
+const { chromium } = req('playwright-core')
+
+const CHROME_PATH = process.env.CHROME_PATH
 const outPath = process.argv[2] || '/tmp/real-zh-16k.wav'
 const sentence =
   process.argv[3] || '今天的天气非常不错，我们一起出去散步吧。'
@@ -20,7 +30,7 @@ async function main() {
   for await (const c of audioStream) chunks.push(c)
   await tts.close()
   const mp3 = Buffer.concat(chunks)
-  const browser = await chromium.launch({ executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome' })
+  const browser = await chromium.launch(CHROME_PATH ? { executablePath: CHROME_PATH } : {})
   const page = await browser.newPage()
   await page.setContent('<html><body></body></html>')
   const r = await page.evaluate(async (b64) => {

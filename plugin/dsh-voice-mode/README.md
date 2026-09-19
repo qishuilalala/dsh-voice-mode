@@ -11,7 +11,9 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 
 ![dsh-voice-mode 全双工语音对话](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/hero-banner.png)
 
-![语音模式：实时字幕与状态条](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/screenshot-voice.png)
+![语音模式真实录制：流式转写 → 自动发送 → 按句朗读 + 实时字幕](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
+
+![全双工对话闭环：声音 → 文字 → 声音](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/duplex-banner.png)
 
 > **版本说明（v0.7.10，2026-09-18）**：**输出链路静默丢音根治**——① 云端 TTS 单句重试耗尽后不再静默跳句（现在状态条提示「有一句朗读失败，已跳过」，此前表现为「AI 回复偶尔不朗读」且无从判断）；② 浏览器挂起 AudioContext 后的「无声播放」（UI 显示朗读中、字幕照走）现在每次入队 + 任意点击/按键自动恢复；③ SSE 丢帧导致的坏句丢弃留诊断痕迹。其余同 v0.7.9：**唤醒词链路全面修复**（Issue #10 + 真机复测）——台架驱动真引擎逐项定位并修掉五处流程缺陷：① 朗读期 TTS 回声污染待机段（喊不醒）；② 只上传超门限帧导致尾字不 flush（唤醒词只剩半截）；③ 唤醒命中丢整段（连说「唤醒词+命令」只发出去尾部几个字）；④ 命中晚于停口时命令悬挂不定稿；⑤ 只喊唤醒词后停顿会关掉命令窗口（命令丢失）。**现在唤醒词可与命令连说、词头自动剥离不进消息**，待机态实时显示「它听到了什么」，支持「唤醒词…停顿…命令」。其余同 v0.7.7：朗读默认 Edge 云端，本地 TTS（VITS / Kokoro）可选；静音断句默认 1500 毫秒。
 
@@ -32,7 +34,8 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 - **朗读稳定性**：打断即终止在途合成释放 CPU；句间不再有 3-5 秒停顿；长朗读不触发空闲下线；
 - **安全加固**：会话存在性校验 / 回环+Origin 校验 / 全端点限流 / **ASR+TTS 全模型 SHA256 固定** / 下载域名白名单 / 重定向守卫。
 
-> ⚠️ 上文截图与 `assets/demo.gif` 为**上游旧版界面**（单按钮时期）；当前界面在语音按钮旁多一颗「模式切换」按钮。
+> ℹ️ 顶部 `demo-voice-flow.gif` 是**当前界面的真实录制**（语音模式 → 边说边出字 → 停顿自动发送 → 按句朗读 + 实时字幕），由 `screenshots/scripts/capture-demo.mjs` 驱动真实链路产出。
+> ⚠️ 仓库内 `assets/demo.gif` 与根目录 `assets/` 下的旧截图仍为**上游旧版界面**（单按钮时期）；当前界面在语音按钮旁多一颗「模式切换」按钮。
 
 ---
 

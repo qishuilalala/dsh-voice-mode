@@ -1,12 +1,12 @@
 // 口语化提示词开关 UI 验证（headless，不干扰用户浏览器）
 // 打开页面 -> Settings -> Plugins -> 语音模式卡片展开 -> 检查 spokenFormat 开关存在。
-const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
+const { chromium } = require('./_playwright')
 
 const BASE = process.env.BASE || 'http://127.0.0.1:3018'
 
 async function main() {
   const browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',
+    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
   })
   const page = await browser.newPage()
   const errors = []

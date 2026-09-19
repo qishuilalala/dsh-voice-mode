@@ -1,9 +1,9 @@
 // 调试 2：抓 toggle 请求体与响应体
-const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
+const { chromium } = require('./_playwright')
 
 async function main() {
   const browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',
+    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
   })
   const page = await browser.newPage()
   page.on('request', (r) => {

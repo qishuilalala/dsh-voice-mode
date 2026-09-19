@@ -54,7 +54,8 @@
     "check:anchors": "node scripts/check-anchors.mjs",
     "typecheck:dual": "bash scripts/typecheck-dual.sh",
     "smoke:runtime": "bash scripts/smoke-runtime.sh",
-    "verify:dual": "bash scripts/verify-dual.sh"
+    "verify:dual": "bash scripts/verify-dual.sh",
+    "e2e:full": "bash scripts/full-e2e.sh"
   },
   "dsh": {
     "bundle": {
@@ -100,13 +101,32 @@
   "keywords": [
     "dsh",
     "dsh-plugin",
+    "deepseek-harness",
     "voice",
+    "voice-mode",
     "speech",
     "asr",
     "tts",
+    "speech-to-text",
+    "text-to-speech",
+    "speech-recognition",
+    "full-duplex",
     "duplex",
+    "barge-in",
+    "captions",
+    "wake-word",
+    "local-asr",
+    "on-device",
     "zipformer2",
-    "msedge-tts"
+    "sensevoice",
+    "kokoro",
+    "msedge-tts",
+    "chinese",
+    "语音",
+    "字幕",
+    "打断",
+    "中文",
+    "本地识别"
   ],
   "publishConfig": {
     "access": "public"

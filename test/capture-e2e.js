@@ -2,13 +2,13 @@
 // 流程：打开页面 -> 进语音模式（Ctrl+Shift+V）-> fake 麦克风持续发声 -> 校验 /asr 增量请求 200
 //       -> Ctrl 强制发送 -> 校验 final 请求 200 -> 退出语音模式（探针卫生）
 // 用法: node test/capture-e2e.js [BASE]
-const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
+const { chromium } = require('./_playwright')
 
 const BASE = process.env.BASE || 'http://127.0.0.1:3018'
 
 async function main() {
   const browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',
+    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
     args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
   })
   const ctx = await browser.newContext({ permissions: ['microphone'] })

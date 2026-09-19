@@ -1,8 +1,12 @@
 // 独立验证：sherpa-onnx zipformer2 流式识别（绕开插件）
+// 依赖位置因环境而异：默认按模块名解析，可用 SHERPA_ONNX 指定绝对路径。
 const fs = require('node:fs')
-const sherpa_onnx = require('/home/www/.dsh/profiles/web/node_modules/sherpa-onnx')
+const sherpa_onnx = require(process.env.SHERPA_ONNX || 'sherpa-onnx')
 
-const M = '/home/www/.cache/dsh-voice-mode/models/csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30'
+// 模型目录：默认取 dsh-voice-mode 的模型缓存，可用 SHERPA_MODEL_DIR 覆盖
+const M =
+  process.env.SHERPA_MODEL_DIR ||
+  `${process.env.HOME}/.cache/dsh-voice-mode/models/csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30`
 const rec = sherpa_onnx.createOnlineRecognizer({
   modelConfig: {
     transducer: {

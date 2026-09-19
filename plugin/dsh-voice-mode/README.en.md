@@ -14,6 +14,8 @@ interrupts playback and the running turn. No API key.
 
 ![dsh-voice-mode full-duplex voice conversation](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/hero-banner.png)
 
+![Real recording: streaming transcription → auto-send → sentence-by-sentence read-aloud with live captions](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
+
 > **Version note (v0.7.10, 2026-09-18)**: **Silent-audio causes in the output pipeline fixed** — ① a sentence whose cloud-TTS synthesis fails after 3 retries is no longer dropped silently (the status bar now says one sentence failed and was skipped; previously this showed up as "the reply is occasionally not read" with no way to tell why); ② audio playback no longer goes silent after the browser suspends the AudioContext (background tab / long idle) — the context is resumed on every enqueue and on any click/keypress; ③ dropped incomplete sentences (SSE frame loss) now leave a diagnostic trace. Otherwise as v0.7.9: **Wake-word pipeline overhaul** (Issue #10 + real-machine retest) — a harness driving the real engine pinpointed and fixed five flow defects: ① TTS echo polluting the standby segment while the agent reads (could not wake); ② only above-threshold frames uploaded, so trailing characters never flushed (wake word truncated); ③ discarding the whole segment on a wake hit (saying "wake word + command" in one breath sent only the tail); ④ the command hanging when the hit arrived after you stopped speaking; ⑤ pausing after the wake word closed the command window (command lost). **The wake word may now be said together with your command — it is stripped and never sent**, standby live-shows what it heard, and "wake word … pause … command" works. Otherwise as v0.7.7: Edge cloud TTS by default, local TTS (VITS / Kokoro) optional; silence split defaults to 1500 ms.
 
 ---
@@ -27,7 +29,8 @@ interrupts playback and the running turn. No API key.
 - **Long segments**: continuous listening stitches consecutive segments into one message (internally chunked at 30 s and concatenated across chunks); 1500 ms silence split by default; hold keeps pauses from splitting;
 - **Hardening**: session-existence check, loopback + Origin guards, per-endpoint rate limits, model SHA256 pinning, download-host allowlist.
 
-> ⚠️ The screenshots above (and `assets/demo.gif`) show the **upstream legacy single-button UI**; the current UI adds a mode-switch button next to the mic.
+> ℹ️ The `demo-voice-flow.gif` at the top is a **real recording of the current UI** (voice mode → live transcription → pause auto-send → sentence-by-sentence read-aloud with live captions), produced by driving the real pipeline via `screenshots/scripts/capture-demo.mjs`.
+> ⚠️ `assets/demo.gif` and the older screenshots under the repo-root `assets/` still show the **upstream legacy single-button UI**; the current UI adds a mode-switch button next to the mic.
 
 ---
 

@@ -1,11 +1,11 @@
 // 诊断：发给 agent 消息，检查回复 + TTS 帧 + 页面状态
-const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
+const { chromium } = require('./_playwright')
 const BASE = 'http://127.0.0.1:3018'
 const PROMPT = '用一句中文介绍你自己，二十个字以内，最后用句号结尾。'
 
 async function main() {
   const browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',
+    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
     args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
   })
   const ctx = await browser.newContext({ permissions: ['microphone'] })

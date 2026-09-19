@@ -1,7 +1,7 @@
 // dsh-voice-mode 输出链路端到端验证（独立 headless，不干扰用户 GUI）
 // 流程：打开页面 -> 进语音模式 -> 页面内启动 SSE 帧收集器 -> 新会话发消息
 //       -> agent 回复 -> 校验 text-delta 过滤后的 TTS 音频帧到达
-const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
+const { chromium } = require('./_playwright')
 
 const BASE = process.env.BASE || 'http://127.0.0.1:3018'
 const PROMPT =
@@ -9,7 +9,7 @@ const PROMPT =
 
 async function main() {
   const browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',
+    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
     args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
   })
   const ctx = await browser.newContext({ permissions: ['microphone'] })

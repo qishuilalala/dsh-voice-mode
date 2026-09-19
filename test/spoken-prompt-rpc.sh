@@ -13,6 +13,9 @@ set -u
 BASE="${BASE:-http://127.0.0.1:3018}"
 PROMPT="${PROMPT:-请用中文介绍一下你自己，你擅长什么？回答控制在三句话以内。}"
 COOKIE_FILE="${COOKIE_FILE:-/tmp/vm-rpc-cookies.$$.txt}"
+# 本仓库根与 dsh home（可用环境变量覆盖，避免写死机器路径）
+REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 
 ensure_auth() { # 围栏拦截时换 Cookie；返回 0 表示已就绪（或本就无需）
   local probe
@@ -63,7 +66,7 @@ rpc() { # rpc <方法，点形或斜杠形> <payload-json>
 ensure_auth || exit 1
 
 # 1. 新会话（0.1.5+ schema：args.request.{cwd}，§8 compat-contract 实测表）
-CREATE=$(rpc session.create '{"cwd":"/mnt/dsh-voice-mode"}' request)
+CREATE=$(rpc session.create "{\"cwd\":\"$REPO_ROOT\"}" request)
 echo "CREATE: ${CREATE:0:200}"
 SID=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); r=d.get('result',{}); print(r.get('sessionId') or r.get('value',{}).get('sessionId') or '')" "$CREATE" 2>/dev/null)
 if [ -z "$SID" ]; then
@@ -114,7 +117,9 @@ echo "SSE audio 帧数: $(grep -c '^event: audio' /tmp/vm-sse.log 2>/dev/null)"
 echo "SSE tts-error: $(grep -c 'tts-error' /tmp/vm-sse.log 2>/dev/null)"
 grep '^event: audio' /tmp/vm-sse.log | head -8
 # 会话 system 校验
-SF="/home/www/.dsh/sessions/--mnt-dsh-voice-mode--/$SID/session.jsonl.zstd"
+# 会话落盘目录名由 cwd 编码而来（去掉前导 / 后把 / 换成 -，再首尾各包 --）
+SESSION_SLUG="--$(printf '%s' "${REPO_ROOT#/}" | sed 's|/|-|g')--"
+SF="$DSH_HOME/sessions/$SESSION_SLUG/$SID/session.jsonl.zstd"
 if [ -f "$SF" ]; then
   zstd -dc "$SF" 2>/dev/null | python3 -c "
 import json,sys

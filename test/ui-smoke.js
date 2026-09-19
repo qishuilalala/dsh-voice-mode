@@ -1,5 +1,5 @@
 // dsh-voice-mode 独立 UI 冒烟验证（headless，不干扰用户浏览器）
-const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
+const { chromium } = require('./_playwright')
 
 const BASE = process.env.BASE || 'http://127.0.0.1:3018'
 
@@ -17,7 +17,7 @@ async function dismissOnboarding(page) {
 
 async function main() {
   const browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',
+    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
     args: ['--use-fake-ui-for-media-stream'],
   })
   const ctx = await browser.newContext({ permissions: ['microphone'] })

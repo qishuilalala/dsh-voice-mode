@@ -1,13 +1,13 @@
 // 真实语音 → 浏览器采集 → 客户端 → host ASR → 文本 的全链路端到端验证
 // Chrome --use-file-for-fake-audio-capture 把真实中文 wav 循环喂给麦克风流。
-const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
+const { chromium } = require('./_playwright')
 const BASE = process.env.BASE || 'http://127.0.0.1:3018'
 const WAV = process.env.WAV || '/tmp/real-zh-16k.wav'
 const WANT = process.env.WANT || '天气'
 
 async function main() {
   const browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',
+    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
     args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--use-file-for-fake-audio-capture=' + WAV],
   })
   const ctx = await browser.newContext({ permissions: ['microphone'] })

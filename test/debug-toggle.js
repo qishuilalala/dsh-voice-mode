@@ -1,10 +1,10 @@
 // 调试：点击语音按钮，监控 /voice-mode/toggle 请求与组件的实际行为
-const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
+const { chromium } = require('./_playwright')
 const BASE = 'http://127.0.0.1:3018'
 
 async function main() {
   const browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',
+    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
   })
   const page = await browser.newPage()
   const events = []

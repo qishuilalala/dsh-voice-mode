@@ -15,6 +15,8 @@
 
 ![dsh-voice-mode 全双工语音对话](assets/hero-banner.png)
 
+![全双工对话闭环：声音 → 文字 → 声音](plugin/dsh-voice-mode/assets/duplex-banner.png)
+
 > **Full-duplex voice mode for DeepSeek Harness** —— 在会话内用语音完成整轮对话：说话时**边说边出字**、停顿后自动发送；回复**按句朗读**并跟随实时字幕；朗读中**开口即打断**。识别在本地推理、无需 API Key；朗读默认 Edge 云端（快且自然），本地 VITS / Kokoro 可选（隐私优先）。兼容 dsh 0.1.1-rc.2 起全版本（已在 0.1.1-rc.2 / 0.1.2-rc.1 / 0.1.5-alpha.2 / 0.1.5-rc.2 / **0.1.6-alpha.2** 五版本真实 LLM 端到端验证）。当前版本 **v0.7.11**，385 项测试全绿。
 
 ---
@@ -53,10 +55,14 @@
 
 ## 🎬 Demo
 
+![语音模式真实录制：流式转写 → 自动发送 → 按句朗读 + 实时字幕](plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
+
+> 上方为**当前界面的真实录制**（由 `screenshots/scripts/capture-demo.mjs` 驱动真实链路产出，非 UI 摆拍）；下图为静态总览。
+
 ![dsh-voice-mode 全双工语音体验](assets/voice-experience.png)
 
-> 真实录屏见 [`demos/RECORDING-SCRIPT.md`](demos/RECORDING-SCRIPT.md)（60s/30s/15s 三段脚本）。  
-> 真机截图清单见 [`screenshots/MANIFEST.md`](screenshots/MANIFEST.md)（12 张）。
+> 真实录屏脚本见 [`demos/RECORDING-SCRIPT.md`](demos/RECORDING-SCRIPT.md)（60s/30s/15s 三段脚本）。  
+> 真机截图清单见 [`screenshots/MANIFEST.md`](screenshots/MANIFEST.md)（10 张）。
 
 ---
 

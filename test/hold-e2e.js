@@ -1,7 +1,7 @@
 // hold 模式验收（独立浏览器，/asr 拦截返回假文本）；稳定选择器 [data-dshvm="mic"]
 // 注意：定稿文本写入 composer 需真实 dsh GUI 会话上下文——headless 空白页无 composer
 // 管理（setDraft 不可用），UI 文本断言请在真机 GUI 会话中运行本探针验证。
-const { chromium } = require('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
+const { chromium } = require('./_playwright')
 const BASE = process.env.BASE || 'http://127.0.0.1:3018'
 
 /** 全新隔离实例兜底：跳过首次引导（不代表产品路径，仅让空白 home 到达 composer）。 */
@@ -18,7 +18,7 @@ async function dismissOnboarding(page) {
 
 async function main() {
   const browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',
+    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
     args: ['--use-fake-ui-for-media-stream'],
   })
   const ctx = await browser.newContext({ permissions: ['microphone'] })

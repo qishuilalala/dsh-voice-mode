@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const pluginDir = join(here, '..', 'plugin', 'dsh-voice-mode')
 const req = createRequire(join(pluginDir, 'package.json'))
-const { chromium } = req('/www/server/nodejs/cache/_npx/86170c4cd1c5da32/node_modules/playwright-core')
+const { chromium } = req('playwright-core')
 const { GIFEncoder, quantize, applyPalette } = req('gifenc')
 const { PNG } = req('pngjs')
 
@@ -34,7 +34,7 @@ mkdirSync(dirname(OUT), { recursive: true })
 
 async function main() {
   const browser = await chromium.launch({
-    executablePath: '/root/.cache/ms-playwright/chromium-1237/chrome-linux64/chrome',
+    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
     args: ['--use-fake-ui-for-media-stream'],
   })
   const ctx = await browser.newContext({ permissions: ['microphone'], viewport: { width: W, height: H } })
