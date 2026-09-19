@@ -206,7 +206,7 @@
 
 | 维度 | P0 基线（2026-09-18 改前）| P4 复跑（改后）| Δ |
 |---|---|---|---|
-| `npm test` | 28 套件 / **385 项** 全绿 exit 0 | 28 套件 / **385 项** 全绿 exit 0 | 0 |
+| `npm test` | 28 套件 / **380 项** 全绿 exit 0 | 28 套件 / **380 项** 全绿 exit 0 | 0 |
 | `npm run typecheck` | host+client 0 error | host+client 0 error | 0 |
 | `npm run verify:dual` | 4 版锚点 / 4 版 typecheck / 2 核心冒烟 / FINAL_EXIT=0 | **5 版锚点 / 5 版 typecheck / 3 核心冒烟 / FINAL_EXIT=0** | +1 版 / +1 核心 |
 | `bash test/spoken-prompt-rpc.sh` | exit 1（JSON 转义匹配不上）| exit 0 / **6 帧 / 0 tts-error** | 修复 |
@@ -217,7 +217,7 @@
 - `docs/compat-contract.md` 新增 §9（顶端三档口径 + 实证矩阵 + 与 §8 差异 + engines 语义澄清 + 隔离核心获取步骤 + §7/§8 漂移修正）。
 - `CONTEXT.md` 宿主兼容行扩为 `0.1.1-rc.2 → 0.1.5-rc.2 + 0.1.6-alpha.2 预览`，引 §9。
 - `plugin/dsh-voice-mode/package.json` description 英文/中文同步加 `0.1.6-alpha.2 preview` 措辞。
-- `plugin/dsh-voice-mode/README.md` 第 18 行：兼容列表 + 版本漂移 `v0.7.7 → v0.7.10` + 测试数 `325 → 385`（P0 实测）。
+- `plugin/dsh-voice-mode/README.md` 第 18 行：兼容列表 + 版本漂移 `v0.7.7 → v0.7.10` + 测试数 `325 → 385`（P0 实测；**2026-09-19 复核修正为 380 项**）。
 - `docs/rules/STATE.md` 本段（重写式 ledger 新任务独立 H2 段，不追加行）。
 
 ### 边界
