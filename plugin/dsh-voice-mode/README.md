@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue)](LICENSE)
 [![Latest Release](https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases)](https://github.com/qishuilalala/dsh-voice-mode/releases)
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange)](https://www.npmjs.com/package/dsh-voice-mode)
-[![Tests: 325 passing](https://img.shields.io/badge/tests-325%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
+[![Tests: 380 passing](https://img.shields.io/badge/tests-380%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
 
 DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（真 barge-in）。无需 API Key，识别模型在本地宿主端推理。
 
@@ -15,7 +15,7 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 
 ![全双工对话闭环：声音 → 文字 → 声音](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/duplex-banner.png)
 
-> **版本说明（v0.7.10，2026-09-18）**：**输出链路静默丢音根治**——① 云端 TTS 单句重试耗尽后不再静默跳句（现在状态条提示「有一句朗读失败，已跳过」，此前表现为「AI 回复偶尔不朗读」且无从判断）；② 浏览器挂起 AudioContext 后的「无声播放」（UI 显示朗读中、字幕照走）现在每次入队 + 任意点击/按键自动恢复；③ SSE 丢帧导致的坏句丢弃留诊断痕迹。其余同 v0.7.9：**唤醒词链路全面修复**（Issue #10 + 真机复测）——台架驱动真引擎逐项定位并修掉五处流程缺陷：① 朗读期 TTS 回声污染待机段（喊不醒）；② 只上传超门限帧导致尾字不 flush（唤醒词只剩半截）；③ 唤醒命中丢整段（连说「唤醒词+命令」只发出去尾部几个字）；④ 命中晚于停口时命令悬挂不定稿；⑤ 只喊唤醒词后停顿会关掉命令窗口（命令丢失）。**现在唤醒词可与命令连说、词头自动剥离不进消息**，待机态实时显示「它听到了什么」，支持「唤醒词…停顿…命令」。其余同 v0.7.7：朗读默认 Edge 云端，本地 TTS（VITS / Kokoro）可选；静音断句默认 1500 毫秒。
+> **版本说明（截至 v0.7.12，2026-09-19）**：v0.7.12 / v0.7.11 为**素材、文档与检索元数据更新**（运行时零改动；v0.7.11 含五版本兼容实测）。以下为 v0.7.10 起的**运行时**变更：**输出链路静默丢音根治**——① 云端 TTS 单句重试耗尽后不再静默跳句（现在状态条提示「有一句朗读失败，已跳过」，此前表现为「AI 回复偶尔不朗读」且无从判断）；② 浏览器挂起 AudioContext 后的「无声播放」（UI 显示朗读中、字幕照走）现在每次入队 + 任意点击/按键自动恢复；③ SSE 丢帧导致的坏句丢弃留诊断痕迹。其余同 v0.7.9：**唤醒词链路全面修复**（Issue #10 + 真机复测）——台架驱动真引擎逐项定位并修掉五处流程缺陷：① 朗读期 TTS 回声污染待机段（喊不醒）；② 只上传超门限帧导致尾字不 flush（唤醒词只剩半截）；③ 唤醒命中丢整段（连说「唤醒词+命令」只发出去尾部几个字）；④ 命中晚于停口时命令悬挂不定稿；⑤ 只喊唤醒词后停顿会关掉命令窗口（命令丢失）。**现在唤醒词可与命令连说、词头自动剥离不进消息**，待机态实时显示「它听到了什么」，支持「唤醒词…停顿…命令」。其余同 v0.7.7：朗读默认 Edge 云端，本地 TTS（VITS / Kokoro）可选；静音断句默认 1500 毫秒。
 
 ---
 
@@ -98,17 +98,24 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | `voice` | 按引擎 | 音色：VITS 五说话人；Kokoro 103 个（下拉+◀▶，62 深沉/68 浑厚/75 清亮/76 磁性置顶）；Edge 进入时自动加载全量 322 个。行内「试听」可即时预览 |
 | `rate` | `1.1` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效**（批 J 1.0→1.1） |
 | `interruptLevel` | `0` | 发声打断灵敏度（服务端 VAD 帧级检测 + 回声门控）：0 高门槛（3 帧）/ 1 中（2 帧）/ 2 低（1 帧） |
+| `bargeInMode` | `detect` | 打断方式：`detect` 自动探测本机原生回声消除状态（默认；未生效时切为长按打断）/ `auto` 强制开口即打断（耳机、安静环境推荐）/ `manual` 长按打断（外放推荐）。批 7O 默认，I10 豁免（ADR-0006） |
+| `echoGateDb` | `6` | 回声门控阈值（dB）：自动打断要求残差高于回声地板此值。**原生 AEC 生效时此门控闲置**（Safari / 耳机等无原生 AEC 环境才兜底生效）；打不断降 3-4，噪音误打断升 8-10。**不要为「打不断」调它**（详见 ADR-0006） |
 | `silenceMs` | `1500` | 说完整一句的静音停顿毫秒数 |
 | `idleTimeoutMinutes` | `5` | 无活动自动退出语音模式的分钟数（朗读计为活动；批 J 10→5） |
 | `modelHost` | 默认源 | 模型下载源（国内网络填 `https://hf-mirror.com`） |
 | `autoSend` | `true` | 静音到点自动发送（连续多段拼成一条消息）；关闭则只进草稿（按住 `Ctrl` / hold 松手仍会发送） |
+| `autoResume` | `false` | 切回上次语音会话时自动恢复语音模式（默认关）。开启后：下次进入语音会话即自动进入语音模式 + 恢复上次会话；关闭则需手动按 `Ctrl+Shift+V` 重新进入 |
 | `mode` | `toggle` | 交互模式：`toggle` 持续聆听 + 1500ms 静音断句；`hold` 按住说话、松手发送（短按退出） |
+| `shortcut` | `Ctrl+Shift+V` | 进入 / 退出语音模式的快捷键（修饰键 Ctrl/Shift/Alt/Meta + 一个字母键）；**留空 = 禁用快捷键**，改用麦克风按钮 |
 | `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭。**可与命令连说**，词头自动剥掉不进消息；匹配带容错（编辑距离 ≤1 + 前 3 字符前导窗口，吸收同音字/语气词）；**建议 3-4 字**——单字词无容错、2 字词的容错会连带吸收所有同首字的 2 字词（如「小莫」也会唤醒「小张」），介意误唤醒用 3 字以上；每句断句或打断后回待机需重说；**仅 toggle 模式生效**（hold / 手动打断下不生效）；朗读期说唤醒词不触发 |
+| `toolBeep` | `false` | 工具调用提示音（默认关）：开启后 AI 调用工具时「滴」一声；关闭则全程静默 |
 | `spokenFormat` | `true` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效** |
 | `senseITN` | `true` | 批 2 P0：SenseVoice 逆文本归一化（数字/日期/货币规范化；默认开） |
+| `senseVoice` | `true` | 定稿是否用 SenseVoice 重译（带标点 + 数字归一化，更准；默认开）。**关闭可省 ~228MB 模型**，只走流式识别（更快、精度下降） |
 | `captionFontSize` | `0` | 批 3 P0：字幕字号档位 0=12px / 1=14px / 2=18px / 3=24px（默认 0 与现状字节等价） |
 | `captionMaxWidth` | `1` | 批 3 P0：字幕宽度档位 0=50vw / 1=70vw / 2=90vw（视口 <686px 接近 480px，>686px 宽于 480px） |
 | `backchannelYield` | `true` | 批 5 P1：让位语义（ADR-0008）；朗读期说「嗯/对」自动让位 1.5s + 真要说走硬打断。I10 豁免（默认开是产品决策）；关 = 行为等同改造前 |
+| `yieldMs` | `1500` | 让位窗口时长（ms，500-3000）：`backchannelYield` 命中后 TTS 丢帧持续时长；窗口内用户真要说则由原 `hardBreak` 接管，窗口到点自动恢复播放 |
 
 生效范围：`voice`/`rate`/`ttsEngine`/`kokoroModel`/`spokenFormat` **立即生效**；其余设置下次进入语音模式时生效。设置项默认值由插件配置（`base` 层）提供。
 
@@ -132,9 +139,56 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | `zh-TW-HsiaoYuNeural` | 小雨 · 台湾腔 · 女声 |
 | `en-US-AriaNeural` | Aria · English · 女声 |
 
-### 配置（bundle config / settings.yaml）
+---
 
-`voice-mode` 命名空间配置可直接写入 `~/.dsh/settings.yaml`；插件总开关 `enabled`（默认 `true`）、模型缓存目录 `cacheDir`、在安装配置中设置。
+## 🔧 配置（bundle patch / settings.yaml）
+
+也可以直接编辑 `~/.dsh/settings.yaml` 的 `voice-mode:` 段（设置面板与 RPC 写的是同一份文档层）：
+
+```yaml
+- id: voice-mode
+  name: dsh-voice-mode
+  config:
+    enabled: true                 # false = 完全禁用语音模式（toggle 会被拒）
+    cacheDir: ~/.cache/dsh-voice-mode/models   # 可覆盖；否则用平台默认
+    # 以下为设置项播种的默认值（设置面板优先级更高，面板是权威源）：
+    voice: zh-CN-XiaoxiaoNeural
+    rate: 1.1                     # 批 J 1.0→1.1
+    interruptLevel: 0
+    silenceMs: 1500
+    idleTimeoutMinutes: 5         # 批 J 10→5
+    modelHost: https://huggingface.co
+```
+
+> 注意：`voice` / `rate` / `interruptLevel` / `silenceMs` / `idleTimeoutMinutes` / `modelHost` / `autoSend`
+> 的**生效值来自设置面板**；bundle 配置只负责为这些键播种默认值
+> （`enabled` / `cacheDir` 则仅由 bundle 配置决定）。
+> 插件 HTTP 命名空间固定为 `/voice-mode`（与客户端打包契约一致，不可配置）。
+
+---
+
+## 🌐 API
+
+| 路由 | 说明 |
+| --- | --- |
+| `GET /voice-mode/stream` | SSE：`event: audio`（`{sessionId, seq, text, audio(base64 MP3)}`）、`event: mode`（全局单活归属）、`event: tool`（提示音）、`event: asr-progress / asr-ready / asr-error / tts-error` |
+| `POST /voice-mode/toggle` | `{sessionId, on}` 进入 / 退出语音模式（全局单活） |
+| `POST /voice-mode/asr` | 裸 f32 LE 16k PCM → `{text}`（流式 zipformer2）；模型未就绪返回 `202 {loading}`；`?reset=1` 丢弃在途段（唤醒词命中时使用） |
+| `POST /voice-mode/cancel` | `{sessionId}` 作废 TTS 队列并丢弃在途 ASR 段 |
+| `POST /voice-mode/preview` | `{voice, rate?}` 一次性合成试听 → `audio/mpeg`（400 缺 voice / voice 过长；502 合成失败，如无效 ShortName；403 插件 `enabled=false`）。不要求语音模式处于激活态；使用独立合成连接，不影响朗读队列 |
+| `GET /voice-mode/config` | 客户端启动参数（静音阈值 / 灵敏度 / 音色与语速等）——含 ASR 侧字段 `senseITN` / `senseVoice` / `captionFontSize` / `captionMaxWidth` / `backchannelYield` |
+| `GET /voice-mode` | 健康检查 `{ok, name, enabled, active}` |
+
+---
+
+## 💾 模型与缓存
+
+- 识别模型：`csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30`（encoder ≈154 MB / decoder / joiner / tokens，合计约 160 MB），宿主端经 sherpa-onnx（Node WASM，Apache-2.0，原生跨平台）运行
+- 缓存目录的平台默认：
+  - **Windows**：`%LOCALAPPDATA%\dsh-voice-mode\models`
+  - **macOS / Linux**：`~/.cache/dsh-voice-mode/models`
+  - 两者都可用 `cacheDir` 覆盖
+- 下载用 `.part` 断点续传；`huggingface.co` 失败时回退 `hf-mirror.com`（可用 `modelHost` 配置）
 
 ---
 
@@ -188,13 +242,13 @@ flowchart LR
 | 维度 | dsh 内置 | dsh-voice-mode（本插件） |
 | --- | --- | --- |
 | 识别模型 | 云端 API（需 key） | **本地 zipformer2 + SenseVoice**（零 key） |
-| 多语种 | 英文为主 | **SenseVoice 自动识别（auto）+ ITN** |
+| 多语种 | 英文为主 | **SenseVoice 自动识别（zh/en/ja/ko/yue）+ ITN** |
 | 朗读引擎 | 云端 TTS | **Edge 云端 + 本地 VITS/Kokoro** 三选一 |
 | 打断检测 | 基础 VAD | **三档灵敏度 + 回声门控 + 让位语义** |
 | 热词偏置 | 无 | 无（已移除，详见 v0.7.7 文档说明） |
 | 字幕 a11y | 无 | **4 档字号 + 3 档宽度 + 主题跟随** |
 | 唤醒词 | 无 | **轻量流式匹配 + 前缀语气词白名单** |
-| 兼容 dsh | — | **0.1.1-rc.2 → 0.1.5-rc.2 全版本** |
+| 兼容 dsh | — | **0.1.1-rc.2 → 0.1.5-rc.2 全版本（+ 0.1.6-alpha.2 预览）** |
 
 ---
 

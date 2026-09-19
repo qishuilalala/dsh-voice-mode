@@ -10,14 +10,14 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue" alt="License: MIT"></a>
   <a href="https://github.com/qishuilalala/dsh-voice-mode/releases"><img src="https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases" alt="Latest release"></a>
   <a href="https://www.npmjs.com/package/dsh-voice-mode"><img src="https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange" alt="npm version"></a>
-  <a href="docs/rules/STATE.md"><img src="https://img.shields.io/badge/tests-325%20%E2%9C%93-2ea043?style=flat-square" alt="Tests: 325 passing"></a>
+  <a href="docs/rules/STATE.md"><img src="https://img.shields.io/badge/tests-380%20%E2%9C%93-2ea043?style=flat-square" alt="Tests: 380 passing"></a>
 </p>
 
 ![dsh-voice-mode 全双工语音对话](assets/hero-banner.png)
 
 ![全双工对话闭环：声音 → 文字 → 声音](plugin/dsh-voice-mode/assets/duplex-banner.png)
 
-> **Full-duplex voice mode for DeepSeek Harness** —— 在会话内用语音完成整轮对话：说话时**边说边出字**、停顿后自动发送；回复**按句朗读**并跟随实时字幕；朗读中**开口即打断**。识别在本地推理、无需 API Key；朗读默认 Edge 云端（快且自然），本地 VITS / Kokoro 可选（隐私优先）。兼容 dsh 0.1.1-rc.2 起全版本（已在 0.1.1-rc.2 / 0.1.2-rc.1 / 0.1.5-alpha.2 / 0.1.5-rc.2 / **0.1.6-alpha.2** 五版本真实 LLM 端到端验证）。当前版本 **v0.7.11**，385 项测试全绿。
+> **Full-duplex voice mode for DeepSeek Harness** —— 在会话内用语音完成整轮对话：说话时**边说边出字**、停顿后自动发送；回复**按句朗读**并跟随实时字幕；朗读中**开口即打断**。识别在本地推理、无需 API Key；朗读默认 Edge 云端（快且自然），本地 VITS / Kokoro 可选（隐私优先）。兼容 dsh 0.1.1-rc.2 起全版本（已在 0.1.1-rc.2 / 0.1.2-rc.1 / 0.1.5-alpha.2 / 0.1.5-rc.2 / **0.1.6-alpha.2** 五版本真实 LLM 端到端验证）。当前版本 **v0.7.12**，380 项测试全绿（28 套件）。
 
 ---
 
@@ -37,19 +37,19 @@
 
 | # | 痛点 | 我们的应对 |
 | --- | --- | --- |
-| 3 | **字幕看不清** —— 字小、窄屏被输入框挡住 | `captionFontSize` 4 档（12/14/18/24px）+ `captionMaxWidth` 3 档（50/70/90vw） |
-| 4 | **让位误打断** —— AI 朗读时插一句「嗯/对」就被硬打断 | `backchannelYield` 让位语义：短词自动让位 1.5s，真要说走才硬打断 |
-| 5 | **本地 TTS 太机械** —— 一句话读完停顿 3-5 秒 | 本地 VITS / Kokoro 原生 addon + epoch 队列管理，按句流式朗读、句间无停顿 |
+| 1 | **字幕看不清** —— 字小、窄屏被输入框挡住 | `captionFontSize` 4 档（12/14/18/24px）+ `captionMaxWidth` 3 档（50/70/90vw） |
+| 2 | **让位误打断** —— AI 朗读时插一句「嗯/对」就被硬打断 | `backchannelYield` 让位语义：短词自动让位 1.5s，真要说走才硬打断 |
+| 3 | **本地 TTS 太机械** —— 一句话读完停顿 3-5 秒 | 本地 VITS / Kokoro 原生 addon + epoch 队列管理，按句流式朗读、句间无停顿 |
 
 ---
 
 ## ✨ 功能（按用户价值）
 
 1. 🎙️ **识别准** —— SenseVoice 多语种定稿 + ITN（数字/日期/货币自动规范化）
-3. 🗣️ **不说错** —— 唤醒词待机、唤醒词前缀语气词白名单（`嗯`/`那个` 不再误触）
-5. 🤝 **让位** —— 让位语义 + 三档打断灵敏度（`interruptLevel`），外放也能精准打断
-7. 💬 **有感情** —— 本地 Kokoro 103 音色 + Edge 322 音色，行内可试听；分段朗读不漏句
-9. 👁️ **字幕 a11y** —— 4 档字号 + 3 档宽度，浅色主题变量跟随 dsh 主题
+2. 🗣️ **不说错** —— 唤醒词待机、唤醒词前缀语气词白名单（`嗯`/`那个` 不再误触）
+3. 🤝 **让位** —— 让位语义 + 三档打断灵敏度（`interruptLevel`），外放也能精准打断
+4. 💬 **有感情** —— 本地 Kokoro 103 音色 + Edge 322 音色，行内可试听；分段朗读不漏句
+5. 👁️ **字幕 a11y** —— 4 档字号 + 3 档宽度，浅色主题变量跟随 dsh 主题
 
 ---
 
@@ -93,7 +93,7 @@ systemctl restart dsh   # Linux；其他平台重启 dsh 进程
 
 ---
 
-## ⚙️ 配置（4 新设置字段 + 5 默认值微调）
+## ⚙️ 配置（4 新设置字段 + 3 默认值微调）
 
 **设置 → Plugins → 插件配置 → 语音模式（voice-mode）**。
 
@@ -106,7 +106,7 @@ systemctl restart dsh   # Linux；其他平台重启 dsh 进程
 | 字幕宽度 | `captionMaxWidth` | `1` | 档位 0=50vw / 1=70vw / 2=90vw |
 | 让位语义 | `backchannelYield` | `true` | 朗读期说「嗯/对」自动让位 1.5s，真要说走硬打断（ADR-0008） |
 
-### 5 默认值微调（批 J）
+### 3 默认值微调（批 J）
 
 | 字段 | 旧 | 新 | 理由 |
 | --- | --- | --- | --- |
@@ -159,13 +159,13 @@ flowchart LR
 | 维度 | dsh 内置 | dsh-voice-mode（本插件） |
 | --- | --- | --- |
 | 识别模型 | 云端 API（需 key） | **本地 zipformer2 + SenseVoice**（零 key） |
-| 多语种 | 英文为主 | **6 语种 auto/zh/en/ja/ko/yue + ITN** |
+| 多语种 | 英文为主 | **SenseVoice 自动识别（zh/en/ja/ko/yue）+ ITN** |
 | 朗读引擎 | 云端 TTS | **Edge 云端 + 本地 VITS/Kokoro** 三选一 |
 | 打断检测 | 基础 VAD | **三档灵敏度 + 回声门控 + 让位语义** |
 | 热词偏置 | 无 | 无（已移除） |
 | 字幕 a11y | 无 | **4 档字号 + 3 档宽度 + 主题跟随** |
 | 唤醒词 | 无 | **轻量流式匹配 + 前缀语气词白名单** |
-| 兼容 dsh | — | **0.1.1-rc.2 → 0.1.5-rc.2 全版本** |
+| 兼容 dsh | — | **0.1.1-rc.2 → 0.1.5-rc.2 全版本（+ 0.1.6-alpha.2 预览）** |
 
 ---
 
@@ -207,7 +207,7 @@ flowchart LR
 | [完整使用说明（中文）](plugin/dsh-voice-mode/README.md) | 功能 / 手势 / 设置 / 配置 / 已知限制 / 故障排查 |
 | [English docs](plugin/dsh-voice-mode/README.en.md) | Same, in English |
 | [docs/ 索引](docs/README.md) | 架构决策 / 实施计划 / 真机验收 / 规则 / 调研 / 竞品 |
-| [60 天迭代博客](blog/2026-09-15-eleven-batches-evolution.md) | 从 91 到 254 项测试的故事（现为 325 项） |
+| [60 天迭代博客](blog/2026-09-15-eleven-batches-evolution.md) | 从 91 到 254 项测试的故事（现为 380 项） |
 | [CHANGELOG.md](CHANGELOG.md) | Keep a Changelog 格式 |
 | [RELEASE-NOTES.md](RELEASE-NOTES.md) | 60 天时间线 |
 

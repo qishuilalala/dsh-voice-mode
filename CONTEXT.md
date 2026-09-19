@@ -1,7 +1,7 @@
 # dsh-voice-mode —— 开发者上下文（当前状态，重写式维护，勿追加流水账）
 
 > 用途：给新会话的「此刻心智模型」。状态变了就改对应行，过时内容删除。
-> 历史/为什么 → `git log` 与 docs/adr/。用户面向 → README.md。保持本文件 ~60 行以内。
+> 历史/为什么 → `git log` 与 docs/adr/。用户面向 → README.md。保持本文件 **~110 行以内**（口径 2026-09-19 校正：原写「~60 行」，但本文件需承载不变量链与设置语义，长期实际在 110 行量级；同日已删除「已落地增量」流水账段——那类内容归 `git log`）。
 
 ## 是什么
 
@@ -103,12 +103,6 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
   ADR-0005 回归基准（已接受）· ADR-0006 打断模式自动探测（已接受）·
   ADR-0007 情感标签 DSL（**已接受 2026-09-14，先本地后 Edge 分两步**）·
   ADR-0008 让位语义（**已接受 Phase 1 2026-09-14，#1 backchannel + #2 让位 prompt，#3-5 砍/推迟**）
-
-## 2026-09 已落地增量（R7-R23，均过 typecheck + npm test 91/91）
-
-normalizeWake 语气词前缀白名单（wakeword.ts）· 状态条会话计时器 mm:ss（VoiceStatusBar）·
-双条 SVG 波形 蓝 AI/绿麦克风（pushBotLevels + botBars）· 设置卡数据流向标签「识别本地·朗读云/本」
-（EngineStatusInline）。lib 产物已于 2026-09-14 重建并 restart dsh 同步（fixture env.build=6d077c2 实证）。
 
 ## 关键源文件
 

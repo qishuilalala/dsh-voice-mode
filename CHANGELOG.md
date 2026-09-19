@@ -7,11 +7,40 @@
 
 ## [Unreleased]
 
-### 规划中（v0.7.12+）
+### 规划中
 
 - F1：emotion 标签 DSL 全量上线（LLM 侧标签使用指引注入 + 真机验收）
 - ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
 - 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
+
+## [0.7.12] - 2026-09-19
+
+**Patch**：仅素材、文档与检索元数据变更，`src/` 与运行时行为**零改动**。
+
+### Added
+
+- **真机演示录屏** `plugin/dsh-voice-mode/assets/demo-voice-flow.gif`：覆写 `getUserMedia` 注入真实语音音频，驱动**完整真实链路**录制（流式转写 → 停顿自动发送 → 按句朗读 + 实时字幕），非 UI 摆拍。采集与合成脚本：`screenshots/scripts/capture-demo.mjs` + `make-demo-gif.py`。
+- **真机截图脚本** `screenshots/scripts/capture-live.mjs`：真实驱动 dsh Web UI（设置 → 插件 → 展开「语音模式」），且**只截设置对话框**（不含左侧会话列表）；产出 S01 / S02 两张真机截图。
+- **商店策展声明** `plugin/dsh-voice-mode/screenshots.json`（5 张：演示 GIF / 双工闭环横幅 / 真机设置面板 / 麦克风主视觉 / 社交卡片），供 dshmarket 卡片缩略图与详情轮播读取。
+- **缺陷报告模板** `.github/ISSUE_TEMPLATE/bug_report.yml`（引导附遥测日志、build 哈希、dsh 版本、输出方式、TTS 引擎）。
+
+### Changed
+
+- README（根 / 中文 / 英文）：接入真机演示 GIF，**替换过期的上游旧版界面截图**。
+- npm `keywords` 9 → 28：补 `speech-to-text` / `barge-in` / `captions` / `wake-word` 等，并加中文检索词 `语音` / `字幕` / `打断` / `中文` / `本地识别`。
+- `test/`：机器专属路径参数化（新增共享解析器 `test/_playwright.js`，浏览器路径改走 `CHROME_PATH`，其余改走环境变量）；以「本机绝对路径」模式扫描 `test/` **零命中**。
+- `.gitignore`：屏蔽本机 / 维护者专属流程文档与脚本。
+
+### Removed
+
+- `screenshots/S01-install-config-7fields.png`：经查实为 **dsh Web 401 鉴权失败页**（白底 `authentication required`），并非真实截图，已删除并由真机截图取代。
+
+### Fixed
+
+- **测试基线口径修正**：统一为 **380 项 / 28 套件**（`npm test` 两种独立口径实测一致）。v0.7.11 条目中的「385 项」为错误声明，根 README 徽章长期停留在 325，两者均在此修正——`test/` 自 v0.7.10 起未再改动，故 385 自始即为错报，而非测试被删。
+- 根 README：版本号刷为 v0.7.12；对比表语种宣称由「6 语种 auto/zh/en/ja/ko/yue」改为「SenseVoice 自动识别」（`recognitionLanguage` 已于批 7M 移除，语言固定 `auto`）；修正列表编号断裂与「默认值微调」项数不符。
+- 插件 README：设置表由 16 项补全到 **23 项**（补 `bargeInMode` / `echoGateDb` / `autoResume` / `senseVoice` / `shortcut` / `toolBeep` / `yieldMs`）；补入英文版独有的「配置 / API / 模型与缓存」三节。
+- `docs/README.md`：修正 2 条失效跨文件锚点（`#设置`、`#工作原理`）。
 
 > 说明：本仓库历史 CHANGELOG 仅记录到 0.7.7；v0.7.8 / v0.7.9 / v0.7.10 三版已发布但缺 CHANGELOG 段（事实漂移，本轮不补——属独立治理批次，由用户后续决定是否回填）。
 
@@ -23,7 +52,7 @@
 
 ### Changed
 
-- 兼容声明：`package.json` description 中英文同步加 `0.1.6-alpha.2 preview` 措辞；测试基线从「91 项 / 254 项 / 325 项」刷为 **385 项 / 28 套件**（2026-09-18 实测）；README 兼容列表扩为含 `0.1.6-alpha.2`。
+- 兼容声明：`package.json` description 中英文同步加 `0.1.6-alpha.2 preview` 措辞；测试基线从「91 项 / 254 项 / 325 项」刷为 **380 项 / 28 套件**（数字于 v0.7.12 复核修正，原记「385 项」为错报）；README 兼容列表扩为含 `0.1.6-alpha.2`。
 - `CONTEXT.md` 宿主兼容行扩为 `0.1.1-rc.2 → 0.1.5-rc.2 + 0.1.6-alpha.2 预览`，引 `docs/compat-contract.md §9`。
 - `docs/compat-contract.md` 新增 §9（顶端三档最新版本口径 + 0.1.6-alpha.2 实证矩阵 + 与 §8 差异 + engines 语义澄清 + 隔离核心获取步骤 + §7/§8 漂移修正）。
 
