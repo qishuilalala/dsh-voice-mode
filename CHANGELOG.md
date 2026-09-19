@@ -13,9 +13,22 @@
 - ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
 - 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
 
+## [0.7.13] - 2026-09-19
+
+**Patch**：仅文档与元数据变更，`src/` 与运行时行为**零改动**。经对抗性审查后集中修正长期累积的文档事实漂移。
+
+### Fixed
+
+- **测试基线口径修正**：统一为 **380 项 / 28 套件**（`npm test` 两种独立口径实测一致）。v0.7.11 条目中的「385 项」为错误声明，根 README 徽章长期停留在 325，两者均在此修正——`test/` 自 v0.7.10 起未再改动，故 385 自始即为错报，而非测试被删。
+- 根 README：对比表语种宣称由「6 语种 auto/zh/en/ja/ko/yue」改为「SenseVoice 自动识别」（`recognitionLanguage` 已于批 7M 移除，语言固定 `auto`）；修正列表编号断裂与「默认值微调」项数不符；**当前版本改为引用 npm 徽章（动态），不再手写版本号**——避免每次发版再次漂移。
+- 插件 README：设置表由 16 项补全到 **23 项**（补 `bargeInMode` / `echoGateDb` / `autoResume` / `senseVoice` / `shortcut` / `toolBeep` / `yieldMs`），与 schema 完全一致；补入英文版独有的「配置 / API / 模型与缓存」三节（12 → 15 节，与英文版一致）；修正英文版「4 new ASR fields」却列 5 项的自相矛盾。
+- `docs/README.md`：修正 2 条失效跨文件锚点（`#设置`、`#工作原理`）。
+- `docs/rules/STATE.md`：状态表测试数 385 → 380（与 README / CHANGELOG 统一）。
+- `CONTEXT.md`：删除「已落地增量」流水账段并校正自述行数口径；`RELEASE-NOTES.md`：移除机器专属路径。
+
 ## [0.7.12] - 2026-09-19
 
-**Patch**：仅素材、文档与检索元数据变更，`src/` 与运行时行为**零改动**。
+**Patch**：仅素材与检索元数据变更，`src/` 与运行时行为**零改动**。
 
 ### Added
 
@@ -34,13 +47,6 @@
 ### Removed
 
 - `screenshots/S01-install-config-7fields.png`：经查实为 **dsh Web 401 鉴权失败页**（白底 `authentication required`），并非真实截图，已删除并由真机截图取代。
-
-### Fixed
-
-- **测试基线口径修正**：统一为 **380 项 / 28 套件**（`npm test` 两种独立口径实测一致）。v0.7.11 条目中的「385 项」为错误声明，根 README 徽章长期停留在 325，两者均在此修正——`test/` 自 v0.7.10 起未再改动，故 385 自始即为错报，而非测试被删。
-- 根 README：版本号刷为 v0.7.12；对比表语种宣称由「6 语种 auto/zh/en/ja/ko/yue」改为「SenseVoice 自动识别」（`recognitionLanguage` 已于批 7M 移除，语言固定 `auto`）；修正列表编号断裂与「默认值微调」项数不符。
-- 插件 README：设置表由 16 项补全到 **23 项**（补 `bargeInMode` / `echoGateDb` / `autoResume` / `senseVoice` / `shortcut` / `toolBeep` / `yieldMs`）；补入英文版独有的「配置 / API / 模型与缓存」三节。
-- `docs/README.md`：修正 2 条失效跨文件锚点（`#设置`、`#工作原理`）。
 
 > 说明：本仓库历史 CHANGELOG 仅记录到 0.7.7；v0.7.8 / v0.7.9 / v0.7.10 三版已发布但缺 CHANGELOG 段（事实漂移，本轮不补——属独立治理批次，由用户后续决定是否回填）。
 
