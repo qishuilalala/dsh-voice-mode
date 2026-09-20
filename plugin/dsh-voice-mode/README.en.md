@@ -30,7 +30,6 @@ interrupts playback and the running turn. No API key.
 - **Hardening**: session-existence check, loopback + Origin guards, per-endpoint rate limits, model SHA256 pinning, download-host allowlist.
 
 > ℹ️ The `demo-voice-flow.gif` at the top is a **real recording of the current UI** (voice mode → live transcription → pause auto-send → sentence-by-sentence read-aloud with live captions), produced by driving the real pipeline via `screenshots/scripts/capture-demo.mjs`.
-> ⚠️ `assets/demo.gif` and the older screenshots under the repo-root `assets/` still show the **upstream legacy single-button UI**; the current UI adds a mode-switch button next to the mic.
 
 ---
 

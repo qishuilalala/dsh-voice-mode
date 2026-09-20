@@ -1,7 +1,13 @@
 /**
  * demo GIF 录制（独立浏览器，不碰用户界面）。
  *
- * 产出 ../plugin/dsh-voice-mode/assets/demo.gif（README 顶部插图）。
+ * ⚠️ **已被取代（2026-09-19）**：本脚本产出**可确定性渲染的 UI 故事板**（无需真实语音），
+ * 曾用作 README 顶部插图；README 现已改用 `screenshots/scripts/capture-demo.mjs`
+ * 注入真实语音驱动完整真实链路录制的 `plugin/dsh-voice-mode/assets/demo-voice-flow.gif`。
+ * 因此本脚本的产物**不再被 README 引用**，`assets/demo.gif` 亦已从仓库与 npm 包体中移除。
+ * 保留它仅作为「离线生成故事板」的备用工具；若无需此用途可直接删除。
+ *
+ * 产出 ../plugin/dsh-voice-mode/assets/demo.gif（**当前无引用**）。
  * 帧内容为可确定性渲染的 UI 故事板（无需真实语音/音频）：
  *   1) 输入框麦克风按钮  2) toggle 语音模式状态条  3) 识别 partial 字幕
  *   4) 定稿并发送  5) toggle 继续聆听  6) hold 模式「按住说话」

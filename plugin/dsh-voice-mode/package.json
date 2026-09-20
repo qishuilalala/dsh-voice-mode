@@ -29,7 +29,6 @@
     "lib/sense-worker.mjs",
     "cordis.patch.yml",
     "assets/architecture.svg",
-    "assets/demo.gif",
     "scripts/prefetch.mjs",
     "scripts/list-voices.mjs",
     "scripts/bench-asr.mjs",

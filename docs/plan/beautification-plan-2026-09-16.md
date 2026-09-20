@@ -33,7 +33,9 @@
 - **I8** 数字与现行真源对齐：测试 254 / 用户 10 star / 2 watcher / 4 fork / 0 open issue / 11 批次周全修复 / 兼容 0.1.1-rc.2 → 0.1.5-rc.2 / npm `dsh-voice-mode@0.7.7`
 - **I9** 不引入新依赖；不改动 `dependencies` / `devDependencies`
 - **I10** 不创建 GitHub Action workflow（`.github/workflows/`）— 用户未要求；若后续要 deploy Pages 走 mkdocs，可改 docs-only
+  - **2026-09-19 例外**：用户**明确要求**新增「dsh 上游版本监控 CI」，故创建 `.github/workflows/dsh-version-check.yml`（weekly + 手动触发）。原约束仅针对本美化批次，不构成长期禁令。
 - **I11** assets/ 仅新增 PNG，不删改现存 5 张（hero-banner / hero-logo / screenshot-voice / voice-experience / architecture）
+  - **2026-09-19 例外**：`screenshot-voice.png`（**上游旧版 UI**）已被真机录屏 `demo-voice-flow.gif` 取代、成为**零引用死资产**，经用户批准删除；同批删除 `plugin/dsh-voice-mode/assets/demo.gif`（同为上游旧版 UI，且占 npm 包体）。**其余 4 张未动。**
 - **I12** screenshots/ 与 demos/ 仅含 markdown / 脚本 / 新 PNG；README 引用前必须真实落盘
 
 ### 0.3 commit 拆分（6 commit 1:1 对应 6 角色）

@@ -1,0 +1,101 @@
+name: dsh upstream version check
+
+# 目的：`engines.dsh` 与「兼容 dsh 0.1.1-rc.2 → 0.1.5-rc.2（+ 0.1.6-alpha.2 预览）」这类
+# 兼容声明会随上游发版**悄悄过期**。本 workflow 定期比对上游 dist-tags 与「已覆盖版本矩阵」，
+# 出现未覆盖版本时**开 issue 并让 job 失败**，把漂移变成可见信号。
+#
+# 已覆盖版本的真源是 `plugin/dsh-voice-mode/scripts/verify-dual.sh`（check-anchors 那行的参数），
+# 本 workflow 不复制该列表，避免第二处真源。
+#
+# 注：2026-09-16 美化计划的 I10 曾声明「不创建 workflow」；该约束针对那一批次，
+# 2026-09-19 用户明确要求本项，已在计划文档中登记例外。
+
+on:
+  schedule:
+    - cron: '17 2 * * 1' # 每周一 02:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Compare upstream dist-tags with the covered matrix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          WF=plugin/dsh-voice-mode/scripts/verify-dual.sh
+          if [ ! -f "$WF" ]; then
+            echo "::error::找不到 $WF —— 已覆盖版本的真源移动了？请同步本 workflow。"
+            exit 1
+          fi
+
+          COVERED=$(grep -oE 'check-anchors\.mjs .*' "$WF" | head -1 | sed 's/.*check-anchors\.mjs //')
+          if [ -z "$COVERED" ]; then
+            echo "::error::无法从 $WF 解析已覆盖版本矩阵"
+            exit 1
+          fi
+          echo "已覆盖版本（真源：$WF）: $COVERED"
+
+          TAGS=$(npm view @deepseek-ai/dsh dist-tags --json --registry=https://registry.npmjs.org/)
+          echo "上游 dist-tags: $TAGS"
+
+          UPSTREAM=$(python3 -c "import json,sys;print('\n'.join(sorted(set(json.load(sys.stdin).values()))))" <<<"$TAGS")
+
+          UNCOVERED=""
+          while IFS= read -r v; do
+            [ -z "$v" ] && continue
+            if ! printf '%s\n' $COVERED | grep -qx "$v"; then
+              UNCOVERED="$UNCOVERED $v"
+            fi
+          done <<<"$UPSTREAM"
+
+          if [ -z "$UNCOVERED" ]; then
+            echo "✓ 上游全部 dist-tag 均已在覆盖矩阵内"
+            exit 0
+          fi
+
+          echo "::error::上游存在未覆盖版本:$UNCOVERED"
+
+          KEYWORD="dsh upstream: 有未覆盖版本"
+          EXISTING=$(gh issue list --state open --search "$KEYWORD in:title" --json number --jq 'length' || echo 0)
+          if [ "$EXISTING" != "0" ]; then
+            echo "已有同类 open issue，跳过创建（避免重复刷屏）"
+          else
+            {
+              echo "定期比对发现上游 \`@deepseek-ai/dsh\` 的 dist-tag 指向了**未覆盖版本**。"
+              echo
+              echo "| 项 | 值 |"
+              echo "|---|---|"
+              echo "| 已覆盖矩阵 | \`$(echo $COVERED | tr ' ' ',')\` |"
+              echo "| 上游 dist-tags | \`$TAGS\` |"
+              echo "| **未覆盖** | **$UNCOVERED** |"
+              echo
+              echo "覆盖矩阵真源：\`plugin/dsh-voice-mode/scripts/verify-dual.sh\`（check-anchors 那行参数）。"
+              echo
+              echo "### 兼容四步流程"
+              echo
+              echo "1. 取该版本的核心包（解出 \`bin.js\` 与 \`node_modules/@deepseek-ai/*\`）"
+              echo "2. \`node scripts/check-anchors.mjs <新版本>\` —— 9 个 \`dsh.client.inject\` 锚点是否仍在交集"
+              echo "3. \`bash scripts/typecheck-dual.sh <新版本>\` —— cordis 映射需覆盖该版本线（未知线现会显式报错，不再静默回退）"
+              echo "4. \`bash scripts/smoke-runtime.sh\` —— boot + host 三端点 + client mic/console"
+              echo
+              echo "全绿后：把新版本追加进 \`verify-dual.sh\` 的矩阵，并同步 \`engines.dsh\` / README 兼容声明 / \`docs/compat-contract.md\`。"
+              echo
+              echo "_本 issue 由 scheduled workflow \`dsh upstream version check\` 自动创建。_"
+            } > /tmp/issue-body.md
+            gh issue create --title "$KEYWORD$UNCOVERED" --body-file /tmp/issue-body.md
+          fi
+
+          exit 1
