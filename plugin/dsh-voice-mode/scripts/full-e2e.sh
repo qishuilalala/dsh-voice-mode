@@ -22,6 +22,23 @@ PROMPT="${PROMPT:-请用中文简短回复：你好。}"
 COOKIE_FILE="$(mktemp /tmp/vm-e2e-cookies-XXXXXX.txt)"
 [ -f "$BIN" ] || { echo "✗ dsh 核心不存在: $BIN"; exit 2; }
 
+# --- 端口预检：被占则明确报错（避免 boot 后 curl 连接失败的 confusing 现象）---
+if ss -tln 2>/dev/null | grep -qE "127\.0\.0\.1:$PORT([^0-9]|$)"; then
+  echo "✗ 端口 $PORT 已被占用（换一个 PORT 重试）"; exit 2
+fi
+
+# --- 内存守卫（2026-09-24 OOM 事故教训）：可用内存不足直接拒绝，
+# 整机 8GB 上隔离 dsh + 真 LLM 至少留 1.5GB available，否则 event loop 饿死
+# 会复现 CLOSE-WAIT 堆积。阈值可经 MEM_MIN_MB 环境变量覆盖。
+MEM_MIN_MB="${MEM_MIN_MB:-1500}"
+MEM_AVAIL_MB=$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 99999)
+if [ "$MEM_AVAIL_MB" -lt "$MEM_MIN_MB" ]; then
+  echo "✗ 可用内存 ${MEM_AVAIL_MB}MB < ${MEM_MIN_MB}MB，拒绝启动（防 OOM 连带生产 dsh）"
+  echo "  等 hindsight-api 等大户回落后重跑，或调低 MEM_MIN_MB（后果自负）"
+  exit 2
+fi
+echo "   内存检查通过：available ${MEM_AVAIL_MB}MB"
+
 # 凭据注入：值只进本进程与 dsh 子进程 env；不写入任何文件 / 日志
 if ! grep -q '^DEEPSEEK_API_KEY=' /root/.env 2>/dev/null; then
   echo "✗ /root/.env 缺 DEEPSEEK_API_KEY"; exit 2
@@ -36,7 +53,11 @@ LOG="$WORK/e2e.log"
 exec > >(tee "$LOG") 2>&1
 
 cleanup() {
-  [ -n "$NODE_PID" ] && kill "$NODE_PID" 2>/dev/null || true
+  # 杀整个进程组（dsh 会派生子进程；只杀 NODE_PID 会残留，残留进程曾导致端口长期被占）。
+  # setsid 使 dsh 成为组长，负 PID 即整个组；失败则回退单杀。
+  if [ -n "$NODE_PID" ]; then
+    kill -- "-$NODE_PID" 2>/dev/null || kill "$NODE_PID" 2>/dev/null || true
+  fi
   rm -rf "$WORK" "$COOKIE_FILE"
 }
 trap cleanup EXIT
@@ -55,7 +76,7 @@ cat > "$DSH_HOME/profiles/web/package.json" <<EOF
   "name": "dsh-profile-web",
   "private": true,
   "dependencies": { "dsh-voice-mode": "link:$LINK_SRC" },
-  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-voice-mode"] } }
+  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-voice-mode"], "patchReload": "startup" } }
 }
 EOF
 echo '[]' > "$DSH_HOME/profiles/web/cordis.patch.yml"
@@ -109,9 +130,12 @@ EOF
   echo "✗ dsh-voice-mode 未 link 进隔离 profile"; tail -20 "$WORK/pnpm.log"; exit 1
 }
 
-# --- boot dsh 核心 ---
+# --- boot dsh 核心（setsid 独立进程组，trap 可整体回收） ---
+# BOOT_ARGS 可覆盖默认启动参数（旧版本 CLI 形态不同：如 0.0.1 系为 `--profile web`
+# 且无 `--no-open`，此时传 BOOT_ARGS="--profile web --port $PORT --host 127.0.0.1"）。
 echo "== boot dsh 核心（port $PORT）=="
-DSH_HOME="$DSH_HOME" node "$BIN" web --port "$PORT" --host 127.0.0.1 --no-open >"$BOOTLOG" 2>&1 &
+# shellcheck disable=SC2086
+DSH_HOME="$DSH_HOME" setsid node "$BIN" ${BOOT_ARGS:-web --port "$PORT" --host 127.0.0.1 --no-open} >"$BOOTLOG" 2>&1 &
 NODE_PID=$!
 
 URL=""
@@ -126,8 +150,22 @@ done
 [ -z "$URL" ] && { echo "✗ 60s 内未等到 URL"; tail -30 "$BOOTLOG"; exit 1; }
 echo "   boot 成功: $URL"
 
-# --- 围栏换 Cookie（0.1.5+ boot URL 带 token）---
+# --- 就绪等待（URL 出现 ≠ 服务可接受连接；此前偶发 EXIT=7 即此竞态）---
+# 轮询 /voice-mode 直到返回 HTTP 码（任何码都算活着，000 才算没好）。
 BASE="http://127.0.0.1:$PORT"
+READY=""
+for _ in $(seq 1 60); do
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "$BASE/voice-mode" 2>/dev/null || echo "000")
+  if [ "$CODE" != "000" ]; then READY=1; break; fi
+  if ! kill -0 "$NODE_PID" 2>/dev/null; then
+    echo "✗ dsh 在就绪等待期退出"; tail -30 "$BOOTLOG"; exit 1
+  fi
+  sleep 1
+done
+[ -z "$READY" ] && { echo "✗ 60s 内服务未就绪（URL 已打印但无响应）"; tail -30 "$BOOTLOG"; exit 1; }
+echo "   服务就绪: $BASE"
+
+# --- 围栏换 Cookie（0.1.5+ boot URL 带 token；BASE 已在就绪等待段定义）---
 if echo "$URL" | grep -q 'token='; then
   TOK=$(echo "$URL" | grep -oE 'token=[A-Za-z0-9_-]+' | head -1 | cut -d= -f2)
   curl -sL -c "$COOKIE_FILE" "$BASE/?token=$TOK" -o /dev/null

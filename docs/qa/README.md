@@ -8,6 +8,7 @@
 | --- | --- |
 | [real-machine-acceptance-checklist.md](real-machine-acceptance-checklist.md) | 真机验收 21 项清单（基线锚点 15be91a + 254 项测试全绿） |
 | [must-verify-manually.md](must-verify-manually.md) | 必须人工复核最小清单（5 项发版门禁） |
+| [TEST-SYSTEM.md](TEST-SYSTEM.md) | 长期测试体系（维持·迭代·反馈·完善：四层验证维度 + 维持/迭代循环 + 已知陷阱） |
 
 ## 验收维度
 

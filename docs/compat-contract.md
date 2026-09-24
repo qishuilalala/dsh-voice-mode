@@ -159,7 +159,7 @@ mic 实际渲染由真实实例佐证：配置完整的 dsh 0.1.1-rc.2 上 `docu
 - **本轮矩阵口径（2026-09-10 当日两轮实测：升级预检 + 同步复核）**：0.1.1-rc.2 = 锚点 + 类型 + runtime 冒烟 ✅（核心 `/tmp/dsh011-core`）；0.1.2-rc.1 = 锚点 + 类型（cordis 4.0.2，peerDeps 实证）+ 冒烟 ✅（核心 `/tmp/dsh012-core`，由 0.1.2 回滚 tar 解出）；0.1.5 = 锚点（alpha.2 与 rc.1 都查）+ 类型（alpha.2 与 rc.1 两套都过）+ 冒烟（`/tmp/dsh015-core`，mic 走"已建会话"强断言）+ 真实 profile 演练 ✅。锚点检查覆盖 0.1.1-rc.2 / 0.1.2-rc.1 / 0.1.5-alpha.2 / 0.1.5-rc.1 四个版本，9 交集锚点全在。三行矩阵当日全绿。
 - **同步落地（2026-09-10）**：devDeps 已对齐 0.1.5-rc.1（dsh-host-webserver/llm/settings/system-prompt + cordis ^4.0.2；peerDeps 维持 ^4.0.1 以覆盖 0.1.1 线的 cordis 4.0.1）；`typecheck-dual.sh` 默认线更新为区间两端（0.1.1-rc.2 + 0.1.5-rc.1）、cordis 映射修正为 `0.1.2-*` 起 4.0.2；`verify-dual.sh` 默认双冒烟为 0.1.1 + 全局（0.1.5），0.1.2 核心可显式传参；package.json 描述兼容声明扩为 0.1.1 → 0.1.5。对齐后 `npm test`（含 verify-client 40 项）复跑全过。
 - **宿主要求声明（2026-09-10，供插件市场展示）**：package.json `engines.dsh = ">=0.1.1-rc.2"`（无上界——按「全版本支持」目标，未来版本线视为默认兼容，由锚点回归预检在每次 dsh 升级前预警；曾试 `<0.2.0-0` 上界，与目标不符故去掉）。机制（dshmarket `discovery-compatibility.js`）：市场按需抓取各插件 npm `latest` manifest，识别两类声明做合取——`engines.dsh`（engine 级，区间外判 definite incompatible）与 `peerDependencies` 中 `@deepseek-ai/dsh-*` 锁步包（peer 级，隐式 caret 上界之上的新宿主仍宽容）；两类都缺席才显示「未声明宿主要求」。区间经 dshmarket 自家 `satisfiesRange(includePrerelease)` 与 `deriveHostCompatibility` 端到端实证（0.1.1-rc.2 → 0.1.5-rc.1 compatible；0.1.1-rc.1 / 0.1.0-rc.6 incompatible）。**生效前提：发布含该字段的新版本到 npm**（市场读 published latest manifest，事实缓存 TTL 24h）。
-- **全版本支持目标（2026-09-10 定案）**：插件的宿主兼容目标从「0.1.1 → 0.1.5 双版本」升级为「**0.1.1-rc.2 起全版本、持续跟进新线**」。锚点回溯实测：9 交集锚点在 0.1.0-rc.8 缺 1、0.0.1-rc.5 缺 2——0.1.0 及更早**结构性不兼容**（锚点包尚不存在），0.1.1-rc.2 即为诚实下界。跨版本分叉清单（回归装置已全部消化，见 `test/spoken-prompt-rpc.sh`）：① RPC 路径 ≤0.1.2 点形（`/api/session.create`）→ 0.1.5 起斜杠形（`/api/session/create`）；② remote 信封要求 `payload.args` 包裹；③ typert 描述符把字段整体嵌进 `args.request`；④ `session/prompt` 的 `requestId` 由可选变**必填**（schema 实证）。集成回归（create → toggle → prompt → SSE audio 帧）已在 0.1.5 线端到端通过（6 帧、0 tts-error），装置本身跨版本自适应。
+- **全版本支持目标（2026-09-10 定案，2026-09-24 R15 修正）**：插件的宿主兼容目标从「0.1.1 → 0.1.5 双版本」升级为「**0.1.1-rc.2 起全版本、持续跟进新线**」。原锚点回溯实测称"9 交集锚点在 0.1.0-rc.8 缺 1、0.0.1-rc.5 缺 2"——**R15 新鲜全量实测纠正**：0.1.0-rc.8 实为 **9/9 全在**；缺 1 的是 0.1.0-rc.2/rc.3/rc.6/rc.7（缺 `dsh-client-ui-renderer`）；0.0.1-rc.5 缺 1（同包）、rc.1/rc.2 缺 3。**R17 再纠正**：缺 1 锚点**不拦语音主链路**——0.1.0-rc.2/3/6/7 真流程全部 PASS（4/2/4/4 帧 / 0 tts-error），host 面（settings/webServer/sessions/LLM/SSE/TTS）完整可用；缺的仅为单个客户端 UI 槽位。诚实下界维持 `0.1.1-rc.2` 不变（保守口径；0.1.0 系可用但 UI 槽位不全，不纳入宣称）。跨版本分叉清单（回归装置已全部消化，见 `test/spoken-prompt-rpc.sh`）：① RPC 路径 ≤0.1.2 点形（`/api/session.create`）→ 0.1.5 起斜杠形（`/api/session/create`）；② remote 信封要求 `payload.args` 包裹；③ typert 描述符把字段整体嵌进 `args.request`；④ `session/prompt` 的 `requestId` 由可选变**必填**（schema 实证）。集成回归（create → toggle → prompt → SSE audio 帧）已在 0.1.5 线端到端通过（6 帧、0 tts-error），装置本身跨版本自适应。
 - **遗留（2026-09-10 线上复核后更新）**：`settings.plugin.item` 槽位已验证——线上回环浏览器 Settings→Plugins 页 voice-mode 设置表单正常渲染、console/pageerror 0；0.1.5-rc.1 主包上架 npm 后，把全局 dsh 对齐到 rc.1 并重放 `verify:dual`（`/tmp/dsh011-core`、`/tmp/dsh012-core`、`/tmp/dsh015-core` 三份核心已备好，可直接复用）。
 
 ## 8. 0.1.5-rc.2 升级复核（2026-09-14，原子升级）
@@ -280,3 +280,141 @@ node -e "console.log(require('./node_modules/@deepseek-ai/dsh/package.json').ver
 - 本轮 voice-mode 业务源码**零变更**；唯一代码改动是 `scripts/typecheck-dual.sh` 的 cordis 映射扩展（消除未知版本线静默错配的隐患）；
 - 跨版本兼容目标维持「0.1.1-rc.2 起全版本、持续跟进新线」（engines.dsh 无上界）。
 
+
+---
+
+## 10. 全版本矩阵 + 0.1.7 破坏性变更实证（2026-09-23，全版本实测轮）
+
+> 本轮目标：不取代表线，逐版本实测 npm 上全部 25 个 dsh 版本。
+> 方法：四层维度（锚点存在性 → typecheck host+client → 隔离冒烟 → 真流程 LLM 端到端）。
+> 真流程装置：`scripts/full-e2e.sh`（隔离 DSH_HOME + 工作区 link + 复用本机 DEEPSEEK_API_KEY env 注入）。
+
+### 10.1 全版本证据矩阵（25/25 已实测）
+
+| dsh 版本 | 锚点 9/9 | typecheck host+client | 真流程（LLM 帧 / tts-error） | 判定 |
+|---|---|---|---|---|
+| 0.0.1-rc.1 | ❌ 缺 3（cordis-client-runner / client-ui-renderer / client-ui-settings-plugins） | ❌ **host FAIL** | — | **结构性不兼容** |
+| 0.0.1-rc.2 | ❌ 缺 3（同上） | ❌ **host FAIL** | — | **结构性不兼容** |
+| 0.0.1-rc.5 | ❌ 缺 1（client-ui-renderer） | ✅ ✅ | ✅ **4 帧 / 0 tts-error（R18，npm 扁平树 + BOOT_ARGS 覆盖 + fixture 跳过 HMR）** | **PASS（缺锚点不拦主链路）** |
+| 0.1.0-rc.2/rc.3/rc.6/rc.7 | ❌ 缺 1（client-ui-renderer） | ✅ ✅ | ✅ **4/2/4/4 帧 / 0 tts-error（R17，fixture 跳过 HMR watch）** | **PASS（缺锚点不拦语音主链路）** |
+| 0.1.0-rc.8 | ✅ 9/9 | ✅ ✅ | ✅ **2 帧 / 0 tts-error（R15，fixture 跳过 HMR watch）** | **PASS（最年老全绿版本）** |
+| 0.1.1-rc.1 | ✅ | ✅ | ✅ **2 帧 / 0 tts-error（R16，fixture 跳过 HMR watch）** | **PASS** |
+| 0.1.1-rc.2 | ✅ | ✅ | ✅ **4 帧 / 0 tts-error（R15）** | **PASS** |
+| 0.1.2-alpha.2 ~ alpha.5、0.1.2-rc.1 | ✅ | ✅ | ✅ **4/4/2/4/4 帧 / 0 tts-error（R14）** | **PASS（0.1.2 线 5/5）** |
+| 0.1.3-alpha.2 | ✅ | ✅ | ✅ **4 帧 / 0 tts-error（R10，npm 扁平树）** | **PASS** |
+| 0.1.5-alpha.1 / alpha.2 | ✅ | ✅ | ✅ **2/4 帧 / 0 tts-error（R10/R11）** | **PASS** |
+| 0.1.5-rc.1 / rc.2 | ✅ | ✅ | ✅ **2/2 帧 / 0 tts-error（含生产回归）** | **PASS** |
+| **0.1.5-rc.3** | ✅ | ✅ | **✅ PASS：4 帧 / 0 tts-error** | **兼容（本轮新实证）** |
+| 0.1.6-alpha.1 / alpha.2 | ✅ | ✅ | ✅ **2/4 帧 / 0 tts-error（R17/R8）** | **PASS** |
+| **0.1.7-alpha.1** | ✅ | ✅ | ✅ **4 帧 / 0 tts-error（双路径 shim，R8）** | **PASS（新能力）** |
+| **0.1.7-alpha.2** | ✅ | ✅ | ✅ **2 帧 / 0 tts-error（双路径 shim，R8）** | **PASS（新能力）** |
+
+**结构性格局（一句话）**：`0.1.1-rc.1` 起为可支持下界（此前 8 版缺 `dsh-client-ui-renderer` 等锚点包，宿主尚无客户端槽位体系，属宿主太老而非插件缺陷）；`engines.dsh = ">=0.1.1-rc.2"` 与实证一致，**不需改**。
+
+### 10.2 0.0.1-rc.1 / rc.2 host FAIL 根因（实测报错）
+
+`src/index.ts` 报 `error TS2339: Property 'webServer' does not exist on type 'Context'`（+ 连带 TS7006 隐式 any）。
+即：`ctx.webServer.register()` 这个 host HTTP 面契约在 0.0.1-rc.1/rc.2 **尚不存在**，插件核心能力（HTTP 路由/SSE）当时无处挂载。
+
+### 10.3 0.1.7-alpha 破坏性变更根因（第一性原理，官方源码实证）
+
+运行时报错（`/tmp/dshcore/dsh-0-1-7-alpha-2` 隔离 boot 实证）：
+```
+voice-mode (dsh-voice-mode): TypeError: ctx.settings.register is not a function
+dsh: warning: 1 entry did not activate
+```
+→ 插件 `apply` 在 `ctx.settings.register(NS_VOICE_MODE, schema, {base})` 处抛错，**整个插件未激活**，故三端点 fail、SSE 0 帧。
+
+**官方新范式**（读 `@deepseek-ai/dsh-agent-default-model@0.1.7-alpha.2` 源码，位于 dsh-base bundle）：
+
+```js
+class AgentDefaultModelConfig extends Service {
+  static Config = z.object({                       // ← 配置声明为插件自身 static Config
+    provider: z.string().required().volatile(),    // ← 需表单化的字段标 .volatile()
+    model: z.string().required().volatile(),
+    reasoningEffort: z.string().volatile()
+  });
+  constructor(ownerContext, config) {
+    super(ownerContext, "agentDefaultModel");
+    this.config = config;                          // ← 读配置走 this.config.<field>.get()
+    ownerContext.inject(["settings"], (child) => { // ← 可选：自带页面的 UI 策略
+      child.effect(() => child.settings.configure({ auto: false }, ownerContext.fiber));
+    });
+  }
+}
+```
+
+**0.1.7 架构转向**（读 `@deepseek-ai/dsh-settings@0.1.7-alpha.2` 官方 README）：
+- 设置表单**由插件自身 Cordis Config 派生**（"Edit fields that plugins declare with `.volatile()`"），不再有独立 register API；
+- `ctx.settings` 退化为纯 UI 表单服务，仅剩 `configure / describe / update / replace / mutate`（**无 register**，已逐方法核对 `SettingsForms` 类型定义实证）；
+- "Business plugins read their Config references directly"——业务插件直接读自己的 Config。
+
+**兼容修法（下一轮待实施，双路径 compat shim）**：
+`ctx.settings.register` 存在 → 走现行路径（≤0.1.6 全版本）；
+不存在 → 走 0.1.7 新路径：把 `createVoiceSettingsSchema()` 的字段迁为插件 `static Config` + `.volatile()` 标记，读取改为 `this.config.<field>.get()`，并保留 `base` 语义的等价实现（需评估 0.1.7 Loader 的 profile patch 是否已覆盖 base 层职责）。
+**注意**：`.volatile()` 字段要求"volatile config cannot contain functions"（`dsh-client-ui-settings` client.js 实证），schema 默认值需可序列化——现有 VOICE_SETTINGS_DEFAULTS 均为字面量，预计可平移，但须逐字段实测。
+
+---
+
+## 11. 双路径 shim 实施与验证（2026-09-23，全版本实测轮 R4–R8）
+
+> 目标：不取代表线——`0.1.7-alpha.x` 必须真兼容，同时 `≤0.1.6` 全版本零回归。
+> 方法：能力检测双路径 + 每条路径独立实证。凭据经用户授权复用本机 `DEEPSEEK_API_KEY`。
+
+### 11.1 实施内容（`src/index.ts`，业务逻辑零改动）
+
+1. **Config 扩展 12→27 字段**：新增 `autoSend / autoResume / mode / bargeInMode / echoGateDb / shortcut / spokenFormat / senseVoice / wakeWord / toolBeep / senseITN / captionFontSize / captionMaxWidth / backchannelYield / yieldMs`（与 `VoiceSettingsValue` 一一对应，0.1.7+ 由此派生读取）。
+2. **双路径设置桥**：`typeof ctx.settings.register === 'function'` → 路径 A（`register(ns, schema, {base})` + `get()` + `watch()`，行为与旧版逐行一致）；否则 → 路径 B（`voiceSettingsFromConfig(config)` 平面拷贝）。
+3. **watch 守卫**：`settingsScopeRef` 非空才挂 `watch`（路径 B 无 watch；引擎/语速热更换退为下次进入生效，Known Limitation）。
+4. **`/mode` 端点双写**：路径 A 用 `scope.update()`；路径 B 用 `SettingsForms.mutate(ns, [{op:'set',…}])`；两者皆无则 500 明错。
+5. **`register` 必须 bind 调用**：其内部读 `this.registrations`，裸调丢 `this` 直接抛 `TypeError`（0.1.5-rc.3 隔离 boot 实证）。
+6. **schemastery `^3.18.1` → `^3.18.4`**（`.volatile()` 存在性实证版本；见下条为何最终未用）。
+
+### 11.2 否决 `.volatile()`（实证驱动的减法）
+
+- 探针实证：`schemastery@3.18.4` 的 `.volatile()` 破坏 schema 函数调用形态——`sv({})` 返回 `{ttsEngine:{}}` 而非应用默认值。
+- 传导链实证：`dsh-settings@0.1.5-rc.3` 的设置分层会**调用**插件 Config 做 `mergeLayers`，`{}` 透过合并污染 → `ValidationError: $.ttsEngine expected … but got {}`，插件未激活。
+- 结论：Config 字段**刻意不标 volatile**（0.1.7 功能读取走 config 直接读，不依赖 volatile；仅官方 UI 自动投影受影响——本插件自带 settings-form 面板 + `/voice-mode/config`，不受影响）。
+
+### 11.3 验证矩阵（最终态代码）
+
+| dsh 版本 | typecheck host+client | 真流程（deepseek-v4-pro） | 结论 |
+|---|---|---|---|
+| 0.1.1-rc.2 | ✅✅ | ✅ **4 帧 / 0 tts-error（R15，测试 fixture 跳过 HMR watch）** | **PASS（下界守住了）** |
+| 0.1.2-alpha.2 ~ alpha.5 | ✅✅ | ✅ **4/4/2/4 帧 / 0 tts-error（R11/R14）** | **PASS（0.1.2 线 5/5）** |
+| 0.1.2-rc.1 | ✅✅ | ✅ **4 帧 / 0 tts-error（R10）** | **PASS** |
+| 0.1.3-alpha.2 | ✅✅ | ✅ **4 帧 / 0 tts-error（R10，npm 扁平树）** | **PASS** |
+| 0.1.5-alpha.1 | ✅✅ | ✅ **2 帧 / 0 tts-error（R10）** | **PASS** |
+| 0.1.5-alpha.2 | ✅✅ | ✅ **4 帧 / 0 tts-error（R11）** | **PASS** |
+| 0.1.5-rc.1 | ✅✅ | ✅ **2 帧 / 0 tts-error（R10）** | **PASS** |
+| 0.1.5-rc.2 | ✅✅ | ✅ **2 帧 / 0 tts-error（R8 最终态复验）** | **PASS（生产回归）** |
+| 0.1.5-rc.3 | ✅✅ | ✅ **4 帧 / 0 tts-error** | **PASS** |
+| 0.1.6-alpha.1 | ✅✅ | ✅ **2 帧 / 0 tts-error（R17，pnpm overrides 锁定 app-boot）** | **PASS** |
+| 0.1.6-alpha.2 | ✅✅ | ✅ **4 帧 / 0 tts-error（R8）** | **PASS** |
+| 0.1.7-alpha.1 | ✅✅ | ✅ **4 帧 / 0 tts-error** | **PASS（新能力）** |
+| 0.1.7-alpha.2 | ✅✅ | ✅ **2 帧 / 0 tts-error** | **PASS（新能力）** |
+| 0.1.7-rc.1 | ✅✅ | ✅ **4 帧 / 0 tts-error（R21，next 通道新版本）** | **PASS** |
+| 0.0.1-rc.1/rc.2 | ❌ host FAIL（`ctx.webServer` 不存在）+ ❌ 缺 3 锚点 + ❌ **不可安装**（依赖 `@deepseek-ai/dsh-workspace-context` 双源 404，上游已删包，R18 实证） | — | **结构性不兼容（三重）** |
+| 余 0.0.1/0.1.0 六版 | typecheck ✅（0.0.1-rc.5 起） | — | 锚点缺失，结构性不兼容 |
+
+另：`npm test` 380 项 exit 0；生产 dsh（0.1.5-rc.2）`/voice-mode` 200、NRestarts=0、journal 干净。
+
+### 11.4 测试装置修复（harness，与插件代码无关）
+
+- `full-e2e.sh` / `smoke-runtime.sh` 测试 profile 追加 `"patchReload": "startup"`——`dsh-app-boot@0.1.5-rc.3` 起自定义 profile 默认 live 重载，要求 HMR 服务；最小 profile 无此服务则 boot 直接抛错死亡（隔离 boot 实证）。
+- **0.1.1 遗留阻塞**：`dsh-app-boot@0.1.1-rc.2` 无 `patchReload` 字段、无条件 watch，且其 HMR 插件构造要求 loader internal 分类成功（cordis-plugin-hmr + cordis-plugin-loader 源码实证）。R13 深挖到分类链路：`node --expose-internals` 下 flag 可达（instrument 实证 `execArgv has flag: true`）、`require('internal/modules/esm/loader')` 成功、`getOrInitializeCascadedLoader()` 返回 truthy，但最终仍 HMR 缺失——分类判定（v1=`getModuleJobForImport` / v2=`getOrCreateModuleJob`）在 dsh 进程上下文中未通过（独立探针在 Node 22.20.0 下分类为 v1，dsh 内行为不一致，原因未定位）。pnpm `--shamefully-hoist` 扁平树同样卡死在此步。**裸 profile（不含本插件）对照 boot 同样死亡**，证实与本插件无关。待补方案：Node 24.12+ 重跑（官方注释称 v2 落地于 24.12，分类逻辑按该版本设计）、或 pin 历史传递依赖、或生产 profile 裁剪法。**不得**为此改插件代码。调试中对 `/tmp` core 做的临时 instrument 已全部还原（有 1 个文件用同版本异树备份还原，语法校验通过；`/tmp` 树为一次性 fixture，不影响生产与仓库）。
+- **R15 解法（已验证 PASS）**：对 `/tmp` 测试 core 的 `profile-boot-*.js` 打**环境变量门控补丁**——`DSH_TEST_SKIP_HMR_WATCH=1` 时跳过两处 `watchUserPatches` 调用（HMR 文件监听与语音流程正交）。补丁仅存在于 `/tmp` fixture，不进仓库、不碰生产。用法：`DSH_TEST_SKIP_HMR_WATCH=1 bash scripts/full-e2e.sh <0.1.1-core-bin> <port>`（full-e2e.sh 本身无需改，env 自动透传）。0.1.1-rc.2 由此跑通 **4 帧 / 0 tts-error**。
+
+### 11.5 新鲜依赖树通病（R10 实证：0.1.3-alpha.2）
+
+- 现象：`pnpm add @deepseek-ai/dsh@0.1.3-alpha.2` 新鲜树，隔离 boot 死于 `dsh-session-persistence-jsonl could not be resolved`（包在 `.pnpm` store 内存在且已链接，但 loader 解析失败，底层错误被吞）。
+- 对照：**裸 profile（不含本插件）同样死亡** → 与本插件无关。
+- 模式归纳：旧版本 loader（0.1.1 的 HMR watch、0.1.3 的 bundle 解析）与**今日新鲜解析的传递依赖树**存在组合不兼容；历史 core 树（已删除）当时可跑。属测试环境问题，非插件缺陷。
+- 已解决（R10）：同一版本改用 `npm install`（扁平 node_modules）重建 core 后，旧 loader 恢复解析——`/tmp/dshcore-npm/dsh-0-1-3-alpha-2` boot 成功（`/voice-mode` 200），真流程 **4 帧 / 0 tts-error PASS**。结论：**旧版本 loader 要求 npm 式扁平依赖树；pnpm 隔离布局（`.pnpm` 虚拟存储）下其插件名解析失败**。后续旧版本（0.1.1/0.1.0 系）core 一律用 npm 扁平安装（`/tmp/dshcore-npm/dsh-<ver>`）。
+- 纪律：旧版本 e2e 阻塞一律先做裸 profile 对照；对照同样失败则定性为 harness/环境问题，**不得**改插件代码去"修"它。
+
+### 11.6 caret 偏斜修复：pnpm overrides（R17 实证：0.1.6-alpha.1）
+
+- 现象：`dsh@0.1.6-alpha.1` 的 caret 依赖把 `dsh-app-boot` 解析到 `0.1.6-alpha.2`（后者删了 `watchUserPatches` 导出），profile-boot import 期直接 `SyntaxError`，插件代码未执行即死。
+- 修法（仅 `/tmp` fixture，不进仓库）：在 core 的 `package.json` 加 `"pnpm":{"overrides":{"@deepseek-ai/dsh-app-boot":"0.1.6-alpha.1"}}`，删 `node_modules` + lock 重装。注意顶层 `pnpm add` 改不了嵌套解析，必须走 overrides。
+- 结果：真流程 **2 帧 / 0 tts-error PASS**。教训：prerelease 线的 caret 是"同线最新"，不是"同版本锁定"——旧版本 core 必须 pin 传递依赖，默认解析即漂移。

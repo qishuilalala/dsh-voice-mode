@@ -10,6 +10,7 @@
 | [executor-prompt.md](executor-prompt.md) | 执行 agent 提示词（铁律 10 条 / PoC 前置 / 四连验证 / 失败报告与简报格式 / 禁令清单） |
 | [reviewer-prompt.md](reviewer-prompt.md) | 审查 agent 提示词（六轴框架 / 固定桶输出 / 不修复纪律 / 与执行者关系） |
 | [beautification-plan-2026-09-16.md](beautification-plan-2026-09-16.md) | 项目美化计划（6 角色协同：README + 截图 + 仓库 + 索引 + 文案 + demo） |
+| [COLLABORATION.md](COLLABORATION.md) | 开发协作推进体系（角色分工 + 四阶段流程 + 固定门禁 + goal 长任务协作） |
 
 ## 维护纪律
 

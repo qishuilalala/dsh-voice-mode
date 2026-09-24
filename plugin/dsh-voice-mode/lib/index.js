@@ -2010,8 +2010,81 @@ var Config = z.object({
   rate: z.number().default(1.1),
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(1500),
-  idleTimeoutMinutes: z.number().default(5)
+  idleTimeoutMinutes: z.number().default(5),
+  // 设置面板字段（与 VoiceSettingsValue 一一对应；0.1.7+ 由插件自身 Config 派生读取）。
+  // 注意：刻意不标 .volatile() —— schemastery 3.18.4 的 volatile 会破坏 schema 函数
+  // 调用形态（sv({}) → {field:{}}），而 0.1.5-rc.3 起的设置分层会调用插件 Config 做
+  // merge，{} 透过 mergeLayers 污染并触发 ValidationError（2026-09-23 实测）。
+  // 0.1.7 功能读取走 config 直接读，不依赖 volatile（仅官方 UI 自动投影受影响，
+  // 本插件自带 settings-form 设置面板 + /voice-mode/config，不受影响）。
+  autoSend: z.boolean().default(true),
+  autoResume: z.boolean().default(false),
+  mode: z.union([z.const("toggle"), z.const("hold")]).default("toggle"),
+  bargeInMode: z.union([z.const("auto"), z.const("manual"), z.const("detect")]).default("detect"),
+  echoGateDb: z.number().default(6),
+  shortcut: z.string().default("Ctrl+Shift+V"),
+  spokenFormat: z.boolean().default(true),
+  senseVoice: z.boolean().default(true),
+  wakeWord: z.string().default(""),
+  toolBeep: z.boolean().default(false),
+  senseITN: z.boolean().default(true),
+  captionFontSize: z.union([z.const(0), z.const(1), z.const(2), z.const(3)]).default(0),
+  captionMaxWidth: z.union([z.const(0), z.const(1), z.const(2)]).default(1),
+  backchannelYield: z.boolean().default(true),
+  yieldMs: z.number().default(1500)
 });
+function voiceSettingsFromConfig(config) {
+  const {
+    ttsEngine,
+    kokoroModel,
+    voice,
+    rate,
+    interruptLevel,
+    silenceMs,
+    idleTimeoutMinutes,
+    modelHost,
+    autoSend,
+    autoResume,
+    mode,
+    bargeInMode,
+    echoGateDb,
+    shortcut,
+    spokenFormat,
+    senseVoice,
+    wakeWord,
+    toolBeep,
+    senseITN,
+    captionFontSize,
+    captionMaxWidth,
+    backchannelYield,
+    yieldMs
+  } = config;
+  return {
+    ttsEngine,
+    kokoroModel,
+    voice,
+    rate,
+    interruptLevel,
+    silenceMs,
+    idleTimeoutMinutes,
+    modelHost,
+    autoSend,
+    autoResume,
+    mode,
+    bargeInMode,
+    echoGateDb,
+    shortcut,
+    spokenFormat,
+    senseVoice,
+    wakeWord,
+    toolBeep,
+    senseITN,
+    captionFontSize,
+    captionMaxWidth,
+    backchannelYield,
+    yieldMs
+  };
+}
 function apply(ctx, config) {
   let activeVoiceSession = null;
   let activeTabId = null;
@@ -2056,22 +2129,32 @@ function apply(ctx, config) {
       }
     }
   };
-  const settingsScope = ctx.settings.register(
-    NS_VOICE_MODE,
-    createVoiceSettingsSchema(),
-    {
-      base: {
-        ttsEngine: config.ttsEngine,
-        voice: config.voice,
-        rate: config.rate,
-        interruptLevel: config.interruptLevel,
-        silenceMs: config.silenceMs,
-        idleTimeoutMinutes: config.idleTimeoutMinutes,
-        modelHost: config.modelHost
+  const legacySettings = ctx.settings;
+  const useLegacySettings = typeof legacySettings?.register === "function";
+  let settingsScopeRef = null;
+  let vset;
+  if (useLegacySettings && legacySettings && typeof legacySettings.register === "function") {
+    const settingsScope = legacySettings.register.call(
+      legacySettings,
+      NS_VOICE_MODE,
+      createVoiceSettingsSchema(),
+      {
+        base: {
+          ttsEngine: config.ttsEngine,
+          voice: config.voice,
+          rate: config.rate,
+          interruptLevel: config.interruptLevel,
+          silenceMs: config.silenceMs,
+          idleTimeoutMinutes: config.idleTimeoutMinutes,
+          modelHost: config.modelHost
+        }
       }
-    }
-  );
-  let vset = settingsScope.get();
+    );
+    vset = settingsScope.get();
+    settingsScopeRef = settingsScope;
+  } else {
+    vset = voiceSettingsFromConfig(config);
+  }
   const asr = createAsrRuntime({
     cacheDir: config.cacheDir,
     modelHost: () => vset.modelHost,
@@ -2118,23 +2201,26 @@ function apply(ctx, config) {
   const unsubscribe = queue.subscribe((frame) => broadcast("audio", frame));
   ctx.effect(() => unsubscribe);
   ctx.effect(() => () => void queue.close());
-  ctx.effect(
-    () => settingsScope.watch((next) => {
-      const prev = vset;
-      vset = next;
-      if (next.ttsEngine !== engineKind) {
-        engineKind = next.ttsEngine;
-        queue.setEngine(makeEngine(engineKind));
-      } else if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) {
-        activeKokoroModel = next.kokoroModel;
-        queue.setEngine(makeEngine("kokoro"));
-      }
-      queue.updateVoice(next.voice, next.rate);
-      if (next.senseITN !== prev.senseITN || next.senseVoice !== prev.senseVoice) {
-        asr.markStale();
-      }
-    })
-  );
+  if (settingsScopeRef) {
+    const scopeRef = settingsScopeRef;
+    ctx.effect(
+      () => scopeRef.watch((next) => {
+        const prev = vset;
+        vset = next;
+        if (next.ttsEngine !== engineKind) {
+          engineKind = next.ttsEngine;
+          queue.setEngine(makeEngine(engineKind));
+        } else if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) {
+          activeKokoroModel = next.kokoroModel;
+          queue.setEngine(makeEngine("kokoro"));
+        }
+        queue.updateVoice(next.voice, next.rate);
+        if (next.senseITN !== prev.senseITN || next.senseVoice !== prev.senseVoice) {
+          asr.markStale();
+        }
+      })
+    );
+  }
   const currentVoice = () => vset.voice;
   const currentRate = () => vset.rate;
   const currentInterrupt = () => vset.interruptLevel;
@@ -2571,7 +2657,8 @@ function apply(ctx, config) {
             res.end(JSON.stringify({ error: "mode must be toggle or hold" }));
             return;
           }
-          void settingsScope.update({ mode }).then(() => {
+          const persistMode = settingsScopeRef ? settingsScopeRef.update({ mode }) : ctx.settings.mutate ? ctx.settings.mutate(NS_VOICE_MODE, [{ op: "set", path: ["mode"], value: mode }]) : Promise.reject(new Error("mode persistence unsupported on this host"));
+          void persistMode.then(() => {
             res.statusCode = 200;
             res.setHeader("content-type", "application/json");
             res.end(JSON.stringify({ ok: true, mode }));

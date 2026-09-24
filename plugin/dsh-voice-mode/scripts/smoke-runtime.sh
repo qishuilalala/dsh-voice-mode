@@ -36,7 +36,7 @@ cat > "$DSH_HOME/profiles/web/package.json" <<EOF
   "name": "dsh-profile-web",
   "private": true,
   "dependencies": { "dsh-voice-mode": "link:$LINK_SRC" },
-  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-voice-mode"] } }
+  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-voice-mode"], "patchReload": "startup" } }
 }
 EOF
 echo '[]' > "$DSH_HOME/profiles/web/cordis.patch.yml"

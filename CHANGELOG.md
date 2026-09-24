@@ -13,6 +13,33 @@
 - ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
 - 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
 
+## [0.7.15] - 2026-09-24
+
+**Patch**：dsh 全版本兼容补齐 + 测试体系固化。`src/` 业务逻辑零改动（仅设置桥接），其余为验证装置与文档。
+
+### Added
+
+- **0.1.7 双路径设置桥**（`src/index.ts`）：`ctx.settings.register` 存在走旧路径（≤0.1.6，`register+get+watch` 原行为）；不存在走新路径（`voiceSettingsFromConfig(config)` 平面拷贝）。Config 接口 + schema 从 12 扩展到 27 字段（新增 15 个设置面板字段，与 `VoiceSettingsValue` 一一对应）；`/mode` 端点双写（`scope.update` vs `SettingsForms.mutate`）。
+- **测试装置**：`scripts/ensure-core.sh`（版本证据表驱动 pnpm/npm 选择器）；`full-e2e.sh` 加四护栏（内存守卫 1500MB + 端口预检 + 就绪等待 + 进程组回收）与 `BOOT_ARGS` 启动参数覆盖点；`verify-dual.sh` 默认矩阵 5→8→9 版。
+- **两套体系文档**：`docs/qa/TEST-SYSTEM.md`（四层验证维度 + 维持/迭代循环 + 六条已知陷阱）与 `docs/plan/COLLABORATION.md`（角色分工 + 四阶段流程 + 固定门禁），均已注册进各自 README 索引。
+
+### Changed
+
+- `schemastery`：`^3.18.1` → `^3.18.4`。
+- `typecheck-dual.sh` cordis 映射：补 `0.0.1-*→4.0.1-rc.4` / `0.1.7-*→4.0.4`，删臆测兜底（未知版本线显式 exit 1）。
+- 根 README 与插件 README（中/英）兼容声明改区间写法（含 0.1.7-rc.1），不再手写版本清单（防漂移）。
+
+### Fixed
+
+- `register` 裸调丢 `this`（内部读 `this.registrations`）：改 `.call(legacySettings, …)` 绑定调用。
+- 否决 `.volatile()` 标记 Config 字段：schemastery 3.18.4 的 volatile 破坏 schema 函数调用形态，rc.3 起设置分层调用时污染 merge → ValidationError。
+
+### Compatibility（25/25 闭环）
+
+- 真流程 PASS 24 版：0.0.1-rc.5、0.1.0 全线、0.1.1 全线、0.1.2 全线、0.1.3-alpha.2、0.1.5 全线、0.1.6 全线、0.1.7-alpha.1/alpha.2/rc.1（每版三端点 200 + 真实 LLM 对话 + SSE 音频帧 + 0 tts-error）。
+- 结构性不兼容 2 版：0.0.1-rc.1/rc.2（不可安装：删包依赖双源 404 + 无 `webServer` + 缺 3 锚点，三重证据）。
+- 证据：`docs/compat-contract.md` §10/§11；`engines.dsh = ">=0.1.1-rc.2"` 不变。
+
 ## [0.7.14] - 2026-09-19
 
 **Patch**：仅文档与元数据变更，`src/` 与运行时行为**零改动**。承接 v0.7.13 的文档事实修正，收口两处结构性问题。

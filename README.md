@@ -17,7 +17,7 @@
 
 ![全双工对话闭环：声音 → 文字 → 声音](plugin/dsh-voice-mode/assets/duplex-banner.png)
 
-> **Full-duplex voice mode for DeepSeek Harness** —— 在会话内用语音完成整轮对话：说话时**边说边出字**、停顿后自动发送；回复**按句朗读**并跟随实时字幕；朗读中**开口即打断**。识别在本地推理、无需 API Key；朗读默认 Edge 云端（快且自然），本地 VITS / Kokoro 可选（隐私优先）。兼容 dsh 0.1.1-rc.2 起全版本（已在 0.1.1-rc.2 / 0.1.2-rc.1 / 0.1.5-alpha.2 / 0.1.5-rc.2 / **0.1.6-alpha.2** 五版本真实 LLM 端到端验证）。380 项测试全绿（28 套件）；当前版本见上方 npm 徽章与 [Releases](https://github.com/qishuilalala/dsh-voice-mode/releases)。
+> **Full-duplex voice mode for DeepSeek Harness** —— 在会话内用语音完成整轮对话：说话时**边说边出字**、停顿后自动发送；回复**按句朗读**并跟随实时字幕；朗读中**开口即打断**。识别在本地推理、无需 API Key；朗读默认 Edge 云端（快且自然），本地 VITS / Kokoro 可选（隐私优先）。兼容 dsh 0.1.1-rc.2 起全版本（含 0.1.7-rc.1 真机验证，完整矩阵见 [docs/compat-contract.md](docs/compat-contract.md) §10/§11）。380 项测试全绿（28 套件）；当前版本见上方 npm 徽章与 [Releases](https://github.com/qishuilalala/dsh-voice-mode/releases)。
 
 ---
 
@@ -165,7 +165,7 @@ flowchart LR
 | 热词偏置 | 无 | 无（已移除） |
 | 字幕 a11y | 无 | **4 档字号 + 3 档宽度 + 主题跟随** |
 | 唤醒词 | 无 | **轻量流式匹配 + 前缀语气词白名单** |
-| 兼容 dsh | — | **0.1.1-rc.2 → 0.1.5-rc.2 全版本（+ 0.1.6-alpha.2 预览）** |
+| 兼容 dsh | — | **0.1.1-rc.2 起全版本（含 0.1.7-rc.1）** |
 
 ---
 

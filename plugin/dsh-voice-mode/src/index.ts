@@ -353,6 +353,38 @@ export interface Config {
   silenceMs: number
   /** 空闲多少分钟自动退出语音模式（Q11，默认 10）。 */
   idleTimeoutMinutes: number
+  // —— 以下 15 项为设置面板字段：0.1.7 起宿主把设置表单改由插件自身 Config
+  //    派生（ctx.settings.register 已移除），故须与 VoiceSettingsValue 一一对应。 ——
+  /** 定稿后是否自动发送（关 = 只进草稿，按住 Ctrl/松手仍可强制发送）。 */
+  autoSend: boolean
+  /** 切换回上次语音会话时自动恢复语音模式（默认关）。 */
+  autoResume: boolean
+  /** 交互模式：toggle 持续聆听+自动端点断句；hold 按住说话、松手发送。 */
+  mode: 'toggle' | 'hold'
+  /** 打断方式：detect 自动探测本机回声消除状态（默认）/ auto 强制自动 / manual 手动（外放推荐）。 */
+  bargeInMode: 'auto' | 'manual' | 'detect'
+  /** 回声门控阈值（dB）：自动打断要求残差高于回声地板此值。 */
+  echoGateDb: number
+  /** 进入/退出语音模式的快捷键（形如 Ctrl+Shift+V；留空禁用）。 */
+  shortcut: string
+  /** 语音会话注入口语化提示词（默认关；仅活跃语音会话生效）。 */
+  spokenFormat: boolean
+  /** P4：SenseVoice 定稿重译（带标点 + ITN；默认开）。 */
+  senseVoice: boolean
+  /** 唤醒词（空 = 关；如「你好小D」）。 */
+  wakeWord: string
+  /** 工具调用提示音（默认关）。 */
+  toolBeep: boolean
+  /** 批 2：SenseVoice 逆文本归一化（默认 true）。 */
+  senseITN: boolean
+  /** 批 3：字幕字号档位 0=12px/1=14px/2=18px/3=24px（默认 0）。 */
+  captionFontSize: 0 | 1 | 2 | 3
+  /** 批 3：字幕宽度档位 0=50vw/1=70vw/2=90vw（默认 1）。 */
+  captionMaxWidth: 0 | 1 | 2
+  /** 批 5 / ADR-0008：让位语义 backchannel（默认 true）。 */
+  backchannelYield: boolean
+  /** 批 G：让位窗口时长（ms，500-3000，默认 1500）。 */
+  yieldMs: number
 }
 
 export const Config: z<Config> = z.object({
@@ -368,7 +400,60 @@ export const Config: z<Config> = z.object({
   interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
   silenceMs: z.number().default(1500),
   idleTimeoutMinutes: z.number().default(5),
+  // 设置面板字段（与 VoiceSettingsValue 一一对应；0.1.7+ 由插件自身 Config 派生读取）。
+  // 注意：刻意不标 .volatile() —— schemastery 3.18.4 的 volatile 会破坏 schema 函数
+  // 调用形态（sv({}) → {field:{}}），而 0.1.5-rc.3 起的设置分层会调用插件 Config 做
+  // merge，{} 透过 mergeLayers 污染并触发 ValidationError（2026-09-23 实测）。
+  // 0.1.7 功能读取走 config 直接读，不依赖 volatile（仅官方 UI 自动投影受影响，
+  // 本插件自带 settings-form 设置面板 + /voice-mode/config，不受影响）。
+  autoSend: z.boolean().default(true),
+  autoResume: z.boolean().default(false),
+  mode: z.union([z.const('toggle'), z.const('hold')]).default('toggle'),
+  bargeInMode: z.union([z.const('auto'), z.const('manual'), z.const('detect')]).default('detect'),
+  echoGateDb: z.number().default(6),
+  shortcut: z.string().default('Ctrl+Shift+V'),
+  spokenFormat: z.boolean().default(true),
+  senseVoice: z.boolean().default(true),
+  wakeWord: z.string().default(''),
+  toolBeep: z.boolean().default(false),
+  senseITN: z.boolean().default(true),
+  captionFontSize: z.union([z.const(0), z.const(1), z.const(2), z.const(3)]).default(0),
+  captionMaxWidth: z.union([z.const(0), z.const(1), z.const(2)]).default(1),
+  backchannelYield: z.boolean().default(true),
+  yieldMs: z.number().default(1500),
 })
+
+/**
+ * 0.1.7+ 路径 B：从插件自身 Config 派生出运行时设置值。
+ * Config 已与 VoiceSettingsValue 逐字段一一对应（含默认值），故此处直接平面拷贝。
+ */
+function voiceSettingsFromConfig(config: Config): VoiceSettingsValue {
+  const {
+    ttsEngine, kokoroModel, voice, rate, interruptLevel, silenceMs,
+    idleTimeoutMinutes, modelHost, autoSend, autoResume, mode, bargeInMode,
+    echoGateDb, shortcut, spokenFormat, senseVoice, wakeWord, toolBeep,
+    senseITN, captionFontSize, captionMaxWidth, backchannelYield, yieldMs,
+  } = config
+  return {
+    ttsEngine, kokoroModel, voice, rate, interruptLevel, silenceMs,
+    idleTimeoutMinutes, modelHost, autoSend, autoResume, mode, bargeInMode,
+    echoGateDb, shortcut, spokenFormat, senseVoice, wakeWord, toolBeep,
+    senseITN, captionFontSize, captionMaxWidth, backchannelYield, yieldMs,
+  }
+}
+
+/**
+ * 路径 A 的 settings scope 最小结构（只取本插件用到的 get/watch/update 三成员）。
+ * 0.1.7+ 该对象不存在（无 register），对应引用保持 null。
+ */
+type SettingsScopeLike = {
+  get(): VoiceSettingsValue
+  watch(cb: (next: VoiceSettingsValue) => void): () => void
+  update(patch: Partial<VoiceSettingsValue>): Promise<unknown>
+}
+
+/** 旧路径 register 的跨版本调用签名：参数全取 unknown（各版本 schema 类型形状不同）。 */
+type LegacySettingsRegister = (ns: unknown, schema: unknown, opts?: unknown) => SettingsScopeLike
 
 export function apply(ctx: Context, config: Config): void {
   // --- 全局单活指针（Q9）：会话级状态，非全局默认、非独立会话类型（Q1）。 ---
@@ -442,23 +527,44 @@ export function apply(ctx: Context, config: Config): void {
     }
   }
 
-  // --- 设置命名空间（官方分层：schema 平台常量默认 ⊕ config base ⊕ 用户文档）。 ---
-  const settingsScope = ctx.settings.register(
-    NS_VOICE_MODE,
-    createVoiceSettingsSchema(),
-    {
-      base: {
-        ttsEngine: config.ttsEngine,
-        voice: config.voice,
-        rate: config.rate,
-        interruptLevel: config.interruptLevel,
-        silenceMs: config.silenceMs,
-        idleTimeoutMinutes: config.idleTimeoutMinutes,
-        modelHost: config.modelHost,
+  // --- 设置命名空间（双路径兼容，docs/compat-contract.md §10）---
+  // 路径 A（dsh ≤ 0.1.6 全版本）：ctx.settings.register(ns, schema, {base}) 存在，
+  //   走官方分层「schema 平台常量默认 ⊕ config base ⊕ 用户文档」，提供 get() + watch()。
+  // 路径 B（dsh 0.1.7+）：官方移除 register（SettingsForms 只余 configure/describe/
+  //   update/replace/mutate），设置改由插件自身 Config 派生（本文件 Config 已与
+  //   VoiceSettingsValue 逐字段一一对应），业务插件「直接读自己的 Config 引用」
+  //   （官方 README + dsh-agent-default-model 源码实证）。此时 vset 由 config 派生；
+  //   配置经 profile patch 持久化，apply 随 reload 重跑即读到新值。
+  //   已知差异：0.1.7+ 无 settingsScope.watch，引擎/音色/语速的即时热更换需等下次
+  //   进入语音模式（其余字段本就「下次进入生效」），已登记为 Known Limitation。
+  // 注意：register 必须 bind 宿主对象后调用——其内部读 this.registrations，
+  // 裸调（const f = obj.register; f(...)）会丢 this 而抛 TypeError（0.1.5-rc.3 实测）。
+  const legacySettings = ctx.settings as { register?: LegacySettingsRegister } | undefined
+  const useLegacySettings = typeof legacySettings?.register === 'function'
+  let settingsScopeRef: SettingsScopeLike | null = null
+  let vset: VoiceSettingsValue
+  if (useLegacySettings && legacySettings && typeof legacySettings.register === 'function') {
+    const settingsScope = legacySettings.register.call(
+      legacySettings,
+      NS_VOICE_MODE,
+      createVoiceSettingsSchema(),
+      {
+        base: {
+          ttsEngine: config.ttsEngine,
+          voice: config.voice,
+          rate: config.rate,
+          interruptLevel: config.interruptLevel,
+          silenceMs: config.silenceMs,
+          idleTimeoutMinutes: config.idleTimeoutMinutes,
+          modelHost: config.modelHost,
+        },
       },
-    },
-  )
-  let vset: VoiceSettingsValue = settingsScope.get()
+    )
+    vset = settingsScope.get()
+    settingsScopeRef = settingsScope
+  } else {
+    vset = voiceSettingsFromConfig(config)
+  }
 
   // --- zipformer2 流式 ASR runtime（模型懒下载 + SHA256 校验，§8.3）。 ---
   // modelHost 用 getter：下载期读取最新设置（国内可切 hf-mirror，无需改 YAML）。
@@ -524,8 +630,11 @@ export function apply(ctx: Context, config: Config): void {
   // 会导致 markStale 永远不被调）；ASR 字段（ITN/senseVoice）
   // 任一变化 → asr.markStale() 让现有 fingerprint-gated lazy 重建路径（asr-host.ts:396-401）
   // 下次自动触发，避开主动 free 破坏 I1 的反模式。
-  ctx.effect(() =>
-    settingsScope.watch((next) => {
+  // 路径 B（0.1.7+）无 watch：vset 取自 apply 时 config 快照，配置变更经 reload 重跑 apply 生效。
+  if (settingsScopeRef) {
+    const scopeRef = settingsScopeRef
+    ctx.effect(() =>
+      scopeRef.watch((next) => {
       const prev = vset
       vset = next
       if (next.ttsEngine !== engineKind) {
@@ -543,8 +652,9 @@ export function apply(ctx: Context, config: Config): void {
       ) {
         asr.markStale()
       }
-    }),
-  )
+      }),
+    )
+  }
   /** 当前生效参数（/config 输出给 client 引导；client 每次进入模式重新拉取）。 */
   const currentVoice = (): string => vset.voice
   const currentRate = (): number => vset.rate
@@ -1065,7 +1175,7 @@ export function apply(ctx: Context, config: Config): void {
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
         collectBody(req, res, MAX_JSON_BODY, (body) => {
-          let mode: string | undefined
+          let mode: 'toggle' | 'hold' | undefined
           try {
             const parsed = JSON.parse(body || '{}') as { mode?: unknown }
             mode = parsed.mode === 'toggle' || parsed.mode === 'hold' ? parsed.mode : undefined
@@ -1079,14 +1189,28 @@ export function apply(ctx: Context, config: Config): void {
             return
           }
           // 输入框旁的模式切换按钮：写用户层设置（持久化），watch 会同步 vset。
-          void settingsScope
-            .update({ mode })
+          // ≤0.1.6：settingsScope.update；0.1.7+：SettingsForms.mutate 走 profile patch
+          //（compat-contract §10 路径 B），字段须为 Config 成员（本插件 Config 已含 mode）。
+          const persistMode = settingsScopeRef
+            ? settingsScopeRef.update({ mode })
+            : (
+                ctx.settings as unknown as {
+                  mutate?: (ns: string, ops: readonly { op: 'set'; path: readonly string[]; value: unknown }[]) => Promise<void>
+                }
+              ).mutate
+              ? (
+                  ctx.settings as unknown as {
+                    mutate: (ns: string, ops: readonly { op: 'set'; path: readonly string[]; value: unknown }[]) => Promise<void>
+                  }
+                ).mutate(NS_VOICE_MODE, [{ op: 'set', path: ['mode'], value: mode }])
+              : Promise.reject(new Error('mode persistence unsupported on this host'))
+          void persistMode
             .then(() => {
               res.statusCode = 200
               res.setHeader('content-type', 'application/json')
               res.end(JSON.stringify({ ok: true, mode }))
             })
-            .catch((e) => {
+            .catch((e: unknown) => {
               console.warn(`[dsh-voice-mode] mode update failed: ${String(e)}`)
               res.statusCode = 500
               res.setHeader('content-type', 'application/json')

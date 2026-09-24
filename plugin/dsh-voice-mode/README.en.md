@@ -282,7 +282,7 @@ flowchart LR
 | Hotword biasing | None | None (removed in v0.7.7; see version note) |
 | Caption a11y | None | **4 font tiers + 3 width tiers + theme-following** |
 | Wake word | None | **Lightweight streaming match + prefix filler whitelist** |
-| dsh compatibility | — | **0.1.1-rc.2 → 0.1.5-rc.2 full range** |
+| dsh compatibility | — | **full range since 0.1.1-rc.2 (incl. 0.1.7-rc.1)** |
 
 ---
 
