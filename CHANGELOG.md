@@ -13,6 +13,20 @@
 - ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
 - 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
 
+## [0.7.16] - 2026-10-01
+
+**Patch**：0.1.7+ 客户端兼容性修复（真回归：typecheck 全绿但运行时 FAIL 的典型案例）。
+
+### Fixed
+
+- **0.1.7+ 客户端永久 pending**：dsh 0.1.7 起客户端不再提供 `settingsScope` 服务，而 `client.tsx` 将其列入 `inject`——cordis 4.0.4 的 inject 无可选语义，插件客户端永不就绪、mic 按钮不渲染（插桩实证：0.1.5-rc.3 为 `object`、0.2.0-rc.2 为 `undefined`）。修复：`inject` 移除该项，设置卡片注册处改 `ctx.get('settingsScope')` 可选查找——≤0.1.6 照旧渲染设置卡片，0.1.7+ 跳过（官方设置页差异与插件自带面板说明见 `docs/compat-contract.md` §12.2）。
+
+### Changed
+
+- 验证矩阵扩至 `0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2`：锚点 27/27、typecheck 新三版 6/6（host+client）、隔离冒烟 3/3（三端点 200 + mic 渲染 + console 0 error）；`typecheck-dual.sh` cordis 映射补 `0.2.0-*→4.0.4`（peer 实证 `~4.0.4`）。
+- `docs/compat-contract.md` 新增 §12（0.1.7-rc.2 → 0.2.0-rc.2 契约 diff 结论）；`CONTEXT.md` / `README.md` 兼容声明同步。
+- 本机生产 dsh 已升 0.2.0-rc.2 并实测：`/voice-mode` 200、NRestarts=0、真流程 6 音频帧 / 0 tts-error。
+
 ## [0.7.15] - 2026-09-24
 
 **Patch**：dsh 全版本兼容补齐 + 测试体系固化。`src/` 业务逻辑零改动（仅设置桥接），其余为验证装置与文档。
