@@ -2808,6 +2808,58 @@ function VoiceSettingsCard({ scope }) {
   ] });
 }
 
+// src/settings-http-scope.ts
+var SETTINGS_URL = "/voice-mode/settings";
+function createHttpScope(origin = location.origin, fetchImpl = fetch) {
+  let snap = { status: "loading", value: {} };
+  const subs = /* @__PURE__ */ new Set();
+  let started = false;
+  const emit = (next) => {
+    snap = next;
+    for (const fn of [...subs]) fn();
+  };
+  const load = async () => {
+    try {
+      const res = await fetchImpl(origin + SETTINGS_URL);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      emit({ status: "ready", value: data.value ?? {} });
+    } catch {
+      emit({ status: "unavailable", value: snap.value });
+    }
+  };
+  return {
+    getSnapshot: () => snap,
+    subscribe(fn) {
+      subs.add(fn);
+      if (!started) {
+        started = true;
+        void load();
+      }
+      return () => {
+        subs.delete(fn);
+      };
+    },
+    async set(field, value) {
+      const before = snap;
+      emit({ status: "ready", value: { ...snap.value, [field]: value } });
+      try {
+        const res = await fetchImpl(origin + SETTINGS_URL, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ [field]: value })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        emit({ status: "ready", value: data.value ?? before.value });
+      } catch {
+        emit(before);
+        await load();
+      }
+    }
+  };
+}
+
 // src/client.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
 var isSpeechTrueCount = 0;
@@ -2825,7 +2877,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "807c39c";
+var BUILD_TAG = "unknown";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2951,21 +3003,27 @@ function apply(ctx) {
     )
   );
   const settingsScope = ctx.get?.("settingsScope");
-  if (settingsScope) {
-    ctx.slots.inject(
-      "settings.plugin.item",
-      () => ctx.slots.register(
-        {
-          name: "settings.plugin.item",
-          id: "voice-mode",
-          key: "voice-mode",
-          order: 100,
-          label: t("stateVoiceMode")
-        },
-        () => React.createElement(VoiceSettingsCard, { scope: settingsScope.bind({ namespace: "voice-mode" }) })
-      )
-    );
-  }
+  const scope = settingsScope ? settingsScope.bind({ namespace: "voice-mode" }) : createHttpScope();
+  ctx.slots.inject(
+    "settings.plugin.item",
+    () => ctx.slots.register(
+      {
+        name: "settings.plugin.item",
+        id: "voice-mode",
+        key: "voice-mode",
+        order: 100,
+        label: t("stateVoiceMode")
+      },
+      () => React.createElement(VoiceSettingsCard, { scope })
+    )
+  );
+  ctx.slots.inject(
+    "plugins.bundle.config",
+    () => ctx.slots.register(
+      { name: "plugins.bundle.config", key: "dsh-voice-mode" },
+      (props) => props?.view === "summary" ? React.createElement("span", null, t("settingsCardDesc")) : React.createElement(VoiceSettingsCard, { scope })
+    )
+  );
 }
 function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
   const pending = [];

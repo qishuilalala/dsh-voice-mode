@@ -1,7 +1,7 @@
 // src/index.ts
 import z from "@deepseek-ai/schemastery";
-import { join as join4 } from "node:path";
-import { homedir } from "node:os";
+import { dirname as dirname3, join as join5 } from "node:path";
+import { homedir as homedir2 } from "node:os";
 import { rm } from "node:fs/promises";
 
 // src/asr-host.ts
@@ -1892,6 +1892,101 @@ var RateLimiter = class {
   }
 };
 
+// src/settings-store.ts
+import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname as dirname2, join as join4 } from "node:path";
+var SETTINGS_FILE_NAME = "voice-mode.settings.json";
+function settingsFilePath(profileHome) {
+  const home = typeof profileHome === "string" && profileHome ? profileHome : process.env.DSH_HOME || join4(homedir(), ".dsh");
+  return join4(home, SETTINGS_FILE_NAME);
+}
+function pickKnownKeys(input, keys) {
+  const out = {};
+  if (input === null || typeof input !== "object" || Array.isArray(input)) return out;
+  const src = input;
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(src, k) && src[k] !== void 0) out[k] = src[k];
+  }
+  return out;
+}
+function unknownKeys(input, keys) {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) return [];
+  return Object.keys(input).filter((k) => !keys.includes(k));
+}
+function readOverrides(file, keys) {
+  let raw;
+  try {
+    raw = readFileSync(file, "utf8");
+  } catch (e) {
+    if (e.code === "ENOENT") return { values: {}, exists: false };
+    return { values: {}, warn: `\u8BFB\u53D6\u5931\u8D25\uFF1A${String(e)}`, exists: true };
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { values: {}, warn: "\u5185\u5BB9\u4E0D\u662F JSON \u5BF9\u8C61", exists: true };
+    }
+    return { values: pickKnownKeys(parsed, keys), exists: true };
+  } catch (e) {
+    return { values: {}, warn: `JSON \u89E3\u6790\u5931\u8D25\uFF1A${String(e)}`, exists: true };
+  }
+}
+function writeOverrides(file, values) {
+  mkdirSync(dirname2(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmp, JSON.stringify(values, null, 2) + "\n", { encoding: "utf8", mode: 384 });
+  try {
+    chmodSync(tmp, 384);
+  } catch {
+  }
+  renameSync(tmp, file);
+}
+function parseLegacyVoiceSection(text) {
+  const out = {};
+  const lines = text.split(/\r?\n/);
+  const start = lines.findIndex((l) => /^voice-mode:\s*(#.*)?$/.test(l));
+  if (start < 0) return out;
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === "" || /^\s*#/.test(line)) continue;
+    if (!/^\s/.test(line)) break;
+    const m = /^ {2}([A-Za-z][A-Za-z0-9]*):[ \t]*(.*?)[ \t]*$/.exec(line);
+    if (!m) continue;
+    const [, key, raw] = m;
+    if (raw === "" || raw[0] === "|" || raw[0] === ">") continue;
+    let v;
+    if (raw[0] === '"') {
+      const q = /^"((?:[^"\\]|\\.)*)"/.exec(raw);
+      if (!q) continue;
+      v = q[1].replace(/\\(["\\])/g, "$1");
+    } else if (raw[0] === "'") {
+      const q = /^'((?:[^']|'')*)'/.exec(raw);
+      if (!q) continue;
+      v = q[1].replace(/''/g, "'");
+    } else {
+      const bare = raw.replace(/[ \t]+#.*$/, "");
+      if (bare === "true") v = true;
+      else if (bare === "false") v = false;
+      else if (/^-?\d+(\.\d+)?$/.test(bare)) v = Number(bare);
+      else v = bare;
+    }
+    out[key] = v;
+  }
+  return out;
+}
+function readLegacyVoiceSettings(dir, keys) {
+  for (const name2 of ["settings.yaml", "settings.yaml.imported"]) {
+    try {
+      const parsed = parseLegacyVoiceSection(readFileSync(join4(dir, name2), "utf8"));
+      const picked = pickKnownKeys(parsed, keys);
+      if (Object.keys(picked).length > 0) return picked;
+    } catch {
+    }
+  }
+  return {};
+}
+
 // src/index.ts
 var name = "voice-mode";
 var NS_VOICE_MODE = "voice-mode";
@@ -1918,7 +2013,7 @@ var respondJson2 = (res, status, payload) => {
 var VOICE_SPOKEN_PROMPT = "\u3010\u8BED\u97F3\u6A21\u5F0F\u3011\u5F53\u524D\u56DE\u590D\u4F1A\u88AB\u8BED\u97F3\u6717\u8BFB\uFF0C\u8BF7\u59CB\u7EC8\u7528\u7528\u6237\u6240\u7528\u8BED\u8A00\u3001\u4EE5\u53E3\u8BED\u5316\u7684\u77ED\u53E5\u76F4\u63A5\u56DE\u7B54\uFF0C\u50CF\u9762\u5BF9\u9762\u804A\u5929\u4E00\u6837\u81EA\u7136\uFF0C\u907F\u514D\u4E66\u9762\u8BED\u548C\u957F\u96BE\u53E5\u3002\u4E0D\u8981\u4F7F\u7528\u4EFB\u4F55 Markdown \u6216\u6392\u7248\u7B26\u53F7\uFF08\u661F\u53F7\u3001\u4E0B\u5212\u7EBF\u3001\u53CD\u5F15\u53F7\u3001\u4E95\u53F7\u3001\u5217\u8868\u4E0E\u8868\u683C\u6807\u8BB0\u3001\u4EE3\u7801\u5757\u7B49\uFF09\u3002\u9700\u8981\u5206\u70B9\u8BF4\u660E\u65F6\u7528\u300C\u7B2C\u4E00\u3001\u7B2C\u4E8C\u300D\u6216\u8FDE\u8D2F\u7684\u77ED\u53E5\u8868\u8FBE\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EE3\u7801\u7247\u6BB5\u3001\u5B8C\u6574 URL \u6216\u5197\u957F\u5B9A\u4E49\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u6982\u62EC\u542B\u4E49\u5373\u53EF\u3002\u56DE\u7B54\u7B80\u6D01\u76F4\u63A5\uFF0C\u4E0D\u8981\u91CD\u590D\u548C\u5BD2\u6684\u3002\u5982\u679C\u7528\u6237\u5728\u4F60\u6717\u8BFB\u65F6\u63D2\u8BDD\uFF08\u54EA\u6015\u53EA\u662F\u300C\u55EF/\u5BF9\u300D\u8FD9\u6837\u7684\u77ED\u5E94\u7B54\uFF09\uFF0C\u7ACB\u5373\u505C\u6B62\u5F53\u524D\u53E5\uFF0C\u628A\u8BDD\u8F6E\u8BA9\u7ED9\u7528\u6237\uFF1B\u56DE\u7B54\u540E\u7559\u51FA\u505C\u987F\uFF0C\u4E0D\u8981\u8FDE\u95EE\u4E24\u4E2A\u95EE\u9898\uFF1B\u7528\u6237\u6C89\u9ED8\u65F6\u4E0D\u8981\u4E3B\u52A8\u627E\u65B0\u8BDD\u9898\u3002";
 var VOICE_SPOKEN_SECTION = "voice-mode:spoken-format";
 var inject = ["webServer", "settings", "sessions"];
-var defaultModelCacheDir = () => process.platform === "win32" ? join4(process.env.LOCALAPPDATA ?? join4(homedir(), "AppData", "Local"), "dsh-voice-mode", "models") : join4(homedir(), ".cache", "dsh-voice-mode", "models");
+var defaultModelCacheDir = () => process.platform === "win32" ? join5(process.env.LOCALAPPDATA ?? join5(homedir2(), "AppData", "Local"), "dsh-voice-mode", "models") : join5(homedir2(), ".cache", "dsh-voice-mode", "models");
 var VOICE_SETTINGS_DEFAULTS = {
   ttsEngine: "edge",
   kokoroModel: "int8",
@@ -2133,6 +2228,17 @@ function apply(ctx, config) {
   const useLegacySettings = typeof legacySettings?.register === "function";
   let settingsScopeRef = null;
   let vset;
+  const SETTING_KEYS = Object.keys(VOICE_SETTINGS_DEFAULTS);
+  const profileHome = (() => {
+    try {
+      return ctx.get?.("profileContext")?.home;
+    } catch {
+      return void 0;
+    }
+  })();
+  const settingsFile = settingsFilePath(profileHome);
+  const resolveSettings = (o) => createVoiceSettingsSchema(voiceSettingsFromConfig(config))(o);
+  let overrides = {};
   if (useLegacySettings && legacySettings && typeof legacySettings.register === "function") {
     const settingsScope = legacySettings.register.call(
       legacySettings,
@@ -2153,7 +2259,40 @@ function apply(ctx, config) {
     vset = settingsScope.get();
     settingsScopeRef = settingsScope;
   } else {
-    vset = voiceSettingsFromConfig(config);
+    const loaded = readOverrides(settingsFile, SETTING_KEYS);
+    if (loaded.warn) console.warn(`[dsh-voice-mode] \u5FFD\u7565\u8BBE\u7F6E\u8986\u76D6\u5C42 ${settingsFile}\uFF1A${loaded.warn}`);
+    let migrated = false;
+    if (!loaded.exists) {
+      const legacy = readLegacyVoiceSettings(dirname3(settingsFile), SETTING_KEYS);
+      if (Object.keys(legacy).length > 0) {
+        loaded.values = legacy;
+        migrated = true;
+      }
+    }
+    const valid = {};
+    for (const [k, v] of Object.entries(loaded.values)) {
+      try {
+        resolveSettings({ [k]: v });
+        valid[k] = v;
+      } catch (e) {
+        console.warn(`[dsh-voice-mode] \u5FFD\u7565\u975E\u6CD5\u7684\u8BBE\u7F6E\u8986\u76D6 ${k}\uFF08\u56DE\u843D Config \u57FA\u7EBF\uFF09\uFF1A${String(e).slice(0, 160)}`);
+      }
+    }
+    try {
+      vset = resolveSettings(valid);
+      overrides = valid;
+      if (migrated) {
+        try {
+          writeOverrides(settingsFile, valid);
+          console.log(`[dsh-voice-mode] \u5DF2\u4ECE\u65E7 settings.yaml \u8FC1\u79FB ${Object.keys(valid).length} \u9879\u8BBE\u7F6E\u5230 ${settingsFile}`);
+        } catch (e) {
+          console.warn(`[dsh-voice-mode] \u65E7\u8BBE\u7F6E\u8FC1\u79FB\u843D\u76D8\u5931\u8D25\uFF08\u672C\u6B21\u8FD0\u884C\u4ECD\u751F\u6548\uFF09\uFF1A${String(e)}`);
+        }
+      }
+    } catch (e) {
+      console.warn(`[dsh-voice-mode] \u8BBE\u7F6E\u8986\u76D6\u5C42\u6574\u4F53\u6821\u9A8C\u5931\u8D25\uFF0C\u56DE\u9000 Config \u57FA\u7EBF\uFF1A${String(e)}`);
+      vset = voiceSettingsFromConfig(config);
+    }
   }
   const asr = createAsrRuntime({
     cacheDir: config.cacheDir,
@@ -2201,26 +2340,39 @@ function apply(ctx, config) {
   const unsubscribe = queue.subscribe((frame) => broadcast("audio", frame));
   ctx.effect(() => unsubscribe);
   ctx.effect(() => () => void queue.close());
+  const applyVset = (next) => {
+    const prev = vset;
+    vset = next;
+    if (next.ttsEngine !== engineKind) {
+      engineKind = next.ttsEngine;
+      queue.setEngine(makeEngine(engineKind));
+    } else if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) {
+      activeKokoroModel = next.kokoroModel;
+      queue.setEngine(makeEngine("kokoro"));
+    }
+    queue.updateVoice(next.voice, next.rate);
+    if (next.senseITN !== prev.senseITN || next.senseVoice !== prev.senseVoice) {
+      asr.markStale();
+    }
+  };
   if (settingsScopeRef) {
     const scopeRef = settingsScopeRef;
-    ctx.effect(
-      () => scopeRef.watch((next) => {
-        const prev = vset;
-        vset = next;
-        if (next.ttsEngine !== engineKind) {
-          engineKind = next.ttsEngine;
-          queue.setEngine(makeEngine(engineKind));
-        } else if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) {
-          activeKokoroModel = next.kokoroModel;
-          queue.setEngine(makeEngine("kokoro"));
-        }
-        queue.updateVoice(next.voice, next.rate);
-        if (next.senseITN !== prev.senseITN || next.senseVoice !== prev.senseVoice) {
-          asr.markStale();
-        }
-      })
-    );
+    ctx.effect(() => scopeRef.watch(applyVset));
   }
+  let settingsWriteChain = Promise.resolve();
+  const persistSettings = (patch) => {
+    const run = async () => {
+      const candidate = { ...overrides, ...patch };
+      const next = resolveSettings(candidate);
+      writeOverrides(settingsFile, candidate);
+      overrides = candidate;
+      applyVset(next);
+      return next;
+    };
+    const result = settingsWriteChain.then(run, run);
+    settingsWriteChain = result.catch(() => void 0);
+    return result;
+  };
   const currentVoice = () => vset.voice;
   const currentRate = () => vset.rate;
   const currentInterrupt = () => vset.interruptLevel;
@@ -2517,7 +2669,7 @@ function apply(ctx, config) {
             respondJson2(res, 400, { error: "invalid json" });
             return;
           }
-          const dir = join4(config.cacheDir, engine === "kokoro" ? kokoroModelDir(vset.kokoroModel) : TTS_MODEL_REPO);
+          const dir = join5(config.cacheDir, engine === "kokoro" ? kokoroModelDir(vset.kokoroModel) : TTS_MODEL_REPO);
           void rm(dir, { recursive: true, force: true }).then(() => {
             if (engineKind === engine) {
               queue.setEngine(makeEngine(engine));
@@ -2640,6 +2792,58 @@ function apply(ctx, config) {
   ctx.effect(
     () => ctx.webServer.register({
       kind: "exact",
+      path: `${base}/settings`,
+      handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
+        if (req.method === "GET") {
+          respondJson2(res, 200, { managedBy: settingsScopeRef ? "dsh" : "plugin", value: vset });
+          return;
+        }
+        if (req.method !== "POST") {
+          res.statusCode = 405;
+          res.setHeader("allow", "GET, POST");
+          res.end();
+          return;
+        }
+        if (denyCrossOrigin(req, res)) return;
+        if (settingsScopeRef) {
+          respondJson2(res, 409, { error: "settings are managed by dsh on this host" });
+          return;
+        }
+        collectBody(req, res, MAX_JSON_BODY, async (body) => {
+          let patch;
+          try {
+            patch = JSON.parse(body || "{}");
+          } catch {
+            respondJson2(res, 400, { error: "invalid JSON" });
+            return;
+          }
+          if (patch === null || typeof patch !== "object" || Array.isArray(patch)) {
+            respondJson2(res, 400, { error: "body must be a JSON object" });
+            return;
+          }
+          const unknown = unknownKeys(patch, SETTING_KEYS);
+          if (unknown.length > 0) {
+            respondJson2(res, 400, { error: `unknown settings: ${unknown.slice(0, 5).join(", ")}` });
+            return;
+          }
+          try {
+            const next = await persistSettings(pickKnownKeys(patch, SETTING_KEYS));
+            respondJson2(res, 200, { ok: true, managedBy: "plugin", value: next });
+          } catch (e) {
+            const isValidation = e instanceof Error && e.name === "ValidationError";
+            console.warn(`[dsh-voice-mode] settings update failed: ${String(e)}`);
+            respondJson2(res, isValidation ? 400 : 500, {
+              error: isValidation ? `invalid value: ${e.message.slice(0, 200)}` : "settings update failed"
+            });
+          }
+        });
+      }
+    })
+  );
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: "exact",
       path: `${base}/mode`,
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
@@ -2657,7 +2861,7 @@ function apply(ctx, config) {
             res.end(JSON.stringify({ error: "mode must be toggle or hold" }));
             return;
           }
-          const persistMode = settingsScopeRef ? settingsScopeRef.update({ mode }) : ctx.settings.mutate ? ctx.settings.mutate(NS_VOICE_MODE, [{ op: "set", path: ["mode"], value: mode }]) : Promise.reject(new Error("mode persistence unsupported on this host"));
+          const persistMode = settingsScopeRef ? settingsScopeRef.update({ mode }) : persistSettings({ mode });
           void persistMode.then(() => {
             res.statusCode = 200;
             res.setHeader("content-type", "application/json");

@@ -22,7 +22,7 @@ import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 // registry (so ctx.on can type-check the assembly callback).
 import type { AssembleContext, PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { rm } from 'node:fs/promises'
 import { createAsrRuntime, handleAsrRequest } from './asr-host.ts'
@@ -31,6 +31,7 @@ import { EdgeTtsEngine, TtsQueue, listEdgeVoices, type TtsEngine } from './tts-q
 import { createSherpaVitsEngine, createSherpaKokoroEngine, TTS_MODEL_REPO, kokoroModelDir, type KokoroModel } from './tts-local.ts'
 import { HOST_PRIMARY, validateModelHost } from './models.ts'
 import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts'
+import { pickKnownKeys, readLegacyVoiceSettings, readOverrides, settingsFilePath, unknownKeys, writeOverrides } from './settings-store.ts'
 
 export const name = 'voice-mode'
 
@@ -543,6 +544,21 @@ export function apply(ctx: Context, config: Config): void {
   const useLegacySettings = typeof legacySettings?.register === 'function'
   let settingsScopeRef: SettingsScopeLike | null = null
   let vset: VoiceSettingsValue
+  const SETTING_KEYS = Object.keys(VOICE_SETTINGS_DEFAULTS)
+  // profileContext 仅新宿主提供且需 inject 才能属性访问（旧宿主直接读会抛 "cannot get property without inject"），
+  // 故用 ctx.get 可选查找并兜底；取不到则回退 $DSH_HOME / ~/.dsh。
+  const profileHome = ((): unknown => {
+    try {
+      return (ctx as unknown as { get?: (n: string) => { home?: unknown } | undefined }).get?.('profileContext')?.home
+    } catch {
+      return undefined
+    }
+  })()
+  const settingsFile = settingsFilePath(profileHome)
+  /** 路径 B：以 Config 为默认值，叠加覆盖层并经 schema 校验/补全（非法值抛 ValidationError）。 */
+  const resolveSettings = (o: Record<string, unknown>): VoiceSettingsValue =>
+    (createVoiceSettingsSchema(voiceSettingsFromConfig(config)) as unknown as (data: unknown) => VoiceSettingsValue)(o)
+  let overrides: Record<string, unknown> = {}
   if (useLegacySettings && legacySettings && typeof legacySettings.register === 'function') {
     const settingsScope = legacySettings.register.call(
       legacySettings,
@@ -563,7 +579,44 @@ export function apply(ctx: Context, config: Config): void {
     vset = settingsScope.get()
     settingsScopeRef = settingsScope
   } else {
-    vset = voiceSettingsFromConfig(config)
+    // 路径 B 用户设置：Config 基线 ⊕ 覆盖层文件（settings-store.ts 文件头说明为何不走官方存储）。
+    const loaded = readOverrides(settingsFile, SETTING_KEYS)
+    if (loaded.warn) console.warn(`[dsh-voice-mode] 忽略设置覆盖层 ${settingsFile}：${loaded.warn}`)
+    // 首次运行（覆盖层文件尚不存在）：从 dsh ≤0.1.6 留下的 settings.yaml(.imported) 的 voice-mode 段迁移一次，
+    // 落盘后即以覆盖层为准（要恢复默认请把文件内容改成 {}，勿删除，否则会再次迁移）。
+    let migrated = false
+    if (!loaded.exists) {
+      const legacy = readLegacyVoiceSettings(dirname(settingsFile), SETTING_KEYS)
+      if (Object.keys(legacy).length > 0) {
+        loaded.values = legacy
+        migrated = true
+      }
+    }
+    // 逐键校验：升级后某键的取值范围变化时只丢弃该键（回落到 Config 基线），不连累用户其余覆盖。
+    const valid: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(loaded.values)) {
+      try {
+        resolveSettings({ [k]: v })
+        valid[k] = v
+      } catch (e) {
+        console.warn(`[dsh-voice-mode] 忽略非法的设置覆盖 ${k}（回落 Config 基线）：${String(e).slice(0, 160)}`)
+      }
+    }
+    try {
+      vset = resolveSettings(valid)
+      overrides = valid
+      if (migrated) {
+        try {
+          writeOverrides(settingsFile, valid)
+          console.log(`[dsh-voice-mode] 已从旧 settings.yaml 迁移 ${Object.keys(valid).length} 项设置到 ${settingsFile}`)
+        } catch (e) {
+          console.warn(`[dsh-voice-mode] 旧设置迁移落盘失败（本次运行仍生效）：${String(e)}`)
+        }
+      }
+    } catch (e) {
+      console.warn(`[dsh-voice-mode] 设置覆盖层整体校验失败，回退 Config 基线：${String(e)}`)
+      vset = voiceSettingsFromConfig(config)
+    }
   }
 
   // --- zipformer2 流式 ASR runtime（模型懒下载 + SHA256 校验，§8.3）。 ---
@@ -631,29 +684,48 @@ export function apply(ctx: Context, config: Config): void {
   // 任一变化 → asr.markStale() 让现有 fingerprint-gated lazy 重建路径（asr-host.ts:396-401）
   // 下次自动触发，避开主动 free 破坏 I1 的反模式。
   // 路径 B（0.1.7+）无 watch：vset 取自 apply 时 config 快照，配置变更经 reload 重跑 apply 生效。
+  const applyVset = (next: VoiceSettingsValue): void => {
+    const prev = vset
+    vset = next
+    if (next.ttsEngine !== engineKind) {
+      engineKind = next.ttsEngine
+      queue.setEngine(makeEngine(engineKind))
+    } else if (engineKind === 'kokoro' && next.kokoroModel !== activeKokoroModel) {
+      // Kokoro 精度切换：重建引擎指向另一模型目录（已缓存则即时，否则下次下载）。
+      activeKokoroModel = next.kokoroModel
+      queue.setEngine(makeEngine('kokoro'))
+    }
+    queue.updateVoice(next.voice, next.rate)
+    if (
+      next.senseITN !== prev.senseITN ||
+      next.senseVoice !== prev.senseVoice
+    ) {
+      asr.markStale()
+    }
+  }
+  // 路径 B（0.1.7+）由 persistSettings 在写入覆盖层后同样调用 applyVset，热更换语义与路径 A 一致。
   if (settingsScopeRef) {
     const scopeRef = settingsScopeRef
-    ctx.effect(() =>
-      scopeRef.watch((next) => {
-      const prev = vset
-      vset = next
-      if (next.ttsEngine !== engineKind) {
-        engineKind = next.ttsEngine
-        queue.setEngine(makeEngine(engineKind))
-      } else if (engineKind === 'kokoro' && next.kokoroModel !== activeKokoroModel) {
-        // Kokoro 精度切换：重建引擎指向另一模型目录（已缓存则即时，否则下次下载）。
-        activeKokoroModel = next.kokoroModel
-        queue.setEngine(makeEngine('kokoro'))
-      }
-      queue.updateVoice(next.voice, next.rate)
-      if (
-        next.senseITN !== prev.senseITN ||
-        next.senseVoice !== prev.senseVoice
-      ) {
-        asr.markStale()
-      }
-      }),
-    )
+    ctx.effect(() => scopeRef.watch(applyVset))
+  }
+  /** 路径 B 写入串行化（防并发 POST 交错覆盖）。 */
+  let settingsWriteChain: Promise<unknown> = Promise.resolve()
+  /**
+   * 路径 B：合并补丁 → schema 校验 → 原子落盘 → 热生效。非法值抛错（调用方回 400），落盘失败抛错（回 500）。
+   * 路径 A 宿主不使用本函数（settingsScopeRef 非空，设置归 dsh 官方存储）。
+   */
+  const persistSettings = (patch: Record<string, unknown>): Promise<VoiceSettingsValue> => {
+    const run = async (): Promise<VoiceSettingsValue> => {
+      const candidate = { ...overrides, ...patch }
+      const next = resolveSettings(candidate)
+      writeOverrides(settingsFile, candidate)
+      overrides = candidate
+      applyVset(next)
+      return next
+    }
+    const result = settingsWriteChain.then(run, run)
+    settingsWriteChain = result.catch(() => undefined)
+    return result
   }
   /** 当前生效参数（/config 输出给 client 引导；client 每次进入模式重新拉取）。 */
   const currentVoice = (): string => vset.voice
@@ -1170,6 +1242,61 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() =>
     ctx.webServer.register({
       kind: 'exact',
+      path: `${base}/settings`,
+      handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
+        // GET：当前生效设置全量（设置页读取）。路径 A 宿主设置归 dsh 官方存储，此处只读。
+        if (req.method === 'GET') {
+          respondJson(res, 200, { managedBy: settingsScopeRef ? 'dsh' : 'plugin', value: vset })
+          return
+        }
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.setHeader('allow', 'GET, POST')
+          res.end()
+          return
+        }
+        if (denyCrossOrigin(req, res)) return
+        if (settingsScopeRef) {
+          respondJson(res, 409, { error: 'settings are managed by dsh on this host' })
+          return
+        }
+        collectBody(req, res, MAX_JSON_BODY, async (body) => {
+          let patch: unknown
+          try {
+            patch = JSON.parse(body || '{}')
+          } catch {
+            respondJson(res, 400, { error: 'invalid JSON' })
+            return
+          }
+          if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) {
+            respondJson(res, 400, { error: 'body must be a JSON object' })
+            return
+          }
+          const unknown = unknownKeys(patch, SETTING_KEYS)
+          if (unknown.length > 0) {
+            respondJson(res, 400, { error: `unknown settings: ${unknown.slice(0, 5).join(', ')}` })
+            return
+          }
+          try {
+            const next = await persistSettings(pickKnownKeys(patch, SETTING_KEYS))
+            respondJson(res, 200, { ok: true, managedBy: 'plugin', value: next })
+          } catch (e) {
+            // schema 校验失败 = 客户端输入问题（400）；其余（落盘等）= 500。不回显内部路径。
+            const isValidation = e instanceof Error && e.name === 'ValidationError'
+            console.warn(`[dsh-voice-mode] settings update failed: ${String(e)}`)
+            respondJson(res, isValidation ? 400 : 500, {
+              error: isValidation ? `invalid value: ${(e as Error).message.slice(0, 200)}` : 'settings update failed',
+            })
+          }
+        })
+      },
+    }),
+  )
+
+  ctx.effect(() =>
+    ctx.webServer.register({
+      kind: 'exact',
       path: `${base}/mode`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
@@ -1188,22 +1315,12 @@ export function apply(ctx: Context, config: Config): void {
             res.end(JSON.stringify({ error: 'mode must be toggle or hold' }))
             return
           }
-          // 输入框旁的模式切换按钮：写用户层设置（持久化），watch 会同步 vset。
-          // ≤0.1.6：settingsScope.update；0.1.7+：SettingsForms.mutate 走 profile patch
-          //（compat-contract §10 路径 B），字段须为 Config 成员（本插件 Config 已含 mode）。
-          const persistMode = settingsScopeRef
+          // 输入框旁的模式切换按钮：写用户层设置（持久化）。
+          // ≤0.1.6：settingsScope.update（watch 同步 vset）；0.1.7+：覆盖层文件（官方设置存储对本插件
+          // 条目一律 settings/rejected，见 settings-store.ts 文件头），经 persistSettings 落盘并热生效。
+          const persistMode: Promise<unknown> = settingsScopeRef
             ? settingsScopeRef.update({ mode })
-            : (
-                ctx.settings as unknown as {
-                  mutate?: (ns: string, ops: readonly { op: 'set'; path: readonly string[]; value: unknown }[]) => Promise<void>
-                }
-              ).mutate
-              ? (
-                  ctx.settings as unknown as {
-                    mutate: (ns: string, ops: readonly { op: 'set'; path: readonly string[]; value: unknown }[]) => Promise<void>
-                  }
-                ).mutate(NS_VOICE_MODE, [{ op: 'set', path: ['mode'], value: mode }])
-              : Promise.reject(new Error('mode persistence unsupported on this host'))
+            : persistSettings({ mode })
           void persistMode
             .then(() => {
               res.statusCode = 200

@@ -46,7 +46,7 @@ interrupts playback and the running turn. No API key.
 - **Barge-in**: three sensitivity levels of voice-onset detection → local mute + host synth queue invalidation (epoch) + running turn cancellation (the half-finished part is kept and naturally flows into your new message). With a wake word set, barge-in **remains speak-to-interrupt** (the gate is the VAD, not the wake word; the engine returns to standby afterwards)
 - **Lazy model download with progress**: the zipformer2 Chinese streaming model (~160 MB, `.part` resumable) is downloaded on first use with live progress in the status bar; `npm run prefetch` can pre-download it
 - **Resilience**: mic-denied red hint, visible model-download failure, TTS unreachable status hint (auto retry), failed submit keeps the text in the draft, SSE auto-reconnect
-- **Settings**: Settings → Plugins → voice-mode, with voice / rate / interrupt sensitivity / silence pause / idle timeout / model mirror / auto send / interaction mode / wake word / ITN / caption tiers / yield semantics; **voices are previewable** (the "试听/Preview" button synthesizes and plays the current voice at the current rate instantly, no need to enter voice mode; custom ShortNames are previewable too)
+- **Settings**: location depends on your dsh version (see Settings below), with voice / rate / interrupt sensitivity / silence pause / idle timeout / model mirror / auto send / interaction mode / wake word / ITN / caption tiers / yield semantics; **voices are previewable** (the "试听/Preview" button synthesizes and plays the current voice at the current rate instantly, no need to enter voice mode; custom ShortNames are previewable too)
 - **Idle exit**: auto-exit and mic release after 5 minutes of inactivity (reading counts as activity; batch J 10→5)
 
 ---
@@ -110,7 +110,14 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 
 ---
 
-## ⚙️ Settings (Settings → Plugins → Plugins config → 语音模式)
+## ⚙️ Settings
+
+**Where to find it depends on your dsh version** (same card everywhere):
+
+- dsh ≤ 0.1.5: Settings → Plugins → plugin config → voice mode
+- dsh 0.1.6-alpha and later (incl. 0.1.7 / 0.2.0): left sidebar **Plugins** → the installed `dsh-voice-mode` → the "Voice Mode" card on its detail page
+- On dsh 0.1.7+ the values are stored in the plugin's own file `~/.dsh/voice-mode.settings.json` (under `$DSH_HOME`) and take precedence over same-named keys in the profile config. The first run migrates the old `voice-mode:` block from `settings.yaml(.imported)` once. To reset, set the file's content to `{}` (do not delete it).
+
 
 ### 4 new settings (11 batches of comprehensive fixes)
 

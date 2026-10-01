@@ -440,7 +440,7 @@ class AgentDefaultModelConfig extends Service {
 - **现象**：三版本冒烟 host 三端点 200，但客户端 `dsh-voice-mode: pending (waiting for service: settingsScope)` + `web boot: 1 entry did not activate`，mic 不渲染。
 - **根因**：`client.tsx` 的 `export const inject` 含 `settingsScope`；该客户端服务仅 ≤0.1.6 提供，0.1.7+ 已移除（`dsh-client-ui-settings` 包 0.1.7-rc.2/0.2.0-rc.2 逐字节相同，无该 provider）。cordis 4.0.4 的 inject 无"可选"语义（`Fiber._refresh` 对 inject 全部键判定缺失即 INACTIVE），故插件客户端永远 pending。
 - **修法**：`inject` 去掉 `settingsScope`，设置卡片注册处改 `ctx.get('settingsScope')` 可选查找（客户端 runner 的 ctx facade 明确支持 `ctx.get(name)` 可选查找，`dsh-cordis-client-runner/lib/client.js` dynamicCordisContext）。
-- **旧线不退化的证据**：插桩探测（已还原）——本机 0.1.5-rc.3 上 `ctx.get('settingsScope')` 为 `object`（卡片照常注册），0.2.0-rc.2 上为 `undefined`（跳过）。**0.1.7+ 官方设置页不再有本插件卡片，属已知差异**（插件自带面板 + `/voice-mode/config`）。
+- **旧线不退化的证据**：插桩探测（已还原）——本机 0.1.5-rc.3 上 `ctx.get('settingsScope')` 为 `object`（卡片照常注册），0.2.0-rc.2 上为 `undefined`（跳过）。**更正（2026-10-01）**：此处曾写「0.1.7+ 官方设置页不再有本插件卡片，属已知差异（插件自带面板 + `/voice-mode/config`）」——**不成立**：0.1.7+ 上插件实际没有任何设置页，`/mode` 持久化也会 500。属功能缺失，已在 §13 修复。
 - 教训：`full-e2e.sh` 只覆盖 host 链路，**0.1.7-alpha.x 起的客户端可用性此前未被任何脚本断言**；冒烟（mic + console）才是客户端终局判据。
 
 ### 12.3 契约 diff（0.1.7-rc.2 vs 0.2.0-rc.2，核心包 lib 逐文件 diff）
@@ -470,4 +470,48 @@ class AgentDefaultModelConfig extends Service {
 
 - 本机 `node_modules` 由 `/home/www` 的 pnpm store 链接，root 下 `typecheck-dual.sh` 的 `pnpm add` 报 `ERR_PNPM_UNEXPECTED_STORE`；用 `pnpm_config_store_dir=/home/www/.local/share/pnpm/store/v11` 环境变量绕过（`npm_config_store_dir` 无效）。
 - `/tmp/dshcore` 在本轮开始时不存在，已按 `ensure-core.sh` 重建三核心。
+
+---
+
+## 13. 设置面全版本修复（2026-10-01）：槽位 × 数据面 × 迁移
+
+> 触发：§12.2 修复后复核发现 0.1.7+ 上**插件没有任何设置页**、`/mode` 持久化返回 500（0.7.16 及之前均存在；之前的冒烟只测 mic/console，从未断言设置卡片）。
+
+### 13.1 实测事实（均为各版本隔离核心）
+
+| 维度 | ≤0.1.5（0.1.1-rc.2、0.1.5-rc.3） | 0.1.6-alpha.x | 0.1.7-alpha.1 ~ 0.2.0-rc.2 |
+|---|---|---|---|
+| 卡片槽位 | 仅 `settings.plugin.item`（Settings → Plugins） | 仅 `plugins.bundle.config`（插件详情页，key=包名）；`settings.plugin.item` 已不存在 | 同左 |
+| 客户端 `settingsScope` | 有 | 有 | **无** |
+| 官方存储写 `voice-mode` | 可（`ctx.settings.register`） | 可 | **拒写**：`settings/rejected: Plugin entry "voice-mode" has no volatile fields`（update/mutate 均如此） |
+
+推论：0.1.6-alpha.x 此前卡片注册在不存在的槽位上（不可见）；0.1.7+ 既无槽位也无存储。`.volatile()` 产出 `Volatile` 引用对象（`.get()` 读值，`sv({})` 得 `{ttsEngine:{}}`），≤0.1.6 宿主按普通值分层会抛 `ValidationError`，且 Config 是模块加载期静态值、无法按宿主版本切换——一份 Config 不能同时满足两条线（§11.2 的结论在此被进一步证实）。
+
+### 13.2 方案对抗性评估
+
+1. **条件 `.volatile()`**（让官方设置页自动生成）：需在模块加载期识别宿主版本（读宿主包版本/进程参数），桌面端/嵌入式宿主下不可靠；官方自动页是裸字段、无引擎/音色联动与试听；一旦判错，≤0.1.6 整个插件起不来（最坏后果）。**否决**。
+2. **插件自持久化**（采用）：不依赖宿主内部存储行为，全版本同一份卡片代码；代价是 0.1.7+ 上存在两处配置来源（profile 配置为基线、覆盖层优先），以文档与恢复方式（改文件为 `{}`）说明。
+3. **只补文档**：公开插件在 0.1.7+ 无设置页，不可接受。**否决**。
+
+### 13.3 实现（`src/settings-store.ts`、`src/settings-http-scope.ts`、`src/index.ts`、`src/client.tsx`）
+
+- **数据面**：有 `settingsScope` → 官方存储（≤0.1.6，行为不变）；无 → 覆盖层文件 `<profile.home | $DSH_HOME | ~/.dsh>/voice-mode.settings.json`。最终值 = 插件 Config 基线 ⊕ 覆盖层，经 `createVoiceSettingsSchema` 校验补全。
+- **端点**：`GET/POST /voice-mode/settings`（loopback + 同源 + 16KB 上限 + 键白名单 + schema 校验；非法值/未知键 400，跨源 403；≤0.1.6 宿主 POST 返回 409）。写入串行、原子（临时文件 + rename）、0600；写后经与 ≤0.1.6 `watch` 同一个 `applyVset` 热生效（引擎/音色/语速即时）。`/mode` 在 0.1.7+ 改走同一持久化（修复 500）。
+- **槽位**：两个槽位都注册（宿主上不存在的槽位注册是惰性的，各版本实测无报错）；卡片数据源按 `settingsScope` 有无选择。
+- **升级迁移**：覆盖层文件不存在时，一次性读 `settings.yaml`（未被导入）或 `settings.yaml.imported`（dsh 0.1.7 导入后改名）的 `voice-mode:` 段，仅平铺标量，逐键校验，未知/已砍键丢弃，落盘后以覆盖层为准。覆盖层某键升级后变非法 → 仅丢该键；文件损坏 → 忽略并告警，回退 Config 基线。
+- **踩到的坑（均有测试守卫）**：① host 直接访问 `ctx.profileContext` 在旧宿主抛 `cannot get property "profileContext" without inject`，整个插件起不来（0.1.5-rc.3 隔离核心首次实测暴露）→ 改 `ctx.get` + try/catch；② `index.ts` 直接引 `node:fs` 会使三个 stub 式单测（settings-load / barge-in-detect / preview-error）无法编译 → 读写封装进 `settings-store.ts`，三测加 stub。
+
+### 13.4 验证矩阵（`scripts/smoke-runtime.sh` = host 三端点 + mic/console + `scripts/smoke-settings.mjs`）
+
+| dsh 版本 | 卡片入口 | 数据面 | 结果 |
+|---|---|---|---|
+| 0.1.1-rc.2 | Settings → Plugins | 官方存储 | ✅（需 `DSH_TEST_SKIP_HMR_WATCH=1` 门控补丁，见 §11.4） |
+| 0.1.5-rc.3 | Settings → Plugins | 官方存储 | ✅ |
+| 0.1.6-alpha.2 | 插件详情页 | 官方存储 | ✅（修复前卡片不可见） |
+| 0.1.7-alpha.1 / alpha.2 / rc.1 / rc.2 | 插件详情页 | 覆盖层 | ✅ 含：旧设置迁移、写入生效、刷新保留、落盘、引擎热切换、非法值/未知键 400、跨源 403 |
+| 0.2.0-rc.1 / rc.2 | 插件详情页 | 覆盖层 | ✅ 同上 |
+
+补充实测（0.2.0-rc.2 隔离实例，重启 dsh 进程）：POST 语速/静音 → `/config` 立即反映；`/mode` 200；重启后设置保留；覆盖层含 1 个非法键 + 1 个合法键 → 仅丢非法键；覆盖层损坏 → 插件照常启动并回退基线。`npm test` 全绿（含 `settings-store` 15 项）。
+
+未验证：桌面端（Electron）下卡片与写入；0.1.6-alpha.1（核心未装，槽位按 alpha.2 推断）；多 profile 共用同一 `$DSH_HOME` 时共享一份覆盖层（设计如此）。
 

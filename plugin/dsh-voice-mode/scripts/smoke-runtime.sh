@@ -49,6 +49,8 @@ ui-onboarding:
   welcomeNoticeVersion: 2026-08-13.1
 permission:
   defaultPreset: danger-full-access
+voice-mode:
+  silenceMs: 1800
 YAML
 
 # 预置一个工作区：mic 按钮所在的输入区要选定工作区后才渲染，而「选择工作区」走的是
@@ -126,6 +128,12 @@ check "/voice-mode/models/status" "$BASE/voice-mode/models/status" 'asr'
 if node -e "require.resolve('playwright-core')" >/dev/null 2>&1; then
   echo "== 客户端冒烟（headless chromium）=="
   if node scripts/smoke-client.mjs "$URL"; then
+    : # 通过
+  else
+    fail=1
+  fi
+  echo "== 设置页冒烟（卡片入口 + 写入生效 + 刷新保留）=="
+  if DSH_HOME="$DSH_HOME" node scripts/smoke-settings.mjs "$URL"; then
     : # 通过
   else
     fail=1

@@ -32,6 +32,7 @@ let lastReenterAt = 0
 /** 打断灵敏度三档 → isSpeech 连续确认帧数（墙钟节拍 100ms/拍 + 上行往返 → 确认阶段约 0.3/0.2/0.1s；语义对齐旧能量持续时长档位）。 */
 const INT_CONFIRM_FRAMES: Record<0 | 1 | 2, number> = { 0: 3, 1: 2, 2: 1 }
 import { VoiceSettingsCard } from './settings-form.tsx'
+import { createHttpScope } from './settings-http-scope.ts'
 
 // settingsScope 仅 ≤0.1.6 客户端提供；0.1.7+ 已移除，列入 inject 会使插件永远 pending（真机冒烟实证）。
 // 故不声明，改用 ctx.get 可选查找（见 settings.plugin.item 注册处）。
@@ -352,22 +353,34 @@ export function apply(ctx: any): void {
     ),
   )
 
-  // 设置卡片：Plugins → 插件配置 区（官方座位 settings.plugin.item，按命名空间 key 分发）。
+  // 设置卡片。槽位与数据面是两个独立维度（各版本实测，见 compat-contract §13）：
+  //  - 槽位：≤0.1.5 只有 settings.plugin.item（Settings → Plugins）；≥0.1.6-alpha 起只有
+  //    plugins.bundle.config（插件详情页，key = 本包名）。宿主上不存在的槽位注册是惰性的，故两个都注册。
+  //  - 数据面：有 settingsScope（≤0.1.6）走官方设置存储；0.1.7+ 无该服务、官方存储拒写本插件条目
+  //    （settings/rejected），走插件自己的 /voice-mode/settings。
   const settingsScope = (ctx as any).get?.('settingsScope')
-  if (settingsScope) {
-    ctx.slots.inject('settings.plugin.item', () =>
-      ctx.slots.register(
-        {
-          name: 'settings.plugin.item',
-          id: 'voice-mode',
-          key: 'voice-mode',
-          order: 100,
-          label: t('stateVoiceMode'),
-        },
-        () => React.createElement(VoiceSettingsCard, { scope: settingsScope.bind({ namespace: 'voice-mode' }) }),
-      ),
-    )
-  }
+  const scope = settingsScope ? settingsScope.bind({ namespace: 'voice-mode' }) : createHttpScope()
+  ctx.slots.inject('settings.plugin.item', () =>
+    ctx.slots.register(
+      {
+        name: 'settings.plugin.item',
+        id: 'voice-mode',
+        key: 'voice-mode',
+        order: 100,
+        label: t('stateVoiceMode'),
+      },
+      () => React.createElement(VoiceSettingsCard, { scope }),
+    ),
+  )
+  ctx.slots.inject('plugins.bundle.config', () =>
+    ctx.slots.register(
+      { name: 'plugins.bundle.config', key: 'dsh-voice-mode' },
+      (props: { view?: 'summary' | 'page' }) =>
+        props?.view === 'summary'
+          ? React.createElement('span', null, t('settingsCardDesc'))
+          : React.createElement(VoiceSettingsCard, { scope }),
+    ),
+  )
 }
 
 /**

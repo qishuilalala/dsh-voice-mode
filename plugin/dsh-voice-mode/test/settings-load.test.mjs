@@ -12,7 +12,7 @@
  *
  * 实现策略：
  *  1) esbuild 真编译 src/index.ts，仅 stub 内部模块（asr-host/segmenter/tts-queue/
- *     tts-local/models/security）并 external node 内置模块——拿到**真实**的
+ *     tts-local/models/security/settings-store）并 external node 内置模块——拿到**真实**的
  *     createVoiceSettingsSchema（非手工重建，规避「测试与源码漂移」）。
  *  2) 用真实 schema 调旧 payload，断言上述三点。
  *  3) 关键事实：本项目 schema 用的是 `@deepseek-ai/schemastery`（**不是 zod**）。
@@ -54,6 +54,7 @@ stub('tts-queue.mjs', 'export class EdgeTtsEngine {}\nexport class TtsQueue {}\n
 stub('tts-local.mjs', 'export function createSherpaVitsEngine() { return {} }\nexport function createSherpaKokoroEngine() { return {} }\nexport const TTS_MODEL_REPO = ""\nexport function kokoroModelDir() { return "" }\n')
 stub('models.mjs', 'export const HOST_PRIMARY = "https://huggingface.co"\nexport function validateModelHost(h, _a) { return h || HOST_PRIMARY }\n')
 stub('security.mjs', 'export function isLoopbackRequest() { return false }\nexport function sameOriginRequest() { return false }\nexport class RateLimiter {}\n')
+stub('settings-store.mjs', 'export function pickKnownKeys() { return {} }\nexport function readLegacyVoiceSettings() { return {} }\nexport function readOverrides() { return { values: {} } }\nexport function settingsFilePath() { return "" }\nexport function unknownKeys() { return [] }\nexport function writeOverrides() {}\n')
 
 // --------------------------------------------------------------------------
 // Bundle src/index.ts（真源码）
@@ -76,6 +77,7 @@ await build({
         b.onResolve({ filter: /\.\.?\/tts-local\.ts$/ }, () => ({ path: join(tmp, 'tts-local.mjs') }))
         b.onResolve({ filter: /\.\.?\/models\.ts$/ }, () => ({ path: join(tmp, 'models.mjs') }))
         b.onResolve({ filter: /\.\.?\/security\.ts$/ }, () => ({ path: join(tmp, 'security.mjs') }))
+        b.onResolve({ filter: /\.\.?\/settings-store\.ts$/ }, () => ({ path: join(tmp, 'settings-store.mjs') }))
       },
     },
   ],

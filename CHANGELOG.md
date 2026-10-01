@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **0.1.7+ 宿主上插件没有设置页、`/mode` 切换持久化 500**（0.7.16 及之前均存在）：0.1.7 起官方设置存储对本插件条目一律拒写（`settings/rejected: has no volatile fields`），旧槽位 `settings.plugin.item` 与客户端 `settingsScope` 同时被移除。现改为：0.1.7+ 用户设置落插件自有覆盖层文件 `$DSH_HOME/voice-mode.settings.json`（原子写、0600、逐键校验、损坏文件回退），经新增 `GET/POST /voice-mode/settings` 读写并热生效（引擎/音色/语速即时，与 ≤0.1.6 一致）；设置卡片注册到 `plugins.bundle.config`（插件详情页）。
+- **升级后设置静默回到默认**：dsh ≤0.1.6 → 0.1.7+ 时，dsh 把旧 `settings.yaml` 改名为 `settings.yaml.imported`，但本插件的 `voice-mode:` 段不被官方存储接受、被留在改名文件里。现首次运行（覆盖层文件尚不存在）自动从 `settings.yaml`/`settings.yaml.imported` 的 `voice-mode:` 段迁移一次（仅平铺标量，逐键校验，未知/已砍键丢弃）。恢复默认请把覆盖层文件内容改成 `{}`（勿删除，否则会再次迁移）。
+- **0.1.6-alpha.x 设置卡片不可见**：该线 `settings.plugin.item` 槽位已不存在而 `settingsScope` 仍在，卡片注册到不存在的槽位。现新旧两个槽位都注册。
+
+### Added
+
+- `scripts/smoke-settings.mjs`（真浏览器设置页冒烟：入口可见 → 写入生效 → 刷新保留 → 0.1.7+ 覆盖层落盘/非法值/未知键/跨源写入被拒），已接入 `smoke-runtime.sh`；`test/settings-store.test.mjs`（覆盖层单测 + 两条真机教训的结构守卫）。
+- `docs/compat-contract.md` §13：设置面在各 dsh 版本的槽位/数据面演变与方案取舍；更正 §12.2 中「0.1.7+ 无设置卡片属已知差异、自带面板可用」的错误表述。
+
 ### 规划中
 
 - F1：emotion 标签 DSL 全量上线（LLM 侧标签使用指引注入 + 真机验收）
