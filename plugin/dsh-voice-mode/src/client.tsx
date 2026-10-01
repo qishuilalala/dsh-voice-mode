@@ -33,7 +33,9 @@ let lastReenterAt = 0
 const INT_CONFIRM_FRAMES: Record<0 | 1 | 2, number> = { 0: 3, 1: 2, 2: 1 }
 import { VoiceSettingsCard } from './settings-form.tsx'
 
-export const inject = ['slots', 'sessions', 'settingsScope']
+// settingsScope 仅 ≤0.1.6 客户端提供；0.1.7+ 已移除，列入 inject 会使插件永远 pending（真机冒烟实证）。
+// 故不声明，改用 ctx.get 可选查找（见 settings.plugin.item 注册处）。
+export const inject = ['slots', 'sessions']
 
 interface VoiceUiState {
   state: AsrState
@@ -351,7 +353,8 @@ export function apply(ctx: any): void {
   )
 
   // 设置卡片：Plugins → 插件配置 区（官方座位 settings.plugin.item，按命名空间 key 分发）。
-  if ((ctx as any).settingsScope) {
+  const settingsScope = (ctx as any).get?.('settingsScope')
+  if (settingsScope) {
     ctx.slots.inject('settings.plugin.item', () =>
       ctx.slots.register(
         {
@@ -361,7 +364,7 @@ export function apply(ctx: any): void {
           order: 100,
           label: t('stateVoiceMode'),
         },
-        () => React.createElement(VoiceSettingsCard, { scope: ctx.settingsScope.bind({ namespace: 'voice-mode' }) }),
+        () => React.createElement(VoiceSettingsCard, { scope: settingsScope.bind({ namespace: 'voice-mode' }) }),
       ),
     )
   }

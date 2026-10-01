@@ -23,6 +23,7 @@ fi
 #     - 0.1.1-rc.2 → ^4.0.1
 #     - 0.1.2-rc.1 / 0.1.3-* / 0.1.5-* / 0.1.6-* 起的 0.1.5+ 子包 → ^4.0.2
 #     - 0.1.7-alpha.1 → ^4.0.3；0.1.7-alpha.2 → ~4.0.4（已发布最高 4.0.4，2026-09-23 实证）
+#     - 0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2 → ~4.0.4（npm view 实证）
 #   未知版本不再静默回退 4.0.1：原实现在 dsh 上新版本线时，会用错 cordis 类型面
 #   静默通过 typecheck，违背仓库兼容纪律。改为：未列入映射表时显式报错，
 #   让维护者核对 `npm view @deepseek-ai/dsh-host-webserver@<v> peerDependencies` 后补表。
@@ -32,6 +33,7 @@ cordis_ver_for() {
     0.0.1-*) echo 4.0.1-rc.4 ;;
     0.1.2-*|0.1.3-*|0.1.4-*|0.1.5-*|0.1.6-*) echo 4.0.2 ;;
     0.1.7-*) echo 4.0.4 ;;
+    0.2.0-*) echo 4.0.4 ;;
     *)
       echo "✗ cordis_ver_for: 未列出 dsh 版本线 '$1' 的 cordis 映射" >&2
       echo "  请核对 \`npm view @deepseek-ai/dsh-host-webserver@$1 peerDependencies\` 并在 cordis_ver_for() 里补表。" >&2

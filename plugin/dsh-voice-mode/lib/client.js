@@ -2815,7 +2815,7 @@ var interruptFirstAt = 0;
 var isSpeechFalseRun = 0;
 var lastReenterAt = 0;
 var INT_CONFIRM_FRAMES = { 0: 3, 1: 2, 2: 1 };
-var inject = ["slots", "sessions", "settingsScope"];
+var inject = ["slots", "sessions"];
 var TELEMETRY_VIEW = [
   { stage: "utterance-end", key: "telUtteranceEnd" },
   { stage: "endpoint-fired", key: "telEndpoint" },
@@ -2825,7 +2825,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "7fdce8a";
+var BUILD_TAG = "4575aac";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -2950,7 +2950,8 @@ function apply(ctx) {
       VoiceOverlay
     )
   );
-  if (ctx.settingsScope) {
+  const settingsScope = ctx.get?.("settingsScope");
+  if (settingsScope) {
     ctx.slots.inject(
       "settings.plugin.item",
       () => ctx.slots.register(
@@ -2961,7 +2962,7 @@ function apply(ctx) {
           order: 100,
           label: t("stateVoiceMode")
         },
-        () => React.createElement(VoiceSettingsCard, { scope: ctx.settingsScope.bind({ namespace: "voice-mode" }) })
+        () => React.createElement(VoiceSettingsCard, { scope: settingsScope.bind({ namespace: "voice-mode" }) })
       )
     );
   }

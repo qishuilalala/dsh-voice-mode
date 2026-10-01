@@ -418,3 +418,56 @@ class AgentDefaultModelConfig extends Service {
 - 现象：`dsh@0.1.6-alpha.1` 的 caret 依赖把 `dsh-app-boot` 解析到 `0.1.6-alpha.2`（后者删了 `watchUserPatches` 导出），profile-boot import 期直接 `SyntaxError`，插件代码未执行即死。
 - 修法（仅 `/tmp` fixture，不进仓库）：在 core 的 `package.json` 加 `"pnpm":{"overrides":{"@deepseek-ai/dsh-app-boot":"0.1.6-alpha.1"}}`，删 `node_modules` + lock 重装。注意顶层 `pnpm add` 改不了嵌套解析，必须走 overrides。
 - 结果：真流程 **2 帧 / 0 tts-error PASS**。教训：prerelease 线的 caret 是"同线最新"，不是"同版本锁定"——旧版本 core 必须 pin 传递依赖，默认解析即漂移。
+
+---
+
+## 12. 0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2 复核（2026-10-01）
+
+> 方法：隔离核心 `/tmp/dshcore/dsh-<ver>`（`ensure-core.sh`，pnpm）；锚点 + typecheck + 隔离冒烟 + 两核心包级 diff。真 LLM 端到端、生产升级、发布不在本轮范围。
+
+### 12.1 结论
+
+| 版本 | 锚点 9/9 | typecheck host+client | 隔离冒烟（修复后） | 判定 |
+|---|---|---|---|---|
+| 0.1.7-rc.2 | ✅ | ✅✅ | ✅ 三端点 200 + mic + console 0 error | PASS |
+| 0.2.0-rc.1 | ✅ | ✅✅ | ✅ 同上 | PASS |
+| 0.2.0-rc.2 | ✅ | ✅✅ | ✅ 同上 | PASS |
+
+旧线回归：typecheck 0.1.1-rc.2 / 0.1.5-rc.2 ✅✅；本机 0.1.5-rc.3 冒烟 ✅；`npm test` 通过。
+
+### 12.2 本轮发现并修复的真回归（typecheck 全绿但客户端不可用）
+
+- **现象**：三版本冒烟 host 三端点 200，但客户端 `dsh-voice-mode: pending (waiting for service: settingsScope)` + `web boot: 1 entry did not activate`，mic 不渲染。
+- **根因**：`client.tsx` 的 `export const inject` 含 `settingsScope`；该客户端服务仅 ≤0.1.6 提供，0.1.7+ 已移除（`dsh-client-ui-settings` 包 0.1.7-rc.2/0.2.0-rc.2 逐字节相同，无该 provider）。cordis 4.0.4 的 inject 无"可选"语义（`Fiber._refresh` 对 inject 全部键判定缺失即 INACTIVE），故插件客户端永远 pending。
+- **修法**：`inject` 去掉 `settingsScope`，设置卡片注册处改 `ctx.get('settingsScope')` 可选查找（客户端 runner 的 ctx facade 明确支持 `ctx.get(name)` 可选查找，`dsh-cordis-client-runner/lib/client.js` dynamicCordisContext）。
+- **旧线不退化的证据**：插桩探测（已还原）——本机 0.1.5-rc.3 上 `ctx.get('settingsScope')` 为 `object`（卡片照常注册），0.2.0-rc.2 上为 `undefined`（跳过）。**0.1.7+ 官方设置页不再有本插件卡片，属已知差异**（插件自带面板 + `/voice-mode/config`）。
+- 教训：`full-e2e.sh` 只覆盖 host 链路，**0.1.7-alpha.x 起的客户端可用性此前未被任何脚本断言**；冒烟（mic + console）才是客户端终局判据。
+
+### 12.3 契约 diff（0.1.7-rc.2 vs 0.2.0-rc.2，核心包 lib 逐文件 diff）
+
+| 项 | 0.1.7-rc.2 → 0.2.0-rc.2 | 影响 | 处置 |
+|---|---|---|---|
+| dsh-settings | lib 逐字节相同（`register` 仍无；`configure/describe/update/replace/mutate`） | 双路径分派不变，走路径 B | 无 |
+| dsh-host-webserver | 逐字节相同 | `/voice-mode` 路由注册不变（三端点 200 实证） | 无 |
+| dsh-system-prompt | 逐字节相同 | `system-prompt/assemble` 不变 | 无 |
+| dsh-llm | 仅一处类型声明文本差异（MessageSourceMap 注释串） | `llm/stream` 事件无影响（host typecheck ✅） | 无 |
+| 客户端 9 锚点包 | connection / locale / settings / settings-plugins 逐字节相同；renderer（useMemo）、layout（CSS）各 1 处；api-remotes（561 行）、conversation（187 行）、runner（81 行：session.fork 签名加 onCreated、新增 `sidebar.right.tab.files.actions` 槽位等）有增量 | 本插件用槽位 `conversation.input.dock/right`、`shell.overlay`、`settings.plugin.item` 均在；冒烟 mic 渲染 ✅ | 无 |
+| typert RPC 描述符 | session/create\|prompt\|cancel → `args.request`；session/list → `args._request`；settings/describe、llm/listProviders → `args:{}`；无 args 报 "exactly one plain-object args field"（两版本探针输出一致） | 与 §8 实证表完全一致 | 无 |
+| readBytes 统一 | 插件 src 无 remote 文件读取调用（grep 0 命中） | 无 | 无 |
+
+### 12.4 官方语音输入共存
+
+0.2.0-rc.2 核心含 `dsh-experimental-client-ui-voice-input`（占用槽位 `conversation.input.activity`、`plugins.bundle.config`、`plugins.bundle.activation`）。本插件占用 `conversation.input.dock/right`，**槽位不冲突**；冒烟中两者同页，data-dshvm="mic" 正常渲染、console 0 error。共存策略：互不依赖，用户可二选一；官方麦克风"未就绪→引导至语音插件设置"指向官方 bundle 设置而非本插件。**未实测**两个麦克风同时开启的音频设备争用（待核对，建议真机验证）。
+
+### 12.5 桌面端结论
+
+- 无本地桌面端安装包，**以下为源码推断，非桌面端实测**。
+- host 逻辑（路由/SSE/ASR/TTS）与 Electron 壳无关，天然兼容。
+- 客户端：`dsh.client.platform` 在 `dsh-client-modules/lib/index.js:65/714` 仅校验为字符串且只放行 `"web"`，桌面端内嵌同一 Web 客户端，`"web"` 适用；无桌面特有分支。
+- 麦克风权限为 OS/Electron 层（上游 0.2.0-rc.1 已修 macOS 录音权限）；本插件 AudioWorklet 采集走标准 `getUserMedia`，待桌面端真机核对。
+
+### 12.6 测试装置备注
+
+- 本机 `node_modules` 由 `/home/www` 的 pnpm store 链接，root 下 `typecheck-dual.sh` 的 `pnpm add` 报 `ERR_PNPM_UNEXPECTED_STORE`；用 `pnpm_config_store_dir=/home/www/.local/share/pnpm/store/v11` 环境变量绕过（`npm_config_store_dir` 无效）。
+- `/tmp/dshcore` 在本轮开始时不存在，已按 `ensure-core.sh` 重建三核心。
+
