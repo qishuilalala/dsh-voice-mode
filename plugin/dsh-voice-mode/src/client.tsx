@@ -372,6 +372,14 @@ export function apply(ctx: any): void {
       () => React.createElement(VoiceSettingsCard, { scope }),
     ),
   )
+  // Settings 弹窗里的专属设置页（settings.section 在 0.1.1 → 0.2.0 所有版本都存在）：
+  // 让设置在每个 dsh 版本上都有同一个好找的入口（Settings → 语音模式），不依赖各版本不同的插件页入口。
+  ctx.slots.inject('settings.section', () =>
+    ctx.slots.register(
+      { name: 'settings.section', id: 'voice-mode', order: 100, label: () => t('stateVoiceMode') },
+      () => React.createElement(VoiceSettingsCard, { scope, defaultOpen: true }),
+    ),
+  )
   ctx.slots.inject('plugins.bundle.config', () =>
     ctx.slots.register(
       { name: 'plugins.bundle.config', key: 'dsh-voice-mode' },

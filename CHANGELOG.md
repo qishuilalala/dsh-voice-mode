@@ -15,6 +15,7 @@
 
 ### Added
 
+- **Settings → 语音模式 专属设置页（`settings.section`，所有 dsh 版本通用入口）**：此前设置入口随版本而异（≤0.1.5 在 Settings→Plugins，0.1.6+ 在插件详情页），用户难以发现；现在每个版本的 Settings 弹窗里都有同名页面（默认展开）。与 `dsh-better-sidebar` 等已适配 0.2.x 的插件的做法一致。
 - `scripts/smoke-settings.mjs`（真浏览器设置页冒烟：入口可见 → 写入生效 → 刷新保留 → 0.1.7+ 覆盖层落盘/非法值/未知键/跨源写入被拒），已接入 `smoke-runtime.sh`；`test/settings-store.test.mjs`（覆盖层单测 + 两条真机教训的结构守卫）。
 - `docs/compat-contract.md` §13：设置面在各 dsh 版本的槽位/数据面演变与方案取舍；更正 §12.2 中「0.1.7+ 无设置卡片属已知差异、自带面板可用」的错误表述。
 

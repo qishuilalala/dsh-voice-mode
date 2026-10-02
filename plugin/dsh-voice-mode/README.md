@@ -90,7 +90,7 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 
 ## ⚙️ 设置
 
-**入口随 dsh 版本而不同**（卡片内容一致）：
+**所有 dsh 版本通用入口：设置（Settings）→ 语音模式（Voice Mode）**。另有按版本不同的次要入口（卡片内容一致）：
 
 - dsh ≤ 0.1.5：设置 → Plugins → 插件配置 → 语音模式
 - dsh 0.1.6-alpha 及以后（含 0.1.7、0.2.0）：左侧 **Plugins** → 已安装的 `dsh-voice-mode` → 详情页「语音模式」卡片

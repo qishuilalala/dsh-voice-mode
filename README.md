@@ -95,13 +95,12 @@ systemctl restart dsh   # Linux；其他平台重启 dsh 进程
 
 ## ⚙️ 配置（4 新设置字段 + 3 默认值微调）
 
-**设置入口随 dsh 版本而不同**（卡片内容一致）：
+**所有 dsh 版本通用入口：设置（Settings）→ 语音模式（Voice Mode）**——插件在 Settings 弹窗里注册了专属设置页。另有按版本不同的次要入口：
 
-| dsh 版本 | 入口 | 设置存放 |
+| dsh 版本 | 次要入口 | 设置存放 |
 | --- | --- | --- |
 | ≤ 0.1.5 | 设置 → Plugins → 插件配置 → 语音模式 | dsh 官方设置存储 |
-| 0.1.6-alpha | 左侧 **Plugins** → 已安装的 `dsh-voice-mode` → 详情页「语音模式」卡片 | dsh 官方设置存储 |
-| 0.1.7 及以后（含 0.2.0） | 左侧 **Plugins** → 已安装的 `dsh-voice-mode` → 详情页「语音模式」卡片 | 插件自有文件 `~/.dsh/voice-mode.settings.json`（`$DSH_HOME` 下） |
+| 0.1.6-alpha 及以后 | 左侧 **Plugins** → 已安装的 `dsh-voice-mode` → 详情页「语音模式」卡片 | 0.1.6：dsh 官方设置存储；0.1.7+（含 0.2.0）：插件自有文件 `~/.dsh/voice-mode.settings.json`（`$DSH_HOME` 下） |
 
 0.1.7+ 说明：官方设置存储不接受本插件条目的写入，故卡片改写插件自己的覆盖层文件——**优先级高于 profile 配置里的同名键**；要恢复为 profile 配置/默认值，把文件内容改成 `{}`（不要删除——首次运行会从旧 `settings.yaml(.imported)` 的 `voice-mode:` 段迁移一次，删除会触发再次迁移）；重装或升级插件不丢设置；某个键在升级后变为非法值时仅该键回落默认。
 

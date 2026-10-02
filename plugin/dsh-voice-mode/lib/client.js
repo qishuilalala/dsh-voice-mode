@@ -2614,9 +2614,9 @@ function ModelStatusView() {
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("modelsHint") })
   ] });
 }
-function VoiceSettingsCard({ scope }) {
+function VoiceSettingsCard({ scope, defaultOpen = false }) {
   const [snap, setSnap] = (0, import_react.useState)(() => scope.getSnapshot());
-  const [collapsed, setCollapsed] = (0, import_react.useState)(true);
+  const [collapsed, setCollapsed] = (0, import_react.useState)(!defaultOpen);
   (0, import_react.useEffect)(
     () => scope.subscribe(() => {
       setSnap({ ...scope.getSnapshot() });
@@ -3015,6 +3015,13 @@ function apply(ctx) {
         label: t("stateVoiceMode")
       },
       () => React.createElement(VoiceSettingsCard, { scope })
+    )
+  );
+  ctx.slots.inject(
+    "settings.section",
+    () => ctx.slots.register(
+      { name: "settings.section", id: "voice-mode", order: 100, label: () => t("stateVoiceMode") },
+      () => React.createElement(VoiceSettingsCard, { scope, defaultOpen: true })
     )
   );
   ctx.slots.inject(

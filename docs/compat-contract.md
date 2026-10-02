@@ -515,3 +515,49 @@ class AgentDefaultModelConfig extends Service {
 
 未验证：桌面端（Electron）下卡片与写入；0.1.6-alpha.1（核心未装，槽位按 alpha.2 推断）；多 profile 共用同一 `$DSH_HOME` 时共享一份覆盖层（设计如此）。
 
+---
+
+## 14. 官方文档与最佳实践对照 + 桌面端（2026-10-02）
+
+> 资料（均为上游 `deepseek-ai/deepseek-harness` master 与本机 0.2.0-rc.2 核心内随包 README）：`docs/cookbook/adding-a-settings-card.md`、`docs/subsystems/settings.md`、`docs/subsystems/slots.md`、`docs/subsystems/voice-input.md`、`docs/user/develop/basic/config.md`、`apps/desktop/README.md`、`apps/desktop/src/web-document.ts`、`apps/desktop/src/main.ts`、`.agents/notes/implemented/architecture/2026-09-11-desktop-electron-node-runtime.md`；`@deepseek-ai/dsh-settings` / `dsh-client-ui-settings` / `dsh-client-ui-settings-plugins` / `dsh-experimental-*voice-input*` 包 README。
+
+### 14.1 官方对「插件设置」的规定
+
+1. **存储**：设置改由当前 Profile 的插件配置保存（profile patch）；设置服务**只暴露插件 Config 里标 `.volatile()` 的字段**，普通字段不进表单；写入由 ConfigEditor 持久化、整份 Config 校验、乐观 revision 防陈旧写。业务代码读 `config.x.get()`，监听 `loader/volatile-update`。
+2. **界面**：官方**没有**自动生成的全局插件设置页（`autoGenerate` 已声明但「no shipped client does so yet」）；插件自带页面时调用 `ctx.settings.configure({ auto: false }, ctx.fiber)`。官方把插件设置放在 **Plugins 页 → 该插件详情**：槽位 `plugins.bundle.config`（key = npm 包名）/ `plugins.row.config`（key = `<包名>#<row id>`）/ `plugins.detail.section`，页面会收到 `view`（summary|page）与 `form`（`form.state` / `form.mutate(ops, expectedRevision)`）。Settings 弹窗另有 `settings.section`（每个条目一个设置页，如 General / Models / Built-in plugins）；「Built-in plugins」只是内置插件只读清单。
+3. **旧设置迁移**：`settings.yaml` 在首次启动后被导入一次（各段写入同 id 的条目）并改名 `.imported`，被拒的段只留在改名文件里。
+4. **插件作者兼容**：官方发布说明只写「自定义设置插件需适配」，无逐版本迁移指南（`docs/upgrade-guide` 仅有 v0.1.7-rc.2 的 schedule/transcript 两篇，与设置无关）。
+
+### 14.2 官方「语音输入」的设置在哪
+
+官方语音输入（实验性）是**默认关闭**的可选 bundle：Plugins 页 → 语音输入 → 打开开关后，识别器/语言/模型下载源/准备进度都在**该 bundle 的详情页**（`plugins.bundle.config`），输入框上的麦克风（槽位 `conversation.input.activity`）在未就绪时只给引导弹窗、动作指向详情页。列表里只显示描述和开关——所以未启用时看不到任何设置。其识别偏好经 Settings 服务存（`.volatile()` 字段）。本插件的输入框槽位是 `conversation.input.dock/right`，与官方不冲突。
+
+### 14.3 本插件现状 vs 官方推荐
+
+| 项 | 官方推荐 | 本插件现状 | 评价 |
+|---|---|---|---|
+| 设置页位置 | Plugins 页插件详情（`plugins.bundle.config`，key=包名） | 已注册（≥0.1.6-alpha）；另在 Settings 弹窗注册专属页 `settings.section`（所有版本） | 对齐，且入口更好找 |
+| 存储（0.1.7+） | `.volatile()` + profile patch + `form` | 插件自有文件 `$DSH_HOME/voice-mode.settings.json` + `/voice-mode/settings` | **偏离官方**；原因见 §13.1/§11.2：volatile Config 在 ≤0.1.6 宿主上会让整个 dsh 启动失败（0.1.5-rc.3 实测 `ValidationError ... got {}`） |
+| 旧设置迁移 | 官方导入器按同 id 条目导入 | 插件自行迁移（因条目无 volatile 字段，官方导入被拒） | 偏离官方（同上） |
+| 生态先例 | — | `dsh-better-sidebar@0.24.1`（已适配 0.2.x）同样「自有受保护 host 路由 + `settings.section` 专属页」 | 自持久化在生态中是既有模式 |
+
+### 14.4 向官方收敛的可行性（已实验，未实施）
+
+实验（0.1.5-rc.3 / 0.1.6-alpha.2 / 0.1.7-alpha.1 / 0.2.0-rc.2 隔离核心）：
+- bundle 补丁的 `disabled` 支持 `!!js` 表达式，对加载器上下文求值（`cordis-plugin-loader` 的 `evaluate`：`with (ctx) eval(expr)`）。直接写 `settings` 会在旧宿主抛 `cannot get property "settings" without inject`；写 `ctx.get('settings')` + `typeof ...configure === 'function'` 可行：旧宿主两核心上 live 入口被禁用且启动正常，新宿主两核心上 live 入口加载并经 `config.x.get()` 读到 volatile 值。
+- 即可用「第二个 row（`dsh-voice-mode/live`，仅新宿主启用，Config 全 `.volatile()`）」承载官方路线，主 row 保持不变。
+- 未解决/待定：① `plugins.row.config` 的 `form` 绑定与 UI 呈现未实测；② 官方导入器只按「同 id 条目」导入，live row 需另取 id，旧设置迁移仍需插件侧一次写入（走官方存储）；③ 客户端半边只挂在裸包名 row，live row 不携带；④ 需决定 profile 级（官方）与 `$DSH_HOME` 级（现状，桌面端与 CLI 共享）的存储粒度。
+- 结论：技术上可行，是对现有结构的较大改动，**需产品决策后再做**。
+
+### 14.5 桌面端（Electron）——源码推断，无桌面端实测
+
+- 官方架构：桌面端是**完整 dsh Web 应用的 Electron 外壳**；Host 为 Electron RunAsNode 子进程（`ELECTRON_RUN_AS_NODE=1` + `--expose-internals`）；页面加载 `dsh-app://app/`，请求经 `forwardWebRequest` 转发到 Host（loopback）；桌面 profile 为 `$DSH_HOME/profiles/desktop`，插件用同一 Web Plugin Manager 安装（或 `dsh plugin --profile desktop add`）；Electron 与 `@deepseek-ai/dsh` 恒为同一 exact 版本。官方桌面冒烟已含「外部插件共享 Cordis 并提供路由」。
+- 逐项核对本插件：
+  1. `dsh.client.platform = "web"` 是客户端模块表唯一接受的值，桌面端同样适用 ✅。
+  2. 请求转发会**删除 `Origin`/`Host`/`Sec-Fetch-Site` 并改写 Cookie**；`security.ts:sameOriginRequest` 在无 Origin 时放行（`if (!origin) return true`），Host 侧回环检查来自 Electron 主进程对 127.0.0.1 的请求 ✅（`/voice-mode/*` 含 SSE 流式与新增 `/settings` 均走同一路径）。
+  3. 自定义协议特权含 `standard/secure/supportFetchAPI/corsEnabled/stream` → 安全上下文，`getUserMedia` 与 AudioWorklet（Blob 内联）可用；麦克风仅放行主框架 `dsh-app://app` 的音频请求，插件在主框架 ✅；macOS 授权/entitlement 由官方打包提供。
+  4. ASR/SenseVoice 走 sherpa-onnx **WASM**（worker_threads），与 Electron 的 Node 无 ABI 依赖 ✅；`msedge-tts` 纯 JS ✅。
+  5. ⚠️ **本地 Kokoro 引擎**经 `child_process.fork` 加载 `sherpa-onnx-node` 原生 addon，运行在 Electron 的 Node（官方记录为 Electron 44）下：N-API 原生模块是否兼容 Electron 的 V8（外部缓冲等限制）**未验证**；默认引擎 Edge（云端）与本地 VITS（WASM）不受影响。
+  6. 设置覆盖层位于 `$DSH_HOME`（桌面端与 CLI 共用同一 home），`profileContext.home` 取不到时回退 `$DSH_HOME`/`~/.dsh` ✅。
+- 待桌面端真机核对：Kokoro 原生 addon；Windows/macOS 上 Settings → 语音模式页渲染与写入；插件经桌面 Plugin Manager 安装后的加载。
+

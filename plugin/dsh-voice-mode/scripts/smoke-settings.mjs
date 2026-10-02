@@ -132,6 +132,23 @@ try {
   if (changed.length === 1 && reloaded && JSON.stringify(reloaded[changed[0]]) === JSON.stringify(after[changed[0]])) ok('刷新后设置保留')
   else bad('刷新后设置未保留')
 
+  // 3.5) Settings 弹窗里的专属设置页（settings.section，所有版本都存在）：同一入口跨版本一致
+  await page.goto(url, { waitUntil: 'load' })
+  await page.waitForTimeout(1500)
+  await dismissOnboarding()
+  let sectionOk = false
+  if (await clickText(/^settings$/i)) {
+    await page.waitForTimeout(1200)
+    if (await clickText(/voice mode|语音模式/i, '[role=dialog] button,[role=dialog] [role=tab],[role=dialog] a,[role=dialog] li')) {
+      await page.waitForTimeout(1500)
+      sectionOk = await page.evaluate(() => {
+        const b = document.querySelector('[role="dialog"] [data-dshvm-settings="card"] button[aria-controls]')
+        return !!b && b.getAttribute('aria-expanded') === 'true'
+      })
+    }
+  }
+  sectionOk ? ok('Settings → 语音模式 专属设置页可见且默认展开') : bad('Settings 弹窗里没有「语音模式」专属设置页（或卡片未展开）')
+
   // 4) 0.1.7+ 专属：覆盖层文件、非法值/未知键/跨源写入
   const probe = await getSettings()
   if (probe?.managedBy === 'plugin') {

@@ -112,7 +112,7 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 
 ## ⚙️ Settings
 
-**Where to find it depends on your dsh version** (same card everywhere):
+**Works on every dsh version: Settings → Voice Mode** (the plugin registers its own page in the Settings dialog). Secondary entry points (same card) vary by version:
 
 - dsh ≤ 0.1.5: Settings → Plugins → plugin config → voice mode
 - dsh 0.1.6-alpha and later (incl. 0.1.7 / 0.2.0): left sidebar **Plugins** → the installed `dsh-voice-mode` → the "Voice Mode" card on its detail page

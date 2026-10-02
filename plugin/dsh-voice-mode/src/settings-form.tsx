@@ -993,9 +993,9 @@ function ModelStatusView(): React.ReactElement {
   )
 }
 
-export function VoiceSettingsCard({ scope }: { scope: ScopeController }): React.ReactElement {
+export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: ScopeController; defaultOpen?: boolean }): React.ReactElement {
   const [snap, setSnap] = useState(() => scope.getSnapshot())
-  const [collapsed, setCollapsed] = useState(true) // 默认折叠，与其他设置卡一致
+  const [collapsed, setCollapsed] = useState(!defaultOpen) // 默认折叠，与其他设置卡一致；独立设置页（settings.section）默认展开
   useEffect(
     () =>
       scope.subscribe(() => {
