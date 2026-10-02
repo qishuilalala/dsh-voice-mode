@@ -557,9 +557,9 @@ class AgentDefaultModelConfig extends Service {
   2. 请求转发会**删除 `Origin`/`Host`/`Sec-Fetch-Site` 并改写 Cookie**；`security.ts:sameOriginRequest` 在无 Origin 时放行（`if (!origin) return true`），Host 侧回环检查来自 Electron 主进程对 127.0.0.1 的请求 ✅（`/voice-mode/*` 含 SSE 流式与新增 `/settings` 均走同一路径）。
   3. 自定义协议特权含 `standard/secure/supportFetchAPI/corsEnabled/stream` → 安全上下文，`getUserMedia` 与 AudioWorklet（Blob 内联）可用；麦克风仅放行主框架 `dsh-app://app` 的音频请求，插件在主框架 ✅；macOS 授权/entitlement 由官方打包提供。
   4. ASR/SenseVoice 走 sherpa-onnx **WASM**（worker_threads），与 Electron 的 Node 无 ABI 依赖 ✅；`msedge-tts` 纯 JS ✅。
-  5. ⚠️ **本地 Kokoro 引擎**经 `child_process.fork` 加载 `sherpa-onnx-node` 原生 addon，运行在 Electron 的 Node（官方记录为 Electron 44）下：N-API 原生模块是否兼容 Electron 的 V8（外部缓冲等限制）**未验证**；默认引擎 Edge（云端）与本地 VITS（WASM）不受影响。
+  5. ✅（已实测并修复，2026-10-02）**本地 Kokoro 引擎**：在 Electron 44.0.0 / Node 24.18.1（`ELECTRON_RUN_AS_NODE=1 --expose-internals`，与官方桌面端宿主同款）下，`sherpa-onnx-node` 的 `generate()` 抛 `Error: External buffers are not allowed`（Electron V8 内存笼拒绝 N-API 外部缓冲区），普通 Node 正常；WASM 路径不可替代（Kokoro WASM 输出 NaN 且 RTF 极差）。修复：宿主是 Electron 时，为 Kokoro 子进程另找真 Node ≥18（env `DSHVM_NODE` 优先，其次 PATH 上的 `node`）作 `fork` 的 `execPath`；找不到则以明确提示失败（切换 Edge/VITS）。vits（WASM）、Edge（纯 JS）、ASR（WASM）在 Electron 下均实测正常；全部 33 个单测套件在 Electron 运行时下通过。实现与单测：`src/tts-runtime.ts`、`test/tts-runtime.test.mjs`；冒烟：`DSHVM_HOST_CMD=… DSHVM_TTS_SMOKE=1 bash scripts/smoke-runtime.sh`。
   6. 设置覆盖层位于 `$DSH_HOME`（桌面端与 CLI 共用同一 home），`profileContext.home` 取不到时回退 `$DSH_HOME`/`~/.dsh` ✅。
-- 待桌面端真机核对：Kokoro 原生 addon；Windows/macOS 上 Settings → 语音模式页渲染与写入；插件经桌面 Plugin Manager 安装后的加载。
+- 桌面端运行时等价验证（2026-10-02，Linux 上以 Electron 44.0.0 RunAsNode 作宿主）：已安装形态的完整冒烟（宿主端点、中英文界面、设置页写入/迁移/热切换、引擎合成）在 dsh 0.1.7-rc.2 / 0.2.0-rc.2 通过；同环境下 0.7.15 复现 issue #12（`/voice-mode/*` 404、mic 不渲染）。**仍无法在服务器上验证**：Windows/macOS 的 Electron 主进程与自定义协议 `dsh-app://`、系统麦克风授权、Windows 路径与 PATH 行为（其中 Origin/Host 被剥离的请求已由 `security.ts` 判定单测覆盖：无 Origin 放行、回环放行、跨站拒绝）。
 
 ---
 

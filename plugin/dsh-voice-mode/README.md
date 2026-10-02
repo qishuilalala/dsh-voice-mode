@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue)](LICENSE)
 [![Latest Release](https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases)](https://github.com/qishuilalala/dsh-voice-mode/releases)
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange)](https://www.npmjs.com/package/dsh-voice-mode)
-[![Tests: 424 passing](https://img.shields.io/badge/tests-424%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
+[![Tests: 431 passing](https://img.shields.io/badge/tests-431%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
 
 DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（真 barge-in）。无需 API Key，识别模型在本地宿主端推理。
 
@@ -128,6 +128,8 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 生效范围：`voice`/`rate`/`ttsEngine`/`kokoroModel`/`spokenFormat` **立即生效**；其余设置下次进入语音模式时生效。设置项默认值由插件配置（`base` 层）提供。
 
 ### 本地音色（VITS / Kokoro）
+
+> **桌面端（Electron）提示**：官方桌面端的宿主运行在 Electron 里，其 V8 不允许 Kokoro 的原生 addon 返回外部缓冲区。插件会自动改用一个真正的 Node.js 来跑 Kokoro——**需要系统 PATH 上有 Node.js ≥18**（或用环境变量 `DSHVM_NODE` 指定路径）；没有则 Kokoro 会提示失败，请改用默认的 Edge 或本地 VITS（两者在桌面端不受影响）。
 
 - **VITS（纯中文）**：`suyingxue` 素映雪·女 / `gunian` 顾念·男 / `fushiyu` 傅斯遇·女 / `bingjiao` 冰娇·男 / `bazong` 霸总·男
 - **Kokoro（中英混读均可）**：103 个音色全量入表，面板按编号 + 实测性别标注；四个常用男声置顶：`62` 深沉 / `68` 浑厚 / `75` 清亮 / `76` 磁性；中文女声 `48` 小北 / `49` 小妮 / `50` 小小 / `51` 小艺。音色只是风格向量，**语言能力与音色无关**。

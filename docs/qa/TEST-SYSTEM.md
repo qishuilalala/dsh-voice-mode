@@ -22,9 +22,10 @@
 |---|---|---|
 | 每周一 CI（`dsh-version-check.yml`） | `npm run check:dsh-version`：dist-tags vs 默认矩阵比对；EXIT 1 自动开 issue | CI 自动 |
 | dsh 上游发新版本（release notes / dist-tag 变化） | 同上，手动再跑一次确认 | 维护者 |
-| 每次改 `src/` | `npm run typecheck` + `npm test`（32 套件 / 424 项 exit 0）+ `node build.mjs` | 提交者 |
+| 每次改 `src/` | `npm run typecheck` + `npm test`（33 套件 / 431 项 exit 0）+ `node build.mjs` | 提交者 |
 | 每次推送 / PR（CI） | `ci.yml`：`test` job（npm test + build）与 `install` job（Node 18/22 下对打包产物做 pnpm+npm 全新安装并 import） | CI 自动 |
 | **发版前** | L5 安装形态门禁（见上）；全矩阵冒烟用 `link:` 与 `DSHVM_SPEC` 两种形态各跑一遍 | 发版者 |
+| **发版前（桌面端等价）** | 以 Electron RunAsNode 作宿主复跑已安装形态冒烟：`npm i electron@44 && node node_modules/electron/install.js`，`DSHVM_HOST_CMD="env ELECTRON_RUN_AS_NODE=1 <electron> --expose-internals" DSHVM_TTS_SMOKE=1 bash scripts/smoke-runtime.sh <bin> <port>`；并可用 `node` 垫片在 Electron 下跑 `npm test` | 发版者 |
 | 每次改兼容面脚本 | 对应脚本 `--help`/语法检查 + 至少一版实跑 | 提交者 |
 
 ## 三、迭代循环（新版本出现时）
@@ -62,6 +63,8 @@
 7. **`link:` 形态掩盖「别人安装」类缺陷**（2026-10-02）：此前所有发布版在 npm 安装形态下于 dsh ≥0.1.7 无法加载（`failed to import`），而本仓库一直用 `link:` 测试从未发现。两个根因：① 运行时依赖 `msedge-tts` 带 `preinstall: npx only-allow pnpm`，pnpm 11 报 `ERR_PNPM_IGNORED_BUILDS`、npm 被 only-allow 拒绝（本仓库工作区 `allowBuilds` 掩盖）；② `msedge-tts` 的 `require("buffer/index")` 经 dsh ≥0.1.7 的 `ResolutionRouter`（`createRequire(parent).resolve.paths(name)` 返回 null）抛 TypeError。修法：把 msedge-tts **连同全部依赖**内联为独立 `lib/msedge-tts.cjs`（核心模块一律 `node:` 前缀、可选依赖打桩），防回归见 `test/package-install.test.mjs`。**内联进 ESM 产物不行**：需 `createRequire(import.meta.url)`，合成父路径同样被路由器拒绝。
 8. **冒烟台架须复刻真实 profile 的 pnpm 配置**：缺 `pnpm-workspace.yaml`（`nodeLinker: hoisted` + `autoInstallPeers: false`）时 pnpm 会自动安装 peer 依赖（第二份 cordis），与宿主实例冲突。
 9. **调试「failed to import」**：dsh 把真实异常交给 `ctx.logger.error`，默认不输出，只剩 `entry did not activate`；可复制一份核心，在 `cordis-plugin-loader` 的 `Entry._init` catch 里加 `console.error(error.stack)` 取原文（勿改共享的 pnpm store 硬链文件）。
+
+10. **桌面端（Electron）≠ Node**：官方桌面端宿主是 `ELECTRON_RUN_AS_NODE=1` 的 Electron（V8 内存笼）。原生 addon 若返回 N-API 外部缓冲区会报 `External buffers are not allowed`（Kokoro 即中招，见 `src/tts-runtime.ts`）；WASM/纯 JS 路径不受影响。服务器上无桌面端安装包时，用 `electron` npm 包的 RunAsNode 模式即可得到同款运行时（Electron 44.0.0 = Node 24.18.1）。Windows/macOS 的主进程、自定义协议、系统麦克风授权仍只能真机验证。
 
 ## 六、当前矩阵快照（随验证更新；compat-contract.md §10/§11 为准）
 

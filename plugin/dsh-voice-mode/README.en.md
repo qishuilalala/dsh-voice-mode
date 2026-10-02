@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue)](../../LICENSE)
 [![Latest Release](https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases)](https://github.com/qishuilalala/dsh-voice-mode/releases)
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange)](https://www.npmjs.com/package/dsh-voice-mode)
-[![Tests: 424 passing](https://img.shields.io/badge/tests-424%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
+[![Tests: 431 passing](https://img.shields.io/badge/tests-431%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
 
 Full-duplex voice conversation mode for DeepSeek Harness (dsh): speak, get a
 spoken answer. Streamed zipformer2 ASR → editable draft → auto send → the
@@ -170,6 +170,8 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 Effect timing: `voice`/`rate`/`ttsEngine`/`kokoroModel`/`spokenFormat` take effect **immediately** (TTS hot-swap); the rest apply on the next voice-mode entry. Defaults come from the plugin config (`base` layer) — they follow the config unless explicitly changed.
 
 ### Common voices (full list: `node scripts/list-voices.mjs`)
+
+> **Desktop (Electron) note**: the official desktop host runs inside Electron, whose V8 forbids the external buffers returned by Kokoro's native add-on. The plugin automatically runs Kokoro in a real Node.js instead — **it needs Node.js >= 18 on PATH** (or set `DSHVM_NODE` to its path). Without it Kokoro reports an error; use the default Edge engine or local VITS (both work on desktop).
 
 | ShortName | Description |
 | --- | --- |

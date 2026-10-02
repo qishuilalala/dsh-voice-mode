@@ -604,8 +604,8 @@ function createAsrRuntime(options) {
     }
     let finMap = finalized.get(sessionId);
     const myGen = resetGen.get(sessionId) ?? 0;
-    const cached = finMap?.get(epoch);
-    if (cached !== void 0) return { text: cached };
+    const cached2 = finMap?.get(epoch);
+    if (cached2 !== void 0) return { text: cached2 };
     let sessSegs = segments.get(sessionId);
     if (!sessSegs) {
       sessSegs = /* @__PURE__ */ new Map();
@@ -1295,6 +1295,50 @@ var TtsQueue = class {
 
 // src/tts-local.ts
 import { fork } from "node:child_process";
+
+// src/tts-runtime.ts
+import { spawnSync } from "node:child_process";
+var probeNode = (command, env) => {
+  try {
+    const r = spawnSync(
+      command,
+      ["-p", "JSON.stringify([process.versions.node, !!process.versions.electron, process.execPath])"],
+      { env, encoding: "utf8", timeout: 5e3, windowsHide: true }
+    );
+    if (r.status !== 0) return null;
+    const [version, electron, execPath] = JSON.parse(r.stdout.trim());
+    return !electron && Number.parseInt(version, 10) >= 18 && typeof execPath === "string" ? execPath : null;
+  } catch {
+    return null;
+  }
+};
+var NATIVE_RUNTIME_UNAVAILABLE = 'Local Kokoro cannot run inside the Electron-based desktop host (native add-on blocked: "External buffers are not allowed"). Install Node.js >= 18 on PATH (or set DSHVM_NODE to its path), or switch the read-aloud engine to Edge or VITS.';
+var cached;
+function resolveNativeRuntime(opts = {}) {
+  const env = opts.env ?? process.env;
+  const useCache = opts.useCache ?? opts.env === void 0;
+  if (useCache && cached !== void 0) return cached;
+  const electron = opts.electron ?? !!process.versions.electron;
+  let result;
+  if (!electron) {
+    result = { env };
+  } else {
+    const childEnv = { ...env };
+    delete childEnv.ELECTRON_RUN_AS_NODE;
+    const probe = opts.probe ?? probeNode;
+    const candidates = [env.DSHVM_NODE, "node"].filter((c) => typeof c === "string" && c.length > 0);
+    let execPath = null;
+    for (const c of candidates) {
+      execPath = probe(c, childEnv);
+      if (execPath) break;
+    }
+    result = execPath ? { execPath, env: childEnv } : null;
+  }
+  if (useCache) cached = result;
+  return result;
+}
+
+// src/tts-local.ts
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { join as join3 } from "node:path";
 import { statSync as statSync2 } from "node:fs";
@@ -1663,7 +1707,12 @@ function createSherpaLocalEngine(options) {
               if (!treeOk) throw new Error("local TTS model download failed: espeak-ng-data");
             }
             if (!child) {
-              child = fork(workerPath, [], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+              const runtime = options.kind === "kokoro" ? resolveNativeRuntime() : { env: process.env };
+              if (!runtime) throw new Error(NATIVE_RUNTIME_UNAVAILABLE);
+              child = fork(workerPath, [], {
+                stdio: ["ignore", "ignore", "pipe", "ipc"],
+                ...runtime.execPath ? { execPath: runtime.execPath, env: runtime.env } : {}
+              });
               let stderrTail = "";
               child.stderr?.on("data", (chunk) => {
                 stderrTail += String(chunk);

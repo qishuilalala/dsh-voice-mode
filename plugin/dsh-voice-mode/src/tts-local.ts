@@ -13,6 +13,7 @@
  * 输出：PCM → WAV（PCM16）→ 经 SSE base64 下发，client 按 audio/wav 播放。
  */
 import { fork, type ChildProcess } from 'node:child_process'
+import { NATIVE_RUNTIME_UNAVAILABLE, resolveNativeRuntime } from './tts-runtime.ts'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { statSync } from 'node:fs'
@@ -287,7 +288,13 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
           // 2) 子进程：加载模型并合成（同步 CPU 在子进程内，不阻塞主线程；
           //    kokoro 走原生 addon（稳定无 Abort），vits 走 WASM（子进程主线程实测稳定）。
           if (!child) {
-            child = fork(workerPath, [], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] })
+            // Kokoro 的原生 addon 在 Electron（官方桌面端宿主）下不可用 → 另用真 Node 起子进程（见 tts-runtime.ts）。
+            const runtime = options.kind === 'kokoro' ? resolveNativeRuntime() : { env: process.env }
+            if (!runtime) throw new Error(NATIVE_RUNTIME_UNAVAILABLE)
+            child = fork(workerPath, [], {
+              stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+              ...(runtime.execPath ? { execPath: runtime.execPath, env: runtime.env } : {}),
+            })
             // 过滤 sherpa 原生 addon 的已知噪音日志（英文句每句一条 "Skip unknown phonemes"）；
             // 其余 stderr 原样转发，便于诊断真实错误。
             // 注意：stderr 分块可能把一行劈成两半，必须按行缓冲后再过滤，否则

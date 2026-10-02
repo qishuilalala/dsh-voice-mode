@@ -7,16 +7,29 @@
 
 ## [Unreleased]
 
-### 工程质量（未改变运行行为，随下个版本发布）
-
-- 删除 5 处死代码（`asr-host.ts` 的 `dirname`/`statFile`/`stat`、`models.ts` 解构里未用的 `repo`/`allowCustomHost`、`segmenter.ts` 的 `TERMINAL`、`client.tsx` 的 `SUBMIT_DELAY_MS`），`tsconfig` 开启 `noUnusedLocals` 防回潮。
-- CI 新增 `install` job：对打包产物做 pnpm(严格 build 脚本策略) + npm 全新安装并 import，Node 18 / 22 各一遍（兑现 `engines.node >=18`；已本地验证 Node 18.20 / 20.20 可加载 host 产物）。
-
 ### 规划中
 
 - F1：emotion 标签 DSL 全量上线（LLM 侧标签使用指引注入 + 真机验收）
 - ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
 - 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
+
+## [0.7.19] - 2026-10-02
+
+**Patch**：官方桌面端（Electron）下本地 Kokoro 引擎修复 + 工程质量。
+
+### Fixed
+
+- **官方桌面端（Electron 宿主）下本地 Kokoro 无法合成**：`sherpa-onnx-node` 的 `generate()` 在 Electron 中抛 `External buffers are not allowed`（V8 内存笼拒绝 N-API 外部缓冲区；Electron 44.0.0 / Node 24.18.1 实测复现，普通 Node 正常）。现宿主为 Electron 时，Kokoro 子进程改用真正的 Node.js ≥18（env `DSHVM_NODE` 优先，其次 PATH 上的 `node`）；找不到时给出可操作的提示（安装 Node 或改用 Edge/VITS），而不是原生异常。vits / Edge / ASR 在 Electron 下均实测正常，不受影响。
+
+### Added
+
+- `src/tts-runtime.ts` + `test/tts-runtime.test.mjs`（7 项）；`scripts/smoke-tts-engines.mjs`（vits/kokoro 真实合成冒烟）；`smoke-runtime.sh` 支持 `DSHVM_HOST_CMD`（以 Electron RunAsNode 作宿主）、`DSHVM_TTS_SMOKE=1`、`DSHVM_ALLOW_BUILDS=1`（复现旧版缺陷）。
+- 验证：以 Electron 44.0.0 RunAsNode 作宿主，已安装形态完整冒烟在 dsh 0.1.7-rc.2 / 0.2.0-rc.2 通过；同环境下 0.7.15 复现 issue #12；全部 33 个单测套件在 Electron 运行时下通过。
+
+### 工程质量（未改变运行行为）
+
+- 删除 5 处死代码（`asr-host.ts` 的 `dirname`/`statFile`/`stat`、`models.ts` 解构里未用的 `repo`/`allowCustomHost`、`segmenter.ts` 的 `TERMINAL`、`client.tsx` 的 `SUBMIT_DELAY_MS`），`tsconfig` 开启 `noUnusedLocals` 防回潮。
+- CI 新增 `install` job：对打包产物做 pnpm(严格 build 脚本策略) + npm 全新安装并 import，Node 18 / 22 各一遍（兑现 `engines.node >=18`）。
 
 ## [0.7.18] - 2026-10-02
 

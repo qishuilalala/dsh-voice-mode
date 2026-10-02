@@ -51,6 +51,8 @@ nodeLinker: hoisted
 autoInstallPeers: false
 minimumReleaseAge: 0
 YAML
+# DSHVM_ALLOW_BUILDS=1：放行 msedge-tts 的 preinstall（仅用于复现 ≤0.7.17 旧版本的加载缺陷，见 ADR-0011；0.7.18+ 不需要）。
+[ -n "${DSHVM_ALLOW_BUILDS:-}" ] && printf 'allowBuilds:\n  msedge-tts: true\n' >> "$DSH_HOME/profiles/web/pnpm-workspace.yaml"
 
 # 预置 settings：跳过首次引导弹窗。比在 UI 上按文本点按钮可靠得多——界面语言跟随浏览器，
 # 文本匹配天然脆弱（实测中文环境下英文正则全不命中，引导关不掉）。
@@ -100,7 +102,9 @@ if [ ! -e "$DSH_HOME/profiles/web/node_modules/dsh-voice-mode/package.json" ]; t
 fi
 
 echo "== boot dsh 核心（port $PORT）=="
-DSH_HOME="$DSH_HOME" node "$BIN" web --port "$PORT" --host 127.0.0.1 --no-open >"$BOOTLOG" 2>&1 &
+# DSHVM_HOST_CMD：宿主进程的启动命令（默认 node）。桌面端宿主是 Electron 的 RunAsNode 子进程，可设为
+#   DSHVM_HOST_CMD="env ELECTRON_RUN_AS_NODE=1 <electron> --expose-internals" 以贴近桌面端运行时。
+DSH_HOME="$DSH_HOME" ${DSHVM_HOST_CMD:-node} "$BIN" web --port "$PORT" --host 127.0.0.1 --no-open >"$BOOTLOG" 2>&1 &
 NODE_PID=$!
 
 # 等 URL（最多 60s）
@@ -157,6 +161,14 @@ if node -e "require.resolve('playwright-core')" >/dev/null 2>&1; then
   fi
 else
   echo "   （跳过客户端冒烟：playwright-core 未安装）"
+fi
+
+# DSHVM_TTS_SMOKE=1：朗读引擎冒烟（vits/kokoro 真实合成；需本机已缓存模型，否则首次合成会下载）。
+# 宿主是 Electron（DSHVM_HOST_CMD 含 electron）时自动按桌面端语义断言 Kokoro。
+if [ -n "${DSHVM_TTS_SMOKE:-}" ]; then
+  echo "== 朗读引擎冒烟（vits / kokoro）=="
+  EL_FLAG=""; case "${DSHVM_HOST_CMD:-}" in *[Ee]lectron*) EL_FLAG="--electron" ;; esac
+  node scripts/smoke-tts-engines.mjs "$URL" $EL_FLAG || fail=1
 fi
 
 [ "$fail" -eq 0 ] && echo "✓ runtime 冒烟通过（host + client，dsh 核心: $BIN）" || { echo "✗ runtime 冒烟有失败项"; exit 1; }

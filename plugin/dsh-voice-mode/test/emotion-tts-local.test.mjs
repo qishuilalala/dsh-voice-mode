@@ -114,6 +114,8 @@ class FakeChild extends EventEmitter {
 export function fork() {
   return new FakeChild()
 }
+// tts-runtime.ts 也从 node:child_process 引入 spawnSync（仅 Electron 宿主探测真 Node 时调用）
+export function spawnSync() { return { status: 0, stdout: JSON.stringify(['24.0.0', false, '/usr/bin/node']) } } // 模拟「PATH 上有真 Node」，使 Electron 运行时下的本测试也走通
 `)
 
 // 3) esbuild bundle src/tts-local.ts：alias 注入两个 stub。
