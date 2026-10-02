@@ -29,9 +29,15 @@ check() { # <目录> <安装器名>
 }
 
 fail=0
+NODE_MAJOR="$(node -p "process.versions.node.split('.')[0]")"
+if [ "$NODE_MAJOR" -lt 22 ]; then
+  # pnpm 11 自身要求 Node ≥22（低版本直接拒绝启动）；pnpm 安装路径由 Node ≥22 的运行覆盖，此处只验 npm + 入口可加载
+  echo "== pnpm：跳过（Node $NODE_MAJOR < 22，pnpm 11 不支持；由 Node ≥22 的运行覆盖）"
+else
 echo "== pnpm（严格 build 脚本策略，最贴近 dsh 插件管理器）"
 mkdir -p "$WORK/pnpm" && (cd "$WORK/pnpm" && echo '{"name":"t","private":true}' > package.json && pnpm add "$TGZ" --registry "$REG" >"$WORK/pnpm.log" 2>&1) \
   && check "$WORK/pnpm" pnpm || { echo "✗ [pnpm] 安装失败："; tail -8 "$WORK/pnpm.log" 2>/dev/null; fail=1; }
+fi
 echo "== npm"
 mkdir -p "$WORK/npm" && (cd "$WORK/npm" && echo '{"name":"t","private":true}' > package.json && npm install "$TGZ" --registry "$REG" --no-audit --no-fund >"$WORK/npm.log" 2>&1) \
   && check "$WORK/npm" npm || { echo "✗ [npm] 安装失败："; tail -8 "$WORK/npm.log" 2>/dev/null; fail=1; }

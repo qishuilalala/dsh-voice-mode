@@ -46,7 +46,8 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Install (build deps)
         run: npm install --no-audit --no-fund
-      - name: Install pnpm
+      - name: Install pnpm (pnpm 11 requires Node >=22)
+        if: ${{ matrix.node >= 22 }}
         run: npm install -g pnpm@11
       - name: Fresh-install the packed tarball (pnpm + npm) and import
         run: bash scripts/verify-install.sh
