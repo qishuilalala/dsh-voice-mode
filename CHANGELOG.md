@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+### 规划中
+
+- F1：emotion 标签 DSL 全量上线（LLM 侧标签使用指引注入 + 真机验收）
+- ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
+- 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
+
+## [0.7.17] - 2026-10-02
+
+**Minor**：设置面全版本打通 + 国际化重做。0.7.16 在 dsh 0.1.7+ 上插件**没有设置页**、`/mode` 切换持久化 500，且界面语言只读一次、设置卡片中英混杂；本版修复并以官方 `ctx.locale`、官方插件元数据格式落地国际化。验证：九个隔离核心（0.1.1-rc.2 → 0.2.0-rc.2）真浏览器冒烟全过，`npm test` 全绿，本机 dsh 0.2.0-rc.2 线上真流程通过。详见 `docs/compat-contract.md` §13–§15。
+
 ### Fixed
 
 - **0.1.7+ 宿主上插件没有设置页、`/mode` 切换持久化 500**（0.7.16 及之前均存在）：0.1.7 起官方设置存储对本插件条目一律拒写（`settings/rejected: has no volatile fields`），旧槽位 `settings.plugin.item` 与客户端 `settingsScope` 同时被移除。现改为：0.1.7+ 用户设置落插件自有覆盖层文件 `$DSH_HOME/voice-mode.settings.json`（原子写、0600、逐键校验、损坏文件回退），经新增 `GET/POST /voice-mode/settings` 读写并热生效（引擎/音色/语速即时，与 ≤0.1.6 一致）；设置卡片注册到 `plugins.bundle.config`（插件详情页）。
@@ -29,12 +39,6 @@
 - **Settings → 语音模式 专属设置页（`settings.section`，所有 dsh 版本通用入口）**：此前设置入口随版本而异（≤0.1.5 在 Settings→Plugins，0.1.6+ 在插件详情页），用户难以发现；现在每个版本的 Settings 弹窗里都有同名页面（默认展开）。与 `dsh-better-sidebar` 等已适配 0.2.x 的插件的做法一致。
 - `scripts/smoke-settings.mjs`（真浏览器设置页冒烟：入口可见 → 写入生效 → 刷新保留 → 0.1.7+ 覆盖层落盘/非法值/未知键/跨源写入被拒），已接入 `smoke-runtime.sh`；`test/settings-store.test.mjs`（覆盖层单测 + 两条真机教训的结构守卫）。
 - `docs/compat-contract.md` §13：设置面在各 dsh 版本的槽位/数据面演变与方案取舍；更正 §12.2 中「0.1.7+ 无设置卡片属已知差异、自带面板可用」的错误表述。
-
-### 规划中
-
-- F1：emotion 标签 DSL 全量上线（LLM 侧标签使用指引注入 + 真机验收）
-- ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
-- 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
 
 ## [0.7.16] - 2026-10-01
 
