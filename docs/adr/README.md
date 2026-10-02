@@ -14,6 +14,9 @@
 | [0006](0006-barge-in-auto-degrade.md) | 打断模式自动探测（bargeInMode auto/manual） | 已接受（部分实现） |
 | [0007](0007-emotion-tag-dsl.md) | 情感标签 DSL（`<emotion>` / `<break>` / `<whisper>`） | 已接受（先本地后 Edge 分两步） |
 | [0008](0008-yield-semantics.md) | 让位语义（backchannelYield + 4 层 system prompt） | 已接受（Phase 1：#1 backchannel + #2 让位 prompt，#3-5 砍/推迟） |
+| [0009](0009-plugin-settings-self-persistence.md) | 插件设置自持久化（≥0.1.7 覆盖层文件 + HTTP 端点） | 已接受 |
+| [0010](0010-i18n-official-locale.md) | 国际化绑定官方 locale，词典 zh/en，host 只发错误码 | 已接受 |
+| [0011](0011-bundle-msedge-tts-inline.md) | msedge-tts 连同依赖内联为独立 CJS（修 npm 安装与 dsh ≥0.1.7 加载） | 已接受 |
 
 ## 格式
 

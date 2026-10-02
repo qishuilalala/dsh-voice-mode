@@ -12,6 +12,7 @@ BIN="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 PORT="${2:-3120}"
 [ -f "$BIN" ] || { echo "✗ dsh 核心不存在: $BIN"; exit 2; }
 
+# 插件来源：默认 link 本仓库；DSHVM_SPEC=0.7.17（或 npm tarball 路径）则按「别人全新安装」的方式装发布包验证。
 # 链接路径必须是原生格式：Git Bash/MSYS 下 $PWD 是 /c/... 形式，pnpm 在 Windows 上
 # 解析不了，会静默装不上，最终 boot 报 "cannot resolve profile bundle"。cygpath -m
 # 输出 C:/... 混合格式，Windows 与 POSIX 侧都能用。
@@ -35,11 +36,21 @@ cat > "$DSH_HOME/profiles/web/package.json" <<EOF
 {
   "name": "dsh-profile-web",
   "private": true,
-  "dependencies": { "dsh-voice-mode": "link:$LINK_SRC" },
+  "dependencies": { "dsh-voice-mode": "${DSHVM_SPEC:-link:$LINK_SRC}" },
   "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-voice-mode"], "patchReload": "startup" } }
 }
 EOF
 echo '[]' > "$DSH_HOME/profiles/web/cordis.patch.yml"
+# 复刻真实 dsh profile 的 pnpm 工作区配置（dsh 初始化 profile 时写入；缺它会让 pnpm 自动安装 peer 依赖的第二份 cordis，
+# 与宿主实例冲突 → 已安装形态的插件「failed to import」，link 形态则不受影响）。
+cat > "$DSH_HOME/profiles/web/pnpm-workspace.yaml" <<'YAML'
+packages:
+  - .
+
+nodeLinker: hoisted
+autoInstallPeers: false
+minimumReleaseAge: 0
+YAML
 
 # 预置 settings：跳过首次引导弹窗。比在 UI 上按文本点按钮可靠得多——界面语言跟随浏览器，
 # 文本匹配天然脆弱（实测中文环境下英文正则全不命中，引导关不掉）。

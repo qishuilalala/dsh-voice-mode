@@ -13,6 +13,23 @@
 - ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
 - 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
 
+## [0.7.18] - 2026-10-02
+
+**Patch**：修复「别人从 npm 安装」类缺陷。**0.7.17 及更早所有版本**在 npm / pnpm 全新安装形态下存在下列问题（此前一直用 `link:` 测试，未暴露）；请升级到本版本。
+
+### Fixed
+
+- **pnpm 11 / npm 安装失败**：运行时依赖 `msedge-tts` 带 `preinstall: npx only-allow pnpm`，pnpm 11 报 `ERR_PNPM_IGNORED_BUILDS`、npm 被 only-allow 拒绝。现将 msedge-tts 连同全部传递依赖内联为独立 `lib/msedge-tts.cjs`，并移入 devDependencies（ADR-0011）。
+- **dsh ≥0.1.7 上已安装形态「failed to import」**：`msedge-tts` 的 `require("buffer/index")` 经 dsh `ResolutionRouter` 对已安装插件的路由抛 TypeError。内联产物里的 Node 核心模块一律 `node:` 前缀、可选依赖打桩，不再有任何指向非核心模块的裸 require。
+- 英文 README 设置表补齐缺失的 7 项（bargeInMode / echoGateDb / autoResume / shortcut / senseVoice / toolBeep / yieldMs）；移除未被引用的词典键 `previewSynthesisFail`。
+
+### Added
+
+- `THIRD_PARTY_NOTICES.md`（随包发布被内联的 32 个第三方包许可）与 `scripts/gen-third-party-notices.mjs`（`--check` 校验覆盖）。
+- 防回归 `test/package-install.test.mjs`（11 项）：运行时依赖无安装脚本、产物只含核心模块/相对/已声明依赖、files 覆盖、许可覆盖。
+- 发版前门禁：`scripts/verify-install.sh`（pnpm + npm 全新安装打包产物并 import）、`DSHVM_SPEC=file:<tgz>` 已安装形态冒烟（`docs/qa/TEST-SYSTEM.md` L5）。
+- ADR-0009（设置自持久化）、ADR-0010（国际化绑定官方 locale）、ADR-0011（msedge-tts 内联）。
+
 ## [0.7.17] - 2026-10-02
 
 **Minor**：设置面全版本打通 + 国际化重做。0.7.16 在 dsh 0.1.7+ 上插件**没有设置页**、`/mode` 切换持久化 500，且界面语言只读一次、设置卡片中英混杂；本版修复并以官方 `ctx.locale`、官方插件元数据格式落地国际化。验证：九个隔离核心（0.1.1-rc.2 → 0.2.0-rc.2）真浏览器冒烟全过，`npm test` 全绿，本机 dsh 0.2.0-rc.2 线上真流程通过。详见 `docs/compat-contract.md` §13–§15。

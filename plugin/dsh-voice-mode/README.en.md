@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue)](../../LICENSE)
 [![Latest Release](https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases)](https://github.com/qishuilalala/dsh-voice-mode/releases)
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange)](https://www.npmjs.com/package/dsh-voice-mode)
-[![Tests: 380 passing](https://img.shields.io/badge/tests-380%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
+[![Tests: 424 passing](https://img.shields.io/badge/tests-424%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
 
 Full-duplex voice conversation mode for DeepSeek Harness (dsh): speak, get a
 spoken answer. Streamed zipformer2 ASR → editable draft → auto send → the
@@ -148,17 +148,24 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | `voice` | per engine | Voice: 5 VITS speakers; 103 Kokoro voices (◀▶ stepper; 62/68/75/76 favourite males pinned); Edge ShortNames below. The inline "试听" button previews it at the current rate |
 | `rate` | `1.1` | Reading speed multiplier (0.5 slow ～ 2.0 fast), **applies live** (batch J 1.0→1.1) |
 | `interruptLevel` | `0` | Barge-in sensitivity (host-side VAD frame detection + echo gate): 0 high threshold (3 frames) / 1 medium (2 frames) / 2 low (1 frame) |
+| `bargeInMode` | `detect` | Barge-in mode: `detect` auto-probes native echo cancellation (default; falls back to hold-to-talk when it is not in effect) / `auto` force interrupt as soon as you speak (headphones / quiet rooms) / `manual` hold-to-talk (recommended on loudspeakers). Batch 7O default, I10-exempt (ADR-0006) |
+| `echoGateDb` | `6` | Echo-gate threshold (dB): auto barge-in requires the residual to exceed the echo floor by this much. **Idle while native AEC is in effect** (it only acts as a fallback on Safari / headsets without native AEC); lower by 3-4 if you cannot interrupt, raise by 8-10 if noise interrupts. **Do not tune it for "cannot interrupt"** (see ADR-0006) |
 | `silenceMs` | `1500` | Silence pause in ms that marks the end of a complete sentence |
 | `idleTimeoutMinutes` | `5` | Minutes of inactivity before auto-exiting voice mode (reading counts as activity; batch J 10→5) |
 | `modelHost` | default | Model download host (use `https://hf-mirror.com` on mainland networks) |
 | `autoSend` | `true` | Auto-send once quiet (consecutive segments join into one message); when off, text only goes to the draft (hold `Ctrl` / release in hold mode still sends) |
 | `mode` | `toggle` | Interaction mode: `toggle` continuous listening + 1500 ms silence split; `hold` push-to-talk, release to send (short tap exits) |
+| `autoResume` | `false` | Auto-restore voice mode when switching back to your last voice session (off by default). When on: the next time you enter that session it auto-enters voice mode and restores it; when off, press `Ctrl+Shift+V` manually |
+| `shortcut` | `Ctrl+Shift+V` | Shortcut to enter / exit voice mode (modifiers Ctrl/Shift/Alt/Meta + one letter key); **empty = disabled**, use the mic button instead |
 | `wakeWord` | empty (off) | Wake word (e.g. `你好小D`): speak it after entering to activate; empty = off. **May be said together with your command** — the wake word is stripped and never sent; fault-tolerant matching (edit distance ≤1 + a 3-char leading window absorbs homophones/fillers); **3-4 characters recommended** (single-char words get no tolerance; a 2-char word also absorbs any same-first-char 2-char word); must be repeated after each utterance split or barge-in; **toggle mode only**; not triggered while the agent is reading |
 | `spokenFormat` | `true` | Spoken-format system prompt: inject "short natural sentences, no Markdown decoration" into voice-mode replies only, **applies live** |
+| `senseVoice` | `true` | Re-transcribe the finalized utterance with SenseVoice (punctuation + number normalization, more accurate; on by default). **Turning it off saves ~228 MB of models** and uses streaming recognition only (faster, less accurate) |
+| `toolBeep` | `false` | Tool-call beep (off by default): when on, a short beep plays each time the agent calls a tool; off = silent |
 | `senseITN` | `true` | Batch 2 P0: SenseVoice inverse text normalization (number / date / currency; on by default) |
 | `captionFontSize` | `0` | Batch 3 P0: caption font tier 0=12px / 1=14px / 2=18px / 3=24px (default 0 is byte-equivalent to legacy) |
 | `captionMaxWidth` | `1` | Batch 3 P0: caption width tier 0=50vw / 1=70vw / 2=90vw |
 | `backchannelYield` | `true` | Batch 5 P1: yield semantics (ADR-0008); saying `嗯 / 对` while reading auto-pauses for 1.5 s; genuine speech still triggers hard barge-in. I10-exempt (default-on is a product decision); off = behavior identical to pre-change |
+| `yieldMs` | `1500` | Yield-window length (ms, 500-3000): how long TTS frames are dropped after `backchannelYield` triggers; if you really want to speak in the window the normal `hardBreak` takes over, and playback resumes when the window ends |
 
 Effect timing: `voice`/`rate`/`ttsEngine`/`kokoroModel`/`spokenFormat` take effect **immediately** (TTS hot-swap); the rest apply on the next voice-mode entry. Defaults come from the plugin config (`base` layer) — they follow the config unless explicitly changed.
 

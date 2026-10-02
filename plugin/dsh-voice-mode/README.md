@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue)](LICENSE)
 [![Latest Release](https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases)](https://github.com/qishuilalala/dsh-voice-mode/releases)
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange)](https://www.npmjs.com/package/dsh-voice-mode)
-[![Tests: 380 passing](https://img.shields.io/badge/tests-380%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
+[![Tests: 424 passing](https://img.shields.io/badge/tests-424%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
 
 DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（真 barge-in）。无需 API Key，识别模型在本地宿主端推理。
 
@@ -256,7 +256,7 @@ flowchart LR
 | 热词偏置 | 无 | 无（已移除，详见 v0.7.7 文档说明） |
 | 字幕 a11y | 无 | **4 档字号 + 3 档宽度 + 主题跟随** |
 | 唤醒词 | 无 | **轻量流式匹配 + 前缀语气词白名单** |
-| 兼容 dsh | — | **0.1.1-rc.2 起全版本（含 0.1.7-rc.1）** |
+| 兼容 dsh | — | **0.1.1-rc.2 起全版本（含 0.2.0-rc.2）** |
 
 ---
 

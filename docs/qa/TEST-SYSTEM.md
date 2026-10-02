@@ -10,8 +10,9 @@
 |---|---|---|---|
 | L1 锚点存在性 | `scripts/check-anchors.mjs <ver…>` | 9/9 | 客户端 inject 包是否在该版本发布；缺失=结构性不兼容（宿主太老），不是插件缺陷 |
 | L2 类型面 | `scripts/typecheck-dual.sh <ver…>` | host+client 双 0 error | cordis 映射表须按 `npm view @deepseek-ai/dsh-host-webserver@<v> peerDependencies` 实证补表；未知版本线显式 exit 1，禁止静默回退 |
-| L3 隔离冒烟 | `scripts/smoke-runtime.sh <bin> <port>` | boot + 三端点 200 + mic 渲染 + console 0 error | 测试 profile 必须带 `"patchReload":"startup"`（rc.3 起自定义 profile 默认 live 重载要求 HMR 服务，最小 profile 无此服务则 boot 直接死亡，见 §11.4） |
+| L3 隔离冒烟 | `scripts/smoke-runtime.sh <bin> <port>` | boot + 三端点 200 + mic 渲染（英/中文界面）+ console 0 error + **设置页**（`smoke-settings.mjs`：卡片入口/写入生效/刷新保留/Settings 专属页/英文零中文/中文全中文/不刷新切换语言；0.1.7+ 另验覆盖层落盘、旧设置迁移、引擎热切换、非法值/未知键/跨源写入被拒） | 测试 profile 必须带 `"patchReload":"startup"`（rc.3 起自定义 profile 默认 live 重载要求 HMR 服务，最小 profile 无此服务则 boot 直接死亡，见 §11.4） |
 | L4 真流程 | `scripts/full-e2e.sh <bin> <port>` | session 创建 + toggle + prompt accepted + SSE audio 帧 ≥1 + tts-error=0（真 LLM，复用本机 key，用户已授权） | 隔离 DSH_HOME + 工作区 link + env 注入 `DEEPSEEK_API_KEY`（值不落盘/文档） |
+| L5 安装形态（**发版前门禁**） | `bash scripts/verify-install.sh` + `DSHVM_SPEC=file:<npm pack 产物> bash scripts/smoke-runtime.sh <bin> <port>`（最新与最老核心至少各一版，理想为全矩阵） | pnpm（严格 build 脚本策略）与 npm 全新安装均成功且入口可 import；已安装形态的冒烟全过（含设置页与国际化断言） | **`link:` 形态测不出安装期缺陷**：它不装依赖、也不经 dsh ≥0.1.7 的 ResolutionRouter。冒烟台架须复刻真实 profile 的 pnpm 配置（`nodeLinker: hoisted` + `autoInstallPeers: false`，`smoke-runtime.sh` 已内置） |
 
 **铁律**：typecheck 过 ≠ 运行时兼容（如 0.1.7 的 `register` 删除只在运行时暴露）。L3/L4 不可跳过。
 
@@ -21,7 +22,8 @@
 |---|---|---|
 | 每周一 CI（`dsh-version-check.yml`） | `npm run check:dsh-version`：dist-tags vs 默认矩阵比对；EXIT 1 自动开 issue | CI 自动 |
 | dsh 上游发新版本（release notes / dist-tag 变化） | 同上，手动再跑一次确认 | 维护者 |
-| 每次改 `src/` | `npm run typecheck` + `npm test`（380 项 exit 0）+ `node build.mjs` | 提交者 |
+| 每次改 `src/` | `npm run typecheck` + `npm test`（32 套件 / 424 项 exit 0）+ `node build.mjs` | 提交者 |
+| **发版前** | L5 安装形态门禁（见上）；全矩阵冒烟用 `link:` 与 `DSHVM_SPEC` 两种形态各跑一遍 | 发版者 |
 | 每次改兼容面脚本 | 对应脚本 `--help`/语法检查 + 至少一版实跑 | 提交者 |
 
 ## 三、迭代循环（新版本出现时）
@@ -55,6 +57,10 @@
    - **端口预检**：boot 前 `ss -tln` 查占用，被占则明确报错而非事后连接失败；
    - **就绪等待**：URL 出现 ≠ 服务可接受连接，轮询 `/voice-mode` 到非 000 码才算就绪（此前偶发 EXIT=7 即此竞态）；
    - **进程组回收**：`setsid` 启动 + trap 内 `kill -- -PGID`，防子进程残留长期占端口/内存。
+
+7. **`link:` 形态掩盖「别人安装」类缺陷**（2026-10-02）：此前所有发布版在 npm 安装形态下于 dsh ≥0.1.7 无法加载（`failed to import`），而本仓库一直用 `link:` 测试从未发现。两个根因：① 运行时依赖 `msedge-tts` 带 `preinstall: npx only-allow pnpm`，pnpm 11 报 `ERR_PNPM_IGNORED_BUILDS`、npm 被 only-allow 拒绝（本仓库工作区 `allowBuilds` 掩盖）；② `msedge-tts` 的 `require("buffer/index")` 经 dsh ≥0.1.7 的 `ResolutionRouter`（`createRequire(parent).resolve.paths(name)` 返回 null）抛 TypeError。修法：把 msedge-tts **连同全部依赖**内联为独立 `lib/msedge-tts.cjs`（核心模块一律 `node:` 前缀、可选依赖打桩），防回归见 `test/package-install.test.mjs`。**内联进 ESM 产物不行**：需 `createRequire(import.meta.url)`，合成父路径同样被路由器拒绝。
+8. **冒烟台架须复刻真实 profile 的 pnpm 配置**：缺 `pnpm-workspace.yaml`（`nodeLinker: hoisted` + `autoInstallPeers: false`）时 pnpm 会自动安装 peer 依赖（第二份 cordis），与宿主实例冲突。
+9. **调试「failed to import」**：dsh 把真实异常交给 `ctx.logger.error`，默认不输出，只剩 `entry did not activate`；可复制一份核心，在 `cordis-plugin-loader` 的 `Entry._init` catch 里加 `console.error(error.stack)` 取原文（勿改共享的 pnpm store 硬链文件）。
 
 ## 六、当前矩阵快照（随验证更新；compat-contract.md §10/§11 为准）
 

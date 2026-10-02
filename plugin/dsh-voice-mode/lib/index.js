@@ -1061,7 +1061,7 @@ var SentenceSegmenter = class {
 };
 
 // src/tts-queue.ts
-import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
+import { MsEdgeTTS, OUTPUT_FORMAT } from "./msedge-tts.cjs";
 var MP3_MAGIC = 255;
 var TTS_METADATA = { wordBoundaryEnabled: false, sentenceBoundaryEnabled: false };
 function prosodyFromRate(rate) {
@@ -1931,7 +1931,6 @@ var en = {
   previewCheck: "Preview failed: check network or ShortName",
   previewRateLimited: "Preview too frequent \u2014 wait a few seconds (20/min limit)",
   previewTimeout: "Synthesis timed out: model still loading, retry in a few seconds",
-  previewSynthesisFail: "Synthesis failed",
   previewBtnTitle: "Preview voice (current rate)",
   synthesizing: "Synthesizing\u2026",
   preview: "Preview",
