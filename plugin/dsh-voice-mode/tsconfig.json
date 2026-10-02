@@ -8,6 +8,7 @@
       "DOM"
     ],
     "strict": true,
+    "noUnusedLocals": true,
     "skipLibCheck": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,

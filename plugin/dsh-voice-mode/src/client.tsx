@@ -242,7 +242,6 @@ const ECHO_TAIL_MS = 400
  *  清 hold 让完整句播完；让位只作用于明确短应答（避免 1.5s hold 截断 AI 完整句）。 */
 const HOLD_CLEAR_FRAMES = 2
 const WAVE_BARS = 14
-const SUBMIT_DELAY_MS = 600
 /** 插件 HTTP 命名空间（与 host 侧 BASE_PATH 常量一致，固定不可配置）。 */
 const BASE_PATH = '/voice-mode'
 

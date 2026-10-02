@@ -26,3 +26,27 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+
+  # 安装形态门禁：link/源码态测不出「别人从 npm 安装」的缺陷（0.7.17 及更早版本在 pnpm 11 / npm 全新安装、
+  # dsh ≥0.1.7 已安装形态下无法使用，见 docs/adr/0011）。此 job 对打包产物做 pnpm(严格 build 脚本策略)+npm 全新安装并 import，
+  # 并用 Node 18（engines 下限）与 22 各跑一遍，兑现 package.json 的 engines 声明。
+  install:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 22]
+    defaults:
+      run:
+        working-directory: plugin/dsh-voice-mode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install (build deps)
+        run: npm install --no-audit --no-fund
+      - name: Install pnpm
+        run: npm install -g pnpm@11
+      - name: Fresh-install the packed tarball (pnpm + npm) and import
+        run: bash scripts/verify-install.sh

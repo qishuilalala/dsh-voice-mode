@@ -8,8 +8,6 @@ export interface SegmenterOptions {
   maxSentenceChars?: number
 }
 
-const TERMINAL = /[。！？!?；;…\n]/
-
 const SKIP_PREFIX = /^[\s.,，、:：;；!?！？)\]）"'”’〉》】]+$/
 
 /** 剥离 markdown 噪声后再合成（与 dsh-tts 的 plainText 滤镜同源）。 */

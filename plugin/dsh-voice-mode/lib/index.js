@@ -1,12 +1,11 @@
 // src/index.ts
 import z from "@deepseek-ai/schemastery";
-import { dirname as dirname3, join as join5 } from "node:path";
+import { dirname as dirname2, join as join5 } from "node:path";
 import { homedir as homedir2 } from "node:os";
 import { rm } from "node:fs/promises";
 
 // src/asr-host.ts
 import { statSync } from "node:fs";
-import { stat as stat2 } from "node:fs/promises";
 import { join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
@@ -185,7 +184,7 @@ async function sha256OfFile(path) {
   return hash.digest("hex");
 }
 async function ensureModelFile(opts) {
-  const { repo, repoDir, spec, primaryHost, allowCustomHost, broadcast } = opts;
+  const { repoDir, spec, primaryHost, broadcast } = opts;
   const localPath = join(repoDir, spec.file);
   const partPath = `${localPath}.part`;
   if ((await stat(localPath).catch(() => null))?.isFile()) {
@@ -847,10 +846,6 @@ function createAsrRuntime(options) {
       senseWorkerLangKey = "";
     },
     modelStatus: () => {
-      const statFile = async (dir, repo, name2) => {
-        const st = await stat2(join2(dir, repo, name2)).catch(() => null);
-        return { exists: !!st?.isFile(), size: st?.size ?? 0 };
-      };
       const asrFiles = MODEL_FILES.map((n) => ({
         name: n.file,
         exists: (() => {
@@ -2143,7 +2138,7 @@ function previewSample(engine, voice) {
 // src/settings-store.ts
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname as dirname2, join as join4 } from "node:path";
+import { dirname, join as join4 } from "node:path";
 var SETTINGS_FILE_NAME = "voice-mode.settings.json";
 function settingsFilePath(profileHome) {
   const home = typeof profileHome === "string" && profileHome ? profileHome : process.env.DSH_HOME || join4(homedir(), ".dsh");
@@ -2181,7 +2176,7 @@ function readOverrides(file, keys) {
   }
 }
 function writeOverrides(file, values) {
-  mkdirSync(dirname2(file), { recursive: true });
+  mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tmp, JSON.stringify(values, null, 2) + "\n", { encoding: "utf8", mode: 384 });
   try {
@@ -2536,7 +2531,7 @@ function apply(ctx, config) {
     if (loaded.warn) console.warn(`[dsh-voice-mode] ignoring settings overlay ${settingsFile}: ${loaded.warn}`);
     let migrated = false;
     if (!loaded.exists) {
-      const legacy = readLegacyVoiceSettings(dirname3(settingsFile), SETTING_KEYS);
+      const legacy = readLegacyVoiceSettings(dirname2(settingsFile), SETTING_KEYS);
       if (Object.keys(legacy).length > 0) {
         loaded.values = legacy;
         migrated = true;

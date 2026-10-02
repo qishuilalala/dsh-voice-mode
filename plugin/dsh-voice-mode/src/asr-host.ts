@@ -10,8 +10,7 @@
  * - 下载进度经 SSE `asr-progress` 广播，完成发 `asr-ready`（client 状态条用）。
  */
 import { statSync } from 'node:fs'
-import { stat } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -799,10 +798,6 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       senseWorkerLangKey = ''
     },
     modelStatus: () => {
-      const statFile = async (dir: string, repo: string, name: string): Promise<{ exists: boolean; size: number }> => {
-        const st = await stat(join(dir, repo, name)).catch(() => null)
-        return { exists: !!st?.isFile(), size: st?.size ?? 0 }
-      }
       // 同步快照（大小 stat 用已缓存信息：asr 文件逐个 stat 是异步——模型状态为诊断用途，损失精度可接受：
       // 改为同步收集已存在文件大小并异步顺带）。为接口简单，直接返回收集结果：
       const asrFiles: ModelFileStatus[] = MODEL_FILES.map((n) => ({

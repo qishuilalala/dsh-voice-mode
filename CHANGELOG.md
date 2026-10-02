@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### 工程质量（未改变运行行为，随下个版本发布）
+
+- 删除 5 处死代码（`asr-host.ts` 的 `dirname`/`statFile`/`stat`、`models.ts` 解构里未用的 `repo`/`allowCustomHost`、`segmenter.ts` 的 `TERMINAL`、`client.tsx` 的 `SUBMIT_DELAY_MS`），`tsconfig` 开启 `noUnusedLocals` 防回潮。
+- CI 新增 `install` job：对打包产物做 pnpm(严格 build 脚本策略) + npm 全新安装并 import，Node 18 / 22 各一遍（兑现 `engines.node >=18`；已本地验证 Node 18.20 / 20.20 可加载 host 产物）。
+
 ### 规划中
 
 - F1：emotion 标签 DSL 全量上线（LLM 侧标签使用指引注入 + 真机验收）

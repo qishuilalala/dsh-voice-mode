@@ -97,7 +97,7 @@ export async function sha256OfFile(path: string): Promise<string> {
 
 /** 下载单个模型文件（带校验与上游回退）。 */
 export async function ensureModelFile(opts: EnsureModelOptions): Promise<boolean> {
-  const { repo, repoDir, spec, primaryHost, allowCustomHost, broadcast } = opts
+  const { repoDir, spec, primaryHost, broadcast } = opts
   const localPath = join(repoDir, spec.file)
   const partPath = `${localPath}.part`
 
