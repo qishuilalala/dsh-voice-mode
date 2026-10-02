@@ -21,7 +21,7 @@
 
 - 正面：全版本一致可用；不依赖官方 store 对插件字段的校验策略；桌面端同源策略下行为与网页一致。
 - 负面：≥0.1.7 的设置不出现在官方设置 store 里（与官方 `dsh settings` 命令行不互通）；多一条持久化路径需要维护与测试（`test/settings-store.test.mjs`、`scripts/smoke-settings.mjs`）。
-- 备选（未实施，需产品决策）：以 `disabled: !!js` 两行门控 + 官方 `.volatile()` 路由收敛到官方 store；评估见 `docs/compat-contract.md` §14。
+- 备选「以 `disabled: !!js` 两行门控 + 官方 `.volatile()` 路由收敛到官方 store」**经对抗性评估决定不实施**（2026-10-02）：收益仅是与官方设置 CLI 互通；代价是 ≤0.1.6 上 schemastery Volatile 引用致命启动的风险、两行门控的长期复杂度，以及全矩阵重测。当前方案已在 9 个核心上满足「全版本可用、刷新/重启保留、桌面端同源可用」。若官方日后提供稳定的插件设置 API 再重开本决策；评估见 `docs/compat-contract.md` §14。
 
 ## 依据
 
