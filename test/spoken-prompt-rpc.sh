@@ -127,16 +127,13 @@ for cand in "$DSH_HOME/sessions/$SESSION_SLUG/$SID/session.v4.jsonl.zstd" "$DSH_
   [ -f "$cand" ] && SF="$cand" && break
 done
 if [ -n "$SF" ]; then
+  # 提示词随 system/message 事件落盘（v4 会话格式；旧格式在 request/header）：整份会话扫描标记，区分中/英两版。
   zstd -dc "$SF" 2>/dev/null | python3 -c "
-import json,sys
-for ln in sys.stdin:
-    o = json.loads(ln)
-    if o.get('type') == 'request/header':
-        s = json.dumps(o.get('data',{}), ensure_ascii=False)
-        zh = '【语音模式】' in s
-        en = '[Voice mode]' in s
-        print('system 长度:', len(s), '含语音提示词:', zh or en, '| 版本:', 'zh' if zh else ('en' if en else '无'))
-        break
+import sys
+raw = sys.stdin.read()
+zh = '【语音模式】' in raw
+en = '[Voice mode]' in raw
+print('含语音提示词:', zh or en, '| 版本:', 'zh' if zh else ('en' if en else '无'))
 "
   zstd -dc "$SF" 2>/dev/null | python3 -c "
 import json,sys
