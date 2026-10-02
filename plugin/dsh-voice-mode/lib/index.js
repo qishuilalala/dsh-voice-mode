@@ -936,7 +936,7 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
     received += c.length;
     if (received > MAX_ASR_BYTES) {
       tooLarge = true;
-      respondJson(res, 413, { error: "pcm payload too large" });
+      respondJson(res, 413, { code: "payload_too_large", error: "pcm payload too large" });
       return;
     }
     chunks.push(c);
@@ -953,17 +953,17 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
     const offsetParam = url.searchParams.get("offset");
     const offsetOK = offsetParam === null || Number.isFinite(Number(offsetParam)) && Number(offsetParam) >= 0 && Number(offsetParam) <= MAX_ASR_BYTES / 4;
     if (!offsetOK) {
-      respondJson(res, 400, { error: "invalid offset" });
+      respondJson(res, 400, { code: "bad_request", error: "invalid offset" });
       return;
     }
     if (!epochOK) {
-      respondJson(res, 400, { error: "invalid epoch" });
+      respondJson(res, 400, { code: "bad_request", error: "invalid epoch" });
       return;
     }
     const epoch = epochParam === null ? 0 : Math.floor(epochN);
     const offset = offsetParam === null ? 0 : Math.floor(Number(offsetParam));
     if (!sessionId || sessionId !== activeSessionId) {
-      respondJson(res, 403, { error: "not the active voice session" });
+      respondJson(res, 403, { code: "unknown_session", error: "not the active voice session" });
       return;
     }
     if (reset) {
@@ -974,14 +974,15 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
     const raw = Buffer.concat(chunks);
     const samples = raw.length === 0 ? final ? new Float32Array(0) : null : pcmToSamples(raw);
     if (!samples) {
-      respondJson(res, 400, { error: "invalid pcm payload" });
+      respondJson(res, 400, { code: "bad_request", error: "invalid pcm payload" });
       return;
     }
     if (url.searchParams.get("vadOnly") === "1") {
       void asr.detect(sessionId, samples).then((out) => {
         respondJson(res, 200, { isSpeech: out.isSpeech });
       }).catch((e) => {
-        respondJson(res, 500, { error: String(e) });
+        console.warn(`[dsh-voice-mode] asr detect failed: ${String(e)}`);
+        respondJson(res, 500, { code: "internal", error: "internal error" });
       });
       return;
     }
@@ -995,7 +996,8 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
       if (out.isSpeech !== void 0) body.isSpeech = out.isSpeech;
       respondJson(res, 200, body);
     }).catch((e) => {
-      respondJson(res, 500, { error: String(e) });
+      console.warn(`[dsh-voice-mode] asr decode failed: ${String(e)}`);
+      respondJson(res, 500, { code: "internal", error: "internal error" });
     });
   });
 }
@@ -1360,26 +1362,13 @@ function parseEmotionTags(raw) {
   return out;
 }
 
-// src/tts-local.ts
-var TTS_MODEL_REPO = "csukuangfj/sherpa-onnx-vits-zh-ll";
-var KOKORO_MODEL_DIR_INT8 = "csukuangfj/kokoro-int8-multi-lang-v1_1";
-var KOKORO_MODEL_DIR_FP32 = "csukuangfj/kokoro-multi-lang-v1_1";
-var kokoroModelDir = (m) => m === "fp32" ? KOKORO_MODEL_DIR_FP32 : KOKORO_MODEL_DIR_INT8;
-var TTS_MODEL_FILES = [
-  { file: "model.onnx", sha256: "6c349bdd73dc928234dd7bc86929748bba32cd5264d32d915bf7b7aa0595965b" },
-  { file: "lexicon.txt", sha256: "b3a82f16b286c424953dea3686039e7ab465fa8e15d87ef8abd0ec69175beb21" },
-  { file: "tokens.txt", sha256: "34b035b9aeb070df6188b022f29c00e0e142c7ade9f25611ced65db5e9cc8402" },
-  { file: "G_multisperaker_latest.json", sha256: "f31e4bf23827c3528fdf090fd7b6fb8e63333709b80670d40fa864f1fa9fadf3" },
-  { file: "date.fst", sha256: "eb8aa079ae3cb81d8f4404992f39d61a0cb990947512b5b8d1e54d1f6980e718" },
-  { file: "phone.fst", sha256: "1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7" },
-  { file: "number.fst", sha256: "743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd" }
-];
+// src/voice-catalog.ts
 var VITS_SPEAKERS = [
-  { name: "suyingxue", sid: 0, label: "\u7D20\u6620\u96EA \xB7 \u5973" },
-  { name: "gunian", sid: 1, label: "\u987E\u5FF5 \xB7 \u7537" },
-  { name: "fushiyu", sid: 2, label: "\u5085\u65AF\u9047 \xB7 \u5973" },
-  { name: "bingjiao", sid: 3, label: "\u51B0\u5A07 \xB7 \u7537" },
-  { name: "bazong", sid: 4, label: "\u9738\u603B \xB7 \u7537" }
+  { name: "suyingxue", sid: 0, zh: "\u7D20\u6620\u96EA", en: "Su Yingxue", gender: "F" },
+  { name: "gunian", sid: 1, zh: "\u987E\u5FF5", en: "Gu Nian", gender: "M" },
+  { name: "fushiyu", sid: 2, zh: "\u5085\u65AF\u9047", en: "Fu Siyu", gender: "F" },
+  { name: "bingjiao", sid: 3, zh: "\u51B0\u5A07", en: "Bing Jiao", gender: "M" },
+  { name: "bazong", sid: 4, zh: "\u9738\u603B", en: "Ba Zong", gender: "M" }
 ];
 var KOKORO_F0 = [
   224,
@@ -1487,30 +1476,32 @@ var KOKORO_F0 = [
   124
 ];
 var KOKORO_NAMED = {
-  48: { name: "zf_xiaobei", label: "\u5C0F\u5317 \xB7 \u4E2D\u6587\u5973" },
-  49: { name: "zf_xiaoni", label: "\u5C0F\u59AE \xB7 \u4E2D\u6587\u5973" },
-  50: { name: "zf_xiaoxiao", label: "\u5C0F\u5C0F \xB7 \u4E2D\u6587\u5973" },
-  51: { name: "zf_xiaoyi", label: "\u5C0F\u827A \xB7 \u4E2D\u6587\u5973" }
-};
-var KOKORO_LABEL_OVERRIDES = {
-  62: "62 \xB7 \u6DF1\u6C89 \xB7 \u5E38\u7528\u7537\u58F0",
-  68: "68 \xB7 \u6D51\u539A \xB7 \u5E38\u7528\u7537\u58F0",
-  75: "75 \xB7 \u6E05\u4EAE \xB7 \u5E38\u7528\u7537\u58F0",
-  76: "76 \xB7 \u78C1\u6027 \xB7 \u5E38\u7528\u7537\u58F0"
+  48: { name: "zf_xiaobei", zh: "\u5C0F\u5317", en: "Xiaobei" },
+  49: { name: "zf_xiaoni", zh: "\u5C0F\u59AE", en: "Xiaoni" },
+  50: { name: "zf_xiaoxiao", zh: "\u5C0F\u5C0F", en: "Xiaoxiao" },
+  51: { name: "zf_xiaoyi", zh: "\u5C0F\u827A", en: "Xiaoyi" }
 };
 var KOKORO_PINNED = [62, 68, 75, 76];
-function kokoroVoice(sid) {
-  const custom = KOKORO_LABEL_OVERRIDES[sid];
-  if (custom) return { name: String(sid), sid, label: custom };
-  const named = KOKORO_NAMED[sid];
-  if (named) return { name: named.name, sid, label: named.label };
-  const hz = KOKORO_F0[sid] ?? null;
-  if (hz === null) return { name: String(sid), sid, label: `${sid} \xB7 \u97F3\u8272` };
-  return { name: String(sid), sid, label: `${sid} \xB7 ${hz < 180 ? "\u7537\u58F0" : "\u5973\u58F0"} \xB7 ${hz}Hz` };
-}
 var KOKORO_VOICES = [
-  ...KOKORO_PINNED.map((sid) => kokoroVoice(sid)),
-  ...KOKORO_F0.map((_, sid) => kokoroVoice(sid)).filter((v) => !KOKORO_PINNED.includes(v.sid))
+  ...KOKORO_PINNED.map((sid) => ({ name: KOKORO_NAMED[sid]?.name ?? String(sid), sid })),
+  ...KOKORO_F0.map((_, sid) => ({ name: KOKORO_NAMED[sid]?.name ?? String(sid), sid })).filter(
+    (v) => !KOKORO_PINNED.includes(v.sid)
+  )
+];
+
+// src/tts-local.ts
+var TTS_MODEL_REPO = "csukuangfj/sherpa-onnx-vits-zh-ll";
+var KOKORO_MODEL_DIR_INT8 = "csukuangfj/kokoro-int8-multi-lang-v1_1";
+var KOKORO_MODEL_DIR_FP32 = "csukuangfj/kokoro-multi-lang-v1_1";
+var kokoroModelDir = (m) => m === "fp32" ? KOKORO_MODEL_DIR_FP32 : KOKORO_MODEL_DIR_INT8;
+var TTS_MODEL_FILES = [
+  { file: "model.onnx", sha256: "6c349bdd73dc928234dd7bc86929748bba32cd5264d32d915bf7b7aa0595965b" },
+  { file: "lexicon.txt", sha256: "b3a82f16b286c424953dea3686039e7ab465fa8e15d87ef8abd0ec69175beb21" },
+  { file: "tokens.txt", sha256: "34b035b9aeb070df6188b022f29c00e0e142c7ade9f25611ced65db5e9cc8402" },
+  { file: "G_multisperaker_latest.json", sha256: "f31e4bf23827c3528fdf090fd7b6fb8e63333709b80670d40fa864f1fa9fadf3" },
+  { file: "date.fst", sha256: "eb8aa079ae3cb81d8f4404992f39d61a0cb990947512b5b8d1e54d1f6980e718" },
+  { file: "phone.fst", sha256: "1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7" },
+  { file: "number.fst", sha256: "743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd" }
 ];
 function voiceToSid(voice) {
   const v = String(voice ?? "").trim().toLowerCase();
@@ -1892,6 +1883,264 @@ var RateLimiter = class {
   }
 };
 
+// src/strings.ts
+var en = {
+  stateVoiceMode: "Voice Mode",
+  ttsNoticeFail: "Read-aloud connection failed: retrying\u2026",
+  ttsSkipNotice: "One sentence failed to read and was skipped (cloud TTS network hiccup \u2014 resend the message to retry)",
+  enterFail: "Failed to enter voice mode",
+  disabled: "Voice mode disabled (plugin enabled=false)",
+  sendFailKept: "Send failed; text kept in draft",
+  micDenied: "Microphone denied: allow mic access for this site",
+  micUnavailable: "Microphone unavailable",
+  recognizing: "Recognizing\u2026",
+  holdToTalk: "Hold to talk",
+  releaseToSend: "Release to send",
+  voiceDetected: "Voice active",
+  entering: "Entering\u2026",
+  voiceBtn: "Voice",
+  ariaActive: "Voice mode active",
+  ariaEnter: "Enter voice mode",
+  titleHold: "Voice mode \xB7 hold to talk, release to send; tap to exit; Esc/blur cancels; Ctrl+Shift+V exits",
+  titleToggle: "Voice mode \xB7 click to exit (Ctrl+Shift+V) \xB7 hold Ctrl to send now",
+  titleEnter: "Enter voice mode (Ctrl+Shift+V)",
+  loadingModel: "Loading model\u2026",
+  listening: "Listening\u2026",
+  thinking: "Thinking\u2026",
+  barHold: "Voice mode \xB7 hold to talk (tap to exit)",
+  barListening: "Voice mode \xB7 listening\u2026",
+  wakeWord: "Wake word",
+  sayWake: 'Say "{wake}" to start',
+  reading: "Reading aloud\u2026",
+  recognitionFail: "Recognition failed, try again",
+  sessionExpired: "Voice session expired, reconnecting\u2026",
+  sessionExpiredFail: "Voice session reconnect failed; please re-enter voice mode",
+  modelDownloadFail: "Model download failed ({file}): check network and re-enter voice mode",
+  startFail: "Voice mode failed to start: {err}",
+  holdDots: "Hold to talk\u2026",
+  exit: "Exit",
+  skip: "Skip",
+  configUnavailableNote: " (settings document not ready; the panel will appear when it is).",
+  previewNameFirst: "Enter a voice ShortName first",
+  previewDisabled: "Voice mode disabled (plugin enabled=false); preview unavailable",
+  // 批 G 任务 6：本地 TTS 引擎未下载模型时禁用试听按钮 + 提示。
+  previewModelMissing: "Download the local model first (see the engine status above)",
+  previewModelLoading: "Local model is downloading \u2014 please wait",
+  previewPlayFail: "Preview failed: cannot play this voice",
+  previewAutoplay: "Autoplay blocked \u2014 click preview again",
+  previewCheck: "Preview failed: check network or ShortName",
+  previewRateLimited: "Preview too frequent \u2014 wait a few seconds (20/min limit)",
+  previewTimeout: "Synthesis timed out: model still loading, retry in a few seconds",
+  previewSynthesisFail: "Synthesis failed",
+  previewBtnTitle: "Preview voice (current rate)",
+  synthesizing: "Synthesizing\u2026",
+  preview: "Preview",
+  custom: "Custom",
+  voicePrev: "Previous voice",
+  voiceNext: "Next voice",
+  descVoice: "Edge cloud voices (auto-loads all Microsoft voices; common Chinese voices pinned on top; \u25C0\u25B6 or dropdown; custom ShortName allowed)",
+  descVoiceLocal: "Local voice (vits, all 5 speakers listed; dropdown or \u25C0\u25B6; no custom needed)",
+  descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft)",
+  engineVits: "Local VITS",
+  engineKokoro: "Local Kokoro",
+  engineEdge: "Edge cloud",
+  descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
+  descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
+  descInterrupt: "Interrupt sensitivity (0 high \u22480.3 s confirm / 1 medium \u22480.2 s / 2 low \u22480.1 s, most responsive); lower = higher barrier = harder to interrupt",
+  descBargeIn: "Barge-in mode (detect: auto-probe native echo cancellation, fall back to hold-to-talk when inactive \u2014 default; auto: force interrupt by speaking \u2014 headphones/quiet; manual: for loudspeaker, no echo-triggered self-interrupt \u2014 hold mic/Ctrl to interrupt)",
+  bargeInDetect: "Auto-detect",
+  bargeInAuto: "Auto",
+  bargeInManual: "Manual",
+  descEchoGate: "Echo gate threshold (dB, default 6): auto barge-in requires the residual to exceed the echo floor by this value. With the native browser AEC active, this gate is idle; it kicks in as a fallback in Safari or environments without native AEC (e.g. some headphones). Raise (8-10) if speaker echo still interrupts, lower (3-4) if hard to interrupt",
+  descShortcut: "Shortcut to enter/exit voice mode (e.g. Ctrl+Shift+V; empty disables it, mic button only; avoid browser-reserved combos like Ctrl+W/N/T)",
+  vadDetected: "VAD speech",
+  aecOff: "Native AEC off",
+  aecOffHint: "Native echo cancellation is not active (speaker echo may self-interrupt); use headphones or Manual barge-in",
+  // 批 7O（ADR-0006）：detect 模式第一级探测降级提示（英文）。
+  bargeInDetectFallback: "Native echo cancellation is off \u2014 switched to hold-to-talk barge-in",
+  elapsedHint: "Current voice session duration",
+  botLevelsHint: "AI playback level (blue bar = TTS playback, green bar = microphone)",
+  interruptConfirm: "interrupt confirm",
+  sev0: "0 high",
+  sev1: "1 medium",
+  sev2: "2 low",
+  descSilence: "Silence pause before a sentence is committed (default 1500 ms; at least 250 ms of speech required, guards against noise triggers)",
+  descIdle: "Auto-exit voice mode after idle minutes (default 5; batch G added 30 s warning before exit)",
+  descModelHost: "ASR model download source (official source / mirror, or any custom URL)",
+  descAutoSend: "Auto-send once quiet (consecutive segments join into one message; off = draft only; Ctrl / hold still sends)",
+  // 批 7N 重做 5/5：clarify that toggling takes effect on next session entry (not the current one).
+  descAutoResume: "Auto-resume voice mode when switching back to the last voice session (default off; takes effect on next session entry \u2014 auto-enters voice mode and restores the last session; when disabled, you must press Ctrl+Shift+V to re-enter)",
+  descSpokenFormat: "Inject spoken-format prompt into voice replies (colloquial, short sentences, no Markdown; default on, live)",
+  descSenseVoice: "Re-transcribe the finalized utterance with SenseVoice (punctuation + ITN, more accurate; default on \u2014 turn off to skip the 228 MB model and keep streaming only)",
+  descToolBeep: "Tool-call beep (default off): beep when the agent is thinking/calling tools; keep off if it annoys you",
+  senseITN: "Inverse text normalization",
+  descSenseITN: "SenseVoice number/date/format normalization (default on; turn off to keep raw spoken form)",
+  descCaptionFontSize: "Caption font size (Small 12 / Standard 14 / Large 18 / X-Large 24 px; default Small matches current behavior)",
+  descCaptionMaxWidth: "Caption width (50vw / 70vw / 90vw; default 70vw; capped at 30vh height so multi-line 24px never overlaps the input box)",
+  captionSizeS: "S",
+  captionSizeM: "M",
+  captionSizeL: "L",
+  captionSizeXL: "XL",
+  captionWidth50: "Narrow",
+  captionWidth70: "Medium",
+  captionWidth90: "Wide",
+  skipReading: "Skip current reading",
+  backchannelYield: "Short-reply yielding",
+  descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches pre-batch-5)',
+  // 批 G 任务 3：让位窗口时长（500-3000ms，默认 1500）。
+  yieldMs: "Yield window",
+  descYieldMs: "How long (ms) to drop frames after a yield trigger (500-3000, default 1500; within the window the existing hardBreak takes over if the user really wants to speak; auto-resume after the window expires)",
+  descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)",
+  modeToggle: "Continuous listening",
+  modeHold: "Hold to talk",
+  descWakeWord: 'Wake word (default off; e.g. "Hey D"): recognition starts only after you say it, to avoid accidental triggers. You may say it together with your command ("Hey D, check the weather" \u2014 the wake word is stripped and never sent); it must be repeated after each utterance split or barge-in; toggle mode only (inactive in hold / manual barge-in); saying it while the agent is reading does not trigger (barge-in stays VAD-based). Fault-tolerant matching (homophones / leading fillers); 3-4 characters recommended; not a dedicated KWS engine \u2014 noisy environments may delay or falsely trigger',
+  wakePlaceholder: "e.g. Hey D",
+  settingsCardDesc: "Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / auto-resume / mode / wake word / tool beep / ITN / caption font / caption width / yielding / yield window",
+  settingsEffectiveNote: "Engine / voice / rate / model precision / spoken format / re-transcribe / caption font / caption width / yielding / yield window apply immediately; ITN applies immediately (next time you enter voice mode the streaming recognizer is rebuilt); the rest (interrupt / barge-in / echo gate / shortcut / silence / idle / mirror / auto-send / auto-resume / mode / wake word / tool beep) apply next time you enter voice mode.",
+  configUnavailable: "Configuration unavailable",
+  telUtteranceEnd: "end",
+  telEndpoint: "endpoint",
+  telSubmitted: "submit",
+  telFirstToken: "1st token",
+  telFirstSentence: "1st sentence",
+  telFirstChunk: "1st chunk",
+  telFirstPlayed: "1st audio",
+  modelsTitle: "Voice models",
+  modelsDisabled: "off (enable in settings)",
+  modelStreamingAsr: "Streaming ASR",
+  modelVad: "Endpoint VAD",
+  modelSense: "Finalize",
+  modelsReady: "Ready",
+  modelsDownloading: "{file} {percent}%",
+  modelsFail: "Download failed (auto-retry in {sec}s)",
+  modelsMissing: "not downloaded",
+  modelsRetry: "Retry",
+  modelsRetrying: "Retrying\u2026",
+  modelsRetryHint: "Click to retry now after switching mirror or a failure",
+  modelsHint: "Live download state; failures auto-backoff 60s. After switching the mirror, click Retry to take effect immediately; npm run prefetch pre-downloads.",
+  engineLoading: "loading\u2026",
+  engineReady: "ready",
+  engineError: "failed",
+  ttsModelsMissing: "local models missing",
+  ttsDownload: "Download",
+  ttsDelete: "Delete",
+  ttsDownloading: "Downloading\u2026",
+  ttsDeleting: "Deleting\u2026",
+  ttsDownloadHint: "Download this engine's local model; becomes ready immediately after",
+  dataFlowHint: "Data flow: ASR recognition (zipformer2+SenseVoice) is always local; TTS playback depends on engine (edge=Microsoft cloud, vits/kokoro=local)",
+  ttsDeleteHint: "Delete local models (frees space; auto re-downloads on next use)",
+  kokoroModel: "Kokoro model precision",
+  kokoroModelInt8: "int8 (default)",
+  kokoroModelFp32: "fp32 (better quality)",
+  descKokoroModel: "Kokoro model precision: int8 is smaller/faster (CPU server or low bandwidth; default); fp32 sounds better but ~311MB and slower (GPU or large memory). Both share the same 103 voices; switches live.",
+  secRead: "Reading & voice",
+  secInterrupt: "Interrupt & silence",
+  secInteraction: "Interaction",
+  secRecognition: "Recognition & speech",
+  secModel: "Model & mirror",
+  telTotal: "total",
+  // 字段标题（Row 标题）：settings-form 经 tr(`${name}Label`) 取值，zh/en 均为正式文案。
+  senseITNLabel: "Inverse text normalization",
+  captionFontSizeLabel: "Caption size",
+  captionMaxWidthLabel: "Caption width",
+  backchannelYieldLabel: "Short-reply yielding",
+  // 批 G 任务 3：让位窗口（FIELD_LABELS.yieldMs 镜像键，*Label 后缀）。
+  yieldMsLabel: "Yield window",
+  // 批 G 任务 2：空闲预警 + 退出提示文案。
+  idleWarn30s: "Auto-exit in 30 seconds (adjustable in settings)",
+  idleTimeoutQuit: "Idle timeout \u2014 voice mode auto-exited (adjustable in settings)",
+  // 批 G 任务 1：Number 校验红框 + clamp 提示。
+  numberInvalid: "Invalid number",
+  numberClamped: "Auto-clamped to {value}",
+  // 批 H 任务 4：autoResume 关 + 切回上次语音会话时的引导提示（5s 后自动清）。
+  // 批 7N 重做 2/5：明确「自动恢复」=「自动进入语音模式 + 恢复上次会话」。
+  autoResumeHint: '"Auto-resume" = when enabled, switching back to your last voice session auto-enters voice mode and restores the session; when disabled, press Ctrl+Shift+V to re-enter',
+  // —— i18n completion (field labels / voice descriptors / error-code copy / preview categories) ——
+  ttsEngineLabel: "Read-aloud engine",
+  kokoroModelLabel: "Kokoro model precision",
+  voiceLabel: "Voice",
+  rateLabel: "Speed",
+  interruptLevelLabel: "Interrupt sensitivity",
+  bargeInModeLabel: "Interrupt mode",
+  echoGateDbLabel: "Echo gate",
+  modeLabel: "Interaction mode",
+  shortcutLabel: "Shortcut",
+  wakeWordLabel: "Wake word",
+  toolBeepLabel: "Tool-call beep",
+  autoSendLabel: "Auto-send",
+  autoResumeLabel: "Auto-resume",
+  senseVoiceLabel: "Re-transcribe on finalize",
+  spokenFormatLabel: "Spoken-style prompt",
+  silenceMsLabel: "Silence pause",
+  idleTimeoutMinutesLabel: "Idle timeout",
+  modelHostLabel: "Model mirror",
+  genderFemale: "Female",
+  genderMale: "Male",
+  genderNeutral: "Neutral",
+  accentMandarin: "Mandarin",
+  accentNortheast: "Northeastern",
+  accentShaanxi: "Shaanxi",
+  accentCantonese: "Cantonese",
+  accentTaiwan: "Taiwanese Mandarin",
+  accentEnglish: "English",
+  styleDeep: "Deep",
+  styleRich: "Rich",
+  styleClear: "Clear",
+  styleMagnetic: "Magnetic",
+  voiceKokoroPopularMale: "Popular male",
+  voiceKokoroChineseFemale: "Chinese female",
+  voiceKokoroMale: "Male",
+  voiceKokoroFemale: "Female",
+  voiceKokoroGeneric: "Voice",
+  hostOfficial: "Official",
+  hostMirror: "Mirror (CN)",
+  engineBadgeCloud: "ASR local \xB7 TTS cloud",
+  engineBadgeLocal: "ASR local \xB7 TTS local",
+  errRateLimited: "Too many requests \u2014 try again shortly",
+  errUnknownSession: "Voice session expired \u2014 re-enter voice mode",
+  errForbidden: "Request denied (local access only, or origin mismatch)",
+  errBadRequest: "Invalid request",
+  errEngineNotActive: "That read-aloud engine is not active",
+  errModelDownload: "Model download failed \u2014 check your network",
+  errTooManyStreams: "Too many voice connections \u2014 close other voice tabs and retry",
+  errTooLarge: "Request too large",
+  errInternal: "Server error \u2014 please retry shortly",
+  previewNetwork: "Preview failed: network unreachable (Edge cloud needs the Microsoft speech service) \u2014 check your network or proxy",
+  previewEngine: "Preview failed: engine not ready (local model downloading, init failed, or worker crashed) \u2014 retry later or check TTS status in settings",
+  previewText: "Preview failed: the engine produced empty audio (voice and language may not match) \u2014 pick another voice",
+  voiceHintChineseVoice: "Note: this is a Chinese voice. For English replies, pick an English voice (en-\u2026) from the list.",
+  voiceHintEnglishVoice: "Note: this is an English voice and reads Chinese replies poorly. For Chinese conversations, pick a Chinese voice (zh-\u2026)."
+};
+
+// src/prompts.ts
+var ZH = "\u3010\u8BED\u97F3\u6A21\u5F0F\u3011\u5F53\u524D\u56DE\u590D\u4F1A\u88AB\u8BED\u97F3\u6717\u8BFB\uFF0C\u8BF7\u59CB\u7EC8\u7528\u7528\u6237\u6240\u7528\u8BED\u8A00\u3001\u4EE5\u53E3\u8BED\u5316\u7684\u77ED\u53E5\u76F4\u63A5\u56DE\u7B54\uFF0C\u50CF\u9762\u5BF9\u9762\u804A\u5929\u4E00\u6837\u81EA\u7136\uFF0C\u907F\u514D\u4E66\u9762\u8BED\u548C\u957F\u96BE\u53E5\u3002\u4E0D\u8981\u4F7F\u7528\u4EFB\u4F55 Markdown \u6216\u6392\u7248\u7B26\u53F7\uFF08\u661F\u53F7\u3001\u4E0B\u5212\u7EBF\u3001\u53CD\u5F15\u53F7\u3001\u4E95\u53F7\u3001\u5217\u8868\u4E0E\u8868\u683C\u6807\u8BB0\u3001\u4EE3\u7801\u5757\u7B49\uFF09\u3002\u9700\u8981\u5206\u70B9\u8BF4\u660E\u65F6\u7528\u300C\u7B2C\u4E00\u3001\u7B2C\u4E8C\u300D\u6216\u8FDE\u8D2F\u7684\u77ED\u53E5\u8868\u8FBE\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EE3\u7801\u7247\u6BB5\u3001\u5B8C\u6574 URL \u6216\u5197\u957F\u5B9A\u4E49\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u6982\u62EC\u542B\u4E49\u5373\u53EF\u3002\u56DE\u7B54\u7B80\u6D01\u76F4\u63A5\uFF0C\u4E0D\u8981\u91CD\u590D\u548C\u5BD2\u6684\u3002\u5982\u679C\u7528\u6237\u5728\u4F60\u6717\u8BFB\u65F6\u63D2\u8BDD\uFF08\u54EA\u6015\u53EA\u662F\u300C\u55EF/\u5BF9\u300D\u8FD9\u6837\u7684\u77ED\u5E94\u7B54\uFF09\uFF0C\u7ACB\u5373\u505C\u6B62\u5F53\u524D\u53E5\uFF0C\u628A\u8BDD\u8F6E\u8BA9\u7ED9\u7528\u6237\uFF1B\u56DE\u7B54\u540E\u7559\u51FA\u505C\u987F\uFF0C\u4E0D\u8981\u8FDE\u95EE\u4E24\u4E2A\u95EE\u9898\uFF1B\u7528\u6237\u6C89\u9ED8\u65F6\u4E0D\u8981\u4E3B\u52A8\u627E\u65B0\u8BDD\u9898\u3002";
+var EN = '[Voice mode] Your reply will be read aloud. Always answer in the language the user is using, in short conversational sentences, directly and naturally, as if talking face to face; avoid written-style phrasing and long, complex sentences. Do not use any Markdown or formatting symbols (asterisks, underscores, backticks, hash signs, list or table markup, code blocks, etc.). When you need to list points, say them as "first, second" or as connected short sentences; unless the user explicitly asks, do not output code snippets, full URLs or lengthy definitions \u2014 summarize the meaning in a sentence or two. Keep answers concise and direct; no repetition or pleasantries. If the user interrupts while you are being read aloud (even with a short acknowledgment like "uh-huh" or "yeah"), stop the current sentence immediately and yield the turn; leave a pause after answering and never ask two questions in a row; when the user is silent, do not bring up a new topic on your own.';
+var spokenPrompt = (lang) => lang === "en" ? EN : ZH;
+function normalizePromptLang(raw) {
+  if (typeof raw !== "string" || raw === "" || raw.length > 32) return "zh";
+  return /^zh\b/i.test(raw) ? "zh" : "en";
+}
+var SAMPLE_ZH = "\u4F60\u597D\uFF0C\u6B22\u8FCE\u4F7F\u7528\u8BED\u97F3\u6A21\u5F0F\u3002";
+var SAMPLE_EN = "Hello, welcome to voice mode.";
+var SAMPLE_BY_LANG = {
+  zh: SAMPLE_ZH,
+  en: SAMPLE_EN,
+  ja: "\u3053\u3093\u306B\u3061\u306F\u3001\u97F3\u58F0\u30E2\u30FC\u30C9\u3078\u3088\u3046\u3053\u305D\u3002",
+  ko: "\uC548\uB155\uD558\uC138\uC694, \uC74C\uC131 \uBAA8\uB4DC\uC5D0 \uC624\uC2E0 \uAC83\uC744 \uD658\uC601\uD569\uB2C8\uB2E4.",
+  fr: "Bonjour, bienvenue dans le mode vocal.",
+  de: "Hallo, willkommen im Sprachmodus.",
+  es: "Hola, bienvenido al modo de voz.",
+  pt: "Ol\xE1, bem-vindo ao modo de voz.",
+  it: "Ciao, benvenuto nella modalit\xE0 vocale.",
+  ru: "\u0417\u0434\u0440\u0430\u0432\u0441\u0442\u0432\u0443\u0439\u0442\u0435, \u0434\u043E\u0431\u0440\u043E \u043F\u043E\u0436\u0430\u043B\u043E\u0432\u0430\u0442\u044C \u0432 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u043E\u0439 \u0440\u0435\u0436\u0438\u043C."
+};
+function previewSample(engine, voice) {
+  if (engine === "kokoro") return `${SAMPLE_ZH}${SAMPLE_EN}`;
+  if (engine === "vits") return SAMPLE_ZH;
+  const m = /^([a-z]{2,3})-/i.exec(voice);
+  return m && SAMPLE_BY_LANG[m[1].toLowerCase()] || SAMPLE_EN;
+}
+
 // src/settings-store.ts
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -1920,16 +2169,16 @@ function readOverrides(file, keys) {
     raw = readFileSync(file, "utf8");
   } catch (e) {
     if (e.code === "ENOENT") return { values: {}, exists: false };
-    return { values: {}, warn: `\u8BFB\u53D6\u5931\u8D25\uFF1A${String(e)}`, exists: true };
+    return { values: {}, warn: `read failed: ${String(e)}`, exists: true };
   }
   try {
     const parsed = JSON.parse(raw);
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return { values: {}, warn: "\u5185\u5BB9\u4E0D\u662F JSON \u5BF9\u8C61", exists: true };
+      return { values: {}, warn: "content is not a JSON object", exists: true };
     }
     return { values: pickKnownKeys(parsed, keys), exists: true };
   } catch (e) {
-    return { values: {}, warn: `JSON \u89E3\u6790\u5931\u8D25\uFF1A${String(e)}`, exists: true };
+    return { values: {}, warn: `JSON parse failed: ${String(e)}`, exists: true };
   }
 }
 function writeOverrides(file, values) {
@@ -2000,17 +2249,16 @@ function classifyPreviewError(msg) {
   if (PREVIEW_ENGINE_PATTERN.test(msg)) return "engine";
   return "unknown";
 }
-var PREVIEW_ERROR_MESSAGES = {
-  network: "\u8BD5\u542C\u5931\u8D25\uFF1A\u7F51\u7EDC\u4E0D\u53EF\u8FBE\uFF08Edge \u4E91\u7AEF\u9700\u8BBF\u95EE\u5FAE\u8F6F\u8BED\u97F3\u670D\u52A1\uFF09\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u4EE3\u7406",
-  engine: "\u8BD5\u542C\u5931\u8D25\uFF1A\u5F15\u64CE\u672A\u5C31\u7EEA\uFF08\u672C\u5730\u6A21\u578B\u4E0B\u8F7D\u4E2D\u3001\u521D\u59CB\u5316\u5931\u8D25\u6216\u5B50\u8FDB\u7A0B\u5F02\u5E38\uFF09\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5\u6216\u5728\u8BBE\u7F6E\u9762\u677F\u67E5\u770B TTS \u72B6\u6001",
-  text: "\u8BD5\u542C\u5931\u8D25\uFF1A\u5408\u6210\u5F15\u64CE\u4EA7\u51FA\u7A7A\u97F3\u9891\uFF08\u97F3\u8272\u4E0E\u8BED\u79CD\u53EF\u80FD\u4E0D\u5339\u914D\uFF09\uFF0C\u8BF7\u66F4\u6362\u97F3\u8272\u6216\u68C0\u67E5\u8BED\u8A00\u8BBE\u7F6E",
-  unknown: "\u8BD5\u542C\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u3001\u97F3\u8272\u540D\uFF08ShortName\uFF09\u6216\u672C\u5730 TTS \u6A21\u578B\u72B6\u6001"
+var PREVIEW_ERROR_CODES = {
+  network: "preview_network",
+  engine: "preview_engine",
+  text: "preview_text",
+  unknown: "preview_unknown"
 };
 var respondJson2 = (res, status, payload) => {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(payload));
 };
-var VOICE_SPOKEN_PROMPT = "\u3010\u8BED\u97F3\u6A21\u5F0F\u3011\u5F53\u524D\u56DE\u590D\u4F1A\u88AB\u8BED\u97F3\u6717\u8BFB\uFF0C\u8BF7\u59CB\u7EC8\u7528\u7528\u6237\u6240\u7528\u8BED\u8A00\u3001\u4EE5\u53E3\u8BED\u5316\u7684\u77ED\u53E5\u76F4\u63A5\u56DE\u7B54\uFF0C\u50CF\u9762\u5BF9\u9762\u804A\u5929\u4E00\u6837\u81EA\u7136\uFF0C\u907F\u514D\u4E66\u9762\u8BED\u548C\u957F\u96BE\u53E5\u3002\u4E0D\u8981\u4F7F\u7528\u4EFB\u4F55 Markdown \u6216\u6392\u7248\u7B26\u53F7\uFF08\u661F\u53F7\u3001\u4E0B\u5212\u7EBF\u3001\u53CD\u5F15\u53F7\u3001\u4E95\u53F7\u3001\u5217\u8868\u4E0E\u8868\u683C\u6807\u8BB0\u3001\u4EE3\u7801\u5757\u7B49\uFF09\u3002\u9700\u8981\u5206\u70B9\u8BF4\u660E\u65F6\u7528\u300C\u7B2C\u4E00\u3001\u7B2C\u4E8C\u300D\u6216\u8FDE\u8D2F\u7684\u77ED\u53E5\u8868\u8FBE\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EE3\u7801\u7247\u6BB5\u3001\u5B8C\u6574 URL \u6216\u5197\u957F\u5B9A\u4E49\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u6982\u62EC\u542B\u4E49\u5373\u53EF\u3002\u56DE\u7B54\u7B80\u6D01\u76F4\u63A5\uFF0C\u4E0D\u8981\u91CD\u590D\u548C\u5BD2\u6684\u3002\u5982\u679C\u7528\u6237\u5728\u4F60\u6717\u8BFB\u65F6\u63D2\u8BDD\uFF08\u54EA\u6015\u53EA\u662F\u300C\u55EF/\u5BF9\u300D\u8FD9\u6837\u7684\u77ED\u5E94\u7B54\uFF09\uFF0C\u7ACB\u5373\u505C\u6B62\u5F53\u524D\u53E5\uFF0C\u628A\u8BDD\u8F6E\u8BA9\u7ED9\u7528\u6237\uFF1B\u56DE\u7B54\u540E\u7559\u51FA\u505C\u987F\uFF0C\u4E0D\u8981\u8FDE\u95EE\u4E24\u4E2A\u95EE\u9898\uFF1B\u7528\u6237\u6C89\u9ED8\u65F6\u4E0D\u8981\u4E3B\u52A8\u627E\u65B0\u8BDD\u9898\u3002";
 var VOICE_SPOKEN_SECTION = "voice-mode:spoken-format";
 var inject = ["webServer", "settings", "sessions"];
 var defaultModelCacheDir = () => process.platform === "win32" ? join5(process.env.LOCALAPPDATA ?? join5(homedir2(), "AppData", "Local"), "dsh-voice-mode", "models") : join5(homedir2(), ".cache", "dsh-voice-mode", "models");
@@ -2045,50 +2293,75 @@ var VOICE_SETTINGS_DEFAULTS = {
   // 批 G 任务 3：让位窗口默认 1500ms（与改造前批 5 行为字节等价；用户可调 500-3000ms）。
   yieldMs: 1500
 };
+var DESC = {
+  ttsEngine: en.descTtsEngine,
+  kokoroModel: en.descKokoroModel,
+  voice: en.descVoice,
+  rate: en.descRate,
+  interruptLevel: en.descInterrupt,
+  silenceMs: en.descSilence,
+  idleTimeoutMinutes: en.descIdle,
+  modelHost: en.descModelHost,
+  autoSend: en.descAutoSend,
+  autoResume: en.descAutoResume,
+  mode: en.descMode,
+  bargeInMode: en.descBargeIn,
+  echoGateDb: en.descEchoGate,
+  shortcut: en.descShortcut,
+  spokenFormat: en.descSpokenFormat,
+  senseVoice: en.descSenseVoice,
+  wakeWord: en.descWakeWord,
+  toolBeep: en.descToolBeep,
+  senseITN: en.descSenseITN,
+  captionFontSize: en.descCaptionFontSize,
+  captionMaxWidth: en.descCaptionMaxWidth,
+  backchannelYield: en.descBackchannelYield,
+  yieldMs: en.descYieldMs
+};
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
   return z.object({
     ttsEngine: z.union([z.const("vits"), z.const("kokoro"), z.const("edge")]).default(d.ttsEngine).description(
-      "\u6717\u8BFB\u5F15\u64CE\uFF1Aedge \u5FAE\u8F6F\u4E91\u7AEF\uFF08\u9ED8\u8BA4\uFF0C\u5FEB\u3001\u97F3\u8D28\u81EA\u7136\uFF0C\u88AB\u6717\u8BFB\u6587\u672C\u4F1A\u53D1\u9001\u5230\u5FAE\u8F6F\uFF09/ vits \u672C\u5730\u4E2D\u6587 / kokoro \u672C\u5730\u4E2D\u82F1\uFF08\u56DE\u590D\u6587\u672C\u4E0D\u51FA\u672C\u673A\uFF09\uFF1B\u5207\u6362\u5373\u65F6\u751F\u6548"
+      DESC.ttsEngine
     ),
     kokoroModel: z.union([z.const("int8"), z.const("fp32")]).default(d.kokoroModel).description(
-      "Kokoro \u6A21\u578B\u7CBE\u5EA6\uFF1Aint8\uFF08\u9ED8\u8BA4\uFF0C\u4F53\u79EF\u5C0F/\u52A0\u8F7D\u5FEB\uFF0CCPU \u53CB\u597D\uFF09/ fp32\uFF08\u97F3\u8D28\u66F4\u597D\u3001\u4F53\u79EF\u5927\uFF0CGPU \u6216\u5927\u5185\u5B58\u673A\u5668\u63A8\u8350\uFF09\uFF1B\u4E24\u6863\u5171\u7528\u540C\u4E00\u5957 103 \u97F3\u8272\uFF0C\u5207\u6362\u5373\u65F6\u751F\u6548"
+      DESC.kokoroModel
     ),
     voice: z.string().default(d.voice).description(
-      "\u6717\u8BFB\u97F3\u8272\uFF08\u6309 ttsEngine \u53D6\u503C\uFF1Avits \u7528\u8BF4\u8BDD\u4EBA\u540D suyingxue/gunian/fushiyu/bingjiao/bazong\uFF1Bkokoro \u7528 0-102 \u7F16\u53F7\u6216\u4E2D\u6587\u540D zf_xiaobei/zf_xiaoni/zf_xiaoxiao/zf_xiaoyi\uFF1Bedge \u7528 Edge ShortName \u5982 zh-CN-XiaoxiaoNeural \u6653\u6653\xB7\u5973\uFF0C\u5B8C\u6574\u6E05\u5355\u89C1 scripts/list-voices.mjs\uFF09"
+      DESC.voice
     ),
-    rate: z.number().min(0.5).max(2).default(d.rate).description("\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 = \u6162\u901F\uFF0C2.0 = \u5FEB\u901F\uFF0C1.1 = \u9ED8\u8BA4\uFF1B\u8BA9\u56DE\u590D\u66F4\u7D27\u51D1\uFF09"),
+    rate: z.number().min(0.5).max(2).default(d.rate).description(DESC.rate),
     interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(d.interruptLevel).description(
-      "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF1A0 = \u9AD8\u95E8\u69DB\uFF08\u2248300ms \u786E\u8BA4\uFF0C\u6700\u7A33\uFF0C\u9ED8\u8BA4\uFF1Bquiet \u63A8\u8350\uFF09/ 1 = \u4E2D\u95E8\u69DB\uFF08\u2248200ms\uFF09/ 2 = \u4F4E\u95E8\u69DB\uFF08\u2248100ms\uFF0C\u6700\u7075\u654F\uFF1B\u5608\u6742\u73AF\u5883\uFF09\uFF1B\u503C\u8D8A\u4F4E\u95E8\u69DB\u8D8A\u9AD8\uFF0C\u8D8A\u96BE\u6253\u65AD"
+      DESC.interruptLevel
     ),
-    silenceMs: z.number().min(500).max(3e4).default(d.silenceMs).description("\u8BF4\u5B8C\u6574\u4E00\u53E5\u7684\u9759\u97F3\u505C\u987F\u6BEB\u79D2\u6570\uFF08\u9ED8\u8BA4 1500 \u6BEB\u79D2\uFF0C\u7ED9\u601D\u8003\u505C\u987F\u7559\u7A7A\u95F4\uFF1B\u81F3\u5C11 250ms \u8BED\u97F3\u624D\u5224\u53E5\uFF0C\u9632\u77ED\u4FC3\u566A\u58F0\u8BEF\u89E6\u53D1\uFF09"),
-    idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description("\u65E0\u6D3B\u52A8\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5206\u949F\u6570\uFF08\u9ED8\u8BA4 5\uFF1B\u6279 G \u4EFB\u52A1 2 \u5DF2\u52A0 30s \u5012\u6570\u9884\u8B66\uFF09"),
-    modelHost: z.string().default(d.modelHost).description("ASR \u6A21\u578B\u4E0B\u8F7D\u6E90\uFF08\u7559\u7A7A\u7528\u9ED8\u8BA4\u6E90\uFF1B\u56FD\u5185\u7F51\u7EDC\u53EF\u586B https://hf-mirror.com\uFF09"),
-    autoSend: z.boolean().default(d.autoSend).description("\u9759\u97F3\u5230\u70B9\u81EA\u52A8\u53D1\u9001\uFF08\u8FDE\u7EED\u591A\u6BB5\u62FC\u6210\u4E00\u6761\u6D88\u606F\uFF1B\u5173\u95ED\u5219\u53EA\u8FDB\u8349\u7A3F\u4F9B\u7F16\u8F91\uFF1B\u6309\u4F4F Ctrl / hold \u677E\u624B\u4ECD\u4F1A\u53D1\u9001\uFF09"),
+    silenceMs: z.number().min(500).max(3e4).default(d.silenceMs).description(DESC.silenceMs),
+    idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description(DESC.idleTimeoutMinutes),
+    modelHost: z.string().default(d.modelHost).description(DESC.modelHost),
+    autoSend: z.boolean().default(d.autoSend).description(DESC.autoSend),
     // 批 7N 重做 5/5：与 strings.ts descAutoResume 同步——明确「下次进入语音会话即生效」。
-    autoResume: z.boolean().default(d.autoResume).description("\u5207\u6362\u56DE\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD\u65F6\u81EA\u52A8\u6062\u590D\u8BED\u97F3\u6A21\u5F0F\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5F00\u542F\u540E\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u4F1A\u8BDD\u5373\u751F\u6548\u2014\u2014\u81EA\u52A8\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F + \u6062\u590D\u4E0A\u6B21\u4F1A\u8BDD\uFF1B\u5173\u95ED\u5219\u9700\u624B\u52A8\u6309 Ctrl+Shift+V \u91CD\u65B0\u8FDB\u5165\uFF09"),
-    mode: z.union([z.const("toggle"), z.const("hold")]).default(d.mode).description("\u4EA4\u4E92\u6A21\u5F0F\uFF1Atoggle \u6301\u7EED\u8046\u542C + \u9759\u97F3\u81EA\u52A8\u65AD\u53E5\uFF08\u9ED8\u8BA4\uFF09\uFF1Bhold \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF08\u77ED\u6309\u9000\u51FA\uFF09"),
-    bargeInMode: z.union([z.const("auto"), z.const("manual"), z.const("detect")]).default(d.bargeInMode).description("\u6253\u65AD\u65B9\u5F0F\uFF1Adetect \u81EA\u52A8\u63A2\u6D4B\u672C\u673A\u539F\u751F\u56DE\u58F0\u6D88\u9664\u72B6\u6001\uFF08\u9ED8\u8BA4\uFF0C\u672A\u751F\u6548\u65F6\u5207\u4E3A\u957F\u6309\u6253\u65AD\uFF09\uFF1Bauto \u5F3A\u5236\u81EA\u52A8\u6253\u65AD\uFF08\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u8033\u673A/\u5B89\u9759\u73AF\u5883\u63A8\u8350\uFF09\uFF1Bmanual \u624B\u52A8\u6253\u65AD\uFF08\u5916\u653E\u63A8\u8350\u2014\u2014\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u663E\u5F0F\u6253\u65AD\uFF0C\u6C38\u4E0D\u81EA\u6253\u65AD\uFF09"),
+    autoResume: z.boolean().default(d.autoResume).description(DESC.autoResume),
+    mode: z.union([z.const("toggle"), z.const("hold")]).default(d.mode).description(DESC.mode),
+    bargeInMode: z.union([z.const("auto"), z.const("manual"), z.const("detect")]).default(d.bargeInMode).description(DESC.bargeInMode),
     echoGateDb: z.number().min(3).max(12).default(d.echoGateDb).description(
-      "\u56DE\u58F0\u95E8\u63A7\u9608\u503C\uFF08dB\uFF0C\u9ED8\u8BA4 6\uFF09\uFF1A\u81EA\u52A8\u6253\u65AD\u8981\u6C42\u6B8B\u5DEE\u9AD8\u4E8E\u56DE\u58F0\u5730\u677F\u6B64\u503C\u3002\u5F53\u524D ASR \u6A21\u578B\u9ED8\u8BA4\u539F\u751F AEC \u751F\u6548\u65F6\u6B64\u95E8\u63A7\u95F2\u7F6E\uFF1BSafari / \u8033\u673A\u7B49\u65E0\u539F\u751F AEC \u73AF\u5883\u4F1A\u515C\u5E95\u751F\u6548\u3002\u5916\u653E\u4ECD\u8BEF\u6253\u65AD\u8C03\u5927\uFF088~10\uFF09\uFF0C\u592A\u96BE\u6253\u65AD\u8C03\u5C0F\uFF083~4\uFF09"
+      DESC.echoGateDb
     ),
-    shortcut: z.string().default(d.shortcut).description("\u8FDB\u5165/\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F\u7684\u5FEB\u6377\u952E\uFF08\u5F62\u5982 Ctrl+Shift+V\uFF0C\u4FEE\u9970\u952E Ctrl/Shift/Alt/Meta + \u4E00\u4E2A\u5B57\u6BCD\u952E\uFF1B\u7559\u7A7A\u7981\u7528\u5FEB\u6377\u952E\uFF0C\u7528\u9EA6\u514B\u98CE\u6309\u94AE\uFF09"),
-    spokenFormat: z.boolean().default(d.spokenFormat).description("\u8BED\u97F3\u4F1A\u8BDD\u6CE8\u5165\u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u53E3\u8BED\u5316\u77ED\u53E5\u3001\u4E0D\u7528 Markdown \u6392\u7248\u7B26\u53F7\uFF0C\u6717\u8BFB\u66F4\u987A\u66F4\u5FEB\uFF1B\u9ED8\u8BA4\u5F00\uFF0C\u6539\u52A8\u5373\u65F6\u751F\u6548\uFF09"),
-    senseVoice: z.boolean().default(d.senseVoice).description("\u5B9A\u7A3F\u7528 SenseVoice \u91CD\u8BD1\uFF08\u5E26\u6807\u70B9+\u6570\u5B57\u5F52\u4E00\u5316\u3001\u8BC6\u522B\u66F4\u51C6\uFF1B\u9ED8\u8BA4\u5F00\u3002\u5173\u95ED\u53EF\u7701 228MB \u6A21\u578B\uFF0C\u53EA\u8D70\u6D41\u5F0F\u8BC6\u522B\uFF09"),
-    wakeWord: z.string().default(d.wakeWord).description("\u5524\u9192\u8BCD\uFF1A\u5728\u5F85\u673A\u6001\u8BF4\u51FA\u540E\u5F00\u59CB\u8BC6\u522B\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF09\u3002\u53EF\u4E0E\u547D\u4EE4\u8FDE\u8BF4\u2014\u2014\u8BCD\u5934\u81EA\u52A8\u5265\u6389\u4E0D\u8FDB\u6D88\u606F\uFF1B\u6BCF\u53E5\u65AD\u53E5/\u6253\u65AD\u540E\u9700\u91CD\u8BF4\uFF1B\u4EC5 toggle \u6A21\u5F0F\u751F\u6548\uFF08hold/\u624B\u52A8\u6253\u65AD\u4E0B\u4E0D\u751F\u6548\uFF09\uFF1B\u6717\u8BFB\u671F\u8BF4\u5524\u9192\u8BCD\u4E0D\u89E6\u53D1\uFF08\u6253\u65AD\u6309 VAD\uFF09\uFF1B\u5339\u914D\u5E26\u5BB9\u9519\uFF08\u540C\u97F3\u5B57/\u524D\u5BFC\u8BED\u6C14\u8BCD\uFF09\uFF0C\u5EFA\u8BAE 3-4 \u5B57\uFF1B\u975E\u4E13\u7528 KWS \u5F15\u64CE\uFF0C\u5608\u6742\u73AF\u5883\u53EF\u80FD\u5EF6\u8FDF\u6216\u8BEF\u6FC0\u6D3B"),
-    toolBeep: z.boolean().default(d.toolBeep).description('\u5DE5\u5177\u8C03\u7528\u63D0\u793A\u97F3\uFF08\u9ED8\u8BA4\u5173\uFF09\uFF1A\u5F00\u542F\u540E AI \u8C03\u7528\u5DE5\u5177\u65F6"\u6EF4"\u4E00\u58F0\uFF0C\u5173\u95ED\u5219\u5168\u7A0B\u9759\u9ED8'),
-    senseITN: z.boolean().default(d.senseITN).description("SenseVoice \u9006\u6587\u672C\u5F52\u4E00\u5316\uFF08\u6570\u5B57/\u65E5\u671F\u89C4\u8303\u5316\uFF0C\u9ED8\u8BA4\u5F00\uFF1B\u5173\u95ED\u540E\u8F93\u51FA\u66F4\u63A5\u8FD1\u53E3\u8BED\u539F\u6587\uFF09"),
+    shortcut: z.string().default(d.shortcut).description(DESC.shortcut),
+    spokenFormat: z.boolean().default(d.spokenFormat).description(DESC.spokenFormat),
+    senseVoice: z.boolean().default(d.senseVoice).description(DESC.senseVoice),
+    wakeWord: z.string().default(d.wakeWord).description(DESC.wakeWord),
+    toolBeep: z.boolean().default(d.toolBeep).description(DESC.toolBeep),
+    senseITN: z.boolean().default(d.senseITN).description(DESC.senseITN),
     captionFontSize: z.union([z.const(0), z.const(1), z.const(2), z.const(3)]).default(d.captionFontSize).description(
-      "\u5B57\u5E55\u5B57\u53F7\u6863\u4F4D\uFF080=12px/1=14px/2=18px/3=24px\uFF1B\u9ED8\u8BA4 0 \u4E0E\u73B0\u72B6\u5B57\u8282\u7B49\u4EF7\uFF1B\u5207\u6362\u5373\u65F6\u751F\u6548\uFF09"
+      DESC.captionFontSize
     ),
     captionMaxWidth: z.union([z.const(0), z.const(1), z.const(2)]).default(d.captionMaxWidth).description(
-      "\u5B57\u5E55\u5BBD\u5EA6\u6863\u4F4D\uFF080=50vw/1=70vw/2=90vw\uFF1B\u9ED8\u8BA4 1\uFF1B\u89C6\u53E3 <686px \u65F6\u7A84\u4E8E\u73B0\u72B6 480px\u3001\u2248686px \u65F6\u63A5\u8FD1\u3001>686px \u65F6\u5BBD\u4E8E 480px\uFF1B\u5207\u6362\u5373\u65F6\u751F\u6548\uFF09"
+      DESC.captionMaxWidth
     ),
     backchannelYield: z.boolean().default(d.backchannelYield).description(
-      "\u8BA9\u4F4D\u8BED\u4E49\uFF08\u6279 5 / ADR-0008 Phase 1\uFF0C\u9ED8\u8BA4\u5F00\uFF09\uFF1A\u6717\u8BFB\u671F\u7528\u6237\u8BF4\u300C\u55EF/\u5BF9\u300D\u7B49\u77ED\u5E94\u7B54\u65F6\uFF0C\u81EA\u52A8\u8DF3\u8FC7\u5F53\u524D TTS \u53E5\u5E76\u77ED\u6682\u8BA9\u4F4D 1.5s\u2014\u20141.5s \u5185\u7528\u6237\u771F\u8981\u8BF4\u5219\u8D70\u539F hardBreak \u53D6\u6D88\u56DE\u5408\uFF1B\u5173 = \u4E0D\u8BA9\u4F4D\uFF0C\u884C\u4E3A\u7B49\u540C\u6539\u9020\u524D"
+      DESC.backchannelYield
     ),
     yieldMs: z.number().min(500).max(3e3).default(d.yieldMs).description(
-      "\u8BA9\u4F4D\u7A97\u53E3\u65F6\u957F\uFF08ms\uFF0C500-3000\uFF0C\u9ED8\u8BA4 1500\uFF09\uFF1Abackchannel \u547D\u4E2D\u540E TTS \u4E22\u5E27\u6301\u7EED\u65F6\u95F4\u3002\u7A97\u53E3\u5185\u7528\u6237\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF1B\u7A97\u53E3\u5230\u70B9\u81EA\u52A8\u6062\u590D\u64AD\u653E\u3002"
+      DESC.yieldMs
     )
   });
 }
@@ -2183,6 +2456,7 @@ function voiceSettingsFromConfig(config) {
 function apply(ctx, config) {
   let activeVoiceSession = null;
   let activeTabId = null;
+  let activeVoiceLang = "zh";
   let ownerYieldTimer = null;
   const turnStates = /* @__PURE__ */ new Map();
   const setTurn = (sessionId, state) => {
@@ -2200,7 +2474,7 @@ function apply(ctx, config) {
     if (!config.allowLan && !isLoopbackRequest(req)) {
       res.statusCode = 403;
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ error: "loopback only (allowLan=false)" }));
+      res.end(JSON.stringify({ code: "forbidden", error: "loopback only (allowLan=false)" }));
       return true;
     }
     return false;
@@ -2209,7 +2483,7 @@ function apply(ctx, config) {
     if (!sameOriginRequest(req)) {
       res.statusCode = 403;
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ error: "cross-origin request denied" }));
+      res.end(JSON.stringify({ code: "forbidden", error: "cross-origin request denied" }));
       return true;
     }
     return false;
@@ -2260,7 +2534,7 @@ function apply(ctx, config) {
     settingsScopeRef = settingsScope;
   } else {
     const loaded = readOverrides(settingsFile, SETTING_KEYS);
-    if (loaded.warn) console.warn(`[dsh-voice-mode] \u5FFD\u7565\u8BBE\u7F6E\u8986\u76D6\u5C42 ${settingsFile}\uFF1A${loaded.warn}`);
+    if (loaded.warn) console.warn(`[dsh-voice-mode] ignoring settings overlay ${settingsFile}: ${loaded.warn}`);
     let migrated = false;
     if (!loaded.exists) {
       const legacy = readLegacyVoiceSettings(dirname3(settingsFile), SETTING_KEYS);
@@ -2275,7 +2549,7 @@ function apply(ctx, config) {
         resolveSettings({ [k]: v });
         valid[k] = v;
       } catch (e) {
-        console.warn(`[dsh-voice-mode] \u5FFD\u7565\u975E\u6CD5\u7684\u8BBE\u7F6E\u8986\u76D6 ${k}\uFF08\u56DE\u843D Config \u57FA\u7EBF\uFF09\uFF1A${String(e).slice(0, 160)}`);
+        console.warn(`[dsh-voice-mode] ignoring invalid settings override "${k}" (falling back to the Config baseline): ${String(e).slice(0, 160)}`);
       }
     }
     try {
@@ -2284,13 +2558,13 @@ function apply(ctx, config) {
       if (migrated) {
         try {
           writeOverrides(settingsFile, valid);
-          console.log(`[dsh-voice-mode] \u5DF2\u4ECE\u65E7 settings.yaml \u8FC1\u79FB ${Object.keys(valid).length} \u9879\u8BBE\u7F6E\u5230 ${settingsFile}`);
+          console.log(`[dsh-voice-mode] migrated ${Object.keys(valid).length} setting(s) from the legacy settings.yaml to ${settingsFile}`);
         } catch (e) {
-          console.warn(`[dsh-voice-mode] \u65E7\u8BBE\u7F6E\u8FC1\u79FB\u843D\u76D8\u5931\u8D25\uFF08\u672C\u6B21\u8FD0\u884C\u4ECD\u751F\u6548\uFF09\uFF1A${String(e)}`);
+          console.warn(`[dsh-voice-mode] legacy settings migration could not be saved (still in effect for this run): ${String(e)}`);
         }
       }
     } catch (e) {
-      console.warn(`[dsh-voice-mode] \u8BBE\u7F6E\u8986\u76D6\u5C42\u6574\u4F53\u6821\u9A8C\u5931\u8D25\uFF0C\u56DE\u9000 Config \u57FA\u7EBF\uFF1A${String(e)}`);
+      console.warn(`[dsh-voice-mode] settings overlay failed validation as a whole; falling back to the Config baseline: ${String(e)}`);
       vset = voiceSettingsFromConfig(config);
     }
   }
@@ -2394,7 +2668,7 @@ function apply(ctx, config) {
     if (!config.enabled || !vset.spokenFormat) return next();
     const agentId = context.agent?.id;
     if (agentId !== void 0 && agentId === activeVoiceSession) {
-      assembly.sections.push({ name: VOICE_SPOKEN_SECTION, text: VOICE_SPOKEN_PROMPT });
+      assembly.sections.push({ name: VOICE_SPOKEN_SECTION, text: spokenPrompt(activeVoiceLang) });
     }
     return next();
   });
@@ -2477,11 +2751,11 @@ function apply(ctx, config) {
         if (!limiter.hit(`preview:${req.socket.remoteAddress ?? "unknown"}`, 20, 6e4)) {
           res.statusCode = 429;
           res.setHeader("content-type", "application/json");
-          res.end(JSON.stringify({ error: "rate limited" }));
+          res.end(JSON.stringify({ code: "rate_limited", error: "rate limited" }));
           return;
         }
         if (!config.enabled) {
-          respondJson2(res, 403, { error: "voice mode disabled" });
+          respondJson2(res, 403, { code: "voice_disabled", error: "voice mode disabled" });
           return;
         }
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
@@ -2496,14 +2770,14 @@ function apply(ctx, config) {
           } catch {
           }
           if (voice.length > 128) {
-            respondJson2(res, 400, { error: "voice too long" });
+            respondJson2(res, 400, { code: "bad_request", error: "voice too long" });
             return;
           }
           if (!voice) {
-            respondJson2(res, 400, { error: "voice required" });
+            respondJson2(res, 400, { code: "bad_request", error: "voice required" });
             return;
           }
-          const sample = currentEngine() === "kokoro" ? "\u4F60\u597D\uFF0C\u6B22\u8FCE\u4F7F\u7528\u8BED\u97F3\u6A21\u5F0F\u3002Hello, welcome to voice mode." : currentEngine() === "vits" || voice.startsWith("zh-") ? "\u4F60\u597D\uFF0C\u6B22\u8FCE\u4F7F\u7528\u8BED\u97F3\u6A21\u5F0F\u3002" : "Hello, welcome to voice mode.";
+          const sample = previewSample(currentEngine(), voice);
           let buf;
           try {
             buf = await queue.synthesize(sample, { voice, rate });
@@ -2516,7 +2790,7 @@ function apply(ctx, config) {
             console.warn(
               `[dsh-voice-mode] preview synthesis failed: category=${category} engine=${engineName} engineReady=${engineStatus.ready} sampleLen=${sampleLen} attempt=1 voice=${voice} err=${errMsg}`
             );
-            respondJson2(res, 502, { error: PREVIEW_ERROR_MESSAGES[category] });
+            respondJson2(res, 502, { code: PREVIEW_ERROR_CODES[category], error: `preview failed (${category})` });
             return;
           }
           res.writeHead(200, { "content-type": queue.mime, "cache-control": "no-store" });
@@ -2536,34 +2810,36 @@ function apply(ctx, config) {
           let sessionId;
           let on;
           let tabId;
+          let langRaw;
           try {
             const parsed = JSON.parse(body || "{}");
+            langRaw = parsed.lang;
             sessionId = parsed.sessionId;
             on = parsed.on;
             tabId = typeof parsed.tabId === "string" && parsed.tabId.length <= 64 ? parsed.tabId : void 0;
           } catch {
           }
           if (!sessionId) {
-            respondJson2(res, 400, { error: "sessionId required" });
+            respondJson2(res, 400, { code: "bad_request", error: "sessionId required" });
             return;
           }
           if (on !== void 0 && typeof on !== "boolean") {
-            respondJson2(res, 400, { error: "invalid on" });
+            respondJson2(res, 400, { code: "bad_request", error: "invalid on" });
             return;
           }
           if (!limiter.hit(`toggle:${sessionId}`, 2, 2e3)) {
             res.statusCode = 429;
             res.setHeader("content-type", "application/json");
-            res.end(JSON.stringify({ error: "rate limited" }));
+            res.end(JSON.stringify({ code: "rate_limited", error: "rate limited" }));
             return;
           }
           if (on === true) {
             if (!config.enabled) {
-              respondJson2(res, 403, { error: "voice mode disabled" });
+              respondJson2(res, 403, { code: "voice_disabled", error: "voice mode disabled" });
               return;
             }
             if (sessions && !sessions.get(sessionId)) {
-              respondJson2(res, 403, { error: "unknown session" });
+              respondJson2(res, 403, { code: "unknown_session", error: "unknown session" });
               return;
             }
             await asr.warmupSense();
@@ -2571,6 +2847,7 @@ function apply(ctx, config) {
             queue.cancel(sessionId);
             const previous = activeVoiceSession;
             activeVoiceSession = sessionId;
+            activeVoiceLang = normalizePromptLang(langRaw);
             activeTabId = tabId ?? null;
             if (ownerYieldTimer) {
               clearTimeout(ownerYieldTimer);
@@ -2620,7 +2897,7 @@ function apply(ctx, config) {
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
         if (!config.enabled) {
-          respondJson2(res, 403, { error: "voice mode disabled" });
+          respondJson2(res, 403, { code: "voice_disabled", error: "voice mode disabled" });
           return;
         }
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -2631,11 +2908,11 @@ function apply(ctx, config) {
             } else if (p.kind === "vad" || p.kind === "sense" || p.kind === "asr") {
               kind = p.kind;
             } else {
-              respondJson2(res, 400, { error: "invalid kind" });
+              respondJson2(res, 400, { code: "bad_request", error: "invalid kind" });
               return;
             }
           } catch {
-            respondJson2(res, 400, { error: "invalid json" });
+            respondJson2(res, 400, { code: "bad_request", error: "invalid json" });
             return;
           }
           void asr.retryModel(kind).then((done) => {
@@ -2653,7 +2930,7 @@ function apply(ctx, config) {
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
         if (!config.enabled) {
-          respondJson2(res, 403, { error: "voice mode disabled" });
+          respondJson2(res, 403, { code: "voice_disabled", error: "voice mode disabled" });
           return;
         }
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -2662,11 +2939,11 @@ function apply(ctx, config) {
             const p = JSON.parse(body || "{}");
             if (p.engine === "kokoro" || p.engine === "vits") engine = p.engine;
             else {
-              respondJson2(res, 400, { error: "invalid engine" });
+              respondJson2(res, 400, { code: "bad_request", error: "invalid engine" });
               return;
             }
           } catch {
-            respondJson2(res, 400, { error: "invalid json" });
+            respondJson2(res, 400, { code: "bad_request", error: "invalid json" });
             return;
           }
           const dir = join5(config.cacheDir, engine === "kokoro" ? kokoroModelDir(vset.kokoroModel) : TTS_MODEL_REPO);
@@ -2676,7 +2953,10 @@ function apply(ctx, config) {
               queue.updateVoice(vset.voice, vset.rate);
             }
             respondJson2(res, 200, { ok: true, engine });
-          }).catch((e) => respondJson2(res, 500, { error: String(e) }));
+          }).catch((e) => {
+            console.warn(`[dsh-voice-mode] models/download failed: ${String(e)}`);
+            respondJson2(res, 500, { code: "internal", error: "internal error" });
+          });
         });
       }
     })
@@ -2689,7 +2969,7 @@ function apply(ctx, config) {
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
         if (!config.enabled) {
-          respondJson2(res, 403, { error: "voice mode disabled" });
+          respondJson2(res, 403, { code: "voice_disabled", error: "voice mode disabled" });
           return;
         }
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -2698,20 +2978,20 @@ function apply(ctx, config) {
             const p = JSON.parse(body || "{}");
             if (p.engine === "kokoro" || p.engine === "vits") engine = p.engine;
             else {
-              respondJson2(res, 400, { error: "invalid engine" });
+              respondJson2(res, 400, { code: "bad_request", error: "invalid engine" });
               return;
             }
           } catch {
-            respondJson2(res, 400, { error: "invalid json" });
+            respondJson2(res, 400, { code: "bad_request", error: "invalid json" });
             return;
           }
           if (engineKind !== engine) {
-            respondJson2(res, 400, { error: "engine not active" });
+            respondJson2(res, 400, { code: "engine_not_active", error: "engine not active" });
             return;
           }
           void queue.prepare().then(() => respondJson2(res, 200, { ok: true, engine })).catch((e) => {
             console.warn(`[dsh-voice-mode] model download failed: ${String(e)}`);
-            respondJson2(res, 502, { error: "\u6A21\u578B\u4E0B\u8F7D\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC" });
+            respondJson2(res, 502, { code: "model_download_failed", error: "model download failed" });
           });
         });
       }
@@ -2728,7 +3008,8 @@ function apply(ctx, config) {
           const voices = await listEdgeVoices();
           respondJson2(res, 200, { voices });
         } catch (e) {
-          respondJson2(res, 502, { error: String(e) });
+          console.warn(`[dsh-voice-mode] listing Edge voices failed: ${String(e)}`);
+          respondJson2(res, 502, { code: "internal", error: "voice list unavailable" });
         }
       }
     })
@@ -2746,7 +3027,7 @@ function apply(ctx, config) {
         } catch {
         }
         if (!limiter.hit(`asr:${sid || "unknown"}`, 60, 1e3)) {
-          respondJson2(res, 429, { error: "rate limited" });
+          respondJson2(res, 429, { code: "rate_limited", error: "rate limited" });
           return;
         }
         if (sid && sid === activeVoiceSession) {
@@ -2778,7 +3059,7 @@ function apply(ctx, config) {
           }
           if (sessionId && sessionId === activeVoiceSession) {
             if (!limiter.hit(`cancel:${sessionId}`, 2, 1e3)) {
-              respondJson2(res, 429, { error: "rate limited" });
+              respondJson2(res, 429, { code: "rate_limited", error: "rate limited" });
               return;
             }
             queue.cancel(sessionId);
@@ -2807,7 +3088,7 @@ function apply(ctx, config) {
         }
         if (denyCrossOrigin(req, res)) return;
         if (settingsScopeRef) {
-          respondJson2(res, 409, { error: "settings are managed by dsh on this host" });
+          respondJson2(res, 409, { code: "settings_managed", error: "settings are managed by dsh on this host" });
           return;
         }
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
@@ -2815,16 +3096,16 @@ function apply(ctx, config) {
           try {
             patch = JSON.parse(body || "{}");
           } catch {
-            respondJson2(res, 400, { error: "invalid JSON" });
+            respondJson2(res, 400, { code: "bad_request", error: "invalid JSON" });
             return;
           }
           if (patch === null || typeof patch !== "object" || Array.isArray(patch)) {
-            respondJson2(res, 400, { error: "body must be a JSON object" });
+            respondJson2(res, 400, { code: "bad_request", error: "body must be a JSON object" });
             return;
           }
           const unknown = unknownKeys(patch, SETTING_KEYS);
           if (unknown.length > 0) {
-            respondJson2(res, 400, { error: `unknown settings: ${unknown.slice(0, 5).join(", ")}` });
+            respondJson2(res, 400, { code: "bad_request", error: `unknown settings: ${unknown.slice(0, 5).join(", ")}` });
             return;
           }
           try {
@@ -2834,6 +3115,7 @@ function apply(ctx, config) {
             const isValidation = e instanceof Error && e.name === "ValidationError";
             console.warn(`[dsh-voice-mode] settings update failed: ${String(e)}`);
             respondJson2(res, isValidation ? 400 : 500, {
+              code: isValidation ? "bad_request" : "internal",
               error: isValidation ? `invalid value: ${e.message.slice(0, 200)}` : "settings update failed"
             });
           }
@@ -2858,7 +3140,7 @@ function apply(ctx, config) {
           if (!mode) {
             res.statusCode = 400;
             res.setHeader("content-type", "application/json");
-            res.end(JSON.stringify({ error: "mode must be toggle or hold" }));
+            res.end(JSON.stringify({ code: "bad_request", error: "mode must be toggle or hold" }));
             return;
           }
           const persistMode = settingsScopeRef ? settingsScopeRef.update({ mode }) : persistSettings({ mode });
@@ -2870,7 +3152,7 @@ function apply(ctx, config) {
             console.warn(`[dsh-voice-mode] mode update failed: ${String(e)}`);
             res.statusCode = 500;
             res.setHeader("content-type", "application/json");
-            res.end(JSON.stringify({ error: "mode update failed" }));
+            res.end(JSON.stringify({ code: "internal", error: "mode update failed" }));
           });
         });
       }
@@ -2883,7 +3165,7 @@ function apply(ctx, config) {
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
         if (sseClients.size >= 4) {
-          respondJson2(res, 429, { error: "too many streams" });
+          respondJson2(res, 429, { code: "too_many_streams", error: "too many streams" });
           return;
         }
         let tabId = null;
@@ -2949,7 +3231,7 @@ function collectBody(req, res, maxBytes, onBody) {
     received += c.length;
     if (received > maxBytes) {
       tooLarge = true;
-      respondJson2(res, 413, { error: "request body too large" });
+      respondJson2(res, 413, { code: "payload_too_large", error: "request body too large" });
       return;
     }
     chunks.push(c);

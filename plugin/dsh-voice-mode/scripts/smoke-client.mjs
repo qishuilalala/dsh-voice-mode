@@ -4,7 +4,8 @@
  * 走完首次引导流程（关 Internal Testing Notice / workspace 配置 / 选 workspace），
  * 等待 voice-mode 麦克风按钮 [data-dshvm="mic"] 渲染，并断言 console 无 error。
  *
- * 用法：node scripts/smoke-client.mjs <dsh-url> [--allow-console-error=regex,...]
+ * 用法：node scripts/smoke-client.mjs <dsh-url> [--allow-console-error=regex,...] [--locale=zh-CN]
+ *   --locale：浏览器语言（默认 en-US）；mic 按钮的 title/aria-label 必须与界面语言一致（英文零中文 / 中文含中文）。
  *   dsh-url：boot 后含 token 的完整 URL（如 http://127.0.0.1:3120/?token=xxx）。
  *
  * 依赖：playwright-core（devDependency）+ 已装的 chromium。
@@ -21,7 +22,10 @@ if (!url) {
 }
 
 const allowRe = [/favicon/i]
+let browserLocale = 'en-US'
 for (const a of process.argv.slice(3)) {
+  const lm = a.match(/^--locale=(.+)$/)
+  if (lm) browserLocale = lm[1]
   const m = a.match(/^--allow-console-error=(.+)$/)
   if (m) for (const r of m[1].split(',')) if (r) allowRe.push(new RegExp(r))
 }
@@ -33,7 +37,8 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM
     ].find((p) => existsSync(p))
 
 const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) })
-const page = await browser.newPage()
+const context = await browser.newContext({ locale: browserLocale })
+const page = await context.newPage()
 
 const consoleErrors = []
 page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()) })
@@ -130,6 +135,15 @@ try {
     await page.waitForSelector('[data-dshvm="mic"]', { timeout: 30000 })
     console.log('  ✓ mic 按钮 [data-dshvm="mic"] 渲染')
     micOk = true
+    // 国际化：mic 的 title / aria-label 必须与界面语言一致（词典驱动，不得硬编码）
+    const micText = await page.evaluate(() => {
+      const el = document.querySelector('[data-dshvm="mic"]')
+      return [el?.getAttribute('title') ?? '', el?.getAttribute('aria-label') ?? ''].join(' ')
+    })
+    const hasCjk = /[\u3400-\u9fff]/.test(micText)
+    const wantZh = /^zh/i.test(browserLocale)
+    if (micText.trim() && hasCjk === wantZh) console.log(`  ✓ mic 文案语言与界面一致（${browserLocale}）`)
+    else { console.error(`  ✗ mic 文案语言与界面不一致（${browserLocale}）：${JSON.stringify(micText.slice(0, 60))}`); failed = true }
   } catch {
     micOk = false
   }

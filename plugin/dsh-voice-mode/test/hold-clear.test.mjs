@@ -90,6 +90,11 @@ export const DESC_LABELS = {}
 export const STATE_LABELS = {}
 export const SECTION_LABELS = {}
 export const TKey = {}
+export const useLang = () => 'zh'
+export const bindLocale = () => () => {}
+export const activeLocale = () => 'zh'
+export const lang = () => 'zh'
+export const errorText = (_b, k) => k
 `)
 
 const clientBundle = join(tmp, 'client.bundle.mjs')
@@ -109,13 +114,15 @@ await build({
     {
       name: 'stub-client-deps',
       setup(b) {
-        b.onResolve({ filter: /\.\.?\/(asr|aec|resample|fixture-recorder|strings)\.ts$/ }, (args) => {
+        b.onResolve({ filter: /\.\.?\/(asr|aec|resample|fixture-recorder|strings|i18n|error-text)\.ts$/ }, (args) => {
           const map = {
             '\\./asr\\.ts$': asrStub,
             '\\./aec\\.ts$': aecStub,
             '\\./resample\\.ts$': resampleStub,
             '\\./fixture-recorder\\.ts$': fixtureStub,
             '\\./strings\\.ts$': stringsStub,
+            '\\./i18n\\.ts$': stringsStub,
+            '\\./error-text\\.ts$': stringsStub,
           }
           for (const [pat, target] of Object.entries(map)) {
             if (new RegExp(pat).test(args.path)) return { path: target }

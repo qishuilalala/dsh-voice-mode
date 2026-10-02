@@ -6,6 +6,8 @@
 
 <p align="center">DeepSeek Harness 全双工语音插件 —— 边说边出字 · 按句朗读 · 开口即打断</p>
 
+<p align="center"><b>中文</b> · <a href="plugin/dsh-voice-mode/README.en.md">English</a></p>
+
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue" alt="License: MIT"></a>
   <a href="https://github.com/qishuilalala/dsh-voice-mode/releases"><img src="https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases" alt="Latest release"></a>

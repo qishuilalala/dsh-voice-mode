@@ -561,3 +561,46 @@ class AgentDefaultModelConfig extends Service {
   6. 设置覆盖层位于 `$DSH_HOME`（桌面端与 CLI 共用同一 home），`profileContext.home` 取不到时回退 `$DSH_HOME`/`~/.dsh` ✅。
 - 待桌面端真机核对：Kokoro 原生 addon；Windows/macOS 上 Settings → 语音模式页渲染与写入；插件经桌面 Plugin Manager 安装后的加载。
 
+---
+
+## 15. 国际化（2026-10-02）：官方机制、根因与各版本边界
+
+### 15.1 触发与根因（AST 盘点，而非凭印象）
+
+用户反馈英文界面里设置卡片中英混杂。用 TypeScript AST 扫描全部源码的中文字面量/JSX 文本（排除注释），归纳出**六类根因**，均系「文案绕过词典 / 两份数据漂移 / 把 host 的话当 UI 文案」：
+
+1. 字段标题硬编码中文：`settings-form.tsx` 的 `FIELD_LABELS`（词典里的 `*Label` 键标注「未对外使用」，en 还是 `ITN` 这类 stub）。
+2. 音色/镜像下拉标签硬编码中文（性别、口音、「常用男声」…）；且 host（`tts-local.ts`）与客户端各抄一份音色表，靠注释保证「同源」，host 那份的中文标签**从未被任何 UI 使用**。
+3. host 错误响应直接充当 UI 文案：固定中文（试听失败、`模型下载失败`）英文用户直接看到；英文机器消息（`rate limited`、`voice mode disabled`）与 `String(e)` 异常文本中文用户直接看到（并可能泄露内部细节）；客户端还用 `=== 'voice mode disabled'` 字符串比较做分支；试听失败出现「试听失败：试听失败：…」重复前缀。
+4. LLM 口语化提示词只有中文版；试听例句只有中/英。
+5. 语言只读一次（`<html lang>`/`navigator.language`），切换需刷新页面；词典无法被语言包扩展。
+6. 插件元数据（名称/描述）中英拼接成一个字符串，Plugins 页不随语言变化。
+
+### 15.2 采用的官方机制（均已在 0.1.1 → 0.2.0 各核心实测）
+
+- **`ctx.locale`（dsh-client-locale）**：`register(ns, locale, dict)` / `bind(ns)` / `subscribe` 在 **0.1.1-rc.2 起全版本**存在（`addLanguage` 0.1.5 起、`resolveText` 0.1.7 起，本插件不用）。语义：当前语言 → `en` 回退、`{name}` 占位符、重复注册同 (ns, locale) 抛错、切换语言/注册词典都会通知订阅者。本插件把 zh/en 词典注册到 `voice-mode` 命名空间（`src/i18n.ts`），组件入口 `useLang()`（`useSyncExternalStore` 订阅）→ **切换语言不刷新即时生效**；外部语言包可补充其它语言，缺失回落英文；服务缺失/注册失败回退本地实现（读 `<html lang>`），不崩。
+- **插件展示元数据**（官方食谱 `adding-a-package.md#plugin-display-metadata`）：`locale/en.json`、`locale/zh.json`（`meta.title` / `meta.description`）、`package.json` 导出 `./locale/*.json`、`files` 含 `locale/*.json`、顶层 `"icon": "./icon.svg"`；`package.json.description` 为回退，故改为纯英文。
+
+### 15.3 其它修复要点
+
+- **host 不发自然语言**：`errors.ts` 稳定错误码表（15 个）+ 英文机器消息；客户端 `errorText()` 按码查词典，**绝不展示 `error` 原文**；`String(e)` 外泄改为服务端日志 + `internal` 码。
+- LLM 提示词中/英两版（`prompts.ts`），客户端 `/toggle` 上报 `lang`，host 缺省中文（旧客户端行为字节不变）；试听例句按音色 ShortName 语种前缀选（新增 ja/ko/fr/de/es/pt/it/ru）。
+- 音色目录单一数据源（`voice-catalog.ts`：名称中/英写法、性别、口音、F0），标签由 `voice-labels.ts` 按语言生成（函数而非常量）；Edge 全量下拉存原始数据、渲染时按当前语言生成（否则切换语言后标签仍是旧语言）。
+- 音色语种与界面语言不一致（英文界面 + 中文音色等）时给出提示，**不偷偷改默认值**（默认音色是既有用户行为，且界面语言≠对话语言）。
+- 其它：`schema` 字段说明引用英文词典（单一来源）；运行日志一律英文；空闲退出提示改为「设置时取定文案」（避免 3 秒后重译比较在切换语言时失败）；文档中英互链、过时的「跟随浏览器语言、需刷新」说明更正。
+
+### 15.4 验证
+
+| 项 | 结果 |
+|---|---|
+| 单测 | `strings-coverage`（词典对称/占位符/字段标题/键引用/错误码闭合/**UI 文件零中文字面量 AST 红线**/日志英文；已做 7 种回归的反向变异验证）、`i18n`（官方服务语义复刻 9 项）、`i18n-protocol`（音色标签中英输出、提示词、试听例句、错误码翻译 13 项）；`npm test` 全绿 |
+| 真浏览器冒烟（9 个核心：0.1.1-rc.2 / 0.1.5-rc.3 / 0.1.6-alpha.2 / 0.1.7-alpha.1·alpha.2·rc.1·rc.2 / 0.2.0-rc.1·rc.2） | 全部通过：英文界面设置卡片**零中文**、中文界面全中文、**不刷新切换语言**、mic 的 title/aria-label 语言与界面一致 |
+| 插件元数据（Plugins 页） | **≥ 0.1.7-alpha.2** 显示本地化标题/描述与图标（0.1.7-alpha.2、0.1.7-rc.2、0.2.0-rc.1 实测）；0.1.6-alpha.2 回退 `package.json` 英文描述；≤0.1.5 无该页 |
+
+### 15.5 已知边界
+
+- 外部语言包（如日语）要由社区提供 `voice-mode` 命名空间的词典；未提供时回落英文（官方回退链）。
+- 已写入状态的瞬时提示（几秒内消失）不追溯重译。
+- 默认 Edge 音色仍是中文（既有用户行为），英文界面下仅提示。
+- 中文版 README 为主，已加中英互链；README.en.md 与 README.md 的内容同步为人工维护。
+

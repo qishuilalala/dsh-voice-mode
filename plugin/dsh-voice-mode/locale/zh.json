@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "语音模式",
+    "description": "DeepSeek Harness 的语音双工插件：本地流式识别（无需 API Key）实时转写进草稿，回复按句朗读并带实时字幕，开口即可打断。"
+  }
+}

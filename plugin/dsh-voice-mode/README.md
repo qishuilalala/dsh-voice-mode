@@ -7,6 +7,8 @@
 
 DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（真 barge-in）。无需 API Key，识别模型在本地宿主端推理。
 
+**中文** · [English](https://github.com/qishuilalala/dsh-voice-mode/blob/HEAD/plugin/dsh-voice-mode/README.en.md)
+
 > **Full-duplex voice mode for DeepSeek Harness** — streamed ASR to an editable draft, sentence-by-sentence read-aloud with live captions, and speaking interrupts playback and the running turn.
 
 ![dsh-voice-mode 全双工语音对话](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/hero-banner.png)
@@ -51,7 +53,7 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 - **开口打断（barge-in）**：服务端 Silero VAD 帧级检测 + 回声门控（echoGateDb）三档灵敏度 → 本地静音 + host 合成队列作废 + 正在运行的回合取消（保留半截并自然续入新消息）；朗读中自动切超灵敏档。开启唤醒词后打断**仍是开口即打断**（打断门控是 VAD，不是唤醒词；打断后回待机态）
 - **模型懒加载与进度**：首次使用自动下载识别/合成模型（`.part` 断点续传），状态条实时显示进度；可用 `npm run prefetch` 预下载
 - **设置**：入口随 dsh 版本而不同（见下方「设置」），可调朗读引擎/音色/语速/打断灵敏度/静音停顿/空闲超时/模型镜像/自动发送/交互模式/唤醒词/口语化提示词/字幕档位/让位语义；**音色可试听**（按当前音色+语速即时合成预览，自定义 ShortName 亦可）
-- **界面语言**：跟随浏览器语言（中文 / English；切换后刷新页面生效）
+- **界面语言**：跟随 dsh 的语言设置（设置 → 通用 → 语言），**切换即时生效、无需刷新**——设置页、语音状态条、字幕、音色名称/性别/口音、错误提示全部随之变化；LLM 口语化提示词也按界面语言选中/英文版。插件词典注册在 dsh 官方 locale 服务的 `voice-mode` 命名空间，社区语言包可据此补充其它语言，缺失的语言回落英文。插件名称与描述在「插件」页同样按语言显示。
 - **容错**：麦克风被拒红点提示、模型下载失败可见提示、TTS 连接失败状态条提示（自动退避重试）、提交失败文字留在草稿、SSE 断线自动重连
 - **空闲退出**：5 分钟无活动自动退出并释放麦克风（**正在朗读计为活动**，长朗读不会中途下线；批 J 已微调默认 10→5）
 
@@ -332,7 +334,11 @@ src/tts-queue.ts     host：逐会话 TTS 队列 + epoch 打断机制
 src/segmenter.ts     host：句子切分 + 文本消毒（markdown 剥离 + 噪声字符剔除）
 src/asr.ts           client：音频采集、VAD 分段、增量识别、唤醒词、按住说门控
 src/client.tsx       client：麦克风按钮 + 模式切换按钮 + 状态条 + 字幕浮层 + 打断
-src/strings.ts       client：中英文案字典（navigator.language）
+src/strings.ts       client：中英文案词典（zh / en 两份，键一一对应；有测试守卫）
+src/i18n.ts          client：接入官方 locale 服务（语言即时切换、语言包扩展、无服务时回退）
+src/voice-catalog.ts host+client：音色目录单一数据源；src/voice-labels.ts 按语言生成音色/镜像标签
+src/errors.ts        host↔client：稳定错误码（host 不发自然语言，客户端按语言翻译）
+src/prompts.ts       host：LLM 口语化提示词（中/英）与试听例句（按音色语种）
 ```
 
 ---

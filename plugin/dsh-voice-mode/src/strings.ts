@@ -1,10 +1,12 @@
 /**
- * 用户可见文案字典（v0.2.0 i18n，最小实现）。
- * 语言选择：浏览器语言以 zh 开头用中文，其余用英文（缺省中文）。
- * 音色名/镜像源等数据标签不翻译（保持原样），仅 UI 文案入字典。
+ * 用户可见文案字典（zh / en 两份，键一一对应）。
+ *
+ * 语言选择与翻译函数在 i18n.ts：优先接入 dsh 官方客户端 locale 服务（`ctx.locale`，0.1.1 → 0.2.0 全版本有，
+ * 切换语言即时生效、可被社区语言包扩展）；服务不可用时回退本文件末尾的本地实现（读 <html lang>）。
+ * 音色名/镜像源等数据标签的「名称」不翻译，但其中的性别/口音等描述词走本字典（见 voice* / gender* / accent* 键）。
  */
 
-const zh = {
+export const zh = {
   stateVoiceMode: '语音模式',
   ttsNoticeFail: '朗读连接失败：正在重试…',
   ttsSkipNotice: '有一句朗读失败，已跳过（云端朗读网络抖动，可重发这条消息）',
@@ -183,11 +185,66 @@ const zh = {
   // 批 H 任务 4：autoResume 关 + 切回上次语音会话时的引导提示（5s 后自动清）。
   // 批 7N 重做 2/5：明确「自动恢复」=「自动进入语音模式 + 恢复上次会话」。
   autoResumeHint: '「自动恢复」= 开启后切换回上次语音会话会自动进入语音模式并恢复上次会话；关闭则需手动按 Ctrl+Shift+V',
+  // —— 国际化补全（字段标题/音色描述词/错误码文案/试听分类）——
+  ttsEngineLabel: '朗读引擎',
+  kokoroModelLabel: 'Kokoro 模型精度',
+  voiceLabel: '音色',
+  rateLabel: '语速',
+  interruptLevelLabel: '打断灵敏度',
+  bargeInModeLabel: '打断方式',
+  echoGateDbLabel: '回声门控',
+  modeLabel: '交互模式',
+  shortcutLabel: '快捷键',
+  wakeWordLabel: '唤醒词',
+  toolBeepLabel: '工具提示音',
+  autoSendLabel: '自动发送',
+  autoResumeLabel: '自动恢复',
+  senseVoiceLabel: '定稿重译',
+  spokenFormatLabel: '口语化提示词',
+  silenceMsLabel: '静音停顿',
+  idleTimeoutMinutesLabel: '空闲超时',
+  modelHostLabel: '模型镜像',
+  genderFemale: '女',
+  genderMale: '男',
+  genderNeutral: '中性',
+  accentMandarin: '简体中文',
+  accentNortheast: '东北话',
+  accentShaanxi: '陕西话',
+  accentCantonese: '粤语',
+  accentTaiwan: '台湾腔',
+  accentEnglish: 'English',
+  styleDeep: '深沉',
+  styleRich: '浑厚',
+  styleClear: '清亮',
+  styleMagnetic: '磁性',
+  voiceKokoroPopularMale: '常用男声',
+  voiceKokoroChineseFemale: '中文女',
+  voiceKokoroMale: '男声',
+  voiceKokoroFemale: '女声',
+  voiceKokoroGeneric: '音色',
+  hostOfficial: '官方源',
+  hostMirror: '国内镜像',
+  engineBadgeCloud: '识别本地 · 朗读云端',
+  engineBadgeLocal: '识别本地 · 朗读本地',
+  errRateLimited: '请求过于频繁，请稍后再试',
+  errUnknownSession: '语音会话已失效，请重新开启语音模式',
+  errForbidden: '请求被拒绝（仅限本机访问，或来源不符）',
+  errBadRequest: '请求无效',
+  errEngineNotActive: '该朗读引擎当前未启用',
+  errModelDownload: '模型下载失败：请检查网络',
+  errTooManyStreams: '语音连接过多，请关闭其它语音页面后重试',
+  errTooLarge: '请求内容过大',
+  errInternal: '服务出错，请稍后重试',
+  previewNetwork: '试听失败：网络不可达（Edge 云端需访问微软语音服务），请检查网络或代理',
+  previewEngine: '试听失败：引擎未就绪（本地模型下载中、初始化失败或子进程异常），请稍后再试或在设置面板查看 TTS 状态',
+  previewText: '试听失败：合成引擎产出空音频（音色与语种可能不匹配），请更换音色或检查语言设置',
+  voiceHintChineseVoice: '提示：当前是中文音色；若主要用英文对话，建议在列表中选择英文音色（en-…）。',
+  voiceHintEnglishVoice: '提示：当前是英文音色，朗读中文回复效果不佳；中文对话建议选择中文音色（zh-…）。',
 } as const
 
-const en: Record<keyof typeof zh, string> = {
+export const en: Record<keyof typeof zh, string> = {
   stateVoiceMode: 'Voice Mode',
-  ttsNoticeFail: 'Read-aloud connection lost: retrying…',
+  ttsNoticeFail: 'Read-aloud connection failed: retrying…',
   ttsSkipNotice: 'One sentence failed to read and was skipped (cloud TTS network hiccup — resend the message to retry)',
   enterFail: 'Failed to enter voice mode',
   disabled: 'Voice mode disabled (plugin enabled=false)',
@@ -212,7 +269,7 @@ const en: Record<keyof typeof zh, string> = {
   barListening: 'Voice mode · listening…',
   wakeWord: 'Wake word',
   sayWake: 'Say "{wake}" to start',
-  reading: 'Reading…',
+  reading: 'Reading aloud…',
   recognitionFail: 'Recognition failed, try again',
   sessionExpired: 'Voice session expired, reconnecting…',
   sessionExpiredFail: 'Voice session reconnect failed; please re-enter voice mode',
@@ -223,7 +280,7 @@ const en: Record<keyof typeof zh, string> = {
   skip: 'Skip',
   configUnavailableNote: ' (settings document not ready; the panel will appear when it is).',
   previewNameFirst: 'Enter a voice ShortName first',
-  previewDisabled: 'Voice mode disabled; preview unavailable',
+  previewDisabled: 'Voice mode disabled (plugin enabled=false); preview unavailable',
   // 批 G 任务 6：本地 TTS 引擎未下载模型时禁用试听按钮 + 提示。
   previewModelMissing: 'Download the local model first (see the engine status above)',
   previewModelLoading: 'Local model is downloading — please wait',
@@ -243,7 +300,7 @@ const en: Record<keyof typeof zh, string> = {
   descVoiceLocal: 'Local voice (vits, all 5 speakers listed; dropdown or ◀▶; no custom needed)',
   descTtsEngine: 'Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft)',
   engineVits: 'Local VITS',
-  engineKokoro: 'Local zh-en',
+  engineKokoro: 'Local Kokoro',
   engineEdge: 'Edge cloud',
   descVoiceKokoro: 'Kokoro zh-en voices (103; ◀▶ to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)',
   descRate: 'Speech rate (0.5 slow – 2.0 fast, 1.1 default; more compact replies)',
@@ -286,13 +343,13 @@ const en: Record<keyof typeof zh, string> = {
   captionWidth70: 'Medium',
   captionWidth90: 'Wide',
   skipReading: 'Skip current reading',
-  backchannelYield: 'Short-answer yielding',
+  backchannelYield: 'Short-reply yielding',
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches pre-batch-5)',
   // 批 G 任务 3：让位窗口时长（500-3000ms，默认 1500）。
   yieldMs: 'Yield window',
   descYieldMs: 'How long (ms) to drop frames after a yield trigger (500-3000, default 1500; within the window the existing hardBreak takes over if the user really wants to speak; auto-resume after the window expires)',
   descMode: 'Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)',
-  modeToggle: 'Continue listen',
+  modeToggle: 'Continuous listening',
   modeHold: 'Hold to talk',
   descWakeWord: 'Wake word (default off; e.g. "Hey D"): recognition starts only after you say it, to avoid accidental triggers. You may say it together with your command ("Hey D, check the weather" — the wake word is stripped and never sent); it must be repeated after each utterance split or barge-in; toggle mode only (inactive in hold / manual barge-in); saying it while the agent is reading does not trigger (barge-in stays VAD-based). Fault-tolerant matching (homophones / leading fillers); 3-4 characters recommended; not a dedicated KWS engine — noisy environments may delay or falsely trigger',
   wakePlaceholder: 'e.g. Hey D',
@@ -340,13 +397,11 @@ const en: Record<keyof typeof zh, string> = {
   secRecognition: 'Recognition & speech',
   secModel: 'Model & mirror',
   telTotal: 'total',
-  // 批 C：与 zh 段 *Label 镜像键同步。临时 stub（仅用于满足 Record<keyof typeof zh, string>
-  // 类型约束，避免 tsc 红），由整合批统一替换为正式英文文案。**未对外使用**——当前
-  // settings-form.tsx 通过 FIELD_LABELS 取值，未走 tr()，所以英文用户暂未感知差异。
-  senseITNLabel: 'ITN',
-  captionFontSizeLabel: 'Font size',
-  captionMaxWidthLabel: 'Max width',
-  backchannelYieldLabel: 'Yielding',
+  // 字段标题（Row 标题）：settings-form 经 tr(`${name}Label`) 取值，zh/en 均为正式文案。
+  senseITNLabel: 'Inverse text normalization',
+  captionFontSizeLabel: 'Caption size',
+  captionMaxWidthLabel: 'Caption width',
+  backchannelYieldLabel: 'Short-reply yielding',
   // 批 G 任务 3：让位窗口（FIELD_LABELS.yieldMs 镜像键，*Label 后缀）。
   yieldMsLabel: 'Yield window',
   // 批 G 任务 2：空闲预警 + 退出提示文案。
@@ -358,24 +413,76 @@ const en: Record<keyof typeof zh, string> = {
   // 批 H 任务 4：autoResume 关 + 切回上次语音会话时的引导提示（5s 后自动清）。
   // 批 7N 重做 2/5：明确「自动恢复」=「自动进入语音模式 + 恢复上次会话」。
   autoResumeHint: '"Auto-resume" = when enabled, switching back to your last voice session auto-enters voice mode and restores the session; when disabled, press Ctrl+Shift+V to re-enter',
+  // —— i18n completion (field labels / voice descriptors / error-code copy / preview categories) ——
+  ttsEngineLabel: 'Read-aloud engine',
+  kokoroModelLabel: 'Kokoro model precision',
+  voiceLabel: 'Voice',
+  rateLabel: 'Speed',
+  interruptLevelLabel: 'Interrupt sensitivity',
+  bargeInModeLabel: 'Interrupt mode',
+  echoGateDbLabel: 'Echo gate',
+  modeLabel: 'Interaction mode',
+  shortcutLabel: 'Shortcut',
+  wakeWordLabel: 'Wake word',
+  toolBeepLabel: 'Tool-call beep',
+  autoSendLabel: 'Auto-send',
+  autoResumeLabel: 'Auto-resume',
+  senseVoiceLabel: 'Re-transcribe on finalize',
+  spokenFormatLabel: 'Spoken-style prompt',
+  silenceMsLabel: 'Silence pause',
+  idleTimeoutMinutesLabel: 'Idle timeout',
+  modelHostLabel: 'Model mirror',
+  genderFemale: 'Female',
+  genderMale: 'Male',
+  genderNeutral: 'Neutral',
+  accentMandarin: 'Mandarin',
+  accentNortheast: 'Northeastern',
+  accentShaanxi: 'Shaanxi',
+  accentCantonese: 'Cantonese',
+  accentTaiwan: 'Taiwanese Mandarin',
+  accentEnglish: 'English',
+  styleDeep: 'Deep',
+  styleRich: 'Rich',
+  styleClear: 'Clear',
+  styleMagnetic: 'Magnetic',
+  voiceKokoroPopularMale: 'Popular male',
+  voiceKokoroChineseFemale: 'Chinese female',
+  voiceKokoroMale: 'Male',
+  voiceKokoroFemale: 'Female',
+  voiceKokoroGeneric: 'Voice',
+  hostOfficial: 'Official',
+  hostMirror: 'Mirror (CN)',
+  engineBadgeCloud: 'ASR local · TTS cloud',
+  engineBadgeLocal: 'ASR local · TTS local',
+  errRateLimited: 'Too many requests — try again shortly',
+  errUnknownSession: 'Voice session expired — re-enter voice mode',
+  errForbidden: 'Request denied (local access only, or origin mismatch)',
+  errBadRequest: 'Invalid request',
+  errEngineNotActive: 'That read-aloud engine is not active',
+  errModelDownload: 'Model download failed — check your network',
+  errTooManyStreams: 'Too many voice connections — close other voice tabs and retry',
+  errTooLarge: 'Request too large',
+  errInternal: 'Server error — please retry shortly',
+  previewNetwork: 'Preview failed: network unreachable (Edge cloud needs the Microsoft speech service) — check your network or proxy',
+  previewEngine: 'Preview failed: engine not ready (local model downloading, init failed, or worker crashed) — retry later or check TTS status in settings',
+  previewText: 'Preview failed: the engine produced empty audio (voice and language may not match) — pick another voice',
+  voiceHintChineseVoice: 'Note: this is a Chinese voice. For English replies, pick an English voice (en-…) from the list.',
+  voiceHintEnglishVoice: 'Note: this is an English voice and reads Chinese replies poorly. For Chinese conversations, pick a Chinese voice (zh-…).',
 }
 
 /**
- * 语言判定：**以 dsh 为准**——dsh 的语言设置（Settings → General → Language，
- * locale 命名空间，未设置时回退浏览器）解析后写入 <html lang>，页面加载时即已生效；
- * 插件不再自行探测浏览器语言。切换语言后按「刷新页面」生效（与 README 一致）。
+ * 本地回退语言判定（仅在官方 locale 服务不可用时使用）：<html lang> 以 zh 开头为中文，其余英文。
+ * 每次调用时解析，无缓存。
  */
-/** 每次调用时解析（组件渲染时 dsh 已写入最终 <html lang>），无缓存/无时序竞态。 */
-const guess = (): 'zh' | 'en' =>
+export const htmlLangIsZh = (): boolean =>
   /^zh\b/i.test(
     (typeof document !== 'undefined' && document.documentElement.lang) ||
       (typeof navigator !== 'undefined' ? navigator.language : '') ||
       '',
   )
-    ? 'zh'
-    : 'en'
 
 /** 文案键类型（供组件侧声明含 t() 键的结构化配置）。 */
 export type TKey = keyof typeof zh
 
-export const t = (key: TKey): string => (guess() === 'zh' ? zh[key] : en[key] ?? zh[key])
+/** 本地回退翻译：按语言取词，缺失回落英文（与官方 locale 服务的回退链一致：当前语言 → en）。 */
+export const translateLocal = (key: TKey, isZh: boolean): string => (isZh ? zh[key] : en[key]) ?? en[key] ?? key

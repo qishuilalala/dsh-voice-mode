@@ -39,63 +39,9 @@ const TTS_MODEL_FILES: ModelFileSpec[] = [
   { file: 'number.fst', sha256: '743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd' },
 ]
 
-/** 说话人表（vits-zh-ll；性别按实测听感：顾念/冰娇为男声、傅斯遇为女声）。 */
-export const VITS_SPEAKERS: ReadonlyArray<{ name: string; sid: number; label: string }> = [
-  { name: 'suyingxue', sid: 0, label: '素映雪 · 女' },
-  { name: 'gunian', sid: 1, label: '顾念 · 男' },
-  { name: 'fushiyu', sid: 2, label: '傅斯遇 · 女' },
-  { name: 'bingjiao', sid: 3, label: '冰娇 · 男' },
-  { name: 'bazong', sid: 4, label: '霸总 · 男' },
-]
-
-/**
- * Kokoro 全量音色表（sid 0-102，共 103 个）。
- * 2026-08 用原生 addon 逐 sid 合成 + F0 自相关实测标定性别（Hz 为短句样本中位基频）。
- * 音色只是风格向量：中英文混读对所有 sid 均可用，语言能力与音色无关。
- * 48-51 保留已验证的中文名；62/68/75/76 为用户听测钦定的常用男声；
- * 其余按编号 + 实测性别暴露。
- */
-const KOKORO_F0: ReadonlyArray<number | null> = [
-  224, 189, 154, 261, 226, 222, 220, 229, 198, 186, 212, 293, 233, 161, 247, 207, 218, 216, 220, 238,
-  242, 229, 198, 286, 211, 190, 264, 261, 226, 147, 216, 240, 233, 188, 222, 247, 253, 270, 276, 276,
-  279, 320, 247, 296, 276, 235, 139, 240, 282, 282, 238, 226, 273, 216, 286, 270, 198, 179, 117, 130,
-  114, 128, 108, 106, 122, 136, 190, 112, 108, 128, 131, 111, 110, 132, 138, 189, 137, 148, 151, 127,
-  135, 111, 138, 114, 125, 158, 128, 156, 132, 162, 131, 136, 142, 124, 129, 136, 126, 135, 161, 150,
-  124, 104, 124,
-]
-
-const KOKORO_NAMED: Readonly<Record<number, { name: string; label: string }>> = {
-  48: { name: 'zf_xiaobei', label: '小北 · 中文女' },
-  49: { name: 'zf_xiaoni', label: '小妮 · 中文女' },
-  50: { name: 'zf_xiaoxiao', label: '小小 · 中文女' },
-  51: { name: 'zf_xiaoyi', label: '小艺 · 中文女' },
-}
-
-/** 用户试听钦定的常用男声（62/68/75/76；75 以听感标男——F0 189Hz 越界不采信）。 */
-const KOKORO_LABEL_OVERRIDES: Readonly<Record<number, string>> = {
-  62: '62 · 深沉 · 常用男声',
-  68: '68 · 浑厚 · 常用男声',
-  75: '75 · 清亮 · 常用男声',
-  76: '76 · 磁性 · 常用男声',
-}
-
-/** 置顶顺序：四个常用男声排在音色列表第一～四位（◀▶ 步进最先到达）。 */
-const KOKORO_PINNED: ReadonlyArray<number> = [62, 68, 75, 76]
-
-function kokoroVoice(sid: number): { name: string; sid: number; label: string } {
-  const custom = KOKORO_LABEL_OVERRIDES[sid]
-  if (custom) return { name: String(sid), sid, label: custom }
-  const named = KOKORO_NAMED[sid]
-  if (named) return { name: named.name, sid, label: named.label }
-  const hz = KOKORO_F0[sid] ?? null
-  if (hz === null) return { name: String(sid), sid, label: `${sid} · 音色` }
-  return { name: String(sid), sid, label: `${sid} · ${hz < 180 ? '男声' : '女声'} · ${hz}Hz` }
-}
-
-export const KOKORO_VOICES: ReadonlyArray<{ name: string; sid: number; label: string }> = [
-  ...KOKORO_PINNED.map((sid) => kokoroVoice(sid)),
-  ...KOKORO_F0.map((_, sid) => kokoroVoice(sid)).filter((v) => !KOKORO_PINNED.includes(v.sid)),
-]
+// 音色目录（name ↔ sid）来自单一数据源 voice-catalog.ts（客户端设置面板的显示标签也由它派生）。
+import { KOKORO_VOICES, VITS_SPEAKERS } from './voice-catalog.ts'
+export { KOKORO_VOICES, VITS_SPEAKERS }
 
 /** voice → sid（VITS）。接受数字 0-4 或说话人英文名；非法回退 0。 */
 export function voiceToSid(voice: string): number {

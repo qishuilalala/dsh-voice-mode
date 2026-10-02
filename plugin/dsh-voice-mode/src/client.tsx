@@ -14,7 +14,8 @@ import { createAsrEngine, type AsrEngine, type AsrState, type EchoRefSource } fr
 import { NlmsAec, estimateBulkDelay } from './aec.ts'
 import { resampleLinear } from './resample.ts'
 import { fixtureRecorder } from './fixture-recorder.ts'
-import { t, type TKey } from './strings.ts'
+import { errorText } from './error-text.ts'
+import { activeLocale, bindLocale, t, useLang, type TKey } from './i18n.ts'
 
 /**
  * 打断根治阶段二：isSpeech 连续 true 计数（模块级；全局单活架构下 createVoiceBus
@@ -306,6 +307,8 @@ function setLastVoiceSession(id: string | null): void {
 }
 
 export function apply(ctx: any): void {
+  // 国际化：把 zh/en 词典注册进官方 locale 服务（切换语言即时生效、可被语言包扩展）；服务不可用则回退本地实现。
+  ctx.effect(() => bindLocale(ctx.get?.('locale')), 'dsh-voice-mode: locale dictionaries')
   const bus = createVoiceBus(undefined, ctx)
 
   // C3 加固：浏览器挂起 AudioContext 后，只有用户交互能可靠恢复播放（Safari/Chrome 的
@@ -1139,14 +1142,14 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         const res = await fetch(`${location.origin}${basePath}/toggle`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ sessionId, on: true, tabId: TAB_ID }),
+          body: JSON.stringify({ sessionId, on: true, tabId: TAB_ID, lang: activeLocale() }),
         })
-        const out = (await res.json()) as { active?: string | null; error?: string }
+        const out = (await res.json()) as { active?: string | null; error?: string; code?: string }
         // B1 修复：仅当本 tab 真正成为活跃会话才认领 owner；否则保持非 owner（null），
         // 防止多 tab 下「out.active 是别的会话」时本 tab 误收养别人会话 → 重复播放。
         activeSessionId = out.active === sessionId ? sessionId : null
         notify()
-        if (!res.ok) return { ok: false, error: out.error ?? t('enterFail') }
+        if (!res.ok) return { ok: false, error: errorText(out, 'enterFail') }
         // I5：记住本次语音会话（autoResume 切回时自动恢复）。
         if (out.active === sessionId) setLastVoiceSession(sessionId)
         // 双重奏根治：拒绝线保留（host toggle 用 cancel 保 seq 连续递增）——
@@ -1302,6 +1305,7 @@ export function MicButton({
   useInput,
   inputActions,
 }: MicProps): React.ReactElement {
+  useLang() // 语言切换时重渲染
   // local: 'off' | 'pending' | 'on'（bus.active === sessionId 时有效）
   const [local, setLocal] = useState<'off' | 'pending' | 'on'>('off')
   const localRef = useRef<'off' | 'pending' | 'on'>('off')
@@ -1449,14 +1453,16 @@ export function MicButton({
       if (localRef.current === 'on' && sid) {
         // 批 G 任务 2：空闲退出时显示「空闲超时已自动退出（设置里可调时长）」3 秒后清。
         // 不打断已有的 error（让用户先看到错误）；仅当 error 为空时覆写。
+        // 设置时就取定文案（不在 3 秒后重新翻译再比较）：期间若用户切换了界面语言，重译会使相等比较失败、提示残留。
+        const quitMsg = t('idleTimeoutQuit')
         bus.setUi({
-          error: bus.ui.error ?? t('idleTimeoutQuit'),
+          error: bus.ui.error ?? quitMsg,
         })
         const prevClearError = idleClearErrorRef.current
         if (prevClearError) clearTimeout(prevClearError)
         idleClearErrorRef.current = setTimeout(() => {
           idleClearErrorRef.current = null
-          if (bus.ui.error === t('idleTimeoutQuit')) bus.setUi({ error: null })
+          if (bus.ui.error === quitMsg) bus.setUi({ error: null })
         }, 3000)
         void exitModeRef.current('idle')
       }
@@ -1600,10 +1606,7 @@ export function MicButton({
         // M5：被抢占（另一会话已活跃）时静默跟随 mode 广播，不误闪「进入失败」。
         if (!entered.preempted) {
           bus.setUi({
-            error:
-              entered.error === 'voice mode disabled'
-                ? t('disabled')
-                : entered.error ?? t('enterFail'),
+            error: entered.error ?? t('enterFail'),
           })
         }
         return
@@ -2474,6 +2477,7 @@ interface StatusBarProps extends VoiceSlotActions {
 }
 
 export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactElement {
+  useLang() // 语言切换时重渲染
   const [b, setB] = useState(() => ({ active: bus.activeSessionId, ui: bus.ui }))
   // P1-UX 状态条计时器：会话活跃期间按秒递增；会话切走 / 卸载时清零
   const [elapsedSec, setElapsedSec] = useState(0)
@@ -2713,6 +2717,7 @@ interface OverlayProps extends VoiceSlotActions {
 }
 
 export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
+  useLang() // 语言切换时重渲染
   const [b, setB] = useState(() => ({ active: bus.activeSessionId, ui: bus.ui }))
 
   useEffect(() => {

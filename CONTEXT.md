@@ -63,6 +63,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
   （ADR-0001 物理边界形态实证）。详见 docs/findings/2026-09-14-fixture-verdict.md。
 - 本地 TTS 模型：就绪以「模型文件已下载」为准（跨引擎持久，非子进程 init）；`/models/download` 触发下载、`/models/clean` 删除本地；int8/fp32 分目录缓存、切换不重下。
 - **宿主兼容 0.1.1-rc.2 → 0.2.0-rc.2**（全版本支持，engines.dsh>=0.1.1-rc.2 无上界；0.1.7+ 走设置双路径 shim：客户端无 `settingsScope`（**不得列入 client inject**，用 `ctx.get` 可选查找）、官方存储拒写本插件条目 → 用户设置落 `$DSH_HOME/voice-mode.settings.json`（`src/settings-store.ts`，端点 `/voice-mode/settings`）；设置卡片槽位 ≤0.1.5=`settings.plugin.item`、≥0.1.6-alpha=`plugins.bundle.config`（两个都注册）；host 勿直接访问 `ctx.profileContext`（旧宿主抛错）；见 compat-contract §12/§13）：9 个 `dsh.client.inject` 锚点取交集；升级 dsh 前先 `npm run check:anchors` 预检，回归用 `npm run verify:dual`（多版本 typecheck + 隔离冒烟，核心用 `scripts/ensure-core.sh <版本>` 备于 /tmp/dshcore）；RPC 端点 schema 实证表见 docs/compat-contract.md §8（逐端点：session/list 用 `args._request`；session/create|prompt|cancel 用 `args.request`；settings/describe、llm/listProviders 不嵌字段；所有 /api/* 强制 args 信封）；2026-09-18 alpha 复核见 §9；0.1.7-rc.2/0.2.0-rc.x 复核见 §12。
+- **国际化（test/strings-coverage 守卫）**：用户可见文案只走词典 `strings.ts`，经 `i18n.ts` 接官方 `ctx.locale`（0.1.1→0.2.0 全版本有，切换即时生效，组件入口 `useLang()`，无服务回退 `<html lang>`）。host 不发自然语言：错误只发稳定码（`errors.ts` → 客户端 `errorText()`，绝不展示 `error` 原文）；LLM 提示词中/英两版（客户端 /toggle 上报 `lang`，缺省中文）；试听例句按音色语种；音色数据 `voice-catalog.ts` 单一来源、标签 `voice-labels.ts` 按语言生成；日志一律英文；插件名称/描述走 `locale/*.json`+`icon`。UI 文件新增中文字面量会被 AST 红线拦截。
 
 ## 设置语义
 

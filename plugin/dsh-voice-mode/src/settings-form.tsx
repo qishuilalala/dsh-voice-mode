@@ -15,7 +15,9 @@
  */
 import * as React from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { t as tr } from './strings.ts'
+import { t as tr, useLang, activeLocale, type TKey } from './i18n.ts'
+import { errorText } from './error-text.ts'
+import { edgeAllOptions, edgeCommonOptions, hostOptions, kokoroOptions, vitsOptions, voiceLangHint, type EdgeRawVoice } from './voice-labels.ts'
 
 interface ScopeController {
   getSnapshot(): {
@@ -47,41 +49,6 @@ const cardStyle: React.CSSProperties = {
   overflow: 'hidden',
 }
 
-/** 字段 key → 中文标签（设置行标题用；未知 key 回退显示 key 本身）。
- *
- * 临时双轨：FIELD_LABELS 与 src/strings.ts zh 段 *Label 键并行维护同一组中文。
- * 短期目标：避免用户看到英文 key 作为行标题的体验问题；
- * 长期目标（计划整合批）：去掉 FIELD_LABELS，全部改用 strings.ts 翻译键 tr() 模式
- * 统一文案来源，杜绝双轨漂移风险。届时本块只保留枚举接入。
- */
-const FIELD_LABELS: Record<string, string> = {
-  ttsEngine: '朗读引擎',
-  kokoroModel: 'Kokoro 模型精度',
-  voice: '音色',
-  rate: '语速',
-  interruptLevel: '打断灵敏度',
-  bargeInMode: '打断方式',
-  echoGateDb: '回声门控',
-  mode: '交互模式',
-  shortcut: '快捷键',
-  wakeWord: '唤醒词',
-  toolBeep: '工具提示音',
-  autoSend: '自动发送',
-  autoResume: '自动恢复',
-  senseVoice: '定稿重译',
-  spokenFormat: '口语化提示词',
-  silenceMs: '静音停顿',
-  idleTimeoutMinutes: '空闲超时',
-  modelHost: '模型镜像',
-  // 批 C 新增（覆盖批 1-5 新增 UI 字段；详见文件头注释）
-  senseITN: '逆文本归一化',
-  captionFontSize: '字幕字号',
-  captionMaxWidth: '字幕宽度',
-  backchannelYield: '短应答让位',
-  // 批 G 任务 3：让位窗口时长（500-3000ms，默认 1500）。FIELD_LABELS 与 strings.ts
-  // zh 段 yieldMsLabel 同步登记（双轨约束由 strings-coverage 测试兜底）。
-  yieldMs: '让位窗口',
-}
 const setHeader: React.CSSProperties = {
   appearance: 'none',
   width: '100%',
@@ -143,77 +110,6 @@ const focusVisibleCss = `
   [data-dshvm-settings="card"], [data-dshvm-settings="card"] * { transition: none !important; }
 }`
 
-/** 常用 Edge TTS 音色（ShortName 取自 msedge-tts getVoices 实测权威清单）。 */
-const VOICE_OPTIONS: Array<{ v: string; label: string }> = [
-  { v: 'zh-CN-XiaoxiaoNeural', label: '晓晓 · 女 · 简体中文' },
-  { v: 'zh-CN-XiaoyiNeural', label: '晓伊 · 女 · 简体中文' },
-  { v: 'zh-CN-YunxiNeural', label: '云希 · 男 · 简体中文' },
-  { v: 'zh-CN-YunjianNeural', label: '云健 · 男 · 简体中文' },
-  { v: 'zh-CN-YunyangNeural', label: '云扬 · 男 · 简体中文' },
-  { v: 'zh-CN-YunxiaNeural', label: '云夏 · 男 · 简体中文' },
-  { v: 'zh-CN-liaoning-XiaobeiNeural', label: '小北 · 女 · 东北话' },
-  { v: 'zh-CN-shaanxi-XiaoniNeural', label: '小妮 · 女 · 陕西话' },
-  { v: 'zh-HK-HiuMaanNeural', label: '晓曼 · 女 · 粤语' },
-  { v: 'zh-HK-WanLungNeural', label: '云龙 · 男 · 粤语' },
-  { v: 'zh-TW-HsiaoYuNeural', label: '小雨 · 女 · 台湾腔' },
-  { v: 'zh-TW-YunJheNeural', label: '云哲 · 男 · 台湾腔' },
-  { v: 'en-US-AriaNeural', label: 'Aria · 女 · English' },
-  { v: 'en-US-GuyNeural', label: 'Guy · 男 · English' },
-]
-
-/** 本地 VITS 音色（vits-zh-ll 五说话人；值由 host 侧 voiceToSid 解析）。
- *  性别标注按实测听感纠正（2026-08 用户听测）：顾念/冰娇为男声、傅斯遇为女声。 */
-const VOICE_OPTIONS_LOCAL: Array<{ v: string; label: string }> = [
-  { v: 'suyingxue', label: '素映雪 · 女' },
-  { v: 'gunian', label: '顾念 · 男' },
-  { v: 'fushiyu', label: '傅斯遇 · 女' },
-  { v: 'bingjiao', label: '冰娇 · 男' },
-  { v: 'bazong', label: '霸总 · 男' },
-]
-
-/**
- * Kokoro 全量音色（sid 0-102，共 103 个；与 host 侧 KOKORO_VOICES 同源数据）。
- * 性别按 F0 实测标注；音色只是风格向量，中英文混读对所有编号均可用。
- */
-const KOKORO_F0: ReadonlyArray<number | null> = [
-  224, 189, 154, 261, 226, 222, 220, 229, 198, 186, 212, 293, 233, 161, 247, 207, 218, 216, 220, 238,
-  242, 229, 198, 286, 211, 190, 264, 261, 226, 147, 216, 240, 233, 188, 222, 247, 253, 270, 276, 276,
-  279, 320, 247, 296, 276, 235, 139, 240, 282, 282, 238, 226, 273, 216, 286, 270, 198, 179, 117, 130,
-  114, 128, 108, 106, 122, 136, 190, 112, 108, 128, 131, 111, 110, 132, 138, 189, 137, 148, 151, 127,
-  135, 111, 138, 114, 125, 158, 128, 156, 132, 162, 131, 136, 142, 124, 129, 136, 126, 135, 161, 150,
-  124, 104, 124,
-]
-const KOKORO_NAMED: Readonly<Record<number, { v: string; label: string }>> = {
-  48: { v: 'zf_xiaobei', label: '小北 · 中文女' },
-  49: { v: 'zf_xiaoni', label: '小妮 · 中文女' },
-  50: { v: 'zf_xiaoxiao', label: '小小 · 中文女' },
-  51: { v: 'zf_xiaoyi', label: '小艺 · 中文女' },
-}
-/** 用户试听钦定的常用男声（与 host 侧 KOKORO_LABEL_OVERRIDES 同源；75 听感标男）。 */
-const KOKORO_LABEL_OVERRIDES: Readonly<Record<number, string>> = {
-  62: '62 · 深沉 · 常用男声',
-  68: '68 · 浑厚 · 常用男声',
-  75: '75 · 清亮 · 常用男声',
-  76: '76 · 磁性 · 常用男声',
-}
-/** 置顶顺序：四个常用男声排第一～四位，其余按编号升序（与 host 侧一致）。 */
-const KOKORO_PINNED: ReadonlyArray<number> = [62, 68, 75, 76]
-
-function kokoroOption(sid: number): { v: string; label: string } {
-  const custom = KOKORO_LABEL_OVERRIDES[sid]
-  if (custom) return { v: String(sid), label: custom }
-  const named = KOKORO_NAMED[sid]
-  if (named) return { v: named.v, label: named.label }
-  const hz = KOKORO_F0[sid] ?? null
-  if (hz === null) return { v: String(sid), label: `${sid} · 音色` }
-  return { v: String(sid), label: `${sid} · ${hz < 180 ? '男声' : '女声'} · ${hz}Hz` }
-}
-
-const VOICE_OPTIONS_KOKORO: Array<{ v: string; label: string }> = [
-  ...KOKORO_PINNED.map((sid) => kokoroOption(sid)),
-  ...KOKORO_F0.map((_, sid) => kokoroOption(sid)).filter((o) => !KOKORO_PINNED.includes(Number(o.v))),
-]
-
 /** 各引擎切换时的默认音色（语义不同，切换引擎时自动重置）。 */
 const ENGINE_DEFAULT_VOICE: Record<string, string> = {
   // 与 host 侧引擎 defaultVoice 对齐（VITS suyingxue / Kokoro zf_xiaobei），
@@ -223,10 +119,6 @@ const ENGINE_DEFAULT_VOICE: Record<string, string> = {
   edge: 'zh-CN-XiaoxiaoNeural',
 }
 
-const HOST_OPTIONS: Array<{ v: string; label: string }> = [
-  { v: 'https://huggingface.co', label: '官方源 huggingface.co' },
-  { v: 'https://hf-mirror.com', label: '国内镜像 hf-mirror.com' },
-]
 
 /** 批 G 任务 1：NumberField 加红框校验 + clamp 提示。
  *  - 非数值/空串：commit() 拒绝（保留 draft，红框 + 「数值非法」hint）。
@@ -613,24 +505,22 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
           body: JSON.stringify({ voice: v, rate }),
           signal: AbortSignal.timeout(90000),
         })
-        if (res.status === 403) {
-          setNote(tr('previewDisabled'))
-          return
-        }
-        if (res.status === 429) {
-          setNote(tr('previewRateLimited'))
-          return
-        }
         if (!res.ok) {
-          // 502 等合成失败：尽量透出 host 的具体原因，而不是一律「检查网络/音色名」。
-          let detail = ''
+          // host 只返回稳定错误码（errors.ts），文案按界面语言由词典给出；不展示 host 的 error 原文。
+          let body: unknown = null
           try {
-            const parsed = (await res.json()) as { error?: unknown }
-            if (parsed && typeof parsed.error === 'string') detail = parsed.error
+            body = await res.json()
           } catch {
-            // 非 JSON 错误体：走通用文案
+            // 非 JSON 错误体：走状态码/通用文案
           }
-          setNote(detail ? `${tr('previewSynthesisFail')}：${detail}` : tr('previewCheck'))
+          const code = (body as { code?: unknown } | null)?.code
+          setNote(
+            code === 'voice_disabled' || res.status === 403
+              ? tr('previewDisabled')
+              : code === 'rate_limited' || res.status === 429
+                ? tr('previewRateLimited')
+                : errorText(body, 'previewCheck'),
+          )
           return
         }
         const blob = await res.blob()
@@ -694,7 +584,7 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
 }
 
 function Row({ name, desc, children }: { name: string; desc: string; children: React.ReactNode }): React.ReactElement {
-  const label = FIELD_LABELS[name] ?? name
+  const label = tr(`${name}Label` as TKey)
   return (
     <div style={setRow}>
       <div style={setLabelBox}>
@@ -842,7 +732,7 @@ function EngineStatusInline(): React.ReactElement {
           background: 'var(--dsw-alias-bg-layer-1)',
         }}
       >
-        识别本地 · 朗读 {tts.engine === 'edge' ? '云端' : '本地'}
+        {tr(tts.engine === 'edge' ? 'engineBadgeCloud' : 'engineBadgeLocal')}
       </span>
       <span style={{ fontSize: 12, fontWeight: statusText === tr('engineReady') || statusText === tr('engineError') ? 600 : 400, color: statusColor }}>{statusText}</span>
       {tts.loading && tts.progress?.file && (
@@ -994,6 +884,7 @@ function ModelStatusView(): React.ReactElement {
 }
 
 export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: ScopeController; defaultOpen?: boolean }): React.ReactElement {
+  useLang() // 语言切换时重渲染（字段标题/说明均走词典）
   const [snap, setSnap] = useState(() => scope.getSnapshot())
   const [collapsed, setCollapsed] = useState(!defaultOpen) // 默认折叠，与其他设置卡一致；独立设置页（settings.section）默认展开
   useEffect(
@@ -1007,39 +898,29 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
   const unavailable = snap?.status === 'unavailable' || snap?.status === 'error'
   // 朗读引擎（设置项，即时生效）：决定音色列表与试听行为。
   const engine = value.ttsEngine === 'edge' ? 'edge' : value.ttsEngine === 'kokoro' ? 'kokoro' : 'vits'
-  // Edge 全量音色：选 Edge 时从 /voices 拉取（几百个），失败回退常用 14 个。
-  const [edgeVoices, setEdgeVoices] = useState<Array<{ v: string; label: string }> | null>(null)
+  // Edge 全量音色：选 Edge 时从 /voices 拉取（几百个），失败回退常用 14 个。存原始数据，标签在渲染时按当前语言生成。
+  const [edgeRaw, setEdgeRaw] = useState<EdgeRawVoice[] | null>(null)
   useEffect(() => {
     if (engine !== 'edge') return
     let alive = true
     void fetch(location.origin + BASE_PATH + '/voices')
-      .then((res) => (res.ok ? (res.json() as Promise<{ voices?: Array<{ ShortName: string; FriendlyName: string; Locale: string; Gender: string }> }>) : null))
+      .then((res) => (res.ok ? (res.json() as Promise<{ voices?: EdgeRawVoice[] }>) : null))
       .then((data) => {
-        if (!alive || !data?.voices) return
-        const genderName = (g: string): string => (g === 'Female' ? '女' : g === 'Male' ? '男' : g === 'Neutral' ? '中性' : g)
-        // 清洗 Edge FriendlyName：「Microsoft 前缀 + Online (Natural) + 尾部区域」都是噪声。
-        // 旧实现 `.replace(/ Microsoft.*/, '')` 因 FriendlyName 以 Microsoft 开头（其前无空格）
-        // 永不匹配，导致下拉全是冗长全名、中文音色按英文名沉底。
-        const voiceName = (fn: string): string =>
-          fn.replace(/^Microsoft\s+/, '').replace(/\s+Online\s+\(Natural\)/, '').split(/\s*-\s*/)[0].trim()
-        const mkLabel = (v: { ShortName: string; FriendlyName: string; Gender: string }): string =>
-          // 精简标签：只留说话人名 + 性别（去掉尾部区域与 ShortName 冗余），避免 Edge 长名被截断。
-          (voiceName(v.FriendlyName) || v.ShortName) + ' · ' + genderName(v.Gender)
-        const all = data.voices
-          .map((v) => ({ v: v.ShortName, label: mkLabel(v) }))
-          .sort((a, b) => a.label.localeCompare(b.label))
-        // 常用 14 个（中文为主）置顶，其余全量按清洗标签排序——避免中文音色被
-        // 淹没在几百个外语音色里（此前仅 /voices 请求失败才退到常用 14 个）。
-        const commonKeys = new Set(VOICE_OPTIONS.map((o) => o.v))
-        const pinned = VOICE_OPTIONS.filter((o) => all.some((a) => a.v === o.v))
-        setEdgeVoices([...pinned, ...all.filter((a) => !commonKeys.has(a.v))])
+        if (alive && data?.voices) setEdgeRaw(data.voices)
       })
       .catch(() => undefined)
     return () => {
       alive = false
     }
   }, [engine])
-  const voiceOptions = engine === 'edge' ? (edgeVoices ?? VOICE_OPTIONS) : engine === 'kokoro' ? VOICE_OPTIONS_KOKORO : VOICE_OPTIONS_LOCAL
+  const voiceOptions =
+    engine === 'edge'
+      ? edgeRaw
+        ? edgeAllOptions(edgeRaw, activeLocale())
+        : edgeCommonOptions()
+      : engine === 'kokoro'
+        ? kokoroOptions()
+        : vitsOptions()
 
   if (unavailable) {
     return (
@@ -1103,7 +984,10 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
             )}
             <Row
               name="voice"
-              desc={engine === 'edge' ? tr('descVoice') : engine === 'kokoro' ? tr('descVoiceKokoro') : tr('descVoiceLocal')}
+              desc={
+                (engine === 'edge' ? tr('descVoice') : engine === 'kokoro' ? tr('descVoiceKokoro') : tr('descVoiceLocal')) +
+                voiceLangHint(engine, String(value.voice ?? ''))
+              }
             >
               <VoiceSelect
                 score={scope}
@@ -1226,7 +1110,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
             </Section>
             <Section title={tr('secModel')}>
             <Row name="modelHost" desc={tr('descModelHost')}>
-              <SelectField score={scope} field="modelHost" value={value.modelHost ?? ''} options={HOST_OPTIONS} placeholder="https://..." />
+              <SelectField score={scope} field="modelHost" value={value.modelHost ?? ''} options={hostOptions()} placeholder="https://..." />
             </Row>
             </Section>
             <div style={{ fontSize: 12, color: t.term, lineHeight: '18px', padding: '4px 0 8px' }}>

@@ -149,6 +149,11 @@ export const DESC_LABELS = {}
 export const STATE_LABELS = {}
 export const SECTION_LABELS = {}
 export const TKey = {}
+export const useLang = () => 'zh'
+export const bindLocale = () => () => {}
+export const activeLocale = () => 'zh'
+export const lang = () => 'zh'
+export const errorText = (_b, k) => k
 `,
 )
 
@@ -181,8 +186,10 @@ await build({
           '\\./fixture-recorder\\.ts$': fixtureStub,
           '\\./settings-form\\.tsx$': settingsFormStub,
           '\\./strings\\.ts$': stringsStub,
+            '\\./i18n\\.ts$': stringsStub,
+            '\\./error-text\\.ts$': stringsStub,
         }
-        b.onResolve({ filter: /\.\.?\/(asr|aec|resample|fixture-recorder|strings)\.ts$/ }, (args) => {
+        b.onResolve({ filter: /\.\.?\/(asr|aec|resample|fixture-recorder|strings|i18n|error-text)\.ts$/ }, (args) => {
           for (const [pat, target] of Object.entries(map)) {
             const re = new RegExp(pat)
             if (re.test(args.path)) return { path: target }

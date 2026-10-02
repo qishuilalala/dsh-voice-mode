@@ -82,7 +82,7 @@ try {
   let route = null
   if (await clickText(/^plugins$/i)) {
     await page.waitForTimeout(1200)
-    if (await clickText(/voice-mode/i)) {
+    if (await clickText(/voice[- ]mode|语音模式/i)) {
       await page.waitForTimeout(1500)
       if (await hasCard()) route = 'plugin-detail'
     }
@@ -148,6 +148,83 @@ try {
     }
   }
   sectionOk ? ok('Settings → 语音模式 专属设置页可见且默认展开') : bad('Settings 弹窗里没有「语音模式」专属设置页（或卡片未展开）')
+
+  // 3.6) 国际化：英文界面的卡片不得出现任何中文；中文界面（独立上下文，navigator.language=zh-CN）全是中文；
+  //      再尽力验证「不刷新页面切换语言」（官方语言行，各版本 DOM 略有差异，找不到则只告警不判失败）。
+  const CJK = /[\u3400-\u9fff]/
+  const cardText = (p) => p.evaluate(() => document.querySelector('[role="dialog"] [data-dshvm-settings="card"]')?.innerText ?? '')
+  const openVoiceSection = async (p, pageUrl) => {
+    await p.goto(pageUrl, { waitUntil: 'load' })
+    await p.waitForTimeout(1500)
+    for (let i = 0; i < 8; i++) {
+      if (!(await p.evaluate(() => !!document.querySelector('[role="dialog"]')))) break
+      const clicked = await p.evaluate(() => {
+        const b = Array.from(document.querySelectorAll('[role="dialog"] button')).find((x) => /continue|later|skip|got it|ok|继续|稍后|跳过|知道了|好的|确定|开始/i.test((x.textContent || '').trim()))
+        if (b) { b.click(); return true }
+        return false
+      })
+      if (!clicked) break
+      await p.waitForTimeout(800)
+    }
+    const click = (re, sel) => p.evaluate(({ src, sel }) => {
+      const rx = new RegExp(src, 'i')
+      const e = Array.from(document.querySelectorAll(sel)).find((x) => { const t = (x.getAttribute('aria-label') || x.textContent || '').trim(); return t && t.length < 60 && rx.test(t) })
+      if (e) { e.click(); return true }
+      return false
+    }, { src: re.source, sel })
+    if (!(await click(/^(settings|设置)$/, 'button,[role=button]'))) return ''
+    await p.waitForTimeout(1200)
+    if (!(await click(/voice mode|语音模式/, '[role=dialog] button,[role=dialog] [role=tab],[role=dialog] a,[role=dialog] li'))) return ''
+    await p.waitForTimeout(1500)
+    return cardText(p)
+  }
+  {
+    const en1 = await cardText(page)
+    const enText = en1 || (await openVoiceSection(page, url))
+    if (enText.includes('Read-aloud engine') && !CJK.test(enText)) ok('英文界面：设置卡片全英文（零中文）')
+    else bad(`英文界面卡片异常：含中文=${CJK.test(enText)} 含标题=${enText.includes('Read-aloud engine')} 片段=${JSON.stringify((enText.match(CJK) ? enText.slice(Math.max(0, enText.search(CJK) - 20), enText.search(CJK) + 20) : enText.slice(0, 40)))}`)
+
+    const zhCtx = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1400, height: 900 } })
+    const zhPage = await zhCtx.newPage()
+    const zhText = await openVoiceSection(zhPage, url)
+    if (zhText.includes('朗读引擎') && !zhText.includes('Read-aloud engine')) ok('中文界面：设置卡片全中文')
+    else bad(`中文界面卡片异常：含「朗读引擎」=${zhText.includes('朗读引擎')} 残留英文标题=${zhText.includes('Read-aloud engine')}`)
+    await zhCtx.close()
+
+    // 不刷新切换语言：General → 语言下拉 → 选中文 → 回到语音模式页
+    const switched = await page.evaluate(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+      const q = (sel) => Array.from(document.querySelectorAll(sel))
+      const nav = q('[role="dialog"] button,[role="dialog"] [role="tab"],[role="dialog"] a,[role="dialog"] li')
+      const general = nav.find((x) => /^general$/i.test((x.textContent || '').trim()))
+      if (!general) return 'no-general'
+      general.click(); await wait(800)
+      const langBtn = q('[role="dialog"] button').find((x) => /^english$/i.test((x.textContent || '').trim()))
+      if (!langBtn) return 'no-language-control'
+      langBtn.click(); await wait(600)
+      const opt = q('[role="option"],[role="menuitem"],[role="menuitemradio"],[role="radio"],li,button').find((x) => /^(中文|简体中文|chinese)$/i.test((x.textContent || '').trim()))
+      if (!opt) return 'no-chinese-option'
+      opt.click(); await wait(1200)
+      return 'ok'
+    })
+    if (switched === 'ok') {
+      const htmlLang = await page.evaluate(() => document.documentElement.lang)
+      // 回到语音模式页（导航文案此时已是中文）
+      const back = await page.evaluate(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+        const nav = Array.from(document.querySelectorAll('[role="dialog"] button,[role="dialog"] [role="tab"],[role="dialog"] a,[role="dialog"] li'))
+        const v = nav.find((x) => /语音模式|voice mode/i.test((x.textContent || '').trim()))
+        if (!v) return false
+        v.click(); await wait(1500)
+        return true
+      })
+      const live = back ? await cardText(page) : ''
+      if (/^zh/i.test(htmlLang) && live.includes('朗读引擎') && !live.includes('Read-aloud engine')) ok('不刷新切换语言：设置卡片即时变为中文')
+      else bad(`切换语言后卡片未即时更新：html lang=${htmlLang} 卡片含「朗读引擎」=${live.includes('朗读引擎')} 残留英文=${live.includes('Read-aloud engine')}`)
+    } else {
+      console.log(`  ⚠ 跳过「不刷新切换语言」断言（未找到官方语言控件：${switched}）`)
+    }
+  }
 
   // 4) 0.1.7+ 专属：覆盖层文件、非法值/未知键/跨源写入
   const probe = await getSettings()

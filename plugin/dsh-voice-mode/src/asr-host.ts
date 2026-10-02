@@ -901,7 +901,7 @@ export function handleAsrRequest(
     received += c.length
     if (received > MAX_ASR_BYTES) {
       tooLarge = true
-      respondJson(res, 413, { error: 'pcm payload too large' })
+      respondJson(res, 413, { code: 'payload_too_large', error: 'pcm payload too large' })
       return
     }
     chunks.push(c)
@@ -924,17 +924,17 @@ export function handleAsrRequest(
       offsetParam === null ||
       (Number.isFinite(Number(offsetParam)) && Number(offsetParam) >= 0 && Number(offsetParam) <= MAX_ASR_BYTES / 4)
     if (!offsetOK) {
-      respondJson(res, 400, { error: 'invalid offset' })
+      respondJson(res, 400, { code: 'bad_request', error: 'invalid offset' })
       return
     }
     if (!epochOK) {
-      respondJson(res, 400, { error: 'invalid epoch' })
+      respondJson(res, 400, { code: 'bad_request', error: 'invalid epoch' })
       return
     }
     const epoch = epochParam === null ? 0 : Math.floor(epochN)
     const offset = offsetParam === null ? 0 : Math.floor(Number(offsetParam))
     if (!sessionId || sessionId !== activeSessionId) {
-      respondJson(res, 403, { error: 'not the active voice session' })
+      respondJson(res, 403, { code: 'unknown_session', error: 'not the active voice session' })
       return
     }
     // reset=1：丢弃该会话进行中的识别段并新建流（弃段/打断后的清场）。
@@ -948,7 +948,7 @@ export function handleAsrRequest(
     // 只补尾垫返回定稿；空 + 非 final 仍按非法载荷 400。
     const samples = raw.length === 0 ? (final ? new Float32Array(0) : null) : pcmToSamples(raw)
     if (!samples) {
-      respondJson(res, 400, { error: 'invalid pcm payload' })
+      respondJson(res, 400, { code: 'bad_request', error: 'invalid pcm payload' })
       return
     }
     // 打断根治：播放期检测通道（vadOnly=1）。AI 朗读中客户端常规 partial 断流
@@ -961,7 +961,8 @@ export function handleAsrRequest(
           respondJson(res, 200, { isSpeech: out.isSpeech })
         })
         .catch((e: unknown) => {
-          respondJson(res, 500, { error: String(e) })
+          console.warn(`[dsh-voice-mode] asr detect failed: ${String(e)}`)
+          respondJson(res, 500, { code: 'internal', error: 'internal error' })
         })
       return
     }
@@ -980,7 +981,8 @@ export function handleAsrRequest(
         respondJson(res, 200, body)
       })
       .catch((e: unknown) => {
-        respondJson(res, 500, { error: String(e) })
+        console.warn(`[dsh-voice-mode] asr decode failed: ${String(e)}`)
+        respondJson(res, 500, { code: 'internal', error: 'internal error' })
       })
   })
 }

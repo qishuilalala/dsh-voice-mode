@@ -98,12 +98,12 @@ t('bundle 含三档归类正则（network / engine / text）', () => {
 // 2) 提取真实编译后函数并 eval（模块私有，无法直接 import）
 // --------------------------------------------------------------------------
 // esbuild 未压缩产物保留标识符；截取「三个正则常量 + classifyPreviewError 函数体」
-// 到 PREVIEW_ERROR_MESSAGES 之前的完整块，eval 出真函数。
+// 到 PREVIEW_ERROR_CODES 之前的完整块，eval 出真函数。
 const fnStart = src.indexOf('var PREVIEW_NETWORK_PATTERN')
-const fnEnd = src.indexOf('var PREVIEW_ERROR_MESSAGES')
+const fnEnd = src.indexOf('var PREVIEW_ERROR_CODES')
 assert.notEqual(fnStart, -1, 'bundle 缺 PREVIEW_NETWORK_PATTERN 声明（提取失败）')
-assert.notEqual(fnEnd, -1, 'bundle 缺 PREVIEW_ERROR_MESSAGES 声明（提取失败）')
-assert.ok(fnEnd > fnStart, '提取区间非法（PREVIEW_ERROR_MESSAGES 应先于函数块）')
+assert.notEqual(fnEnd, -1, 'bundle 缺 PREVIEW_ERROR_CODES 声明（提取失败）')
+assert.ok(fnEnd > fnStart, '提取区间非法（PREVIEW_ERROR_CODES 应先于函数块）')
 
 const fnBlock = src.slice(fnStart, fnEnd)
 // eslint-disable-next-line no-new-func
@@ -157,6 +157,15 @@ t('负例 2：包含 engine 字样但不属引擎错误的普通文本不误判�
   // ENGINE_PATTERN 只匹配 'model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa'；
   // 'search engine' 不含这些完整子串 → 不误判。
   assert.equal(classifyPreviewError('search engine timeout'), 'unknown', `"search engine timeout" 不应被误判为 engine`)
+})
+
+console.log('⑥ 响应协议：host 只发稳定错误码，不发任何自然语言（用户文案由客户端按界面语言翻译）')
+
+t('四类归类各映射到 preview_* 错误码；host 源码里不再有中文试听文案', () => {
+  const codesStart = src.indexOf('var PREVIEW_ERROR_CODES')
+  const codes = new Function(`${src.slice(codesStart, src.indexOf('};', codesStart) + 2)}\nreturn PREVIEW_ERROR_CODES;`)()
+  assert.deepEqual(codes, { network: 'preview_network', engine: 'preview_engine', text: 'preview_text', unknown: 'preview_unknown' })
+  assert.ok(!/试听失败/.test(src), 'host 产物里不应再出现中文试听文案')
 })
 
 rmSync(tmp, { recursive: true, force: true })

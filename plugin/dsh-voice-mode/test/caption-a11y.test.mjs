@@ -41,8 +41,12 @@ t('默认值 captionMaxWidth=1（70vw；取舍见 schema description）', () => 
   const m = indexSrc.match(/captionMaxWidth:\s*1,?\s*\}/m) || indexSrc.match(/captionMaxWidth:\s*1,/m)
   assert.ok(m, 'VOICE_SETTINGS_DEFAULTS 缺 captionMaxWidth=1（必须在 defaults 对象字面量中赋值为 1）')
 })
-t('schema description 提及「与现状」+「三档视口方向」（默认值取舍透明）', () => {
-  assert.ok(indexSrc.includes('captionFontSize') && /默认\s*0\s*与现状/.test(indexSrc), 'captionFontSize description 未解释默认 = 现状字节等价')
+t('默认值取舍透明：defaults 注释记录「与现状字节等价」+「三档视口方向」；词典说明默认值', () => {
+  // 取舍记录位置：VOICE_SETTINGS_DEFAULTS 的注释（schema 描述已改为引用英文词典，不再内联中文长文）。
+  assert.ok(/captionFontSize\s*默认\s*0（12px），与现状/.test(indexSrc), 'defaults 注释未解释 captionFontSize 默认 = 现状字节等价')
+  const stringsSrc = readFileSync(join(here, '..', 'src', 'strings.ts'), 'utf8')
+  assert.ok(/descCaptionFontSize: 'Caption font size[^']*default Small matches current behavior/.test(stringsSrc), '词典 en descCaptionFontSize 未说明默认值 = 现状')
+  assert.ok(/DESC\.captionFontSize/.test(indexSrc) && /DESC\.captionMaxWidth/.test(indexSrc), 'schema 描述应引用词典（DESC）')
   // 批 3 review I1 修复：数学方向必须显式三档——
   //   视口 <686px 时 70vw (≈视口×70%) < 480px → 窄于现状；
   //   视口 ≈686px 时 ≈480px → 接近；

@@ -10,7 +10,7 @@ spoken answer. Streamed zipformer2 ASR → editable draft → auto send → the
 final reply is read out sentence-by-sentence via Edge TTS, and your voice
 interrupts playback and the running turn. No API key.
 
-> 中文说明见 [README.md](./README.md)。
+> **English** · [中文](https://github.com/qishuilalala/dsh-voice-mode/blob/HEAD/plugin/dsh-voice-mode/README.md)
 
 ![dsh-voice-mode full-duplex voice conversation](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/hero-banner.png)
 
@@ -47,6 +47,7 @@ interrupts playback and the running turn. No API key.
 - **Lazy model download with progress**: the zipformer2 Chinese streaming model (~160 MB, `.part` resumable) is downloaded on first use with live progress in the status bar; `npm run prefetch` can pre-download it
 - **Resilience**: mic-denied red hint, visible model-download failure, TTS unreachable status hint (auto retry), failed submit keeps the text in the draft, SSE auto-reconnect
 - **Settings**: location depends on your dsh version (see Settings below), with voice / rate / interrupt sensitivity / silence pause / idle timeout / model mirror / auto send / interaction mode / wake word / ITN / caption tiers / yield semantics; **voices are previewable** (the "试听/Preview" button synthesizes and plays the current voice at the current rate instantly, no need to enter voice mode; custom ShortNames are previewable too)
+- **Interface language**: follows dsh's language setting (Settings → General → Language) and **switches instantly, no reload** — the settings page, voice status bar, captions, voice names/gender/accent and error messages all follow it, and the LLM spoken-style prompt is chosen in English or Chinese accordingly. Dictionaries are registered in dsh's official locale service under the `voice-mode` namespace, so community language packs can add more languages (missing ones fall back to English). The plugin's name and description in the Plugins page are localized too.
 - **Idle exit**: auto-exit and mic release after 5 minutes of inactivity (reading counts as activity; batch J 10→5)
 
 ---
@@ -104,9 +105,9 @@ npm run prefetch          # run inside the plugin dir; writes to the platform ca
 3. The AI answer is read sentence-by-sentence with a caption overlay at the bottom-right; click "Skip" or just start speaking to interrupt
 4. Click "Exit" in the status bar (or press `Ctrl+Shift+V` again) to leave voice mode
 
-On first entry the recognition model is downloaded; the status bar shows `正在加载模型… <file> <percent>%`.
+On first entry the recognition model is downloaded; the status bar shows `Loading model… <file> <percent>%`.
 
-If a wake word is configured, you land in standby first (the status bar prompts `说『唤醒词』开始`), and recognizing starts after you speak the wake word.
+If a wake word is configured, you land in standby first (the status bar prompts `Say "<wake word>" to start`), and recognizing starts after you speak the wake word.
 
 ---
 
@@ -311,8 +312,8 @@ flowchart LR
 | Symptom | Fix |
 | --- | --- |
 | Mic click does nothing, red hint in the status bar | The browser denied mic permission: allow it in the address bar and retry |
-| Status bar stuck on `正在加载模型… x%` | Check the network; the model is large (160 MB) — `npm run prefetch` first; on mainland networks set `modelHost` to `https://hf-mirror.com` |
-| Status bar shows `语音模型下载失败` | Both mirrors are unreachable: check network/proxy and re-enter voice mode (resumable) |
+| Status bar stuck on `Loading model… x%` | Check the network; the model is large (160 MB) — `npm run prefetch` first; on mainland networks set `modelHost` to `https://hf-mirror.com` |
+| Status bar shows `Model download failed (<file>)` | Both mirrors are unreachable: check network/proxy and re-enter voice mode (resumable) |
 | Caption appears (overlay) but no sound | Check system volume/output; if autoplay is blocked, click anywhere on the page and retry |
 | Status bar shows `朗读连接失败：正在重试…` | Edge TTS unreachable (overseas service), auto-retries; if it persists, check network/proxy |
 | Poor recognition | Get closer to the mic, reduce ambient noise; if echo remains, raise the interrupt sensitivity by one step |

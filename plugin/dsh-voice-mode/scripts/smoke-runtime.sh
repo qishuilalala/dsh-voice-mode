@@ -132,7 +132,13 @@ if node -e "require.resolve('playwright-core')" >/dev/null 2>&1; then
   else
     fail=1
   fi
-  echo "== 设置页冒烟（卡片入口 + 写入生效 + 刷新保留）=="
+  echo "== 客户端冒烟（中文界面：mic 文案语言）=="
+  if node scripts/smoke-client.mjs "$URL" --locale=zh-CN; then
+    : # 通过
+  else
+    fail=1
+  fi
+  echo "== 设置页冒烟（卡片入口 + 写入生效 + 刷新保留 + 国际化）=="
   if DSH_HOME="$DSH_HOME" node scripts/smoke-settings.mjs "$URL"; then
     : # 通过
   else

@@ -49,16 +49,16 @@ export function readOverrides(file: string, keys: readonly string[]): { values: 
     raw = readFileSync(file, 'utf8')
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { values: {}, exists: false }
-    return { values: {}, warn: `读取失败：${String(e)}`, exists: true }
+    return { values: {}, warn: `read failed: ${String(e)}`, exists: true }
   }
   try {
     const parsed: unknown = JSON.parse(raw)
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { values: {}, warn: '内容不是 JSON 对象', exists: true }
+      return { values: {}, warn: 'content is not a JSON object', exists: true }
     }
     return { values: pickKnownKeys(parsed, keys), exists: true }
   } catch (e) {
-    return { values: {}, warn: `JSON 解析失败：${String(e)}`, exists: true }
+    return { values: {}, warn: `JSON parse failed: ${String(e)}`, exists: true }
   }
 }
 

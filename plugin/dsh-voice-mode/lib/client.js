@@ -8,8 +8,8 @@ var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
+  for (var name2 in all)
+    __defProp(target, name2, { get: all[name2], enumerable: true });
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
@@ -40,7 +40,7 @@ __export(client_exports, {
 });
 module.exports = __toCommonJS(client_exports);
 var React = __toESM(require("react"), 1);
-var import_react2 = require("react");
+var import_react3 = require("react");
 
 // src/resample.ts
 function resampleLinear(src, srcRate, dstRate) {
@@ -312,19 +312,19 @@ var FixtureRecorder = class {
         ...this.resDiffers ? { res: this.resTrack.toBase64() } : {}
       };
     }
-    const name = `dshvm-fixture-${new Date(this.startedAt).toISOString().replace(/[:.]/g, "-")}-${reason}.json`;
+    const name2 = `dshvm-fixture-${new Date(this.startedAt).toISOString().replace(/[:.]/g, "-")}-${reason}.json`;
     try {
       const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = name;
+      a.download = name2;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1e4);
       console.log(
-        `[dsh-voice][rec] \u5DF2\u4FDD\u5B58 ${name}\uFF1A${this.frames.length} \u5E27 / ${(durationMs / 1e3).toFixed(1)}s / \u6807\u6CE8 ${this.marks.length} \u6761 / \u68C0\u6D4B\u5F80\u8FD4 ${this.detects.length} \u6B21`
+        `[dsh-voice][rec] \u5DF2\u4FDD\u5B58 ${name2}\uFF1A${this.frames.length} \u5E27 / ${(durationMs / 1e3).toFixed(1)}s / \u6807\u6CE8 ${this.marks.length} \u6761 / \u68C0\u6D4B\u5F80\u8FD4 ${this.detects.length} \u6B21`
       );
     } catch (e) {
       console.warn("[dsh-voice][rec] \u4FDD\u5B58\u5931\u8D25\uFF1A" + String(e));
@@ -755,7 +755,7 @@ function createAsrEngine(config, sessionId) {
           });
         } catch {
           restoreState();
-          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize fetch \u5F02\u5E38\uFF08\u91CD\u8BD5\u8017\u5C3D\uFF09");
+          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize fetch failed (retries exhausted)");
           continue;
         }
         if (res.status === 202) {
@@ -778,7 +778,7 @@ function createAsrEngine(config, sessionId) {
           });
         }
         if (res.status === 202) {
-          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize \u6A21\u578B\u52A0\u8F7D\u8D85\u65F6\uFF08\u91CD\u8BD5\u8017\u5C3D\uFF09");
+          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize model-load timeout (retries exhausted)");
           continue;
         }
         if (res.status === 403 && config.onSessionExpired) {
@@ -797,14 +797,14 @@ function createAsrEngine(config, sessionId) {
         }
         restoreState();
         if (!res.ok) {
-          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize 5xx\uFF08\u91CD\u8BD5\u8017\u5C3D\uFF09");
+          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize 5xx (retries exhausted)");
           continue;
         }
         let out;
         try {
           out = await res.json();
         } catch {
-          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize \u54CD\u5E94\u975E JSON\uFF08\u91CD\u8BD5\u8017\u5C3D\uFF09");
+          if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize response is not JSON (retries exhausted)");
           continue;
         }
         if (segmentEpoch !== epochSnapshot + 1) return;
@@ -990,7 +990,7 @@ function createAsrEngine(config, sessionId) {
     }
     const aecOn = stream.getAudioTracks()[0]?.getSettings().echoCancellation === true;
     if (!aecOn) {
-      console.warn("[dsh-voice-mode] \u6D4F\u89C8\u5668\u539F\u751F echoCancellation \u672A\u751F\u6548\uFF08\u5916\u653E\u53EF\u80FD\u81EA\u6253\u65AD\uFF09\uFF0C\u5EFA\u8BAE\u7528\u8033\u673A\u6216\u300C\u624B\u52A8\u6253\u65AD\u300D");
+      console.warn("[dsh-voice-mode] native browser echoCancellation is not in effect (speakers may self-interrupt); use headphones or manual barge-in");
     }
     if (config.bargeInMode === "detect") {
       runtimeBargeInMode = aecOn ? "auto" : "manual";
@@ -1369,6 +1369,29 @@ function estimateBulkDelay(mic, ref, opts = {}) {
   return { lag: bestLag * ds, peak: bestPeak };
 }
 
+// src/errors.ts
+var ERROR_I18N_KEY = {
+  voice_disabled: "disabled",
+  rate_limited: "errRateLimited",
+  unknown_session: "errUnknownSession",
+  forbidden: "errForbidden",
+  bad_request: "errBadRequest",
+  engine_not_active: "errEngineNotActive",
+  model_download_failed: "errModelDownload",
+  too_many_streams: "errTooManyStreams",
+  payload_too_large: "errTooLarge",
+  settings_managed: "errForbidden",
+  preview_network: "previewNetwork",
+  preview_engine: "previewEngine",
+  preview_text: "previewText",
+  preview_unknown: "previewCheck",
+  internal: "errInternal"
+};
+var isHostErrorCode = (v) => typeof v === "string" && Object.prototype.hasOwnProperty.call(ERROR_I18N_KEY, v);
+
+// src/i18n.ts
+var import_react = require("react");
+
 // src/strings.ts
 var zh = {
   stateVoiceMode: "\u8BED\u97F3\u6A21\u5F0F",
@@ -1548,11 +1571,66 @@ var zh = {
   numberClamped: "\u5DF2\u81EA\u52A8\u8C03\u6574\u4E3A {value}",
   // 批 H 任务 4：autoResume 关 + 切回上次语音会话时的引导提示（5s 后自动清）。
   // 批 7N 重做 2/5：明确「自动恢复」=「自动进入语音模式 + 恢复上次会话」。
-  autoResumeHint: "\u300C\u81EA\u52A8\u6062\u590D\u300D= \u5F00\u542F\u540E\u5207\u6362\u56DE\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5E76\u6062\u590D\u4E0A\u6B21\u4F1A\u8BDD\uFF1B\u5173\u95ED\u5219\u9700\u624B\u52A8\u6309 Ctrl+Shift+V"
+  autoResumeHint: "\u300C\u81EA\u52A8\u6062\u590D\u300D= \u5F00\u542F\u540E\u5207\u6362\u56DE\u4E0A\u6B21\u8BED\u97F3\u4F1A\u8BDD\u4F1A\u81EA\u52A8\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5E76\u6062\u590D\u4E0A\u6B21\u4F1A\u8BDD\uFF1B\u5173\u95ED\u5219\u9700\u624B\u52A8\u6309 Ctrl+Shift+V",
+  // —— 国际化补全（字段标题/音色描述词/错误码文案/试听分类）——
+  ttsEngineLabel: "\u6717\u8BFB\u5F15\u64CE",
+  kokoroModelLabel: "Kokoro \u6A21\u578B\u7CBE\u5EA6",
+  voiceLabel: "\u97F3\u8272",
+  rateLabel: "\u8BED\u901F",
+  interruptLevelLabel: "\u6253\u65AD\u7075\u654F\u5EA6",
+  bargeInModeLabel: "\u6253\u65AD\u65B9\u5F0F",
+  echoGateDbLabel: "\u56DE\u58F0\u95E8\u63A7",
+  modeLabel: "\u4EA4\u4E92\u6A21\u5F0F",
+  shortcutLabel: "\u5FEB\u6377\u952E",
+  wakeWordLabel: "\u5524\u9192\u8BCD",
+  toolBeepLabel: "\u5DE5\u5177\u63D0\u793A\u97F3",
+  autoSendLabel: "\u81EA\u52A8\u53D1\u9001",
+  autoResumeLabel: "\u81EA\u52A8\u6062\u590D",
+  senseVoiceLabel: "\u5B9A\u7A3F\u91CD\u8BD1",
+  spokenFormatLabel: "\u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
+  silenceMsLabel: "\u9759\u97F3\u505C\u987F",
+  idleTimeoutMinutesLabel: "\u7A7A\u95F2\u8D85\u65F6",
+  modelHostLabel: "\u6A21\u578B\u955C\u50CF",
+  genderFemale: "\u5973",
+  genderMale: "\u7537",
+  genderNeutral: "\u4E2D\u6027",
+  accentMandarin: "\u7B80\u4F53\u4E2D\u6587",
+  accentNortheast: "\u4E1C\u5317\u8BDD",
+  accentShaanxi: "\u9655\u897F\u8BDD",
+  accentCantonese: "\u7CA4\u8BED",
+  accentTaiwan: "\u53F0\u6E7E\u8154",
+  accentEnglish: "English",
+  styleDeep: "\u6DF1\u6C89",
+  styleRich: "\u6D51\u539A",
+  styleClear: "\u6E05\u4EAE",
+  styleMagnetic: "\u78C1\u6027",
+  voiceKokoroPopularMale: "\u5E38\u7528\u7537\u58F0",
+  voiceKokoroChineseFemale: "\u4E2D\u6587\u5973",
+  voiceKokoroMale: "\u7537\u58F0",
+  voiceKokoroFemale: "\u5973\u58F0",
+  voiceKokoroGeneric: "\u97F3\u8272",
+  hostOfficial: "\u5B98\u65B9\u6E90",
+  hostMirror: "\u56FD\u5185\u955C\u50CF",
+  engineBadgeCloud: "\u8BC6\u522B\u672C\u5730 \xB7 \u6717\u8BFB\u4E91\u7AEF",
+  engineBadgeLocal: "\u8BC6\u522B\u672C\u5730 \xB7 \u6717\u8BFB\u672C\u5730",
+  errRateLimited: "\u8BF7\u6C42\u8FC7\u4E8E\u9891\u7E41\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5",
+  errUnknownSession: "\u8BED\u97F3\u4F1A\u8BDD\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u5F00\u542F\u8BED\u97F3\u6A21\u5F0F",
+  errForbidden: "\u8BF7\u6C42\u88AB\u62D2\u7EDD\uFF08\u4EC5\u9650\u672C\u673A\u8BBF\u95EE\uFF0C\u6216\u6765\u6E90\u4E0D\u7B26\uFF09",
+  errBadRequest: "\u8BF7\u6C42\u65E0\u6548",
+  errEngineNotActive: "\u8BE5\u6717\u8BFB\u5F15\u64CE\u5F53\u524D\u672A\u542F\u7528",
+  errModelDownload: "\u6A21\u578B\u4E0B\u8F7D\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC",
+  errTooManyStreams: "\u8BED\u97F3\u8FDE\u63A5\u8FC7\u591A\uFF0C\u8BF7\u5173\u95ED\u5176\u5B83\u8BED\u97F3\u9875\u9762\u540E\u91CD\u8BD5",
+  errTooLarge: "\u8BF7\u6C42\u5185\u5BB9\u8FC7\u5927",
+  errInternal: "\u670D\u52A1\u51FA\u9519\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5",
+  previewNetwork: "\u8BD5\u542C\u5931\u8D25\uFF1A\u7F51\u7EDC\u4E0D\u53EF\u8FBE\uFF08Edge \u4E91\u7AEF\u9700\u8BBF\u95EE\u5FAE\u8F6F\u8BED\u97F3\u670D\u52A1\uFF09\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u4EE3\u7406",
+  previewEngine: "\u8BD5\u542C\u5931\u8D25\uFF1A\u5F15\u64CE\u672A\u5C31\u7EEA\uFF08\u672C\u5730\u6A21\u578B\u4E0B\u8F7D\u4E2D\u3001\u521D\u59CB\u5316\u5931\u8D25\u6216\u5B50\u8FDB\u7A0B\u5F02\u5E38\uFF09\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5\u6216\u5728\u8BBE\u7F6E\u9762\u677F\u67E5\u770B TTS \u72B6\u6001",
+  previewText: "\u8BD5\u542C\u5931\u8D25\uFF1A\u5408\u6210\u5F15\u64CE\u4EA7\u51FA\u7A7A\u97F3\u9891\uFF08\u97F3\u8272\u4E0E\u8BED\u79CD\u53EF\u80FD\u4E0D\u5339\u914D\uFF09\uFF0C\u8BF7\u66F4\u6362\u97F3\u8272\u6216\u68C0\u67E5\u8BED\u8A00\u8BBE\u7F6E",
+  voiceHintChineseVoice: "\u63D0\u793A\uFF1A\u5F53\u524D\u662F\u4E2D\u6587\u97F3\u8272\uFF1B\u82E5\u4E3B\u8981\u7528\u82F1\u6587\u5BF9\u8BDD\uFF0C\u5EFA\u8BAE\u5728\u5217\u8868\u4E2D\u9009\u62E9\u82F1\u6587\u97F3\u8272\uFF08en-\u2026\uFF09\u3002",
+  voiceHintEnglishVoice: "\u63D0\u793A\uFF1A\u5F53\u524D\u662F\u82F1\u6587\u97F3\u8272\uFF0C\u6717\u8BFB\u4E2D\u6587\u56DE\u590D\u6548\u679C\u4E0D\u4F73\uFF1B\u4E2D\u6587\u5BF9\u8BDD\u5EFA\u8BAE\u9009\u62E9\u4E2D\u6587\u97F3\u8272\uFF08zh-\u2026\uFF09\u3002"
 };
 var en = {
   stateVoiceMode: "Voice Mode",
-  ttsNoticeFail: "Read-aloud connection lost: retrying\u2026",
+  ttsNoticeFail: "Read-aloud connection failed: retrying\u2026",
   ttsSkipNotice: "One sentence failed to read and was skipped (cloud TTS network hiccup \u2014 resend the message to retry)",
   enterFail: "Failed to enter voice mode",
   disabled: "Voice mode disabled (plugin enabled=false)",
@@ -1577,7 +1655,7 @@ var en = {
   barListening: "Voice mode \xB7 listening\u2026",
   wakeWord: "Wake word",
   sayWake: 'Say "{wake}" to start',
-  reading: "Reading\u2026",
+  reading: "Reading aloud\u2026",
   recognitionFail: "Recognition failed, try again",
   sessionExpired: "Voice session expired, reconnecting\u2026",
   sessionExpiredFail: "Voice session reconnect failed; please re-enter voice mode",
@@ -1588,7 +1666,7 @@ var en = {
   skip: "Skip",
   configUnavailableNote: " (settings document not ready; the panel will appear when it is).",
   previewNameFirst: "Enter a voice ShortName first",
-  previewDisabled: "Voice mode disabled; preview unavailable",
+  previewDisabled: "Voice mode disabled (plugin enabled=false); preview unavailable",
   // 批 G 任务 6：本地 TTS 引擎未下载模型时禁用试听按钮 + 提示。
   previewModelMissing: "Download the local model first (see the engine status above)",
   previewModelLoading: "Local model is downloading \u2014 please wait",
@@ -1608,7 +1686,7 @@ var en = {
   descVoiceLocal: "Local voice (vits, all 5 speakers listed; dropdown or \u25C0\u25B6; no custom needed)",
   descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft)",
   engineVits: "Local VITS",
-  engineKokoro: "Local zh-en",
+  engineKokoro: "Local Kokoro",
   engineEdge: "Edge cloud",
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
@@ -1651,13 +1729,13 @@ var en = {
   captionWidth70: "Medium",
   captionWidth90: "Wide",
   skipReading: "Skip current reading",
-  backchannelYield: "Short-answer yielding",
+  backchannelYield: "Short-reply yielding",
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches pre-batch-5)',
   // 批 G 任务 3：让位窗口时长（500-3000ms，默认 1500）。
   yieldMs: "Yield window",
   descYieldMs: "How long (ms) to drop frames after a yield trigger (500-3000, default 1500; within the window the existing hardBreak takes over if the user really wants to speak; auto-resume after the window expires)",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk)",
-  modeToggle: "Continue listen",
+  modeToggle: "Continuous listening",
   modeHold: "Hold to talk",
   descWakeWord: 'Wake word (default off; e.g. "Hey D"): recognition starts only after you say it, to avoid accidental triggers. You may say it together with your command ("Hey D, check the weather" \u2014 the wake word is stripped and never sent); it must be repeated after each utterance split or barge-in; toggle mode only (inactive in hold / manual barge-in); saying it while the agent is reading does not trigger (barge-in stays VAD-based). Fault-tolerant matching (homophones / leading fillers); 3-4 characters recommended; not a dedicated KWS engine \u2014 noisy environments may delay or falsely trigger',
   wakePlaceholder: "e.g. Hey D",
@@ -1705,13 +1783,11 @@ var en = {
   secRecognition: "Recognition & speech",
   secModel: "Model & mirror",
   telTotal: "total",
-  // 批 C：与 zh 段 *Label 镜像键同步。临时 stub（仅用于满足 Record<keyof typeof zh, string>
-  // 类型约束，避免 tsc 红），由整合批统一替换为正式英文文案。**未对外使用**——当前
-  // settings-form.tsx 通过 FIELD_LABELS 取值，未走 tr()，所以英文用户暂未感知差异。
-  senseITNLabel: "ITN",
-  captionFontSizeLabel: "Font size",
-  captionMaxWidthLabel: "Max width",
-  backchannelYieldLabel: "Yielding",
+  // 字段标题（Row 标题）：settings-form 经 tr(`${name}Label`) 取值，zh/en 均为正式文案。
+  senseITNLabel: "Inverse text normalization",
+  captionFontSizeLabel: "Caption size",
+  captionMaxWidthLabel: "Caption width",
+  backchannelYieldLabel: "Short-reply yielding",
   // 批 G 任务 3：让位窗口（FIELD_LABELS.yieldMs 镜像键，*Label 后缀）。
   yieldMsLabel: "Yield window",
   // 批 G 任务 2：空闲预警 + 退出提示文案。
@@ -1722,141 +1798,173 @@ var en = {
   numberClamped: "Auto-clamped to {value}",
   // 批 H 任务 4：autoResume 关 + 切回上次语音会话时的引导提示（5s 后自动清）。
   // 批 7N 重做 2/5：明确「自动恢复」=「自动进入语音模式 + 恢复上次会话」。
-  autoResumeHint: '"Auto-resume" = when enabled, switching back to your last voice session auto-enters voice mode and restores the session; when disabled, press Ctrl+Shift+V to re-enter'
+  autoResumeHint: '"Auto-resume" = when enabled, switching back to your last voice session auto-enters voice mode and restores the session; when disabled, press Ctrl+Shift+V to re-enter',
+  // —— i18n completion (field labels / voice descriptors / error-code copy / preview categories) ——
+  ttsEngineLabel: "Read-aloud engine",
+  kokoroModelLabel: "Kokoro model precision",
+  voiceLabel: "Voice",
+  rateLabel: "Speed",
+  interruptLevelLabel: "Interrupt sensitivity",
+  bargeInModeLabel: "Interrupt mode",
+  echoGateDbLabel: "Echo gate",
+  modeLabel: "Interaction mode",
+  shortcutLabel: "Shortcut",
+  wakeWordLabel: "Wake word",
+  toolBeepLabel: "Tool-call beep",
+  autoSendLabel: "Auto-send",
+  autoResumeLabel: "Auto-resume",
+  senseVoiceLabel: "Re-transcribe on finalize",
+  spokenFormatLabel: "Spoken-style prompt",
+  silenceMsLabel: "Silence pause",
+  idleTimeoutMinutesLabel: "Idle timeout",
+  modelHostLabel: "Model mirror",
+  genderFemale: "Female",
+  genderMale: "Male",
+  genderNeutral: "Neutral",
+  accentMandarin: "Mandarin",
+  accentNortheast: "Northeastern",
+  accentShaanxi: "Shaanxi",
+  accentCantonese: "Cantonese",
+  accentTaiwan: "Taiwanese Mandarin",
+  accentEnglish: "English",
+  styleDeep: "Deep",
+  styleRich: "Rich",
+  styleClear: "Clear",
+  styleMagnetic: "Magnetic",
+  voiceKokoroPopularMale: "Popular male",
+  voiceKokoroChineseFemale: "Chinese female",
+  voiceKokoroMale: "Male",
+  voiceKokoroFemale: "Female",
+  voiceKokoroGeneric: "Voice",
+  hostOfficial: "Official",
+  hostMirror: "Mirror (CN)",
+  engineBadgeCloud: "ASR local \xB7 TTS cloud",
+  engineBadgeLocal: "ASR local \xB7 TTS local",
+  errRateLimited: "Too many requests \u2014 try again shortly",
+  errUnknownSession: "Voice session expired \u2014 re-enter voice mode",
+  errForbidden: "Request denied (local access only, or origin mismatch)",
+  errBadRequest: "Invalid request",
+  errEngineNotActive: "That read-aloud engine is not active",
+  errModelDownload: "Model download failed \u2014 check your network",
+  errTooManyStreams: "Too many voice connections \u2014 close other voice tabs and retry",
+  errTooLarge: "Request too large",
+  errInternal: "Server error \u2014 please retry shortly",
+  previewNetwork: "Preview failed: network unreachable (Edge cloud needs the Microsoft speech service) \u2014 check your network or proxy",
+  previewEngine: "Preview failed: engine not ready (local model downloading, init failed, or worker crashed) \u2014 retry later or check TTS status in settings",
+  previewText: "Preview failed: the engine produced empty audio (voice and language may not match) \u2014 pick another voice",
+  voiceHintChineseVoice: "Note: this is a Chinese voice. For English replies, pick an English voice (en-\u2026) from the list.",
+  voiceHintEnglishVoice: "Note: this is an English voice and reads Chinese replies poorly. For Chinese conversations, pick a Chinese voice (zh-\u2026)."
 };
-var guess = () => /^zh\b/i.test(
+var htmlLangIsZh = () => /^zh\b/i.test(
   typeof document !== "undefined" && document.documentElement.lang || (typeof navigator !== "undefined" ? navigator.language : "") || ""
-) ? "zh" : "en";
-var t = (key) => guess() === "zh" ? zh[key] : en[key] ?? zh[key];
+);
+var translateLocal = (key, isZh) => (isZh ? zh[key] : en[key]) ?? en[key] ?? key;
+
+// src/i18n.ts
+var LOCALE_NAMESPACE = "voice-mode";
+var service = null;
+var translate = null;
+function bindLocale(locale) {
+  service = null;
+  translate = null;
+  const l = locale;
+  if (!l || typeof l.register !== "function" || typeof l.bind !== "function") return () => void 0;
+  const disposers = [];
+  try {
+    disposers.push(l.register(LOCALE_NAMESPACE, "zh", zh));
+    disposers.push(l.register(LOCALE_NAMESPACE, "en", en));
+    translate = l.bind(LOCALE_NAMESPACE);
+    service = l;
+  } catch {
+    for (const d of disposers) {
+      try {
+        d();
+      } catch {
+      }
+    }
+    service = null;
+    translate = null;
+    return () => void 0;
+  }
+  return () => {
+    for (const d of disposers) {
+      try {
+        d();
+      } catch {
+      }
+    }
+    if (service === l) {
+      service = null;
+      translate = null;
+    }
+  };
+}
+function activeLocale() {
+  try {
+    const a = service?.getSnapshot?.().active ?? service?.getLocale?.().active;
+    if (a) return a;
+  } catch {
+  }
+  return htmlLangIsZh() ? "zh" : "en";
+}
+function lang() {
+  return /^zh\b/i.test(activeLocale()) ? "zh" : "en";
+}
+var interpolate = (template, params) => params ? template.replace(/\{(\w+)\}/g, (m, name2) => name2 in params ? String(params[name2]) : m) : template;
+function t(key, params) {
+  if (translate) {
+    try {
+      const v = translate(key, params);
+      if (v && v !== key) return v;
+    } catch {
+    }
+  }
+  return interpolate(translateLocal(key, lang() === "zh"), params);
+}
+var noop = () => void 0;
+var subscribe = (cb) => {
+  try {
+    return service?.subscribe?.(cb) ?? noop;
+  } catch {
+    return noop;
+  }
+};
+function useLang() {
+  return (0, import_react.useSyncExternalStore)(subscribe, activeLocale, activeLocale);
+}
+
+// src/error-text.ts
+function errorText(body, fallback) {
+  const code = body && typeof body === "object" ? body.code : void 0;
+  return t(isHostErrorCode(code) ? ERROR_I18N_KEY[code] : fallback);
+}
 
 // src/settings-form.tsx
-var import_react = require("react");
-var import_jsx_runtime = require("react/jsx-runtime");
-var t2 = {
-  bg: "var(--dsw-alias-bg-layer-3)",
-  bgOpen: "var(--dsw-alias-bg-layer-2)",
-  border: "var(--dsw-alias-border-l2)",
-  label: "var(--dsw-alias-label-primary)",
-  term: "var(--dsw-alias-label-tertiary)",
-  brand: "var(--dsw-alias-brand-primary)"
-};
-var BASE_PATH = "/voice-mode";
-var cardStyle = {
-  border: `1px solid ${t2.border}`,
-  background: t2.bg,
-  borderRadius: 12,
-  overflow: "hidden"
-};
-var FIELD_LABELS = {
-  ttsEngine: "\u6717\u8BFB\u5F15\u64CE",
-  kokoroModel: "Kokoro \u6A21\u578B\u7CBE\u5EA6",
-  voice: "\u97F3\u8272",
-  rate: "\u8BED\u901F",
-  interruptLevel: "\u6253\u65AD\u7075\u654F\u5EA6",
-  bargeInMode: "\u6253\u65AD\u65B9\u5F0F",
-  echoGateDb: "\u56DE\u58F0\u95E8\u63A7",
-  mode: "\u4EA4\u4E92\u6A21\u5F0F",
-  shortcut: "\u5FEB\u6377\u952E",
-  wakeWord: "\u5524\u9192\u8BCD",
-  toolBeep: "\u5DE5\u5177\u63D0\u793A\u97F3",
-  autoSend: "\u81EA\u52A8\u53D1\u9001",
-  autoResume: "\u81EA\u52A8\u6062\u590D",
-  senseVoice: "\u5B9A\u7A3F\u91CD\u8BD1",
-  spokenFormat: "\u53E3\u8BED\u5316\u63D0\u793A\u8BCD",
-  silenceMs: "\u9759\u97F3\u505C\u987F",
-  idleTimeoutMinutes: "\u7A7A\u95F2\u8D85\u65F6",
-  modelHost: "\u6A21\u578B\u955C\u50CF",
-  // 批 C 新增（覆盖批 1-5 新增 UI 字段；详见文件头注释）
-  senseITN: "\u9006\u6587\u672C\u5F52\u4E00\u5316",
-  captionFontSize: "\u5B57\u5E55\u5B57\u53F7",
-  captionMaxWidth: "\u5B57\u5E55\u5BBD\u5EA6",
-  backchannelYield: "\u77ED\u5E94\u7B54\u8BA9\u4F4D",
-  // 批 G 任务 3：让位窗口时长（500-3000ms，默认 1500）。FIELD_LABELS 与 strings.ts
-  // zh 段 yieldMsLabel 同步登记（双轨约束由 strings-coverage 测试兜底）。
-  yieldMs: "\u8BA9\u4F4D\u7A97\u53E3"
-};
-var setHeader = {
-  appearance: "none",
-  width: "100%",
-  font: "inherit",
-  color: "inherit",
-  textAlign: "left",
-  cursor: "pointer",
-  background: "transparent",
-  border: 0,
-  borderRadius: 12,
-  alignItems: "center",
-  gap: 12,
-  padding: "14px 16px",
-  display: "flex"
-};
-var setHeadText = { flexDirection: "column", flex: 1, gap: 4, minWidth: 0, display: "flex" };
-var setName = { color: t2.label, fontSize: 15, fontWeight: 600, lineHeight: 1.4 };
-var setDesc = { color: t2.term, fontSize: 13, lineHeight: 1.5 };
-var setChevron = { color: t2.term, flex: "none", transition: "transform .16s", display: "inline-flex" };
-var setBody = { borderTop: `1px solid ${t2.border}`, margin: "0 16px", paddingBottom: 8 };
-var setRow = { alignItems: "center", gap: 12, padding: "12px 0", display: "flex" };
-var setLabelBox = { flexDirection: "column", flex: 1, gap: 3, minWidth: 0, display: "flex" };
-var setLabel = { fontSize: 13, lineHeight: "20px" };
-var setHint = { color: t2.term, fontSize: 12, lineHeight: "18px" };
-var setSeg = { border: `1px solid ${t2.border}`, borderRadius: 8, flexShrink: 0, gap: 2, padding: 2, display: "inline-flex" };
-var setSegBtn = (on) => ({
-  font: "inherit",
-  color: on ? t2.label : "var(--dsw-alias-label-secondary)",
-  cursor: "pointer",
-  background: on ? "var(--dsw-alias-bg-layer-2)" : "transparent",
-  border: "none",
-  borderRadius: 6,
-  padding: "4px 12px",
-  fontSize: 12,
-  lineHeight: "18px",
-  fontWeight: on ? 600 : 400
-});
-var inputStyle = {
-  boxSizing: "border-box",
-  width: 280,
-  maxWidth: "100%",
-  padding: "7px 10px",
-  borderRadius: 8,
-  border: `1px solid ${t2.border}`,
-  background: "var(--dsw-alias-bg-layer-2)",
-  color: t2.label,
-  fontSize: 13,
-  fontFamily: "inherit",
-  outline: "none"
-};
-var focusVisibleCss = `
-[data-dshvm-settings="card"] input:focus-visible,
-[data-dshvm-settings="card"] select:focus-visible,
-[data-dshvm-settings="card"] button:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary);
-  outline-offset: 1px;
-}
-@media (prefers-reduced-motion: reduce) {
-  [data-dshvm-settings="card"], [data-dshvm-settings="card"] * { transition: none !important; }
-}`;
-var VOICE_OPTIONS = [
-  { v: "zh-CN-XiaoxiaoNeural", label: "\u6653\u6653 \xB7 \u5973 \xB7 \u7B80\u4F53\u4E2D\u6587" },
-  { v: "zh-CN-XiaoyiNeural", label: "\u6653\u4F0A \xB7 \u5973 \xB7 \u7B80\u4F53\u4E2D\u6587" },
-  { v: "zh-CN-YunxiNeural", label: "\u4E91\u5E0C \xB7 \u7537 \xB7 \u7B80\u4F53\u4E2D\u6587" },
-  { v: "zh-CN-YunjianNeural", label: "\u4E91\u5065 \xB7 \u7537 \xB7 \u7B80\u4F53\u4E2D\u6587" },
-  { v: "zh-CN-YunyangNeural", label: "\u4E91\u626C \xB7 \u7537 \xB7 \u7B80\u4F53\u4E2D\u6587" },
-  { v: "zh-CN-YunxiaNeural", label: "\u4E91\u590F \xB7 \u7537 \xB7 \u7B80\u4F53\u4E2D\u6587" },
-  { v: "zh-CN-liaoning-XiaobeiNeural", label: "\u5C0F\u5317 \xB7 \u5973 \xB7 \u4E1C\u5317\u8BDD" },
-  { v: "zh-CN-shaanxi-XiaoniNeural", label: "\u5C0F\u59AE \xB7 \u5973 \xB7 \u9655\u897F\u8BDD" },
-  { v: "zh-HK-HiuMaanNeural", label: "\u6653\u66FC \xB7 \u5973 \xB7 \u7CA4\u8BED" },
-  { v: "zh-HK-WanLungNeural", label: "\u4E91\u9F99 \xB7 \u7537 \xB7 \u7CA4\u8BED" },
-  { v: "zh-TW-HsiaoYuNeural", label: "\u5C0F\u96E8 \xB7 \u5973 \xB7 \u53F0\u6E7E\u8154" },
-  { v: "zh-TW-YunJheNeural", label: "\u4E91\u54F2 \xB7 \u7537 \xB7 \u53F0\u6E7E\u8154" },
-  { v: "en-US-AriaNeural", label: "Aria \xB7 \u5973 \xB7 English" },
-  { v: "en-US-GuyNeural", label: "Guy \xB7 \u7537 \xB7 English" }
+var import_react2 = require("react");
+
+// src/voice-catalog.ts
+var EDGE_COMMON_VOICES = [
+  { v: "zh-CN-XiaoxiaoNeural", zh: "\u6653\u6653", en: "Xiaoxiao", gender: "F", accent: "mandarin" },
+  { v: "zh-CN-XiaoyiNeural", zh: "\u6653\u4F0A", en: "Xiaoyi", gender: "F", accent: "mandarin" },
+  { v: "zh-CN-YunxiNeural", zh: "\u4E91\u5E0C", en: "Yunxi", gender: "M", accent: "mandarin" },
+  { v: "zh-CN-YunjianNeural", zh: "\u4E91\u5065", en: "Yunjian", gender: "M", accent: "mandarin" },
+  { v: "zh-CN-YunyangNeural", zh: "\u4E91\u626C", en: "Yunyang", gender: "M", accent: "mandarin" },
+  { v: "zh-CN-YunxiaNeural", zh: "\u4E91\u590F", en: "Yunxia", gender: "M", accent: "mandarin" },
+  { v: "zh-CN-liaoning-XiaobeiNeural", zh: "\u5C0F\u5317", en: "Xiaobei", gender: "F", accent: "northeast" },
+  { v: "zh-CN-shaanxi-XiaoniNeural", zh: "\u5C0F\u59AE", en: "Xiaoni", gender: "F", accent: "shaanxi" },
+  { v: "zh-HK-HiuMaanNeural", zh: "\u6653\u66FC", en: "HiuMaan", gender: "F", accent: "cantonese" },
+  { v: "zh-HK-WanLungNeural", zh: "\u4E91\u9F99", en: "WanLung", gender: "M", accent: "cantonese" },
+  { v: "zh-TW-HsiaoYuNeural", zh: "\u5C0F\u96E8", en: "HsiaoYu", gender: "F", accent: "taiwan" },
+  { v: "zh-TW-YunJheNeural", zh: "\u4E91\u54F2", en: "YunJhe", gender: "M", accent: "taiwan" },
+  { v: "en-US-AriaNeural", zh: "Aria", en: "Aria", gender: "F", accent: "english" },
+  { v: "en-US-GuyNeural", zh: "Guy", en: "Guy", gender: "M", accent: "english" }
 ];
-var VOICE_OPTIONS_LOCAL = [
-  { v: "suyingxue", label: "\u7D20\u6620\u96EA \xB7 \u5973" },
-  { v: "gunian", label: "\u987E\u5FF5 \xB7 \u7537" },
-  { v: "fushiyu", label: "\u5085\u65AF\u9047 \xB7 \u5973" },
-  { v: "bingjiao", label: "\u51B0\u5A07 \xB7 \u7537" },
-  { v: "bazong", label: "\u9738\u603B \xB7 \u7537" }
+var VITS_SPEAKERS = [
+  { name: "suyingxue", sid: 0, zh: "\u7D20\u6620\u96EA", en: "Su Yingxue", gender: "F" },
+  { name: "gunian", sid: 1, zh: "\u987E\u5FF5", en: "Gu Nian", gender: "M" },
+  { name: "fushiyu", sid: 2, zh: "\u5085\u65AF\u9047", en: "Fu Siyu", gender: "F" },
+  { name: "bingjiao", sid: 3, zh: "\u51B0\u5A07", en: "Bing Jiao", gender: "M" },
+  { name: "bazong", sid: 4, zh: "\u9738\u603B", en: "Ba Zong", gender: "M" }
 ];
 var KOKORO_F0 = [
   224,
@@ -1964,31 +2072,169 @@ var KOKORO_F0 = [
   124
 ];
 var KOKORO_NAMED = {
-  48: { v: "zf_xiaobei", label: "\u5C0F\u5317 \xB7 \u4E2D\u6587\u5973" },
-  49: { v: "zf_xiaoni", label: "\u5C0F\u59AE \xB7 \u4E2D\u6587\u5973" },
-  50: { v: "zf_xiaoxiao", label: "\u5C0F\u5C0F \xB7 \u4E2D\u6587\u5973" },
-  51: { v: "zf_xiaoyi", label: "\u5C0F\u827A \xB7 \u4E2D\u6587\u5973" }
+  48: { name: "zf_xiaobei", zh: "\u5C0F\u5317", en: "Xiaobei" },
+  49: { name: "zf_xiaoni", zh: "\u5C0F\u59AE", en: "Xiaoni" },
+  50: { name: "zf_xiaoxiao", zh: "\u5C0F\u5C0F", en: "Xiaoxiao" },
+  51: { name: "zf_xiaoyi", zh: "\u5C0F\u827A", en: "Xiaoyi" }
 };
-var KOKORO_LABEL_OVERRIDES = {
-  62: "62 \xB7 \u6DF1\u6C89 \xB7 \u5E38\u7528\u7537\u58F0",
-  68: "68 \xB7 \u6D51\u539A \xB7 \u5E38\u7528\u7537\u58F0",
-  75: "75 \xB7 \u6E05\u4EAE \xB7 \u5E38\u7528\u7537\u58F0",
-  76: "76 \xB7 \u78C1\u6027 \xB7 \u5E38\u7528\u7537\u58F0"
+var KOKORO_POPULAR_MALE = {
+  62: "deep",
+  68: "rich",
+  75: "clear",
+  76: "magnetic"
 };
 var KOKORO_PINNED = [62, 68, 75, 76];
-function kokoroOption(sid) {
-  const custom = KOKORO_LABEL_OVERRIDES[sid];
-  if (custom) return { v: String(sid), label: custom };
-  const named = KOKORO_NAMED[sid];
-  if (named) return { v: named.v, label: named.label };
-  const hz = KOKORO_F0[sid] ?? null;
-  if (hz === null) return { v: String(sid), label: `${sid} \xB7 \u97F3\u8272` };
-  return { v: String(sid), label: `${sid} \xB7 ${hz < 180 ? "\u7537\u58F0" : "\u5973\u58F0"} \xB7 ${hz}Hz` };
-}
-var VOICE_OPTIONS_KOKORO = [
-  ...KOKORO_PINNED.map((sid) => kokoroOption(sid)),
-  ...KOKORO_F0.map((_, sid) => kokoroOption(sid)).filter((o) => !KOKORO_PINNED.includes(Number(o.v)))
+var KOKORO_VOICES = [
+  ...KOKORO_PINNED.map((sid) => ({ name: KOKORO_NAMED[sid]?.name ?? String(sid), sid })),
+  ...KOKORO_F0.map((_, sid) => ({ name: KOKORO_NAMED[sid]?.name ?? String(sid), sid })).filter(
+    (v) => !KOKORO_PINNED.includes(v.sid)
+  )
 ];
+
+// src/voice-labels.ts
+var SEP = " \xB7 ";
+var name = (n) => lang() === "zh" ? n.zh : n.en;
+var genderWord = (g) => t(g === "F" ? "genderFemale" : "genderMale");
+var ACCENT_KEY = {
+  mandarin: "accentMandarin",
+  northeast: "accentNortheast",
+  shaanxi: "accentShaanxi",
+  cantonese: "accentCantonese",
+  taiwan: "accentTaiwan",
+  english: "accentEnglish"
+};
+var STYLE_KEY = {
+  deep: "styleDeep",
+  rich: "styleRich",
+  clear: "styleClear",
+  magnetic: "styleMagnetic"
+};
+function edgeCommonOptions() {
+  return EDGE_COMMON_VOICES.map((o) => ({
+    v: o.v,
+    label: [name(o), genderWord(o.gender), t(ACCENT_KEY[o.accent])].join(SEP)
+  }));
+}
+function vitsOptions() {
+  return VITS_SPEAKERS.map((s) => ({ v: s.name, label: [name(s), genderWord(s.gender)].join(SEP) }));
+}
+function kokoroOption(sid) {
+  const style = KOKORO_POPULAR_MALE[sid];
+  if (style) return { v: String(sid), label: [String(sid), t(STYLE_KEY[style]), t("voiceKokoroPopularMale")].join(SEP) };
+  const named = KOKORO_NAMED[sid];
+  if (named) return { v: named.name, label: [name(named), t("voiceKokoroChineseFemale")].join(SEP) };
+  const hz = KOKORO_F0[sid] ?? null;
+  if (hz === null) return { v: String(sid), label: [String(sid), t("voiceKokoroGeneric")].join(SEP) };
+  return { v: String(sid), label: [String(sid), t(hz < 180 ? "voiceKokoroMale" : "voiceKokoroFemale"), `${hz}Hz`].join(SEP) };
+}
+function kokoroOptions() {
+  return [
+    ...KOKORO_PINNED.map((sid) => kokoroOption(sid)),
+    ...KOKORO_F0.map((_, sid) => kokoroOption(sid)).filter((o) => !KOKORO_PINNED.includes(Number(o.v)))
+  ];
+}
+function genderFromEdge(g) {
+  return g === "Female" ? t("genderFemale") : g === "Male" ? t("genderMale") : g === "Neutral" ? t("genderNeutral") : g;
+}
+function hostOptions() {
+  return [
+    { v: "https://huggingface.co", label: `${t("hostOfficial")} huggingface.co` },
+    { v: "https://hf-mirror.com", label: `${t("hostMirror")} hf-mirror.com` }
+  ];
+}
+var edgeCleanName = (fn) => fn.replace(/^Microsoft\s+/, "").replace(/\s+Online\s+\(Natural\)/, "").split(/\s*-\s*/)[0].trim();
+function edgeAllOptions(raw, locale) {
+  const all = raw.map((r) => ({ v: r.ShortName, label: `${edgeCleanName(r.FriendlyName) || r.ShortName}${SEP}${genderFromEdge(r.Gender)}` })).sort((a, b) => a.label.localeCompare(b.label, locale || void 0));
+  const common = edgeCommonOptions();
+  const commonKeys = new Set(common.map((o) => o.v));
+  const pinned = common.filter((o) => all.some((a) => a.v === o.v));
+  return [...pinned, ...all.filter((a) => !commonKeys.has(a.v))];
+}
+function voiceLangHint(engine, voice) {
+  if (engine !== "edge") return "";
+  const v = voice || "zh-CN-XiaoxiaoNeural";
+  if (lang() === "en" && /^zh-/i.test(v)) return " " + t("voiceHintChineseVoice");
+  if (lang() === "zh" && /^en-/i.test(v)) return " " + t("voiceHintEnglishVoice");
+  return "";
+}
+
+// src/settings-form.tsx
+var import_jsx_runtime = require("react/jsx-runtime");
+var t2 = {
+  bg: "var(--dsw-alias-bg-layer-3)",
+  bgOpen: "var(--dsw-alias-bg-layer-2)",
+  border: "var(--dsw-alias-border-l2)",
+  label: "var(--dsw-alias-label-primary)",
+  term: "var(--dsw-alias-label-tertiary)",
+  brand: "var(--dsw-alias-brand-primary)"
+};
+var BASE_PATH = "/voice-mode";
+var cardStyle = {
+  border: `1px solid ${t2.border}`,
+  background: t2.bg,
+  borderRadius: 12,
+  overflow: "hidden"
+};
+var setHeader = {
+  appearance: "none",
+  width: "100%",
+  font: "inherit",
+  color: "inherit",
+  textAlign: "left",
+  cursor: "pointer",
+  background: "transparent",
+  border: 0,
+  borderRadius: 12,
+  alignItems: "center",
+  gap: 12,
+  padding: "14px 16px",
+  display: "flex"
+};
+var setHeadText = { flexDirection: "column", flex: 1, gap: 4, minWidth: 0, display: "flex" };
+var setName = { color: t2.label, fontSize: 15, fontWeight: 600, lineHeight: 1.4 };
+var setDesc = { color: t2.term, fontSize: 13, lineHeight: 1.5 };
+var setChevron = { color: t2.term, flex: "none", transition: "transform .16s", display: "inline-flex" };
+var setBody = { borderTop: `1px solid ${t2.border}`, margin: "0 16px", paddingBottom: 8 };
+var setRow = { alignItems: "center", gap: 12, padding: "12px 0", display: "flex" };
+var setLabelBox = { flexDirection: "column", flex: 1, gap: 3, minWidth: 0, display: "flex" };
+var setLabel = { fontSize: 13, lineHeight: "20px" };
+var setHint = { color: t2.term, fontSize: 12, lineHeight: "18px" };
+var setSeg = { border: `1px solid ${t2.border}`, borderRadius: 8, flexShrink: 0, gap: 2, padding: 2, display: "inline-flex" };
+var setSegBtn = (on) => ({
+  font: "inherit",
+  color: on ? t2.label : "var(--dsw-alias-label-secondary)",
+  cursor: "pointer",
+  background: on ? "var(--dsw-alias-bg-layer-2)" : "transparent",
+  border: "none",
+  borderRadius: 6,
+  padding: "4px 12px",
+  fontSize: 12,
+  lineHeight: "18px",
+  fontWeight: on ? 600 : 400
+});
+var inputStyle = {
+  boxSizing: "border-box",
+  width: 280,
+  maxWidth: "100%",
+  padding: "7px 10px",
+  borderRadius: 8,
+  border: `1px solid ${t2.border}`,
+  background: "var(--dsw-alias-bg-layer-2)",
+  color: t2.label,
+  fontSize: 13,
+  fontFamily: "inherit",
+  outline: "none"
+};
+var focusVisibleCss = `
+[data-dshvm-settings="card"] input:focus-visible,
+[data-dshvm-settings="card"] select:focus-visible,
+[data-dshvm-settings="card"] button:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-dshvm-settings="card"], [data-dshvm-settings="card"] * { transition: none !important; }
+}`;
 var ENGINE_DEFAULT_VOICE = {
   // 与 host 侧引擎 defaultVoice 对齐（VITS suyingxue / Kokoro zf_xiaobei），
   // 避免「config 直连」与「面板切引擎」落到不同默认音色。
@@ -1996,10 +2242,6 @@ var ENGINE_DEFAULT_VOICE = {
   kokoro: "zf_xiaobei",
   edge: "zh-CN-XiaoxiaoNeural"
 };
-var HOST_OPTIONS = [
-  { v: "https://huggingface.co", label: "\u5B98\u65B9\u6E90 huggingface.co" },
-  { v: "https://hf-mirror.com", label: "\u56FD\u5185\u955C\u50CF hf-mirror.com" }
-];
 function NumberField({
   score,
   field,
@@ -2008,9 +2250,9 @@ function NumberField({
   max,
   step
 }) {
-  const [draft, setDraft] = (0, import_react.useState)(String(value ?? ""));
-  const [hint, setHint2] = (0, import_react.useState)(null);
-  (0, import_react.useEffect)(() => {
+  const [draft, setDraft] = (0, import_react2.useState)(String(value ?? ""));
+  const [hint, setHint2] = (0, import_react2.useState)(null);
+  (0, import_react2.useEffect)(() => {
     setDraft((d) => d === String(value ?? "") ? d : String(value ?? ""));
     setHint2(null);
   }, [value]);
@@ -2073,8 +2315,8 @@ function TextField({
   value,
   placeholder
 }) {
-  const [draft, setDraft] = (0, import_react.useState)(String(value ?? ""));
-  (0, import_react.useEffect)(() => {
+  const [draft, setDraft] = (0, import_react2.useState)(String(value ?? ""));
+  (0, import_react2.useEffect)(() => {
     setDraft((d) => d === String(value ?? "") ? d : String(value ?? ""));
   }, [value]);
   const commit = () => {
@@ -2104,8 +2346,8 @@ function SelectField({
 }) {
   const cur = String(value ?? "");
   const inOptions = options.some((o) => o.v === cur);
-  const [custom, setCustom] = (0, import_react.useState)(inOptions ? "" : cur);
-  (0, import_react.useEffect)(() => {
+  const [custom, setCustom] = (0, import_react2.useState)(inOptions ? "" : cur);
+  (0, import_react2.useEffect)(() => {
     if (!options.some((o) => o.v === cur)) setCustom(cur);
   }, [cur, options]);
   const selectStyle = {
@@ -2181,8 +2423,8 @@ function VoiceSelect({
   const cur = String(value ?? "");
   const inOptions = options.some((o) => o.v === cur);
   const idx = options.findIndex((o) => o.v === cur);
-  const [custom, setCustom] = (0, import_react.useState)(inOptions ? "" : cur);
-  (0, import_react.useEffect)(() => {
+  const [custom, setCustom] = (0, import_react2.useState)(inOptions ? "" : cur);
+  (0, import_react2.useEffect)(() => {
     if (!options.some((o) => o.v === cur)) setCustom(cur);
   }, [cur, options]);
   const move = (delta) => {
@@ -2253,12 +2495,12 @@ function VoiceSelect({
   ] });
 }
 function VoicePreviewButton({ voice, rate }) {
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const [note, setNote] = (0, import_react.useState)(null);
-  const audioRef = (0, import_react.useRef)(null);
-  const [localReady, setLocalReady] = (0, import_react.useState)(null);
-  const [ttsLoading, setTtsLoading] = (0, import_react.useState)(false);
-  (0, import_react.useEffect)(() => {
+  const [busy, setBusy] = (0, import_react2.useState)(false);
+  const [note, setNote] = (0, import_react2.useState)(null);
+  const audioRef = (0, import_react2.useRef)(null);
+  const [localReady, setLocalReady] = (0, import_react2.useState)(null);
+  const [ttsLoading, setTtsLoading] = (0, import_react2.useState)(false);
+  (0, import_react2.useEffect)(() => {
     let alive = true;
     const poll = async () => {
       try {
@@ -2316,22 +2558,16 @@ function VoicePreviewButton({ voice, rate }) {
           body: JSON.stringify({ voice: v, rate }),
           signal: AbortSignal.timeout(9e4)
         });
-        if (res.status === 403) {
-          setNote(t("previewDisabled"));
-          return;
-        }
-        if (res.status === 429) {
-          setNote(t("previewRateLimited"));
-          return;
-        }
         if (!res.ok) {
-          let detail = "";
+          let body = null;
           try {
-            const parsed = await res.json();
-            if (parsed && typeof parsed.error === "string") detail = parsed.error;
+            body = await res.json();
           } catch {
           }
-          setNote(detail ? `${t("previewSynthesisFail")}\uFF1A${detail}` : t("previewCheck"));
+          const code = body?.code;
+          setNote(
+            code === "voice_disabled" || res.status === 403 ? t("previewDisabled") : code === "rate_limited" || res.status === 429 ? t("previewRateLimited") : errorText(body, "previewCheck")
+          );
           return;
         }
         const blob = await res.blob();
@@ -2382,8 +2618,8 @@ function VoicePreviewButton({ voice, rate }) {
     note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
   ] });
 }
-function Row({ name, desc, children }) {
-  const label = FIELD_LABELS[name] ?? name;
+function Row({ name: name2, desc, children }) {
+  const label = t(`${name2}Label`);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setLabelBox, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setLabel, children: label }),
@@ -2424,9 +2660,9 @@ function SegGroup({
 }
 var fmtMB = (b) => b >= 1048576 ? `${(b / 1048576).toFixed(0)}MB` : b > 0 ? `${Math.round(b / 1024)}KB` : "\u2013";
 function EngineStatusInline() {
-  const [st, setSt] = (0, import_react.useState)(null);
-  const [acting, setActing] = (0, import_react.useState)(null);
-  (0, import_react.useEffect)(() => {
+  const [st, setSt] = (0, import_react2.useState)(null);
+  const [acting, setActing] = (0, import_react2.useState)(null);
+  (0, import_react2.useEffect)(() => {
     let alive = true;
     const poll = async () => {
       try {
@@ -2473,7 +2709,7 @@ function EngineStatusInline() {
   const action = localReady ? "clean" : "download";
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, padding: "2px 0 10px" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.term }, children: engineName }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "span",
       {
         title: t("dataFlowHint"),
@@ -2484,10 +2720,7 @@ function EngineStatusInline() {
           borderRadius: 6,
           background: "var(--dsw-alias-bg-layer-1)"
         },
-        children: [
-          "\u8BC6\u522B\u672C\u5730 \xB7 \u6717\u8BFB ",
-          tts.engine === "edge" ? "\u4E91\u7AEF" : "\u672C\u5730"
-        ]
+        children: t(tts.engine === "edge" ? "engineBadgeCloud" : "engineBadgeLocal")
       }
     ),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: statusText === t("engineReady") || statusText === t("engineError") ? 600 : 400, color: statusColor }, children: statusText }),
@@ -2522,9 +2755,9 @@ function EngineStatusInline() {
   ] });
 }
 function ModelStatusView() {
-  const [st, setSt] = (0, import_react.useState)(null);
-  const [retrying, setRetrying] = (0, import_react.useState)(null);
-  (0, import_react.useEffect)(() => {
+  const [st, setSt] = (0, import_react2.useState)(null);
+  const [retrying, setRetrying] = (0, import_react2.useState)(null);
+  (0, import_react2.useEffect)(() => {
     let alive = true;
     const poll = async () => {
       try {
@@ -2615,9 +2848,10 @@ function ModelStatusView() {
   ] });
 }
 function VoiceSettingsCard({ scope, defaultOpen = false }) {
-  const [snap, setSnap] = (0, import_react.useState)(() => scope.getSnapshot());
-  const [collapsed, setCollapsed] = (0, import_react.useState)(!defaultOpen);
-  (0, import_react.useEffect)(
+  useLang();
+  const [snap, setSnap] = (0, import_react2.useState)(() => scope.getSnapshot());
+  const [collapsed, setCollapsed] = (0, import_react2.useState)(!defaultOpen);
+  (0, import_react2.useEffect)(
     () => scope.subscribe(() => {
       setSnap({ ...scope.getSnapshot() });
     }),
@@ -2626,28 +2860,18 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
   const value = snap?.value ?? {};
   const unavailable = snap?.status === "unavailable" || snap?.status === "error";
   const engine = value.ttsEngine === "edge" ? "edge" : value.ttsEngine === "kokoro" ? "kokoro" : "vits";
-  const [edgeVoices, setEdgeVoices] = (0, import_react.useState)(null);
-  (0, import_react.useEffect)(() => {
+  const [edgeRaw, setEdgeRaw] = (0, import_react2.useState)(null);
+  (0, import_react2.useEffect)(() => {
     if (engine !== "edge") return;
     let alive = true;
     void fetch(location.origin + BASE_PATH + "/voices").then((res) => res.ok ? res.json() : null).then((data) => {
-      if (!alive || !data?.voices) return;
-      const genderName = (g) => g === "Female" ? "\u5973" : g === "Male" ? "\u7537" : g === "Neutral" ? "\u4E2D\u6027" : g;
-      const voiceName = (fn) => fn.replace(/^Microsoft\s+/, "").replace(/\s+Online\s+\(Natural\)/, "").split(/\s*-\s*/)[0].trim();
-      const mkLabel = (v) => (
-        // 精简标签：只留说话人名 + 性别（去掉尾部区域与 ShortName 冗余），避免 Edge 长名被截断。
-        (voiceName(v.FriendlyName) || v.ShortName) + " \xB7 " + genderName(v.Gender)
-      );
-      const all = data.voices.map((v) => ({ v: v.ShortName, label: mkLabel(v) })).sort((a, b) => a.label.localeCompare(b.label));
-      const commonKeys = new Set(VOICE_OPTIONS.map((o) => o.v));
-      const pinned = VOICE_OPTIONS.filter((o) => all.some((a) => a.v === o.v));
-      setEdgeVoices([...pinned, ...all.filter((a) => !commonKeys.has(a.v))]);
+      if (alive && data?.voices) setEdgeRaw(data.voices);
     }).catch(() => void 0);
     return () => {
       alive = false;
     };
   }, [engine]);
-  const voiceOptions = engine === "edge" ? edgeVoices ?? VOICE_OPTIONS : engine === "kokoro" ? VOICE_OPTIONS_KOKORO : VOICE_OPTIONS_LOCAL;
+  const voiceOptions = engine === "edge" ? edgeRaw ? edgeAllOptions(edgeRaw, activeLocale()) : edgeCommonOptions() : engine === "kokoro" ? kokoroOptions() : vitsOptions();
   if (unavailable) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: t2.term, fontSize: 12, padding: "14px 16px", ...cardStyle }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)" }, children: t("configUnavailable") }),
@@ -2700,7 +2924,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
           Row,
           {
             name: "voice",
-            desc: engine === "edge" ? t("descVoice") : engine === "kokoro" ? t("descVoiceKokoro") : t("descVoiceLocal"),
+            desc: (engine === "edge" ? t("descVoice") : engine === "kokoro" ? t("descVoiceKokoro") : t("descVoiceLocal")) + voiceLangHint(engine, String(value.voice ?? "")),
             children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               VoiceSelect,
               {
@@ -2801,7 +3025,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 5, min: 1, max: 120, step: 1 }) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Section, { title: t("secModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: HOST_OPTIONS, placeholder: "https://..." }) }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Section, { title: t("secModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: hostOptions(), placeholder: "https://..." }) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("settingsEffectiveNote") }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ModelStatusView, {})
     ] }) })
@@ -2960,6 +3184,7 @@ function setLastVoiceSession(id) {
   }
 }
 function apply(ctx) {
+  ctx.effect(() => bindLocale(ctx.get?.("locale")), "dsh-voice-mode: locale dictionaries");
   const bus = createVoiceBus(void 0, ctx);
   if (typeof document !== "undefined") {
     const resumeAudio = () => bus.warmAudio();
@@ -3610,12 +3835,12 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         const res = await fetch(`${location.origin}${basePath}/toggle`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sessionId, on: true, tabId: TAB_ID })
+          body: JSON.stringify({ sessionId, on: true, tabId: TAB_ID, lang: activeLocale() })
         });
         const out = await res.json();
         activeSessionId = out.active === sessionId ? sessionId : null;
         notify();
-        if (!res.ok) return { ok: false, error: out.error ?? t("enterFail") };
+        if (!res.ok) return { ok: false, error: errorText(out, "enterFail") };
         if (out.active === sessionId) setLastVoiceSession(sessionId);
         return {
           ok: out.active === sessionId,
@@ -3682,7 +3907,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
 }
 var styleInjected = false;
 function useVoiceCss() {
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     if (styleInjected) return;
     styleInjected = true;
     const el = document.createElement("style");
@@ -3714,23 +3939,24 @@ function MicButton({
   useInput,
   inputActions
 }) {
-  const [local, setLocal] = (0, import_react2.useState)("off");
-  const localRef = (0, import_react2.useRef)("off");
-  const sidRef = (0, import_react2.useRef)(sessionId);
-  const engineRef = (0, import_react2.useRef)(null);
-  const actionsRef = (0, import_react2.useRef)(inputActions);
-  const submitTimerRef = (0, import_react2.useRef)(null);
-  const autoSendTimerRef = (0, import_react2.useRef)(null);
-  const idleTimerRef = (0, import_react2.useRef)(null);
-  const idleWarnTimerRef = (0, import_react2.useRef)(null);
-  const idleWarnActiveRef = (0, import_react2.useRef)(false);
-  const idleClearErrorRef = (0, import_react2.useRef)(null);
-  const runningRef = (0, import_react2.useRef)(false);
-  const mountedRef = (0, import_react2.useRef)(true);
-  const holdCtrlRef = (0, import_react2.useRef)(false);
-  const manualHoldRef = (0, import_react2.useRef)(false);
-  const breakRef = (0, import_react2.useRef)(null);
-  const pausedForHiddenRef = (0, import_react2.useRef)(false);
+  useLang();
+  const [local, setLocal] = (0, import_react3.useState)("off");
+  const localRef = (0, import_react3.useRef)("off");
+  const sidRef = (0, import_react3.useRef)(sessionId);
+  const engineRef = (0, import_react3.useRef)(null);
+  const actionsRef = (0, import_react3.useRef)(inputActions);
+  const submitTimerRef = (0, import_react3.useRef)(null);
+  const autoSendTimerRef = (0, import_react3.useRef)(null);
+  const idleTimerRef = (0, import_react3.useRef)(null);
+  const idleWarnTimerRef = (0, import_react3.useRef)(null);
+  const idleWarnActiveRef = (0, import_react3.useRef)(false);
+  const idleClearErrorRef = (0, import_react3.useRef)(null);
+  const runningRef = (0, import_react3.useRef)(false);
+  const mountedRef = (0, import_react3.useRef)(true);
+  const holdCtrlRef = (0, import_react3.useRef)(false);
+  const manualHoldRef = (0, import_react3.useRef)(false);
+  const breakRef = (0, import_react3.useRef)(null);
+  const pausedForHiddenRef = (0, import_react3.useRef)(false);
   const bootNow = () => bus.ui.boot ?? {
     basePath: "/voice-mode",
     silenceMs: 1500,
@@ -3754,8 +3980,8 @@ function MicButton({
     senseVoice: true
   };
   useVoiceCss();
-  const [, bumpUi] = (0, import_react2.useState)(0);
-  (0, import_react2.useEffect)(
+  const [, bumpUi] = (0, import_react3.useState)(0);
+  (0, import_react3.useEffect)(
     () => bus.subscribe(() => {
       bumpUi((t3) => t3 + 1);
     }),
@@ -3834,20 +4060,21 @@ function MicButton({
       idleTimerRef.current = null;
       const sid = sidRef.current;
       if (localRef.current === "on" && sid) {
+        const quitMsg = t("idleTimeoutQuit");
         bus.setUi({
-          error: bus.ui.error ?? t("idleTimeoutQuit")
+          error: bus.ui.error ?? quitMsg
         });
         const prevClearError = idleClearErrorRef.current;
         if (prevClearError) clearTimeout(prevClearError);
         idleClearErrorRef.current = setTimeout(() => {
           idleClearErrorRef.current = null;
-          if (bus.ui.error === t("idleTimeoutQuit")) bus.setUi({ error: null });
+          if (bus.ui.error === quitMsg) bus.setUi({ error: null });
         }, 3e3);
         void exitModeRef.current("idle");
       }
     }, idleMs);
   };
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     return bus.subscribe(() => {
       const sid = sidRef.current;
       if (localRef.current !== "on") return;
@@ -3960,7 +4187,7 @@ function MicButton({
         setLocalMode("off");
         if (!entered.preempted) {
           bus.setUi({
-            error: entered.error === "voice mode disabled" ? t("disabled") : entered.error ?? t("enterFail")
+            error: entered.error ?? t("enterFail")
           });
         }
         return;
@@ -4202,7 +4429,7 @@ function MicButton({
       if (sid2) void bus.exit(sid2);
     }
   };
-  const toggleGuardRef = (0, import_react2.useRef)(0);
+  const toggleGuardRef = (0, import_react3.useRef)(0);
   const toggle = () => {
     const now = Date.now();
     if (now - toggleGuardRef.current < 2e3) return;
@@ -4210,19 +4437,19 @@ function MicButton({
     if (localRef.current === "on") void exitModeRef.current("manual");
     else if (localRef.current === "off") void enterMode();
   };
-  const toggleRef = (0, import_react2.useRef)(toggle);
+  const toggleRef = (0, import_react3.useRef)(toggle);
   toggleRef.current = toggle;
-  const exitModeRef = (0, import_react2.useRef)(exitMode);
+  const exitModeRef = (0, import_react3.useRef)(exitMode);
   exitModeRef.current = exitMode;
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     actionsRef.current = inputActions;
   }, [inputActions]);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     sidRef.current = sessionId;
   }, [sessionId]);
-  const autoResumeTriedForRef = (0, import_react2.useRef)(null);
-  const autoResumeHintTimerRef = (0, import_react2.useRef)(null);
-  (0, import_react2.useEffect)(() => {
+  const autoResumeTriedForRef = (0, import_react3.useRef)(null);
+  const autoResumeHintTimerRef = (0, import_react3.useRef)(null);
+  (0, import_react3.useEffect)(() => {
     const sid = sessionId;
     if (!sid || sid === autoResumeTriedForRef.current) return;
     autoResumeTriedForRef.current = sid;
@@ -4249,10 +4476,10 @@ function MicButton({
     })();
   }, [sessionId]);
   const runningSel = useSession ? useSession((s) => s === void 0 ? void 0 : s.running) : void 0;
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     runningRef.current = runningSel === true;
   }, [runningSel]);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
@@ -4277,7 +4504,7 @@ function MicButton({
       }
     };
   }, []);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     let ctrlTimer = null;
     let ctrlHoldStart = 0;
     let otherKeyDuringCtrl = false;
@@ -4362,7 +4589,7 @@ function MicButton({
       cancelCtrl();
     };
   }, []);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     const onInput = (e) => {
       const t3 = e.target;
       if (!(t3 instanceof HTMLTextAreaElement)) return;
@@ -4372,7 +4599,7 @@ function MicButton({
     window.addEventListener("input", onInput, true);
     return () => window.removeEventListener("input", onInput, true);
   }, []);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     const onKeyDown = (e) => {
       if (e.key !== "Escape") return;
       if (localRef.current !== "on" || bootNow().mode !== "hold") return;
@@ -4406,7 +4633,7 @@ function MicButton({
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [bus]);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     return bus.subscribe(() => {
       const sid = sidRef.current;
       if (localRef.current === "pending" || localRef.current === "on") {
@@ -4422,24 +4649,24 @@ function MicButton({
   const busy = bus.ui.state === "transcribing" || bus.ui.state === "loading-model";
   const holdMode = bootNow().mode === "hold";
   const liveDraft = useInput ? useInput((s) => s?.draft ?? "") : "";
-  const draftRef = (0, import_react2.useRef)("");
+  const draftRef = (0, import_react3.useRef)("");
   draftRef.current = liveDraft;
   const livePhase = useInput ? useInput((s) => s?.phase ?? "") : "";
-  const phaseRef = (0, import_react2.useRef)("");
+  const phaseRef = (0, import_react3.useRef)("");
   phaseRef.current = livePhase;
-  const [holding, setHolding] = (0, import_react2.useState)(false);
+  const [holding, setHolding] = (0, import_react3.useState)(false);
   const label = on ? busy ? t("recognizing") : holdMode ? holding ? t("releaseToSend") : t("holdToTalk") : bus.ui.state === "wake" ? t("sayWake").replace("{wake}", bus.ui.wakeWord || t("wakeWord")) : t("voiceDetected") : local === "pending" ? t("entering") : t("voiceBtn");
-  const holdPtrRef = (0, import_react2.useRef)(null);
-  const toggleHoldRef = (0, import_react2.useRef)(false);
-  const suppressClickUntilRef = (0, import_react2.useRef)(0);
-  const breakTimerRef = (0, import_react2.useRef)(null);
+  const holdPtrRef = (0, import_react3.useRef)(null);
+  const toggleHoldRef = (0, import_react3.useRef)(false);
+  const suppressClickUntilRef = (0, import_react3.useRef)(0);
+  const breakTimerRef = (0, import_react3.useRef)(null);
   const clearBreakTimer = () => {
     if (breakTimerRef.current !== null) {
       clearTimeout(breakTimerRef.current);
       breakTimerRef.current = null;
     }
   };
-  const selectGuardRef = (0, import_react2.useRef)(null);
+  const selectGuardRef = (0, import_react3.useRef)(null);
   const unlockSelection = () => {
     const off = selectGuardRef.current;
     if (!off) return;
@@ -4472,9 +4699,9 @@ function MicButton({
       window.removeEventListener("pointercancel", release, true);
     };
   };
-  (0, import_react2.useEffect)(() => unlockSelection, []);
-  const btnRef = (0, import_react2.useRef)(null);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => unlockSelection, []);
+  const btnRef = (0, import_react3.useRef)(null);
+  (0, import_react3.useEffect)(() => {
     const el = btnRef.current;
     if (!el) return;
     const onTouchStart = (ev) => {
@@ -4631,12 +4858,13 @@ function MicButton({
   );
 }
 function VoiceStatusBar({ bus, sessionId }) {
-  const [b, setB] = (0, import_react2.useState)(() => ({ active: bus.activeSessionId, ui: bus.ui }));
-  const [elapsedSec, setElapsedSec] = (0, import_react2.useState)(0);
-  (0, import_react2.useEffect)(() => {
+  useLang();
+  const [b, setB] = (0, import_react3.useState)(() => ({ active: bus.activeSessionId, ui: bus.ui }));
+  const [elapsedSec, setElapsedSec] = (0, import_react3.useState)(0);
+  (0, import_react3.useEffect)(() => {
     return bus.subscribe(setB);
   }, [bus]);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     if (b.active !== sessionId) {
       setElapsedSec(0);
       return;
@@ -4820,8 +5048,9 @@ function VoiceStatusBar({ bus, sessionId }) {
   );
 }
 function VoiceOverlay({ bus }) {
-  const [b, setB] = (0, import_react2.useState)(() => ({ active: bus.activeSessionId, ui: bus.ui }));
-  (0, import_react2.useEffect)(() => {
+  useLang();
+  const [b, setB] = (0, import_react3.useState)(() => ({ active: bus.activeSessionId, ui: bus.ui }));
+  (0, import_react3.useEffect)(() => {
     return bus.subscribe(setB);
   }, [bus]);
   if (!b.ui.playing) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});

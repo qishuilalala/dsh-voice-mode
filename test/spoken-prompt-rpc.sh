@@ -79,9 +79,12 @@ fi
 echo "SID=$SID"
 
 # 2. 进入语音模式（toggle 走插件 HTTP 面，不走 rpc()）
+# VOICE_LANG=en|zh：模拟客户端上报的界面语言（决定口语化提示词版本）；不设 = 旧客户端行为（默认中文版）。
+LANG_FIELD=""
+[ -n "${VOICE_LANG:-}" ] && LANG_FIELD=",\"lang\":\"$VOICE_LANG\""
 TOG=$(curl -s -b "$COOKIE_FILE" --max-time 10 -X POST "$BASE/voice-mode/toggle" \
   -H 'content-type: application/json' \
-  -d "{\"sessionId\":\"$SID\",\"on\":true}")
+  -d "{\"sessionId\":\"$SID\",\"on\":true$LANG_FIELD}")
 echo "TOGGLE: $TOG"
 
 # 3. SSE 音频收集（后台）
@@ -119,15 +122,20 @@ grep '^event: audio' /tmp/vm-sse.log | head -8
 # 会话 system 校验
 # 会话落盘目录名由 cwd 编码而来（去掉前导 / 后把 / 换成 -，再首尾各包 --）
 SESSION_SLUG="--$(printf '%s' "${REPO_ROOT#/}" | sed 's|/|-|g')--"
-SF="$DSH_HOME/sessions/$SESSION_SLUG/$SID/session.jsonl.zstd"
-if [ -f "$SF" ]; then
+SF=""
+for cand in "$DSH_HOME/sessions/$SESSION_SLUG/$SID/session.v4.jsonl.zstd" "$DSH_HOME/sessions/$SESSION_SLUG/$SID/session.jsonl.zstd"; do
+  [ -f "$cand" ] && SF="$cand" && break
+done
+if [ -n "$SF" ]; then
   zstd -dc "$SF" 2>/dev/null | python3 -c "
 import json,sys
 for ln in sys.stdin:
     o = json.loads(ln)
     if o.get('type') == 'request/header':
-        s = o.get('data',{}).get('header',{}).get('system','')
-        print('system 长度:', len(s), '含语音提示词:', '【语音模式】' in s)
+        s = json.dumps(o.get('data',{}), ensure_ascii=False)
+        zh = '【语音模式】' in s
+        en = '[Voice mode]' in s
+        print('system 长度:', len(s), '含语音提示词:', zh or en, '| 版本:', 'zh' if zh else ('en' if en else '无'))
         break
 "
   zstd -dc "$SF" 2>/dev/null | python3 -c "

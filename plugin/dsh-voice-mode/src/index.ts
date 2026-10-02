@@ -31,6 +31,9 @@ import { EdgeTtsEngine, TtsQueue, listEdgeVoices, type TtsEngine } from './tts-q
 import { createSherpaVitsEngine, createSherpaKokoroEngine, TTS_MODEL_REPO, kokoroModelDir, type KokoroModel } from './tts-local.ts'
 import { HOST_PRIMARY, validateModelHost } from './models.ts'
 import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts'
+import type { HostErrorCode } from './errors.ts'
+import { en } from './strings.ts'
+import { normalizePromptLang, previewSample, spokenPrompt, type PromptLang } from './prompts.ts'
 import { pickKnownKeys, readLegacyVoiceSettings, readOverrides, settingsFilePath, unknownKeys, writeOverrides } from './settings-store.ts'
 
 export const name = 'voice-mode'
@@ -73,11 +76,12 @@ function classifyPreviewError(msg: string): PreviewErrorCategory {
   return 'unknown'
 }
 
-const PREVIEW_ERROR_MESSAGES: Record<PreviewErrorCategory, string> = {
-  network: '试听失败：网络不可达（Edge 云端需访问微软语音服务），请检查网络或代理',
-  engine: '试听失败：引擎未就绪（本地模型下载中、初始化失败或子进程异常），请稍后再试或在设置面板查看 TTS 状态',
-  text: '试听失败：合成引擎产出空音频（音色与语种可能不匹配），请更换音色或检查语言设置',
-  unknown: '试听失败：请检查网络、音色名（ShortName）或本地 TTS 模型状态',
+/** 试听失败分类 → 稳定错误码（用户可见文案由客户端按界面语言翻译，host 不发中文）。 */
+const PREVIEW_ERROR_CODES: Record<PreviewErrorCategory, HostErrorCode> = {
+  network: 'preview_network',
+  engine: 'preview_engine',
+  text: 'preview_text',
+  unknown: 'preview_unknown',
 }
 
 /**
@@ -100,14 +104,6 @@ const respondJson = (res: ServerResponse, status: number, payload: unknown): voi
  * 的剥离互补：剥离只管朗读文本，提示词让模型不输出书面结构，TTS 逐句听感更顺、
  * 字幕更自然。
  */
-const VOICE_SPOKEN_PROMPT =
-  '【语音模式】当前回复会被语音朗读，请始终用用户所用语言、以口语化的短句直接回答，像面对面聊天一样自然，避免书面语和长难句。' +
-  '不要使用任何 Markdown 或排版符号（星号、下划线、反引号、井号、列表与表格标记、代码块等）。' +
-  '需要分点说明时用「第一、第二」或连贯的短句表达；除非用户明确要求，不要输出代码片段、完整 URL 或冗长定义，用一两句话概括含义即可。' +
-  '回答简洁直接，不要重复和寒暄。' +
-  // 批 5 / ADR-0008 Phase 1 让位 prompt（#2）：补齐 YIELDING 段——与现有 4 句同风格。
-  // 与 onBackchannel 客户端行为配合：朗读期用户说「嗯/对」客户端会自动让位；提示词教模型被让位后留停顿、不连问。
-  '如果用户在你朗读时插话（哪怕只是「嗯/对」这样的短应答），立即停止当前句，把话轮让给用户；回答后留出停顿，不要连问两个问题；用户沉默时不要主动找新话题。'
 
 /** 提示词 section 的稳定名称（注册层按 order 排序；瀑布里 push 即追加到组装结果末尾）。 */
 const VOICE_SPOKEN_SECTION = 'voice-mode:spoken-format'
@@ -224,6 +220,36 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   yieldMs: 1500,
 }
 
+/**
+ * schema 字段说明：取自词典英文版（单一来源，不再在此处另抄一份中文）。schema 属于机器可读面（settings.describe /
+ * 配置文档），以英文为国际默认；面向用户的字段说明由客户端设置卡片按界面语言经词典给出。
+ */
+const DESC = {
+  ttsEngine: en.descTtsEngine,
+  kokoroModel: en.descKokoroModel,
+  voice: en.descVoice,
+  rate: en.descRate,
+  interruptLevel: en.descInterrupt,
+  silenceMs: en.descSilence,
+  idleTimeoutMinutes: en.descIdle,
+  modelHost: en.descModelHost,
+  autoSend: en.descAutoSend,
+  autoResume: en.descAutoResume,
+  mode: en.descMode,
+  bargeInMode: en.descBargeIn,
+  echoGateDb: en.descEchoGate,
+  shortcut: en.descShortcut,
+  spokenFormat: en.descSpokenFormat,
+  senseVoice: en.descSenseVoice,
+  wakeWord: en.descWakeWord,
+  toolBeep: en.descToolBeep,
+  senseITN: en.descSenseITN,
+  captionFontSize: en.descCaptionFontSize,
+  captionMaxWidth: en.descCaptionMaxWidth,
+  backchannelYield: en.descBackchannelYield,
+  yieldMs: en.descYieldMs,
+} as const
+
 /** 以平台常量默认构造设置 schema。 */
 export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z<VoiceSettingsValue> {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs }
@@ -232,87 +258,87 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .union([z.const('vits'), z.const('kokoro'), z.const('edge')])
       .default(d.ttsEngine)
       .description(
-        '朗读引擎：edge 微软云端（默认，快、音质自然，被朗读文本会发送到微软）/ vits 本地中文 / kokoro 本地中英（回复文本不出本机）；切换即时生效',
+        DESC.ttsEngine,
       ),
     kokoroModel: z
       .union([z.const('int8'), z.const('fp32')])
       .default(d.kokoroModel)
       .description(
-        'Kokoro 模型精度：int8（默认，体积小/加载快，CPU 友好）/ fp32（音质更好、体积大，GPU 或大内存机器推荐）；两档共用同一套 103 音色，切换即时生效',
+        DESC.kokoroModel,
       ),
     voice: z
       .string()
       .default(d.voice)
       .description(
-        '朗读音色（按 ttsEngine 取值：vits 用说话人名 suyingxue/gunian/fushiyu/bingjiao/bazong；kokoro 用 0-102 编号或中文名 zf_xiaobei/zf_xiaoni/zf_xiaoxiao/zf_xiaoyi；edge 用 Edge ShortName 如 zh-CN-XiaoxiaoNeural 晓晓·女，完整清单见 scripts/list-voices.mjs）',
+        DESC.voice,
       ),
-    rate: z.number().min(0.5).max(2).default(d.rate).description('朗读语速倍率（0.5 = 慢速，2.0 = 快速，1.1 = 默认；让回复更紧凑）'),
+    rate: z.number().min(0.5).max(2).default(d.rate).description(DESC.rate),
     interruptLevel: z
       .union([z.const(0), z.const(1), z.const(2)])
       .default(d.interruptLevel)
       .description(
-        '发声打断灵敏度：0 = 高门槛（≈300ms 确认，最稳，默认；quiet 推荐）/ 1 = 中门槛（≈200ms）/ 2 = 低门槛（≈100ms，最灵敏；嘈杂环境）；值越低门槛越高，越难打断',
+        DESC.interruptLevel,
       ),
-    silenceMs: z.number().min(500).max(30000).default(d.silenceMs).description('说完整一句的静音停顿毫秒数（默认 1500 毫秒，给思考停顿留空间；至少 250ms 语音才判句，防短促噪声误触发）'),
-    idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description('无活动自动退出语音模式的分钟数（默认 5；批 G 任务 2 已加 30s 倒数预警）'),
-    modelHost: z.string().default(d.modelHost).description('ASR 模型下载源（留空用默认源；国内网络可填 https://hf-mirror.com）'),
-    autoSend: z.boolean().default(d.autoSend).description('静音到点自动发送（连续多段拼成一条消息；关闭则只进草稿供编辑；按住 Ctrl / hold 松手仍会发送）'),
+    silenceMs: z.number().min(500).max(30000).default(d.silenceMs).description(DESC.silenceMs),
+    idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description(DESC.idleTimeoutMinutes),
+    modelHost: z.string().default(d.modelHost).description(DESC.modelHost),
+    autoSend: z.boolean().default(d.autoSend).description(DESC.autoSend),
     // 批 7N 重做 5/5：与 strings.ts descAutoResume 同步——明确「下次进入语音会话即生效」。
-    autoResume: z.boolean().default(d.autoResume).description('切换回上次语音会话时自动恢复语音模式（默认关；开启后下次进入语音会话即生效——自动进入语音模式 + 恢复上次会话；关闭则需手动按 Ctrl+Shift+V 重新进入）'),
+    autoResume: z.boolean().default(d.autoResume).description(DESC.autoResume),
     mode: z
       .union([z.const('toggle'), z.const('hold')])
       .default(d.mode)
-      .description('交互模式：toggle 持续聆听 + 静音自动断句（默认）；hold 按住说话、松手发送（短按退出）'),
+      .description(DESC.mode),
     bargeInMode: z
       .union([z.const('auto'), z.const('manual'), z.const('detect')])
       .default(d.bargeInMode)
-      .description('打断方式：detect 自动探测本机原生回声消除状态（默认，未生效时切为长按打断）；auto 强制自动打断（开口即打断，耳机/安静环境推荐）；manual 手动打断（外放推荐——按住麦克风/Ctrl 显式打断，永不自打断）'),
+      .description(DESC.bargeInMode),
     echoGateDb: z
       .number()
       .min(3)
       .max(12)
       .default(d.echoGateDb)
       .description(
-        '回声门控阈值（dB，默认 6）：自动打断要求残差高于回声地板此值。当前 ASR 模型默认原生 AEC 生效时此门控闲置；Safari / 耳机等无原生 AEC 环境会兜底生效。外放仍误打断调大（8~10），太难打断调小（3~4）',
+        DESC.echoGateDb,
       ),
     shortcut: z
       .string()
       .default(d.shortcut)
-      .description('进入/退出语音模式的快捷键（形如 Ctrl+Shift+V，修饰键 Ctrl/Shift/Alt/Meta + 一个字母键；留空禁用快捷键，用麦克风按钮）'),
+      .description(DESC.shortcut),
     spokenFormat: z
       .boolean()
       .default(d.spokenFormat)
-      .description('语音会话注入口语化提示词（口语化短句、不用 Markdown 排版符号，朗读更顺更快；默认开，改动即时生效）'),
+      .description(DESC.spokenFormat),
     senseVoice: z
       .boolean()
       .default(d.senseVoice)
-      .description('定稿用 SenseVoice 重译（带标点+数字归一化、识别更准；默认开。关闭可省 228MB 模型，只走流式识别）'),
-    wakeWord: z.string().default(d.wakeWord).description('唤醒词：在待机态说出后开始识别（默认关；如「你好小D」）。可与命令连说——词头自动剥掉不进消息；每句断句/打断后需重说；仅 toggle 模式生效（hold/手动打断下不生效）；朗读期说唤醒词不触发（打断按 VAD）；匹配带容错（同音字/前导语气词），建议 3-4 字；非专用 KWS 引擎，嘈杂环境可能延迟或误激活'),
+      .description(DESC.senseVoice),
+    wakeWord: z.string().default(d.wakeWord).description(DESC.wakeWord),
     toolBeep: z
       .boolean()
       .default(d.toolBeep)
-      .description('工具调用提示音（默认关）：开启后 AI 调用工具时"滴"一声，关闭则全程静默'),
+      .description(DESC.toolBeep),
     senseITN: z
       .boolean()
       .default(d.senseITN)
-      .description('SenseVoice 逆文本归一化（数字/日期规范化，默认开；关闭后输出更接近口语原文）'),
+      .description(DESC.senseITN),
     captionFontSize: z
       .union([z.const(0), z.const(1), z.const(2), z.const(3)])
       .default(d.captionFontSize)
       .description(
-        '字幕字号档位（0=12px/1=14px/2=18px/3=24px；默认 0 与现状字节等价；切换即时生效）',
+        DESC.captionFontSize,
       ),
     captionMaxWidth: z
       .union([z.const(0), z.const(1), z.const(2)])
       .default(d.captionMaxWidth)
       .description(
-        '字幕宽度档位（0=50vw/1=70vw/2=90vw；默认 1；视口 <686px 时窄于现状 480px、≈686px 时接近、>686px 时宽于 480px；切换即时生效）',
+        DESC.captionMaxWidth,
       ),
     backchannelYield: z
       .boolean()
       .default(d.backchannelYield)
       .description(
-        '让位语义（批 5 / ADR-0008 Phase 1，默认开）：朗读期用户说「嗯/对」等短应答时，自动跳过当前 TTS 句并短暂让位 1.5s——1.5s 内用户真要说则走原 hardBreak 取消回合；关 = 不让位，行为等同改造前',
+        DESC.backchannelYield,
       ),
     yieldMs: z
       .number()
@@ -320,7 +346,7 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .max(3000)
       .default(d.yieldMs)
       .description(
-        '让位窗口时长（ms，500-3000，默认 1500）：backchannel 命中后 TTS 丢帧持续时间。窗口内用户真要说则原 hardBreak 接管；窗口到点自动恢复播放。',
+        DESC.yieldMs,
       ),
   })
 }
@@ -461,6 +487,8 @@ export function apply(ctx: Context, config: Config): void {
   let activeVoiceSession: string | null = null
   /** B2：owner tab 标识 + 存活探活（关 tab 后自动让出，防 activeVoiceSession 悬挂）。 */
   let activeTabId: string | null = null
+  /** 活跃语音会话的界面语言（决定口语化提示词版本；由客户端 /toggle 上报，缺省中文以兼容旧客户端）。 */
+  let activeVoiceLang: PromptLang = 'zh'
   let ownerYieldTimer: ReturnType<typeof setTimeout> | null = null
 
   // --- P2-4 显式回合状态机（host 真相源）：idle | listening | finalizing | agent-speaking。 ---
@@ -496,7 +524,7 @@ export function apply(ctx: Context, config: Config): void {
     if (!config.allowLan && !isLoopbackRequest(req)) {
       res.statusCode = 403
       res.setHeader('content-type', 'application/json')
-      res.end(JSON.stringify({ error: 'loopback only (allowLan=false)' }))
+      res.end(JSON.stringify({ code: 'forbidden', error: 'loopback only (allowLan=false)' }))
       return true
     }
     return false
@@ -505,7 +533,7 @@ export function apply(ctx: Context, config: Config): void {
     if (!sameOriginRequest(req)) {
       res.statusCode = 403
       res.setHeader('content-type', 'application/json')
-      res.end(JSON.stringify({ error: 'cross-origin request denied' }))
+      res.end(JSON.stringify({ code: 'forbidden', error: 'cross-origin request denied' }))
       return true
     }
     return false
@@ -581,7 +609,7 @@ export function apply(ctx: Context, config: Config): void {
   } else {
     // 路径 B 用户设置：Config 基线 ⊕ 覆盖层文件（settings-store.ts 文件头说明为何不走官方存储）。
     const loaded = readOverrides(settingsFile, SETTING_KEYS)
-    if (loaded.warn) console.warn(`[dsh-voice-mode] 忽略设置覆盖层 ${settingsFile}：${loaded.warn}`)
+    if (loaded.warn) console.warn(`[dsh-voice-mode] ignoring settings overlay ${settingsFile}: ${loaded.warn}`)
     // 首次运行（覆盖层文件尚不存在）：从 dsh ≤0.1.6 留下的 settings.yaml(.imported) 的 voice-mode 段迁移一次，
     // 落盘后即以覆盖层为准（要恢复默认请把文件内容改成 {}，勿删除，否则会再次迁移）。
     let migrated = false
@@ -599,7 +627,7 @@ export function apply(ctx: Context, config: Config): void {
         resolveSettings({ [k]: v })
         valid[k] = v
       } catch (e) {
-        console.warn(`[dsh-voice-mode] 忽略非法的设置覆盖 ${k}（回落 Config 基线）：${String(e).slice(0, 160)}`)
+        console.warn(`[dsh-voice-mode] ignoring invalid settings override "${k}" (falling back to the Config baseline): ${String(e).slice(0, 160)}`)
       }
     }
     try {
@@ -608,13 +636,13 @@ export function apply(ctx: Context, config: Config): void {
       if (migrated) {
         try {
           writeOverrides(settingsFile, valid)
-          console.log(`[dsh-voice-mode] 已从旧 settings.yaml 迁移 ${Object.keys(valid).length} 项设置到 ${settingsFile}`)
+          console.log(`[dsh-voice-mode] migrated ${Object.keys(valid).length} setting(s) from the legacy settings.yaml to ${settingsFile}`)
         } catch (e) {
-          console.warn(`[dsh-voice-mode] 旧设置迁移落盘失败（本次运行仍生效）：${String(e)}`)
+          console.warn(`[dsh-voice-mode] legacy settings migration could not be saved (still in effect for this run): ${String(e)}`)
         }
       }
     } catch (e) {
-      console.warn(`[dsh-voice-mode] 设置覆盖层整体校验失败，回退 Config 基线：${String(e)}`)
+      console.warn(`[dsh-voice-mode] settings overlay failed validation as a whole; falling back to the Config baseline: ${String(e)}`)
       vset = voiceSettingsFromConfig(config)
     }
   }
@@ -761,7 +789,7 @@ export function apply(ctx: Context, config: Config): void {
     if (!config.enabled || !vset.spokenFormat) return next()
     const agentId = context.agent?.id
     if (agentId !== undefined && agentId === activeVoiceSession) {
-      assembly.sections.push({ name: VOICE_SPOKEN_SECTION, text: VOICE_SPOKEN_PROMPT })
+      assembly.sections.push({ name: VOICE_SPOKEN_SECTION, text: spokenPrompt(activeVoiceLang) })
     }
     return next()
   })
@@ -858,12 +886,12 @@ export function apply(ctx: Context, config: Config): void {
         if (!limiter.hit(`preview:${req.socket.remoteAddress ?? 'unknown'}`, 20, 60000)) {
           res.statusCode = 429
           res.setHeader('content-type', 'application/json')
-          res.end(JSON.stringify({ error: 'rate limited' }))
+          res.end(JSON.stringify({ code: 'rate_limited', error: 'rate limited' }))
           return
         }
         // 总开关一致语义（同 /toggle 403）：关闭时试听也不发起合成调用。
         if (!config.enabled) {
-          respondJson(res, 403, { error: 'voice mode disabled' })
+          respondJson(res, 403, { code: 'voice_disabled', error: 'voice mode disabled' })
           return
         }
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
@@ -880,21 +908,15 @@ export function apply(ctx: Context, config: Config): void {
           }
           // 音色名上限：拦截畸形长串（MAX_JSON_BODY 内的兜底）；合法 ShortName 均远短于此。
           if (voice.length > 128) {
-            respondJson(res, 400, { error: 'voice too long' })
+            respondJson(res, 400, { code: 'bad_request', error: 'voice too long' })
             return
           }
           if (!voice) {
-            respondJson(res, 400, { error: 'voice required' })
+            respondJson(res, 400, { code: 'bad_request', error: 'voice required' })
             return
           }
-          // 试听例句：kokoro 中英都能读 → 混例句；VITS 只支持中文 → 中文句；
-          // Edge 按音色区域选（英文音色读中文会产出空音频）。
-          const sample =
-            currentEngine() === 'kokoro'
-              ? '你好，欢迎使用语音模式。Hello, welcome to voice mode.'
-              : currentEngine() === 'vits' || voice.startsWith('zh-')
-                ? '你好，欢迎使用语音模式。'
-                : 'Hello, welcome to voice mode.'
+          // 试听例句由音色语种决定（prompts.ts previewSample）。
+          const sample = previewSample(currentEngine(), voice)
           let buf: Buffer
           try {
             buf = await queue.synthesize(sample, { voice, rate })
@@ -911,7 +933,7 @@ export function apply(ctx: Context, config: Config): void {
             )
             // UI 端只暴露归类提示——不传 errMsg / 引擎 ready / sample 长度等诊断细节
             // （防止 errMsg 泄露模型路径 / 内部错误堆栈 / 第三方 SDK 字面量）。
-            respondJson(res, 502, { error: PREVIEW_ERROR_MESSAGES[category] })
+            respondJson(res, 502, { code: PREVIEW_ERROR_CODES[category], error: `preview failed (${category})` })
             return
           }
           res.writeHead(200, { 'content-type': queue.mime, 'cache-control': 'no-store' })
@@ -932,8 +954,10 @@ export function apply(ctx: Context, config: Config): void {
           let sessionId: string | undefined
           let on: boolean | undefined
           let tabId: string | undefined
+          let langRaw: unknown
           try {
-            const parsed = JSON.parse(body || '{}') as { sessionId?: string; on?: boolean; tabId?: string }
+            const parsed = JSON.parse(body || '{}') as { sessionId?: string; on?: boolean; tabId?: string; lang?: unknown }
+            langRaw = parsed.lang
             sessionId = parsed.sessionId
             on = parsed.on
             tabId = typeof parsed.tabId === 'string' && parsed.tabId.length <= 64 ? parsed.tabId : undefined
@@ -941,12 +965,12 @@ export function apply(ctx: Context, config: Config): void {
             // ignore malformed body
           }
           if (!sessionId) {
-            respondJson(res, 400, { error: 'sessionId required' })
+            respondJson(res, 400, { code: 'bad_request', error: 'sessionId required' })
             return
           }
           // strict: on 非布尔显式 400，防误落退出分支
           if (on !== undefined && typeof on !== 'boolean') {
-            respondJson(res, 400, { error: 'invalid on' })
+            respondJson(res, 400, { code: 'bad_request', error: 'invalid on' })
             return
           }
           // fork 加固：切换限流（每会话 2 次/2 秒——允许「进+退」这类正常快速操作对；
@@ -954,18 +978,18 @@ export function apply(ctx: Context, config: Config): void {
           if (!limiter.hit(`toggle:${sessionId}`, 2, 2000)) {
             res.statusCode = 429
             res.setHeader('content-type', 'application/json')
-            res.end(JSON.stringify({ error: 'rate limited' }))
+            res.end(JSON.stringify({ code: 'rate_limited', error: 'rate limited' }))
             return
           }
           if (on === true) {
             // 总开关关闭时拒绝进入（enabled=false 的诚实语义：整功能关停）。
             if (!config.enabled) {
-              respondJson(res, 403, { error: 'voice mode disabled' })
+              respondJson(res, 403, { code: 'voice_disabled', error: 'voice mode disabled' })
               return
             }
             // fork 加固：会话存在性校验（第 0 层）——只接受真实存在的会话。
             if (sessions && !sessions.get(sessionId)) {
-              respondJson(res, 403, { error: 'unknown session' })
+              respondJson(res, 403, { code: 'unknown_session', error: 'unknown session' })
               return
             }
             // 批 E：SenseVoice 预热前置 enterMode（5s 上限）——让用户进 voice mode 时
@@ -983,6 +1007,7 @@ export function apply(ctx: Context, config: Config): void {
             // 撞上 client 残留拒绝线导致新句全被拒（静音）。
             const previous = activeVoiceSession
             activeVoiceSession = sessionId
+            activeVoiceLang = normalizePromptLang(langRaw)
             // B2：记录 owner tab；新 tab 进入即接管探活归属。
             activeTabId = tabId ?? null
             if (ownerYieldTimer) {
@@ -1044,7 +1069,7 @@ export function apply(ctx: Context, config: Config): void {
         if (denyNonLoopback(req, res)) return
         // 镜像切换/下载失败后手动重试（设置面板按钮）。禁用态不得触发 ~388MB 下载。
         if (!config.enabled) {
-          respondJson(res, 403, { error: 'voice mode disabled' })
+          respondJson(res, 403, { code: 'voice_disabled', error: 'voice mode disabled' })
           return
         }
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -1056,11 +1081,11 @@ export function apply(ctx: Context, config: Config): void {
             } else if (p.kind === 'vad' || p.kind === 'sense' || p.kind === 'asr') {
               kind = p.kind
             } else {
-              respondJson(res, 400, { error: 'invalid kind' })
+              respondJson(res, 400, { code: 'bad_request', error: 'invalid kind' })
               return
             }
           } catch {
-            respondJson(res, 400, { error: 'invalid json' })
+            respondJson(res, 400, { code: 'bad_request', error: 'invalid json' })
             return
           }
           void asr.retryModel(kind).then((done) => {
@@ -1079,7 +1104,7 @@ export function apply(ctx: Context, config: Config): void {
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
         if (!config.enabled) {
-          respondJson(res, 403, { error: 'voice mode disabled' })
+          respondJson(res, 403, { code: 'voice_disabled', error: 'voice mode disabled' })
           return
         }
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -1089,11 +1114,11 @@ export function apply(ctx: Context, config: Config): void {
             const p = JSON.parse(body || '{}') as { engine?: unknown }
             if (p.engine === 'kokoro' || p.engine === 'vits') engine = p.engine
             else {
-              respondJson(res, 400, { error: 'invalid engine' })
+              respondJson(res, 400, { code: 'bad_request', error: 'invalid engine' })
               return
             }
           } catch {
-            respondJson(res, 400, { error: 'invalid json' })
+            respondJson(res, 400, { code: 'bad_request', error: 'invalid json' })
             return
           }
           const dir = join(config.cacheDir, engine === 'kokoro' ? kokoroModelDir(vset.kokoroModel) : TTS_MODEL_REPO)
@@ -1106,7 +1131,10 @@ export function apply(ctx: Context, config: Config): void {
               }
               respondJson(res, 200, { ok: true, engine })
             })
-            .catch((e) => respondJson(res, 500, { error: String(e) }))
+            .catch((e) => {
+              console.warn(`[dsh-voice-mode] models/download failed: ${String(e)}`)
+              respondJson(res, 500, { code: 'internal', error: 'internal error' })
+            })
         })
       },
     }),
@@ -1120,7 +1148,7 @@ export function apply(ctx: Context, config: Config): void {
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
         if (!config.enabled) {
-          respondJson(res, 403, { error: 'voice mode disabled' })
+          respondJson(res, 403, { code: 'voice_disabled', error: 'voice mode disabled' })
           return
         }
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -1129,16 +1157,16 @@ export function apply(ctx: Context, config: Config): void {
             const p = JSON.parse(body || '{}') as { engine?: unknown }
             if (p.engine === 'kokoro' || p.engine === 'vits') engine = p.engine
             else {
-              respondJson(res, 400, { error: 'invalid engine' })
+              respondJson(res, 400, { code: 'bad_request', error: 'invalid engine' })
               return
             }
           } catch {
-            respondJson(res, 400, { error: 'invalid json' })
+            respondJson(res, 400, { code: 'bad_request', error: 'invalid json' })
             return
           }
           // 仅当前生效的本地引擎可在此触发下载（设置面板「下载」按钮只在本地引擎下出现）。
           if (engineKind !== engine) {
-            respondJson(res, 400, { error: 'engine not active' })
+            respondJson(res, 400, { code: 'engine_not_active', error: 'engine not active' })
             return
           }
           void queue
@@ -1146,7 +1174,7 @@ export function apply(ctx: Context, config: Config): void {
             .then(() => respondJson(res, 200, { ok: true, engine }))
             .catch((e) => {
               console.warn(`[dsh-voice-mode] model download failed: ${String(e)}`)
-              respondJson(res, 502, { error: '模型下载失败：请检查网络' })
+              respondJson(res, 502, { code: 'model_download_failed', error: 'model download failed' })
             })
         })
       },
@@ -1165,7 +1193,8 @@ export function apply(ctx: Context, config: Config): void {
           const voices = await listEdgeVoices()
           respondJson(res, 200, { voices })
         } catch (e) {
-          respondJson(res, 502, { error: String(e) })
+          console.warn(`[dsh-voice-mode] listing Edge voices failed: ${String(e)}`)
+          respondJson(res, 502, { code: 'internal', error: 'voice list unavailable' })
         }
       },
     }),
@@ -1187,7 +1216,7 @@ export function apply(ctx: Context, config: Config): void {
         // fork 加固：ASR 限流（每会话 60 次/秒）——识别是 WASM 推理、代价高，
         // 防本地恶意进程用活跃会话 id 打爆 CPU（回环层之外的第二道防滥用）。
         if (!limiter.hit(`asr:${sid || 'unknown'}`, 60, 1000)) {
-          respondJson(res, 429, { error: 'rate limited' })
+          respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
           return
         }
         // P2-4：回合状态机 —— partial 到达 = listening；final=1 = finalizing。
@@ -1224,7 +1253,7 @@ export function apply(ctx: Context, config: Config): void {
           if (sessionId && sessionId === activeVoiceSession) {
             // fork 加固：打断限流（每会话 2 次/秒）。
             if (!limiter.hit(`cancel:${sessionId}`, 2, 1000)) {
-              respondJson(res, 429, { error: 'rate limited' })
+              respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
               return
             }
             // 停 TTS（epoch++，积压与在途全弃）；hold 打断带 keepAsr=1 时保留在途
@@ -1258,7 +1287,7 @@ export function apply(ctx: Context, config: Config): void {
         }
         if (denyCrossOrigin(req, res)) return
         if (settingsScopeRef) {
-          respondJson(res, 409, { error: 'settings are managed by dsh on this host' })
+          respondJson(res, 409, { code: 'settings_managed', error: 'settings are managed by dsh on this host' })
           return
         }
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
@@ -1266,16 +1295,16 @@ export function apply(ctx: Context, config: Config): void {
           try {
             patch = JSON.parse(body || '{}')
           } catch {
-            respondJson(res, 400, { error: 'invalid JSON' })
+            respondJson(res, 400, { code: 'bad_request', error: 'invalid JSON' })
             return
           }
           if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) {
-            respondJson(res, 400, { error: 'body must be a JSON object' })
+            respondJson(res, 400, { code: 'bad_request', error: 'body must be a JSON object' })
             return
           }
           const unknown = unknownKeys(patch, SETTING_KEYS)
           if (unknown.length > 0) {
-            respondJson(res, 400, { error: `unknown settings: ${unknown.slice(0, 5).join(', ')}` })
+            respondJson(res, 400, { code: 'bad_request', error: `unknown settings: ${unknown.slice(0, 5).join(', ')}` })
             return
           }
           try {
@@ -1286,6 +1315,7 @@ export function apply(ctx: Context, config: Config): void {
             const isValidation = e instanceof Error && e.name === 'ValidationError'
             console.warn(`[dsh-voice-mode] settings update failed: ${String(e)}`)
             respondJson(res, isValidation ? 400 : 500, {
+              code: isValidation ? 'bad_request' : 'internal',
               error: isValidation ? `invalid value: ${(e as Error).message.slice(0, 200)}` : 'settings update failed',
             })
           }
@@ -1312,7 +1342,7 @@ export function apply(ctx: Context, config: Config): void {
           if (!mode) {
             res.statusCode = 400
             res.setHeader('content-type', 'application/json')
-            res.end(JSON.stringify({ error: 'mode must be toggle or hold' }))
+            res.end(JSON.stringify({ code: 'bad_request', error: 'mode must be toggle or hold' }))
             return
           }
           // 输入框旁的模式切换按钮：写用户层设置（持久化）。
@@ -1331,7 +1361,7 @@ export function apply(ctx: Context, config: Config): void {
               console.warn(`[dsh-voice-mode] mode update failed: ${String(e)}`)
               res.statusCode = 500
               res.setHeader('content-type', 'application/json')
-              res.end(JSON.stringify({ error: 'mode update failed' }))
+              res.end(JSON.stringify({ code: 'internal', error: 'mode update failed' }))
             })
         })
       },
@@ -1346,7 +1376,7 @@ export function apply(ctx: Context, config: Config): void {
         if (denyNonLoopback(req, res)) return
         // fork 加固：SSE 连接上限（防连接耗尽）。
         if (sseClients.size >= 4) {
-          respondJson(res, 429, { error: 'too many streams' })
+          respondJson(res, 429, { code: 'too_many_streams', error: 'too many streams' })
           return
         }
         // B2：从查询串取 tabId（owner 探活归属）。
@@ -1429,7 +1459,7 @@ function collectBody(
     received += c.length
     if (received > maxBytes) {
       tooLarge = true
-      respondJson(res, 413, { error: 'request body too large' })
+      respondJson(res, 413, { code: 'payload_too_large', error: 'request body too large' })
       return
     }
     chunks.push(c)
