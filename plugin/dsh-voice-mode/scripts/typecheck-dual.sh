@@ -47,9 +47,12 @@ DEVPKGS=(dsh-host-webserver dsh-llm dsh-settings dsh-system-prompt)
 
 cp package.json package.json.dual-bak
 cp pnpm-lock.yaml pnpm-lock.yaml.dual-bak
+# pnpm add 会把新版本追加进 pnpm-workspace.yaml 的 minimumReleaseAgeExclude——同样要还原，否则每跑一次就污染工作区
+cp pnpm-workspace.yaml pnpm-workspace.yaml.dual-bak
 restore() {
   mv package.json.dual-bak package.json
   mv pnpm-lock.yaml.dual-bak pnpm-lock.yaml
+  mv pnpm-workspace.yaml.dual-bak pnpm-workspace.yaml
   pnpm install --no-frozen-lockfile >/dev/null 2>&1 || true
 }
 trap restore EXIT
