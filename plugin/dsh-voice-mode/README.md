@@ -17,7 +17,7 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 
 ![全双工对话闭环：声音 → 文字 → 声音](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/duplex-banner.png)
 
-> **运行时变更（最近一批：v0.7.17 ~ v0.7.19，2026-10-02）**：① **设置面全版本打通**——dsh 0.1.7+ 上设置页与持久化修复（Settings → 语音模式 专属页、写入与重启保留）；② **国际化重做**——界面语言跟随 dsh 官方语言设置，中/英文完整一致、切换无需刷新；③ **修复 npm/pnpm 全新安装失败与 dsh ≥0.1.7 已安装形态「failed to import」**（0.7.17 及更早版本受影响，请升级到 ≥0.7.18）；④ **官方桌面端（Electron）下本地 Kokoro 修复**——需系统 PATH 上有 Node.js ≥18（见下文「桌面端提示」）。此前批次（v0.7.10：输出链路静默丢音根治等）与完整历史见 [`CHANGELOG.md`](../../CHANGELOG.md)。
+> **运行时变更（最近一批：v0.7.17 ~ v0.7.19，2026-10-02）**：① **设置面全版本打通**——dsh 0.1.7+ 上设置页与持久化修复（Settings → 语音模式 专属页、写入与重启保留）；② **国际化重做**——界面语言跟随 dsh 官方语言设置，中/英文完整一致、切换无需刷新；③ **修复 npm/pnpm 全新安装失败与 dsh ≥0.1.7 已安装形态「failed to import」**（0.7.17 及更早版本受影响，请升级到 ≥0.7.18）；④ **官方桌面端（Electron）下本地 Kokoro 修复**——需系统 PATH 上有 Node.js ≥18（见下文「桌面端提示」）。此前批次（v0.7.10：输出链路静默丢音根治等）与完整历史见 [`CHANGELOG.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md)。
 
 ---
 
@@ -261,6 +261,23 @@ flowchart LR
 | 兼容 dsh | — | **0.1.1-rc.2 起全版本（含 0.2.1-alpha.1）** |
 
 ---
+
+## 🔐 权限与数据流声明
+
+插件如实声明它会做的事（与 awesome-dsh-plugin 的能力扫描 `network / fs-read / fs-write / shell / env` 一一对应）：
+
+| 类别 | 具体行为 | 数据去向 |
+| --- | --- | --- |
+| **network** | ① 默认朗读引擎 **Edge**：把**待朗读的回复文本**经 WebSocket 发给微软 `speech.platform.bing.com`（云端合成；想完全离线请切到本地 VITS / Kokoro）；② 首次使用本地模型时从 `huggingface.co`（或你配置的镜像 `hf-mirror.com`）下载，主机白名单 + 固定 SHA256 校验；③ 在 dsh 宿主上注册回环 HTTP 路由 `/voice-mode/*`（默认仅回环，需 `allowLan` 才对局域网开放） | 麦克风音频**不出本机**（识别在本地 sherpa-onnx）；仅回复文本在 Edge 引擎下发往微软 |
+| **fs-read / fs-write** | 模型缓存（Linux/macOS `~/.cache/dsh-voice-mode/models/`，Windows `%LOCALAPPDATA%\dsh-voice-mode\models\`）；dsh 0.1.7+ 的设置覆盖层 `$DSH_HOME/voice-mode.settings.json`；**不读写你的工作区文件** | 全部在本机 |
+| **shell（子进程）** | 本地 TTS 合成跑在独立子进程（`child_process.fork` → `lib/tts-vits-worker.cjs`）；宿主为 Electron（官方桌面端）时，为 Kokoro 额外探测并启动一个真正的 Node.js（`node -p …` 探测版本，见 ADR/兼容契约）。**不执行用户输入、不经 shell 拼接命令** | 本机 |
+| **env** | 仅读取 `DSH_HOME`、`LOCALAPPDATA`（取目录）与可选的 `DSHVM_NODE`；**不读取、不需要任何 API Key** | — |
+
+补充：调试用的真机录制（fixture）默认**关闭**；插件不上传遥测。完整威胁模型与漏洞报告方式见仓库根目录 [`SECURITY.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/SECURITY.md)。
+
+### 兼容声明（插件市场的版本筛选依据）
+
+`package.json` 声明 `engines.dsh = ">=0.1.1-rc.2"`（插件市场据此在「按宿主版本筛选」时判定兼容）。已实测范围 **0.1.1-rc.2 → 0.2.1-alpha.1**（含官方桌面端等价的 Electron 宿主）；上限开放，由每周 CI 巡检上游新版本并复验，出现未覆盖版本会自动开 issue。`peerDependencies` 仅声明 `@deepseek-ai/cordis` 与 `react`（宿主提供）。
 
 ## 🚧 已知限制
 

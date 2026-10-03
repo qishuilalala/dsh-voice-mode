@@ -16,7 +16,7 @@ interrupts playback and the running turn. No API key.
 
 ![Real recording: streaming transcription → auto-send → sentence-by-sentence read-aloud with live captions](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
 
-> **Runtime changes (most recent batch: v0.7.17 – v0.7.19, 2026-10-02)**: (1) **Settings work on every dsh version** — fixed the settings page and persistence on dsh 0.1.7+ (dedicated Settings → Voice Mode page, writes survive restarts); (2) **i18n reworked** — the UI follows dsh's official language setting, Chinese/English are fully consistent and switch without a reload; (3) **fixed fresh-install failures with npm/pnpm and `failed to import` on dsh ≥0.1.7** (affects 0.7.17 and earlier — please upgrade to ≥0.7.18); (4) **local Kokoro fixed on the official Electron desktop host** — needs Node.js ≥18 on PATH (see the desktop note below). Earlier batches (v0.7.10: silent-audio fixes, etc.) and the full history are in [`CHANGELOG.md`](../../CHANGELOG.md).
+> **Runtime changes (most recent batch: v0.7.17 – v0.7.19, 2026-10-02)**: (1) **Settings work on every dsh version** — fixed the settings page and persistence on dsh 0.1.7+ (dedicated Settings → Voice Mode page, writes survive restarts); (2) **i18n reworked** — the UI follows dsh's official language setting, Chinese/English are fully consistent and switch without a reload; (3) **fixed fresh-install failures with npm/pnpm and `failed to import` on dsh ≥0.1.7** (affects 0.7.17 and earlier — please upgrade to ≥0.7.18); (4) **local Kokoro fixed on the official Electron desktop host** — needs Node.js ≥18 on PATH (see the desktop note below). Earlier batches (v0.7.10: silent-audio fixes, etc.) and the full history are in [`CHANGELOG.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md).
 
 ---
 
@@ -302,6 +302,23 @@ flowchart LR
 | dsh compatibility | — | **full range since 0.1.1-rc.2 (incl. 0.1.7-rc.1)** |
 
 ---
+
+## 🔐 Permissions and data flow
+
+An honest disclosure of what the plugin does (mapped to the awesome-dsh-plugin capability scan: `network / fs-read / fs-write / shell / env`):
+
+| Category | What it does | Where data goes |
+| --- | --- | --- |
+| **network** | (1) The default read-aloud engine **Edge** sends the **reply text to be spoken** over WebSocket to Microsoft `speech.platform.bing.com` (cloud synthesis — switch to local VITS / Kokoro to stay fully offline); (2) downloads local models on first use from `huggingface.co` (or your configured mirror `hf-mirror.com`) with a host allowlist and pinned SHA256; (3) registers loopback HTTP routes `/voice-mode/*` on the dsh host (loopback only by default; LAN needs `allowLan`) | Microphone audio **never leaves your machine** (recognition runs locally via sherpa-onnx); only reply text goes to Microsoft, and only with the Edge engine |
+| **fs-read / fs-write** | Model cache (Linux/macOS `~/.cache/dsh-voice-mode/models/`, Windows `%LOCALAPPDATA%\dsh-voice-mode\models\`); the dsh 0.1.7+ settings overlay `$DSH_HOME/voice-mode.settings.json`; **never touches your workspace files** | All local |
+| **shell (child processes)** | Local TTS synthesis runs in a separate child process (`child_process.fork` → `lib/tts-vits-worker.cjs`); when the host is Electron (the official desktop app), it additionally probes and launches a real Node.js for Kokoro (`node -p …` to check the version). **It never executes user input and never builds shell command strings** | Local |
+| **env** | Reads only `DSH_HOME`, `LOCALAPPDATA` (for directories) and the optional `DSHVM_NODE`; **no API key is read or needed** | — |
+
+Also: the on-device recording fixture used for debugging is **off by default**; the plugin sends no telemetry. See [`SECURITY.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/SECURITY.md) for the threat model and how to report vulnerabilities.
+
+### Compatibility declaration (what the plugin market's version filter reads)
+
+`package.json` declares `engines.dsh = ">=0.1.1-rc.2"` (the market uses it for "filter by host version"). Verified range: **0.1.1-rc.2 → 0.2.1-alpha.1** (including an Electron host equivalent to the official desktop app). The upper bound is open; a weekly CI check watches upstream releases and opens an issue for any uncovered version. `peerDependencies` only lists `@deepseek-ai/cordis` and `react` (provided by the host).
 
 ## 🚧 Known limitations
 
