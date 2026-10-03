@@ -56,10 +56,18 @@ if [ "$INSTALLER" = "npm" ]; then
     echo "✗ npm 安装失败 @ $VER"; exit 1
   }
 else
-  (cd "$DIR" && pnpm init -y >/dev/null 2>&1 && \
-    NODE_OPTIONS=--max-old-space-size=4096 pnpm add "@deepseek-ai/dsh@$VER") || {
-    echo "✗ pnpm 安装失败 @ $VER"; exit 1
-  }
+  # pnpm 11 对带安装脚本的依赖（0.2.1-alpha.1 起的 node-pty/koffi 等）以 ERR_PNPM_IGNORED_BUILDS 非零退出，
+  # 但包已全部落盘；冒烟/类型检查不需要这些原生模块的构建产物 → 该错误且 bin 存在时视为成功（其余错误照旧失败）。
+  PNPM_LOG="$(mktemp)"
+  if ! (cd "$DIR" && pnpm init -y >/dev/null 2>&1 && \
+      NODE_OPTIONS=--max-old-space-size=4096 pnpm add "@deepseek-ai/dsh@$VER") >"$PNPM_LOG" 2>&1; then
+    if grep -q ERR_PNPM_IGNORED_BUILDS "$PNPM_LOG" && [ -f "$BIN" ]; then
+      echo "(!) pnpm 报 ERR_PNPM_IGNORED_BUILDS（原生依赖构建被拦截），包已落盘，继续" >&2
+    else
+      tail -5 "$PNPM_LOG" >&2; echo "✗ pnpm 安装失败 @ $VER"; rm -f "$PNPM_LOG"; exit 1
+    fi
+  fi
+  rm -f "$PNPM_LOG"
 fi
 
 [ -f "$BIN" ] || { echo "✗ 安装后仍找不到 $BIN"; exit 1; }

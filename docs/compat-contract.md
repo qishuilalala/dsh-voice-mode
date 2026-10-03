@@ -604,3 +604,21 @@ class AgentDefaultModelConfig extends Service {
 - 默认 Edge 音色仍是中文（既有用户行为），英文界面下仅提示。
 - 中文版 README 为主，已加中英互链；README.en.md 与 README.md 的内容同步为人工维护。
 
+---
+
+## 16. 0.2.1-alpha.1 复核（2026-10-03，上游 alpha 通道新版本）
+
+- 发现途径：定期巡检 `npm view @deepseek-ai/dsh dist-tags`（`alpha: 0.2.1-alpha.1`，latest/next 仍为 0.2.0-rc.2）。上游发布说明的新增项（Claude Code Mods 兼容层、`--public-url`、开发者工具组合包等）不涉及本插件使用的槽位与服务。
+- 验证（均对**已发布的 0.7.19 已安装形态**）：
+
+| 层 | 结果 |
+| --- | --- |
+| L1 锚点 | ✅ 9/9 |
+| L2 双 typecheck | ✅ host + client（cordis 映射 `0.2.1-* → 4.0.5-alpha.1`，核心 peer 为 `~4.0.5-alpha.1`） |
+| L3 冒烟（Node 24 宿主） | ✅ 宿主端点、中英文界面、设置页、vits / kokoro 合成 |
+| L3 冒烟（Electron 44 RunAsNode 宿主，桌面端等价） | ✅ 同上；Kokoro 经真 Node 子进程 |
+| L4 真流程（真 LLM） | ✅ 2 帧 SSE 音频 / 0 tts-error |
+
+- 工具修正：pnpm 11 安装该核心时对 `node-pty`、`koffi`、`protobufjs` 等带安装脚本的依赖报 `ERR_PNPM_IGNORED_BUILDS`（非零退出但包已落盘）；`scripts/ensure-core.sh` 现仅在该错误且 bin 存在时视为成功，其余错误照旧失败。
+- 已纳入 `verify-dual.sh` 的字面量矩阵（`check-dsh-version.sh` 已对齐）。插件运行行为零改动，无需发版。
+

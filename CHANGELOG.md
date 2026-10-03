@@ -13,6 +13,10 @@
 - ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
 - 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
 
+### 兼容性
+
+- 已验证 dsh `0.2.1-alpha.1`（锚点 / 双 typecheck / 已安装形态冒烟含 Electron 宿主 / 真流程 e2e 全过），纳入 `verify-dual.sh` 矩阵；`ensure-core.sh` 容忍 pnpm 11 的 `ERR_PNPM_IGNORED_BUILDS`。插件运行行为无改动，未发版（见 `docs/compat-contract.md` §16）。
+
 ## [0.7.19] - 2026-10-02
 
 **Patch**：官方桌面端（Electron）下本地 Kokoro 引擎修复 + 工程质量。
