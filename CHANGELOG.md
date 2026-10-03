@@ -13,7 +13,17 @@
 - ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
 - 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
 
-### 兼容性
+## [0.7.20] - 2026-10-03
+
+**Patch**：文档与包元数据（运行行为零改动）。
+
+### Fixed
+
+- README（中/英）顶部「最近变更」横幅更新为 v0.7.17 ~ v0.7.19（此前仍停留在 v0.7.10），npm 页面首屏不再误导。
+- 移除 `package.json` 中指向本地专用脚本的 `release` / `check:dsh-version` 两个入口（脚本被 `.gitignore`、不在仓库与包内，公开用户执行会报文件不存在）。
+- `build.mjs` 过时注释更正（运行时依赖清单、客户端不从 CDN 加载代码）。
+
+### 兼容性（0.2.1-alpha.1 验证）
 
 - 已验证 dsh `0.2.1-alpha.1`（锚点 / 双 typecheck / 已安装形态冒烟含 Electron 宿主 / 真流程 e2e 全过），纳入 `verify-dual.sh` 矩阵；`ensure-core.sh` 容忍 pnpm 11 的 `ERR_PNPM_IGNORED_BUILDS`。插件运行行为无改动，未发版（见 `docs/compat-contract.md` §16）。
 

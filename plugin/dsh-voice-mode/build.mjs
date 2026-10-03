@@ -1,6 +1,7 @@
 // dsh-voice-mode build: esbuild-based, replicating the official tsdown.client.ts
 // artifact shape for the client half; the host half is a plain ESM bundle
-// with runtime deps (sherpa-onnx, ws, axios …) external; msedge-tts is inlined as lib/msedge-tts.cjs (see below).
+// with runtime deps (@deepseek-ai/schemastery, sherpa-onnx, sherpa-onnx-node) external; msedge-tts and all of its
+// transitive deps are inlined as lib/msedge-tts.cjs (see below).
 
 import { build } from 'esbuild'
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs'
@@ -171,7 +172,7 @@ await buildAtomically({
   format: 'cjs',
   platform: 'browser',
   jsx: 'automatic',
-  // Keep the native import() for the transformers.js CDN ESM bundle.
+  // Keep native dynamic import() as-is (do not bundle). The client loads no code from a CDN at runtime.
   supported: { 'dynamic-import': true },
   external: PLATFORM_EXTERNALS,
   define: {

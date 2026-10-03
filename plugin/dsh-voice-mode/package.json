@@ -2,7 +2,7 @@
   "name": "dsh-voice-mode",
   "description": "Full-duplex voice plugin for DeepSeek Harness: local zipformer2 streaming ASR (no API key) → editable draft; Edge TTS or local VITS / Kokoro read-aloud with live captions; true barge-in; hardened HTTP surface + model SHA256 pinning; compatible with all dsh releases since 0.1.1-rc.2 (verified 0.1.1-rc.2 → 0.2.0-rc.2).",
   "icon": "./icon.svg",
-  "version": "0.7.19",
+  "version": "0.7.20",
   "type": "module",
   "main": "lib/index.js",
   "repository": {
@@ -60,9 +60,7 @@
     "typecheck:dual": "bash scripts/typecheck-dual.sh",
     "smoke:runtime": "bash scripts/smoke-runtime.sh",
     "verify:dual": "bash scripts/verify-dual.sh",
-    "check:dsh-version": "bash scripts/check-dsh-version.sh",
-    "e2e:full": "bash scripts/full-e2e.sh",
-    "release": "bash scripts/release.sh"
+    "e2e:full": "bash scripts/full-e2e.sh"
   },
   "dsh": {
     "bundle": {

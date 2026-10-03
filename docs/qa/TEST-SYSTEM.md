@@ -20,7 +20,7 @@
 
 | 触发 | 动作 | 负责人 |
 |---|---|---|
-| 每周一 CI（`dsh-version-check.yml`） | `npm run check:dsh-version`：dist-tags vs 默认矩阵比对；EXIT 1 自动开 issue | CI 自动 |
+| 每周一 CI（`dsh-version-check.yml`） | 本机脚本 `bash scripts/check-dsh-version.sh`（本地专用、不入库）与 CI 内联逻辑：dist-tags vs 默认矩阵比对；EXIT 1 自动开 issue | CI 自动 |
 | dsh 上游发新版本（release notes / dist-tag 变化） | 同上，手动再跑一次确认 | 维护者 |
 | 每次改 `src/` | `npm run typecheck` + `npm test`（33 套件 / 431 项 exit 0）+ `node build.mjs` | 提交者 |
 | 每次推送 / PR（CI） | `ci.yml`：`test` job（npm test + build）与 `install` job（Node 18/22 下对打包产物做 pnpm+npm 全新安装并 import） | CI 自动 |
