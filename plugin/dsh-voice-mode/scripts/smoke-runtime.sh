@@ -163,6 +163,17 @@ else
   echo "   （跳过客户端冒烟：playwright-core 未安装）"
 fi
 
+# DSHVM_VOICE_CHAIN=1：语音全链路冒烟（真实语音→采集→/asr→识别；需本机已缓存 VITS/zipformer 模型）。
+#   与 DSHVM_ELECTRON 同设时改在桌面端外壳里跑（xvfb-run）。
+if [ -n "${DSHVM_VOICE_CHAIN:-}" ]; then
+  echo "== 语音全链路冒烟（真实语音→识别）=="
+  env -u DSHVM_ELECTRON node scripts/smoke-voice-chain.mjs "$URL" || fail=1
+  if [ -n "${DSHVM_ELECTRON:-}" ] && command -v xvfb-run >/dev/null 2>&1; then
+    echo "== 语音全链路冒烟（桌面端外壳内）=="
+    xvfb-run -a node scripts/smoke-voice-chain.mjs "$URL" || fail=1
+  fi
+fi
+
 # DSHVM_ELECTRON=<electron 可执行文件>：桌面端外壳冒烟（真 Electron + Xvfb，按官方桌面端的 dsh-app:// 协议/转发/麦克风权限机制加载 dsh）。
 CORE_VER="$(node -p "require('$(dirname "$BIN")/../package.json').version" 2>/dev/null || echo 0.0.0)"
 if [ -n "${DSHVM_ELECTRON:-}" ] && [ "$(printf '%s\n' 0.1.7-alpha.1 "$CORE_VER" | sort -V | head -1)" != "0.1.7-alpha.1" ]; then

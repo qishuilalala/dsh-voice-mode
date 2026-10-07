@@ -7,15 +7,26 @@
 
 ## [Unreleased]
 
-### 测试装置
-
-- 新增桌面端外壳冒烟：`scripts/desktop-shell/`（官方 `apps/desktop` 关键机制的最小复刻）+ `scripts/smoke-desktop-shell.mjs`，真 Electron + Xvfb 下验证 `dsh-app://` 安全上下文、请求转发（Origin 被剥离）、SSE 流式、麦克风放行/拒绝策略、插件真实 AudioWorklet 收帧、mic 按钮渲染；`smoke-runtime.sh` 以 `DSHVM_ELECTRON=<electron>` 启用，<0.1.7 自动跳过。已在 dsh 0.1.6-alpha.2 / 0.1.7-rc.2 / 0.2.0-rc.2 / 0.2.1-alpha.1 通过。运行行为零改动。
-
 ### 规划中
 
 - F1：emotion 标签 DSL 全量上线（LLM 侧标签使用指引注入 + 真机验收）
 - ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
 - 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
+
+## [0.7.23] - 2026-10-08
+
+**Patch**：内联依赖的安全修复 + 测试装置。
+
+### Security
+
+- 升级被内联进 `lib/msedge-tts.cjs` 的 **axios 1.19.0 → 1.20.0**：`pnpm audit` 报告 12 条公告（7 高危、5 中危，均修复于 ≥1.20.0；msedge-tts 仅用 axios 拉取微软语音列表，实际可达面有限，但发布物不应带已知高危代码）。通过 `pnpm-workspace.yaml` 的 `overrides` 固定；`THIRD_PARTY_NOTICES.md` 同步；CI 新增 `audit` job（high 及以上即红）。已验证升级后 Edge 真实合成（Node 与 Electron）与 322 个音色列表正常。
+
+### 测试装置
+
+- **语音全链路冒烟** `scripts/smoke-voice-chain.mjs`：本地 VITS 合成的真实语音作假麦克风 → 采集 → worklet → `/asr` → host 流式识别；`--loop`（`DSHVM_VOICE_LOOP=1 full-e2e.sh`）扩展为完整闭环：自动发送 → 真 LLM 回复 → 朗读音频帧到达客户端、tts-error 0。已在 dsh 0.1.5-rc.3 / 0.1.6-alpha.2 / 0.1.7-rc.2 / 0.2.0-rc.2 / 0.2.1-alpha.1 通过；`DSHVM_VOICE_CHAIN=1` 另可在桌面端外壳（Electron）内跑，通过。
+- 桌面端外壳冒烟补充播放半边：Edge 的 MP3 与本地 VITS 的 WAV 在 Electron Chromium 里解码并有声音。
+- 新增桌面端外壳冒烟：`scripts/desktop-shell/`（官方 `apps/desktop` 关键机制的最小复刻）+ `scripts/smoke-desktop-shell.mjs`，真 Electron + Xvfb 下验证 `dsh-app://` 安全上下文、请求转发（Origin 被剥离）、SSE 流式、麦克风放行/拒绝策略、插件真实 AudioWorklet 收帧、mic 按钮渲染；`smoke-runtime.sh` 以 `DSHVM_ELECTRON=<electron>` 启用，<0.1.7 自动跳过。已在 dsh 0.1.6-alpha.2 / 0.1.7-rc.2 / 0.2.0-rc.2 / 0.2.1-alpha.1 通过。运行行为零改动。
+
 
 ## [0.7.22] - 2026-10-07
 

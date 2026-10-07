@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue)](LICENSE)
 [![Latest Release](https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases)](https://github.com/qishuilalala/dsh-voice-mode/releases)
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange)](https://www.npmjs.com/package/dsh-voice-mode)
-[![Tests: 431 passing](https://img.shields.io/badge/tests-431%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
+[![Tests: 433 passing](https://img.shields.io/badge/tests-433%20%E2%9C%93-2ea043?style=flat-square)](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/rules/STATE.md)
 
 DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（真 barge-in）。无需 API Key，识别模型在本地宿主端推理。
 
@@ -23,7 +23,7 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 
 ## 🤝 Fork 增强（本仓库新增）
 
-本仓库在上游 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice) 基础上加入了大量增强，核心如下（完整清单见 git 历史与 [docs/rules/STATE.md](../../docs/rules/STATE.md)）：
+本仓库在上游 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice) 基础上加入了大量增强，核心如下（完整清单见 git 历史与 [docs/rules/STATE.md](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/rules/STATE.md)）：
 
 - **朗读默认 Edge 云端；本地 TTS 可选（隐私优先）**：选本地则回复文本不出本机——
   - 本地 VITS（`sherpa-onnx-vits-zh-ll`，纯中文，5 说话人）；
@@ -243,7 +243,7 @@ flowchart LR
 - 朗读默认 **Edge 云端**；本地 VITS 纯中文 / Kokoro 原生中英（跑在独立子进程、崩溃自愈）可选（隐私优先）；
 - 同一时间仅一个会话处于语音模式（全局单活）；LLM 流被无损观察（不阻塞）。
 
-详细架构决策：见 [`docs/adr/`](../../docs/adr/README.md) 8 个 ADR。
+详细架构决策：见 [`docs/adr/`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/adr/README.md) 8 个 ADR。
 
 ---
 
@@ -274,6 +274,12 @@ flowchart LR
 | **env** | 仅读取 `DSH_HOME`、`LOCALAPPDATA`（取目录）与可选的 `DSHVM_NODE`；**不读取、不需要任何 API Key** | — |
 
 补充：调试用的真机录制（fixture）默认**关闭**；插件不上传遥测。完整威胁模型与漏洞报告方式见仓库根目录 [`SECURITY.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/SECURITY.md)。
+
+### 第三方模型与服务说明
+
+- **本地模型不随包分发**：ASR（zipformer 流式、SenseVoice 重译）、VAD、本地 TTS（VITS / Kokoro）的模型由插件**首次使用时从 Hugging Face（或你配置的镜像）下载**到本机缓存，来源为 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 生态的导出仓库（`csukuangfj/*`）。各模型的许可由其**原作者**决定，本插件的 MIT 许可**不覆盖**这些模型；用于商业场景前请自行核对上游许可（模型清单见下文「模型与缓存」，对应常量在 `src/asr-host.ts` / `src/tts-local.ts`）。
+- **Edge 云端朗读是第三方在线服务**：默认引擎经 [`msedge-tts`](https://github.com/Migushthe2nd/MsEdgeTTS) 使用微软 Edge 浏览器「大声朗读」的在线接口——这不是微软官方提供的稳定 API，**可用性、速率与条款均由微软决定**，可能随时变化。对稳定性/合规有要求的场景请改用本地 VITS / Kokoro（离线）。
+- 被内联进发布包的第三方代码（`msedge-tts` 及其依赖）的许可见 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)；已用 `pnpm audit` 保证发布时无已知高危漏洞（CI `audit` job 持续监测）。
 
 ### 兼容声明（插件市场的版本筛选依据）
 
@@ -323,7 +329,7 @@ flowchart LR
 
 ## 🛣️ 路线图（Roadmap）
 
-完整 backlog（43 项 P0-P3）见 [`docs/competitive/backlog.md`](../../docs/competitive/backlog.md)。
+完整 backlog（43 项 P0-P3）见 [`docs/competitive/backlog.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/competitive/backlog.md)。
 
 - ✅ **已完成（v0.7.7）**：11 批次周全修复（字幕档位 / 让位语义 / 模型预热 / 默认值微调 / 死代码清理等）
 - 🚧 **P0（近期）**：ADR-0003 VAD 下沉 / ADR-0006 第一级探测接通 manual / F1 emotion DSL 全量上线
@@ -365,6 +371,6 @@ src/prompts.ts       host：LLM 口语化提示词（中/英）与试听例句�
 
 ## 📄 License
 
-[MIT](../../LICENSE)
+[MIT](./LICENSE)
 
 > 部分实现借鉴 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)（派生声明见子包 LICENSE）。

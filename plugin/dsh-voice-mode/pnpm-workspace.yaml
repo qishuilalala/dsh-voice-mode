@@ -1,6 +1,9 @@
 allowBuilds:
   esbuild: true
   msedge-tts: true
+# 被内联进 lib/msedge-tts.cjs 的 axios 须无已知漏洞（pnpm audit）：msedge-tts 2.0.7 依赖 axios ^1.x，强制 >=1.20.0
+overrides:
+  axios: '>=1.20.0'
 minimumReleaseAgeExclude:
   - '@deepseek-ai/dsh-brand@0.1.2-alpha.4 || 0.1.2-alpha.5 || 0.1.5-rc.1 || 0.1.7-alpha.2 || 0.1.7-rc.1'
   - '@deepseek-ai/dsh-host-webserver@0.1.2-alpha.4 || 0.1.2-alpha.5 || 0.1.5-rc.1 || 0.1.7-alpha.2 || 0.1.7-rc.1'

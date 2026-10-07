@@ -25,6 +25,8 @@ const app = await electron.launch({
 let mainLog = ''
 app.process().stderr?.on('data', (d) => { mainLog += String(d) })
 app.process().stdout?.on('data', (d) => { mainLog += String(d) })
+let exitInfo = ''
+app.process().on('exit', (code, signal) => { exitInfo = `exit code=${code} signal=${signal}` })
 const page = await app.firstWindow()
 const errors = []
 const consoleErrs = []
@@ -126,6 +128,38 @@ const wl = await page.evaluate(async (src) => {
   } catch (e) { return { ok: false, why: `${e.name}: ${e.message}` } }
 }, workletSrc)
 wl.ok ? ok(`AudioWorklet（Blob 内联模块）在 dsh-app:// 下加载并收到麦克风帧（${wl.frames} 条消息）`) : bad(`AudioWorklet 异常：${JSON.stringify(wl)}`)
+
+// 6) 播放半边：朗读音频必须能在桌面端 Chromium 里解码（Edge 云端是 MP3，本地引擎是 WAV；Electron 的编解码器集与浏览器不同，需实测）
+const decode = (voice) => page.evaluate(async (voice) => {
+  const r = await fetch('/voice-mode/preview', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ voice }) })
+  if (!r.ok) return { ok: false, status: r.status }
+  const type = r.headers.get('content-type') || ''
+  const buf = await r.arrayBuffer()
+  try {
+    const ctx = new AudioContext()
+    const audio = await ctx.decodeAudioData(buf.slice(0))
+    const ch = audio.getChannelData(0)
+    let peak = 0
+    for (let i = 0; i < ch.length; i++) peak = Math.max(peak, Math.abs(ch[i]))
+    await ctx.close()
+    return { ok: audio.duration > 0.3 && peak > 0.01, type, duration: +audio.duration.toFixed(2), peak: +peak.toFixed(2) }
+  } catch (e) { return { ok: false, type, why: `${e.name}: ${e.message}` } }
+}, voice)
+const safeDecode = async (v) => {
+  try { return await decode(v) } catch (e) {
+    const tail = mainLog.split('\n').filter((l) => /SHELL_|crash|fatal|abort|Segmentation/i.test(l)).slice(-6).join(' | ')
+    return { ok: false, why: `页面/应用在解码时被关闭：${exitInfo} ${tail.slice(0, 200)}` }
+  }
+}
+const edge = await safeDecode('zh-CN-XiaoxiaoNeural')
+if (edge.status === 502 || edge.status === 429) console.log(`  - 跳过 Edge 解码检查（预览返回 ${edge.status}，可能无外网）`)
+else edge.ok ? ok(`Edge 云端语音（${edge.type}）在桌面端 Chromium 解码并有声音（${edge.duration}s）`) : bad(`Edge 音频解码失败：${JSON.stringify(edge)}`)
+const setEngine = (e) => api('/voice-mode/settings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ttsEngine: e }) })
+if ((await setEngine('vits')).status === 200) {
+  const vits = await safeDecode('suyingxue')
+  vits.ok ? ok(`本地 VITS 语音（${vits.type}）解码并有声音（${vits.duration}s）`) : bad(`VITS 音频解码失败：${JSON.stringify(vits)}`)
+  await setEngine('edge')
+}
 
 await app.close()
 console.log('  控制台错误:', JSON.stringify(consoleErrs.slice(0, 2)))

@@ -22,11 +22,13 @@
 |---|---|---|
 | 每周一 CI（`dsh-version-check.yml`） | 本机脚本 `bash scripts/check-dsh-version.sh`（本地专用、不入库）与 CI 内联逻辑：dist-tags vs 默认矩阵比对；EXIT 1 自动开 issue | CI 自动 |
 | dsh 上游发新版本（release notes / dist-tag 变化） | 同上，手动再跑一次确认 | 维护者 |
-| 每次改 `src/` | `npm run typecheck` + `npm test`（33 套件 / 431 项 exit 0）+ `node build.mjs` | 提交者 |
+| 每次改 `src/` | `npm run typecheck` + `npm test`（33 套件 / 433 项 exit 0）+ `node build.mjs` | 提交者 |
 | 每次推送 / PR（CI） | `ci.yml`：`test` job（npm test + build）与 `install` job（Node 18/22 下对打包产物做 pnpm+npm 全新安装并 import） | CI 自动 |
 | **发版前** | L5 安装形态门禁（见上）；全矩阵冒烟用 `link:` 与 `DSHVM_SPEC` 两种形态各跑一遍 | 发版者 |
 | **发版前（桌面端等价）** | 以 Electron RunAsNode 作宿主复跑已安装形态冒烟：`npm i electron@44 && node node_modules/electron/install.js`，`DSHVM_HOST_CMD="env ELECTRON_RUN_AS_NODE=1 <electron> --expose-internals" DSHVM_TTS_SMOKE=1 bash scripts/smoke-runtime.sh <bin> <port>`；并可用 `node` 垫片在 Electron 下跑 `npm test` | 发版者 |
 | **发版前（桌面端外壳）** | `DSHVM_ELECTRON=<electron> DSHVM_HOST_CMD=… bash scripts/smoke-runtime.sh <bin> <port>`：真 Electron + Xvfb 按官方桌面端机制（`dsh-app://` 特权协议、`forwardWebRequest`、麦克风权限策略、ws 头改写）加载 dsh，断言转发/SSE/麦克风/AudioWorklet（`scripts/smoke-desktop-shell.mjs`；<0.1.7 自动跳过） | 发版者 |
+| **发版前（语音闭环）** | `DSHVM_VOICE_LOOP=1 bash scripts/full-e2e.sh <bin> <port>`：真实语音（本地 VITS 合成的 wav 作假麦克风）→ 采集 → worklet → `/asr` → host 识别 → 自动发送 → **真 LLM** 回复 → 朗读音频帧到达客户端、tts-error=0（`scripts/smoke-voice-chain.mjs --loop`）；`DSHVM_VOICE_CHAIN=1 bash scripts/smoke-runtime.sh …` 为无 LLM 凭据的「说话→识别」半程，可同时在桌面端外壳内跑 | 发版者 |
+| **发版前（依赖安全）** | `pnpm audit --audit-level high`（CI `audit` job 同款）：被内联进 `lib/msedge-tts.cjs` 的 axios/ws 等漏洞即发布物漏洞；修复用 `pnpm-workspace.yaml` 的 `overrides` 后重新内联并重生成 `THIRD_PARTY_NOTICES.md` | 发版者 / CI |
 | 每次改兼容面脚本 | 对应脚本 `--help`/语法检查 + 至少一版实跑 | 提交者 |
 
 ## 三、迭代循环（新版本出现时）
@@ -68,6 +70,9 @@
 10. **桌面端（Electron）≠ Node**：官方桌面端宿主是 `ELECTRON_RUN_AS_NODE=1` 的 Electron（V8 内存笼）。原生 addon 若返回 N-API 外部缓冲区会报 `External buffers are not allowed`（Kokoro 即中招，见 `src/tts-runtime.ts`）；WASM/纯 JS 路径不受影响。服务器上无桌面端安装包时，用 `electron` npm 包的 RunAsNode 模式即可得到同款运行时（Electron 44.0.0 = Node 24.18.1）。Windows/macOS 的主进程、自定义协议、系统麦克风授权仍只能真机验证。
 
 11. **桌面端外壳复刻的取舍**：官方 `apps/desktop/src`（main.ts / web-document.ts / microphone-permissions.ts / preload-app.ts）是复刻依据，改动官方行为时需回看这些文件。试过完整复刻 `dshDesktopBoot` 注入（解析 Host 首页 → injections 行），卡在客户端模块注册时序；改为 preload 预置 `__DSH_TRANSPORT__` 让 Host 首页自引导，其余机制逐项照搬。`--use-fake-ui-for-media-stream` 会绕过 Electron 的权限请求处理器，使「音视频被拒」的断言失真——外壳冒烟只用 `--use-fake-device-for-media-stream`。HTML 属性里的 `&amp;` 需还原，否则 `plugins/??…&rev=` 404。
+
+12. **内联依赖的漏洞要自己审计**（2026-10-08）：把 msedge-tts 内联后，其传递依赖不再被用户的 `npm audit` 看见，却仍随包分发。0.7.22 内联的 axios 1.19.0 带 12 条公告（7 高危，修复 ≥1.20.0）；以 `overrides` 升级后 0.7.23 发布。CI 新增 `audit` job 防回潮。
+13. **语音链路测试的素材**：用本地 VITS（离线、确定性）合成 wav 当假麦克风，不依赖外网/录音；会话经 RPC `session/create` 创建（≥0.1.5 斜杠形 + `args.request` 信封，≤0.1.2 点形未覆盖）；`localStorage['dsh.sessions.current']` 选中会话。注意脚本里「关闭应用」必须放在全部断言之后（曾因顺序错误误判为页面崩溃）。
 
 ## 六、当前矩阵快照（随验证更新；compat-contract.md §10/§11 为准）
 

@@ -7,7 +7,7 @@ comment in `build.mjs` for why). Their licenses are reproduced below. Generated 
 | --- | --- | --- |
 | agent-base | 6.0.0 | MIT |
 | asynckit | 0.4.0 | MIT |
-| axios | 1.19.0 | MIT |
+| axios | 1.20.0 | MIT |
 | base64-js | 1.5.1 | MIT |
 | buffer | 6.0.3 | MIT |
 | call-bind-apply-helpers | 1.0.2 | MIT |
@@ -76,7 +76,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## axios 1.19.0
+## axios 1.20.0
 
 - License: MIT
 - Source: https://github.com/axios/axios.git

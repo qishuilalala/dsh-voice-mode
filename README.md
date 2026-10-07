@@ -12,7 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue" alt="License: MIT"></a>
   <a href="https://github.com/qishuilalala/dsh-voice-mode/releases"><img src="https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases" alt="Latest release"></a>
   <a href="https://www.npmjs.com/package/dsh-voice-mode"><img src="https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange" alt="npm version"></a>
-  <a href="docs/rules/STATE.md"><img src="https://img.shields.io/badge/tests-431%20%E2%9C%93-2ea043?style=flat-square" alt="Tests: 431 passing"></a>
+  <a href="docs/rules/STATE.md"><img src="https://img.shields.io/badge/tests-433%20%E2%9C%93-2ea043?style=flat-square" alt="Tests: 433 passing"></a>
 </p>
 
 ![dsh-voice-mode 全双工语音对话](assets/hero-banner.png)
@@ -216,7 +216,7 @@ flowchart LR
 | [完整使用说明（中文）](plugin/dsh-voice-mode/README.md) | 功能 / 手势 / 设置 / 配置 / 已知限制 / 故障排查 |
 | [English docs](plugin/dsh-voice-mode/README.en.md) | Same, in English |
 | [docs/ 索引](docs/README.md) | 架构决策 / 实施计划 / 真机验收 / 规则 / 调研 / 竞品 |
-| [60 天迭代博客](blog/2026-09-15-eleven-batches-evolution.md) | 从 91 到 254 项测试的故事（现为 431 项） |
+| [60 天迭代博客](blog/2026-09-15-eleven-batches-evolution.md) | 从 91 到 254 项测试的故事（现为 433 项） |
 | [CHANGELOG.md](CHANGELOG.md) | Keep a Changelog 格式 |
 | [RELEASE-NOTES.md](RELEASE-NOTES.md) | 60 天时间线 |
 
@@ -231,7 +231,7 @@ flowchart LR
 **Acknowledgments**：
 
 - 上游：[haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)（派生声明见子包 LICENSE）
-- 核心依赖：[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)（Apache-2.0，本地 ASR / VITS / Kokoro 推理）/ [msedge-tts](https://github.com/litmonkey-labs/msedge-tts)（Edge 云端 TTS）
+- 核心依赖：[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)（Apache-2.0，本地 ASR / VITS / Kokoro 推理）/ [msedge-tts](https://github.com/Migushthe2nd/MsEdgeTTS)（Edge 云端 TTS）
 - 测试支持：[awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)（收录到精选列表）
 - 11 批次周全修复参与贡献者：见 [`docs/rules/STATE.md`](docs/rules/STATE.md) § 批次进度表
 

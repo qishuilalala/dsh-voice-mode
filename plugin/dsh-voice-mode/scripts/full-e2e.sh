@@ -227,6 +227,12 @@ RPC_TTS_ERR="${RPC_TTS_ERR:-0}"
   echo "   ----------------"
 } 2>/dev/null
 
+# DSHVM_VOICE_LOOP=1：语音完整闭环（真实语音→识别→自动发送→真 LLM 回复→朗读帧到达客户端；需本机已缓存 VITS/zipformer 模型）
+if [ -n "${DSHVM_VOICE_LOOP:-}" ]; then
+  echo "== 语音完整闭环（真 LLM）=="
+  node "$(dirname "$0")/smoke-voice-chain.mjs" "$URL" --loop || fail=1
+fi
+
 [ "$fail" -eq 0 ] && [ "$RPC_SSE" -ge 1 ] && [ "$RPC_TTS_ERR" -eq 0 ] && {
   echo "✓ full-e2e PASS: 三端点 200 + LLM 端到端 ${RPC_SSE} 帧 / ${RPC_TTS_ERR} tts-error"
   exit 0

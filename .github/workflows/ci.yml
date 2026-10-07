@@ -51,3 +51,19 @@ jobs:
         run: npm install -g pnpm@11
       - name: Fresh-install the packed tarball (pnpm + npm) and import
         run: bash scripts/verify-install.sh
+
+  # 依赖安全：msedge-tts 连同其传递依赖（axios、ws 等）被内联进发布包（ADR-0011），其漏洞即我们的漏洞；
+  # 此 job 在已知高危（high 及以上）公告出现时让 CI 变红，提醒及时升级（见 pnpm-workspace.yaml 的 overrides）。
+  audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugin/dsh-voice-mode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install -g pnpm@11
+      - name: Audit (high and above)
+        run: pnpm audit --audit-level high

@@ -1,9 +1,9 @@
 # dsh-voice-mode
 
-[![License: MIT](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue)](../../LICENSE)
+[![License: MIT](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue)](./LICENSE)
 [![Latest Release](https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases)](https://github.com/qishuilalala/dsh-voice-mode/releases)
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange)](https://www.npmjs.com/package/dsh-voice-mode)
-[![Tests: 431 passing](https://img.shields.io/badge/tests-431%20%E2%9C%93-2ea043?style=flat-square)](../../docs/rules/STATE.md)
+[![Tests: 433 passing](https://img.shields.io/badge/tests-433%20%E2%9C%93-2ea043?style=flat-square)](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/rules/STATE.md)
 
 Full-duplex voice conversation mode for DeepSeek Harness (dsh): speak, get a
 spoken answer. Streamed zipformer2 ASR → editable draft → auto send → the
@@ -316,6 +316,12 @@ An honest disclosure of what the plugin does (mapped to the awesome-dsh-plugin c
 
 Also: the on-device recording fixture used for debugging is **off by default**; the plugin sends no telemetry. See [`SECURITY.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/SECURITY.md) for the threat model and how to report vulnerabilities.
 
+### Third-party models and services
+
+- **Local models are not shipped in the package**: the ASR (streaming zipformer, SenseVoice re-transcription), VAD and local TTS (VITS / Kokoro) models are **downloaded on first use from Hugging Face (or your configured mirror)** into a local cache; they come from export repositories in the [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) ecosystem (`csukuangfj/*`). Each model is licensed by its **original authors** — this plugin's MIT license does **not** cover them; verify the upstream licenses before commercial use (the model list is under "Model & cache"; the constants are in `src/asr-host.ts` / `src/tts-local.ts`).
+- **The Edge cloud read-aloud is a third-party online service**: the default engine uses the Microsoft Edge browser "Read Aloud" endpoint via [`msedge-tts`](https://github.com/Migushthe2nd/MsEdgeTTS). It is not an officially supported Microsoft API — **availability, rate limits and terms are Microsoft's** and may change at any time. For stability/compliance-sensitive use, switch to local VITS / Kokoro (offline).
+- Licenses of the third-party code inlined into the published package (`msedge-tts` and its dependencies) are in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md); `pnpm audit` is clean at release time (CI `audit` job keeps watching).
+
 ### Compatibility declaration (what the plugin market's version filter reads)
 
 `package.json` declares `engines.dsh = ">=0.1.1-rc.2"` (the market uses it for "filter by host version"). Verified range: **0.1.1-rc.2 → 0.2.1-alpha.1** (including an Electron host equivalent to the official desktop app). The upper bound is open; a weekly CI check watches upstream releases and opens an issue for any uncovered version. `peerDependencies` only lists `@deepseek-ai/cordis` and `react` (provided by the host).
@@ -355,7 +361,7 @@ Also: the on-device recording fixture used for debugging is **off by default**; 
 
 ## 🛣️ Roadmap
 
-Full backlog (43 P0-P3 items) at [`docs/competitive/backlog.md`](../../docs/competitive/backlog.md).
+Full backlog (43 P0-P3 items) at [`docs/competitive/backlog.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/competitive/backlog.md).
 
 - ✅ **Done (v0.7.7)**: 11 batches of comprehensive fixes (caption tiers / yield semantics / model prewarm / defaults micro-adjust / dead-code cleanup / etc.)
 - 🚧 **P0 (near-term)**: ADR-0003 client-side VAD / ADR-0006 first-level probe wired to manual / F1 emotion DSL full roll-out
@@ -426,4 +432,4 @@ Integration probes (`hold-e2e.js`, `spoken-prompt-rpc.sh`, `spoken-toggle-ui-che
 
 ## 📄 License
 
-[MIT](../../LICENSE)
+[MIT](./LICENSE)
