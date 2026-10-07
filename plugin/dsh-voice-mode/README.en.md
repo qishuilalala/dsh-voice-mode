@@ -340,6 +340,7 @@ Also: the on-device recording fixture used for debugging is **off by default**; 
 | Mic click does nothing, red hint in the status bar | The browser denied mic permission: allow it in the address bar and retry |
 | Status bar stuck on `Loading model… x%` | Check the network; the model is large (160 MB) — `npm run prefetch` first; on mainland networks set `modelHost` to `https://hf-mirror.com` |
 | Status bar shows `Model download failed (<file>)` | Both mirrors are unreachable: check network/proxy and re-enter voice mode (resumable) |
+| Local Kokoro on the official desktop app shows "failed" and asks for Node.js | The desktop host is Electron, where Kokoro's native add-on cannot run: install Node.js >= 18 on PATH (or set `DSHVM_NODE` to its path) and retry, or use the default Edge / local VITS (unaffected on desktop) |
 | Caption appears (overlay) but no sound | Check system volume/output; if autoplay is blocked, click anywhere on the page and retry |
 | Status bar shows `朗读连接失败：正在重试…` | Edge TTS unreachable (overseas service), auto-retries; if it persists, check network/proxy |
 | Poor recognition | Get closer to the mic, reduce ambient noise; if echo remains, raise the interrupt sensitivity by one step |

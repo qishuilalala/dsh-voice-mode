@@ -1313,6 +1313,13 @@ var probeNode = (command, env) => {
   }
 };
 var NATIVE_RUNTIME_UNAVAILABLE = 'Local Kokoro cannot run inside the Electron-based desktop host (native add-on blocked: "External buffers are not allowed"). Install Node.js >= 18 on PATH (or set DSHVM_NODE to its path), or switch the read-aloud engine to Edge or VITS.';
+var NativeRuntimeUnavailableError = class extends Error {
+  code = "kokoro_needs_node";
+  constructor() {
+    super(NATIVE_RUNTIME_UNAVAILABLE);
+    this.name = "NativeRuntimeUnavailableError";
+  }
+};
 var cached;
 function resolveNativeRuntime(opts = {}) {
   const env = opts.env ?? process.env;
@@ -1660,6 +1667,7 @@ function createSherpaLocalEngine(options) {
   let ready = null;
   let engineLoading = false;
   let engineError;
+  let engineErrorCode;
   let nextId = 1;
   const pending = /* @__PURE__ */ new Map();
   const call = (msg) => new Promise((resolve, reject) => {
@@ -1681,6 +1689,7 @@ function createSherpaLocalEngine(options) {
       ready = (async () => {
         engineLoading = true;
         engineError = void 0;
+        engineErrorCode = void 0;
         downloadProgress = null;
         try {
           if (!child || !childInit) {
@@ -1708,7 +1717,7 @@ function createSherpaLocalEngine(options) {
             }
             if (!child) {
               const runtime = options.kind === "kokoro" ? resolveNativeRuntime() : { env: process.env };
-              if (!runtime) throw new Error(NATIVE_RUNTIME_UNAVAILABLE);
+              if (!runtime) throw new NativeRuntimeUnavailableError();
               child = fork(workerPath, [], {
                 stdio: ["ignore", "ignore", "pipe", "ipc"],
                 ...runtime.execPath ? { execPath: runtime.execPath, env: runtime.env } : {}
@@ -1754,6 +1763,7 @@ function createSherpaLocalEngine(options) {
           broadcast("tts-ready", { engine: options.kind, worker: true });
         } catch (e) {
           engineError = e instanceof Error ? e.message : String(e);
+          engineErrorCode = e instanceof NativeRuntimeUnavailableError ? e.code : void 0;
           throw e;
         } finally {
           engineLoading = false;
@@ -1790,6 +1800,7 @@ function createSherpaLocalEngine(options) {
         ready: childInit === true,
         loading: engineLoading,
         error: engineError,
+        errorCode: engineErrorCode,
         progress: downloadProgress ?? void 0,
         local: {
           repo: repoName,
@@ -2064,6 +2075,7 @@ var en = {
   engineLoading: "loading\u2026",
   engineReady: "ready",
   engineError: "failed",
+  errKokoroNeedsNode: "Local Kokoro cannot run directly inside the official desktop app (Electron): install Node.js >= 18 on PATH (or set DSHVM_NODE to its path), or switch the read-aloud engine to Edge / local VITS.",
   ttsModelsMissing: "local models missing",
   ttsDownload: "Download",
   ttsDelete: "Delete",
@@ -2284,7 +2296,7 @@ var name = "voice-mode";
 var NS_VOICE_MODE = "voice-mode";
 var BASE_PATH = "/voice-mode";
 var PREVIEW_NETWORK_PATTERN = /fetch failed|ECONN|ENOTFOUND|getaddrinfo|ETIMEDOUT|EAI_AGAIN|network|unreachable|socket hang up|aborted/i;
-var PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa/i;
+var PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa|local Kokoro/i;
 var PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat/i;
 function classifyPreviewError(msg) {
   if (PREVIEW_TEXT_PATTERN.test(msg)) return "text";

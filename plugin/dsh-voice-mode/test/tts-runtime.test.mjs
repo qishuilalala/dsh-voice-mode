@@ -4,7 +4,7 @@
  * `External buffers are not allowed`；需改用真 Node 起子进程，找不到则明确报错。
  */
 import assert from 'node:assert/strict'
-import { resolveNativeRuntime, NATIVE_RUNTIME_UNAVAILABLE } from '../src/tts-runtime.ts'
+import { resolveNativeRuntime, NATIVE_RUNTIME_UNAVAILABLE, NativeRuntimeUnavailableError } from '../src/tts-runtime.ts'
 
 let n = 0
 const t = (name, fn) => { fn(); n++; console.log(`  ✓ ${name}`) }
@@ -57,5 +57,11 @@ t('默认探测器：本测试进程自身是真 Node，可被探测到（走真
 })
 t('默认探测器：不存在的路径返回 null', () => {
   assert.equal(resolveNativeRuntime({ electron: true, env: { PATH: '/nonexistent', DSHVM_NODE: '/nonexistent/node' } }), null)
+})
+t('NativeRuntimeUnavailableError：稳定错误码 kokoro_needs_node + 英文机器消息（UI 文案由客户端按语言翻译）', () => {
+  const e = new NativeRuntimeUnavailableError()
+  assert.equal(e.code, 'kokoro_needs_node')
+  assert.ok(e instanceof Error)
+  assert.equal(e.message, NATIVE_RUNTIME_UNAVAILABLE)
 })
 console.log(`\ntts-runtime：${n} 项通过`)

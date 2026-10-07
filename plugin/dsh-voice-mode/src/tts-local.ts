@@ -13,7 +13,7 @@
  * 输出：PCM → WAV（PCM16）→ 经 SSE base64 下发，client 按 audio/wav 播放。
  */
 import { fork, type ChildProcess } from 'node:child_process'
-import { NATIVE_RUNTIME_UNAVAILABLE, resolveNativeRuntime } from './tts-runtime.ts'
+import { NativeRuntimeUnavailableError, resolveNativeRuntime } from './tts-runtime.ts'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { statSync } from 'node:fs'
@@ -229,6 +229,8 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
   /** 引擎/模型现状（设置面板轮询）：加载中 / 最近错误。 */
   let engineLoading = false
   let engineError: string | undefined
+  /** 稳定错误码（目前仅 kokoro_needs_node）；供设置面板按界面语言翻译。 */
+  let engineErrorCode: string | undefined
   let nextId = 1
   const pending = new Map<number, { resolve: (r: WorkerResponse) => void; reject: (e: Error) => void }>()
 
@@ -255,6 +257,7 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
       ready = (async () => {
         engineLoading = true
         engineError = undefined
+        engineErrorCode = undefined
         downloadProgress = null
         try {
         // 冷启动/重建时才校验模型与 init（旧实现每句合成都重哈希数百 MB 模型
@@ -290,7 +293,7 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
           if (!child) {
             // Kokoro 的原生 addon 在 Electron（官方桌面端宿主）下不可用 → 另用真 Node 起子进程（见 tts-runtime.ts）。
             const runtime = options.kind === 'kokoro' ? resolveNativeRuntime() : { env: process.env }
-            if (!runtime) throw new Error(NATIVE_RUNTIME_UNAVAILABLE)
+            if (!runtime) throw new NativeRuntimeUnavailableError()
             child = fork(workerPath, [], {
               stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
               ...(runtime.execPath ? { execPath: runtime.execPath, env: runtime.env } : {}),
@@ -340,6 +343,7 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
         broadcast('tts-ready', { engine: options.kind, worker: true })
         } catch (e) {
           engineError = e instanceof Error ? e.message : String(e)
+          engineErrorCode = e instanceof NativeRuntimeUnavailableError ? e.code : undefined
           throw e
         } finally {
           engineLoading = false
@@ -380,6 +384,7 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
         ready: childInit === true,
         loading: engineLoading,
         error: engineError,
+        errorCode: engineErrorCode,
         progress: downloadProgress ?? undefined,
         local: {
           repo: repoName,

@@ -41,6 +41,15 @@ export const NATIVE_RUNTIME_UNAVAILABLE =
   'Local Kokoro cannot run inside the Electron-based desktop host (native add-on blocked: "External buffers are not allowed"). ' +
   'Install Node.js >= 18 on PATH (or set DSHVM_NODE to its path), or switch the read-aloud engine to Edge or VITS.'
 
+/** 稳定错误码：客户端按界面语言翻译（host 不发自然语言文案），message 为英文机器可读/日志文本。 */
+export class NativeRuntimeUnavailableError extends Error {
+  readonly code = 'kokoro_needs_node'
+  constructor() {
+    super(NATIVE_RUNTIME_UNAVAILABLE)
+    this.name = 'NativeRuntimeUnavailableError'
+  }
+}
+
 let cached: NativeRuntime | null | undefined
 
 /** 解析 Kokoro 子进程运行时；null = 宿主是 Electron 且找不到真 Node。 */

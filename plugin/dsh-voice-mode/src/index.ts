@@ -66,7 +66,7 @@ const BASE_PATH = '/voice-mode'
 type PreviewErrorCategory = 'network' | 'engine' | 'text' | 'unknown'
 
 const PREVIEW_NETWORK_PATTERN = /fetch failed|ECONN|ENOTFOUND|getaddrinfo|ETIMEDOUT|EAI_AGAIN|network|unreachable|socket hang up|aborted/i
-const PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa/i
+const PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa|local Kokoro/i
 const PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat/i
 
 function classifyPreviewError(msg: string): PreviewErrorCategory {

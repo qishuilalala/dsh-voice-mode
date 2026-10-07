@@ -60,6 +60,8 @@ export interface TtsEngineStatus {
   loading: boolean
   /** 当前引擎最近一次错误。 */
   error?: string
+  /** 最近一次错误的稳定错误码（可选；客户端据此翻译，无码则展示 error 原文）。 */
+  errorCode?: string
   /** 当前模型下载进度（本地引擎下载时；edge 无）。 */
   progress?: { file: string; percent: number }
   /** 当前引擎的模型组（edge 无 local）。 */

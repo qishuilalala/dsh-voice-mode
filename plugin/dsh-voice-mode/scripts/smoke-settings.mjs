@@ -176,6 +176,11 @@ try {
     await p.waitForTimeout(1200)
     if (!(await click(/voice mode|语音模式/, '[role=dialog] button,[role=dialog] [role=tab],[role=dialog] a,[role=dialog] li'))) return ''
     await p.waitForTimeout(1500)
+    // DSHVM_SHOT_DIR：把设置页截图落盘供人工体验审查（不影响断言）
+    if (process.env.DSHVM_SHOT_DIR) {
+      const tag = (await p.evaluate(() => navigator.language)).slice(0, 2)
+      await p.screenshot({ path: `${process.env.DSHVM_SHOT_DIR}/settings-${tag}.png` }).catch(() => {})
+    }
     return cardText(p)
   }
   {

@@ -652,6 +652,7 @@ interface ModelsStatusPayload {
     ready: boolean
     loading: boolean
     error?: string
+    errorCode?: string
     progress?: { file: string; percent: number }
     local?: { repo: string; ready: boolean; loading: boolean; error?: string; files: Array<{ name: string; exists: boolean; size: number }> }
   }
@@ -765,7 +766,7 @@ function EngineStatusInline(): React.ReactElement {
               : tr('ttsDownload')}
         </button>
       )}
-      {tts.error && <span style={{ fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', flexBasis: '100%' }}>{tts.error}</span>}
+      {tts.error && <span style={{ fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', flexBasis: '100%' }}>{tts.errorCode === 'kokoro_needs_node' ? tr('errKokoroNeedsNode') : tts.error}</span>}
     </div>
   )
 }

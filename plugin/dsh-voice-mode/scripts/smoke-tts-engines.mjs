@@ -47,7 +47,13 @@ r.status === 200 && hasSound(r.buf) ? ok(`vits(WASM) 合成有声音（${r.buf.l
 await setEngine('kokoro')
 r = await preview('62')
 if (r.status === 200 && hasSound(r.buf)) ok(`kokoro(原生 addon${electron ? '，经真 Node 子进程' : ''}) 合成有声音（${r.buf.length} 字节）`)
-else if (electron && r.status === 502) ok('kokoro：Electron 宿主且无真 Node → 可操作的失败（502），符合预期')
+else if (electron && r.status === 502) {
+  // 无真 Node：除 502 外，设置面板读的状态里必须带稳定错误码 kokoro_needs_node（客户端据此显示本地化的可操作提示）
+  const st2 = await (await fetch(`${origin}/voice-mode/models/status`, { headers: { origin } })).json()
+  st2?.tts?.errorCode === 'kokoro_needs_node'
+    ? ok('kokoro：Electron 宿主且无真 Node → 502 + 状态带 errorCode=kokoro_needs_node（设置面板显示本地化提示）')
+    : bad(`kokoro 502 但状态缺 errorCode（tts=${JSON.stringify(st2?.tts?.errorCode)}）`)
+}
 else bad(`kokoro 合成失败（HTTP ${r.status}）`)
 
 await setEngine('edge')

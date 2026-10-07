@@ -1534,6 +1534,7 @@ var zh = {
   engineLoading: "\u52A0\u8F7D\u4E2D\u2026",
   engineReady: "\u5C31\u7EEA",
   engineError: "\u52A0\u8F7D\u5931\u8D25",
+  errKokoroNeedsNode: "\u672C\u5730 Kokoro \u65E0\u6CD5\u5728\u5B98\u65B9\u684C\u9762\u7AEF\uFF08Electron\uFF09\u5185\u76F4\u63A5\u8FD0\u884C\uFF1A\u8BF7\u5728\u7CFB\u7EDF PATH \u4E0A\u5B89\u88C5 Node.js \u226518\uFF08\u6216\u8BBE\u73AF\u5883\u53D8\u91CF DSHVM_NODE \u6307\u5411\u5B83\uFF09\uFF0C\u6216\u628A\u6717\u8BFB\u5F15\u64CE\u5207\u6362\u4E3A Edge / \u672C\u5730 VITS\u3002",
   ttsModelsMissing: "\u672C\u5730\u6A21\u578B\u672A\u5C31\u7EEA",
   ttsDownload: "\u4E0B\u8F7D",
   ttsDelete: "\u5220\u9664",
@@ -1763,6 +1764,7 @@ var en = {
   engineLoading: "loading\u2026",
   engineReady: "ready",
   engineError: "failed",
+  errKokoroNeedsNode: "Local Kokoro cannot run directly inside the official desktop app (Electron): install Node.js >= 18 on PATH (or set DSHVM_NODE to its path), or switch the read-aloud engine to Edge / local VITS.",
   ttsModelsMissing: "local models missing",
   ttsDownload: "Download",
   ttsDelete: "Delete",
@@ -2749,7 +2751,7 @@ function EngineStatusInline() {
         children: acting ? acting === "clean" ? t("ttsDeleting") : t("ttsDownloading") : action === "clean" ? t("ttsDelete") : t("ttsDownload")
       }
     ),
-    tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: tts.error })
+    tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: tts.errorCode === "kokoro_needs_node" ? t("errKokoroNeedsNode") : tts.error })
   ] });
 }
 function ModelStatusView() {
@@ -3099,7 +3101,7 @@ var TELEMETRY_VIEW = [
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
 ];
-var BUILD_TAG = "b51f379";
+var BUILD_TAG = "7333c97";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

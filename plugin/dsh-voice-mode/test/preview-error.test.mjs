@@ -126,6 +126,11 @@ t('网络类正例：fetch failed / ECONN / ENOTFOUND / ETIMEDOUT / socket hang 
 
 console.log('③ engine 归类（本地模型下载/校验失败 / 子进程异常）')
 
+t('引擎类正例：Electron 宿主下无真 Node 的 Kokoro 错误（此前落入 unknown，误提示「检查网络或音色名」）', () => {
+  const msg = 'Local Kokoro cannot run inside the Electron-based desktop host (native add-on blocked: "External buffers are not allowed"). Install Node.js >= 18 on PATH (or set DSHVM_NODE to its path), or switch the read-aloud engine to Edge or VITS.'
+  assert.equal(classifyPreviewError(msg), 'engine')
+})
+
 t('引擎类正例：model download / model verify / init failed / child exited / sherpa', () => {
   for (const m of ['model download failed', 'model verify failed', 'init failed', 'child exited', 'sherpa error']) {
     assert.equal(classifyPreviewError(m), 'engine', `"${m}" 应归 engine`)

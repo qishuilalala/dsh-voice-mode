@@ -13,6 +13,18 @@
 - ADR-0003：client-side VAD 下沉（语音活动检测从 host 侧移至客户端，进一步压延迟）
 - 发布与美化批次：博客、发布说明与文档收尾（对应 `blog/` 与 `RELEASE-NOTES.md`）
 
+## [0.7.22] - 2026-10-07
+
+**Patch**：桌面端 Kokoro 失败提示本地化 + 预览归类修正。
+
+### Fixed
+
+- 官方桌面端（Electron）且 PATH 上没有 Node.js 时，选本地 Kokoro 的失败提示此前在设置面板里以**英文原文**展示（中文界面也是），试听失败还被误归为「请检查网络或音色名」。现在 host 返回稳定错误码 `kokoro_needs_node`，设置面板按界面语言显示可操作的中/英文提示，试听归为「引擎未就绪」。
+
+### Changed
+
+- README（中/英）故障排查补充桌面端 Kokoro 条目；`smoke-tts-engines.mjs` 断言无真 Node 时状态带该错误码；`smoke-settings.mjs` 支持 `DSHVM_SHOT_DIR` 截图供体验审查。
+
 ## [0.7.21] - 2026-10-03
 
 **Patch**：权限/数据流与兼容声明完善（运行行为零改动）。
