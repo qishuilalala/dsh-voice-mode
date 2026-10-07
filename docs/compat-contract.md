@@ -457,7 +457,7 @@ class AgentDefaultModelConfig extends Service {
 
 ### 12.4 官方语音输入共存
 
-0.2.0-rc.2 核心含 `dsh-experimental-client-ui-voice-input`（占用槽位 `conversation.input.activity`、`plugins.bundle.config`、`plugins.bundle.activation`）。本插件占用 `conversation.input.dock/right`，**槽位不冲突**；冒烟中两者同页，data-dshvm="mic" 正常渲染、console 0 error。共存策略：互不依赖，用户可二选一；官方麦克风"未就绪→引导至语音插件设置"指向官方 bundle 设置而非本插件。**未实测**两个麦克风同时开启的音频设备争用（待核对，建议真机验证）。
+0.2.0-rc.2 核心含 `dsh-experimental-client-ui-voice-input`（占用槽位 `conversation.input.activity`、`plugins.bundle.config`、`plugins.bundle.activation`）。本插件占用 `conversation.input.dock/right`，**槽位不冲突**；冒烟中两者同页，data-dshvm="mic" 正常渲染、console 0 error。共存策略：互不依赖，用户可二选一；官方麦克风"未就绪→引导至语音插件设置"指向官方 bundle 设置而非本插件。**浏览器层并发采集已实测（2026-10-07，Chromium + 假设备）**：两路 `getUserMedia`（约束不同：本插件的 AEC/降噪组合 vs 默认）同时处于 live 且都收到音频，停掉其中一路不影响另一路——浏览器本身不存在设备争用。**仍未实测**真实硬件/操作系统层面的独占行为（如个别 Windows 驱动的独占模式），需真机；因两者互不依赖、用户可二选一，风险低。
 
 ### 12.5 桌面端结论
 

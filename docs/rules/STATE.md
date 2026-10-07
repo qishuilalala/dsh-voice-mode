@@ -232,5 +232,130 @@
 - 既有 dsh 全局回滚基线：`/mnt/work/dsh-0.1.5-alpha.2-pre-rollback-20260914-095242.tar.gz`（不动用，本轮未升级）。
 - 本轮改动全部在 git 工作区，回滚 = 单个反向提交或 `git checkout -- <文件>`（业务源码零改动）。
 
+---
 
+## 任务：发版流程固化 + dsh 上游版本长期监控 —— **已完成（2026-09-18）**
 
+### 用户指令
+
+> 「發版流程固化吧，以後都要這樣發版，注意要隨時留意是否 dsh 有新版本，要兼容進去」
+
+### 改动面（最小化）
+
+- **`plugin/dsh-voice-mode/scripts/release.sh`**：**新增**。10 步发版链路——预检（git 干净 / npm whoami=gunnarli / dist-tags 顺序 / 本机 dsh 对齐 / 凭据齐全）→ bump package.json version → 第一次 rebuild → 主 commit（白名单 add，**不含** lib/client.js）→ 第二次 rebuild（拿新 BUILD_TAG）→ lib TAG-only commit → push main（python subprocess + 临时 URL `https://x-access-token:$tok@github.com/...`，**不落 -u、token 不回显**）→ npm publish（带 previously staged 重试：wait 20s × 3 次）→ 验 npm registry 传播（wait 10s × 6 次）→ tag + POST GitHub release（中文 changelog 从 CHANGELOG.md 自动提取）→ systemctl 收尾校验。失败兜底：每步 exit 1，git reflog 可回滚。
+- **`plugin/dsh-voice-mode/scripts/check-dsh-version.sh`**：**新增**。dsh 上游版本长期监控——拉 `@deepseek-ai/dsh` 的 `latest/next/alpha/beta` dist-tags，与本仓库 `verify-dual.sh` 默认矩阵的 `check-anchors/typecheck-dual/smoke` 命令行参数严格匹配；EXIT 0=已对齐，EXIT 1=有未覆盖版本（输出四步兼容流程）。单一真源：verify-dual.sh 命令行参数（awk 提取 $3+ 字段，grep 取 `0.X.Y-prerelease.N` 形式）。
+- **`docs/RELEASE-WORKFLOW.md`**：**新增**。发版流程完整说明——10 步流程表 / 强制纪律 / 4.3 节「dsh 新版本兼容四步流程」/ 第 5 章故障兜底表 / 第 6 章与其他文档的关系 / 第 7 章版本历史。
+- **`plugin/dsh-voice-mode/package.json` scripts 段**：新增 `check:dsh-version` / `e2e:full` / `release` 三个入口（**2026-10-03 v0.7.20 更正**：`check:dsh-version` / `release` 指向 `.gitignore` 的本地专用脚本，已从 package.json 移除，脚本仍可 `bash scripts/…` 本机运行）。
+
+### 当前状态（2026-09-18 当日 `check:dsh-version` 实测）
+
+```
+== dsh 上游 dist-tags ==
+   latest : 0.1.5-rc.2
+   next   : 0.1.5-rc.2
+   alpha  : 0.1.6-alpha.2
+
+== 本机 == dsh --version : 0.1.5-rc.2
+== 已覆盖 == 0.1.1-rc.2 / 0.1.2-rc.1 / 0.1.5-rc.1 / 0.1.5-rc.2 / 0.1.6-alpha.2
+✓ 已对齐
+```
+
+### 强制纪律（脚本已编码 + 文档说明）
+
+- git 白名单 add（**绝不用 `git add -A`**）；token 走 `/root/.env` 经 python subprocess 临时 URL（不回显、不落 `-u`）；业务源码零变更；不升级生产 dsh；npm 默认走官方 registry；BUILD_TAG 双 commit 模式（参考 v0.7.10 历史）。
+
+### 接入 CI 建议（**已实施**：`.github/workflows/dsh-version-check.yml`，每周一 02:17 UTC，未覆盖版本自动开 issue 并失败；2026-10-05 运行通过）
+
+- 仓库根加 `.github/workflows/dsh-version-check.yml`：每日 / 每周跑 `npm run check:dsh-version`，EXIT 1 时开 issue 提醒维护者。
+- 本机 systemd timer 同样可选（按 `~/.dsh/docs/UPGRADES.md` 风格）。
+
+### 不变量 / 边界
+
+- 业务源码（`src/`、`lib/` 业务代码）**零变更**；生产 `dsh.service`（0.1.5-rc.2）**未触碰**（NRestarts=0 / `/voice-mode` 200）；`engines.dsh = ">=0.1.1-rc.2"` **不动**；历史 CHANGELOG 缺段（v0.7.8/9/10）**不回填**。
+- Hindsight 文档 `dsh-voice-mode-dsh-2026-09-18` 已入库（覆盖本轮全过程 + 未来会话必读）。
+
+### 备份指针
+
+- 隔离核心（5 份）：`/tmp/dsh011-core` / `dsh012-core` / `dsh015-core` / `dsh015-rc2-core` / `dsh016a2-core`。
+- 既有回滚基线：`/mnt/work/dsh-0.1.5-alpha.2-pre-rollback-20260914-095242.tar.gz`。
+- npm tarball：`dsh-voice-mode-0.7.11.tgz`（shasum `f64a2275b218a876747ac52ea6d1947dae2f6233`，发布时本地构建）。
+
+---
+
+## 任务：全版本兼容实测 + 0.1.7 双路径 shim + 两套体系 —— **已完成并发布（2026-09-23 R1–R9；随 v0.7.15 `7fdce8a` 落地，2026-10-07 复核更正状态）**
+
+### 用户指令
+
+> 全版本兼容所有 dsh 版本（不取代表线）；第一性原理深挖 + 对抗性审查；授权复用本机 key 真跑；构建长期测试体系 + 开发协作推进体系。
+
+### 改动面（已提交并随 v0.7.15 发布；2026-10-07 复核：src/index.ts 双路径设置桥、schemastery ^3.18.4、typecheck-dual cordis 映射、verify-dual 矩阵、patchReload 均在当前代码中；设置面后续由 v0.7.17 重做，见 ADR-0009）
+
+- **`plugin/dsh-voice-mode/src/index.ts`**：Config 12→27 字段；双路径设置桥（`register` 存在走旧路径，否则 `voiceSettingsFromConfig(config)`）；watch 守卫；`/mode` 双写（`scope.update` vs `SettingsForms.mutate`）。业务逻辑零改动。
+- **`package.json`**：schemastery `^3.18.1` → `^3.18.4`；scripts 加 `check:dsh-version` / `e2e:full` / `release`。
+- **`scripts/typecheck-dual.sh`**：cordis 映射补 `0.0.1-*→4.0.1-rc.4` / `0.1.7-*→4.0.4`，删臆测兜底。
+- **`scripts/verify-dual.sh`**：默认矩阵 5→8 版；核心路径收敛到 `/tmp/dshcore/dsh-<ver>`。
+- **`scripts/full-e2e.sh` + `smoke-runtime.sh`**：测试 profile 加 `"patchReload":"startup"`。
+- **`docs/compat-contract.md`**：§10（全版本矩阵）§11（shim 实施与验证）。
+- **`docs/qa/TEST-SYSTEM.md` + `docs/plan/COLLABORATION.md`**：新建两套体系文档，已注册进各自 README 索引。
+- **`lib/index.js` + `lib/client.js`**：重建产物（client 仅 BUILD_TAG 变化）。
+
+### 实证矩阵（最终态代码）
+
+| dsh 版本 | typecheck | 真流程 | 结论 |
+|---|---|---|---|
+| 0.1.7-alpha.1 / alpha.2 / rc.1 | ✅✅ | ✅ 4/2/4 帧 / 0 错 | PASS（R21 新增 rc.1，next 通道） |
+| 0.1.6-alpha.1 / alpha.2 | ✅✅ | ✅ 2/4 帧 / 0 错 | PASS（R17 新增 alpha.1） |
+| 0.1.5-alpha.1 / alpha.2 / rc.1 / rc.2 / rc.3 | ✅✅ | ✅ 2/4/2/2/4 帧 / 0 错 | PASS（含生产回归，R10 新增 alpha.1，R11 新增 alpha.2） |
+| 0.1.2-alpha.2~5 / rc.1 | ✅✅ | ✅ 4/4/2/4/4 帧 / 0 错 | PASS（0.1.2 线 5/5，R14 补齐） |
+| 0.1.3-alpha.2 | ✅✅ | ✅ **4 帧 / 0 错（R11，npm 扁平树）** | **PASS（方法论突破）** |
+| 0.1.1-rc.2 | ✅✅ | ✅ **4 帧 / 0 错（R15，fixture 跳过 HMR watch）** | **PASS（下界守住了）** |
+| 0.1.1-rc.1 | ✅✅ | ✅ **2 帧 / 0 错（R16，需单独打补丁，inode 独立）** | **PASS** |
+| 0.1.0-rc.2/3/6/7/8 | ✅✅（rc.8 9/9，其余缺 1） | ✅ **4/2/4/4/2 帧 / 0 错（R15/R17）** | **PASS（缺锚点不拦主链路）** |
+| 0.0.1-rc.5 | ✅✅（缺 1） | ✅ **4 帧 / 0 错（R18，npm 扁平树 + BOOT_ARGS + HMR-skip）** | **PASS** |
+| 0.0.1-rc.1/rc.2 | ❌ host FAIL + 缺 3 锚点 + 不可安装（删包依赖） | — | 结构性不兼容（三重，R18；仅剩未跑 e2e 的 2 版） |
+
+另：`npm test` 380 项 exit 0；生产 `/voice-mode` 200、NRestarts=0、journal 干净。
+
+### 三条实证教训
+
+1. `register` 必须 bind 调用（内部读 `this.registrations`）。
+2. 否决 `.volatile()`（破坏 schema 函数调用形态，rc.3 设置分层调用时污染 merge）。
+3. HMR 启动失败与插件无关（裸 profile 对照 boot 同样死亡）。
+
+### 剩余风险 / 待补
+
+- 0.1.1-rc.1 / rc.2 e2e ✅ **已 PASS（R15/R16，各 4/2 帧 / 0 错）**——fixture 跳过 HMR watch（环境变量门控补丁打在 /tmp 测试 core 的 profile-boot 上；rc.1 需单独打，inode 独立）。
+- 0.1.0-rc.8 e2e ✅ **已 PASS（R15，2 帧 / 0 错）**——pnpm 树 + fixture 跳过 HMR watch（与 0.1.1-rc.2 共用硬链接补丁，pnpm 跨树硬链接同一上游文件）。
+- 0.1.0-rc.2/3/6/7 e2e ✅ **已 PASS（R17，4/2/4/4 帧 / 0 错）**——逐版打 HMR-skip 补丁（先 stat 查 inode：rc.2/3/6/7 均独立）；**缺 1 锚点不拦语音主链路**（host 面全可用），"结构性不兼容" verdict 推翻，下界维持 0.1.1-rc.2 仅为保守口径。
+- HMR 阻塞根因链（R13–R16 实证全）：`watchUserPatches` 无条件调用 → HMR 构造要求 loader.internal 分类 → Node 22 下 dsh 进程内分类失败。裸 profile 对照同样死亡，与插件无关。
+- R13 测试设计重写已落地：`full-e2e.sh` 加内存守卫（1500MB）+ 端口预检 + 就绪等待 + 进程组回收；新增 `scripts/ensure-core.sh`（版本证据表驱动 pnpm/npm 选择）；`TEST-SYSTEM.md` 已同步（含陷阱 #6）。加固后自验证 0.1.5-rc.3 PASS。
+- ~~工作区改动未提交；发版需用户拍板~~ → **已发布**（v0.7.15 起，现 v0.7.22）。
+- R19–R20 收尾：§10 旧矩阵 8 行过期标记已同步新实证（全仓零残留）；/tmp 调试残留 77 项已清（隔离 core 保留）；goal 文本因需人类回合未能更新，以本 H2 + Hindsight 为准。
+
+### 备份指针
+
+- 隔离核心（8 份）：`/tmp/dshcore/dsh-0-1-{1-rc-2,2-rc-1,5-rc-1,5-rc-2,5-rc-3,6-alpha-2,7-alpha-1,7-alpha-2}`。
+- 恢复点：本 H2 段 + `docs/compat-contract.md` §10/§11 + Hindsight `dsh-voice-mode-0-1-7-2026-09-23`。
+
+---
+
+## 任务：安装形态缺陷修复 + 桌面端（Electron）等价验证 + 声明完善 —— **已完成（2026-10-02 ~ 2026-10-07，v0.7.18 ~ v0.7.22）**
+
+### 发现与修复（证据见 ADR-0011、`docs/compat-contract.md` §14.5/§16）
+
+- **v0.7.18**：`msedge-tts` 的 `preinstall: npx only-allow pnpm` 致 pnpm 11/npm 全新安装失败；其 `require("buffer/index")` 经 dsh ≥0.1.7 ResolutionRouter 抛 TypeError 致已安装形态 `failed to import`（issue #12 即此）。修法：连同全部依赖内联为 `lib/msedge-tts.cjs`；`test/package-install.test.mjs`、`scripts/verify-install.sh`、CI `install` job（Node 18/22）防回归；<0.7.18 已 npm deprecate。
+- **v0.7.19**：Electron（官方桌面端宿主）下 Kokoro 原生 addon 报 `External buffers are not allowed`；修法 `src/tts-runtime.ts`（真 Node ≥18：`DSHVM_NODE` → PATH）。
+- **v0.7.20/21**：README 横幅、移除失效 npm 入口；新增「权限与数据流声明」「兼容声明」与 `SECURITY.md`（已启用私密漏洞报告）。
+- **v0.7.22**：Kokoro 无真 Node 的失败提示本地化（稳定错误码 `kokoro_needs_node`）、预览归类修正。
+- 兼容：已覆盖 dsh 0.1.1-rc.2 → 0.2.1-alpha.1（`verify-dual.sh` 字面量矩阵；compat-contract §16）；`ensure-core.sh` 容忍 pnpm 11 的 `ERR_PNPM_IGNORED_BUILDS`；`typecheck-dual.sh` 退出时还原 `pnpm-workspace.yaml`。
+
+### 验证口径
+
+- 已安装形态（非 `link:`）+ Electron 44.0.0 RunAsNode 宿主（= 桌面端宿主同款运行时）冒烟：宿主端点、中英文界面、设置页、vits/kokoro 合成；33 套件 / 433 项单测在 Electron 运行时下亦通过。
+- 浏览器层两路麦克风并发采集已实测无争用（compat-contract §12.4）。
+
+### 剩余（均不紧急）
+
+- 只能真机验证：Windows/macOS 的 Electron 主进程、`dsh-app://`、系统麦克风授权、Windows PATH、真实硬件独占行为。
+- CONTEXT.md「已知待办」长期遗留项：原生 AEC 失效兜底（耳机/Safari 无真机数据）、ADR-0006 第一级探测部分实现、Ctrl 强制发送在已停顿但草稿有累积时不 flush、松手恰在 30s 滚段边界的竞态。
+- 本机 `git` 报 `dubious ownership`：脚本一律用 `GIT_CONFIG_COUNT/KEY/VALUE` 环境变量临时绕过，未改全局配置；永久解决需维护者自行 `git config --global --add safe.directory /mnt/dsh-voice-mode`。
