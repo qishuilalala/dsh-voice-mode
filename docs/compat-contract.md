@@ -461,7 +461,9 @@ class AgentDefaultModelConfig extends Service {
 
 ### 12.5 桌面端结论
 
-- 无本地桌面端安装包，**以下为源码推断，非桌面端实测**。
+> **2026-10-07 更新：已在真 Electron 上做桌面端外壳等价实测**（`scripts/desktop-shell/` + `scripts/smoke-desktop-shell.mjs`，Electron 44.0.0 + Xvfb；逐项复刻官方 `apps/desktop/src` 的 `registerSchemesAsPrivileged`、`forwardWebRequest`、`microphone-permissions`、ws 头改写与启动传输配置）。dsh 0.1.7-rc.2 / 0.2.0-rc.2 / 0.2.1-alpha.1（及 0.1.6-alpha.2）上全部通过：`dsh-app://app` 为安全上下文；dsh 完整界面在该协议下引导成功；插件客户端半区加载、mic 按钮渲染、页面 console 0 error；`/voice-mode/config`、`/settings`（含写入读回）、`/toggle`、二进制 `/asr` 体、SSE `/stream` 经壳转发均正常（壳删除 Origin/Host/Sec-Fetch-Site 后插件的同源/回环判定放行）；官方麦克风策略下纯音频 `getUserMedia` 放行、音视频混合请求被拒（插件只请求音频）；插件真实 AudioWorklet（Blob 内联）在自定义协议页里加载并收到麦克风帧。**与真实桌面端的差异**（不影响上述结论）：首页由 Host 的 Web 首页自引导而非读打包 dist + `dshDesktopBoot` 注入；无更新/菜单/托盘/目录选择等壳功能；macOS 的系统麦克风授权环节（`systemPreferences`）与 Windows 安装器/路径行为仍属 OS 层，无法在 Linux 复现。以下为此前的源码推断（保留作依据）：
+
+- 无本地桌面端安装包，**以下为源码推断**（已由上方 2026-10-07 的 Electron 外壳等价实测验证）。
 - host 逻辑（路由/SSE/ASR/TTS）与 Electron 壳无关，天然兼容。
 - 客户端：`dsh.client.platform` 在 `dsh-client-modules/lib/index.js:65/714` 仅校验为字符串且只放行 `"web"`，桌面端内嵌同一 Web 客户端，`"web"` 适用；无桌面特有分支。
 - 麦克风权限为 OS/Electron 层（上游 0.2.0-rc.1 已修 macOS 录音权限）；本插件 AudioWorklet 采集走标准 `getUserMedia`，待桌面端真机核对。

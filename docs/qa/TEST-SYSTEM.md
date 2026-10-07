@@ -26,6 +26,7 @@
 | 每次推送 / PR（CI） | `ci.yml`：`test` job（npm test + build）与 `install` job（Node 18/22 下对打包产物做 pnpm+npm 全新安装并 import） | CI 自动 |
 | **发版前** | L5 安装形态门禁（见上）；全矩阵冒烟用 `link:` 与 `DSHVM_SPEC` 两种形态各跑一遍 | 发版者 |
 | **发版前（桌面端等价）** | 以 Electron RunAsNode 作宿主复跑已安装形态冒烟：`npm i electron@44 && node node_modules/electron/install.js`，`DSHVM_HOST_CMD="env ELECTRON_RUN_AS_NODE=1 <electron> --expose-internals" DSHVM_TTS_SMOKE=1 bash scripts/smoke-runtime.sh <bin> <port>`；并可用 `node` 垫片在 Electron 下跑 `npm test` | 发版者 |
+| **发版前（桌面端外壳）** | `DSHVM_ELECTRON=<electron> DSHVM_HOST_CMD=… bash scripts/smoke-runtime.sh <bin> <port>`：真 Electron + Xvfb 按官方桌面端机制（`dsh-app://` 特权协议、`forwardWebRequest`、麦克风权限策略、ws 头改写）加载 dsh，断言转发/SSE/麦克风/AudioWorklet（`scripts/smoke-desktop-shell.mjs`；<0.1.7 自动跳过） | 发版者 |
 | 每次改兼容面脚本 | 对应脚本 `--help`/语法检查 + 至少一版实跑 | 提交者 |
 
 ## 三、迭代循环（新版本出现时）
@@ -65,6 +66,8 @@
 9. **调试「failed to import」**：dsh 把真实异常交给 `ctx.logger.error`，默认不输出，只剩 `entry did not activate`；可复制一份核心，在 `cordis-plugin-loader` 的 `Entry._init` catch 里加 `console.error(error.stack)` 取原文（勿改共享的 pnpm store 硬链文件）。
 
 10. **桌面端（Electron）≠ Node**：官方桌面端宿主是 `ELECTRON_RUN_AS_NODE=1` 的 Electron（V8 内存笼）。原生 addon 若返回 N-API 外部缓冲区会报 `External buffers are not allowed`（Kokoro 即中招，见 `src/tts-runtime.ts`）；WASM/纯 JS 路径不受影响。服务器上无桌面端安装包时，用 `electron` npm 包的 RunAsNode 模式即可得到同款运行时（Electron 44.0.0 = Node 24.18.1）。Windows/macOS 的主进程、自定义协议、系统麦克风授权仍只能真机验证。
+
+11. **桌面端外壳复刻的取舍**：官方 `apps/desktop/src`（main.ts / web-document.ts / microphone-permissions.ts / preload-app.ts）是复刻依据，改动官方行为时需回看这些文件。试过完整复刻 `dshDesktopBoot` 注入（解析 Host 首页 → injections 行），卡在客户端模块注册时序；改为 preload 预置 `__DSH_TRANSPORT__` 让 Host 首页自引导，其余机制逐项照搬。`--use-fake-ui-for-media-stream` 会绕过 Electron 的权限请求处理器，使「音视频被拒」的断言失真——外壳冒烟只用 `--use-fake-device-for-media-stream`。HTML 属性里的 `&amp;` 需还原，否则 `plugins/??…&rev=` 404。
 
 ## 六、当前矩阵快照（随验证更新；compat-contract.md §10/§11 为准）
 

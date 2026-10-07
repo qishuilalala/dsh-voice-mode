@@ -163,6 +163,22 @@ else
   echo "   （跳过客户端冒烟：playwright-core 未安装）"
 fi
 
+# DSHVM_ELECTRON=<electron 可执行文件>：桌面端外壳冒烟（真 Electron + Xvfb，按官方桌面端的 dsh-app:// 协议/转发/麦克风权限机制加载 dsh）。
+CORE_VER="$(node -p "require('$(dirname "$BIN")/../package.json').version" 2>/dev/null || echo 0.0.0)"
+if [ -n "${DSHVM_ELECTRON:-}" ] && [ "$(printf '%s\n' 0.1.7-alpha.1 "$CORE_VER" | sort -V | head -1)" != "0.1.7-alpha.1" ]; then
+  echo "== 桌面端外壳冒烟：跳过（dsh $CORE_VER < 0.1.7，桌面端自 0.1.7 起才有）=="
+elif [ -n "${DSHVM_ELECTRON:-}" ]; then
+  echo "== 桌面端外壳冒烟（Electron + dsh-app://）=="
+  if command -v xvfb-run >/dev/null 2>&1; then
+    # 官方桌面端的静态首页取自打包的 dsh-web-frontend/dist；在被测核心里找到同一份
+    WEB_INDEX="$(find -L "$(dirname "$BIN")/../../.." -maxdepth 6 -path '*dsh-web-frontend/dist/index.html' 2>/dev/null | head -1)"
+    [ -n "$WEB_INDEX" ] && export DSHVM_WEB_DIST="$(dirname "$WEB_INDEX")"
+    xvfb-run -a node scripts/smoke-desktop-shell.mjs "$URL" || fail=1
+  else
+    echo "   （跳过：缺 xvfb-run）"
+  fi
+fi
+
 # DSHVM_TTS_SMOKE=1：朗读引擎冒烟（vits/kokoro 真实合成；需本机已缓存模型，否则首次合成会下载）。
 # 宿主是 Electron（DSHVM_HOST_CMD 含 electron）时自动按桌面端语义断言 Kokoro。
 if [ -n "${DSHVM_TTS_SMOKE:-}" ]; then

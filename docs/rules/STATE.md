@@ -353,9 +353,10 @@
 
 - 已安装形态（非 `link:`）+ Electron 44.0.0 RunAsNode 宿主（= 桌面端宿主同款运行时）冒烟：宿主端点、中英文界面、设置页、vits/kokoro 合成；33 套件 / 433 项单测在 Electron 运行时下亦通过。
 - 浏览器层两路麦克风并发采集已实测无争用（compat-contract §12.4）。
+- **桌面端外壳等价实测（2026-10-07）**：真 Electron 44 + Xvfb 复刻官方 `dsh-app://` 协议/转发/麦克风策略，断言转发、SSE、麦克风放行与拒绝、AudioWorklet 收帧、mic 按钮渲染（compat-contract §12.5，`scripts/smoke-desktop-shell.mjs`）。
 
 ### 剩余（均不紧急）
 
-- 只能真机验证：Windows/macOS 的 Electron 主进程、`dsh-app://`、系统麦克风授权、Windows PATH、真实硬件独占行为。
+- 只能真机验证（均为 OS 层，已无法再用 Linux 缩小）：macOS 的系统麦克风授权（`systemPreferences`）、Windows 安装器与 PATH 行为、真实硬件独占行为。
 - CONTEXT.md「已知待办」长期遗留项：原生 AEC 失效兜底（耳机/Safari 无真机数据）、ADR-0006 第一级探测部分实现、Ctrl 强制发送在已停顿但草稿有累积时不 flush、松手恰在 30s 滚段边界的竞态。
 - 本机 `git` 报 `dubious ownership`：脚本一律用 `GIT_CONFIG_COUNT/KEY/VALUE` 环境变量临时绕过，未改全局配置；永久解决需维护者自行 `git config --global --add safe.directory /mnt/dsh-voice-mode`。

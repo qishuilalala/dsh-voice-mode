@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 测试装置
+
+- 新增桌面端外壳冒烟：`scripts/desktop-shell/`（官方 `apps/desktop` 关键机制的最小复刻）+ `scripts/smoke-desktop-shell.mjs`，真 Electron + Xvfb 下验证 `dsh-app://` 安全上下文、请求转发（Origin 被剥离）、SSE 流式、麦克风放行/拒绝策略、插件真实 AudioWorklet 收帧、mic 按钮渲染；`smoke-runtime.sh` 以 `DSHVM_ELECTRON=<electron>` 启用，<0.1.7 自动跳过。已在 dsh 0.1.6-alpha.2 / 0.1.7-rc.2 / 0.2.0-rc.2 / 0.2.1-alpha.1 通过。运行行为零改动。
+
 ### 规划中
 
 - F1：emotion 标签 DSL 全量上线（LLM 侧标签使用指引注入 + 真机验收）
