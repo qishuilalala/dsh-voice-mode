@@ -107,4 +107,4 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 
 ## 关键源文件
 
-src/asr.ts（采集/门控/打断引擎）· fixture-recorder.ts（真机录制，默认关）· client.tsx（播放/参考池/手势/UI）· aec.ts（NLMS）· asr-host.ts（host ASR/检测通道）· index.ts（路由/SSE/owner）· tts-local.ts（本地 TTS VITS/Kokoro + 精度）· tts-queue.ts（逐会话队列/epoch 打断）· settings-form.tsx（设置面板）
+src/asr.ts（采集/门控/打断引擎）· fixture-recorder.ts（真机录制，默认关）· client.tsx（播放/参考池/手势/UI）· aec.ts（NLMS）· asr-host.ts（host ASR/检测通道）· index.ts（路由/SSE/owner）· tts-local.ts（本地 TTS VITS/Kokoro + 精度）· tts-queue.ts（逐会话队列/epoch 打断）· settings-form.tsx（设置面板）；tts-runtime.ts（Electron 宿主下 Kokoro 子进程的真 Node 选择，ADR-0011 后续）· settings-store.ts / settings-http-scope.ts（≥0.1.7 设置自持久化，ADR-0009）· i18n.ts / strings.ts / error-text.ts / errors.ts（国际化，ADR-0010）。测试装置：scripts/smoke-runtime.sh（已安装形态/Electron 宿主/桌面外壳 DSHVM_ELECTRON/语音链路 DSHVM_VOICE_CHAIN）、scripts/full-e2e.sh（DSHVM_VOICE_LOOP 真 LLM 闭环）、scripts/verify-install.sh（安装门禁）
