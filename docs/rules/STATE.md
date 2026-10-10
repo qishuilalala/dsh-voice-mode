@@ -357,6 +357,8 @@
 
 ### 剩余（均不紧急）
 
+- dsh 上游 0.2.1-alpha.2 已于 2026-10-10 复核通过（compat-contract §17），`check-dsh-version.sh` 退出 0；插件行为零改动，未发版。
+
 - 只能真机验证（均为 OS 层，已无法再用 Linux 缩小）：macOS 的系统麦克风授权（`systemPreferences`）、Windows 安装器与 PATH 行为、真实硬件独占行为。
 - CONTEXT.md「已知待办」长期遗留项：原生 AEC 失效兜底（耳机/Safari 无真机数据）、ADR-0006 第一级探测部分实现、Ctrl 强制发送在已停顿但草稿有累积时不 flush、松手恰在 30s 滚段边界的竞态。
 - 本机 `git` 报 `dubious ownership`：脚本一律用 `GIT_CONFIG_COUNT/KEY/VALUE` 环境变量临时绕过，未改全局配置；永久解决需维护者自行 `git config --global --add safe.directory /mnt/dsh-voice-mode`。

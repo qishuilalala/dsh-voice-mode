@@ -624,3 +624,18 @@ class AgentDefaultModelConfig extends Service {
 - 工具修正：pnpm 11 安装该核心时对 `node-pty`、`koffi`、`protobufjs` 等带安装脚本的依赖报 `ERR_PNPM_IGNORED_BUILDS`（非零退出但包已落盘）；`scripts/ensure-core.sh` 现仅在该错误且 bin 存在时视为成功，其余错误照旧失败。
 - 已纳入 `verify-dual.sh` 的字面量矩阵（`check-dsh-version.sh` 已对齐）。插件运行行为零改动，无需发版。
 
+## 17. 0.2.1-alpha.2 复核（2026-10-10，上游 alpha 通道新版本）
+
+- 发现途径：`scripts/check-dsh-version.sh` 报 dist-tag 含未覆盖的 `0.2.1-alpha.2`（latest/next 仍为 0.2.0-rc.2）。
+- 验证（隔离核心 `ensure-core.sh 0.2.1-alpha.2`，对**当前源码构建**）：
+
+| 层 | 结果 |
+| --- | --- |
+| L1 锚点 | ✅ 9/9 |
+| L2 双 typecheck | ✅ host + client（cordis 沿用 `0.2.1-* → 4.0.5-alpha.1`，无需扩映射表） |
+| L3 runtime 冒烟 | ✅ 宿主端点、中英文界面、设置页（卡片/写入/刷新保留/迁移/热切换/非法值与跨源拒绝） |
+| L4 真流程（真 LLM） | ✅ 2 帧 SSE 音频 / 0 tts-error |
+
+- 环境注记：本机以 root 跑 `typecheck-dual.sh` 时，`node_modules` 由 `www` 的 pnpm store 链入，pnpm 会报 `ERR_PNPM_UNEXPECTED_STORE`（脚本把 `pnpm add` 输出吞掉，表现为「pnpm add 失败」）；设 `pnpm_config_store_dir=/home/www/.local/share/pnpm/store/v11` 即可，与 alpha.2 本身无关。
+- 已纳入 `verify-dual.sh` 字面量矩阵（14 版锚点/typecheck、11 核心冒烟），`check-dsh-version.sh` 退出 0。插件运行行为零改动，无需发版。
+
