@@ -78,7 +78,7 @@ cd plugin/dsh-voice-mode && \
 
 ## 索引
 
-- 决策：`docs/adr/0001-0008`（ADR-0003 `server-side-vad` / ADR-0004 `realtime-transport-deferred` 命名纠正 2026-09-16）
+- 决策：`docs/adr/0001-0011`（ADR-0003 `server-side-vad` / ADR-0004 `realtime-transport-deferred` 命名纠正 2026-09-16）
 - 状态：`docs/rules/STATE.md`（批 7A-L + 批 7M 🔴 砍 + 批 7N 🟡 重做 全 PASS-WITH-MINOR）
 - 真机：`docs/qa/real-machine-acceptance-checklist.md`（精简到批 2/3/5 三阶段 + 真机验收门禁 2 项（阶段 1+阶段 6））+ `docs/qa/must-verify-manually.md`（4 项必过）
 - 心智：根 `CONTEXT.md`（不重复内容）

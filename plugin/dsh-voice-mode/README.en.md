@@ -324,7 +324,7 @@ Also: the on-device recording fixture used for debugging is **off by default**; 
 
 ### Compatibility declaration (what the plugin market's version filter reads)
 
-`package.json` declares `engines.dsh = ">=0.1.1-rc.2"` (the market uses it for "filter by host version"). Verified range: **0.1.1-rc.2 → 0.2.1-alpha.1** (including an Electron host equivalent to the official desktop app). The upper bound is open; a weekly CI check watches upstream releases and opens an issue for any uncovered version. `peerDependencies` only lists `@deepseek-ai/cordis` and `react` (provided by the host).
+`package.json` declares `engines.dsh = ">=0.1.1-rc.2"` (the market uses it for "filter by host version"). Verified range: **0.1.1-rc.2 → 0.2.1-alpha.2** (including an Electron host equivalent to the official desktop app). The upper bound is open; a weekly CI check watches upstream releases and opens an issue for any uncovered version. `peerDependencies` only lists `@deepseek-ai/cordis` and `react` (provided by the host).
 
 ## 🚧 Known limitations
 

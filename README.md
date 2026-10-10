@@ -17,9 +17,7 @@
 
 ![dsh-voice-mode 全双工语音对话](assets/hero-banner.png)
 
-![全双工对话闭环：声音 → 文字 → 声音](plugin/dsh-voice-mode/assets/duplex-banner.png)
-
-> **Full-duplex voice mode for DeepSeek Harness** —— 在会话内用语音完成整轮对话：说话时**边说边出字**、停顿后自动发送；回复**按句朗读**并跟随实时字幕；朗读中**开口即打断**。识别在本地推理、无需 API Key；朗读默认 Edge 云端（快且自然），本地 VITS / Kokoro 可选（隐私优先）。兼容 dsh 0.1.1-rc.2 起全版本（含 0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2 隔离冒烟验证，完整矩阵见 [docs/compat-contract.md](docs/compat-contract.md) §10–§12）。380 项测试全绿（28 套件）；当前版本见上方 npm 徽章与 [Releases](https://github.com/qishuilalala/dsh-voice-mode/releases)。
+> **Full-duplex voice mode for DeepSeek Harness** —— 在会话内用语音完成整轮对话：说话时**边说边出字**、停顿后自动发送；回复**按句朗读**并跟随实时字幕；朗读中**开口即打断**。识别在本地推理、无需 API Key；朗读默认 Edge 云端（快且自然），本地 VITS / Kokoro 可选（隐私优先）。兼容 dsh 0.1.1-rc.2 起全版本（已验证至 0.2.1-alpha.2，含官方桌面端等价的 Electron 宿主，完整矩阵见 [docs/compat-contract.md](docs/compat-contract.md) §10–§17）。433 项测试全绿（33 套件）；当前版本见上方 npm 徽章与 [Releases](https://github.com/qishuilalala/dsh-voice-mode/releases)。
 
 ---
 
@@ -59,12 +57,7 @@
 
 ![语音模式真实录制：流式转写 → 自动发送 → 按句朗读 + 实时字幕](plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
 
-> 上方为**当前界面的真实录制**（由 `screenshots/scripts/capture-demo.mjs` 驱动真实链路产出，非 UI 摆拍）；下图为静态总览。
-
-![dsh-voice-mode 全双工语音体验](assets/voice-experience.png)
-
-> 真实录屏脚本见 [`demos/RECORDING-SCRIPT.md`](demos/RECORDING-SCRIPT.md)（60s/30s/15s 三段脚本）。  
-> 真机截图清单见 [`screenshots/MANIFEST.md`](screenshots/MANIFEST.md)（10 张）。
+> 上图为**当前界面的真实录制**（由 `screenshots/scripts/capture-demo.mjs` 驱动真实链路产出，非 UI 摆拍）。设置面板见 [使用说明](plugin/dsh-voice-mode/README.md)。
 
 ---
 
@@ -95,7 +88,7 @@ systemctl restart dsh   # Linux；其他平台重启 dsh 进程
 
 ---
 
-## ⚙️ 配置（4 新设置字段 + 3 默认值微调）
+## ⚙️ 配置
 
 **所有 dsh 版本通用入口：设置（Settings）→ 语音模式（Voice Mode）**——插件在 Settings 弹窗里注册了专属设置页。另有按版本不同的次要入口：
 
@@ -106,7 +99,7 @@ systemctl restart dsh   # Linux；其他平台重启 dsh 进程
 
 0.1.7+ 说明：官方设置存储不接受本插件条目的写入，故卡片改写插件自己的覆盖层文件——**优先级高于 profile 配置里的同名键**；要恢复为 profile 配置/默认值，把文件内容改成 `{}`（不要删除——首次运行会从旧 `settings.yaml(.imported)` 的 `voice-mode:` 段迁移一次，删除会触发再次迁移）；重装或升级插件不丢设置；某个键在升级后变为非法值时仅该键回落默认。
 
-### 4 新设置字段（11 批次周全修复落地）
+### 常用设置键
 
 | 你想调什么 | 改哪个键 | 默认 | 说明 |
 | --- | --- | --- | --- |
@@ -114,16 +107,10 @@ systemctl restart dsh   # Linux；其他平台重启 dsh 进程
 | 字幕字号 | `captionFontSize` | `0` | 档位 0=12px / 1=14px / 2=18px / 3=24px |
 | 字幕宽度 | `captionMaxWidth` | `1` | 档位 0=50vw / 1=70vw / 2=90vw |
 | 让位语义 | `backchannelYield` | `true` | 朗读期说「嗯/对」自动让位 1.5s，真要说走硬打断（ADR-0008） |
+| 静音断句 | `silenceMs` | `1500` | 停顿多久定稿（毫秒） |
+| 语速 / 空闲退出 | `rate` / `idleTimeoutMinutes` | `1.1` / `5` | Edge 语速倍率；空闲分钟数（朗读计为活动） |
 
-### 3 默认值微调（批 J）
-
-| 字段 | 旧 | 新 | 理由 |
-| --- | --- | --- | --- |
-| `rate` | 1.0 | **1.1** | Edge 默认略慢，统一提速 10% 改善体验 |
-| `idleTimeoutMinutes` | 10 | **5** | 空闲退出更灵敏（朗读仍计为活动） |
-| `interruptLevel` description | 旧描述 | 新描述 | 明确「3/2/1 帧确认」机制 |
-
-> 字段名零变化，旧 `~/.dsh/settings.yaml` 100% 兼容。
+> 字段名保持向后兼容，旧 `~/.dsh/settings.yaml` 可直接沿用。
 
 完整 19 项设置表见 [plugin/dsh-voice-mode/README.md](plugin/dsh-voice-mode/README.md#%E8%AE%BE%E7%BD%AE%E8%AE%BE%E7%BD%AE--plugins--%E6%8F%92%E4%BB%B6%E9%85%8D%E7%BD%AE--%E8%AF%AD%E9%9F%B3%E6%A8%A1%E5%BC%8F)。
 
@@ -157,9 +144,7 @@ flowchart LR
     VAD -.->|唤醒词/打断| Host
 ```
 
-![dsh-voice-mode 架构图](assets/architecture.png)
-
-详细架构决策：见 [`docs/adr/`](docs/adr/README.md) 8 个 ADR。
+详细架构决策：见 [`docs/adr/`](docs/adr/README.md) 11 个 ADR。
 
 ---
 
@@ -171,10 +156,9 @@ flowchart LR
 | 多语种 | 英文为主 | **SenseVoice 自动识别（zh/en/ja/ko/yue）+ ITN** |
 | 朗读引擎 | 云端 TTS | **Edge 云端 + 本地 VITS/Kokoro** 三选一 |
 | 打断检测 | 基础 VAD | **三档灵敏度 + 回声门控 + 让位语义** |
-| 热词偏置 | 无 | 无（已移除） |
 | 字幕 a11y | 无 | **4 档字号 + 3 档宽度 + 主题跟随** |
 | 唤醒词 | 无 | **轻量流式匹配 + 前缀语气词白名单** |
-| 兼容 dsh | — | **0.1.1-rc.2 起全版本（含 0.2.1-alpha.1）** |
+| 兼容 dsh | — | **0.1.1-rc.2 起全版本（含 0.2.1-alpha.2）** |
 
 ---
 
@@ -201,7 +185,8 @@ flowchart LR
 
 完整 backlog（43 项 P0-P3）见 [`docs/competitive/backlog.md`](docs/competitive/backlog.md)。
 
-- ✅ **已完成（v0.7.7）**：11 批次周全修复（字幕档位 / 让位语义 / 模型预热 / 默认值微调 / 死代码清理等）
+- ✅ **已完成（v0.7.7）**：字幕档位 / 让位语义 / 模型预热 / 默认值微调等
+- ✅ **已完成（v0.7.18 ~ v0.7.23）**：安装形态修复（`msedge-tts` 内联）、桌面端 Electron 下 Kokoro 可用、权限与数据流/兼容声明与 `SECURITY.md`、国际化（官方 `ctx.locale`）、内联 axios 升级与第三方披露、语音全链路/闭环冒烟
 - 🚧 **P0（近期）**：ADR-0003 VAD 下沉 / ADR-0006 第一级探测接通 manual / F1 emotion DSL 全量上线
 - 📋 **P1（中期）**：MCP `voice_*` 工具集 / 卡片表单 draft validate / 状态条 idle 优化
 - 💡 **P2（远期）**：声音克隆（用户已决定推迟）/ ADR-0004 WebSocket transport
@@ -226,7 +211,7 @@ flowchart LR
 
 **License**: [MIT](LICENSE)
 
-**Contributing**: PR 欢迎，但请先读 [`docs/adr/`](docs/adr/README.md) 8 个 ADR + [`CONTEXT.md`](CONTEXT.md) + [`docs/rules/STATE.md`](docs/rules/STATE.md)。
+**Contributing**: PR 欢迎，但请先读 [`docs/adr/`](docs/adr/README.md) 11 个 ADR + [`CONTEXT.md`](CONTEXT.md) + [`docs/rules/STATE.md`](docs/rules/STATE.md)。
 
 **Acknowledgments**：
 

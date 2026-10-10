@@ -15,8 +15,6 @@ DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边�
 
 ![语音模式真实录制：流式转写 → 自动发送 → 按句朗读 + 实时字幕](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
 
-![全双工对话闭环：声音 → 文字 → 声音](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/duplex-banner.png)
-
 > **运行时变更（最近一批：v0.7.17 ~ v0.7.19，2026-10-02）**：① **设置面全版本打通**——dsh 0.1.7+ 上设置页与持久化修复（Settings → 语音模式 专属页、写入与重启保留）；② **国际化重做**——界面语言跟随 dsh 官方语言设置，中/英文完整一致、切换无需刷新；③ **修复 npm/pnpm 全新安装失败与 dsh ≥0.1.7 已安装形态「failed to import」**（0.7.17 及更早版本受影响，请升级到 ≥0.7.18）；④ **官方桌面端（Electron）下本地 Kokoro 修复**——需系统 PATH 上有 Node.js ≥18（见下文「桌面端提示」）。此前批次（v0.7.10：输出链路静默丢音根治等）与完整历史见 [`CHANGELOG.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md)。
 
 ---
@@ -243,7 +241,7 @@ flowchart LR
 - 朗读默认 **Edge 云端**；本地 VITS 纯中文 / Kokoro 原生中英（跑在独立子进程、崩溃自愈）可选（隐私优先）；
 - 同一时间仅一个会话处于语音模式（全局单活）；LLM 流被无损观察（不阻塞）。
 
-详细架构决策：见 [`docs/adr/`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/adr/README.md) 8 个 ADR。
+详细架构决策：见 [`docs/adr/`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/adr/README.md) 11 个 ADR。
 
 ---
 
@@ -258,7 +256,7 @@ flowchart LR
 | 热词偏置 | 无 | 无（已移除，详见 v0.7.7 文档说明） |
 | 字幕 a11y | 无 | **4 档字号 + 3 档宽度 + 主题跟随** |
 | 唤醒词 | 无 | **轻量流式匹配 + 前缀语气词白名单** |
-| 兼容 dsh | — | **0.1.1-rc.2 起全版本（含 0.2.1-alpha.1）** |
+| 兼容 dsh | — | **0.1.1-rc.2 起全版本（含 0.2.1-alpha.2）** |
 
 ---
 
@@ -283,7 +281,7 @@ flowchart LR
 
 ### 兼容声明（插件市场的版本筛选依据）
 
-`package.json` 声明 `engines.dsh = ">=0.1.1-rc.2"`（插件市场据此在「按宿主版本筛选」时判定兼容）。已实测范围 **0.1.1-rc.2 → 0.2.1-alpha.1**（含官方桌面端等价的 Electron 宿主）；上限开放，由每周 CI 巡检上游新版本并复验，出现未覆盖版本会自动开 issue。`peerDependencies` 仅声明 `@deepseek-ai/cordis` 与 `react`（宿主提供）。
+`package.json` 声明 `engines.dsh = ">=0.1.1-rc.2"`（插件市场据此在「按宿主版本筛选」时判定兼容）。已实测范围 **0.1.1-rc.2 → 0.2.1-alpha.2**（含官方桌面端等价的 Electron 宿主）；上限开放，由每周 CI 巡检上游新版本并复验，出现未覆盖版本会自动开 issue。`peerDependencies` 仅声明 `@deepseek-ai/cordis` 与 `react`（宿主提供）。
 
 ## 🚧 已知限制
 
