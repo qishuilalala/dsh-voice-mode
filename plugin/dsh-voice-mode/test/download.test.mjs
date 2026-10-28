@@ -15,6 +15,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ensureModelFile, ensureModelTree, sha256OfFile, redirectHostAllowed, validateModelHost, isSafeModelRel } from '../src/models.ts'
 
+import { kokoroSpec } from '../src/tts-local.ts'
+
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
 const DATA = Buffer.alloc(1000, 7)
 const DATA_SHA = sha256(DATA)
@@ -116,6 +118,15 @@ globalThis.fetch = async (url, init) => {
 let passed = 0
 const t = async (name, fn) => { await fn(); passed++; console.log(`  ✓ ${name}`) }
 
+await t('Kokoro 两种精度均固定与摘要匹配的不可变模型版本', () => {
+  assert.equal(kokoroSpec('int8').files[0].revision, '155831f1b4ba23b1f5c058be6a61df90cefb2a37')
+  assert.equal(kokoroSpec('fp32').files[0].revision, '914313412b607d95400bcd12446233fbd1248801')
+  for (const model of ['int8', 'fp32']) {
+    const files = kokoroSpec(model).files
+    assert.ok(files.every((f) => f.revision === files[0].revision), '模型与支持文件必须来自同一已核验版本')
+  }
+})
+
 await t('sha256OfFile：正确计算文件内容哈希', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dm-h-'))
   const p = join(dir, 'a.bin')
@@ -161,6 +172,7 @@ for (const revision of [undefined, '155831f1b4ba23b1f5c058be6a61df90cefb2a37']) 
   const p = join(dir, 'a.bin')
   fetchCalls.length = 0
   fetchMode = 'ok' // 受控 200：返回内容与 spec.sha256 一致
+  writeFileSync(`${p}.part`, Buffer.from('stale upstream revision'))
   try {
     const ok = await ensureModelFile({
       repo: 'dl-repo', repoDir: dir, spec: { file: 'a.bin', sha256: DATA_SHA, revision },
