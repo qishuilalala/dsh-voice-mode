@@ -31,7 +31,7 @@ jobs:
         with:
           ref: ${{ env.TAG }}
           fetch-depth: 0  # check-build-tag 需要完整历史
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
