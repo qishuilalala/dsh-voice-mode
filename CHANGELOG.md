@@ -9,7 +9,7 @@
 
 ### 接入社区插件市场的安全扫描（本地分 100 / 0 命中）
 
-- **按 dsh-plugin.org 收录门禁的同款扫描器（HOL Plugin Scanner）接入本仓 CI**：`.github/workflows/hol-scanner.yml`（按上游指南 SHA 钉住、只申请 `contents: read`、不持久化 checkout 凭据），并补齐门禁要求的三项：插件目录内的 `SECURITY.md`（同时随 npm 包发布，包页可见）、仓库根与插件目录的 Dependabot 配置、README 扫描器徽章。本地实测扫描分由 **65 → 100**，命中项归零。
+- **按 dsh-plugin.org 收录门禁的同款扫描器（HOL Plugin Scanner）接入本仓 CI**：`.github/workflows/hol-scanner.yml`（按上游指南 SHA 钉住、只申请 `contents: read`、不持久化 checkout 凭据），并补齐门禁要求的三项：插件目录内的安全策略文档（同时随 npm 包发布，包页可见）、仓库根与插件目录的 Dependabot 配置、README 扫描器徽章。本地实测扫描分由 **65 → 100**，命中项归零。
 - **清掉三类会被误判为风险的写法**（均为等价改写，不改变行为）：
   - 5 个合同级测试改为在 **vm 隔离沙箱**里执行从产物中提取的代码块（原为宿主域 `new Function`）——执行域不再触达宿主全局；
   - 界面字典里与密钥规则撞型的键名（`telFirstToken` → `telFirstTokenLabel`），键名改动、界面文案不变；

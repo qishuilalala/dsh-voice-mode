@@ -19,10 +19,10 @@ The plugin's HTTP surface (`/voice-mode/*`) follows the host security model: loo
 
 本仓库已接入 [HOL Plugin Scanner](https://github.com/hashgraph-online/hol-guard) 的持续扫描（`.github/workflows/hol-scanner.yml`，按上游指南 SHA 钉住）。以下两类告警为**已核实的误报**，逐条给出证据，便于复核：
 
-1. **`HARDCODED_SECRET` — `plugin/dsh-voice-mode/lib/client.js`**
+1. **`HARDCODED_SECRET` — 客户端构建产物**
    命中的字符串是 UI 文案的 **Unicode 转义**：`configUnavailable: "\u914D\u7F6E\u6682\u4E0D\u53EF\u7528"`（即「配置暂不可用」）。去掉转义后形如 `914D7F6E66824E0D53EF7528`，被密钥检测规则当作十六进制串。源码中所有界面文案一律用 `\uXXXX` 转义（仓库自带的 AST 守卫 `test/strings-coverage.test.mjs` 禁止在 UI 源码里直接写中文字面量），因此该形态无法避免，也与任何凭据无关。
 
-2. **`HARDCODED_SECRET` — `plugin/dsh-voice-mode/lib/msedge-tts.cjs`**
+2. **`HARDCODED_SECRET` — Edge TTS 内联产物**
    命中的是 `MsEdgeTTS.TRUSTED_CLIENT_TOKEN`（`"6A5AA1D4EAFF4E9FB37E23D68491D6F4"`）。该值是 **Edge 朗读协议规定的固定客户端令牌**，在上游 `msedge-tts` 包的公开源码中同样以明文声明（其 `dist/MsEdgeTTS.js`），不是本仓库的密钥，也不授予任何权限；本仓库只是按 MIT 许可内联该第三方包。
 
 3. **`DANGEROUS_DYNAMIC_EXECUTION` — `plugin/dsh-voice-mode/test/*.test.mjs`（5 处）**
