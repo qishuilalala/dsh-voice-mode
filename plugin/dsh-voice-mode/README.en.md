@@ -379,7 +379,7 @@ Client-side VAD, WebSocket migration, voice cloning and broad tool integration a
 
 ## 🛠️ Development
 
-Use Node.js 22.18+ on the 22.x line and pnpm 11 for source development/tests. The plugin runtime declaration is not the test-toolchain requirement.
+Use Node.js 22.18+ on the 22.x line and pnpm 11 for source development/tests; macOS builds require macOS 12+. The plugin runtime declaration is not the test-toolchain requirement.
 
 ### Dependency discipline (important)
 

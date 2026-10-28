@@ -370,7 +370,7 @@ flowchart LR
 
 ## 🛠️ 开发
 
-源码开发/测试使用 Node.js 22.18 或以上的 22.x 与 pnpm 11；插件运行时声明不等于测试工具链要求。
+源码开发/测试使用 Node.js 22.18 或以上的 22.x 与 pnpm 11；macOS 构建要求 macOS 12 或以上；插件运行时声明不等于测试工具链要求。
 
 ```sh
 pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js（browser）

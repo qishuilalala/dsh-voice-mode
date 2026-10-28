@@ -67,15 +67,19 @@ jobs:
         working-directory: plugin/dsh-voice-mode
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # 构建器统一在 Node 22 下按锁文件运行，再切换到目标运行时验安装。
+      # 否则会把 Git 中的旧 lib 打包，让依赖升级的安装门禁误绿。
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Install locked build dependencies
+        run: npm install -g pnpm@11 && pnpm install --frozen-lockfile
+      - name: Build current tarball contents
+        run: npm run build
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
-      - name: Install (build deps)
-        run: npm install --no-audit --no-fund
-      - name: Install pnpm (pnpm 11 requires Node >=22)
-        if: ${{ matrix.node >= 22 }}
-        run: npm install -g pnpm@11
-      - name: Fresh-install the packed tarball (pnpm + npm) and import
+      - name: Fresh-install the rebuilt tarball (pnpm + npm) and import
         run: bash scripts/verify-install.sh
 
   # 依赖安全：msedge-tts 连同其传递依赖（axios、ws 等）被内联进发布包（ADR-0011），其漏洞即我们的漏洞；

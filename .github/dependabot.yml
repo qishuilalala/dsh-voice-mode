@@ -1,8 +1,7 @@
 # Dependabot 配置（整仓）
 #
-# 覆盖两处 npm 依赖面：
-#   "/"                     —— 仓库根 manifest（仅身份字段，无运行时依赖，供插件市场扫描识别）
-#   "/plugin/dsh-voice-mode" —— 插件本体（实际发布到 npm 的包，依赖与内联第三方代码在此）
+# npm 维护实际发布包；根 manifest 仅身份字段，无独立依赖。
+# 同一锁文件的常规更新集中提交；原生运行时配对，构建器升级单独验收。
 version: 2
 updates:
   - package-ecosystem: npm
@@ -10,6 +9,15 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      native-runtime:
+        patterns: ["sherpa-onnx", "sherpa-onnx-node"]
+      build-tool:
+        patterns: ["esbuild"]
+      maintenance:
+        patterns: ["*"]
+        exclude-patterns: ["sherpa-onnx", "sherpa-onnx-node", "esbuild"]
+        update-types: ["minor", "patch"]
     commit-message:
       prefix: "chore(deps)"
   - package-ecosystem: github-actions
@@ -17,5 +25,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
     commit-message:
       prefix: "chore(ci)"
