@@ -95,13 +95,13 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-host-webserver": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "0.1.5-rc.3",
     "@deepseek-ai/dsh-llm": "0.1.5-rc.3",
     "@deepseek-ai/dsh-settings": "0.1.5-rc.1",
     "@deepseek-ai/dsh-system-prompt": "0.1.5-rc.1",
-    "@types/node": "^26.0.0",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.2",
     "msedge-tts": "^2.1.1",
     "playwright-core": "1.64.1",
     "typescript": "^5.9.2"
