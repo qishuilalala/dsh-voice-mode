@@ -30,8 +30,8 @@ importers:
         specifier: ^4.0.2
         version: 4.0.2
       '@deepseek-ai/dsh-host-webserver':
-        specifier: 0.1.5-rc.1
-        version: 0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)
+        specifier: 0.1.5-rc.3
+        version: 0.1.5-rc.3(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/dsh-llm':
         specifier: 0.1.5-rc.3
         version: 0.1.5-rc.3(@deepseek-ai/cordis@4.0.2)
@@ -88,10 +88,10 @@ packages:
     peerDependencies:
       '@deepseek-ai/cordis': 4.0.2
 
-  '@deepseek-ai/dsh-host-webserver@0.1.5-rc.1':
-    resolution: {integrity: sha512-5kOu9kb0AuRN60/zwPTRcki801ozgnWAFwS1QtQ4ZNgCYIbAiU8gwJHY1//qEpUOuHS+26k+Tqq5/WCJmLGE6Q==}
+  '@deepseek-ai/dsh-host-webserver@0.1.5-rc.3':
+    resolution: {integrity: sha512-ZA6s3Msj3fJw2v1L81wURD3/a7DFugJjWLKBH3askSXt2iIqChrULR6GfAGGrh2cDkw4w3nMIajvT11fReeH3w==}
     peerDependencies:
-      '@deepseek-ai/cordis': ^4.0.2
+      '@deepseek-ai/cordis': 4.0.2
 
   '@deepseek-ai/dsh-invariants@0.1.5-rc.1':
     resolution: {integrity: sha512-iXhJJ3r34NHFEWiuc5pxXlU19hPfNclvH9Ll0X7CzQ39Oh/4UlfO3DBlLpBU7T9fE/y7/UkuI1aRt+dNeiVQsQ==}
@@ -620,10 +620,10 @@ snapshots:
     dependencies:
       '@deepseek-ai/cordis': 4.0.2
 
-  '@deepseek-ai/dsh-host-webserver@0.1.5-rc.1(@deepseek-ai/cordis@4.0.2)':
+  '@deepseek-ai/dsh-host-webserver@0.1.5-rc.3(@deepseek-ai/cordis@4.0.2)':
     dependencies:
       '@deepseek-ai/cordis': 4.0.2
-      '@deepseek-ai/schemastery': 3.18.5
+      '@deepseek-ai/schemastery': 3.18.2
       compression: 1.8.2
       negotiator: 1.1.0
     transitivePeerDependencies:
