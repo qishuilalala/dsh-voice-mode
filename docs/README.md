@@ -1,5 +1,7 @@
 # dsh-voice-mode 文档索引
 
+当前后续优先级见[语音工作流路线图](plan/roadmap-2026-10.md)：包含证据、候选准入、阶段验收与对抗审查，历史计划不自动构成交付承诺。
+
 > 面向开发者与高级用户的项目文档总览。
 > 终端用户请先读仓库根 [README.md](../README.md) / [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)。
 
