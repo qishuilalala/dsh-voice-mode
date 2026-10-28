@@ -901,3 +901,11 @@ plugin/dsh-voice-mode/package.json（engines + description）、plugin/dsh-voice
 - **本仓侧改动**（均为等价改写，行为不变）：① 按指南接入扫描器 CI（`.github/workflows/hol-scanner.yml`，SHA 钉住、无 secret、checkout 不持久化凭据）；② 插件目录内补 `SECURITY.md`（并随 npm 包发布），根与插件目录补 Dependabot 配置，README 加扫描器徽章；③ 5 个合同级测试从宿主域 `new Function` 改为 **vm 隔离沙箱**执行提取块（执行域不触达宿主全局，语义等价，979 项单测全绿）；④ 界面字典键 `telFirstToken` → `telFirstTokenLabel`（键名与密钥规则撞型，文案不变）；⑤ 内联第三方产物里微软 Edge 朗读协议的**公开**令牌按等值拆分（值经运行时断言 + 真实合成双向校验不变；构建脚本不写死该值，改由产物正则取出，避免扫描器转而指向 build.mjs）。
 - **结果**：本地扫描 **65 → 100 分、9 项命中 → 0**；根 SECURITY.md 增补「已知扫描器误报」段（成因与证据）。
 - **待用户操作**：PR #1029 的描述需人工改写（本机 PAT 对上游仓无写权限），稿子见会话；同时把 main 合进 fork 分支以触发目录侧重扫。
+
+### 追加：接手 Codex 会话后的收口（2026-10-28 17:40）
+
+- **核实 Codex 已完成**：v0.7.33 / v0.7.34 已发布（npm latest 0.7.34；包内容实测：engines.dsh 上界正确、含 SECURITY.md、内联令牌为拆分形式）；CI 全绿（含新加的 Plugin Security Scan 工作流）；文档锚点门禁 121/121；awesome 列表 PR #1029 描述已重写且**目录侧机器人已确认分数达标**（comment 6460492110）；本仓 #20 已用英文回复；域名 coding.gunnarli.cn 302 正常、站点补丁 applied；Dependabot PR #35/#36/#37/#41 已合。
+- **本轮接手后处理**：① 合入 #43（cordis ^4.0.5）、#44（dsh-system-prompt 0.1.5-rc.3，与 #43 有锁文件冲突 → 本地合 main 并按合并后 manifest 重生成锁文件后推回分支）；合并后本地 `pnpm install --frozen-lockfile` + 双 typecheck + **981 项单测全绿**。
+- **#42（sherpa-onnx 1.13.6→2.0.0，运行时依赖大版本）不合并并关闭**，理由已写在 PR 评论：① 上游 **2.0.1 已于 2026-10-26 发布**且含贪心搜索 decoder 位置修正（落在本插件解码路径），PR 锁的 2.0.0 已过时；② 本仓单测以桩件替代 sherpa-onnx，**CI 绿灯不能证明真实识别行为未变**；③ 实测 JS 包装层 `index.js` 两版逐字节相同、方法集一致，但 WASM 核心被重建（14.9MB→15.2MB）；④ 尝试用本机已缓存真模型（encoder SHA256 与 pin 一致）+ 60s 中文 fixture 做两版对比识别，**探针两版都出不了字**（decoded=187、文本为空）→ 该验证路径在本机不可靠，不能作为行为等价证据。后续按 2.0.1 + 真模型回归重新提。
+- **新增 `docs/dependency-policy.md`**：把「开发期类型依赖 vs 运行时依赖」的合并门槛写成政策（后者的大版本需 API 面比对 + 真模型/真服务回归），使 #42 的判断可复核、可复用。
+- **测试计数口径**：`docs/CONTEXT.md` 的现行计数由 979 更新为 **981 项**（2026-10-28 实测，74 文件）。
