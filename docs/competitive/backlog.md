@@ -1,5 +1,7 @@
 # dsh-voice-mode 借鉴 backlog（竞品扫描收敛 + 落地状态）
 
+> 当前优先级与候选准入见[2026-10 路线图](../plan/roadmap-2026-10.md)。本表保留历史研究；Ready、旧估时和符号锚不自动构成当前交付承诺。
+
 > **重写式维护**：本文件 2026-09-17 批 7O 由 798 行精简重组，历史全文见 git log（`git log --oneline -- docs/competitive/backlog.md`）。
 > **依据**：`docs/competitive/scan-2026-09.md`（竞品扫描 + 对抗性审查）+ 多轮扩展扫描（音频全景 / 同类 plugin 生态 / UX-DX / 多语言 a11y 合规 / dsh 生态锚 / 沉睡能力审计），源报告见 `docs/competitive/sources/scan-*.md`。
 > **纪律**：未实施项保留 file:line 锚点 + 估算 + 推迟原因；冻结项标 ❄；已落地项折叠为「条目 → 批次 → commit」对照，不再保留原始长叙述。
