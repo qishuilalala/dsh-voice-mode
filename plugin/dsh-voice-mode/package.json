@@ -85,7 +85,7 @@
     }
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.4",
+    "@deepseek-ai/schemastery": "^3.18.5",
     "sherpa-onnx": "^1.13.6",
     "sherpa-onnx-node": "1.13.6"
   },
