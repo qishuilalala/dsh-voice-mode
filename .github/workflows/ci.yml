@@ -5,9 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: plugin/dsh-voice-mode
@@ -53,6 +57,7 @@ jobs:
   # 并用 Node 18（engines 下限）与 22 各跑一遍，兑现 package.json 的 engines 声明。
   install:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -77,6 +82,7 @@ jobs:
   # 此 job 在已知高危（high 及以上）公告出现时让 CI 变红，提醒及时升级（见 pnpm-workspace.yaml 的 overrides）。
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: plugin/dsh-voice-mode
