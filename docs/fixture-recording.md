@@ -13,7 +13,7 @@
 2. 打开录制开关（控制台执行，然后**刷新页面**）：
 
 ```js
-localStorage.setItem('dsh-voice-mode.record', 'full')
+localStorage.setItem('dsh-voice-mode.record', 'meta')
 ```
 
 | 档位 | 内容 | 体积 |
@@ -21,7 +21,7 @@ localStorage.setItem('dsh-voice-mode.record', 'full')
 | `meta` | 只录逐帧统计（rms/floor/peak/doubleTalk/playing） | 几十 KB / 分钟 |
 | `full` | 统计 + mic/参考音轨（可离线重放全链路） | 约 4 MB / 分钟 |
 
-回答上面那个问题 **`meta` 就够**；`full` 留给后续重放。先用 `full`，反正不大。
+先用 `meta` 回答统计问题。只有确需音轨重放且录制者同意时再切到 `full`；后者包含真实语音。完成后移除该 localStorage 开关并刷新页面。
 
 关掉：`localStorage.removeItem('dsh-voice-mode.record')`
 
@@ -83,7 +83,7 @@ node scripts/analyze-fixture.mjs <文件路径>
 ## 注意
 
 - 录制含**你的真实语音**。这些 fixture **不要直接进公开仓库**——先放本地，
-  确定要入库时走独立私有仓或只保留派生特征（`meta` 档位不含音轨，相对安全）。
+  确定要入库时走独立私有仓或只保留派生特征（`meta` 档位不含音轨，分享前仍需审阅内容）。
 - 录制期间 `● REC` 徽标是 `pointer-events:none`，不会挡点击。
 - 徽标和 F8/F9 只在开关打开时存在；关掉开关刷新后完全消失。
 
@@ -98,4 +98,4 @@ node scripts/analyze-fixture.mjs <文件路径>
 | `src/client.tsx` | 5 处：`begin` / `native-aec` 标注 / `tts-sentence` 标注 / `noteIsSpeech` / `interrupt` 标注 / `save` |
 | `scripts/analyze-fixture.mjs` | 离线分析 |
 
-删掉 `fixture-recorder.ts` + 这 7 处调用即可完全移除，无残留。
+需要移除录制能力时，按符号搜索当前调用方并同步测试；上述数量是旧快照，不能据此承诺删除后无残留。

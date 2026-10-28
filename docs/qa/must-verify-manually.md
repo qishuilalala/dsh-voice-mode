@@ -1,8 +1,8 @@
 # 必须人工复核最小清单
 
-> **定位**：AI 已自动验证全部 `npm test`（数字以 `npm test` 实测与 `docs/qa/TEST-SYSTEM.md` 为准，不在此处维护）；本清单只列**必须真机/人工**才能确认的少数项。
-> **基线**：HEAD = `3154433`（Issue #15 R15-5/6/7 收口——asr 抢救种子门控感知 / models 逐文件下载超时与 recognizer dispose 守卫 / 设置 scope 可恢复化；含 lib/client.js + lib/index.js，属代码+lib 批；本基线随收口批滚动更新，**现行约定取代码+lib 批——docs-only 提交不滚动基线**）；历史基线 `d7890a4`（R13 收口）已过期，见下方「出处与锚点」段；**完整 4 项必过**＝精简自原 21 项 + 批 7N 新增 manual 项（批 1 热词 / 批 2 锁语种已砍，详见 `real-machine-acceptance-checklist.md` 头部删项说明 + `docs/competitive/backlog.md`「已落地对照区」节）。
-> **纪律**：每项单点验证；失败即停发版，回滚对应 commit。
+> **定位**：每次执行需重新验证 `npm test`，不能沿用历史通过结果（数字以 `npm test` 实测与 `docs/qa/TEST-SYSTEM.md` 为准，不在此处维护）；本清单只列**必须真机/人工**才能确认的少数项。
+> **历史基线**：HEAD = `3154433`（Issue #15 R15-5/6/7 收口——asr 抢救种子门控感知 / models 逐文件下载超时与 recognizer dispose 守卫 / 设置 scope 可恢复化；含 lib/client.js + lib/index.js，属代码+lib 批；此处为历史批次快照，当前验收另记目标版本，**现行约定取代码+lib 批——docs-only 提交不滚动基线**）；历史基线 `d7890a4`（R13 收口）已过期，见下方「出处与锚点」段；**完整 4 项必过**＝精简自原 21 项 + 批 7N 新增 manual 项（批 1 热词 / 批 2 锁语种已砍，详见 `real-machine-acceptance-checklist.md` 头部删项说明 + `docs/competitive/backlog.md`「已落地对照区」节）。
+> **纪律**：每项单点验证；失败即暂停发布，定位后修复或通过显式反向提交回滚，不重置已发布历史。
 > **批 7M 🔴 砍 + 批 7N 🟡 重做 落地注记（2026-09-16）**：4 项砍除（`recognitionLanguage` / `asrHotwords`+`asrHotwordsScore`+模块 / `docs/qa/user-experience-flow.md`）+ 5 项重做（`bargeInMode='manual'` 接通 / echoGateDb+autoResume 描述对齐 / 端到端补测 3 项 / ADR-0003+0004 重命名 / autoResume 文案统一）；本清单「4 项必过」已对齐砍后 src/ 现状。
 
 ---
@@ -21,7 +21,7 @@
 
 - **批 5 让位语义**：AI 朗读中（任意句） → 用户说「嗯」 → AI 跳当前句 + 字幕立刻消失 + 1.5s 静默
 - **批 4 emotion 标签**：让 LLM 输出 `你好<break 300ms>世界` → 听顺序为你好 + 300ms 静音 + 世界（非「你好世界」连读）
-- **中文识别基线**：说中文日常句 → partial 字幕实时显示中文 + final 准确 ≥ 95%（cold start 后立刻可用）
+- **中文识别基线**：说中文日常句 → partial 与 final 均有输出且不丢头尾；在固定语料上记录实际字错率与冷启动等待，不凭主观印象宣称 ≥95% 或立即可用
 - **唤醒词**（可选，issue #10 + 2026-09-18 真机修复后）：配置 wakeWord（建议 3-4 字，如「你好小李」）后 →
 ① **连说**：一口气说「你好小李，帮我查下天气」→ 草稿应为「帮我查下天气」（唤醒词被自动剥掉、**不截断**、不含唤醒词）；
 ② 同音字容错：把唤醒词首字/某字说错一个（如「你好小里」）→ 仍能唤醒；
@@ -93,5 +93,5 @@
 
 - 完整体验验收 → `real-machine-acceptance-checklist.md`（批 2/3/5 三阶段，批 7M 砍 4 项后精简）
 - 不变量定义 → `docs/rules/STATE.md` 与 `docs/adr/`
-- 基线 HEAD = `3154433`（Issue #15 R15-5/6/7 收口——asr 抢救种子门控感知 / models 逐文件下载超时与 recognizer dispose 守卫 / 设置 scope 可恢复化；含 lib/client.js + lib/index.js，属代码+lib 批；本基线随收口批滚动更新，现行约定取代码+lib 批、docs-only 提交不滚动基线）。历史基线陈述保留备查：`d7890a4`（R13 收口）/ `38cc23e`（R12 收口）/ `c4e2c3a`（R11 收口）/ `bb42829`（R9 收口）/ `7997b4a`（R8 收口）/ `77cb212`（R6 收口）/ `2b28539`（R5 收口）/ `6ddfb09`（R3 收口）/ `6995ae7`（R2）/ `d92f43b`（Issue #15 八批收口）/ `5e2d34f`（批 7O 代码块收口）/ `0b63a13`（块 3 HEAD）——`git diff 5e2d34f..HEAD -- src/ lib/` **已非空**（Issue #15 八批代码改动全部在内），旧「应为空」口径作废
+- 基线 HEAD = `3154433`（Issue #15 R15-5/6/7 收口——asr 抢救种子门控感知 / models 逐文件下载超时与 recognizer dispose 守卫 / 设置 scope 可恢复化；含 lib/client.js + lib/index.js，属代码+lib 批；此处为历史批次快照，当前验收另记目标版本，现行约定取代码+lib 批、docs-only 提交不滚动基线）。历史基线陈述保留备查：`d7890a4`（R13 收口）/ `38cc23e`（R12 收口）/ `c4e2c3a`（R11 收口）/ `bb42829`（R9 收口）/ `7997b4a`（R8 收口）/ `77cb212`（R6 收口）/ `2b28539`（R5 收口）/ `6ddfb09`（R3 收口）/ `6995ae7`（R2）/ `d92f43b`（Issue #15 八批收口）/ `5e2d34f`（批 7O 代码块收口）/ `0b63a13`（块 3 HEAD）——`git diff 5e2d34f..HEAD -- src/ lib/` **已非空**（Issue #15 八批代码改动全部在内），旧「应为空」口径作废
 - 批 7M + 批 7N 完成状态 → `docs/rules/STATE.md` 批次进度表 + `docs/competitive/backlog.md`「已落地对照区」节

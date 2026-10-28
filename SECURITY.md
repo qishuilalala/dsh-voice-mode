@@ -12,8 +12,8 @@ Please do **not** disclose vulnerability details in a public issue. Use GitHub's
 
 ## 范围与威胁模型 / Scope
 
-插件的 HTTP 面（`/voice-mode/*`）遵循宿主安全模型：仅回环访问、同源校验、请求体大小上限、限流、会话存在性校验；模型下载限制目标主机；主要模型文件按固定 SHA256 校验，辅助目录文件使用文件清单与本地存在性检查，尚未逐文件固定摘要。权限与数据流的完整披露见 `plugin/dsh-voice-mode/README.md` 的「权限与数据流声明」。
-The plugin's HTTP surface (`/voice-mode/*`) follows the host security model: loopback only, same-origin checks, body-size caps, rate limiting and session existence checks; model downloads restrict destination hosts; primary model files use pinned SHA256, while auxiliary directory files use manifest and presence checks without pinned per-file digests. See "Permissions and data flow" in `plugin/dsh-voice-mode/README.en.md` for the full disclosure.
+插件的 HTTP 面（`/voice-mode/*`）遵循宿主安全模型：默认仅回环访问（显式开放 LAN 时需部署侧鉴权）、同源校验、请求体大小上限、限流、会话存在性校验；模型下载限制目标主机；主要模型文件按固定 SHA256 校验，辅助目录文件使用文件清单与本地存在性检查，尚未逐文件固定摘要。权限与数据流的完整披露见 `plugin/dsh-voice-mode/README.md` 的「权限与数据流声明」。
+The plugin's HTTP surface (`/voice-mode/*`) follows the host security model: loopback by default (explicit LAN exposure requires deployment authentication), same-origin checks, body-size caps, rate limiting and session existence checks; model downloads restrict destination hosts; primary model files use pinned SHA256, while auxiliary directory files use manifest and presence checks without pinned per-file digests. See "Permissions and data flow" in `plugin/dsh-voice-mode/README.en.md` for the full disclosure.
 
 ## 历史扫描命中与处置（HOL Plugin Scanner）
 

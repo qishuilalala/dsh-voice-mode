@@ -5,7 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange)](https://www.npmjs.com/package/dsh-voice-mode)
 [![CI](https://github.com/qishuilalala/dsh-voice-mode/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/qishuilalala/dsh-voice-mode/actions/workflows/ci.yml)
 
-DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句流式朗读 + 实时字幕，开口即可打断（真 barge-in）。无需 API Key，识别模型在本地宿主端推理。
+DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句合成后播放 + 实时字幕，开口即可打断（真 barge-in）。默认语音路径无需额外语音 API Key，识别在宿主端推理；宿主 LLM 的配置与费用另计。
 
 **中文** · [English](https://github.com/qishuilalala/dsh-voice-mode/blob/HEAD/plugin/dsh-voice-mode/README.en.md)
 
@@ -29,9 +29,10 @@ dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`）�
 - 状态条与字幕默认开启；两项都关掉即上图的「全部收进按钮」形态，此时录音计时显示在按钮下方、提示文字显示在按钮旁
 
 
-> **最近两版**：**v0.7.29** 对抗验证修复批：长句定稿不丢、长朗读不被空闲退出、Edge 朗读 `&`/`<` 不再跳句、Kokoro 可离线、下载卡死自动换源、进入中再点即取消、读屏不再被状态条刷屏等 20 项；**v0.7.28** 输入框内 `Alt/Option+Enter` 切换语音模式 + 快捷键分组与「录制」录入 + 设置即时生效 + 按住说话空闲即录、回复后自动退出 + 点按钮不抢输入框焦点 + 长文本朗读分段改进（PR #17，@dyguests 贡献）。完整记录见 [CHANGELOG](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md)。
+> **当前状态（2026-10-28）**：npm 已发布 v0.7.33；v0.7.32 扩展宿主验证矩阵，v0.7.31 修复当时的 Edge 握手故障。**main 未发布修复**：Kokoro int8/fp32 主模型及固定摘要支持文件改用匹配的上游历史版本；npm v0.7.33 不包含这项后续下载修复。请勿关闭摘要校验。
 >
-> **运行时变更（v0.7.18 ~ v0.7.24）**：① **设置面全版本打通**——dsh 0.1.7+ 上设置页与持久化修复（Settings → 语音模式 专属页、写入与重启保留）；② **国际化重做**——界面语言跟随 dsh 官方语言设置，中/英文完整一致、切换无需刷新；③ **修复 npm/pnpm 全新安装失败与 dsh ≥0.1.7 已安装形态「failed to import」**（0.7.17 及更早版本受影响，请升级到 ≥0.7.18）；④ **官方桌面端（Electron）下本地 Kokoro 修复**——需系统 PATH 上有 Node.js ≥18（或设 `DSHVM_NODE`）；⑤ **v0.7.24：恢复 Edge 云端朗读**——微软服务端自 2026-10-15 起拒绝旧版握手（v0.7.23 及更早的默认 Edge 朗读无声，本地 VITS / Kokoro 不受影响），内联的 msedge-tts 升到 2.1.0；朗读**连续失败时**会提示切换本地引擎；另有 host 加固（`/models/retry` 仅同源 POST、模型树路径校验、错误原文不下行）。兼容 dsh 至 0.2.2-alpha.2（0.2.1-alpha.4/5 起设置入口移入侧栏底部「Account menu」弹出层，0.2.1-rc.3 起该按钮只剩 aria-label、中文标签为「账号菜单」，本插件两处入口仍有效）。
+> CI 通过不代表真实听感、所有硬件或所有宿主版本均已验证。详见 [CHANGELOG](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md)、[兼容证据](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md)和[后续路线图](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md)。包声明范围为 `>=0.1.1-rc.2 <0.3.0-0`，未测版本不保证。
+
 
 ---
 
@@ -39,18 +40,18 @@ dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`）�
 
 本仓库在上游 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice) 基础上加入了大量增强，核心如下（完整清单见 git 历史与 [docs/rules/STATE.md](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/rules/STATE.md)）：
 
-- **朗读默认 Edge 云端；本地 TTS 可选（隐私优先）**：选本地则回复文本不出本机——
-  - 本地 VITS（`sherpa-onnx-vits-zh-ll`，纯中文，5 说话人）；
-  - 本地 Kokoro（**中英混读**，103 音色；`int8` 默认约 109MB / 可选 `fp32` 约 311MB 音质更好），经 `sherpa-onnx-node` **原生 addon** 运行（无 WASM 内存上限，连续合成不崩）；
-  - Edge 云端朗读保留为可选（设置 `ttsEngine: edge`）；设置面板「朗读引擎」热切换。
+- **朗读默认 Edge 云端；本地 TTS 可选（隐私优先）**：本地合成不向独立在线 TTS 服务发送回复文本，宿主 LLM 的网络请求不受此选项控制——
+  - 本地 VITS（WASM 运行时，`sherpa-onnx-vits-zh-ll`，纯中文，5 说话人）；
+  - 本地 Kokoro（**中英混读**，103 音色；`int8` 默认约 109MB / 可选 `fp32` 约 311MB 的较大模型），经 `sherpa-onnx-node` **原生 addon** 运行（原生运行时，实际资源占用与稳定性需按设备验证）；
+  - Edge 云端为默认朗读引擎，也可在设置中重新选择（设置 `ttsEngine: edge`）；设置面板「朗读引擎」热切换。
 - **Kokoro 音色全量 103 个**（F0 实测标定性别），四个常用男声置顶带编号；音色面板用 **下拉列表 + ◀▶ 步进**切换；
 - **增量传输**：partial 只传新增 0.9 秒，长段按住说话松手**秒出定稿**（不再整段重传重解码）；
 - **交互增强**：输入框旁**模式切换按钮**（持续聆听 ⇄ 按住说话，保存到设置）；按住说模式下**按住才录、不按住不打断**；
 - **长段支持**：持续聆听连续多段自动拼成一条消息（内部按 30s 分块识别，跨块累积拼接），静音断句默认 1500 毫秒；按住说停顿不断句；
-- **朗读稳定性**：打断即终止在途合成释放 CPU；句间不再有 3-5 秒停顿；长朗读不触发空闲下线；
-- **安全加固**：会话存在性校验 / 回环+Origin 校验 / 全端点限流 / **ASR+TTS 全模型 SHA256 固定** / 下载域名白名单 / 重定向守卫。
+- **朗读稳定性**：打断即终止在途合成释放 CPU；合成不阻塞宿主主线程，句间等待取决于模型与硬件；长朗读不触发空闲下线；
+- **安全加固**：会话存在性校验 / 回环+Origin 校验 / 按端点配置限流 / 主要模型与清单内支持文件固定 SHA256（辅助目录仍为清单/存在性检查） / 下载域名白名单 / 重定向守卫。
 
-> ℹ️ 顶部 `demo-voice-flow.gif` 是**当前界面的真实录制**（语音模式 → 边说边出字 → 停顿自动发送 → 按句朗读 + 实时字幕），由 `screenshots/scripts/capture-demo.mjs` 驱动真实链路产出；UI 持续演进，以实际界面为准。
+> ℹ️ 顶部 `demo-voice-flow.gif` 是**界面的真实录制示例**（语音模式 → 边说边出字 → 停顿自动发送 → 按句朗读 + 实时字幕），由 `screenshots/scripts/capture-demo.mjs` 驱动真实链路产出；UI 持续演进，以实际界面为准。
 
 ---
 
@@ -65,7 +66,7 @@ dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`）�
 - **唤醒词（可选，默认关）**：设置 `wakeWord` 后进入待机态，说出唤醒词才开始识别（如「你好小D」）。**可直接与命令连说**（「你好小D，帮我查天气」）——唤醒词会在定稿/字幕里自动剥掉、不进消息；匹配带容错（同音字替换「小莫→小墨」、首字错、前置语气词「呃/喂/我说」），建议 3-4 字；待机态状态条实时显示「说『x』开始 · 它听到的转写」，唤醒成败可自查。边界（重要）：**仅 `toggle` 模式生效**（`hold` / 手动打断下唤醒词静默失效）；**说完整一句后回到待机态需重说唤醒词**（只喊唤醒词、还没说命令时保持聆听，可停顿想好再说）；**朗读期说唤醒词不触发**（打断由 VAD 开口即触发，与唤醒词无关）
 - **字幕档位**：`captionFontSize` 4 档（0=12px / 1=14px / 2=18px / 3=24px）+ `captionMaxWidth` 3 档（0=50vw / 1=70vw / 2=90vw），窄屏自适应
 - **让位语义**（ADR-0008）：`backchannelYield` 默认开—— 朗读期用户插话「嗯/对」自动让位 1.5s，真要说走硬打断；让 LLM 主动让出话轮（人格层让位）；关掉恢复改造前行为
-- **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句流式朗读（默认 Edge 云端；可切本地 VITS/Kokoro，中英混读选 Kokoro）+ 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录；口语化提示词（设置 `spokenFormat`，默认开）让回复为自然短句、不带 Markdown 排版符号
+- **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句合成后播放（默认 Edge 云端；可切本地 VITS/Kokoro，中英混读选 Kokoro）+ 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录；口语化提示词（设置 `spokenFormat`，默认开）让回复为自然短句、不带 Markdown 排版符号
 - **开口打断（barge-in）**：服务端 Silero VAD 帧级检测 + 回声门控（echoGateDb）三档灵敏度 → 本地静音 + host 合成队列作废 + 正在运行的回合取消（保留半截并自然续入新消息）；朗读中自动切超灵敏档。开启唤醒词后打断**仍是开口即打断**（打断门控是 VAD，不是唤醒词；打断后回待机态）
 - **模型懒加载与进度**：首次使用自动下载识别/合成模型（`.part` 断点续传），状态条实时显示进度；可用 `npm run prefetch` 预下载
 - **设置**：入口随 dsh 版本而不同（见下方「设置」），可调朗读引擎/音色/语速/打断灵敏度/静音停顿/空闲超时/模型镜像/自动发送/交互模式/唤醒词/口语化提示词/字幕档位/让位语义/让位窗口/打断语音抢救/LLM 纠错；**音色可试听**（按当前音色+语速即时合成预览，自定义 ShortName 亦可）
@@ -75,19 +76,19 @@ dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`）�
 
 ---
 
-## 🚀 5 分钟上手（Quick Start）
+## 🚀 快速开始（Quick Start）
 
 ```sh
 dsh plugin --profile web add dsh-voice-mode
 ```
 
-bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；其他平台重启 dsh 进程）。
+命令针对 web profile；其他 profile 使用实际配置名称。安装后按部署方式重启宿主；只有配置了对应 systemd 服务的环境才使用服务重启命令。
 
 **第一次用**：
 
 1. 进入任一会话，按 `Ctrl+Shift+V`（或点输入区麦克风按钮）进入语音模式，状态条显示「聆听中…」；
 2. 说一句完整的话（如「帮我看看今天的天气」）→ 实时字幕立即出现，停顿后自动发送；
-3. AI 回复开始朗读时，**开口说话 → 朗读即刻停止，你的话被听见**（这就是 barge-in）。
+3. AI 回复开始朗读时，尝试发声打断，检查朗读是否停止及后续转写；设备上不可靠时使用按住说话。
 
 ---
 
@@ -124,7 +125,7 @@ bundle 插件安装后需重启 dsh 生效（Linux：`systemctl restart dsh`；�
 | `rate` | `1.1` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
 | `interruptLevel` | `0` | 发声打断灵敏度（服务端 VAD 帧级检测 + 回声门控）：0 高门槛（3 帧）/ 1 中（2 帧）/ 2 低（1 帧） |
 | `bargeInMode` | `detect` | 打断方式：`detect` 自动探测本机原生回声消除状态（默认；未生效时切为长按打断）/ `auto` 强制开口即打断（耳机、安静环境推荐）/ `manual` 长按打断（外放推荐）。批 7O 默认，I10 豁免（ADR-0006） |
-| `echoGateDb` | `6` | 回声门控阈值（dB）：自动打断要求残差高于回声地板此值。**原生 AEC 生效时此门控闲置**（Safari / 耳机等无原生 AEC 环境才兜底生效）；打不断降 3-4，噪音误打断升 8-10。**不要为「打不断」调它**（详见 ADR-0006） |
+| `echoGateDb` | `6` | 无原生 AEC 时的回声门兜底阈值；原生 AEC 有效时不参与。仅在兜底路径中，增大更保守、减小更易触发；先确认设备与打断模式 |
 | `silenceMs` | `1500` | 说完整一句的静音停顿毫秒数 |
 | `idleTimeoutMinutes` | `5` | 无活动自动退出语音模式的分钟数（朗读计为活动） |
 | `modelHost` | 默认源 | 模型下载源（国内网络填 `https://hf-mirror.com`） |
@@ -274,9 +275,9 @@ flowchart LR
 
 ---
 
-## 🔍 与 dsh 内置语音模式对比
+## 🔍 与早期上游实现的历史对照
 
-| 维度 | dsh 内置 | dsh-voice-mode（本插件） |
+| 维度 | 早期上游（历史） | dsh-voice-mode（本插件） |
 | --- | --- | --- |
 | 识别模型 | 云端 API（需 key） | **本地 zipformer2 + SenseVoice**（零 key） |
 | 多语种 | 英文为主 | **SenseVoice 自动识别（zh/en/ja/ko/yue）+ ITN** |
@@ -284,7 +285,7 @@ flowchart LR
 | 打断检测 | 基础 VAD | **三档灵敏度 + 回声门控 + 让位语义** |
 | 字幕 a11y | 无 | **4 档字号 + 3 档宽度 + 主题跟随** |
 | 唤醒词 | 无 | **轻量流式匹配 + 前缀语气词白名单** |
-| 兼容 dsh | — | **0.1.1-rc.2 起全版本（含 0.2.2-alpha.2）** |
+| 兼容 dsh | — | 声明范围 `>=0.1.1-rc.2 <0.3.0-0`；以已测版本矩阵为准 |
 
 ---
 
@@ -294,10 +295,10 @@ flowchart LR
 
 | 类别 | 具体行为 | 数据去向 |
 | --- | --- | --- |
-| **network** | ① 默认朗读引擎 **Edge**：把**待朗读的回复文本**经 WebSocket 发给微软 `speech.platform.bing.com`（云端合成；想完全离线请切到本地 VITS / Kokoro）；② 首次使用本地模型时从 `huggingface.co`（或你配置的镜像 `hf-mirror.com`）下载，主机白名单 + 固定 SHA256 校验；③ 在 dsh 宿主上注册回环 HTTP 路由 `/voice-mode/*`（默认仅回环，需 `allowLan` 才对局域网开放） | 麦克风音频**不出本机**（识别在本地 sherpa-onnx）；仅回复文本在 Edge 引擎下发往微软 |
+| **network** | Edge 将待朗读文本发往微软在线服务；本地模型从官方源或配置镜像下载，主要模型及清单内支持文件做摘要校验，辅助目录用清单/存在性检查；插件在宿主注册 `/voice-mode/*` 路由 | 浏览器音频发送到所连接的 dsh 宿主识别，不使用独立云 ASR；提交文本及可选 LLM 纠错遵循宿主配置。切换本地 TTS 不会让宿主 LLM 自动离线 |
 | **fs-read / fs-write** | 模型缓存（Linux/macOS `~/.cache/dsh-voice-mode/models/`，Windows `%LOCALAPPDATA%\dsh-voice-mode\models\`）；dsh 0.1.7+ 的设置覆盖层 `$DSH_HOME/voice-mode.settings.json`；**不读写你的工作区文件** | 全部在本机 |
 | **shell（子进程）** | 本地 TTS 合成跑在独立子进程（`child_process.fork` → `lib/tts-vits-worker.cjs`）；宿主为 Electron（官方桌面端）时，为 Kokoro 额外探测并启动一个真正的 Node.js（`node -p …` 探测版本，见 ADR/兼容契约）。**不执行用户输入、不经 shell 拼接命令** | 本机 |
-| **env** | 仅读取 `DSH_HOME`、`LOCALAPPDATA`（取目录）与可选的 `DSHVM_NODE`；**不读取、不需要任何 API Key** | — |
+| **env** | 使用目录和运行时定位相关环境设置，如 `DSH_HOME`、`LOCALAPPDATA`、`PATH` 和可选 `DSHVM_NODE`；默认语音路径无需额外语音服务密钥 | 宿主 LLM 的配置和费用另计 |
 
 补充：调试用的真机录制（fixture）默认**关闭**；插件不上传遥测。完整威胁模型与漏洞报告方式见仓库根目录 [`SECURITY.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/SECURITY.md)。
 
@@ -305,11 +306,11 @@ flowchart LR
 
 - **本地模型不随包分发**：ASR（zipformer 流式、SenseVoice 重译）、VAD、本地 TTS（VITS / Kokoro）的模型由插件**首次使用时从 Hugging Face（或你配置的镜像）下载**到本机缓存，来源为 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 生态的导出仓库（`csukuangfj/*`）。各模型的许可由其**原作者**决定，本插件的 MIT 许可**不覆盖**这些模型；用于商业场景前请自行核对上游许可（模型清单见下文「模型与缓存」，对应常量在 `src/asr-host.ts` / `src/tts-local.ts`）。
 - **Edge 云端朗读是第三方在线服务**：默认引擎经 [`msedge-tts`](https://github.com/Migushthe2nd/MsEdgeTTS) 使用微软 Edge 浏览器「大声朗读」的在线接口——这不是微软官方提供的稳定 API，**可用性、速率与条款均由微软决定**，可能随时变化。对稳定性/合规有要求的场景请改用本地 VITS / Kokoro（离线）。
-- 被内联进发布包的第三方代码（`msedge-tts` 及其依赖）的许可见 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)；已用 `pnpm audit` 保证发布时无已知高危漏洞（CI `audit` job 持续监测）。
+- 被内联进发布包的第三方代码（`msedge-tts` 及其依赖）的许可见 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)；`pnpm audit` 检查依赖数据库中的 high+ 公告，不能保证不存在未公开或未覆盖漏洞（CI `audit` job 持续监测）。
 
 ### 兼容声明（插件市场的版本筛选依据）
 
-`package.json` 声明 `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`（插件市场据此在「按宿主版本筛选」时判定兼容；dsh 0.2.1-alpha.4 起 next/alpha 通道由 `engines.dsh` 单独硬校验，不满足即拒绝加载，故上界封在 0.3.0（写作 `<0.3.0-0`，连 0.3.0 的 alpha/rc 预发布一并排除）——未验证的新大版本会被干净拒绝而非静默破损）。已实测范围 **0.1.1-rc.2 → 0.2.2-alpha.2**（含官方桌面端等价的 Electron 宿主）；由每周 CI 巡检上游新版本并复验，出现未覆盖版本会自动开 issue。`peerDependencies` 仅声明 `@deepseek-ai/cordis` 与 `react`（宿主提供）。
+`package.json` 声明 `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`。这是版本准入范围，不代表区间内每个版本都已实测。兼容记录列出了截至 0.2.2-alpha.2 的已测版本及实际测试形态。每周工作流只比对上游标签并为未覆盖版本开 issue，不会自动跑完整矩阵。`peerDependencies` 声明宿主提供的 `@deepseek-ai/cordis` 与 `react`。
 
 ## 🚧 已知限制
 
@@ -322,7 +323,7 @@ flowchart LR
 - hold 模式按住时切换窗口/标签页会**放弃本段**（防持续收音）
 - hero（新会话空态）无语音入口：请先进入会话使用麦克风按钮
 - `spokenFormat` 提示词经官方 `system-prompt/assemble` 瀑布注入；若当前会话使用**完整提示词**配置（persona `complete: true` 的 agent preset），提示词不注入（官方 complete 契约优先）
-- 本地 Kokoro 每次打断后下一句朗读前约有 1 秒引擎重建时间（打断即终止在途合成的代价）
+- 本地 Kokoro 打断后下一句前可能需要重建引擎，耗时取决于设备与模型（打断即终止在途合成的代价）
 - **苹果 Safari / iOS**：
   - 需 **HTTPS 或 localhost**（iOS/macOS Safari 强制安全上下文；`http://` 局域网 IP 下麦克风不可用）
   - 首次进入需授权麦克风；被拒后到「设置 → Safari → 麦克风」开启（iOS）
@@ -337,15 +338,15 @@ flowchart LR
 | --- | --- |
 | 点麦克风无反应，状态条红字 | 浏览器拒绝麦克风：地址栏（iOS 为 设置 → Safari → 麦克风）开启后重试 |
 | 状态条「正在加载模型… x%」卡住 | 检查网络；模型较大可先 `npm run prefetch`；国内网络 `modelHost` 配 `https://hf-mirror.com` |
-| 朗读无声音/无字幕 | **默认 Edge 云端朗读依赖微软在线服务**：连续多句失败会提示「云端朗读暂不可用」，到设置把朗读引擎切到本地 VITS / Kokoro；v0.7.23 及更早版本在 2026-10-15 起整体无声，请升级到 ≥0.7.24。 本地引擎首次合成需加载模型；若持续失败查看状态条提示（自动退避重试）；确认页面前台且未静音 |
+| 朗读无声音/无字幕 | Edge 需要外网；核对状态条、页面音量与自动播放权限。模型就绪后可手动切本地引擎；首次下载失败先看顶部 Kokoro 未发布修复说明，不绕过摘要校验。历史 Edge 握手修复见 CHANGELOG |
 | AI 回复**偶尔不朗读**（某句没声/整条没声） | 已定位三类原因并修（v0.7.10）：① 云端 TTS 偶发超时——单句自动重试 3 次，仍失败会**跳过该句并在状态条提示**「有一句朗读失败，已跳过」（此前是静默丢句）；② 浏览器挂起 AudioContext（切到后台标签页/长时间静音后回来）——播放被调度但无声、UI 却显示朗读中；现在每次入队与**任意点击/按键**都会自动恢复；③ SSE 断线丢帧导致整句不完整——按设计丢弃该句（避免播坏音频），可开 `localStorage['dsh-voice-mode.telemetry']='1'` 看 `tts-drop-sentence` 诊断 |
 | 语音模式进不去 | 检查插件 `enabled`；多标签页时确认当前会话为活动会话 |
-| 识别到但不是我要说的 | 环境噪声或唤醒词误判：降低音量、提高 `interruptLevel`（高门槛）或启用 `wakeWord` |
+| 识别到但不是我要说的 | 环境噪声或唤醒词误判：减少噪声并对比实时转写和定稿；`interruptLevel` 只影响打断，不提高识别准确率 |
 | 唤醒词唤不醒 | 先看待机态状态条的实时转写（它听到了什么）：同音字 1 字内已自动容错；停顿约 1.5 秒（= 静音断句时长）再说，清掉待机段残留语音、从段首重新匹配；换一个转写稳定的词（建议 3-4 字） |
 | 打断后说话没反应（开了唤醒词） | 唤醒词只管「开始识别」的门：打断/每句断句后回到待机态，**需重说唤醒词**再继续说；待机态状态条会显示「说『x』开始」提示 |
 | 唤醒词完全没反应 | ① 确认交互模式是 `toggle`（`hold` 与手动打断下唤醒词不生效）；② 确认 `bargeInMode`：`manual`（或 `detect` 在本机无原生回声消除时自动落 manual）会关闭常驻聆听 → 唤醒词失效，改回 `auto` 或按住麦克风/Ctrl；③ 朗读期说唤醒词不触发（先等 AI 说完）；④ 看待机态实时转写，确认它听到了什么（同音字 1 字内已容错，建议 3-4 字词） |
 | 按住说话松手后没反应 | 确认交互模式为「按住说」且按住期间按钮高亮；松手后识别定稿约 1 秒内进入草稿 |
-| 打不断（朗读中开口无反应） | 调高 `interruptLevel`（更敏感档 = 0 或 1）或检查麦克风权限；若 VAD 持续不触发可临时切到「手动打断」（`mode: hold` / 唤醒词定时延后）；**不要**调 `echoGateDb`——2026-09-14 三条真机录音（外放/耳机 × 纯听/打断）朗读期 Silero 判回声为语音 **0/937 帧**（0/431 + 0/289 + 0/217），打断必要条件从未成立，此阈值在任何已测设备组合下都是空操作（详见 ADR-0006） |
+| 打不断（朗读中开口无反应） | 将 `interruptLevel` 向 2 调整（2 最敏感，0 高门槛），确认麦克风与回声消除；仍不可靠时用按住说话。原生 AEC 有效时 `echoGateDb` 不参与门控，无原生 AEC 时才是兜底参数 |
 | 官方桌面端上选本地 Kokoro，设置里显示「加载失败」并提示需要 Node.js | 桌面端宿主是 Electron，Kokoro 的原生 addon 在其中不可用：在系统 PATH 上安装 Node.js ≥18（或设环境变量 `DSHVM_NODE` 指向它）后重试；或改用默认的 Edge / 本地 VITS（桌面端不受影响） |
 | 字幕被输入框挡住 | 默认 `captionMaxWidth=1`（70vw）+ `captionFontSize=0`（12px）在窄屏可能与底部输入框重叠；调高档位或点字幕浮层「×」收起 |
 | 让位行为异常（朗读期说「嗯」不停 / 真话被打断） | 「嗯/对」类短词触发让位 1.5s 后继续朗读；继续说真话会走硬打断；不要时关 `backchannelYield` 即可恢复改造前行为（ADR-0008） |
@@ -357,21 +358,23 @@ flowchart LR
 
 ## 🛣️ 路线图（Roadmap）
 
-完整 backlog（43 项 P0-P3）见 [`docs/competitive/backlog.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/competitive/backlog.md)。
+[当前路线图](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md)统一记录优先级、候选准入、验收门槛与回滚条件。
 
-- ✅ **已完成（v0.7.7）**：11 批次周全修复（字幕档位 / 让位语义 / 模型预热 / 默认值微调 / 死代码清理等）
-- 🚧 **P0（近期）**：ADR-0003 VAD 下沉 / ADR-0006 第一级探测接通 manual / F1 emotion DSL 全量上线
-- 📋 **P1（中期）**：MCP `voice_*` 工具集 / 卡片表单 draft validate / 状态条 idle 优化
-- 💡 **P2（远期）**：声音克隆（用户已决定推迟）/ ADR-0004 WebSocket transport
-- ⏸️ **已推迟**：xAI fallback / C1 人格层（用户已决定推迟）
+1. 先闭环已确认缺陷，验证真实 ASR → 可编辑草稿 → 发送 → TTS。
+2. 优先解决丢句、误发、编辑冲突和恢复成本等高损失体验问题。
+3. 推进可控的模型更新与回退；新模型或协议只有实测瓶颈证据才进入实验，不承诺必增后端。
+
+客户端 VAD、WebSocket 重写、声音克隆与广泛工具控制不作为已批准的近期工作。[历史 backlog](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/competitive/backlog.md)保留先前研究，旧 Ready 和估时不构成当前承诺。
 
 ---
 
 ## 🛠️ 开发
 
+源码开发/测试使用 Node.js 22.18 或以上的 22.x 与 pnpm 11；插件运行时声明不等于测试工具链要求。
+
 ```sh
 pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js（browser）
-pnpm test                     # 75 个测试文件串联：单测 + 台架（假浏览器驱动真引擎）+ 结构守卫 + 发布前自检（无需网络）
+pnpm test                     # 执行包脚本中的单测、台架与结构守卫；范围以实际配置和输出为准
 systemctl restart dsh         # 本机加载新 host 代码；其他平台重启 dsh 进程
 ```
 

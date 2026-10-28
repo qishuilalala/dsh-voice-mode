@@ -8,7 +8,7 @@
 Full-duplex voice conversation mode for DeepSeek Harness (dsh): speak, get a
 spoken answer. Streamed zipformer2 ASR → editable draft → auto send → the
 final reply is read out sentence-by-sentence via Edge TTS, and your voice
-interrupts playback and the running turn. No API key.
+interrupts playback and the running turn. No additional speech-service API key is needed for the default path; the host LLM has its own configuration and costs.
 
 > **English** · [中文](https://github.com/qishuilalala/dsh-voice-mode/blob/HEAD/plugin/dsh-voice-mode/README.md)
 
@@ -16,22 +16,23 @@ interrupts playback and the running turn. No API key.
 
 ![Real recording: streaming transcription → auto-send → sentence-by-sentence read-aloud with live captions](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
 
-> **Latest releases**: **v0.7.29** — adversarial-verification fix batch: long utterances no longer dropped, long read-aloud no longer cut by idle exit, Edge TTS no longer skips sentences containing `&`/`<`, Kokoro works offline, stalled downloads switch mirrors, tap again while connecting to cancel, screen readers no longer flooded by the status bar (20 fixes); **v0.7.28** — `Alt/Option+Enter` inside the composer toggles voice mode, a "Shortcuts" settings group with click-to-record, settings that apply immediately, hold-to-talk that starts from idle and exits after the reply, the mic button no longer steals composer focus, better read-aloud chunking for long text (PR #17 by @dyguests). Full history in the [CHANGELOG](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md).
+> **Current status (2026-10-28):** npm v0.7.33 is published. v0.7.32 expanded the tested host matrix; v0.7.31 fixed the Edge handshake failure observed then. **Unreleased on main:** Kokoro int8/fp32 models and explicitly hashed support files now use matching historical upstream revisions. npm v0.7.33 does not contain this later download fix. Do not disable checksum verification.
 >
-> **Runtime changes (v0.7.18 – v0.7.24)**: (1) **Settings work on every dsh version** — fixed the settings page and persistence on dsh 0.1.7+ (Settings → Voice Mode page, writes survive restarts); (2) **i18n rebuilt** — the UI follows dsh's official language setting, zh/en fully consistent, switching needs no refresh; (3) **fixed fresh npm/pnpm installs and the dsh ≥0.1.7 installed-form "failed to import"** (0.7.17 and earlier are affected — upgrade to ≥0.7.18); (4) **local Kokoro fixed under the official desktop (Electron) app** — needs Node.js ≥18 on PATH (or set `DSHVM_NODE`); (5) **v0.7.24: Edge cloud read-aloud restored** — since 2026-10-15 Microsoft's service rejects the old handshake (v0.7.23 and earlier are silent on the default Edge engine; local VITS / Kokoro are unaffected), so the inlined msedge-tts is bumped to 2.1.0; when read-aloud **fails several sentences in a row** the plugin now suggests switching to a local engine; plus host hardening (`/models/retry` is same-origin POST only, model-tree path checks, raw error strings no longer sent downstream). Compatible with dsh up to 0.2.2-alpha.2 (from 0.2.1-alpha.4/5 the Settings entry moved into the "Account menu" popover at the bottom of the sidebar; from 0.2.1-rc.3 that button only carries an `aria-label` — "Account menu" in English, "账号菜单" in Chinese — and both of this plugin's entry points still work).
+> CI results do not establish real-device audio quality or compatibility with every host version. See the [changelog](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md), [compatibility evidence](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md), and [roadmap](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md). The declared dsh range is `>=0.1.1-rc.2 <0.3.0-0`; untested versions are not guaranteed.
+
 
 ---
 
 ## 🤝 Fork enhancements (this repo)
 
-- **Edge cloud TTS by default; local TTS optional (privacy-first)**: local VITS (Chinese) and local Kokoro (zh+en, 103 voices; `int8` default ~109 MB / `fp32` ~311 MB for better quality; native `sherpa-onnx-node` addon, no WASM memory limits) run in an isolated child process;
+- **Edge cloud TTS by default; local TTS optional (privacy-first)**: local VITS (Chinese) and local Kokoro (zh+en, 103 voices; `int8` default ~109 MB / `fp32` ~311 MB with a larger model; native `sherpa-onnx-node` addon, no WASM memory limits) run in an isolated child process;
 - **103 Kokoro voices** (F0-measured gender labels, 4 favourite male voices pinned), browsed with a ◀▶ stepper;
 - **Delta transport**: partials upload only the new 0.9 s — long push-to-talk segments finalize in seconds;
 - **Interaction**: a mode-switch button next to the mic (continuous ⇄ hold, persisted); hold mode records only while held;
 - **Long segments**: continuous listening stitches consecutive segments into one message (internally chunked at 30 s and concatenated across chunks); 1500 ms silence split by default; hold keeps pauses from splitting;
-- **Hardening**: session-existence check, loopback + Origin guards, per-endpoint rate limits, model SHA256 pinning, download-host allowlist.
+- **Hardening**: session-existence check, loopback + Origin guards, endpoint-specific rate limits, pinned digests for primary/listed model files (auxiliary directories use manifest/presence checks), download-host allowlist.
 
-> ℹ️ The `demo-voice-flow.gif` at the top is a **real recording of the current UI** (voice mode → live transcription → pause auto-send → sentence-by-sentence read-aloud with live captions), produced by driving the real pipeline via `screenshots/scripts/capture-demo.mjs`; the UI keeps evolving, so the actual interface prevails.
+> ℹ️ The `demo-voice-flow.gif` at the top is a **recorded example of the UI** (voice mode → live transcription → pause auto-send → sentence-by-sentence read-aloud with live captions), produced by driving the real pipeline via `screenshots/scripts/capture-demo.mjs`; the UI keeps evolving, so the actual interface prevails.
 
 ---
 
@@ -51,13 +52,15 @@ interrupts playback and the running turn. No API key.
 - **Barge-in**: three sensitivity levels of voice-onset detection → local mute + host synth queue invalidation (epoch) + running turn cancellation (the half-finished part is kept and naturally flows into your new message). With a wake word set, barge-in **remains speak-to-interrupt** (the gate is the VAD, not the wake word; the engine returns to standby afterwards)
 - **Lazy model download with progress**: the zipformer2 Chinese streaming model (~160 MB, `.part` resumable) is downloaded on first use with live progress in the status bar; `npm run prefetch` can pre-download it
 - **Resilience and diagnostics**: mic-denied red hint, visible model-download failure, TTS unreachable status hint (auto retry), failed submit keeps the text in the draft, SSE auto-reconnect; the status bar also hints when the recognition / barge-in detect channel fails several times in a row or the state sync drops (self-healing transient failures stay quiet); when SenseVoice finalization takes over 2 s the status bar counts up "recognizing… Ns"; a "copy diagnostics" button copies version / runtime state / settings snapshot / phase timings in one click — **never any transcript text** (privacy)
-- **Settings**: location depends on your dsh version (see Settings below), with voice / rate / interrupt sensitivity / silence pause / idle timeout / model mirror / auto send / interaction mode / wake word / ITN / caption tiers / yield semantics / yield window / barge-in salvage / LLM correction; **voices are previewable** (the "试听/Preview" button synthesizes and plays the current voice at the current rate instantly, no need to enter voice mode; custom ShortNames are previewable too)
+- **Settings**: location depends on your dsh version (see Settings below), with voice / rate / interrupt sensitivity / silence pause / idle timeout / model mirror / auto send / interaction mode / wake word / ITN / caption tiers / yield semantics / yield window / barge-in salvage / LLM correction; **voices are previewable** (the "试听/Preview" button synthesizes and plays the current voice at the current rate (first use may download or load a model), no need to enter voice mode; custom ShortNames are previewable too)
 - **Interface language**: follows dsh's language setting (Settings → General → Language) and **switches instantly, no reload** — the settings page, voice status bar, captions, voice names/gender/accent and error messages all follow it, and the LLM spoken-style prompt is chosen in English or Chinese accordingly. Dictionaries are registered in dsh's official locale service under the `voice-mode` namespace, so community language packs can add more languages (missing ones fall back to English). The plugin's name and description in the Plugins page are localized too.
-- **Idle exit**: auto-exit and mic release after 5 minutes of inactivity (reading counts as activity; batch J 10→5)
+- **Idle exit**: auto-exit and mic release after 5 minutes of inactivity (reading, speech and a running turn renew the timer, subject to a two-hour cap since the last user activity)
 
 ---
 
 ## ⌨️ Interaction gestures
+
+Speaking to trigger a hard interruption stops playback and requests cancellation of the current running turn. The separate “stop reading” action only stops read-aloud; these are different actions.
 
 | Gesture | Behaviour |
 | --- | --- |
@@ -73,9 +76,9 @@ interrupts playback and the running turn. No API key.
 
 ---
 
-## 🚀 Quick Start (5 minutes)
+## 🚀 Quick Start (model download time varies)
 
-**Requirements**: dsh web (Node ≥ 18), a modern browser (Chrome / Edge / Firefox, supporting `getUserMedia` and Web Audio).
+**Requirements**: dsh web (the plugin declares Node ≥18; the host may require a newer version), a modern browser (Chrome / Edge / Firefox, supporting `getUserMedia` and Web Audio).
 
 ```sh
 # Option 1: from npm (recommended)
@@ -94,7 +97,7 @@ dsh plugin --profile web add .
 
 **Bundle plugins require a dsh restart to take effect** (restart methods by platform):
 
-- **Linux (systemd)**: `systemctl restart dsh`
+- **Linux with a configured systemd service**: restart the actual service (for example, `systemctl restart dsh` only if that is its name). The install command above targets the web profile; use your actual profile for other deployments.
 - **Windows / macOS / manual hosting**: restart your dsh process (kill and run `dsh web` again, or restart it in your service manager)
 
 **Optional**: pre-download the ASR model to reduce the download wait on the first voice-mode entry:
@@ -136,9 +139,9 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | `rate` | `1.1` | Reading speed multiplier (0.5 slow ～ 2.0 fast), **applies live** (batch J 1.0→1.1) |
 | `interruptLevel` | `0` | Barge-in sensitivity (host-side VAD frame detection + echo gate): 0 high threshold (3 frames) / 1 medium (2 frames) / 2 low (1 frame) |
 | `bargeInMode` | `detect` | Barge-in mode: `detect` auto-probes native echo cancellation (default; falls back to hold-to-talk when it is not in effect) / `auto` force interrupt as soon as you speak (headphones / quiet rooms) / `manual` hold-to-talk (recommended on loudspeakers). Batch 7O default, I10-exempt (ADR-0006) |
-| `echoGateDb` | `6` | Echo-gate threshold (dB): auto barge-in requires the residual to exceed the echo floor by this much. **Idle while native AEC is in effect** (it only acts as a fallback on Safari / headsets without native AEC); lower by 3-4 if you cannot interrupt, raise by 8-10 if noise interrupts. **Do not tune it for "cannot interrupt"** (see ADR-0006) |
+| `echoGateDb` | `6` | Fallback echo-gate threshold when native AEC is unavailable. Inactive with native AEC. Only on the fallback path, a higher value is more conservative; verify the device and barge-in mode before tuning |
 | `silenceMs` | `1500` | Silence pause in ms that marks the end of a complete sentence |
-| `idleTimeoutMinutes` | `5` | Minutes of inactivity before auto-exiting voice mode (reading counts as activity; batch J 10→5) |
+| `idleTimeoutMinutes` | `5` | Minutes of inactivity before auto-exiting voice mode (reading, speech and a running turn renew the timer, subject to a two-hour cap since the last user activity) |
 | `modelHost` | default | Model download host (use `https://hf-mirror.com` on mainland networks) |
 | `autoSend` | `true` | Auto-send once quiet (consecutive segments join into one message); when off, text only goes to the draft (hold `Ctrl` / release in hold mode still sends) |
 | `mode` | `toggle` | Interaction mode: `toggle` continuous listening + 1500 ms silence split; `hold` push-to-talk, release to send (short tap exits); `once` one utterance, then exit after the reply is read aloud |
@@ -280,14 +283,14 @@ flowchart LR
 - Speech and reading only happen for the session pointed to by the global single-active pointer `activeVoiceSession`; other sessions pass through `llm/stream` with zero overhead (mode isolation)
 - The `llm/stream` tap is lossless: every chunk passes through unchanged; segmentation/synthesis only observe and never block the model stream
 - ASR runs host-side (sherpa-onnx WASM, zipformer2 Chinese streaming + SenseVoice finalization which adds punctuation); the browser only captures audio (`getUserMedia` 16k mono) and does endpoint detection
-- Local TTS (VITS / native Kokoro) runs in an isolated child process (fork, auto-restart); barge-in kills the in-flight synthesis instantly to free CPU
+- Local TTS (VITS / native Kokoro) runs in an isolated child process (fork, auto-restart); barge-in kills the in-flight synthesis to release its worker resources
 - The TTS queue is per-session with an epoch version: old frames are all invalidated after a barge-in, so it is truly silent
 
 ---
 
-## 🔍 Comparison with dsh built-in voice mode
+## 🔍 Historical comparison with the early upstream implementation
 
-| Dimension | dsh built-in | dsh-voice-mode (this plugin) |
+| Dimension | Early upstream (historical) | dsh-voice-mode (this plugin) |
 | --- | --- | --- |
 | Recognition model | Cloud API (needs key) | **Local zipformer2 + SenseVoice** (zero key) |
 | Multi-language | English-first | **SenseVoice auto-recognition + ITN** |
@@ -295,7 +298,7 @@ flowchart LR
 | Barge-in detection | Basic VAD | **3 sensitivity levels + echo gate + yield semantics** |
 | Caption a11y | None | **4 font tiers + 3 width tiers + theme-following** |
 | Wake word | None | **Lightweight streaming match + prefix filler whitelist** |
-| dsh compatibility | — | **full range since 0.1.1-rc.2 (incl. 0.2.2-alpha.2)** |
+| dsh compatibility | — | Declared range `>=0.1.1-rc.2 <0.3.0-0`; consult the tested-version matrix |
 
 ---
 
@@ -305,10 +308,10 @@ An honest disclosure of what the plugin does (mapped to the awesome-dsh-plugin c
 
 | Category | What it does | Where data goes |
 | --- | --- | --- |
-| **network** | (1) The default read-aloud engine **Edge** sends the **reply text to be spoken** over WebSocket to Microsoft `speech.platform.bing.com` (cloud synthesis — switch to local VITS / Kokoro to stay fully offline); (2) downloads local models on first use from `huggingface.co` (or your configured mirror `hf-mirror.com`) with a host allowlist and pinned SHA256; (3) registers loopback HTTP routes `/voice-mode/*` on the dsh host (loopback only by default; LAN needs `allowLan`) | Microphone audio **never leaves your machine** (recognition runs locally via sherpa-onnx); only reply text goes to Microsoft, and only with the Edge engine |
+| **network** | (1) The default read-aloud engine **Edge** sends the **reply text to be spoken** over WebSocket to Microsoft `speech.platform.bing.com` (cloud synthesis — local VITS / Kokoro avoids this TTS request after its models are ready; host LLM traffic is separate); (2) downloads local models on first use from `huggingface.co` (or your configured mirror `hf-mirror.com`) with host restrictions and pinned digests for primary/listed files; auxiliary directories use manifest/presence checks; (3) registers loopback HTTP routes `/voice-mode/*` on the dsh host (loopback only by default; LAN needs `allowLan`) | Browser audio is sent to the configured dsh host for recognition; the plugin does not use an independent cloud ASR. Edge sends text to Microsoft. Submitted transcripts and optional LLM correction follow the host LLM configuration |
 | **fs-read / fs-write** | Model cache (Linux/macOS `~/.cache/dsh-voice-mode/models/`, Windows `%LOCALAPPDATA%\dsh-voice-mode\models\`); the dsh 0.1.7+ settings overlay `$DSH_HOME/voice-mode.settings.json`; **never touches your workspace files** | All local |
 | **shell (child processes)** | Local TTS synthesis runs in a separate child process (`child_process.fork` → `lib/tts-vits-worker.cjs`); when the host is Electron (the official desktop app), it additionally probes and launches a real Node.js for Kokoro (`node -p …` to check the version). **It never executes user input and never builds shell command strings** | Local |
-| **env** | Reads only `DSH_HOME`, `LOCALAPPDATA` (for directories) and the optional `DSHVM_NODE`; **no API key is read or needed** | — |
+| **env** | Uses directory/runtime environment settings such as `DSH_HOME`, `LOCALAPPDATA`, `PATH` and optional `DSHVM_NODE`; this default speech path does not require an extra speech-service API key | — |
 
 Also: the on-device recording fixture used for debugging is **off by default**; the plugin sends no telemetry. See [`SECURITY.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/SECURITY.md) for the threat model and how to report vulnerabilities.
 
@@ -316,11 +319,11 @@ Also: the on-device recording fixture used for debugging is **off by default**; 
 
 - **Local models are not shipped in the package**: the ASR (streaming zipformer, SenseVoice re-transcription), VAD and local TTS (VITS / Kokoro) models are **downloaded on first use from Hugging Face (or your configured mirror)** into a local cache; they come from export repositories in the [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) ecosystem (`csukuangfj/*`). Each model is licensed by its **original authors** — this plugin's MIT license does **not** cover them; verify the upstream licenses before commercial use (the model list is under "Model & cache"; the constants are in `src/asr-host.ts` / `src/tts-local.ts`).
 - **The Edge cloud read-aloud is a third-party online service**: the default engine uses the Microsoft Edge browser "Read Aloud" endpoint via [`msedge-tts`](https://github.com/Migushthe2nd/MsEdgeTTS). It is not an officially supported Microsoft API — **availability, rate limits and terms are Microsoft's** and may change at any time. For stability/compliance-sensitive use, switch to local VITS / Kokoro (offline).
-- Licenses of the third-party code inlined into the published package (`msedge-tts` and its dependencies) are in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md); `pnpm audit` is clean at release time (CI `audit` job keeps watching).
+- Licenses of the third-party code inlined into the published package (`msedge-tts` and its dependencies) are in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md); `pnpm audit` checks known high+ advisories and does not establish the absence of undisclosed or untracked vulnerabilities (CI `audit` job keeps watching).
 
 ### Compatibility declaration (what the plugin market's version filter reads)
 
-`package.json` declares `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"` (the market uses it for "filter by host version"; from dsh 0.2.1-alpha.4 the next/alpha channels enforce `engines.dsh` alone as a hard check and refuse to load a plugin outside the range, so the upper bound is capped at 0.3.0 (written `<0.3.0-0` so 0.3.0 alpha/rc prereleases are excluded too) — an unverified new major is cleanly refused instead of silently broken). Verified range: **0.1.1-rc.2 → 0.2.2-alpha.2** (including an Electron host equivalent to the official desktop app). A weekly CI check watches upstream releases and opens an issue for any uncovered version. `peerDependencies` only lists `@deepseek-ai/cordis` and `react` (provided by the host).
+`package.json` declares `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`. This is an eligibility range, not evidence that every version in it has passed tests. The compatibility record lists tested releases through 0.2.2-alpha.2 and the forms actually exercised. The weekly workflow compares upstream tags and opens an issue for uncovered versions; it does not automatically rerun the full matrix. `peerDependencies` lists `@deepseek-ai/cordis` and `react` supplied by the host.
 
 ## 🚧 Known limitations
 
@@ -351,7 +354,7 @@ Also: the on-device recording fixture used for debugging is **off by default**; 
 | No sound and no captions on the default (Edge cloud) engine | Edge read-aloud depends on a Microsoft online service. If several sentences fail in a row you will see "cloud read-aloud unavailable" — switch the engine to local VITS / Kokoro in settings. v0.7.23 and earlier are silent since 2026-10-15 (server-side handshake rejection) — upgrade to ≥0.7.24 |
 | Caption appears (overlay) but no sound | Check system volume/output; if autoplay is blocked, click anywhere on the page and retry |
 | Status bar shows `朗读连接失败：正在重试…` | Edge TTS unreachable (overseas service), auto-retries; if it persists, check network/proxy |
-| Poor recognition | Get closer to the mic, reduce ambient noise; if echo remains, raise the interrupt sensitivity by one step |
+| Poor recognition | Reduce background noise and compare partial/final text. `interruptLevel` controls barge-in, not recognition accuracy |
 | Hold mode has no effect | Make sure hold mode is active and you're in voice mode (button shows `按住说话`); the browser window must be in the foreground |
 | Preview button reports synthesis failure | Edge TTS unreachable (overseas) or the ShortName doesn't exist: verify the name (`node scripts/list-voices.mjs` lists all) and retry later |
 | Caption is hidden behind the input box | Default `captionMaxWidth=1` (70vw) + `captionFontSize=0` (12px) can overlap the bottom input on narrow viewports; raise the tier or click the caption's `×` to dismiss |
@@ -364,17 +367,19 @@ Also: the on-device recording fixture used for debugging is **off by default**; 
 
 ## 🛣️ Roadmap
 
-Full backlog (43 P0-P3 items) at [`docs/competitive/backlog.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/competitive/backlog.md).
+The [current roadmap](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md) defines priorities, candidate admission, acceptance gates and rollback conditions.
 
-- ✅ **Done (v0.7.7)**: 11 batches of comprehensive fixes (caption tiers / yield semantics / model prewarm / defaults micro-adjust / dead-code cleanup / etc.)
-- 🚧 **P0 (near-term)**: ADR-0003 client-side VAD / ADR-0006 first-level probe wired to manual / F1 emotion DSL full roll-out
-- 📋 **P1 (mid-term)**: MCP `voice_*` toolset / card form draft validate / status-bar idle polish
-- 💡 **P2 (far-term)**: Voice cloning (user-deferred) / ADR-0004 WebSocket transport
-- ⏸️ **Deferred**: xAI fallback / C1 persona layer (user-deferred)
+1. Close confirmed defects and validate one real ASR → editable draft → send → TTS workflow.
+2. Address the highest-loss experience problems: dropped speech, unintended sends, edit conflicts and recovery.
+3. Make model updates and fallback controlled; evaluate new models or protocols only against a measured bottleneck. A new backend is optional, not a delivery promise.
+
+Client-side VAD, WebSocket migration, voice cloning and broad tool integration are not approved near-term work. The [historical backlog](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/competitive/backlog.md) preserves earlier research; its old Ready labels and estimates are not current commitments.
 
 ---
 
 ## 🛠️ Development
+
+Use Node.js 22.18+ on the 22.x line and pnpm 11 for source development/tests. The plugin runtime declaration is not the test-toolchain requirement.
 
 ### Dependency discipline (important)
 

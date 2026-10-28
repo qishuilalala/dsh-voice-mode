@@ -1,5 +1,7 @@
 # dsh-voice-mode 录制脚本（Demo 1/2/3）
 
+> 素材与录制指引保留采集时点；录制前按目标版本核对界面和设置。演示只展示所录流程，不代替真实设备、跨平台或当前发布验收。
+
 > 仓库：https://github.com/qishuilalala/dsh-voice-mode
 > 核心交互：`Ctrl+Shift+V` 进入/退出语音模式；停顿断句 1500ms（`silenceMs` 默认）。
 > 录制前校验：`ffmpeg -version` ≥ 5.x；浏览器外放或耳机均可（插件默认原生 AEC）。
