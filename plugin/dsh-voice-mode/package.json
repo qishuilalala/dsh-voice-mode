@@ -86,7 +86,7 @@
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.4",
     "sherpa-onnx": "^1.13.6",
-    "sherpa-onnx-node": "1.13.6"
+    "sherpa-onnx-node": "2.0.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
