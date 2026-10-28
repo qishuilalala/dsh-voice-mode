@@ -27,7 +27,7 @@ jobs:
       run:
         working-directory: plugin/dsh-voice-mode
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
           fetch-depth: 0  # check-build-tag 需要完整历史
