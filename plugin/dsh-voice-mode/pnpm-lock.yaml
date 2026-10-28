@@ -54,8 +54,8 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1(debug@4.4.3)
       playwright-core:
-        specifier: 1.62.1
-        version: 1.62.1
+        specifier: 1.64.1
+        version: 1.64.1
       typescript:
         specifier: ^5.9.2
         version: 5.9.2
@@ -500,8 +500,8 @@ packages:
     resolution: {integrity: sha512-737ZY3yNnXy37FHkQxPzt4UZ2UWPWiCZWLvFZ4fu5cueciegX0zGPnrlY6bwRg4FdQOe9YU8MkmJwGhoMybl8A==}
     engines: {node: '>= 0.8'}
 
-  playwright-core@1.62.1:
-    resolution: {integrity: sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==}
+  playwright-core@1.64.1:
+    resolution: {integrity: sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -984,7 +984,7 @@ snapshots:
 
   on-headers@1.1.0: {}
 
-  playwright-core@1.62.1: {}
+  playwright-core@1.64.1: {}
 
   proxy-from-env@2.1.0: {}
 
