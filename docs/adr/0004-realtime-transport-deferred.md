@@ -1,6 +1,6 @@
-# ADR-0004：实时环路维持 HTTP/3 SSE（提议改用单会话 WebSocket，deferred）
+# ADR-0004：实时环路维持 HTTP 上行与 SSE 下行（提议改用单会话 WebSocket，deferred）
 
-- 状态：**提议 / Deferred**（WebSocket transport 未实施，仍 HTTP/3 SSE）
+- 状态：**提议 / Deferred**（WebSocket transport 未实施，仍为 HTTP 上行与 SSE 下行）
 - 日期：2026-08-30（2026-09-16 命名纠正）
 - 决策人：待定
 
@@ -10,7 +10,7 @@
 > 正文「决策（提议）」段保留原提议内容（改造方向与代价分析）。
 >
 > **批 7M + 批 7N 落地（2026-09-16）**：
-> - **批 7M 🔴 砍 4 项已落地**：`recognitionLanguage`（`4532b48`）/ `asrHotwords`+`asrHotwordsScore`+模块（`e3423ef`）/ `docs/qa/user-experience-flow.md`（`6bed6d4`）+ lib rebuild（`735e997`）；schema 字段 25→23 项砍除，本 ADR 依赖的传输层无改动（仍 HTTP/3 SSE）。
+> - **批 7M 🔴 砍 4 项已落地**：`recognitionLanguage`（`4532b48`）/ `asrHotwords`+`asrHotwordsScore`+模块（`e3423ef`）/ `docs/qa/user-experience-flow.md`（`6bed6d4`）+ lib rebuild（`735e997`）；schema 字段 25→23 项砍除，本 ADR 依赖的传输层无改动（仍为 HTTP 上行与 SSE 下行）。
 > - **批 7N 🟡 重做 5 项已落地**：`bargeInMode='manual'` 接通（`8278097`）/ echoGateDb + autoResume 描述对齐（`d667ffb`+`5b6019b`）/ 端到端补测 3 项 yieldMs + zh-60s + matchBackchannel（`58f6d77`+`b0e45fe`+`ee4312b`）/ ADR-0003 + 本 ADR 重命名（`0564a51`+`0cacd88`）/ autoResume 文案统一（`f883b35`）。
 > - **不动传输层**：批 7M + 批 7N 均未触动 WebSocket 改造；ADR-0004 仍 deferred，前置条件 #1（核实宿主 `@deepseek-ai/dsh-host-webserver` 支持 WebSocket upgrade，2026-09-14 真机核对已满足）保持——本 ADR 现在可推进，但批量 go 推迟等用户决策。
 
@@ -42,40 +42,40 @@
 
 **每个语音会话建立一条 WebSocket**，承载全部实时数据面（上行 PCM、下行 VAD/partial/TTS 帧），控制面（`/config`、`/toggle`、`/models/*`）保持 HTTP 不变。
 
-关键性质与它消除的东西：
+关键性质与待验证的收益（2026-10-28 纠正：传输有序不能替代异步任务生命周期守卫）：
 
-| WebSocket 性质 | 消除 |
+| WebSocket 性质 | 潜在收益与保留条件 |
 |---|---|
-| 有序 | 迟到响应作废逻辑（`segmentEpoch` / `detectGeneration` 的响应校验分支） |
-| 有状态（连接 = 会话生命周期） | 403 会话过期 → 重入 → 全量重发的整条恢复路径（`src/asr.ts:489` 403 重试（`config.onSessionExpired`）+ `src/asr.ts:837` `recoverySegment` 全量重发；2026-10-20 实测刷新，2026-10-21 前快照的 `:416-438` 已漂移，本轮按现态行号刷新） |
-| 连接断开即明确失效 | host 侧 90s 空闲扫描回收（`SEGMENT_IDLE_MS`） |
-| 无轮询 | 100ms 量化延迟；`lastPollAt` / `partialInFlight` / `detectInFlight` 三个在途标志 |
+| 连接内有序 | 可减少传输层乱序；异步完成、取消、重连仍需 `segmentEpoch` / `detectGeneration` 等作废校验，不能据此删除 |
+| 连接有状态（不等于应用会话生命周期） | 会话授权、owner 变化及重连仍需过期处理与恢复；既有路径（`src/asr.ts:489` 403 重试（`config.onSessionExpired`）+ `src/asr.ts:837` `recoverySegment` 全量重发；2026-10-20 实测刷新，2026-10-21 前快照的 `:416-438` 已漂移，本轮按现态行号刷新） |
+| 明确连接关闭事件 | 有助于触发清理；半开连接、重连与应用缓存仍需超时/回收策略，不能直接删除 `SEGMENT_IDLE_MS` |
+| 可改为推送 | 有机会减少轮询等待；`lastPollAt` / `partialInFlight` / `detectInFlight` 能否收敛须由背压、取消与行为验证决定 |
 | 二进制帧原生 | base64 膨胀（TTS 下行当前 base64，+33%） |
 
-保留的：`turnGen`（LLM 回合语义，与传输无关）、TTS `q.epoch`（打断语义，与传输无关）。**预计可塌缩 3 套计数器 + 2 套水位。**
+保留的：`turnGen`（LLM 回合语义，与传输无关）、TTS `q.epoch`（打断语义，与传输无关）。其余计数器和水位也先保留；删除须逐项证明取消、重连与迟到结果的行为不回归，不能预先承诺数量。
 
 配套建议（同一次改动内）：
-- 上行 PCM 改 **int16**（当前 f32，`src/asr.ts:390` 与 `:1237` 的 Float32Array 构造 + `src/asr-host.ts:154-155`（pcmToSamples）Float32Array 解析；2026-10-21 前快照的 `src/asr.ts:232` 已漂移，本轮按现态行号刷新）——带宽减半，ASR 输入精度无损失
+- 上行 PCM 改 **int16**（当前 f32，`src/asr.ts:390` 与 `:1237` 的 Float32Array 构造 + `src/asr-host.ts:154-155`（pcmToSamples）Float32Array 解析；2026-10-21 前快照的 `src/asr.ts:232` 已漂移，本轮按现态行号刷新）——带宽减半，样本量化会变化，识别质量须实测
 - 下行 TTS 改二进制帧，去掉 base64
 
 ## 预期后果
 
 **正面**
-- 去掉 100ms 轮询量化（打断确认延迟 −50ms 平均）
+- 可能减少轮询等待；端到端打断收益须测量，不能承诺固定平均降幅
 - 上行带宽：f32→int16 减半，再叠加 detect 通道（若 ADR-0003 已落地则本就归零）
-- 并发正确性的表面积大幅缩小——这是**长期维护成本**的主要来源
-- 断线检测明确（`onclose`），不再需要 owner 心跳超时让出的一整套逻辑（`yieldActiveSession` 可简化）
+- 有机会减少部分传输状态；并发正确性与维护成本能否改善须独立验证
+- `onclose` 可提供关闭信号；不能替代半开连接检测或 owner 心跳，`yieldActiveSession` 的简化需另行证明
 
 **负面 / 成本**
 - 依赖宿主 `ctx.webServer` 是否支持 WebSocket upgrade。**这是可行性的第一道门，需先核实**；不支持则本 ADR 不成立，退回备选 A
 - 反向代理场景需要 upgrade 透传配置（README 需补充）
-- 重连语义要重新设计：断线后是恢复段还是弃段？建议**弃段 + UI 提示**，比现在的全量重发简单得多
+- 重连语义需验证：恢复或弃段都必须保留用户控制，不能因实现更简单而静默丢失已说内容；不得自动重复发送宿主 prompt
 - 一次性重构量大，且横跨 `asr.ts` / `asr-host.ts` / `index.ts` / `client.tsx` 四个文件
 
 ## 依据
 
-- 5 套代际计数器不是过度设计，而是传输选型的必然产物——每一套的注释里都写着它修的是哪个竞态。换传输是治本，继续加守卫是治标
-- 100ms 轮询量化在延迟预算中占平均 50ms，属于纯浪费
+- 代际守卫对应取消、并发完成、所有权和重连等生命周期问题；部分传输状态可能随协议调整收敛，但换传输不能自动消除这些竞态
+- 100ms 轮询存在等待窗口；固定平均 50ms 需要到达均匀等假设，是否构成主要瓶颈必须按真实端到端时序测量
 - 现有帧协议（`TtsChunkFrame` 已有 `sentenceId` / `chunkId` / `final`）本就是流式设计，与 WebSocket 天然契合
 
 ## 前置条件
@@ -93,6 +93,6 @@
 
 ## 备选方案
 
-- **A：保持 HTTP，把轮询节拍从 100ms 降到 50ms**——量化延迟减半，请求量翻倍（`/asr` 限流当前 60 次/秒/会话，需放宽）。治标，但零风险
-- **B：只把上行 PCM 换成 WebSocket，下行保持 SSE**——半步方案，消除轮询与水位，但保留双通道的状态同步问题。不推荐（两条通道的顺序关系仍需代际守卫）
+- **A：保持 HTTP，把轮询节拍从 100ms 降到 50ms**——可能减少轮询等待，同时增加请求负载；先核对 `/asr` 限流、宿主负载及并发行为，再做有界实验，不能称为零风险
+- **B：只把上行 PCM 换成 WebSocket，下行保持 SSE**——可减少上行轮询，但双通道同步、重连、背压和水位仍需验证，不能预先宣称可删除；只有测得收益才进入实验
 - **C：不做**——如果 ADR-0003 落地后打断延迟已达标，且不再新增实时功能，维持现状是合理的。**代际计数器的成本是维护成本，不是用户可见成本。**
