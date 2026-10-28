@@ -22,6 +22,8 @@ export const HOST_FALLBACK = 'https://hf-mirror.com'
 export const ALLOWED_MODEL_HOSTNAMES = ['huggingface.co', 'hf.co', 'hf-mirror.com'] as const
 
 export interface ModelFileSpec {
+  /** 固定上游版本，避免 main 替换文件后与已锁定摘要不一致。 */
+  revision?: string
   /** 仓库内相对文件名（可含子目录）。 */
   file: string
   /** 官方内容 SHA256（LFS oid / 文本内容哈希）。 */
@@ -220,7 +222,7 @@ async function downloadVerified(opts: {
     opts.signal?.removeEventListener('abort', onAbort)
   }
   async function downloadBody(): Promise<boolean> {
-  const url = `${host}/${repo}/resolve/main/${spec.file}`
+  const url = `${host}/${repo}/resolve/${spec.revision ?? 'main'}/${spec.file}`
   const partSt = await stat(partPath).catch(() => null)
   const resumeFrom = partSt?.isFile() ? partSt.size : 0
   const headers: Record<string, string> = { 'user-agent': 'dsh-voice-mode' }

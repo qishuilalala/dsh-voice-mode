@@ -175,7 +175,7 @@ export function kokoroSpec(model: KokoroModel): EngineSpec {
   const main: ModelFileSpec =
     model === 'fp32'
       ? { file: 'model.onnx', sha256: 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38' }
-      : { file: 'model.int8.onnx', sha256: 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26' }
+      : { file: 'model.int8.onnx', revision: '155831f1b4ba23b1f5c058be6a61df90cefb2a37', sha256: 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26' }
   return {
     files: [main, ...KOKORO_SHARED_FILES],
     workerPaths: (dir) => kokoroWorkerPaths(dir, main.file),
