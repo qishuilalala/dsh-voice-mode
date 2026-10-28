@@ -24,6 +24,7 @@
  * 不变量 I1-I10 守住：本测试仅读取 + mock，不修改 src/。
  */
 import assert from 'node:assert/strict'
+import vm from 'node:vm'
 import { build } from 'esbuild'
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -254,14 +255,14 @@ const mockBus = {
 // 闭包捕获 cfg + bus，触发时执行 bus.skipAudio() + bus.setBackchannelHold(now + cfg.yieldMs ?? 1500)。
 const cfgForCb = { backchannelYield: true, yieldMs: 2000, onBackchannel: null }
 // eslint-disable-next-line no-new-func
-cfgForCb.onBackchannel = new Function('cfg', 'bus', `
+cfgForCb.onBackchannel = vm.runInNewContext(`(function(cfg, bus){
   return cfg.backchannelYield
     ? () => {
         bus.skipAudio();
         bus.setBackchannelHold(Date.now() + (cfg.yieldMs ?? 1500));
       }
     : undefined;
-`)(cfgForCb, mockBus)
+})`, { console, setTimeout, clearTimeout, setInterval, clearInterval })(cfgForCb, mockBus)
 
 // 直接驱动：守卫命中 → 触发 onBackchannel 闭包
 const speechActive = true

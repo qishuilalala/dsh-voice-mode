@@ -18,6 +18,7 @@
  * 不变量：本测试只读 src/，不改任何源码。
  */
 import assert from 'node:assert/strict'
+import vm from 'node:vm'
 import { build } from 'esbuild'
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -148,19 +149,10 @@ assert.ok(block.includes('if (delivered)'), '块缺 delivered 判定腿')
 assert.ok(block.includes('.catch(() => submitViaQueue())'), '块缺 reject 兜底腿')
 assert.ok(block.includes('wroteBack ? snapshot : draftSnapshot'), '块缺写回基线分流腿')
 
-const runSteerBranch = new Function(
-  'sid',
-  'shouldSteerSubmit',
-  'runningRef',
-  'bus',
-  'actions',
-  'draftRef',
-  'snapshot',
-  'draftSnapshot',
-  'submitViaQueue',
-  'wroteBack',
-  block,
-)
+// 提取出的块在 **隔离沙箱**（vm context）里执行：只暴露下面显式传入的桩依赖，
+// 执行域不触达宿主全局（process/require/console 之外一律不可见）——比在宿主域动态求值更安全。
+// 块内含 `return;`（原函数体的提前退出），故在沙箱里包一层函数，保持原语义。
+const runSteerBranch = (deps) => vm.runInNewContext(`(function(){ ${block} })()`, { ...deps, console })
 
 /** 注入桩并执行提取块；返回三类计数器。 */
 function driveSteer({
@@ -188,7 +180,7 @@ function driveSteer({
     counters.queue++
   }
   const shouldSteerSubmit = (_running, _snap) => steerShould
-  runSteerBranch(sid, shouldSteerSubmit, runningRef, bus, actions, draftRef, snapshot, draftSnapshot, submitViaQueue, wroteBack)
+  runSteerBranch({ sid, shouldSteerSubmit, runningRef, bus, actions, draftRef, snapshot, draftSnapshot, submitViaQueue, wroteBack })
   return counters
 }
 

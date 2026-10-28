@@ -1,0 +1,33 @@
+name: Plugin Security Scan
+
+# 持续安全检查：HOL Plugin Scanner（dsh-plugin.org 收录门禁同款）。
+#
+# 用途：① 让社区插件市场的收录目录拿到「维护方自持扫描」的可信度（无此 CI 的项目在
+#    目录侧会被扣 10% 信任分）；② 把上游服务悄悄变更、依赖漏洞、危险动态执行等问题
+#    在本仓 CI 里就报出来，而不是等用户或目录扫描发现。
+#
+# 约束（按上游 SCANNER_GUIDE.md 的推荐写法）：
+#   - 只申请 contents: read；不依赖任何仓库 secret；
+#   - checkout 不持久化凭据；
+#   - action 与依赖按 SHA 钉住；不启用在线探测与 SARIF 上传。
+# 阈值与目录侧一致：归一化分 ≥ 75 通过；findings 的严重度仅作提示，不阻断（分低才阻断）。
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: hashgraph-online/ai-plugin-scanner-action@c96833de5070fab4e564010b5ab6e3c3d7e07a3e # v1.2.806
+        with:
+          plugin_dir: "plugin/dsh-voice-mode"
+          min_score: 75
+          fail_on_severity: none

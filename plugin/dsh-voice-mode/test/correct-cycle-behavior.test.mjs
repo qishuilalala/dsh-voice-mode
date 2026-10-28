@@ -26,6 +26,7 @@
  * 不变量：本测试只读 src/，不改任何源码。
  */
 import assert from 'node:assert/strict'
+import vm from 'node:vm'
 import { build } from 'esbuild'
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -182,7 +183,9 @@ const makeSubmitDraftNow = (deps) => {
     SDN_PARAMS,
     'deps 键序与 submitDraftNow 形参表不一致——按位对应被破坏（重构 makeDeps 需同步 SDN_PARAMS）',
   )
-  return new Function(...SDN_PARAMS, `${sdnText}\nreturn submitDraftNow`)(...Object.values(deps))
+  // 隔离沙箱构造：只暴露显式注入的桩依赖，执行域不触达宿主全局（比宿主域动态求值更安全）
+  const fn = vm.runInNewContext(`(function(${SDN_PARAMS.join(',')}){\n${sdnText}\nreturn submitDraftNow;\n})`, { console, setTimeout, clearTimeout, setInterval, clearInterval })
+  return fn(...Object.values(deps))
 }
 
 // ---------------------------------------------------------------- 提取 2：hardBreak 三行块
@@ -192,12 +195,10 @@ assert.ok(hbIdx >= 0, 'bundle 缺 hardBreak 清在途+废周期三行块（提�
 const hbText = clientSrc.slice(hbIdx, hbIdx + HB_ANCHOR.length)
 assert.ok(hbText.includes('submitInFlightRef.current = false') && hbText.includes('correctCycleRef.current++'), 'hardBreak 块缺清标记/废周期腿')
 const runHardBreakCore = (cancelAutoSend, submitInFlightRef, correctCycleRef, bus) =>
-  new Function('cancelAutoSend', 'submitInFlightRef', 'correctCycleRef', 'bus', hbText)(
-    cancelAutoSend,
-    submitInFlightRef,
-    correctCycleRef,
-    bus,
-  )
+  vm.runInNewContext(
+    `(function(cancelAutoSend, submitInFlightRef, correctCycleRef, bus){\n${hbText}\n})`,
+    { console, setTimeout, clearTimeout, setInterval, clearInterval },
+  )(cancelAutoSend, submitInFlightRef, correctCycleRef, bus)
 
 // ---------------------------------------------------------------- 提取 3：onPartial 在途门
 const gateInnerIdx = clientSrc.indexOf('if (draftRef.current === "") submitInFlightRef.current = false')
@@ -209,7 +210,10 @@ const gateText = clientSrc.slice(gateStart, gateEnd).trim()
 /** 跑在途门；返回 true = 放行回填（onPass 被调），false = 冻结。 */
 const runPartialGate = (submitInFlightRef, draftRef, onPass) => {
   let passed = false
-  new Function('submitInFlightRef', 'draftRef', 'onPass', `${gateText}\nonPass()`)(
+  vm.runInNewContext(
+    `(function(submitInFlightRef, draftRef, onPass){\n${gateText}\nonPass()\n})`,
+    { console, setTimeout, clearTimeout, setInterval, clearInterval },
+  )(
     submitInFlightRef,
     draftRef,
     () => {

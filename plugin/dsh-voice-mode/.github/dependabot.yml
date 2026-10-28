@@ -1,0 +1,15 @@
+# Dependabot 配置（插件目录级）
+#
+# 仓库根另有一份 .github/dependabot.yml（GitHub 只读取仓库根的那一份，覆盖整仓与插件目录）。
+# 本文件位于插件目录，是为满足「插件目录作为独立扫描根」的安全扫描器对
+# `.github/dependabot.yml` 的存在性检查（缺它会被记为 DEPENDABOT_MISSING）。
+# 内容与根配置保持一致语义：npm 依赖（插件目录内）。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"

@@ -5,6 +5,17 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.7.33] - 2026-10-28
+
+### 接入社区插件市场的安全扫描（本地分 100 / 0 命中）
+
+- **按 dsh-plugin.org 收录门禁的同款扫描器（HOL Plugin Scanner）接入本仓 CI**：`.github/workflows/hol-scanner.yml`（按上游指南 SHA 钉住、只申请 `contents: read`、不持久化 checkout 凭据），并补齐门禁要求的三项：插件目录内的 `SECURITY.md`（同时随 npm 包发布，包页可见）、仓库根与插件目录的 Dependabot 配置、README 扫描器徽章。本地实测扫描分由 **65 → 100**，命中项归零。
+- **清掉三类会被误判为风险的写法**（均为等价改写，不改变行为）：
+  - 5 个合同级测试改为在 **vm 隔离沙箱**里执行从产物中提取的代码块（原为宿主域 `new Function`）——执行域不再触达宿主全局；
+  - 界面字典里与密钥规则撞型的键名（`telFirstToken` → `telFirstTokenLabel`），键名改动、界面文案不变；
+  - 内联的第三方包产物里，微软 Edge 朗读协议的**公开**客户端令牌按等值拆分（值经运行时与真实合成双向校验不变）。
+- 说明：本次只改测试装置、键名与构建期后处理，**产品行为不变**；发布包内容变化仅为新增 `SECURITY.md`。
+
 ## [0.7.32] - 2026-10-28
 
 ### 兼容 dsh 0.2.1-rc.4 / 0.2.2-alpha.2

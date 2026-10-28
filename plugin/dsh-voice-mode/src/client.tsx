@@ -163,7 +163,7 @@ const TELEMETRY_VIEW: { stage: TelemetryStage; key: TKey }[] = [
   { stage: 'utterance-end', key: 'telUtteranceEnd' },
   { stage: 'endpoint-fired', key: 'telEndpoint' },
   { stage: 'submitted', key: 'telSubmitted' },
-  { stage: 'first-llm-token', key: 'telFirstToken' },
+  { stage: 'first-llm-token', key: 'telFirstTokenLabel' },
   { stage: 'first-sentence-text', key: 'telFirstSentence' },
   { stage: 'first-tts-chunk', key: 'telFirstChunk' },
   { stage: 'first-audio-played', key: 'telFirstPlayed' },

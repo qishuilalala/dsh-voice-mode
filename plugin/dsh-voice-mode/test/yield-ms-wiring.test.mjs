@@ -17,6 +17,7 @@
  * 不变量 I1-I10 守住：本测试仅读取 + mock，不修改 src/。
  */
 import assert from 'node:assert/strict'
+import vm from 'node:vm'
 import { build } from 'esbuild'
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -423,7 +424,7 @@ const cfg = await (async () => {
 //   onBackchannel: cfg.backchannelYield ? () => { ... } : undefined
 // 当 cfg.backchannelYield=true 时，挂给 createAsrEngine 的 onBackchannel 是「调用时执行闭包
 // 内部」的函数；命中后由引擎调 cfg.onBackchannel()，闭包内执行 bus.skipAudio + setBackchannelHold。
-// 我们用 new Function 重建此表达式（verbatim），注入 mockBus，触发后验证入参。
+// 我们用 vm 沙箱重建此表达式（verbatim），注入 mockBus，触发后验证入参（沙箱只暴露注入的桩依赖）。
 const backchannelHoldLog = []
 const skipAudioLog = []
 const mockBus = {
@@ -431,15 +432,14 @@ const mockBus = {
   skipAudio() { skipAudioLog.push(true) },
 }
 
-// eslint-disable-next-line no-new-func
-const onBackchannel = new Function('cfg', 'bus', `
+const onBackchannel = vm.runInNewContext(`(function(cfg, bus){
   return cfg.backchannelYield
     ? () => {
         bus.skipAudio();
         bus.setBackchannelHold(Date.now() + (cfg.yieldMs ?? 1500));
       }
     : undefined;
-`)(cfg, mockBus)
+})`, { console, setTimeout, clearTimeout, setInterval, clearInterval })(cfg, mockBus)
 // 触发：onBackchannel 已被闭包构建；调用它就如 ASR 引擎命中 backchannel 后调用 cfg.onBackchannel()
 assert.equal(typeof onBackchannel, 'function', 'cfg.backchannelYield=true 时 onBackchannel 必须是函数')
 onBackchannel()
@@ -468,12 +468,11 @@ t('bus.setBackchannelHold 入参 ≈ now + 2000ms（不是默认 1500ms）', () 
 })
 t('onBackchannel 在 cfg.backchannelYield=false 时短路为 undefined', () => {
   const cfgOff = { ...cfg, backchannelYield: false }
-  // eslint-disable-next-line no-new-func
-  const off = new Function('cfg', 'bus', `
+    const off = vm.runInNewContext(`(function(cfg, bus){
     return cfg.backchannelYield
       ? () => { bus.skipAudio(); bus.setBackchannelHold(Date.now() + (cfg.yieldMs ?? 1500)); }
       : undefined;
-  `)(cfgOff, mockBus)
+  })`, { console, setTimeout, clearTimeout, setInterval, clearInterval })(cfgOff, mockBus)
   assert.equal(off, undefined, 'cfg.backchannelYield=false 时闭包应短路为 undefined（I10 豁免 + 节流 CPU）')
 })
 

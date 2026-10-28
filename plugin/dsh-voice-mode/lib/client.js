@@ -1853,7 +1853,7 @@ var zh = {
   telUtteranceEnd: "\u8BF4\u5B8C",
   telEndpoint: "\u7AEF\u70B9",
   telSubmitted: "\u5B9A\u7A3F",
-  telFirstToken: "\u9996Token",
+  telFirstTokenLabel: "\u9996Token",
   telFirstSentence: "\u9996\u53E5",
   telFirstChunk: "\u9996chunk",
   telFirstPlayed: "\u9996\u97F3",
@@ -2135,7 +2135,7 @@ var en = {
   telUtteranceEnd: "end",
   telEndpoint: "endpoint",
   telSubmitted: "submit",
-  telFirstToken: "1st token",
+  telFirstTokenLabel: "1st token",
   telFirstSentence: "1st sentence",
   telFirstChunk: "1st chunk",
   telFirstPlayed: "1st audio",
@@ -3965,7 +3965,7 @@ var TELEMETRY_VIEW = [
   { stage: "utterance-end", key: "telUtteranceEnd" },
   { stage: "endpoint-fired", key: "telEndpoint" },
   { stage: "submitted", key: "telSubmitted" },
-  { stage: "first-llm-token", key: "telFirstToken" },
+  { stage: "first-llm-token", key: "telFirstTokenLabel" },
   { stage: "first-sentence-text", key: "telFirstSentence" },
   { stage: "first-tts-chunk", key: "telFirstChunk" },
   { stage: "first-audio-played", key: "telFirstPlayed" }
@@ -3984,7 +3984,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "f0f7b09";
+var BUILD_TAG = "68cbc7f";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

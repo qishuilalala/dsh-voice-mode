@@ -20,6 +20,7 @@
  * 不变量 I1-I10 守住：本测试仅读取 + mock + bundle，不修改 src/。
  */
 import assert from 'node:assert/strict'
+import vm from 'node:vm'
 import { build } from 'esbuild'
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -109,7 +110,7 @@ assert.ok(fnEnd > fnStart, '提取区间非法（PREVIEW_ERROR_CODES 应先于�
 
 const fnBlock = src.slice(fnStart, fnEnd)
 // eslint-disable-next-line no-new-func
-const classifyPreviewError = new Function(`${fnBlock}\nreturn classifyPreviewError;`)()
+const classifyPreviewError = vm.runInNewContext(`(function(){\n${fnBlock}\nreturn classifyPreviewError;\n})`, { console, setTimeout, clearTimeout, setInterval, clearInterval })()
 
 t('成功从 bundle 提取并执行真实 classifyPreviewError', () => {
   assert.equal(typeof classifyPreviewError, 'function', '提取结果不是函数')
@@ -176,7 +177,8 @@ console.log('⑥ 响应协议：host 只发稳定错误码，不发任何自然�
 
 t('四类归类各映射到 preview_* 错误码；host 源码不再有中文试听文案', () => {
   const codesStart = src.indexOf('var PREVIEW_ERROR_CODES')
-  const codes = new Function(`${src.slice(codesStart, src.indexOf('};', codesStart) + 2)}\nreturn PREVIEW_ERROR_CODES;`)()
+  // 沙箱产物是跨 realm 对象，展开成宿主对象后再做 strict 深比较（比较目标仍是同一组键值）
+  const codes = { ...vm.runInNewContext(`(function(){\n${src.slice(codesStart, src.indexOf('};', codesStart) + 2)}\nreturn PREVIEW_ERROR_CODES;\n})`, { console, setTimeout, clearTimeout, setInterval, clearInterval })() }
   assert.deepEqual(codes, { network: 'preview_network', engine: 'preview_engine', text: 'preview_text', unknown: 'preview_unknown' })
   // 扫原始 src/index.ts 而非 bundle：esbuild 默认 ascii 输出会把中文串编译成
   // \uXXXX 转义，正则永不命中运行时字符串（旧实现扫产物 = 零保护，已实证空洞化）。
