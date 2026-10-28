@@ -12,9 +12,9 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue" alt="License: MIT"></a>
   <a href="https://github.com/qishuilalala/dsh-voice-mode/releases"><img src="https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases" alt="Latest release"></a>
 
-[![HOL Guard Scanner](https://img.shields.io/badge/HOL%20Guard-passing-00a67e)](https://github.com/hashgraph-online/hol-guard)
+[![Plugin Security Scan](https://github.com/qishuilalala/dsh-voice-mode/actions/workflows/hol-scanner.yml/badge.svg?branch=main)](https://github.com/qishuilalala/dsh-voice-mode/actions/workflows/hol-scanner.yml)
   <a href="https://www.npmjs.com/package/dsh-voice-mode"><img src="https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange" alt="npm version"></a>
-  <a href="docs/rules/STATE.md"><img src="https://img.shields.io/badge/tests-979%20%E2%9C%93-2ea043?style=flat-square" alt="Tests: 979 passing"></a>
+  <a href="https://github.com/qishuilalala/dsh-voice-mode/actions/workflows/ci.yml"><img src="https://github.com/qishuilalala/dsh-voice-mode/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
 </p>
 
 ![dsh-voice-mode 全双工语音对话](assets/hero-banner.png)
@@ -251,6 +251,8 @@ flowchart LR
 ---
 
 ## 🤝 Contributing / 📄 License / 🙏 Acknowledgments
+
+贡献前请阅读[贡献指南](CONTRIBUTING.md)。
 
 **License**: [MIT](LICENSE)
 
