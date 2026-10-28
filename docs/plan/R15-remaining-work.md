@@ -125,10 +125,10 @@ R15 阶段围绕**已发布代码（v0.7.27）**做了三轮「独立 sweep → 
 ### P0-5｜全仓现行口径计数刷新 —— ⏳ **等主会话给终态数字**（Round 8 第二批新增待办）
 
 **背景**：主会话已实测 **803 ✓ / 53 套件**（HEAD `85a4e18` + 在途三份测试文件：`tts-queue-engine` 21→25 · `host-security-behavior` 54→57 · `asr-host-rebuild` 11→12），但**本轮还有 4 位队友在补锁**（fix-client / fix-tts / fix-models / fix-seg），**计数还会再涨** ⇒ **本批不刷计数**（避免刷两次）。
-**待办（拿到终态数字后一次刷完）**：全仓现行口径（README 徽章 / 正文 / 博客表、plugin 两语 README、`docs/CONTEXT.md`、`docs/qa/*`、`docs/plan/*`、`docs/rules/STATE.md:500`、`CHANGELOG.md`、`docs/mkdocs.yml`），**历史时点值一律不动**；行为级口径（主口径 / 合同级）按终态逐条判定重算，并保证「行为级 + 合同级 = 全套件」与「R13 口径 13 文件子集」自洽。
+**待办（拿到终态数字后一次刷完）**：全仓现行口径（README 徽章 / 正文 / 博客表、plugin 两语 README、`docs/CONTEXT.md`、`docs/qa/*`、`docs/plan/*`、`docs/rules/STATE.md`、`CHANGELOG.md`、`docs/mkdocs.yml`），**历史时点值一律不动**；行为级口径（主口径 / 合同级）按终态逐条判定重算，并保证「行为级 + 合同级 = 全套件」与「R13 口径 13 文件子集」自洽。
 **本批已顺带订正的措辞问题**（验真轮查出「同句内两套数并存、分项停在旧版本」）：
 - docs/CONTEXT.md:50 的沿革链原停在 **R15-J（785）**、句内行为级数原写 **492**（R15-J 口径）——**已补 R15-K 一跳**（+10 = mic-gesture 50→56 + host-security-behavior 52→54 + llm-correct 22→24）并把行为级口径同步到 **500 / 合同级 295 / 子集 143**；
-- docs/rules/STATE.md:500 同句内的「全套件 53 文件 / **785** 项」原停在旧值——**已订正为 795**，实测批次标注由 R15-J 改为 R15-K。
+- docs/rules/STATE.md 同句内的「全套件 53 文件 / **785** 项」原停在旧值——**已订正为 795**，实测批次标注由 R15-J 改为 R15-K。
 ⇒ 刷计数时这两处**只需替换数字**，不必再动句式。
 
 
