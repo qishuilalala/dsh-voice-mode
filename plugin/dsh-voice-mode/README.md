@@ -29,7 +29,7 @@ dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`）�
 - 状态条与字幕默认开启；两项都关掉即上图的「全部收进按钮」形态，此时录音计时显示在按钮下方、提示文字显示在按钮旁
 
 
-> **当前状态（2026-10-28）**：npm 已发布 v0.7.33；v0.7.32 扩展宿主验证矩阵，v0.7.31 修复当时的 Edge 握手故障。**main 未发布修复**：Kokoro int8/fp32 主模型及固定摘要支持文件改用匹配的上游历史版本；npm v0.7.33 不包含这项后续下载修复。请勿关闭摘要校验。
+> **当前状态（2026-10-28）**：v0.7.34 修复 Kokoro int8/fp32 主模型及固定摘要支持文件下载校验失败；可安装版本以 npm 徽章与 Releases 为准。v0.7.33 不含这项修复。修复使用与既有摘要匹配的上游历史版本，不改模型、音色或缓存目录，请勿关闭摘要校验。
 >
 > CI 通过不代表真实听感、所有硬件或所有宿主版本均已验证。详见 [CHANGELOG](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md)、[兼容证据](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md)和[后续路线图](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md)。包声明范围为 `>=0.1.1-rc.2 <0.3.0-0`，未测版本不保证。
 
@@ -338,7 +338,7 @@ flowchart LR
 | --- | --- |
 | 点麦克风无反应，状态条红字 | 浏览器拒绝麦克风：地址栏（iOS 为 设置 → Safari → 麦克风）开启后重试 |
 | 状态条「正在加载模型… x%」卡住 | 检查网络；模型较大可先 `npm run prefetch`；国内网络 `modelHost` 配 `https://hf-mirror.com` |
-| 朗读无声音/无字幕 | Edge 需要外网；核对状态条、页面音量与自动播放权限。模型就绪后可手动切本地引擎；首次下载失败先看顶部 Kokoro 未发布修复说明，不绕过摘要校验。历史 Edge 握手修复见 CHANGELOG |
+| 朗读无声音/无字幕 | Edge 需要外网；核对状态条、页面音量与自动播放权限。模型就绪后可手动切本地引擎；首次下载失败先看顶部 Kokoro 升级说明，不绕过摘要校验。历史 Edge 握手修复见 CHANGELOG |
 | AI 回复**偶尔不朗读**（某句没声/整条没声） | 已定位三类原因并修（v0.7.10）：① 云端 TTS 偶发超时——单句自动重试 3 次，仍失败会**跳过该句并在状态条提示**「有一句朗读失败，已跳过」（此前是静默丢句）；② 浏览器挂起 AudioContext（切到后台标签页/长时间静音后回来）——播放被调度但无声、UI 却显示朗读中；现在每次入队与**任意点击/按键**都会自动恢复；③ SSE 断线丢帧导致整句不完整——按设计丢弃该句（避免播坏音频），可开 `localStorage['dsh-voice-mode.telemetry']='1'` 看 `tts-drop-sentence` 诊断 |
 | 语音模式进不去 | 检查插件 `enabled`；多标签页时确认当前会话为活动会话 |
 | 识别到但不是我要说的 | 环境噪声或唤醒词误判：减少噪声并对比实时转写和定稿；`interruptLevel` 只影响打断，不提高识别准确率 |
