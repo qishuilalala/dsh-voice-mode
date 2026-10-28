@@ -16,7 +16,7 @@ interrupts playback and the running turn. No additional speech-service API key i
 
 ![Real recording: streaming transcription → auto-send → sentence-by-sentence read-aloud with live captions](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
 
-> **Current status (2026-10-28):** npm v0.7.33 is published. v0.7.32 expanded the tested host matrix; v0.7.31 fixed the Edge handshake failure observed then. **Unreleased on main:** Kokoro int8/fp32 models and explicitly hashed support files now use matching historical upstream revisions. npm v0.7.33 does not contain this later download fix. Do not disable checksum verification.
+> **Current status (2026-10-28):** v0.7.34 fixes Kokoro int8/fp32 model and explicitly hashed support-file downloads using historical upstream revisions that match the existing checksums. Check npm and Releases for availability; v0.7.33 does not contain this fix. Models, voices and cache locations are unchanged. Do not disable checksum verification.
 >
 > CI results do not establish real-device audio quality or compatibility with every host version. See the [changelog](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md), [compatibility evidence](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md), and [roadmap](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md). The declared dsh range is `>=0.1.1-rc.2 <0.3.0-0`; untested versions are not guaranteed.
 
