@@ -156,17 +156,18 @@ await t('ensureModelFile：已存在但 SHA256 不匹配 → 删除自愈 + 三�
   rmSync(dir, { recursive: true, force: true })
 })
 
-await t('ensureModelFile：下载→SHA 校验→落盘全路径（受控 200 响应，真离线）', async () => {
+for (const revision of [undefined, '155831f1b4ba23b1f5c058be6a61df90cefb2a37']) await t(`ensureModelFile：下载→SHA 校验→落盘（revision=${revision ?? 'main'}）`, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dl-ok-'))
   const p = join(dir, 'a.bin')
   fetchCalls.length = 0
   fetchMode = 'ok' // 受控 200：返回内容与 spec.sha256 一致
   try {
     const ok = await ensureModelFile({
-      repo: 'dl-repo', repoDir: dir, spec: { file: 'a.bin', sha256: DATA_SHA },
+      repo: 'dl-repo', repoDir: dir, spec: { file: 'a.bin', sha256: DATA_SHA, revision },
       primaryHost: 'https://mirror.invalid', allowCustomHost: true, broadcast: () => {},
     })
     assert.ok(ok, '内容哈希匹配时应下载成功')
+    assert.equal(fetchCalls[0], `https://mirror.invalid/dl-repo/resolve/${revision ?? 'main'}/a.bin`)
     assert.equal(fetchCalls.length, 1, '首个上游成功即止，不走回退')
     assert.ok(existsSync(p), '校验通过后应落盘为正式文件')
     assert.deepEqual(readFileSync(p), DATA, '落盘内容应与受控响应一致')

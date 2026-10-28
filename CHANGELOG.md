@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- Kokoro int8 首次模型下载固定到与既有摘要一致的上游历史版本，避免上游替换 main 文件后反复下载并校验失败；保留完整性校验。
+
 ## [0.7.33] - 2026-10-28
 
 ### 接入社区插件市场的安全扫描（本地分 100 / 0 命中）
