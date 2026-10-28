@@ -1,23 +1,25 @@
-# dsh-voice-mode —— 文档治理索引（心智模型 + 链接）
+# dsh-voice-mode —— 文档索引与历史基线
 
 > **本文件角色**：跨文档索引 + 项目心智模型；状态变化改对应链接/锚点，不追加流水账。
-> **真源层级**：根 `CONTEXT.md`（开发者上下文，重写式 ~60 行）/ `docs/rules/STATE.md`（唯一恢复点）/ `docs/adr/`（决策）。
-> **基准 HEAD**：`16072be`（Issue #15 R15-K 收口——回合边界判据换真源（`agent/pre-step` 的 `step === 1`）+ 3 项客户端护栏（辅助点击只吞指针派生的 click / 权威回合号接线进纯函数并补行为锁 / `/focus` 403 补报加「焦点是否已变」判据）+ 剥寒暄补纯寒暄与空白分隔形态 + 文档锚点机械守卫与行号全量回填；含 lib/index.js，属代码+lib 批；本基线随收口批滚动更新。**现行约定**：基线取代码+lib 批，docs-only 提交不滚动基线——历史值中 `6ddfb09`/`d92f43b` 等纯 docs 收口批曾充任基线，属历史偏离）。lib BUILD_TAG 应为 HEAD 短哈希（build-then-commit 工作流下可能指向同源父 commit），以 `node build.mjs` 重建后实测为准，本文不写具体值。历史基线 `38cc23e`（R12 收口）/ `c4e2c3a`（R11 收口）/ `bb42829`（R9 收口）/ `7997b4a`（R8 收口）/ `77cb212`（R6 收口）/ `2b28539`（R5 收口）/ `6ddfb09`（R3 收口）/ `6995ae7`（R2）/ `d92f43b`（Issue #15 八批收口）保留备查。
+> **真源层级**：根 `CONTEXT.md`（开发者上下文，重写式维护）/ `docs/rules/STATE.md`（唯一恢复点）/ `docs/adr/`（决策）。
+> **历史基准 HEAD**：`16072be`（Issue #15 R15-K 收口——回合边界判据换真源（`agent/pre-step` 的 `step === 1`）+ 3 项客户端护栏（辅助点击只吞指针派生的 click / 权威回合号接线进纯函数并补行为锁 / `/focus` 403 补报加「焦点是否已变」判据）+ 剥寒暄补纯寒暄与空白分隔形态 + 文档锚点机械守卫与行号全量回填；含 lib/index.js，属代码+lib 批；此处为历史批次快照，当前验收另记目标版本。**现行约定**：基线取代码+lib 批，docs-only 提交不滚动基线——历史值中 `6ddfb09`/`d92f43b` 等纯 docs 收口批曾充任基线，属历史偏离）。lib 的 BUILD_TAG 用于追溯构建来源，不要求等于后续文档提交的 HEAD；发布前通过[构建来源门禁](../plugin/dsh-voice-mode/scripts/check-build-tag.mjs)验证，本文不维护具体值。历史基线 `38cc23e`（R12 收口）/ `c4e2c3a`（R11 收口）/ `bb42829`（R9 收口）/ `7997b4a`（R8 收口）/ `77cb212`（R6 收口）/ `2b28539`（R5 收口）/ `6ddfb09`（R3 收口）/ `6995ae7`（R2）/ `d92f43b`（Issue #15 八批收口）保留备查。
 > **批 7M 🔴 砍落地（2026-09-16）**：4 项砍除——`recognitionLanguage`（4532b48）/ `asrHotwords`+`asrHotwordsScore`+模块（e3423ef）/ `docs/qa/user-experience-flow.md`（6bed6d4）；本文件设置键表砍 3 行（识别热词 / 热词偏置分 / 识别语种）后剩 7 个数据行。
 > **批 7N 🟡 重做落地（2026-09-16）**：5 项重做——`bargeInMode='manual'` 接通（8278097）/ echoGateDb + autoResume 描述对齐（d667ffb+5b6019b）/ 端到端补测 3 项（58f6d77+b0e45fe+ee4312b）/ ADR-0003+0004 重命名（0564a51+0cacd88）/ autoResume 文案统一（f883b35）；详见下方设置键表。
 
-## 项目心智模型（一段话）
+> 当前状态见[根上下文](../CONTEXT.md)、[恢复点](rules/STATE.md)与[路线图](plan/roadmap-2026-10.md)。下列提交与测试沿革保留其历史时点，不作为当前验收结果。
 
-dsh-voice-mode 是 DSH 桌面的语音双工插件：用户进语音模式 → 流式识别入草稿 → 静音累积自动发送 → 朗读 + 字幕 → 开口打断。识别本地（zipformer2 流式 + SenseVoice 定稿）；TTS 默认 Edge 云端，本地 VITS / Kokoro 可选（int8/fp32 双档）。**解决的问题**：桌面语音对话的开箱即用（零 API Key、本地识别、字幕可读、开口即打断）。**不解决**：说话人分离（pyannote blocker）、声音克隆（❄ Frozen）、Edge SSML 情感标签（批 4 仅本地）。
+## 项目心智模型（以当前根上下文为准）
+
+dsh-voice-mode 是 DSH 桌面的语音双工插件：用户进语音模式 → 流式识别入草稿 → 静音累积自动发送 → 朗读 + 字幕 → 开口打断。识别本地（zipformer2 流式 + SenseVoice 定稿）；TTS 默认 Edge 云端，本地 VITS / Kokoro 可选（int8/fp32 双档）。**解决的问题**：桌面语音对话的开箱即用（默认语音链路无需额外语音服务密钥、本地宿主识别、字幕和打断控制）。**不解决**：说话人分离（pyannote blocker）、声音克隆（❄ Frozen）、Edge SSML 情感标签（批 4 仅本地）。
 
 ## 架构（host / client / worker / bridge）
 
 ```
 采集 AudioWorklet 16k → [原生 AEC 旁路自研 NLMS] → RMS → echoPeak/floor
  → aboveEchoFloor (echoGateDb) → host 检测通道 vadOnly → isDetected (0.35)
- → confirmFrames → hardBreak（asr.ts）
+ → confirmFrames → hardBreak（client.tsx）
 
-host asr-host.ts：zipformer 流式 + SenseVoice worker（语言/ITN 可锁）
+host asr-host.ts：zipformer 流式 + SenseVoice worker（语言自动识别，ITN 可配置）
 client client.tsx：播放 + 参考池 + 手势 + UI（字幕/状态条/设置面板）
 bridge /voice-mode SSE：owner=sessionId，/config + /preview + assembleStream
 ```
@@ -72,7 +74,7 @@ cd plugin/dsh-voice-mode && \
 ## 发版流程（批 K 收口 + L 文档同步验证通过的工作流）
 
 1. `git status --short` 仓干净
-2. `npm run typecheck && npm run build && npm test` 全绿（npm test 979 项 / 74 文件）
+2. `npm run typecheck && npm run build && npm test` 退出码均为 0（单测范围以包脚本与实际日志为准）
 3. `systemctl restart dsh.service && curl /voice-mode/config` 验 ASR 侧 8 字段非 null（senseVoice/senseITN/captionFontSize/captionMaxWidth/backchannelYield/yieldMs/bargeInSalvage/llmCorrect）
 4. 真机冒烟 **4 项必过** / **~10 分钟**（`docs/qa/must-verify-manually.md`：字幕 / 让位 / 60s 长段 / manual 外放）
 5. 文档回写：`STATE.md` + 根 `CONTEXT.md` + `backlog.md` + ADR 落地注记（批 7M 砍 4 项 + 批 7N 重做 5 项已完成）

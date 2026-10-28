@@ -1,6 +1,6 @@
 # 真机验收清单（dsh-voice-mode 批 2/3/5 + 批 7 周全修复（10 批次 A-J））
 
-> **基准**：代码基线 = `16072be`（Issue #15 R15-K 收口——回合边界判据换真源 + 3 项客户端护栏 + 剥寒暄补形态 + 文档锚点守卫与回填；前值 `465c253`（R15-G 收口——client 焦点归属实例级化 + 设置 scope 跨标签页失效桥 + 4 处行为锁补齐 + 新增 `test/focus-ownership.test.mjs`；含 lib/client.js，属代码+lib 批；本基线随收口批滚动更新，**现行约定取代码+lib 批——docs-only 提交不滚动基线**）。历史基线 `d7890a4`（R13 收口）/ `38cc23e`（R12 收口）/ `c4e2c3a`（R11 收口）/ `bb42829`（R9 收口）/ `7997b4a`（R8 收口）/ `77cb212`（R6 收口）/ `2b28539`（R5 收口）/ `6ddfb09`（R3 收口）/ `6995ae7`（R2）/ `d92f43b`（Issue #15 八批收口）/ `5e2d34f`（批 7O 代码块收口）/ `0b63a13`（块 3 HEAD）保留备查——其「`git diff 5e2d34f..HEAD -- src/ lib/` 为空即纯文档/资产差集」口径已作废（Issue #15 八批代码改动全部落在该差集内）。
+> **历史基准**：代码基线 = `16072be`（Issue #15 R15-K 收口——回合边界判据换真源 + 3 项客户端护栏 + 剥寒暄补形态 + 文档锚点守卫与回填；前值 `465c253`（R15-G 收口——client 焦点归属实例级化 + 设置 scope 跨标签页失效桥 + 4 处行为锁补齐 + 新增 `test/focus-ownership.test.mjs`；含 lib/client.js，属代码+lib 批；此处为历史批次快照，当前验收另记目标版本，**现行约定取代码+lib 批——docs-only 提交不滚动基线**）。历史基线 `d7890a4`（R13 收口）/ `38cc23e`（R12 收口）/ `c4e2c3a`（R11 收口）/ `bb42829`（R9 收口）/ `7997b4a`（R8 收口）/ `77cb212`（R6 收口）/ `2b28539`（R5 收口）/ `6ddfb09`（R3 收口）/ `6995ae7`（R2）/ `d92f43b`（Issue #15 八批收口）/ `5e2d34f`（批 7O 代码块收口）/ `0b63a13`（块 3 HEAD）保留备查——其「`git diff 5e2d34f..HEAD -- src/ lib/` 为空即纯文档/资产差集」口径已作废（Issue #15 八批代码改动全部落在该差集内）。
 > **范围**：5 审计轴（B1 UI Row 本地化 / B2 settings 即时生效 / B3 fetchConfig 白名单 / B4 break 静音错位 / B5 长段话丢失）+ 10 批次周全修复 31 个 commit（A-J 含 7 docs(state) 验收 + 6 docs/adr + 3 chore(lib)+release 收口）共 42 commits 的可重复真机验证步骤。
 > **目的**：每次发版前由用户亲跑 30 分钟闭环验证；所有失败项对应源码行号定位。
 > **纪律**：每步单点验证，不依赖其他步骤状态；预期/失败信号给到具体用户可识别现象。
@@ -28,9 +28,9 @@
   1. 浏览器 F12 打开 Console
   2. 输入 `localStorage.setItem('dsh-voice-mode.telemetry','1')` 并刷新页面
   3. 看 Console 第一行 `[dsh-voice] build=<HEAD短哈希>`（批 7P P2 起 lib 随每批 rebuild 对齐；见 STATE TAG 口径）
-- **预期**：`build=` 后跟 7 字符 commit 短哈希，应等于 `git rev-parse --short HEAD`；若不一致，执行 `cd plugin/dsh-voice-mode && node build.mjs` 重建后复验（见 STATE TAG 口径）
-- **失败信号**：build= 显示 `undefined` / 显示旧版哈希 ≠ `git log --oneline -1` / build 行缺失
-- **回退**：执行 `cd plugin/dsh-voice-mode && node build.mjs && systemctl restart dsh.service`
+- **预期**：`build=` 给出构建来源，不要求等于每个后续文档提交的 HEAD。源码 checkout 的发布产物使用 `node scripts/check-build-tag.mjs <目标ref>` 验证来源及其后源码变化；npm 安装按插件版本与 Release 核对
+- **失败信号**：build= 缺失或 undefined、来源不可追溯，或目标发布产物未通过构建来源检查；不能仅凭哈希不同就判失败
+- **回退**：源码开发态可重建后按实际安装方式重载宿主；生产环境先确认版本、备份与回退办法，不直接套用本机服务命令
 - **时间**：30 秒
 
 ### [ ] 1.2 打开设置面板，所有 Row 标签是中文（**B1 审计**）

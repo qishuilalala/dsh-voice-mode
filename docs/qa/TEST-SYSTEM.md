@@ -1,9 +1,9 @@
 # 长期测试体系（维持 · 迭代 · 反馈 · 完善）
 
-> 目标：把「全版本兼容」从一次性实证变成可长期维持的工程体系。
+> 目标：把声明范围内的兼容验证变成可长期维持的工程体系，未测版本不自动承诺。
 > 真源：`plugin/dsh-voice-mode/scripts/verify-dual.sh` 默认矩阵（锚点/typecheck/冒烟的命令行参数）。
 > **代码基线** = `16072be`（Issue #15 R15-K 收口）；文档锚点基线由 `npm run check:doc-anchors` 机械校验（scripts/doc-anchors-baseline.json）。
-> 实证锚点：`docs/compat-contract.md` §10/§11（全版本证据矩阵）。
+> 实证锚点：`docs/compat-contract.md` §10/§11（按版本记录的历史证据矩阵）。
 
 ## 一、四层验证维度（单版本"兼容"=四层全过）
 
@@ -23,7 +23,7 @@
 |---|---|---|
 | 每周一 CI（`dsh-version-check.yml`） | 本机脚本 `bash scripts/check-dsh-version.sh`（本地专用、不入库）与 CI 内联逻辑：dist-tags vs 默认矩阵比对；EXIT 1 自动开 issue | CI 自动 |
 | dsh 上游发新版本（release notes / dist-tag 变化） | 同上，手动再跑一次确认 | 维护者 |
-| 每次改 `src/` | `npm run typecheck` + `npm test`（74 套件 / 979 项 exit 0）+ `node build.mjs` | 提交者 |
+| 每次改 `src/` | `npm run typecheck` + `npm test`（范围以包脚本为准，实际退出码须为 0）+ `node build.mjs` | 提交者 |
 | 每次推送 / PR（CI） | `ci.yml`：`test` job（npm test + build）与 `install` job（Node 18/22 下对打包产物做 pnpm+npm 全新安装并 import） | CI 自动 |
 | **发版前** | L5 安装形态门禁（见上）；全矩阵冒烟用 `link:` 与 `DSHVM_SPEC` 两种形态各跑一遍 | 发版者 |
 | **发版前（桌面端等价）** | 以 Electron RunAsNode 作宿主复跑已安装形态冒烟：`npm i electron@44 && node node_modules/electron/install.js`，`DSHVM_HOST_CMD="env ELECTRON_RUN_AS_NODE=1 <electron> --expose-internals" DSHVM_TTS_SMOKE=1 bash scripts/smoke-runtime.sh <bin> <port>`；并可用 `node` 垫片在 Electron 下跑 `npm test` | 发版者 |

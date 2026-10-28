@@ -14,10 +14,10 @@
 - 老任务以「**完成态**记录」保留（不删，便于回溯）
 - 新任务以独立 H2 段落接续
 - 本文件 ≈ 任务帐本（任务分批 + 各自 commit + 各自审查 verdict）
-- 文档变更前必须读 STATE.md + WORKFLOW.md（按 [CLAUDE.md](../../CLAUDE.md)「代码现状文档治理」纪律）
+- 文档变更前读取 STATE.md 确认当前原子单元；若本目录存在 WORKFLOW.md，再读取其专题流程。项目规则以本机 CLAUDE.md 为准。
 
 ## 跨文档锚点
 
 - [CONTEXT.md](../../CONTEXT.md) —— 当前心智模型
-- [docs/plan/implementation-plan-2026-09-14.md](../plan/implementation-plan-2026-09-14.md) —— 主计划
+- [当前路线图](../plan/roadmap-2026-10.md) —— 优先级与阶段验收
 - [docs/competitive/backlog.md](../competitive/backlog.md) —— P0-P3 backlog

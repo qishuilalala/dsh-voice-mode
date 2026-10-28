@@ -1,5 +1,7 @@
 # 截图与演示脚本运行说明
 
+> 素材与录制指引保留采集时点；录制前按目标版本核对界面和设置。演示只展示所录流程，不代替真实设备、跨平台或当前发布验收。
+
 > 与 `screenshots/MANIFEST.md` 10 张清单一一对应。三个脚本：
 > - **`capture-live.mjs`（推荐）**：真实驱动 dsh Web UI（点开 设置 → 插件 → 展开语音模式），并**只截设置对话框**。复用插件工程已装的 `playwright-core`，不新增依赖。
 > - **`capture-demo.mjs` + `make-demo-gif.py`**：录「全双工语音」演示——覆写 `getUserMedia` 注入**真实语音音频**，驱动 VAD → 流式识别 → 自动发送 → 朗读 + 字幕的完整真实链路，产出 `assets/demo-voice-flow.gif`。
