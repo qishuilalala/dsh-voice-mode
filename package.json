@@ -34,6 +34,9 @@
     "on-device"
   ],
   "dsh": {
+    "bundle": {
+      "patch": "./plugin/dsh-voice-mode/cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "inject": [

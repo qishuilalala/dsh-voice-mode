@@ -59,6 +59,15 @@ const pluginInject = plugin.dsh?.client?.inject ?? []
 if (JSON.stringify([...rootInject].sort()) !== JSON.stringify([...pluginInject].sort())) {
   problems.push(`dsh.client.inject 不一致：根=${rootInject.length} 项 插件=${pluginInject.length} 项`)
 }
+// dsh.bundle：目录抓取器（dsh-plugin.org）读**根** manifest 判断「是不是可安装的 DSH 插件」，
+// 缺 dsh.bundle 会被判为不合格而跳过（2026-10-29 实测：10-29 那轮扫描收了 140 条同类仓库，
+// 它们的根 manifest 全都带 dsh.bundle.patch；我们当时根 manifest 只有 dsh.client → 未被收录）。
+if (!root.dsh?.bundle?.patch) {
+  problems.push('根 manifest 缺少 dsh.bundle.patch（目录抓取器据此判定是否为可安装的 DSH 插件）')
+} else {
+  const patchPath = join(repoRoot, root.dsh.bundle.patch)
+  if (!existsSync(patchPath)) problems.push(`dsh.bundle.patch 指向的文件不存在：${root.dsh.bundle.patch}`)
+}
 if (root.main) {
   const mainPath = join(repoRoot, root.main)
   if (!existsSync(mainPath)) problems.push(`main 指向的文件不存在：${root.main}`)

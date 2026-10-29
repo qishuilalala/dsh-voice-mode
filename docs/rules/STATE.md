@@ -909,3 +909,10 @@ plugin/dsh-voice-mode/package.json（engines + description）、plugin/dsh-voice
 - **#42（sherpa-onnx 1.13.6→2.0.0，运行时依赖大版本）不合并并关闭**，理由已写在 PR 评论：① 上游 **2.0.1 已于 2026-10-26 发布**且含贪心搜索 decoder 位置修正（落在本插件解码路径），PR 锁的 2.0.0 已过时；② 本仓单测以桩件替代 sherpa-onnx，**CI 绿灯不能证明真实识别行为未变**；③ 实测 JS 包装层 `index.js` 两版逐字节相同、方法集一致，但 WASM 核心被重建（14.9MB→15.2MB）；④ 尝试用本机已缓存真模型（encoder SHA256 与 pin 一致）+ 60s 中文 fixture 做两版对比识别，**探针两版都出不了字**（decoded=187、文本为空）→ 该验证路径在本机不可靠，不能作为行为等价证据。后续按 2.0.1 + 真模型回归重新提。
 - **新增 `docs/dependency-policy.md`**：把「开发期类型依赖 vs 运行时依赖」的合并门槛写成政策（后者的大版本需 API 面比对 + 真模型/真服务回归），使 #42 的判断可复核、可复用。
 - **测试计数口径**：`docs/CONTEXT.md` 的现行计数由 979 更新为 **981 项**（2026-10-28 实测，74 文件）。
+
+### 追加：市场条目未被收录的**根因**（2026-10-29 21:35 实测定位）
+
+- **现象**：站点扫描在 10-29 确实跑了（目录条目 27,860 → **28,000**，+140 条），但**仍没有我们**（只有 fork `nutshelllee/dsh-voice-mode-desktop`）。
+- **对照取证**：抽样那 140 条新收录（25 条）→ 它们的**根 manifest 全部带 `dsh.bundle = { patch: './cordis.patch.yml' }`**；嵌套布局的也有（3/25）、无 main 的也有（9/25）→ **布局与 main 都不是筛除条件**。而我们的**根 manifest 此前只有 `dsh.client`、缺 `dsh.bundle`** → 目录抓取器据此判定「不是可安装的 DSH 插件」而跳过。（真实插件 manifest `plugin/dsh-voice-mode/package.json` 本来就有 `dsh.bundle`，缺的是仓库根那份镜像。）
+- **修复**：根 manifest 补 `dsh.bundle.patch = './plugin/dsh-voice-mode/cordis.patch.yml'`（路径相对仓库根，文件实测存在）；`scripts/check-root-manifest.mjs` 增校验——根 manifest 必须声明 `dsh.bundle.patch` 且指向的文件存在（防再次漏掉）。
+- **预期**：下一轮站点扫描即应收录；巡检（每 6 小时）上线后登记条目地址、问用户是否加徽章、停巡检。
