@@ -913,6 +913,6 @@ plugin/dsh-voice-mode/package.json（engines + description）、plugin/dsh-voice
 ### 追加：市场条目未被收录的**根因**（2026-10-29 21:35 实测定位）
 
 - **现象**：站点扫描在 10-29 确实跑了（目录条目 27,860 → **28,000**，+140 条），但**仍没有我们**（只有 fork `nutshelllee/dsh-voice-mode-desktop`）。
-- **对照取证**：抽样那 140 条新收录（25 条）→ 它们的**根 manifest 全部带 `dsh.bundle = { patch: './cordis.patch.yml' }`**；嵌套布局的也有（3/25）、无 main 的也有（9/25）→ **布局与 main 都不是筛除条件**。而我们的**根 manifest 此前只有 `dsh.client`、缺 `dsh.bundle`** → 目录抓取器据此判定「不是可安装的 DSH 插件」而跳过。（真实插件 manifest `plugin/dsh-voice-mode/package.json` 本来就有 `dsh.bundle`，缺的是仓库根那份镜像。）
+- **对照取证**：抽样那 140 条新收录（25 条）→ 它们的**根 manifest 全部带 `dsh.bundle = { patch: './cordis.patch.yml' }`**；嵌套布局的也有（3/25）、无 main 的也有（9/25）→ **布局与 main 都不是筛除条件**。而我们的**根 manifest 此前只有 `dsh.client`、缺 `dsh.bundle`** → 目录抓取器据此判定「不是可安装的 DSH 插件」而跳过。（插件本体那份 manifest 本来就有 `dsh.bundle`，缺的是仓库根的镜像那份。）
 - **修复**：根 manifest 补 `dsh.bundle.patch = './plugin/dsh-voice-mode/cordis.patch.yml'`（路径相对仓库根，文件实测存在）；`scripts/check-root-manifest.mjs` 增校验——根 manifest 必须声明 `dsh.bundle.patch` 且指向的文件存在（防再次漏掉）。
 - **预期**：下一轮站点扫描即应收录；巡检（每 6 小时）上线后登记条目地址、问用户是否加徽章、停巡检。
