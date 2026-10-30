@@ -37,7 +37,7 @@ cordis_ver_for() {
     0.2.1-alpha.3) echo 4.0.5-alpha.2 ;;   # peer ~4.0.5-alpha.2（npm view 实证，2026-10-15）
     0.2.1-alpha.4|0.2.1-alpha.5) echo 4.0.5-alpha.2 ;;   # peer ~4.0.5-alpha.2（npm view 实证，2026-10-19）
     0.2.1-rc.2|0.2.1-rc.3|0.2.1-rc.4|0.2.1-rc.5) echo 4.0.5 ;;   # peer ~4.0.5 稳定版（npm view 实证，2026-10-19 / 2026-10-26 / 2026-10-28 / 2026-10-30）
-    0.2.1-*) echo 4.0.5-alpha.1 ;;
+    0.2.1-alpha.1|0.2.1-alpha.2) echo 4.0.5-alpha.1 ;;
     0.2.2-*) echo 4.0.6-alpha.1 ;;   # peer ~4.0.6-alpha.1（npm view 实证，2026-10-28）
     *)
       echo "✗ cordis_ver_for: 未列出 dsh 版本线 '$1' 的 cordis 映射" >&2
