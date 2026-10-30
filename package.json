@@ -5,6 +5,13 @@
   "license": "MIT",
   "type": "module",
   "main": "./plugin/dsh-voice-mode/lib/index.js",
+  "exports": {
+    ".": "./plugin/dsh-voice-mode/lib/index.js",
+    "./client": "./plugin/dsh-voice-mode/lib/client.js",
+    "./cordis.patch.yml": "./plugin/dsh-voice-mode/cordis.patch.yml",
+    "./locale/*.json": "./plugin/dsh-voice-mode/locale/*.json",
+    "./package.json": "./package.json"
+  },
   "icon": "./plugin/dsh-voice-mode/icon.svg",
   "repository": {
     "type": "git",

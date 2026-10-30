@@ -916,3 +916,10 @@ plugin/dsh-voice-mode/package.json（engines + description）、plugin/dsh-voice
 - **对照取证**：抽样那 140 条新收录（25 条）→ 它们的**根 manifest 全部带 `dsh.bundle = { patch: './cordis.patch.yml' }`**；嵌套布局的也有（3/25）、无 main 的也有（9/25）→ **布局与 main 都不是筛除条件**。而我们的**根 manifest 此前只有 `dsh.client`、缺 `dsh.bundle`** → 目录抓取器据此判定「不是可安装的 DSH 插件」而跳过。（插件本体那份 manifest 本来就有 `dsh.bundle`，缺的是仓库根的镜像那份。）
 - **修复**：根 manifest 补 `dsh.bundle.patch = './plugin/dsh-voice-mode/cordis.patch.yml'`（路径相对仓库根，文件实测存在）；`scripts/check-root-manifest.mjs` 增校验——根 manifest 必须声明 `dsh.bundle.patch` 且指向的文件存在（防再次漏掉）。
 - **预期**：下一轮站点扫描即应收录；巡检（每 6 小时）上线后登记条目地址、问用户是否加徽章、停巡检。
+
+### 追加：根 manifest 补 `exports` —— 目录抓取器解析入口的第二道门（2026-10-31）
+
+- **背景**：补了 `dsh.bundle` 后，10-30 那轮扫描仍未收录我们（目录总数 28,000 未变）。
+- **取证**：对目录内 20 个已收录仓库的根 manifest 做**键位出现率统计** → 高必需键 = `description / dsh / exports / license / main / name / type / version`；我们此前**唯独缺 `exports`**（`dsh.bundle` 已补，`main`/`type`/`license`/`icon`/`engines`/`keywords` 都有）。
+- **修复**：根 manifest 镜像插件的入口映射（路径按仓库根换算）：`"." → plugin/dsh-voice-mode/lib/index.js`、`"./client" → …/lib/client.js`、`"./cordis.patch.yml"`、`"./locale/*.json"`、`"./package.json"`；实测各目标文件均存在。守卫同步加校验：根 manifest 必须有 `exports`，且每个非通配目标文件必须存在。
+- **说明**：根 manifest 只用于目录抓取器识别与校验，**不参与发布**（npm 包由 `plugin/dsh-voice-mode/` 发布），故本改动不影响已发布的 0.7.34。

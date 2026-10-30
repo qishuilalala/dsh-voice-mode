@@ -68,6 +68,17 @@ if (!root.dsh?.bundle?.patch) {
   const patchPath = join(repoRoot, root.dsh.bundle.patch)
   if (!existsSync(patchPath)) problems.push(`dsh.bundle.patch 指向的文件不存在：${root.dsh.bundle.patch}`)
 }
+// exports：目录抓取器（dsh-plugin.org）读根 manifest 解析插件入口（已收录仓库的根 manifest
+// 100% 带 exports；2026-10-31 对目录内 20 个样本统计：高必需键 = description/dsh/exports/
+// license/main/name/type/version —— 我们此前唯独缺 exports），故根 manifest 必须镜像入口映射。
+if (!root.exports || typeof root.exports !== 'object') {
+  problems.push('根 manifest 缺少 exports（目录抓取器据此解析插件入口）')
+} else {
+  for (const [key, target] of Object.entries(root.exports)) {
+    if (typeof target !== 'string' || target.includes('*')) continue
+    if (!existsSync(join(repoRoot, target))) problems.push(`exports["${key}"] 指向的文件不存在：${target}`)
+  }
+}
 if (root.main) {
   const mainPath = join(repoRoot, root.main)
   if (!existsSync(mainPath)) problems.push(`main 指向的文件不存在：${root.main}`)
