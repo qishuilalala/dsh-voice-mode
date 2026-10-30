@@ -30,6 +30,8 @@ dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`）�
 
 
 > **当前状态（2026-10-28）**：v0.7.34 修复 Kokoro int8/fp32 主模型及固定摘要支持文件下载校验失败；可安装版本以 npm 徽章与 Releases 为准。v0.7.33 不含这项修复。修复使用与既有摘要匹配的上游历史版本，不改模型、音色或缓存目录，请勿关闭摘要校验。
+
+兼容跟进（2026-10-30）：最新 dsh 0.2.1-rc.5 的锚点、类型与隔离运行时复核通过；完整证据和未验收层见[兼容契约](../../docs/compat-contract.md)。
 >
 > CI 通过不代表真实听感、所有硬件或所有宿主版本均已验证。详见 [CHANGELOG](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md)、[兼容证据](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md)和[后续路线图](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md)。包声明范围为 `>=0.1.1-rc.2 <0.3.0-0`，未测版本不保证。
 

@@ -26,10 +26,10 @@ jobs:
       - name: Install
         run: npm install -g pnpm@11 && pnpm install --frozen-lockfile
       # E-1 build-tag 门只在 release.yml 跑：本仓惯例「先提交 src、再单独提交重建产物」，逐提交校验会让中间提交误红。
-      # typecheck 矩阵（E-3）：支持区间两端 + 0.2.x 两条线 + 最新 next 通道（0.2.1-rc.3），宿主类型包均已在 npm registry。
+      # typecheck 矩阵（E-3）：支持区间两端 + 0.2.x 两条线 + 最新稳定/预览通道，宿主类型包均已在 npm registry。
       # 脚本临时切 devDependencies 版本、跑 host/client 两套 tsc、退出时还原 package.json 与锁文件。
-      - name: Typecheck matrix (0.1.1-rc.2 / 0.1.5-rc.1 / 0.2.0-rc.2 / 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.1-rc.4)
-        run: bash scripts/typecheck-dual.sh 0.1.1-rc.2 0.1.5-rc.1 0.2.0-rc.2 0.2.1-rc.2 0.2.1-rc.3 0.2.1-rc.4
+      - name: Typecheck matrix (0.1.1-rc.2 / 0.1.5-rc.1 / 0.2.0-rc.2 / 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.1-rc.4 / 0.2.1-rc.5)
+        run: bash scripts/typecheck-dual.sh 0.1.1-rc.2 0.1.5-rc.1 0.2.0-rc.2 0.2.1-rc.2 0.2.1-rc.3 0.2.1-rc.4 0.2.1-rc.5
       # 先构建：lib/ 入库但 lib/.msedge-tts.meta.json 不入库，干净 checkout 未构建时 package-install 测试必红
       - name: Build
         run: npm run build
