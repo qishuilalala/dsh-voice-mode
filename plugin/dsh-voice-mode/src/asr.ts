@@ -9,8 +9,10 @@
  *    isSpeech 随 partial / 播放期 vadOnly 检测响应下行，驱动打断（阶段二，取代 RMS
  *    能量快路径；朗读期常规 partial 因自聊防护断流，检测通道补齐这条链路）；
  *  - v0.2：hold 模式（按住说话、松手发送，绕过 VAD）；
- *  - v0.3（P1-5）：延迟埋点链的客户端三枚时间戳——utterance-end（说完最后一个字）、
- *    endpoint-fired（端点判句到点）、submitted（定稿上传发起），经 onTelemetry 上抛，
+ *  - v0.3（P1-5）：延迟埋点链的客户端时间戳——utterance-end（说完最后一个字）、
+ *    endpoint-fired（端点判句到点）、submitted（定稿上传发起）、final-ready（定稿文本
+ *    可用，2026-11-03 补：此前 submitted→first-llm-token 把宿主定稿与 LLM 首 token
+ *    并在一段，无法定位慢在哪一层），经 onTelemetry 上抛，
  *    由 client.tsx 与 host 下行的 first-llm-token/first-sentence-text/first-tts-chunk/
  *    first-audio-played 拼接成「说完→首音」全链路（开发模式状态条展示）。
  */
@@ -74,7 +76,7 @@ export interface EchoRefSource {
 }
 
 /** 延迟埋点链的客户端阶段（P1-5；host 侧阶段与全链顺序见 client.tsx TELEMETRY_VIEW）。 */
-export type TelemetryStage = 'utterance-end' | 'endpoint-fired' | 'submitted'
+export type TelemetryStage = 'utterance-end' | 'endpoint-fired' | 'submitted' | 'final-ready'
 
 export interface TelemetryEvent {
   stage: TelemetryStage
@@ -163,7 +165,7 @@ export interface AsrEngine {
   readonly onNotice: (fn: (key: string) => void) => () => void
   /** 归一化电平 0..1（波形条）。 */
   readonly onLevel: (fn: (level: number) => void) => () => void
-  /** 延迟埋点链客户端事件（P1-5：utterance-end / endpoint-fired / submitted）。 */
+  /** 延迟埋点链客户端事件（P1-5：utterance-end / endpoint-fired / submitted / final-ready）。 */
   readonly onTelemetry: (fn: (e: TelemetryEvent) => void) => () => void
 }
 
@@ -212,7 +214,17 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   const telemetryListeners = new Set<(e: TelemetryEvent) => void>()
   /** 本段「说完」时刻是否已上报（每段至多一次；无静音过渡路径在 finalize 补报）。 */
   let utteranceEndAt: number | null = null
+  /**
+   * 埋点轮次：每次「说完」自增。
+   *
+   * 用途只有一个——**丢弃迟到的旧轮 final-ready**。上一轮定稿在途时用户又开口，
+   * 新一轮的 'utterance-end' 会清空客户端埋点链；若旧轮的 final-ready 随后落地，
+   * 就会被记进新一轮的链，把两轮耗时混成一段。final-ready 正是用来量「宿主定稿
+   * 耗时」的，混轮会让这个量彻底失真。
+   */
+  let telemetryRound = 0
   const emitTelemetry = (stage: TelemetryStage): void => {
+    if (stage === 'utterance-end') telemetryRound++
     const ev: TelemetryEvent = { stage, at: Date.now() }
     for (const fn of telemetryListeners) {
       try {
@@ -736,6 +748,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       emitTelemetry('utterance-end')
     }
     emitTelemetry('endpoint-fired')
+    // 本次定稿所属的埋点轮次（final-ready 的过期判定用；见 telemetryRound 声明）。
+    const myRound = telemetryRound
     // P1-4：定稿 = 最后一个增量包打 final 标记（只传尚未上传的部分；可为空包）。
     const from = uploadedSamples
     const samples = sliceSince(from)
@@ -888,6 +902,17 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           settle(null)
           return
         }
+        // P1-5+：定稿就绪边界（final-ready）。
+        //
+        // 「submitted」= 定稿**上传发起**；「final-ready」= 定稿**文本可用**。两者之间
+        // 是宿主定稿耗时——zipformer 尾垫定稿与 SenseVoice 整段重译并行计算，但关键路径
+        // 会等 SenseVoice（asr-host.ts `finalizeP` 末尾 `await senseP`，上限 20s），
+        // 所以这一段可能从亚秒级一直到 20s 量级。不补这个边界，宿主定稿与随后的
+        // LLM 首 token 会被并进同一区间，无法定位慢在哪一层（长段定稿实测解码 20.7s）。
+        //
+        // 轮次守卫：新一轮「说完」已发生（telemetryRound 前进）→ 丢弃本轮迟到事件，
+        // 否则会污染新一轮的链（链在 'utterance-end' 时被清空）。
+        if (myRound === telemetryRound) emitTelemetry('final-ready')
         // M1：定稿成功即段边界，重置连败计数（防跨段累积把下一段首次失败凑成 3 次误提示）。
         resetFailStreaks()
         // M6：状态只在「结果落定」（成功/耗尽）时统一 restore——原每 attempt 都调，

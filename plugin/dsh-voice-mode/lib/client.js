@@ -466,7 +466,9 @@ function createAsrEngine(config, sessionId) {
   const levelListeners = /* @__PURE__ */ new Set();
   const telemetryListeners = /* @__PURE__ */ new Set();
   let utteranceEndAt = null;
+  let telemetryRound = 0;
   const emitTelemetry = (stage) => {
+    if (stage === "utterance-end") telemetryRound++;
     const ev = { stage, at: Date.now() };
     for (const fn of telemetryListeners) {
       try {
@@ -786,6 +788,7 @@ function createAsrEngine(config, sessionId) {
       emitTelemetry("utterance-end");
     }
     emitTelemetry("endpoint-fired");
+    const myRound = telemetryRound;
     const from = uploadedSamples;
     const samples = sliceSince(from);
     const recoverySegment = segment;
@@ -905,6 +908,7 @@ function createAsrEngine(config, sessionId) {
           settle(null);
           return;
         }
+        if (myRound === telemetryRound) emitTelemetry("final-ready");
         resetFailStreaks();
         restoreState();
         const rawText = out.text ?? "";
@@ -1852,7 +1856,10 @@ var zh = {
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: "\u8BF4\u5B8C",
   telEndpoint: "\u7AEF\u70B9",
-  telSubmitted: "\u5B9A\u7A3F",
+  // 「提交」= 定稿上传发起；「定稿就绪」= 定稿文本可用。两者之间是宿主定稿耗时
+  // （SenseVoice 整段重译），故不得都叫「定稿」——2026-11-03 补 final-ready 时改名。
+  telSubmitted: "\u63D0\u4EA4",
+  telFinalReady: "\u5B9A\u7A3F\u5C31\u7EEA",
   telFirstTokenLabel: "\u9996Token",
   telFirstSentence: "\u9996\u53E5",
   telFirstChunk: "\u9996chunk",
@@ -2135,6 +2142,7 @@ var en = {
   telUtteranceEnd: "end",
   telEndpoint: "endpoint",
   telSubmitted: "submit",
+  telFinalReady: "final ready",
   telFirstTokenLabel: "1st token",
   telFirstSentence: "1st sentence",
   telFirstChunk: "1st chunk",
@@ -3965,6 +3973,7 @@ var TELEMETRY_VIEW = [
   { stage: "utterance-end", key: "telUtteranceEnd" },
   { stage: "endpoint-fired", key: "telEndpoint" },
   { stage: "submitted", key: "telSubmitted" },
+  { stage: "final-ready", key: "telFinalReady" },
   { stage: "first-llm-token", key: "telFirstTokenLabel" },
   { stage: "first-sentence-text", key: "telFirstSentence" },
   { stage: "first-tts-chunk", key: "telFirstChunk" },
@@ -3984,7 +3993,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "9a42f02";
+var BUILD_TAG = "3524db4";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

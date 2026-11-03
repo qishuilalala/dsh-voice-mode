@@ -144,15 +144,20 @@ interface PlayFrame {
 }
 
 /**
- * 延迟埋点链阶段（P1-5）：utterance-end → endpoint-fired → submitted 由 ASR 引擎
- * 本地上抛；first-llm-token / first-sentence-text 由 host SSE 'latency' 事件下行；
+ * 延迟埋点链阶段（P1-5）：utterance-end → endpoint-fired → submitted → final-ready 由
+ * ASR 引擎本地上抛；first-llm-token / first-sentence-text 由 host SSE 'latency' 事件下行；
  * first-tts-chunk 为首帧音频到达；first-audio-played 为真实起播。全部取浏览器端
  * 接收/发生时刻（localhost 同机同钟，段间差值即端到端耗时）。
+ *
+ * final-ready（2026-11-03 补）：submitted→final-ready 即**宿主定稿耗时**（zipformer
+ * 尾垫 + SenseVoice 整段重译）。此前该耗时与 LLM 首 token 被并进同一区间，量不出
+ * 「慢在识别还是慢在模型」。
  */
 export type TelemetryStage =
   | 'utterance-end'
   | 'endpoint-fired'
   | 'submitted'
+  | 'final-ready'
   | 'first-llm-token'
   | 'first-sentence-text'
   | 'first-tts-chunk'
@@ -163,6 +168,7 @@ const TELEMETRY_VIEW: { stage: TelemetryStage; key: TKey }[] = [
   { stage: 'utterance-end', key: 'telUtteranceEnd' },
   { stage: 'endpoint-fired', key: 'telEndpoint' },
   { stage: 'submitted', key: 'telSubmitted' },
+  { stage: 'final-ready', key: 'telFinalReady' },
   { stage: 'first-llm-token', key: 'telFirstTokenLabel' },
   { stage: 'first-sentence-text', key: 'telFirstSentence' },
   { stage: 'first-tts-chunk', key: 'telFirstChunk' },

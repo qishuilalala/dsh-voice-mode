@@ -79,6 +79,10 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 
 `localStorage.setItem('dsh-voice-mode.telemetry','1')` 后刷新 → `[dsh-voice] <event> {json}` 控制台日志 + 状态条诊断行（delay/floor/resid/peak）。`build=<git短哈希>` 确认版本。
 
+延迟埋点链（状态条逐段耗时，2026-11-03 补 final-ready）：**说完 → 端点 → 提交 → 定稿就绪 → 首Token → 首句 → 首chunk → 首音**。
+「提交→定稿就绪」= 宿主定稿耗时（zipformer 尾垫 + SenseVoice 整段重译，关键路径会等 SenseVoice，上限 20s）；「定稿就绪→首Token」= 草稿→发送等待→提交→LLM 首 token（toggle 模式含固定 1200ms 发送窗，hold 模式无）。
+埋点只在开启时记录；旧轮迟到事件按轮次丢弃，不跨轮混算。
+
 ## 已知待办（短期，做完即删；2026-09-14 拍板后的开工队列见 docs/plan/implementation-plan-2026-09-14.md）
 
 - 原生 AEC 失效兜底（耳机无原生 AEC / Safari）：自研 AEC 的 delay 对齐需 FDLMS+RES；

@@ -172,7 +172,10 @@ export const zh = {
   // telemetry（P1-5 开发模式延迟埋点状态条：各段耗时标签）
   telUtteranceEnd: '说完',
   telEndpoint: '端点',
-  telSubmitted: '定稿',
+  // 「提交」= 定稿上传发起；「定稿就绪」= 定稿文本可用。两者之间是宿主定稿耗时
+  // （SenseVoice 整段重译），故不得都叫「定稿」——2026-11-03 补 final-ready 时改名。
+  telSubmitted: '提交',
+  telFinalReady: '定稿就绪',
   telFirstTokenLabel: '首Token',
   telFirstSentence: '首句',
   telFirstChunk: '首chunk',
@@ -456,6 +459,7 @@ export const en: Record<keyof typeof zh, string> = {
   telUtteranceEnd: 'end',
   telEndpoint: 'endpoint',
   telSubmitted: 'submit',
+  telFinalReady: 'final ready',
   telFirstTokenLabel: '1st token',
   telFirstSentence: '1st sentence',
   telFirstChunk: '1st chunk',

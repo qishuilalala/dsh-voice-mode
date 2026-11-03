@@ -2595,6 +2595,7 @@ var en = {
   telUtteranceEnd: "end",
   telEndpoint: "endpoint",
   telSubmitted: "submit",
+  telFinalReady: "final ready",
   telFirstTokenLabel: "1st token",
   telFirstSentence: "1st sentence",
   telFirstChunk: "1st chunk",
