@@ -3993,7 +3993,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "3524db4";
+var BUILD_TAG = "df3ee1d";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
