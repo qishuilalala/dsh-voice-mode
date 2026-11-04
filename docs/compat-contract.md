@@ -762,3 +762,21 @@ class AgentDefaultModelConfig extends Service {
 - 修正验证脚本中 0.1.5 默认核心指向全局安装的问题，改为固定版本隔离目录，避免本机宿主升级后测错版本。全套 runtime 仍需预备对应核心，不能把缺少核心视为通过。
 - 上游巡检由每周改为每天；只对 dist-tag 与矩阵差异开 issue，不自动宣称通过、不升级生产宿主。
 - L4 仍未完成：本轮直查既有 DeepSeek 账户接口 HTTP 200，但 is_available=false；不尝试充值、不切换生产 provider，不把缺少 LLM 音频闭环归咎于 rc.5。真实麦克风和跨平台验收另列。
+
+## 25. 0.2.2-alpha.3 复核（2026-11-04，scheduled issue #49 触发的四步验证）
+
+- **发现途径**：scheduled workflow `dsh upstream version check` 每日比对发现 `alpha=0.2.2-alpha.3`（2026-11-03 07:48Z 发布）未覆盖，开 issue #49。当时 `next=0.2.1-rc.5`；复核期间 `next` 又指向 **`0.2.2-rc.1`**（2026-11-04 09:20Z 发布），但 `dsh-host-webserver@0.2.2-rc.1` 在 registry **404（子包未发）**，无包可验——本轮只做 alpha.3，rc.1 等包可用后由巡检开新 issue 再跑，不冒充覆盖。
+- **依赖面**（`npm view` 实证）：alpha.3 的宿主类型包对等依赖升到 **`cordis ~4.0.6-alpha.2`**（alpha.2 为 `~4.0.6-alpha.1`）→ `typecheck-dual.sh` 的 cordis 映射表拆细 `0.2.2-alpha.2 → 4.0.6-alpha.1` / `0.2.2-alpha.3 → 4.0.6-alpha.2`（此前 `0.2.2-*` 通配会静默用错类型面，已修正；未知线仍显式报错）。
+- **四层验证结果**：
+
+| 层 | 0.2.2-alpha.3 |
+|---|---|
+| L1 锚点（9 个 client.inject 包） | ✅ 9/9（`check-anchors.mjs 0.2.2-alpha.3`，registry 直查） |
+| L2 双 typecheck（host + client） | ✅（cordis 4.0.6-alpha.2，补表后实跑通过） |
+| L3 runtime 冒烟 host 侧（boot + /voice-mode·/config·/models/status） | ✅ 3/3（隔离核心 `/tmp/dshcore/dsh-0-2-2-alpha-3`，端口 3153） |
+| L3 客户端侧（headless chromium 页面加载 + mic/设置） | ❌ 环境性阻塞（见下） |
+| L4 真 LLM 闭环 | ❌ 未跑（沿 §24 口径：账户 is_available=false，不归咎版本） |
+
+- **L3 客户端阻塞根因（环境，非回归）**：alpha.3 与对照组 rc.5（历史全绿版）在本机**同报** `page.goto waitUntil load 30s 超时`；curl 跟随跳转显示 `/?token → 303 → ./ → 401`（cookie 未带），且无 token 直接打开 8 秒后 body 达 187KB——页面能渲染但不触发 `load` 事件。另有一次诊断中 chromium 启动 180s 超时（本机常驻 chrome 16 进程 + 内存压力，见运维记录）。判定：**本机 headless 环境问题，非 alpha.3 回归**；客户端侧证据待可用环境补跑，不在本轮冒充通过。
+- **矩阵扩展**：`verify-dual.sh` 锚点/typecheck **21 → 22 版**、隔离核心冒烟 **18 → 19**（新增 alpha.3 端口 3153）；`check-dsh-version.sh --check` 仍报 `0.2.2-rc.1` 未覆盖（预期内，包未发）。
+- **兼容声明**：`engines.dsh` 维持 `">=0.1.1-rc.2 <0.3.0-0"` 不变——alpha.3 落在范围内；本轮**不发版**（L3 客户端无有效证据），矩阵与映射先行落盘，待客户端冒烟补跑后再定发版。
