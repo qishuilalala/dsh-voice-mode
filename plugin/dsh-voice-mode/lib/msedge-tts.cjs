@@ -11409,9 +11409,9 @@ var require_dist = __commonJS({
   }
 });
 
-// node_modules/.pnpm/follow-redirects@1.16.1_debug@4.4.3/node_modules/follow-redirects/debug.js
+// node_modules/.pnpm/follow-redirects@1.16.2_debug@4.4.3/node_modules/follow-redirects/debug.js
 var require_debug = __commonJS({
-  "node_modules/.pnpm/follow-redirects@1.16.1_debug@4.4.3/node_modules/follow-redirects/debug.js"(exports2, module2) {
+  "node_modules/.pnpm/follow-redirects@1.16.2_debug@4.4.3/node_modules/follow-redirects/debug.js"(exports2, module2) {
     var debug;
     module2.exports = function() {
       if (!debug) {
@@ -11429,9 +11429,9 @@ var require_debug = __commonJS({
   }
 });
 
-// node_modules/.pnpm/follow-redirects@1.16.1_debug@4.4.3/node_modules/follow-redirects/index.js
+// node_modules/.pnpm/follow-redirects@1.16.2_debug@4.4.3/node_modules/follow-redirects/index.js
 var require_follow_redirects = __commonJS({
-  "node_modules/.pnpm/follow-redirects@1.16.1_debug@4.4.3/node_modules/follow-redirects/index.js"(exports2, module2) {
+  "node_modules/.pnpm/follow-redirects@1.16.2_debug@4.4.3/node_modules/follow-redirects/index.js"(exports2, module2) {
     var url = require("node:url");
     var URL2 = url.URL;
     var http = require("node:http");
@@ -11666,7 +11666,7 @@ var require_follow_redirects = __commonJS({
           options.headers[headerList[i]] = headerList[i + 1];
         }
       }
-      if (!isArray(options.sensitiveHeaders)) {
+      if (!Array.isArray(options.sensitiveHeaders)) {
         options.sensitiveHeaders = [];
       }
       if (options.host) {
@@ -11922,9 +11922,6 @@ var require_follow_redirects = __commonJS({
       assert(isString(subdomain) && isString(domain));
       var dot = subdomain.length - domain.length - 1;
       return dot > 0 && subdomain[dot] === "." && subdomain.endsWith(domain);
-    }
-    function isArray(value) {
-      return value instanceof Array;
     }
     function isString(value) {
       return typeof value === "string" || value instanceof String;

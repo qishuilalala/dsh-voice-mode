@@ -19,7 +19,7 @@ comment in `build.mjs` for why). Their licenses are reproduced below. Generated 
 | es-errors | 1.3.0 | MIT |
 | es-object-atoms | 1.1.2 | MIT |
 | es-set-tostringtag | 2.1.0 | MIT |
-| follow-redirects | 1.16.1 | MIT |
+| follow-redirects | 1.16.2 | MIT |
 | form-data | 4.0.6 | MIT |
 | function-bind | 1.1.2 | MIT |
 | get-intrinsic | 1.3.0 | MIT |
@@ -404,7 +404,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## follow-redirects 1.16.1
+## follow-redirects 1.16.2
 
 - License: MIT
 - Source: ssh://git@github.com/follow-redirects/follow-redirects.git

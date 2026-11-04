@@ -2,13 +2,13 @@ allowBuilds:
   esbuild: true
   msedge-tts: true
 # 被内联进 lib/msedge-tts.cjs 的 axios 须无已知漏洞（pnpm audit）：msedge-tts 2.0.7 依赖 axios ^1.x，强制 >=1.20.0；
-# axios 的 follow-redirects 同样被内联，1.16.0 命中 GHSA-8r9p-f939-6h3c（high），强制 >=1.16.1
+# axios 的 follow-redirects 同样被内联，1.16.0-1.16.1 命中 GHSA-mrwp-f3q8-3g9p（high，跨域跳转凭据跟随），强制 >=1.16.2
 # zod 4.5.4 命中 GHSA-mrhx-c7xc-m3w5（high，oversized collection 校验可耗尽内存）：它只经宿主类型包
 # （@deepseek-ai/dsh-llm 等 devDependencies）进入本仓，**不进发布产物**（pnpm audit --prod 为 0 漏洞），
 # 但 audit 门禁覆盖整个锁文件，故同样强制到已修复版本 >=4.6.6
 overrides:
   axios: '>=1.20.0'
-  follow-redirects: '>=1.16.1'
+  follow-redirects: '>=1.16.2'
   zod: '>=4.6.6'
 minimumReleaseAgeExclude:
   - '@deepseek-ai/dsh-brand@0.1.2-alpha.4 || 0.1.2-alpha.5 || 0.1.5-rc.1 || 0.1.7-alpha.2 || 0.1.7-rc.1'
