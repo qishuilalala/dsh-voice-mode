@@ -14,7 +14,8 @@
 ### 维护
 
 - 补验 dsh 0.2.1-rc.5，修正类型台架映射并扩展兼容矩阵；上游版本巡检改为每日。插件产品源码和 npm 发布包不变。
-- 覆盖 dsh 0.2.2-alpha.3：cordis 映射拆细到 `4.0.6-alpha.2`（此前通配会静默用错类型面），锚点 9/9、双 typecheck 通过、隔离核心 host 三端点通过；客户端 headless 冒烟因本机环境阻塞（对照组 rc.5 同症，非回归），待补跑后再定发版。矩阵扩至 22 版锚点/typecheck + 19 核心冒烟。实证见 `docs/compat-contract.md` §25；`0.2.2-rc.1` 子包未发，留待巡检开新 issue。
+- 覆盖 dsh 0.2.2-alpha.3：cordis 映射拆细到 `4.0.6-alpha.2`（此前通配会静默用错类型面），锚点 9/9、双 typecheck 通过、隔离核心 host 三端点通过；客户端 headless 冒烟因本机环境阻塞（对照组 rc.5 同症，非回归），待补跑后再定发版。矩阵扩至 22 版锚点/typecheck + 19 核心冒烟。实证见 `docs/compat-contract.md` §25。
+- 覆盖 dsh 0.2.2-rc.1：cordis 映射新增 `0.2.2-rc.1 → 4.1.0`（0.2.2-rc 线切 cordis 4.1 稳定档），锚点 9/9、双 typecheck 通过、隔离核心 host 三端点通过；客户端 headless 冒烟与 alpha.3 同症环境阻塞（对照组同报，非回归），待补跑后再定发版。矩阵扩至 23 版锚点/typecheck + 20 核心冒烟。实证见 `docs/compat-contract.md` §26。
 
 ## [0.7.34] - 2026-10-28
 

@@ -780,3 +780,21 @@ class AgentDefaultModelConfig extends Service {
 - **L3 客户端阻塞根因（环境，非回归）**：alpha.3 与对照组 rc.5（历史全绿版）在本机**同报** `page.goto waitUntil load 30s 超时`；curl 跟随跳转显示 `/?token → 303 → ./ → 401`（cookie 未带），且无 token 直接打开 8 秒后 body 达 187KB——页面能渲染但不触发 `load` 事件。另有一次诊断中 chromium 启动 180s 超时（本机常驻 chrome 16 进程 + 内存压力，见运维记录）。判定：**本机 headless 环境问题，非 alpha.3 回归**；客户端侧证据待可用环境补跑，不在本轮冒充通过。
 - **矩阵扩展**：`verify-dual.sh` 锚点/typecheck **21 → 22 版**、隔离核心冒烟 **18 → 19**（新增 alpha.3 端口 3153）；`check-dsh-version.sh --check` 仍报 `0.2.2-rc.1` 未覆盖（预期内，包未发）。
 - **兼容声明**：`engines.dsh` 维持 `">=0.1.1-rc.2 <0.3.0-0"` 不变——alpha.3 落在范围内；本轮**不发版**（L3 客户端无有效证据），矩阵与映射先行落盘，待客户端冒烟补跑后再定发版。
+
+## 26. 0.2.2-rc.1 复核（2026-11-05，scheduled issue #54 触发的四步验证）
+
+- **发现途径**：scheduled workflow `dsh upstream version check` 每日比对发现 `next=0.2.2-rc.1`（2026-11-04 09:20Z 发布）未覆盖，开 issue #54。复核时 `dsh-host-webserver@0.2.2-rc.1` 已在 registry 可用（此前 #49 时段 404）。
+- **依赖面**（`npm view` 实证）：rc.1 的宿主类型包对等依赖升到 **`cordis ~4.1.0`**（0.2.2 线首次使用 4.1 稳定档，此前 alpha.2/alpha.3 为 4.0.6-alpha.1/alpha.2）→ `typecheck-dual.sh` 的 cordis 映射表新增 `0.2.2-rc.1 → 4.1.0`（此前 `0.2.2-*` 通配已在 #49 拆细为 alpha.2/alpha.3 两行；未知线仍显式报错）。
+- **四层验证结果**：
+
+| 层 | 0.2.2-rc.1 |
+|---|---|
+| L1 锚点（9 个 client.inject 包） | ✅ 9/9（`check-anchors.mjs 0.2.2-rc.1`，registry 直查；23 版全矩阵复跑亦绿） |
+| L2 双 typecheck（host + client） | ✅（cordis 4.1.0，补表后实跑通过） |
+| L3 runtime 冒烟 host 侧（boot + /voice-mode·/config·/models/status） | ✅ 3/3（隔离核心 `/tmp/dshcore/dsh-0-2-2-rc-1`，端口 3155） |
+| L3 客户端侧（headless chromium 页面加载 + mic/设置） | ❌ 环境性阻塞（见下，与 alpha.3 同症） |
+| L4 真 LLM 闭环 | ❌ 未跑（沿 §24/§25 口径：账户 is_available=false，不归咎版本） |
+
+- **L3 客户端阻塞（环境，非回归）**：rc.1 与对照组（rc.5 历史全绿版、alpha.3）在本机**同报** `page.goto waitUntil load 30s` 超时；host 侧三次均 `boot 成功 + 三端点 200`。判定：**本机 headless 环境问题，非 rc.1 回归**；客户端侧证据待可用环境补跑，不在本轮冒充通过。
+- **矩阵扩展**：`verify-dual.sh` 锚点/typecheck **22 → 23 版**、隔离核心冒烟 **19 → 20**（新增 rc.1 端口 3155）；`check-dsh-version.sh --check` 在 rc.1 入矩阵后**零未覆盖**（若再有新 dist-tag 则按名报出并 exit 1）。
+- **兼容声明**：`engines.dsh` 维持 `">=0.1.1-rc.2 <0.3.0-0"` 不变——rc.1 落在范围内；本轮**不发版**（L3 客户端无有效证据，与 §25 同口径），矩阵与映射先行落盘，待客户端冒烟补跑后再定发版。
