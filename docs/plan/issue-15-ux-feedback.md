@@ -19,27 +19,27 @@
 证据链（当前源码）：
 
 - `src/asr.ts:1063`：播放期（playingNow）AEC 后帧**只进 detectChunks**（VAD 检测通道），不进识别 segment。
-- `src/asr.ts:1102-1114`：正常语音分支在 `config.isPlaying()` 为真时**不入段**（自聊防护），仅把播放前已开着的段立即收口（`finalizeSegment(true)`，其体内 asr.ts:714 置 `speechActive=false`——播放期用户语音因此永远不进段）。
-- `src/asr.ts:593`（`requestDetect`）：播放期且未开口时轮询只走 `requestDetect()`（检测通道），常规 partial 断流。
-- `src/client.tsx:2635`（`hardBreak`）：hardBreak = skipAudio + cancelTurn + POST /cancel（`keepAsr = engine.holding === true`）+ 非 hold 时 `discardSegment()`（:2511）。（**2026-10-21 按 HEAD `465c253` 重锚**：R15-G 的焦点归属实例级化在 `src/client.tsx` 增 +54 行，本行处位移 +51；旧值 2392 / 2422 为 `3154433` 口径）
+- `src/asr.ts`：正常语音分支在 `config.isPlaying()` 为真时**不入段**（自聊防护），仅把播放前已开着的段立即收口（`finalizeSegment(true)`，其体内 asr.ts:714 置 `speechActive=false`——播放期用户语音因此永远不进段）。
+- `src/asr.ts`（`requestDetect`）：播放期且未开口时轮询只走 `requestDetect()`（检测通道），常规 partial 断流。
+- `src/client.tsx`（`hardBreak`）：hardBreak = skipAudio + cancelTurn + POST /cancel（`keepAsr = engine.holding === true`）+ 非 hold 时 `discardSegment()`（:2511）。（**2026-10-21 按 HEAD `465c253` 重锚**：R15-G 的焦点归属实例级化在 `src/client.tsx` 增 +54 行，本行处位移 +51；旧值 2392 / 2422 为 `3154433` 口径）
 - `src/index.ts:1775`：host 收到 /cancel，`keepAsr !== true` 时 `asr.reset(sessionId)`（:1577；host 识别流清空，asr-host.ts:781-813 reset 函数内 resetGen++（:800）且连带释放检测 VAD（:802-812））。
 - `src/asr.ts:1487-1554`：discardSegment 清空本地段 + segmentEpoch++ + resetHostStream。
 
-后果链：hardBreak 确认需 confirmFrames×100ms + 上行往返（真机 confirmMs ~490ms，CONTEXT.md:37/42），用户打断开口到打断生效之间说的全部语音只短暂存在于 detectChunks（上限 1s，`src/asr.ts:600` MAX_DETECT_PENDING，且被检测消费/弃段时清空）——既未进识别段、未上 host 流，hardBreak 后新段从零开始。**丢的正是「打断那句话」**，与用户报告「整段或丢开头、长段落尤其明显」完全吻合。
+后果链：hardBreak 确认需 confirmFrames×100ms + 上行往返（真机 confirmMs ~490ms，CONTEXT.md:37/42），用户打断开口到打断生效之间说的全部语音只短暂存在于 detectChunks（上限 1s，`src/asr.ts` MAX_DETECT_PENDING，且被检测消费/弃段时清空）——既未进识别段、未上 host 流，hardBreak 后新段从零开始。**丢的正是「打断那句话」**，与用户报告「整段或丢开头、长段落尤其明显」完全吻合。
 
 ### 问题②运行中排队 —— 用户诊断属实，且存在一等公民 API 解
 
-- 插件提交链路：`src/client.tsx:2323`（`submitDraftNow`）→ `actions?.submit()`（宿主 InputActions.submit，`src/client.tsx:2323` 注入面类型收窄：槽位只声明 `submit?` / `setDraft?`，丢弃含 `insertText` CAS 的其余面；消费点 `:1871 actionsRef = useRef(inputActions)`）。（**2026-10-21 按 HEAD `465c253` 重锚**：submitDraftNow 位移 +51；旧值 1825 指的是消费点 `actionsRef` 而非收窄处，本轮改为指向收窄的类型声明）
+- 插件提交链路：`src/client.tsx`（`submitDraftNow`）→ `actions?.submit()`（宿主 InputActions.submit，`src/client.tsx` 注入面类型收窄：槽位只声明 `submit?` / `setDraft?`，丢弃含 `insertText` CAS 的其余面；消费点 `:1871 actionsRef = useRef(inputActions)`）。（**2026-10-21 按 HEAD `465c253` 重锚**：submitDraftNow 位移 +51；旧值 1825 指的是消费点 `actionsRef` 而非收窄处，本轮改为指向收窄的类型声明）
 - 宿主契约（本机 dsh 0.2.0-rc.2 源码实证）：
   - `InputActions.submit(): void` **无参数**（dsh-client-ui-conversation `contract/input.d.ts:206-226`）——插件无法经它指定手势。
   - 宿主 `busyEnter` 设置（namespace `ui-conversation`，值 queue|steer，**默认 queue**「Default preserves Enter-as-Queue」，submission-settings.d.ts）由 `resolveSubmitMode(preferred, running, gesture, steeringAvailable)` 裁决；Cmd/Ctrl+Enter = accelerated 手势 = 直接 steer（best-effort，窗口关时降级为下一队列项）。
-  - **`SessionFace.prompt(content: PromptContentPart[], mode: 'queue'|'steer', …)`**（dsh-api-session-controller `contract/session.d.ts:82`：「'queue' appends a turn; 'steer' interrupts the running one」）经 `ctx.sessions.binding(sessionId).session` 可达——插件客户端**已在用同源 API**：`src/client.tsx:2802`（`onAecState` 回调注入面） cancelTurn 走 `ctx?.sessions?.binding?.(sessionId)?.session.cancel?.()`。
+  - **`SessionFace.prompt(content: PromptContentPart[], mode: 'queue'|'steer', …)`**（dsh-api-session-controller `contract/session.d.ts:82`：「'queue' appends a turn; 'steer' interrupts the running one」）经 `ctx.sessions.binding(sessionId).session` 可达——插件客户端**已在用同源 API**：`src/client.tsx`（`onAecState` 回调注入面） cancelTurn 走 `ctx?.sessions?.binding?.(sessionId)?.session.cancel?.()`。
 - 结论：语音提交可绕过 InputActions.submit，运行中直接 `session.prompt([{type:'text',text}], 'steer')`；不可用（老宿主/无 binding）时回退现状 submit()。（取证后修正与深化见 §2.B：宿主 submit 硬编码 queue、steer 语义与版本矩阵实证、A/B 案取舍。）
 
 ### 问题③partial 不回填 —— 根因确认，方案面清晰
 
-- `src/client.tsx:2877`（`actionsRef.current?.setDraft?.`）→ `engine.onPartial((text) => bus.setUi({ partial: text }))`——partial 只进状态条/字幕。
-- `src/client.tsx:1985`（`actionsRef = useRef(inputActions)`）→ 草稿仅在 onSegment（定稿）时 `setDraft(committed + ' ' + trimmed)` 追加写入。
+- `src/client.tsx`（`actionsRef.current?.setDraft?.`）→ `engine.onPartial((text) => bus.setUi({ partial: text }))`——partial 只进状态条/字幕。
+- `src/client.tsx`（`actionsRef = useRef(inputActions)`）→ 草稿仅在 onSegment（定稿）时 `setDraft(committed + ' ' + trimmed)` 追加写入。
 - 宿主 `setDraft(text)` 是**整篇替换**纯文本（input.d.ts:217），无富样式——用户要的「未定稿部分差异样式」在 composer 纯文本面不可达，计划按「partial 实时进草稿（纯文本追加预览）、定稿替换为该段定稿文本」实现，样式诉求记为 Open Question。
 - 与「累积发送」语义的兼容：草稿 = 已定稿段 + 当前 partial；需把 committed 与 live 分离维护，避免 onSegment 追加逻辑把 partial 重复计入（主会话已定位 double-append 风险点：原 client.tsx:1872 一带 `curText ? curText + ' ' + trimmed : trimmed` 追加式写法〔**历史时点锚点，按 STATE 锚点纪律保留不改**〕；批 3 已修——现由 `src/draft-compose.ts` `composeDraft` 纯函数承担 committed/live 分离，onSegment 走「替换尾部」见 client.tsx:2789）。
 

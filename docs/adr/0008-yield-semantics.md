@@ -18,7 +18,7 @@ dsh-voice-mode 当前的"让位"仅有两个层：
 
 | 层 | 实现 | 文件:行 |
 |---|---|---|
-| 物理层（声学） | 录音 → VAD → 端点检测 → 硬打断 | `src/asr.ts:172` 的 `MAX_SEGMENT_MS` 声明（段长上限，`:972-976` 使用；原写 `:936-945` 是 preRoll 累积区、与该常量无关）+ `src/client.tsx` 的 `hardBreak` 定义（`const hardBreak = async`；原值 1946 与 2026-10-21 前快照的 `:2392` 均已漂移——2026-10-21 R15-J 改按**符号锚**重锚） |
+| 物理层（声学） | 录音 → VAD → 端点检测 → 硬打断 | `src/asr.ts:172`（历史时点快照） 的 `MAX_SEGMENT_MS` 声明（段长上限，`:972-976` 使用；原写 `:936-945` 是 preRoll 累积区、与该常量无关）+ `src/client.tsx` 的 `hardBreak` 定义（`const hardBreak = async`；原值 1946 与 2026-10-21 前快照的 `:2392` 均已漂移——2026-10-21 R15-J 改按**符号锚**重锚） |
 | 物理层（回声门） | echoPeak/echoFloor + echoGateDb 双讲冻结 | `src/asr.ts:933-998`（echoPeak/Floor 跨区）+ ADR-0006 真机结论：原生 AEC 生效时**从未被执行**，因为 VAD 已先拦截 |
 
 **完全缺失的层**：**人格层 / 社会-语用层让位**——LLM 没有"何时该停、停多久、是否该接住用户的'嗯'/'对'/'so'"的指令。
@@ -27,7 +27,7 @@ dsh-voice-mode 当前的"让位"仅有两个层：
 
 - **真机空闲让位 = 0** — 一旦用户说完一句，LLM 立刻把"剩余句子"都说出来，**不留思考停顿窗口**
 - **让位指令已落地（#2 Phase 1）** — `src/prompts.ts:31` 的 `spokenPrompt`（2026-10-02 自 `src/index.ts` 的 `VOICE_SPOKEN_PROMPT`（**原名**，原址 `:103-110`，2026-10-02 迁入））= 基础 4 句口语化 + ADR-0008 #2 让位段（Phase 1 已落地，见 :199）。**勘误（2026-10-20，时序已核）**：原「真机让位指令 = 0」在**调研与成文时点属实**——调研（`7d5bec2`，2026-09-14 14:50）与 ADR 草稿（`d736844`，09-14 15:40）均先于 #2 段落地（`7f1a09f`，2026-09-15 16:20，git 实证）；是 ADR 自草稿起未随落地同步，旧态 propagated 至 R5 才被发现。本 ADR #2 决策与落地内容一致，不受影响
-- **真机 backchannel 检测 = 0** — 用户插嘴"嗯/对/so"，模型继续说完所有句子（`src/asr.ts:192`：`wakeEnabled = 唤醒词非空且非 hold 模式——唤醒词门与让位不同维度。**括注勘误（2026-10-20）**：原「仅在 `/stay wake/` 时启用」全仓（src/docs/test）无此符号或命令，系 ADR 草稿期 propagated 的假断言——d736844 时点 wakeEnabled 即已按「唤醒词非空且非 hold」定义）
+- **真机 backchannel 检测 = 0** — 用户插嘴"嗯/对/so"，模型继续说完所有句子（`src/asr.ts:192`（历史时点快照）：`wakeEnabled = 唤醒词非空且非 hold 模式——唤醒词门与让位不同维度。**括注勘误（2026-10-20）**：原「仅在 `/stay wake/` 时启用」全仓（src/docs/test）无此符号或命令，系 ADR 草稿期 propagated 的假断言——d736844 时点 wakeEnabled 即已按「唤醒词非空且非 hold」定义）
 - **真机 silence 主动续话 = 0** — 用户停 6 秒，模型**不会主动 break silence**（这点和 Notion / Spokenly MCP 相反）
 - **硬打断 hardBreak 真机在 `src/client.tsx` 的 `hardBreak` 定义**（`const hardBreak = async (): Promise<void> => {`；原值 1946 与 2026-10-21 前快照的 `:2392` 均已漂移——**旧文自述的「Δ946」与自述的现值 2392 互相矛盾**（2392−1946=446），已如实更正；2026-10-21 R15-J 改按**符号锚**重锚，行号待最终 HEAD 稳定后统一回填）—— 注意 hardBreak 走**取消路由**（`bus.skipAudio() + bus.cancelTurn()`），是物理层的硬让；本 ADR 提出的 **pauseAtBoundary** 与其正交，走 epoch 通道不做取消
 
@@ -118,12 +118,12 @@ YIELDING (let the user interrupt)
 - `src/prompts.ts:31` `spokenPrompt`（2026-10-02 自 `src/index.ts` 的 `VOICE_SPOKEN_PROMPT`（**原名**，原址 `:103-110`）迁入；基础 4 句口语化 + ADR-0008 #2 让位段，Phase 1 已落地，见 :199）
 - `src/index.ts` 的 `system-prompt/assemble` 注入点（`ctx.on('system-prompt/assemble'`；原值 896 与 2026-10-21 前快照的 `:966`/`:966-972` 均已漂移——2026-10-21 R15-J 改按**符号锚**重锚，行号待最终 HEAD 稳定后统一回填）
 - `src/asr.ts:933-998`（echoFloor/echoPeak 跨区 + ADR-0006 真机结论）
-- `src/asr.ts:192`（wakeEnabled 唤醒词门：唤醒词非空且非 hold 模式，逻辑可参考）
+- `src/asr.ts:192`（历史时点快照）（wakeEnabled 唤醒词门：唤醒词非空且非 hold 模式，逻辑可参考）
 - `src/asr-host.ts:623`（finalize 同步路径 `finalizeP`，"不丢句"不变量；原 442-466 区现为 senseTranscribe、原 584 锚点已漂移；2026-10-20 10:30 实测刷新）
 - `src/tts-queue.ts:555`（`cancel()` 硬打断；epoch 守卫；不丢句；原值 379 已漂移 Δ73——该行现为 `this.engine.status?.()`；原 268-307 区现为 updateVoice、原 325 锚点已漂移；2026-10-21 按符号定位刷新）
 - `src/tts-queue.ts`（`q.epoch` 逐队列代际字段——epoch 通道本体：类型声明 `QueuedSentence.epoch` :204 / `SessionQueue.epoch` :212（接口 :207），自增 :366（prune 路径）/ :455（cancel）/ :471（re-enter 新队列），入队快照 :444，泵内守卫 :490（break）/ :511（continue）。**勘误（2026-10-20）**：原「`_SSMLTemplate` epoch 通道」全 src 0 命中，系幻影符号。**刷新口径声明（2026-10-21）**：原 `:296`（setEngine）/`:382`（cancel）两处自增锚点系幻影符号——HEAD 中 `cancel` 的 `q.epoch++` 在 :455、`:296` 与 `:382` 均无自增语句；原 `:371` 入队快照实为 :444、原 `:416`/`:437` 泵内守卫实为 :490/:511。**fix-host R14 引擎级 closed 标志改动的终验至今未做**（原 :124 文末「需终验」为遗留待办），故本段锚点为 2026-10-21 符号定位结果，不构成 R14 终验结论）
 - `src/client.tsx` 的 `hardBreak` 定义（`const hardBreak = async`；原值 1946 与 2026-10-21 前快照的 `:2392` 均已漂移——旧文自述的「Δ946」与自述现值互相矛盾，已更正；2026-10-21 R15-J 改按**符号锚**重锚）
-- `src/client.tsx:2593`（`onAecState` 回调已用，证明回调注入机制成熟；原值 2106 已漂移 Δ447、原 1539 区现为 fetchConfig；**原 2553 为 2026-10-21 前快照**，已随 R15 各批重写漂移，本轮按冻结后的工作区源码刷新）
+- `src/client.tsx:2593`（历史时点快照）（`onAecState` 回调已用，证明回调注入机制成熟；原值 2106 已漂移 Δ447、原 1539 区现为 fetchConfig；**原 2553 为 2026-10-21 前快照**，已随 R15 各批重写漂移，本轮按冻结后的工作区源码刷新）
 - `CONTEXT.md`（第 26 行，"打断计数仅在播放期累积"不变量）
 - `CONTEXT.md:27`（"不丢句"不变量，`finalize` 幂等 + 有界重试）
 - `CONTEXT.md:39-40`（"echoGateDb 原生 AEC 生效时从未被执行"真机事实；lead 提示 38-39，实测该 bullet 在 39-40，38 为播放门行）

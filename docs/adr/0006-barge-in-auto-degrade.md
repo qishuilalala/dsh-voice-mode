@@ -39,7 +39,7 @@ README 的排障表实际上是在教用户调声学参数。对"外放的桌面
 
 **第一级 —— 零成本，进入语音模式即可判定**
 
-`getUserMedia` 后读 `track.getSettings().echoCancellation`（现有代码已有此信号：`src/asr.ts:1320`，在 `startRecorder`（:1216）内 → `config.onAecState`（:1254）→ `src/client.tsx:2804` `onAecState` 回调（:2728 调 `bus.setEchoBypass`）；原 `client.tsx:2106` 已漂移 Δ447（该行现是 `submitDraftNow` 的 `expectedText` 参数文档注释，与 AEC 无关）；**asr.ts（原锚 1128）/`:1099`/`:1137`、`client.tsx:2553`/`:2555` 为 2026-10-21 前快照**——`f8a3268` 的锚点刷新写入了修复前源码，随 R15 各批重写已漂移，本轮按冻结后的工作区源码刷新；更早的原 751/L782/1566-1569 亦已漂移）。
+`getUserMedia` 后读 `track.getSettings().echoCancellation`（现有代码已有此信号：`src/asr.ts:1320`（历史时点快照），在 `startRecorder`（:1216）内 → `config.onAecState`（:1254）→ `src/client.tsx:2804`（历史时点快照） `onAecState` 回调（:2728 调 `bus.setEchoBypass`）；原 `client.tsx:2106` 已漂移 Δ447（该行现是 `submitDraftNow` 的 `expectedText` 参数文档注释，与 AEC 无关）；**asr.ts（原锚 1128）/`:1099`/`:1137`、`client.tsx:2553`/`:2555` 为 2026-10-21 前快照**——`f8a3268` 的锚点刷新写入了修复前源码，随 R15 各批重写已漂移，本轮按冻结后的工作区源码刷新；更早的原 751/L782/1566-1569 亦已漂移）。
 
 - `=== false` → 原生 AEC 未生效（耳机无原生 AEC / Safari VoiceProcessingIO 失效）→ **直接判定不具备 auto 条件**，落 `manual`，状态条提示「本机回声消除未生效，已切为长按打断」
 

@@ -40,7 +40,7 @@
   2. 找到「语音模式 / Voice Mode」分组（或「Recognition」/「Interaction」分组）
   3. 滚动查看所有 Row
 - **预期**：4 个新 Row 标签都是中文：
-  - 「逆文本归一化」（senseITN；与 `src/strings.ts:219`（`senseITNLabel: '逆文本归一化'`）+ `src/settings-form.tsx:1323-1324`（`<Row name="senseITN" desc={tr('descSenseITN')}>` 的 checkbox 行）一致）
+  - 「逆文本归一化」（senseITN；与 `src/strings.ts`（`senseITNLabel: '逆文本归一化'`）+ `src/settings-form.tsx:1323-1324`（`<Row name="senseITN" desc={tr('descSenseITN')}>` 的 checkbox 行）一致）
   - 「字幕字号」/「字幕宽度」（captionFontSize / captionMaxWidth）
   - 「短应答让位」（backchannelYield）
 - **失败信号**：Row 标签显示 `senseITN` / `captionFontSize` 等原始 key 而非中文
@@ -171,7 +171,7 @@
   3. 观察 AI 是否立即停止 + 1.5s 内新内容不播
 - **预期**：当前句立即停止；1.5s 内保持静音（不读新内容）；用户说新内容 → AI 收 + 取消回合
 - **失败信号**：AI 继续朗读完整长段 / 1.5s 后直接接着读 / 「嗯」未生效
-- **回退**：检查 `src/asr.ts:59 matchBackchannel` + `src/client.tsx:1483` 帧守卫（`backchannelHoldUntil` 让位窗口内丢弃 TTS 帧）+ `src/client.tsx:1686` 的 `setBackchannelHold` 调用点（方法定义在 `:1647`）
+- **回退**：检查 `src/asr.ts:59 matchBackchannel` + `src/client.tsx` 帧守卫（`backchannelHoldUntil` 让位窗口内丢弃 TTS 帧）+ `src/client.tsx` 的 `setBackchannelHold` 调用点（方法定义在 `:1647`）
 - **时间**：2 分钟
 
 ### [ ] 5.2 hardBreak 真打断优先于让位

@@ -28,8 +28,8 @@
 
 | 计数器 | 位置 | 防的是什么 |
 |---|---|---|
-| `segmentEpoch` | `src/asr.ts:258` | 弃段/定稿后迟到的 partial 响应 |
-| `detectGeneration` | `src/asr.ts:289` | 重置后旧 vadOnly 响应推进 `detectSent` 水位 |
+| `segmentEpoch` | `src/asr.ts:258`（历史时点快照） | 弃段/定稿后迟到的 partial 响应 |
+| `detectGeneration` | `src/asr.ts:289`（历史时点快照） | 重置后旧 vadOnly 响应推进 `detectSent` 水位 |
 | `resetGen` | `src/asr-host.ts:238` | 定稿期间会话被 reset，陈旧缓存写回 |
 | `turnGen` | `src/index.ts:696`（声明 Map `const turnGen = new Map<string, number>()`）+ `:1050-1051`（get/set）+ `:1076`（迟到回合守卫）；`:648` 会话清理 delete | 旧回合的 turn state 覆盖新回合 |
 | TTS `q.epoch` | `src/tts-queue.ts:246`（`SessionQueue` 接口；其 `epoch` 字段声明在 :250） | 打断后积压句子与孤儿泵继续广播 |
@@ -47,7 +47,7 @@
 | WebSocket 性质 | 潜在收益与保留条件 |
 |---|---|
 | 连接内有序 | 可减少传输层乱序；异步完成、取消、重连仍需 `segmentEpoch` / `detectGeneration` 等作废校验，不能据此删除 |
-| 连接有状态（不等于应用会话生命周期） | 会话授权、owner 变化及重连仍需过期处理与恢复；既有路径（`src/asr.ts:489` 403 重试（`config.onSessionExpired`）+ `src/asr.ts:837` `recoverySegment` 全量重发；2026-10-20 实测刷新，2026-10-21 前快照的 `:416-438` 已漂移，本轮按现态行号刷新） |
+| 连接有状态（不等于应用会话生命周期） | 会话授权、owner 变化及重连仍需过期处理与恢复；既有路径（`src/asr.ts:489`（历史时点快照） 403 重试（`config.onSessionExpired`）+ `src/asr.ts:837`（历史时点快照） `recoverySegment` 全量重发；2026-10-20 实测刷新，2026-10-21 前快照的 `:416-438` 已漂移，本轮按现态行号刷新） |
 | 明确连接关闭事件 | 有助于触发清理；半开连接、重连与应用缓存仍需超时/回收策略，不能直接删除 `SEGMENT_IDLE_MS` |
 | 可改为推送 | 有机会减少轮询等待；`lastPollAt` / `partialInFlight` / `detectInFlight` 能否收敛须由背压、取消与行为验证决定 |
 | 二进制帧原生 | base64 膨胀（TTS 下行当前 base64，+33%） |
@@ -55,7 +55,7 @@
 保留的：`turnGen`（LLM 回合语义，与传输无关）、TTS `q.epoch`（打断语义，与传输无关）。其余计数器和水位也先保留；删除须逐项证明取消、重连与迟到结果的行为不回归，不能预先承诺数量。
 
 配套建议（同一次改动内）：
-- 上行 PCM 改 **int16**（当前 f32，`src/asr.ts:390` 与 `:1237` 的 Float32Array 构造 + `src/asr-host.ts:154-155`（pcmToSamples）Float32Array 解析；2026-10-21 前快照的 `src/asr.ts:232` 已漂移，本轮按现态行号刷新）——带宽减半，样本量化会变化，识别质量须实测
+- 上行 PCM 改 **int16**（当前 f32，`src/asr.ts:390`（历史时点快照） 与 `:1237` 的 Float32Array 构造 + `src/asr-host.ts:154-155`（pcmToSamples）Float32Array 解析；2026-10-21 前快照的 `src/asr.ts:232` 已漂移，本轮按现态行号刷新）——带宽减半，样本量化会变化，识别质量须实测
 - 下行 TTS 改二进制帧，去掉 base64
 
 ## 预期后果
