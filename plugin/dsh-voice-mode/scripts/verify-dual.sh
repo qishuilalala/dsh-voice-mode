@@ -54,71 +54,71 @@ CORE_022A2="${17:-/tmp/dshcore/dsh-0-2-2-alpha-2/node_modules/@deepseek-ai/dsh/l
 CORE_022A3="${19:-/tmp/dshcore/dsh-0-2-2-alpha-3/node_modules/@deepseek-ai/dsh/lib/bin.js}"
 CORE_022RC1="${20:-/tmp/dshcore/dsh-0-2-2-rc-1/node_modules/@deepseek-ai/dsh/lib/bin.js}"
 
-echo "======== 1/22 锚点检查（0.1.1-rc.2 / 0.1.2-rc.1 / 0.1.5-rc.1 / 0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.6-alpha.2 / 0.1.7-alpha.1 / 0.1.7-alpha.2 / 0.1.7-rc.1 / 0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2 / 0.2.1-alpha.1 / 0.2.1-alpha.2 / 0.2.1-alpha.3 / 0.2.1-alpha.5 / 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.1-rc.4 / 0.2.1-rc.5 / 0.2.2-alpha.2 / 0.2.2-alpha.3）========"
+echo "======== 1/23 锚点检查（0.1.1-rc.2 / 0.1.2-rc.1 / 0.1.5-rc.1 / 0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.6-alpha.2 / 0.1.7-alpha.1 / 0.1.7-alpha.2 / 0.1.7-rc.1 / 0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2 / 0.2.1-alpha.1 / 0.2.1-alpha.2 / 0.2.1-alpha.3 / 0.2.1-alpha.5 / 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.1-rc.4 / 0.2.1-rc.5 / 0.2.2-alpha.2 / 0.2.2-alpha.3 / 0.2.2-rc.1）========"
 # 注意：版本号必须写字面量（check-dsh-version.sh 用 awk 从本文件提取字面版本做覆盖比对，变量会被漏掉）。
 node scripts/check-anchors.mjs 0.1.1-rc.2 0.1.2-rc.1 0.1.5-rc.1 0.1.5-rc.2 0.1.5-rc.3 0.1.6-alpha.2 0.1.7-alpha.1 0.1.7-alpha.2 0.1.7-rc.1 0.1.7-rc.2 0.2.0-rc.1 0.2.0-rc.2 0.2.1-alpha.1 0.2.1-alpha.2 0.2.1-alpha.3 0.2.1-alpha.5 0.2.1-rc.2 0.2.1-rc.3 0.2.1-rc.4 0.2.1-rc.5 0.2.2-alpha.2 0.2.2-alpha.3 0.2.2-rc.1
 
-echo "======== 2/22 二十三版本 typecheck ========"
-bash scripts/typecheck-dual.sh 0.1.1-rc.2 0.1.2-rc.1 0.1.5-rc.1 0.1.5-rc.2 0.1.5-rc.3 0.1.6-alpha.2 0.1.7-alpha.1 0.1.7-alpha.2 0.1.7-rc.1 0.1.7-rc.2 0.2.0-rc.1 0.2.0-rc.2 0.2.1-alpha.1 0.2.1-alpha.2 0.2.1-alpha.3 0.2.1-alpha.5 0.2.1-rc.2 0.2.1-rc.3 0.2.1-rc.4 0.2.1-rc.5 0.2.2-alpha.2 0.2.2-alpha.3
+echo "======== 2/23 二十三版本 typecheck ========"
+bash scripts/typecheck-dual.sh 0.1.1-rc.2 0.1.2-rc.1 0.1.5-rc.1 0.1.5-rc.2 0.1.5-rc.3 0.1.6-alpha.2 0.1.7-alpha.1 0.1.7-alpha.2 0.1.7-rc.1 0.1.7-rc.2 0.2.0-rc.1 0.2.0-rc.2 0.2.1-alpha.1 0.2.1-alpha.2 0.2.1-alpha.3 0.2.1-alpha.5 0.2.1-rc.2 0.2.1-rc.3 0.2.1-rc.4 0.2.1-rc.5 0.2.2-alpha.2 0.2.2-alpha.3 0.2.2-rc.1
 
-echo "======== 3/22 runtime 冒烟 0.1.1 ========"
+echo "======== 3/23 runtime 冒烟 0.1.1 ========"
 DSH_TEST_SKIP_HMR_WATCH=1 bash scripts/smoke-runtime.sh "$CORE_011" 3135   # 0.1.1 核心需 HMR 跳过夹具（ensure-core.sh 自动打）
 
-echo "======== 4/22 runtime 冒烟 0.1.5 ========"
+echo "======== 4/23 runtime 冒烟 0.1.5 ========"
 bash scripts/smoke-runtime.sh "$CORE_015" 3136
 
-echo "======== 5/22 runtime 冒烟 0.1.6-alpha.2 ========"
+echo "======== 5/23 runtime 冒烟 0.1.6-alpha.2 ========"
 bash scripts/smoke-runtime.sh "$CORE_016" 3137
 
-echo "======== 6/22 runtime 冒烟 0.1.5-rc.3 ========"
+echo "======== 6/23 runtime 冒烟 0.1.5-rc.3 ========"
 bash scripts/smoke-runtime.sh "$CORE_015R3" 3138
 
-echo "======== 7/22 runtime 冒烟 0.1.7-alpha.2 ========"
+echo "======== 7/23 runtime 冒烟 0.1.7-alpha.2 ========"
 bash scripts/smoke-runtime.sh "$CORE_017" 3139
 
-echo "======== 8/22 runtime 冒烟 0.1.7-rc.1 ========"
+echo "======== 8/23 runtime 冒烟 0.1.7-rc.1 ========"
 bash scripts/smoke-runtime.sh "$CORE_017RC1" 3140
 
-echo "======== 9/22 runtime 冒烟 0.1.7-rc.2 ========"
+echo "======== 9/23 runtime 冒烟 0.1.7-rc.2 ========"
 bash scripts/smoke-runtime.sh "$CORE_017RC2" 3141
 
-echo "======== 10/22 runtime 冒烟 0.2.0-rc.1 ========"
+echo "======== 10/23 runtime 冒烟 0.2.0-rc.1 ========"
 bash scripts/smoke-runtime.sh "$CORE_020RC1" 3142
 
-echo "======== 11/22 runtime 冒烟 0.2.0-rc.2 ========"
+echo "======== 11/23 runtime 冒烟 0.2.0-rc.2 ========"
 bash scripts/smoke-runtime.sh "$CORE_020RC2" 3143
 
-echo "======== 12/22 runtime 冒烟 0.2.1-alpha.1 ========"
+echo "======== 12/23 runtime 冒烟 0.2.1-alpha.1 ========"
 bash scripts/smoke-runtime.sh "$CORE_021A1" 3144
 
-echo "======== 13/22 runtime 冒烟 0.2.1-alpha.2 ========"
+echo "======== 13/23 runtime 冒烟 0.2.1-alpha.2 ========"
 bash scripts/smoke-runtime.sh "$CORE_021A2" 3145
 
-echo "======== 14/22 runtime 冒烟 0.2.1-alpha.3 ========"
+echo "======== 14/23 runtime 冒烟 0.2.1-alpha.3 ========"
 bash scripts/smoke-runtime.sh "$CORE_021A3" 3146
 
-echo "======== 15/22 runtime 冒烟 0.2.1-alpha.5 ========"
+echo "======== 15/23 runtime 冒烟 0.2.1-alpha.5 ========"
 bash scripts/smoke-runtime.sh "$CORE_021A5" 3147
 
-echo "======== 16/22 runtime 冒烟 0.2.1-rc.2 ========"
+echo "======== 16/23 runtime 冒烟 0.2.1-rc.2 ========"
 bash scripts/smoke-runtime.sh "$CORE_021RC2" 3148
 
-echo "======== 17/22 runtime 冒烟 0.2.1-rc.3 ========"
+echo "======== 17/23 runtime 冒烟 0.2.1-rc.3 ========"
 bash scripts/smoke-runtime.sh "$CORE_021RC3" 3149
 
-echo "======== 18/22 runtime 冒烟 0.2.1-rc.4 ========"
+echo "======== 18/23 runtime 冒烟 0.2.1-rc.4 ========"
 bash scripts/smoke-runtime.sh "$CORE_021RC4" 3150
 
-echo "======== 19/22 runtime 冒烟 0.2.2-alpha.2 ========"
+echo "======== 19/23 runtime 冒烟 0.2.2-alpha.2 ========"
 bash scripts/smoke-runtime.sh "$CORE_022A2" 3151
 
-echo "======== 20/22 runtime 冒烟 0.2.1-rc.5 ========"
+echo "======== 20/23 runtime 冒烟 0.2.1-rc.5 ========"
 bash scripts/smoke-runtime.sh "$CORE_021RC5" 3152
 
-echo "======== 21/22 runtime 冒烟 0.2.2-alpha.3 ========"
+echo "======== 21/23 runtime 冒烟 0.2.2-alpha.3 ========"
 bash scripts/smoke-runtime.sh "$CORE_022A3" 3153
 
-echo "======== 22/22 runtime 冒烟 0.2.2-rc.1 ========"
+echo "======== 22/23 runtime 冒烟 0.2.2-rc.1 ========"
 bash scripts/smoke-runtime.sh "$CORE_022RC1" 3155
 
 echo ""
