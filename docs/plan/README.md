@@ -8,6 +8,7 @@
 
 | 文件 | 说明 |
 | --- | --- |
+| [plan-2026-11.md](plan-2026-11.md) | **当前 11 月排期入口**：承接 R0–R5 原则与 11 月治理决策，列明两周 PR、年底目标、长期启动/放弃条件、维护者事项及五项度量；冲突按本文依据表处理。 |
 | [implementation-plan-2026-09-14.md](implementation-plan-2026-09-14.md) | 11 批次周全修复主计划（批 1 P0 热词 → 批 7K 收口，commit 历程可回溯） |
 | [executor-prompt.md](executor-prompt.md) | 执行 agent 提示词（铁律 10 条 / PoC 前置 / 四连验证 / 失败报告与简报格式 / 禁令清单） |
 | [reviewer-prompt.md](reviewer-prompt.md) | 审查 agent 提示词（六轴框架 / 固定桶输出 / 不修复纪律 / 与执行者关系） |
