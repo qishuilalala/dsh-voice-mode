@@ -709,6 +709,8 @@ await t('R15 M4：旧子进程迟到的 exit 不得清空新子进程的引用�
     `多余 fork 到 ${globalThis.__r14forks} 个：旧子进程迟到的 exit 清空了新子进程的引用——它将成为携完整模型、无人再 close 的孤儿`,
   )
   await eng.close()
+  // kill 桩刻意不自动发 exit，以保留上面的迟到事件竞态；收尾补发最终子进程的退出。
+  globalThis.__r14c.emitExit(2)
   globalThis.__r14m.arm('file')
 })
 
@@ -865,6 +867,8 @@ await t('Round 8 T-6：旧子进程迟到的 error 不得清空新子进程的�
     `多余 fork 到 ${globalThis.__r14forks} 个：旧子进程迟到的 error 清空了新子进程的引用——它将成为携完整模型、无人再 close 的孤儿（与 exit 侧同一条泄漏链）`,
   )
   await eng.close()
+  // kill 桩刻意不自动发 exit，以保留上面的迟到事件竞态；收尾补发最终子进程的退出。
+  globalThis.__r14c.emitExit(2)
   globalThis.__r14m.arm('file')
 })
 
@@ -1249,6 +1253,14 @@ await t('Round 8 T-8：队列已空时 abandonTurn 不补发 tts-idle（abort �
   q.noteTurnEnd('s1')
   assert.deepEqual(idles, ['s1'], 'noteTurnEnd 在队列已空时应补发一次（abandonTurn 的补发权在 host 手上）')
   await q.close()
+})
+
+await t('全部用例结束后无残留计时器，进程可自然退出', async () => {
+  assert.equal(
+    process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length,
+    0,
+    '用例结束后不得留下合成 RPC 的 120 秒计时器',
+  )
 })
 
 console.log(`\ntts-queue-engine：${passed} 项通过`)
