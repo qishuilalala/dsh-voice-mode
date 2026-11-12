@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 维护
+
+- 覆盖 dsh 0.2.2-rc.2：cordis 映射并入 `0.2.2-rc.1|0.2.2-rc.2 → 4.1.0`（同档稳定），锚点 9/9、双 typecheck 通过、隔离核心 runtime 冒烟全绿（含客户端侧，本轮 headless 环境恢复）。矩阵扩至 24 版锚点/typecheck + 21 核心冒烟。实证见 `docs/compat-contract.md` §27。
+
 ## [0.7.35] - 2026-11-05
 
 ### 诊断
