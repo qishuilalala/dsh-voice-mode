@@ -136,8 +136,8 @@ R15 阶段围绕**已发布代码（v0.7.27）**做了三轮「独立 sweep → 
 
 | # | 项 | 现状 | 出处 |
 | --- | --- | --- | --- |
-| R1 | **abort 收场的 `openTurns` 残留** | 队列侧 `abandonTurn()` 原语已就绪、host 侧已接 `reason: 'interrupt'`；但**用户 abort 路径宿主不派发任何信号**（`dsh-agent-loop` 的 abort 是 `catch → 直接重抛`，不发 `agent/error`、不发 `agent/turn-stopping`）→ 残留**只能靠下一个回合的 `noteTurnEnd` 自愈**。不卡死；代价是本回合 `tts-idle` 缺失 → `mode:once` 退 10s 静默兜底 **〔Round 8 处置〕**仍待宿主侧信号**——队列侧 `abandonTurn()` 原语已就绪、host 侧已接 `reason: 'interrupt'`；但**用户 abort 路径宿主不派发任何信号**（`dsh-agent-loop` 的 abort 是 `catch → 直接重抛`）⇒ 只能靠**下一个回合的 `noteTurnEnd` 自愈**（不卡死；代价是本回合 `tts-idle` 缺失 → `mode:once` 退 10s 兜底）。**需宿主补一个显式的「回合作废」信号**才能根治。** | STATE R15 账本 |
-| R2 | **焦点转移不打断在途朗读** | `readAloud=always` 下「会话 A 播着 → 用户切到会话 B」，A 的在途朗读**不被打断**。是既有行为（`TtsQueue.queues` 不动，见 P1-2 论证），**需产品口径**（「切走即静默」要一个不重置 seq 的队列停止接口） **〔Round 8 处置〕**待产品口径**——`readAloud=always` 下「会话 A 播着 → 用户切到会话 B」，A 的在途朗读不被打断。属**产品行为选择**，不擅自处置。** | STATE R15 账本 |
+| R1 | **abort 收场的 `openTurns` 与 once 打断** | **2026-11-12 管理者决策 4 已落地**：本插件的显式打断撤销 once 自然收尾及兜底计时，恢复收音并留在语音模式；队列继续用 `cancel()` + `abandonTurn()`，排空通知携带可用回合号以过滤迟到通知。宿主外部 abort 没有信号的边界仍保留。 | 治理决策 4；STATE 待决登记 |
+| R2 | **`readAloud=always` 焦点转移停止原朗读** | **2026-11-12 管理者决策 3 已落地**：复用 `TtsQueue.cancel()` 保持句号单调，作废积压与迟到合成；旧 tap 代际失效，客户端同步停播。共享引擎取消保护与 SSE 重连焦点保持已有行为测试。 | 治理决策 3 |
 | R3 | **回合中途切焦点的窄边界** | 用户在回合**中途**才把会话变成焦点 → 该会话本回合的回合号取不到 → 静音退回按流解禁（`MUTED_STREAMS_WITHOUT_TURN` 计数兜底接住） **〔Round 8 处置〕✅ **已由 H-11 的新判据覆盖**——回合号不可知时改用宿主 `agent/pre-step` 的 `step === 1` 判**真回合边界**，不再「按流解禁」；`5k.` 与 STATE 均有留痕。** | fix-host 回报 |
 | R4 | **实例 token 跨模块重载的唯一性** | `focusOwnerSeq` 是模块级计数器，模块重载后归零 → 理论上的 token 碰撞。当前宿主版本下双实例并存前提**不成立**（见 §3），今日实际影响≈0 **〔Round 8 处置〕**接受现状**——`focusOwnerSeq` 是模块级计数器，模块重载后归零 → 理论上的 token 碰撞；当前宿主版本下**双实例并存的前提不成立**，已如实登记、不修。** | fix-client 回报 |
 | R5 | **asr 播放期静音分支缺 `isPlaying` 守卫** | 已复核为真，但影响面窄（播放期有 AI 回声即走 loud 分支并当场收口）；唯一修法会让「播放前开口段」在 AI 开播瞬间就当消息发出、并可能发 <250ms 短段（与 P1-3 短噪声门口径冲突）→ **成文取舍：暂不修**（含重新评估的 3 个触发条件） **〔Round 8 处置〕**接受现状**——已复核为真，但影响面窄（播放期有 AI 回声即走 loud 分支并当场收口）。** | STATE「成文取舍」段 |
@@ -149,7 +149,7 @@ R15 阶段围绕**已发布代码（v0.7.27）**做了三轮「独立 sweep → 
 - `docs/competitive/backlog.md` 的「删 3 个误传字段」条目要删的 3 个字段（`heldHint`/`cursorHint`/`recallAuto`）**本仓从未存在**（`git log --all -S` 对 `src/` 与 `test/` 均 0 提交，来源是 2026-09-15 沉睡能力审计记录的**上游 fork**）→ 该条是「无对象」还是「漏记」，待定。
 - `docs/competitive/backlog.md` §三 Frozen 6 条是否解冻。
 - `docs/research/` 断头引用（不入库但被已入库文档引用）——**知情取舍**，`docs/README.md` 已声明，待定。
-- **`abandonTurn` 的「不补发 tts-idle」**：方法层成立（只清 `openTurns`），**组合层不成立**——`index.ts` 的 `/cancel` 里 `cancel()` 与 `abandonTurn()` 同一 tick 连发，`cancel()` 不中止在途 pump，该 pump 落定后按 `openTurns` 已清的条件**补发一条 `tts-idle`**。验真轮判断方向与「用户确实打断了这一轮」一致、未找到反例可达路径，**故不定为缺陷**；**需产品拍板**：`mode:once` 下用户手动打断后继续说话，客户端是否仍应留在语音模式（即「回合被用户打断而结束」是否等同于「说完就关」的收尾条件）。详见 [旧账本档案](../rules/archive/STATE-until-2026-11-12.md) 的「待决登记｜`TtsQueue.abandonTurn`」条。**〔Round 8 状态〕只登记，未改代码。**
+- **`abandonTurn` 的排空语义已定（2026-11-12 决策 4）**：用户打断后留在语音模式。本次在客户端撤销被打断回合的 once 等待及全部兜底计时；队列保持排空通知语义，通知补充可用回合号。下一回合自然读完照常退出。
 - Issue #15 的回帖口径：`docs/issue-15-reply.md` 已订正版本引用；**是否补一段「发布后又做了一轮全库对抗审查」的说明**待用户定（对外发声，取舍由维护者定）。
 
 ### P3｜真机验收点（本机无法代跑）

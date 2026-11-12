@@ -3993,7 +3993,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "640452a";
+var BUILD_TAG = "6fc59b5";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -4706,7 +4706,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
     source.addEventListener("focus", (e) => {
       try {
-        focusOwnerTab = JSON.parse(e.data).tabId ?? null;
+        const tabId = JSON.parse(e.data).tabId ?? null;
+        if (focusOwnerTab === TAB_ID && tabId !== null && tabId !== TAB_ID && focusedSessionId !== null && (activeSessionId === null || activeSessionId === focusedSessionId)) doSkipAudio(focusedSessionId);
+        focusOwnerTab = tabId;
       } catch {
       }
     });
@@ -4776,6 +4778,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     source.addEventListener("tts-idle", (e) => {
       try {
         const ev = JSON.parse(e.data);
+        if (ev.sessionId && ev.turn !== void 0 && ev.turn < (currentTurn.get(ev.sessionId) ?? ev.turn)) return;
         if (ev.sessionId === activeSessionId && !ui.ttsDrained) {
           ui.ttsDrained = true;
           notify();
@@ -5090,6 +5093,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       if (sessionId === null) {
         const { changed, focused } = focusRelease(focusOwners, owner);
         if (!changed) return;
+        if (focusedSessionId !== focused) doSkipAudio(focusedSessionId);
         focusedSessionId = focused;
         if (focused !== null) {
           if (typeof document === "undefined" || document.visibilityState === "visible") postFocus(focused);
@@ -5099,6 +5103,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         return;
       }
       focusClaim(focusOwners, owner, sessionId);
+      if (focusedSessionId !== null && focusedSessionId !== sessionId) doSkipAudio(focusedSessionId);
       focusedSessionId = sessionId;
       if (typeof document === "undefined" || document.visibilityState === "visible") postFocus(sessionId);
     },
@@ -5668,7 +5673,7 @@ function MicButton({
     onceRef.current = o;
     setOnceWaiting(true);
     void engineRef.current?.stop();
-    bus.setUi({ partial: "", levels: [], isSpeech: void 0 });
+    bus.setUi({ partial: "", levels: [], isSpeech: void 0, ttsDrained: false });
     checkOnce();
   };
   const exitMode = async (reason) => {
@@ -5751,6 +5756,11 @@ function MicButton({
         sessionId: sid
       });
       const hardBreak = async () => {
+        const resumeOnce = bootNow().mode === "once" && onceRef.current !== null;
+        if (resumeOnce) {
+          clearOnce();
+          resetIdle();
+        }
         bus.skipAudio();
         bus.unduckAudio();
         cancelAutoSend();
@@ -5774,7 +5784,13 @@ function MicButton({
           signal: AbortSignal.timeout(3e3)
         }).catch(() => {
         });
-        if (engineRef.current && !engineRef.current.holding) await engineRef.current.discardSegment();
+        if (resumeOnce) {
+          const eng = engineRef.current;
+          void eng?.start().then(() => {
+            if (engineRef.current !== eng || localRef.current !== "on" || !mountedRef.current) return;
+            if (manualHoldRef.current || toggleHoldRef.current) eng.beginHeld();
+          }).catch(() => bus.setUi({ error: t("micUnavailable") }));
+        } else if (engineRef.current && !engineRef.current.holding) await engineRef.current.discardSegment();
         await cancelP;
         bus.setUi({ partial: "\u2026" });
         if (breakDotsTimerRef.current) clearTimeout(breakDotsTimerRef.current);
@@ -6236,7 +6252,7 @@ function MicButton({
         return;
       }
       const eng = engineRef.current;
-      if (e.key === "Control" && !e.shiftKey && !e.altKey && !e.metaKey && !e.repeat && eng && !onceRef.current) {
+      if (e.key === "Control" && !e.shiftKey && !e.altKey && !e.metaKey && !e.repeat && eng && (!onceRef.current || bootNow().mode === "once")) {
         ctrlHoldStart = Date.now();
         otherKeyDuringCtrl = false;
         if (bootNow().mode === "hold") {
@@ -6246,7 +6262,7 @@ function MicButton({
             setHolding(true);
             eng.beginHeld();
           }, 600);
-        } else if (bootNow().bargeInMode === "manual" && bus.ui.playing) {
+        } else if (bootNow().bargeInMode === "manual" && bus.ui.playing || bootNow().mode === "once" && onceRef.current) {
           manualHoldRef.current = true;
           setHolding(true);
           eng.beginHeld();
@@ -6473,14 +6489,14 @@ function MicButton({
           }, 250);
         }
       }
-    } else if (localRef.current === "on" && bus.ui.playing && !onceRef.current) {
+    } else if (localRef.current === "on" && (bus.ui.playing && !onceRef.current || bootNow().mode === "once" && onceRef.current)) {
       toggleHoldRef.current = true;
       setHolding(true);
       const eng = engineRef.current;
       eng?.beginHeld();
       breakTimerRef.current = setTimeout(() => {
         breakTimerRef.current = null;
-        if (holdPtrRef.current && bus.ui.playing) void breakRef.current?.();
+        if (holdPtrRef.current && (bus.ui.playing || onceRef.current)) void breakRef.current?.();
       }, 250);
     }
   };
