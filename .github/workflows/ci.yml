@@ -19,13 +19,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22  # tests import src/*.ts directly (Node type stripping ≥22.18); runtime engines stays >=18
       # 与 release.yml 同口径：按锁文件安装（frozen），CI 测到的依赖就是发布时的依赖
       - name: Install
         run: npm install -g pnpm@11 && pnpm install --frozen-lockfile
-      # E-1 build-tag 门只在 release.yml 跑：本仓惯例「先提交 src、再单独提交重建产物」，逐提交校验会让中间提交误红。
+      # E-1：PR 校验头提交（不用合并预览提交），push main 校验推送头；不遍历源码/产物之间的中间提交。
+      # 临时重建并归一化 BUILD_TAG 后比对入库 lib，须在 Build 改写 lib 及类型矩阵切换依赖前执行。
+      # release.yml 仍保留 build-tag 祖先关系门；这里只检查内容，允许源码与产物分两次提交。
+      - name: Check committed lib drift
+        run: npm run check:lib-drift
       # typecheck 矩阵（E-3）：支持区间两端 + 0.2.x 两条线 + 最新稳定/预览通道，宿主类型包均已在 npm registry。
       # 脚本临时切 devDependencies 版本、跑 host/client 两套 tsc、退出时还原 package.json 与锁文件。
       - name: Typecheck matrix (0.1.1-rc.2 / 0.1.5-rc.1 / 0.2.0-rc.2 / 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.1-rc.4 / 0.2.1-rc.5)

@@ -7,7 +7,12 @@ import { build } from 'esbuild'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { builtinModules } from 'node:module'
 import { execSync } from 'node:child_process'
-import { join } from 'node:path'
+import { join, dirname, basename } from 'node:path'
+import { parseArgs } from 'node:util'
+
+// 不传 --outdir 时仍写 lib/；漂移检查使用独立临时目录。
+const { values } = parseArgs({ options: { outdir: { type: 'string', default: 'lib' } } })
+const outdir = values.outdir
 
 const PKG_ID = 'dsh-voice-mode'
 
@@ -25,7 +30,7 @@ try {
  * 引擎切换）会 fork 到写了一半的脚本；用户刷新网页也可能拿到半成品 client.js。
  */
 async function buildAtomically(opts) {
-  const tmp = join('lib', `.tmp-${opts.outfile.split('/').pop()}-${process.pid}`)
+  const tmp = join(dirname(opts.outfile), `.tmp-${basename(opts.outfile)}-${process.pid}`)
   const result = await build({ ...opts, outfile: tmp })
   renameSync(tmp, opts.outfile)
   return result
@@ -44,7 +49,7 @@ const PLATFORM_EXTERNALS = [
   '@deepseek-ai/dsh-client-schema-form',
 ]
 
-mkdirSync('lib', { recursive: true })
+mkdirSync(outdir, { recursive: true })
 
 // --- msedge-tts：连同全部依赖内联为 lib/msedge-tts.cjs（真实 CJS 文件，不作运行时依赖）---
 // 为什么内联：(1) msedge-tts 的 package.json 带 `preinstall: npx only-allow pnpm`——pnpm 11 默认拒绝依赖的安装脚本
@@ -64,7 +69,7 @@ const edgeTtsBuild = {
     resolveDir: join('node_modules', 'msedge-tts', 'dist'),
     sourcefile: 'msedge-tts-entry.js',
   },
-  outfile: 'lib/msedge-tts.cjs',
+  outfile: join(outdir, 'msedge-tts.cjs'),
   bundle: true,
   format: 'cjs',
   platform: 'node',
@@ -100,7 +105,7 @@ const edgeTtsResult = await buildAtomically(edgeTtsBuild)
 // 构建期工件登记（R14 Minor-4）：.msedge-tts.meta.json 无运行期加载方（仅
 // scripts/gen-third-party-notices.mjs 消费，且该脚本每次重写它）——「写一半」窗口
 // 的最坏后果是下次生成 notices 时读到残 file 而重跑一次，不影响运行期，故不走原子写。
-writeFileSync(join('lib', '.msedge-tts.meta.json'), JSON.stringify(edgeTtsResult.metafile))
+writeFileSync(join(outdir, '.msedge-tts.meta.json'), JSON.stringify(edgeTtsResult.metafile))
 
 // 内联产物里的 `TRUSTED_CLIENT_TOKEN`（微软 Edge 朗读协议的**公开**客户端令牌，上游
 // msedge-tts 源码里同样明文声明）会被通用密钥扫描规则按「token = 32 位十六进制」判为
@@ -108,7 +113,7 @@ writeFileSync(join('lib', '.msedge-tts.meta.json'), JSON.stringify(edgeTtsResult
 // 运行时行为完全一致），并在文件内留注释说明来源；不改动上游包的任何逻辑。
 // 注意：本脚本**不写死**该常量的值（否则扫描器会转而指向本文件），而是从产物里按模式取出。
 {
-  const p = join('lib', 'msedge-tts.cjs')
+  const p = join(outdir, 'msedge-tts.cjs')
   const src = readFileSync(p, 'utf8')
   const m = src.match(/(static TRUSTED_CLIENT_TOKEN = )"([0-9A-Fa-f]{32})"/)
   if (m) {
@@ -129,7 +134,7 @@ writeFileSync(join('lib', '.msedge-tts.meta.json'), JSON.stringify(edgeTtsResult
 // --- host half: plain ESM cordis plugin; runtime deps stay external ---
 await buildAtomically({
   entryPoints: ['src/index.ts'],
-  outfile: 'lib/index.js',
+  outfile: join(outdir, 'index.js'),
   bundle: true,
   format: 'esm',
   platform: 'node',
@@ -160,7 +165,7 @@ await buildAtomically({
 // 起 worker → 加载到半截文件 → worker 线程 MODULE_NOT_FOUND/语法错，真机实测复现过多例）。
 await buildAtomically({
   entryPoints: ['src/sense-worker.ts'],
-  outfile: 'lib/sense-worker.mjs',
+  outfile: join(outdir, 'sense-worker.mjs'),
   bundle: true,
   format: 'esm',
   platform: 'node',
@@ -186,7 +191,7 @@ const AUDIO_WORKLET_SOURCE = workletBuild.outputFiles[0].text
 // --- 本地 TTS 合成子进程（child_process.fork，CJS 以获得 IPC 通道）---
 await buildAtomically({
   entryPoints: ['src/tts-vits-worker.ts'],
-  outfile: 'lib/tts-vits-worker.cjs',
+  outfile: join(outdir, 'tts-vits-worker.cjs'),
   bundle: true,
   format: 'cjs',
   platform: 'node',
@@ -197,7 +202,7 @@ await buildAtomically({
 // --- client half: module-loader closure artifact ---
 await buildAtomically({
   entryPoints: ['src/client.tsx'],
-  outfile: 'lib/client.js',
+  outfile: join(outdir, 'client.js'),
   bundle: true,
   format: 'cjs',
   platform: 'browser',
@@ -220,4 +225,4 @@ await buildAtomically({
   logLevel: 'info',
 })
 
-console.log('[dsh-voice-mode] build done: lib/index.js (host) + lib/sense-worker.mjs + lib/tts-vits-worker.cjs + lib/client.js (browser)')
+console.log(`[dsh-voice-mode] build done: ${outdir}/index.js (host) + ${outdir}/sense-worker.mjs + ${outdir}/tts-vits-worker.cjs + ${outdir}/client.js (browser)`)

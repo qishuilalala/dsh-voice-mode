@@ -16,6 +16,7 @@
 
 ```bash
 pnpm install --frozen-lockfile
+pnpm run check:lib-drift # 在 build 覆盖 lib 前检查入库产物
 pnpm run build
 pnpm run typecheck
 pnpm test
