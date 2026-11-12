@@ -312,7 +312,7 @@ flowchart LR
 
 ### 兼容声明（插件市场的版本筛选依据）
 
-`package.json` 声明 `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`。这是版本准入范围，不代表区间内每个版本都已实测。兼容记录列出了截至 0.2.2-rc.2 的已测版本及实际测试形态。每日工作流比对上游标签并为未覆盖版本开 issue，不会自动跑完整矩阵。`peerDependencies` 声明宿主提供的 `@deepseek-ai/cordis` 与 `react`。
+`package.json` 声明 `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`。这是版本准入范围，不代表区间内每个版本都已实测。兼容记录列出了截至 0.2.2-rc.2 的已测版本及实际测试形态。默认验证集按“支持区间两端 + 每条小版本线最新已验证版 + latest/next”去重，当前为 9 版锚点/双类型检查、8 核心冒烟。历史实证保留，可用 `verify-dual.sh --full` 或显式版本复验；纯补验不发版。每日工作流比对上游标签并为未覆盖版本开 issue，不会自动跑完整矩阵。`peerDependencies` 声明宿主提供的 `@deepseek-ai/cordis` 与 `react`。
 
 ## 🚧 已知限制
 

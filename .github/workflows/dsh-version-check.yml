@@ -4,7 +4,7 @@ name: dsh upstream version check
 # 兼容声明会随上游发版**悄悄过期**。本 workflow 定期比对上游 dist-tags 与「已覆盖版本矩阵」，
 # 出现未覆盖版本时**开 issue 并让 job 失败**，把漂移变成可见信号。
 #
-# 已覆盖版本的真源是 `plugin/dsh-voice-mode/scripts/verify-dual.sh`（check-anchors 那行的参数），
+# 已覆盖版本的真源是 `plugin/dsh-voice-mode/scripts/verify-dual.sh`（--list 为现行集，--list --full 为历史全集），
 # 本 workflow 不复制该列表，避免第二处真源。
 #
 # 注：2026-09-16 美化计划的 I10 曾声明「不创建 workflow」；该约束针对那一批次，
@@ -41,7 +41,8 @@ jobs:
             exit 1
           fi
 
-          COVERED=$(grep -oE 'check-anchors\.mjs .*' "$WF" | head -1 | sed 's/.*check-anchors\.mjs //')
+          COVERED=$(bash "$WF" --list --full)
+          CURRENT=$(bash "$WF" --list)
           if [ -z "$COVERED" ]; then
             echo "::error::无法从 $WF 解析已覆盖版本矩阵"
             exit 1
@@ -51,12 +52,15 @@ jobs:
           TAGS=$(npm view @deepseek-ai/dsh dist-tags --json --registry=https://registry.npmjs.org/)
           echo "上游 dist-tags: $TAGS"
 
-          UPSTREAM=$(python3 -c "import json,sys;print('\n'.join(sorted(set(json.load(sys.stdin).values()))))" <<<"$TAGS")
+          UPSTREAM=$(python3 -c "import json,sys; t=json.load(sys.stdin); print('\n'.join(k+' '+v for k,v in t.items()))" <<<"$TAGS")
 
           UNCOVERED=""
-          while IFS= read -r v; do
+          while read -r tag v; do
             [ -z "$v" ] && continue
-            if ! printf '%s\n' $COVERED | grep -qx "$v"; then
+            # alpha 等历史通道只要求已有实证；latest/next 必须仍在现行验证集。
+            CHECKED="$COVERED"
+            case "$tag" in latest|next) CHECKED="$CURRENT" ;; esac
+            if ! printf '%s\n' $CHECKED | grep -qx "$v"; then
               UNCOVERED="$UNCOVERED $v"
             fi
           done <<<"$UPSTREAM"
@@ -82,7 +86,7 @@ jobs:
               echo "| 上游 dist-tags | \`$TAGS\` |"
               echo "| **未覆盖** | **$UNCOVERED** |"
               echo
-              echo "覆盖矩阵真源：\`plugin/dsh-voice-mode/scripts/verify-dual.sh\`（check-anchors 那行参数）。"
+              echo "覆盖矩阵真源：\`plugin/dsh-voice-mode/scripts/verify-dual.sh\`（--list / --list --full）。"
               echo
               echo "### 兼容四步流程"
               echo
@@ -91,7 +95,9 @@ jobs:
               echo "3. \`bash scripts/typecheck-dual.sh <新版本>\` —— cordis 映射需覆盖该版本线（未知线现会显式报错，不再静默回退）"
               echo "4. \`bash scripts/smoke-runtime.sh\` —— boot + host 三端点 + client mic/console"
               echo
-              echo "全绿后：把新版本追加进 \`verify-dual.sh\` 的矩阵，并同步 \`engines.dsh\` / README 兼容声明 / \`docs/compat-contract.md\`。"
+              echo "补验后：按“区间两端 + 每条线最新已验证版 + latest/next”更新 \`verify-dual.sh\` 的现行集，历史实证和 cordis 映射保留，并同步 \`engines.dsh\` / README 兼容声明 / \`docs/compat-contract.md\`。"
+              echo
+              echo "同一线被替换的旧版本转档案；纯补验不发版。"
               echo
               echo "_本 issue 由 scheduled workflow \`dsh upstream version check\` 自动创建。_"
             } > /tmp/issue-body.md

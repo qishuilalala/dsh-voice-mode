@@ -1,132 +1,75 @@
 #!/usr/bin/env bash
-# 一键多版本全量验证（全部脚本化、可复现），默认覆盖支持区间两端 + 最新预览通道：
-#   1) 锚点存在性检查（check-anchors.mjs，24 版：0.1.1 / 0.1.2 / 0.1.5-rc.1 / 0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.6-alpha.2 / 0.1.7-alpha.1 / 0.1.7-alpha.2 / 0.1.7-rc.1 / 0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2 / 0.2.1-alpha.1 / 0.2.1-alpha.2 / 0.2.1-alpha.3 / 0.2.1-alpha.5 / 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.1-rc.4 / 0.2.1-rc.5 / 0.2.2-alpha.2 / 0.2.2-alpha.3 / 0.2.2-rc.1 / 0.2.2-rc.2）
-#   2) 二十四版本 typecheck（typecheck-dual.sh，各跑 host/client tsc）
-#   3) runtime 冒烟 0.1.1（smoke-runtime.sh：boot + host 三端点 + client mic/console）
-#   4) runtime 冒烟 0.1.5-rc.2（同上，本机 dsh 服务的核心）
-#   5) runtime 冒烟 0.1.6-alpha.2（同上，alpha 通道隔离核心）
-#   6) runtime 冒烟 0.1.5-rc.3（同上）
-#   7) runtime 冒烟 0.1.7-alpha.2（同上，alpha 通道隔离核心）
-#   8) runtime 冒烟 0.1.7-rc.1（同上，next 通道隔离核心）
-#   9) runtime 冒烟 0.1.7-rc.2（同上）
-#   10) runtime 冒烟 0.2.0-rc.1（同上）
-#   11) runtime 冒烟 0.2.0-rc.2（同上，npm latest 通道隔离核心）
-#   12) runtime 冒烟 0.2.1-alpha.1（同上，npm alpha 通道隔离核心）
-#   13) runtime 冒烟 0.2.1-alpha.2（同上）
-#   14) runtime 冒烟 0.2.1-alpha.3（同上）
-#   15) runtime 冒烟 0.2.1-alpha.5（同上，npm alpha 通道隔离核心）
-#   16) runtime 冒烟 0.2.1-rc.2（同上，npm next 通道隔离核心）
-#   17) runtime 冒烟 0.2.1-rc.3（同上，npm next 通道隔离核心；2026-10-26 复核）
-#   18) runtime 冒烟 0.2.1-rc.4（同上，npm next 通道隔离核心；2026-10-28 复核）
-#   19) runtime 冒烟 0.2.2-alpha.2（同上，npm alpha 通道隔离核心；2026-10-28 复核）
-#   20) runtime 冒烟 0.2.1-rc.5（同上，latest/next 通道；2026-10-30 复核）
-#   21) runtime 冒烟 0.2.2-alpha.3（同上，npm alpha 通道隔离核心；2026-11-04 复核，cordis 4.0.6-alpha.2）
-#   22) runtime 冒烟 0.2.2-rc.1（同上，npm next 通道隔离核心；2026-11-05 复核，cordis 4.1.0 稳定档）
-#   23) runtime 冒烟 0.2.2-rc.2（同上，npm next 通道隔离核心；2026-11-12 复核，cordis 4.1.0 稳定档，L3 客户端全绿）
-#
-# 用法：bash scripts/verify-dual.sh [0.1.1核心bin.js] [0.1.5核心bin.js] [0.1.6核心bin.js] [0.1.5-rc.3核心bin.js] [0.1.7核心bin.js] [0.1.7-rc.1核心bin.js] [0.1.7-rc.2核心bin.js] [0.2.0-rc.1核心bin.js] [0.2.0-rc.2核心bin.js] [0.2.1-alpha.1核心bin.js] [0.2.1-alpha.2核心bin.js] [0.2.1-alpha.3核心bin.js] [0.2.1-alpha.5核心bin.js] [0.2.1-rc.2核心bin.js] [0.2.1-rc.3核心bin.js]
-#   默认 0.1.1 用 /tmp/dshcore/dsh-0-1-1-rc-2/...；0.1.5 用固定版本隔离核心（不随本机 dsh 演进）；
-#   其余隔离核心用 /tmp/dshcore/dsh-<ver>/...
-#   隔离核心获取：`bash scripts/ensure-core.sh <ver>`（自动选 pnpm/npm，见 TEST-SYSTEM.md）
-#   （旧路径 /tmp/dsh011-core、/tmp/dsh012-core、/tmp/dsh015-core、/tmp/dsh015-rc2-core、
-#   /tmp/dsh016a2-core 已退役，统一收敛到 /tmp/dshcore/dsh-<ver> 布局，见 compat-contract §11.4）
-#   可显式传参验证（位置参数 $1-$21 依次覆盖 21 个默认核心）。
+# 多版本验证：支持区间两端 + 每条小版本线最新已验证版 + 当前 latest/next，去重。
+# 默认 9 版锚点、9 版 host/client typecheck、8 个核心 runtime（host + client）。
+# 固定已补验的版本快照，不在运行时把未验证的 dist-tag 自动纳入支持承诺。
+# 用法（插件目录）：
+#   bash scripts/verify-dual.sh                    # 收敛集
+#   bash scripts/verify-dual.sh --full             # 历史全集：24 版 / 21 核心
+#   bash scripts/verify-dual.sh 0.1.5-rc.2 [...]    # 显式版本，含历史版本；重复项去重
+#   bash scripts/verify-dual.sh --list [--full]    # 只列版本，供 CI / 巡检读取
+# 核心预先用 bash scripts/ensure-core.sh <版本> 准备；默认在 /tmp/dshcore。
+# DSHVM_CORE_ROOT 可覆盖隔离核心根目录，子目录仍为 dsh-<版本中点换横线>。
+# 旧的核心路径位置参数改为版本号；单核心自定义路径用 smoke-runtime.sh <bin.js> <port>。
+# DSHVM_SMOKE_PORT 可指定起始端口（默认 3135），各核心串行运行、端口依次递增。
+# 每版验证深度不变：历史仅做锚点/类型的 0.1.2-rc.1、0.1.5-rc.1、0.1.7-alpha.1
+# 不冒充有 runtime 结果；其它版本调用原 smoke-runtime.sh，保留全部 host/client 检查。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CORE_011="${1:-/tmp/dshcore/dsh-0-1-1-rc-2/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_015="${2:-/tmp/dshcore/dsh-0-1-5-rc-2/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_016="${3:-/tmp/dshcore/dsh-0-1-6-alpha-2/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_015R3="${4:-/tmp/dshcore/dsh-0-1-5-rc-3/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_017="${5:-/tmp/dshcore/dsh-0-1-7-alpha-2/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_017RC1="${6:-/tmp/dshcore/dsh-0-1-7-rc-1/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_017RC2="${7:-/tmp/dshcore/dsh-0-1-7-rc-2/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_020RC1="${8:-/tmp/dshcore/dsh-0-2-0-rc-1/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_020RC2="${9:-/tmp/dshcore/dsh-0-2-0-rc-2/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_021A1="${10:-/tmp/dshcore/dsh-0-2-1-alpha-1/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_021A2="${11:-/tmp/dshcore/dsh-0-2-1-alpha-2/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_021A3="${12:-/tmp/dshcore/dsh-0-2-1-alpha-3/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_021A5="${13:-/tmp/dshcore/dsh-0-2-1-alpha-5/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_021RC2="${14:-/tmp/dshcore/dsh-0-2-1-rc-2/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_021RC3="${15:-/tmp/dshcore/dsh-0-2-1-rc-3/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_021RC4="${16:-/tmp/dshcore/dsh-0-2-1-rc-4/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_021RC5="${18:-/tmp/dshcore/dsh-0-2-1-rc-5/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_022A2="${17:-/tmp/dshcore/dsh-0-2-2-alpha-2/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_022A3="${19:-/tmp/dshcore/dsh-0-2-2-alpha-3/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_022RC1="${20:-/tmp/dshcore/dsh-0-2-2-rc-1/node_modules/@deepseek-ai/dsh/lib/bin.js}"
-CORE_022RC2="${21:-/tmp/dshcore/dsh-0-2-2-rc-2/node_modules/@deepseek-ai/dsh/lib/bin.js}"
+DEFAULT_VERSIONS=(0.1.1-rc.2 0.1.2-rc.1 0.1.5-rc.3 0.1.6-alpha.2 0.1.7-rc.2 0.2.0-rc.2 0.2.1-rc.5 0.2.2-rc.1 0.2.2-rc.2)
+FULL_VERSIONS=(0.1.1-rc.2 0.1.2-rc.1 0.1.5-rc.1 0.1.5-rc.2 0.1.5-rc.3 0.1.6-alpha.2 0.1.7-alpha.1 0.1.7-alpha.2 0.1.7-rc.1 0.1.7-rc.2 0.2.0-rc.1 0.2.0-rc.2 0.2.1-alpha.1 0.2.1-alpha.2 0.2.1-alpha.3 0.2.1-alpha.5 0.2.1-rc.2 0.2.1-rc.3 0.2.1-rc.4 0.2.1-rc.5 0.2.2-alpha.2 0.2.2-alpha.3 0.2.2-rc.1 0.2.2-rc.2)
 
-echo "======== 1/24 锚点检查（0.1.1-rc.2 / 0.1.2-rc.1 / 0.1.5-rc.1 / 0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.6-alpha.2 / 0.1.7-alpha.1 / 0.1.7-alpha.2 / 0.1.7-rc.1 / 0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2 / 0.2.1-alpha.1 / 0.2.1-alpha.2 / 0.2.1-alpha.3 / 0.2.1-alpha.5 / 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.1-rc.4 / 0.2.1-rc.5 / 0.2.2-alpha.2 / 0.2.2-alpha.3 / 0.2.2-rc.1 / 0.2.2-rc.2）========"
-# 注意：版本号必须写字面量（check-dsh-version.sh 用 awk 从本文件提取字面版本做覆盖比对，变量会被漏掉）。
-node scripts/check-anchors.mjs 0.1.1-rc.2 0.1.2-rc.1 0.1.5-rc.1 0.1.5-rc.2 0.1.5-rc.3 0.1.6-alpha.2 0.1.7-alpha.1 0.1.7-alpha.2 0.1.7-rc.1 0.1.7-rc.2 0.2.0-rc.1 0.2.0-rc.2 0.2.1-alpha.1 0.2.1-alpha.2 0.2.1-alpha.3 0.2.1-alpha.5 0.2.1-rc.2 0.2.1-rc.3 0.2.1-rc.4 0.2.1-rc.5 0.2.2-alpha.2 0.2.2-alpha.3 0.2.2-rc.1 0.2.2-rc.2
+full=0
+list=0
+VERSIONS=()
+for arg in "$@"; do
+  case "$arg" in
+    --full) full=1 ;;
+    --list) list=1 ;;
+    [0-9]*.[0-9]*.[0-9]*) VERSIONS+=("$arg") ;;
+    *) echo "未知参数: ${arg}（使用 --full、--list 或版本号）" >&2; exit 2 ;;
+  esac
+done
+if [ "$full" -eq 1 ]; then
+  [ "${#VERSIONS[@]}" -eq 0 ] || { echo '--full 不能与显式版本混用' >&2; exit 2; }
+  VERSIONS=("${FULL_VERSIONS[@]}")
+elif [ "${#VERSIONS[@]}" -eq 0 ]; then
+  VERSIONS=("${DEFAULT_VERSIONS[@]}")
+fi
+# bash 3.2 兼容，不依赖关联数组；--list 和实际执行使用同一个去重结果。
+UNIQUE=()
+for v in "${VERSIONS[@]}"; do
+  case " ${UNIQUE[*]:-} " in *" $v "*) ;; *) UNIQUE+=("$v") ;; esac
+done
+VERSIONS=("${UNIQUE[@]}")
+if [ "$list" -eq 1 ]; then
+  printf '%s\n' "${VERSIONS[@]}"
+  exit 0
+fi
 
-echo "======== 2/24 二十三版本 typecheck ========"
-bash scripts/typecheck-dual.sh 0.1.1-rc.2 0.1.2-rc.1 0.1.5-rc.1 0.1.5-rc.2 0.1.5-rc.3 0.1.6-alpha.2 0.1.7-alpha.1 0.1.7-alpha.2 0.1.7-rc.1 0.1.7-rc.2 0.2.0-rc.1 0.2.0-rc.2 0.2.1-alpha.1 0.2.1-alpha.2 0.2.1-alpha.3 0.2.1-alpha.5 0.2.1-rc.2 0.2.1-rc.3 0.2.1-rc.4 0.2.1-rc.5 0.2.2-alpha.2 0.2.2-alpha.3 0.2.2-rc.1 0.2.2-rc.2
+echo "======== 锚点检查（${#VERSIONS[@]} 版）========"
+node scripts/check-anchors.mjs "${VERSIONS[@]}"
+echo "======== host/client typecheck（${#VERSIONS[@]} 版）========"
+bash scripts/typecheck-dual.sh "${VERSIONS[@]}"
 
-echo "======== 3/24 runtime 冒烟 0.1.1 ========"
-DSH_TEST_SKIP_HMR_WATCH=1 bash scripts/smoke-runtime.sh "$CORE_011" 3135   # 0.1.1 核心需 HMR 跳过夹具（ensure-core.sh 自动打）
+cores=0
+port="${DSHVM_SMOKE_PORT:-3135}"
+for v in "${VERSIONS[@]}"; do
+  case "$v" in
+    0.1.2-rc.1|0.1.5-rc.1|0.1.7-alpha.1)
+      echo "历史验证边界：$v 仅锚点/typecheck，runtime 未纳入本台架"
+      continue ;;
+  esac
+  core="${DSHVM_CORE_ROOT:-/tmp/dshcore}/dsh-${v//./-}/node_modules/@deepseek-ai/dsh/lib/bin.js"
+  echo "======== runtime 冒烟 $v ========"
+  if [ "$v" = 0.1.1-rc.2 ]; then
+    DSH_TEST_SKIP_HMR_WATCH=1 bash scripts/smoke-runtime.sh "$core" "$port"
+  else
+    bash scripts/smoke-runtime.sh "$core" "$port"
+  fi
+  cores=$((cores + 1))
+  port=$((port + 1))
+done
 
-echo "======== 4/24 runtime 冒烟 0.1.5 ========"
-bash scripts/smoke-runtime.sh "$CORE_015" 3136
-
-echo "======== 5/24 runtime 冒烟 0.1.6-alpha.2 ========"
-bash scripts/smoke-runtime.sh "$CORE_016" 3137
-
-echo "======== 6/24 runtime 冒烟 0.1.5-rc.3 ========"
-bash scripts/smoke-runtime.sh "$CORE_015R3" 3138
-
-echo "======== 7/24 runtime 冒烟 0.1.7-alpha.2 ========"
-bash scripts/smoke-runtime.sh "$CORE_017" 3139
-
-echo "======== 8/24 runtime 冒烟 0.1.7-rc.1 ========"
-bash scripts/smoke-runtime.sh "$CORE_017RC1" 3140
-
-echo "======== 9/24 runtime 冒烟 0.1.7-rc.2 ========"
-bash scripts/smoke-runtime.sh "$CORE_017RC2" 3141
-
-echo "======== 10/24 runtime 冒烟 0.2.0-rc.1 ========"
-bash scripts/smoke-runtime.sh "$CORE_020RC1" 3142
-
-echo "======== 11/24 runtime 冒烟 0.2.0-rc.2 ========"
-bash scripts/smoke-runtime.sh "$CORE_020RC2" 3143
-
-echo "======== 12/24 runtime 冒烟 0.2.1-alpha.1 ========"
-bash scripts/smoke-runtime.sh "$CORE_021A1" 3144
-
-echo "======== 13/24 runtime 冒烟 0.2.1-alpha.2 ========"
-bash scripts/smoke-runtime.sh "$CORE_021A2" 3145
-
-echo "======== 14/24 runtime 冒烟 0.2.1-alpha.3 ========"
-bash scripts/smoke-runtime.sh "$CORE_021A3" 3146
-
-echo "======== 15/24 runtime 冒烟 0.2.1-alpha.5 ========"
-bash scripts/smoke-runtime.sh "$CORE_021A5" 3147
-
-echo "======== 16/24 runtime 冒烟 0.2.1-rc.2 ========"
-bash scripts/smoke-runtime.sh "$CORE_021RC2" 3148
-
-echo "======== 17/24 runtime 冒烟 0.2.1-rc.3 ========"
-bash scripts/smoke-runtime.sh "$CORE_021RC3" 3149
-
-echo "======== 18/24 runtime 冒烟 0.2.1-rc.4 ========"
-bash scripts/smoke-runtime.sh "$CORE_021RC4" 3150
-
-echo "======== 19/24 runtime 冒烟 0.2.2-alpha.2 ========"
-bash scripts/smoke-runtime.sh "$CORE_022A2" 3151
-
-echo "======== 20/24 runtime 冒烟 0.2.1-rc.5 ========"
-bash scripts/smoke-runtime.sh "$CORE_021RC5" 3152
-
-echo "======== 21/24 runtime 冒烟 0.2.2-alpha.3 ========"
-bash scripts/smoke-runtime.sh "$CORE_022A3" 3153
-
-echo "======== 22/24 runtime 冒烟 0.2.2-rc.1 ========"
-bash scripts/smoke-runtime.sh "$CORE_022RC1" 3155
-
-echo "======== 23/24 runtime 冒烟 0.2.2-rc.2 ========"
-bash scripts/smoke-runtime.sh "$CORE_022RC2" 3156
-
-echo ""
-echo "✓✓✓ 全量验证通过：24 版锚点 + 24 版 typecheck + 21 核心 runtime 冒烟（host + client mic/console）"
-echo "提示：真流程回归（create→toggle→prompt→SSE 音频帧 + 真 LLM）在各隔离核心上跑——"
-echo "      bash scripts/full-e2e.sh /tmp/dshcore/dsh-<ver>/node_modules/@deepseek-ai/dsh/lib/bin.js <port>"
+echo "✓ 验证通过：${#VERSIONS[@]} 版锚点 + ${#VERSIONS[@]} 版双 typecheck + $cores 核心 runtime"
+echo '真 LLM 流程另用 bash scripts/full-e2e.sh <隔离核心bin.js> <port> 验证。'
