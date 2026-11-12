@@ -1155,6 +1155,7 @@ function splitSentences(chunk) {
   let lastEnd = 0;
   while ((m = re.exec(chunk)) !== null) {
     const end = m.index + m[0].length;
+    if (m[0] === "." && end === chunk.length && /\d/.test(chunk[m.index - 1] ?? "")) continue;
     sentences.push(chunk.slice(start, end));
     start = end;
     lastEnd = end;
