@@ -1356,7 +1356,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       // 恢复失败不阻塞（部分场景仍可用；状态条会提示收音异常）
     }
     // I2：resume await 后复检抢占。此前唯一抢占检查在 getUserMedia 返回点，stop()
-    // 落入 resume/addModule 异步窗口时被吞（stop 在 wasActive=false 时早返、不停
+    // 落入 resume/addModule 异步窗口时被吞（旧 stop 在 wasActive=false 时早返、不停
     // tracks、不递增 startSeq）→ 麦道常开 + 幽灵上行（stop 后 partial 仍在飞）。
     if (stopRequested || mySeq !== startSeq) {
       await abandonStart(myStream, myCtx)
@@ -1572,12 +1572,13 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       // 观察项 3 修复（Issue #15 批 8）：捕获本次 stop 的启动世代——收尾（stopRecorder）
       // 跨过新 start() 完成时不踩新会话状态。旧实现末尾无条件 setState('idle')：新会话已置
       // 'wake'/'listening' 且 active=true 在收音，却被旧收尾踩成 'idle'（状态条误显退出）。
-      // 早返分支（!wasActive）在此之前无 await 点、新启动无从插入，故不需守卫。
+      // 无已取得资源的早返分支没有 await 点，新启动无从插入，故不需守卫。
       const myStopSeq = startSeq
       // 根治 403：stop 立即置 active=false，阻止 handleAudio 在 stopRecorder 异步完成前继续发请求。
       const wasActive = active
       active = false
-      if (!wasActive) {
+      // 启动尚未 active 但已取到流时，也要立即释放，不能等 resume/addModule 返回。
+      if (!wasActive && !stream && !audioCtx) {
         setState('idle')
         return
       }

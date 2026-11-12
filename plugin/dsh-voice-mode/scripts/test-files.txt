@@ -81,3 +81,4 @@ test/enter-timeout-cancel.test.mjs
 test/audio-fallback-reset.test.mjs
 test/statusbar-aria.test.mjs
 test/llm-correct-similarity.test.mjs
+test/asr-lifecycle-races.test.mjs
