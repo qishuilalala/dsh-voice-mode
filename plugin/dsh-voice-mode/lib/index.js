@@ -1683,7 +1683,7 @@ var TtsQueue = class {
       q.epoch++;
       q.pending.length = 0;
     }
-    this.engine.interrupt?.();
+    if (![...this.queues].some(([sid, other]) => sid !== sessionId && other.busy)) this.engine.interrupt?.();
   }
   /** 会话退出/被抢占时彻底清理其队列（防止 Map 长期累积）。 */
   prune(sessionId) {
@@ -3216,6 +3216,11 @@ function apply(ctx, config) {
     if (sessionId === null || sessionId === activeVoiceSession || tapInFlight.has(sessionId)) return;
     dropTurnTables(sessionId);
   };
+  const stopFocusReading = (sessionId) => {
+    if (sessionId === null) return;
+    queue.cancel(sessionId);
+    turnGen.set(sessionId, (turnGen.get(sessionId) ?? 0) + 1);
+  };
   const sessions = ctx.get("sessions");
   const limiter = new RateLimiter();
   const limiterPrune = setInterval(() => limiter.prune(Date.now(), 6e4), 6e4);
@@ -3391,7 +3396,7 @@ function apply(ctx, config) {
     // 单句重试耗尽被跳过：显式下行（客户端提示 + 诊断），不再静默丢句。
     // streak = 连续被跳过的句数：客户端据此区分偶发抖动与「云端整体不可用」（如服务端拒绝握手）。
     onSkip: (sessionId, text, streak) => broadcast("tts-skip", { sessionId, text: text.slice(0, 80), streak }),
-    onIdle: (sessionId) => broadcast("tts-idle", { sessionId }),
+    onIdle: (sessionId) => broadcast("tts-idle", { sessionId, turn: turnOfSession.get(sessionId)?.turn }),
     // R15（Issue #15 Important-2 host 侧接线）：onIdle 降级为「候选空闲」——「队列排空」不等于
     // 「回合结束」。带工具调用的回合会在工具执行期间把队列排空一次，据此发 tts-idle 会让
     // mode:once 在空档里提前 exitMode（麦克风熄灭、后半段回复永不朗读）。置 true 后 tts-idle
@@ -3497,7 +3502,7 @@ function apply(ctx, config) {
         setTurn(sessionId, state, turn);
       },
       vset.readAloud !== "off",
-      () => readMuted.has(sessionId)
+      () => readMuted.has(sessionId) || turnGen.get(sessionId) !== gen
     );
   });
   ctx.on("agent/turn-stopping", ({ agent }) => queue.noteTurnEnd(agent.id));
@@ -4065,6 +4070,7 @@ function apply(ctx, config) {
             focusedSessionId = null;
             focusedTabId = null;
           }
+          if (prevFocus !== null && prevFocus !== focusedSessionId) stopFocusReading(prevFocus);
           if (prevFocus !== null && prevFocus !== focusedSessionId) reclaimFocusState(prevFocus);
           broadcast("focus", { sessionId: focusedSessionId, tabId: focusedTabId });
           respondJson2(res, 200, { ok: true, sessionId: focusedSessionId, tabId: focusedTabId });

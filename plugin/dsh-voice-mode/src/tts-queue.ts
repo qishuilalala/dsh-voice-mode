@@ -560,7 +560,8 @@ export class TtsQueue {
     }
     // 立刻中止在途合成：本地引擎杀子进程释放 CPU（在途句已被作废；否则其
     // 满核合成会饿死主进程的 ASR 解码，打断后定稿等待可达分钟级——实测根因）。
-    this.engine.interrupt?.()
+    // 引擎由所有会话共享；有其它会话在途时只作废本会话，不能杀掉它们的合成。
+    if (![...this.queues].some(([sid, other]) => sid !== sessionId && other.busy)) this.engine.interrupt?.()
   }
 
   /** 会话退出/被抢占时彻底清理其队列（防止 Map 长期累积）。 */

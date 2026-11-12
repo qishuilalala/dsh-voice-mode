@@ -1225,7 +1225,11 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     })
     source.addEventListener('focus', (e: MessageEvent<string>) => {
       try {
-        focusOwnerTab = (JSON.parse(e.data) as { tabId?: string | null }).tabId ?? null
+        const tabId = (JSON.parse(e.data) as { tabId?: string | null }).tabId ?? null
+        // 空焦点也可能来自 SSE 瞬断；只有明确转交其它标签页才在此停播。
+        if (focusOwnerTab === TAB_ID && tabId !== null && tabId !== TAB_ID && focusedSessionId !== null &&
+          (activeSessionId === null || activeSessionId === focusedSessionId)) doSkipAudio(focusedSessionId)
+        focusOwnerTab = tabId
       } catch {
         // ignore malformed frame
       }
@@ -1329,7 +1333,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     })
     source.addEventListener('tts-idle', (e: MessageEvent<string>) => {
       try {
-        const ev = JSON.parse(e.data) as { sessionId?: string }
+        const ev = JSON.parse(e.data) as { sessionId?: string; turn?: number }
+        // 有权威回合号时拒绝旧回合的迟到通知；无编号保持旧宿主兼容。
+        if (ev.sessionId && ev.turn !== undefined && ev.turn < (currentTurn.get(ev.sessionId) ?? ev.turn)) return
         if (ev.sessionId === activeSessionId && !ui.ttsDrained) {
           ui.ttsDrained = true
           notify()
@@ -1745,6 +1751,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       if (sessionId === null) {
         const { changed, focused } = focusRelease(focusOwners, owner)
         if (!changed) return
+        if (focusedSessionId !== focused) doSkipAudio(focusedSessionId)
         focusedSessionId = focused
         if (focused !== null) {
           // 焦点回落到仍存活的实例 → 同步给 host（否则 host 仍记着已卸载实例的会话）。
@@ -1755,6 +1762,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         return
       }
       focusClaim(focusOwners, owner, sessionId)
+      if (focusedSessionId !== null && focusedSessionId !== sessionId) doSkipAudio(focusedSessionId)
       focusedSessionId = sessionId
       if (typeof document === 'undefined' || document.visibilityState === 'visible') postFocus(sessionId)
     },
@@ -2521,7 +2529,7 @@ export function MicButton({
     setOnceWaiting(true)
     // 关麦但留在语音模式（host 仍按语音会话朗读回复）；engine.stop 幂等，退出时再 stop 无副作用。
     void engineRef.current?.stop()
-    bus.setUi({ partial: '', levels: [], isSpeech: undefined })
+    bus.setUi({ partial: '', levels: [], isSpeech: undefined, ttsDrained: false })
     checkOnce()
   }
 
@@ -2627,6 +2635,10 @@ export function MicButton({
       // 2) 有 running 回合则 session.cancel({keepInbox:true})（取消生成、保新消息）
       // 3) 半截标注由「转录区新消息续入」自然呈现（Q8 标注见 §8.5 收尾）
       const hardBreak = async (): Promise<void> => {
+        // 用户打断表示还要继续说：撤销这一轮的自然收尾及全部兜底计时。
+        // 必须早于 skipAudio 的同步通知；迟到/重复 tts-idle 不能重建 once 等待。
+        const resumeOnce = bootNow().mode === 'once' && onceRef.current !== null
+        if (resumeOnce) { clearOnce(); resetIdle() }
         // 立即停播 + 恢复音量：不等待慢操作（discardSegment 最多 5s、cancel 最多 3s）。
         bus.skipAudio()
         bus.unduckAudio()
@@ -2662,7 +2674,14 @@ export function MicButton({
         // 异步清理：丢弃残余段（防残缺文本 autoSend）+ host 静音 + 取消回合。
         // hold 按压中（含 toggle 模式按住 Ctrl）不丢弃：本段是用户明确要说的内容，
         // 打断只停 AI——否则按住说的前半句会被吃掉。
-        if (engineRef.current && !engineRef.current.holding) await engineRef.current.discardSegment()
+        if (resumeOnce) {
+          // once 等回复时已关麦；恢复当前引擎，松手/退出发生在启动期间时不重新接管按压。
+          const eng = engineRef.current
+          void eng?.start().then(() => {
+            if (engineRef.current !== eng || localRef.current !== 'on' || !mountedRef.current) return
+            if (manualHoldRef.current || toggleHoldRef.current) eng.beginHeld()
+          }).catch(() => bus.setUi({ error: t('micUnavailable') }))
+        } else if (engineRef.current && !engineRef.current.holding) await engineRef.current.discardSegment()
         await cancelP
         // M3：hardBreak 后的「…」占位 3s 后自清——用户不再开口时不在状态条留残留
         // 字幕（下一拍 onPartial/onSegment 会自然覆盖，此处只兜底）。
@@ -3275,7 +3294,7 @@ export function MicButton({
         return
       }
       const eng = engineRef.current
-      if (e.key === 'Control' && !e.shiftKey && !e.altKey && !e.metaKey && !e.repeat && eng && !onceRef.current) {
+      if (e.key === 'Control' && !e.shiftKey && !e.altKey && !e.metaKey && !e.repeat && eng && (!onceRef.current || bootNow().mode === 'once')) {
         // 单独 Ctrl 按下：记录起点；hold 模式起 600ms 定时器，toggle 模式延迟到 keyup 判定。
         ctrlHoldStart = Date.now()
         otherKeyDuringCtrl = false
@@ -3287,7 +3306,7 @@ export function MicButton({
             setHolding(true)
             eng.beginHeld()
           }, 600)
-        } else if (bootNow().bargeInMode === 'manual' && bus.ui.playing) {
+        } else if ((bootNow().bargeInMode === 'manual' && bus.ui.playing) || (bootNow().mode === 'once' && onceRef.current)) {
           // 手动打断（外放）：按住 Ctrl 立即停 AI + 接管收音（不依赖 VAD，回声无关）。
           manualHoldRef.current = true
           setHolding(true)
@@ -3610,7 +3629,7 @@ export function MicButton({
           }, 250)
         }
       }
-    } else if (localRef.current === 'on' && bus.ui.playing && !onceRef.current) {
+    } else if (localRef.current === 'on' && ((bus.ui.playing && !onceRef.current) || (bootNow().mode === 'once' && onceRef.current))) {
       // toggle 模式（持续聆听）：播放中按住 = 长按打断 + 接管收音（与 hold 手势统一）；
       // 打断同样延迟到 ≥250ms，短按退出不取消回复。
       toggleHoldRef.current = true
@@ -3619,7 +3638,7 @@ export function MicButton({
       eng?.beginHeld()
       breakTimerRef.current = setTimeout(() => {
         breakTimerRef.current = null
-        if (holdPtrRef.current && bus.ui.playing) void breakRef.current?.()
+        if (holdPtrRef.current && (bus.ui.playing || onceRef.current)) void breakRef.current?.()
       }, 250)
     }
   }

@@ -22,7 +22,7 @@
 - `src/asr.ts`：正常语音分支在 `config.isPlaying()` 为真时**不入段**（自聊防护），仅把播放前已开着的段立即收口（`finalizeSegment(true)`，其体内 asr.ts:714 置 `speechActive=false`——播放期用户语音因此永远不进段）。
 - `src/asr.ts`（`requestDetect`）：播放期且未开口时轮询只走 `requestDetect()`（检测通道），常规 partial 断流。
 - `src/client.tsx`（`hardBreak`）：hardBreak = skipAudio + cancelTurn + POST /cancel（`keepAsr = engine.holding === true`）+ 非 hold 时 `discardSegment()`（:2511）。（**2026-10-21 按 HEAD `465c253` 重锚**：R15-G 的焦点归属实例级化在 `src/client.tsx` 增 +54 行，本行处位移 +51；旧值 2392 / 2422 为 `3154433` 口径）
-- `src/index.ts:1775`：host 收到 /cancel，`keepAsr !== true` 时 `asr.reset(sessionId)`（:1577；host 识别流清空，asr-host.ts:781-813 reset 函数内 resetGen++（:800）且连带释放检测 VAD（:802-812））。
+- `src/index.ts:1783`：host 收到 /cancel，`keepAsr !== true` 时 `asr.reset(sessionId)`（:1577；host 识别流清空，asr-host.ts:781-813 reset 函数内 resetGen++（:800）且连带释放检测 VAD（:802-812））。
 - `src/asr.ts:1487-1554`：discardSegment 清空本地段 + segmentEpoch++ + resetHostStream。
 
 后果链：hardBreak 确认需 confirmFrames×100ms + 上行往返（真机 confirmMs ~490ms，CONTEXT.md:37/42），用户打断开口到打断生效之间说的全部语音只短暂存在于 detectChunks（上限 1s，`src/asr.ts` MAX_DETECT_PENDING，且被检测消费/弃段时清空）——既未进识别段、未上 host 流，hardBreak 后新段从零开始。**丢的正是「打断那句话」**，与用户报告「整段或丢开头、长段落尤其明显」完全吻合。
@@ -46,7 +46,7 @@
 ### 问题④识别慢 —— 部分基线已存在，缺口待代理取证合并
 
 - 定稿链：asr.ts:585-723 finalizeSegment（3 次有界重试、10s 超时）→ host asr-host.ts SenseVoice 整句重转（模型 int8 ~228MB）。
-- `src/client.tsx:3991-3995`：定稿期状态条已有「识别中」（`transcribing` → `t('recognizing')`；原锚 2513-2530 已漂移）——用户「显示定稿中进度」诉求部分已覆盖，缺的是**耗时可见性**（elapsed）与快速模式（待代理取证）。
+- `src/client.tsx:4010-4014`：定稿期状态条已有「识别中」（`transcribing` → `t('recognizing')`；原锚 2513-2530 已漂移）——用户「显示定稿中进度」诉求部分已覆盖，缺的是**耗时可见性**（elapsed）与快速模式（待代理取证）。
 - 用户建议的「先用流式结果立即发送、后台校正后替换」需要宿主支持编辑已发送 user message——主会话预判宿主无此 API（QueueAction 仅对待入队项生效，contract/session.d.ts:95-97），预计降级为「快速/准确模式开关」。
 
 ## 2. 代理取证结论（5 路并行，回报后合并+对抗校验）
