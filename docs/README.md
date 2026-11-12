@@ -34,6 +34,8 @@
 
 ## 其他资料
 
+- [2026-11-12 三视角治理审计](governance/2026-11-12.md) —— 基线复核、分阶段路线与待维护者拍板事项
+
 - [docs/compat-contract.md](compat-contract.md) —— dsh 多版本兼容契约（schema 实证表 / 9 个 inject 锚点 / 逐版本记录，非所有未来版本保证）
 - [docs/glossary.md](glossary.md) —— 项目词汇表
 - [docs/fixture-recording.md](fixture-recording.md) —— 真机录制开关与方法
