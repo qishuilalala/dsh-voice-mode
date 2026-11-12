@@ -255,7 +255,7 @@
 
 - `docs/compat-contract.md` 新增 §9（顶端三档口径 + 实证矩阵 + 与 §8 差异 + engines 语义澄清 + 隔离核心获取步骤 + §7/§8 漂移修正）。
 - `CONTEXT.md` 宿主兼容行扩为 `0.1.1-rc.2 → 0.1.5-rc.2 + 0.1.6-alpha.2 预览`，引 §9。
-- `plugin/dsh-voice-mode/package.json` description 英文/中文同步加 `0.1.6-alpha.2 preview` 措辞。
+- `plugin/dsh-voice-mode/package.json` 的 `description` 英文/中文同步加 `0.1.6-alpha.2 preview` 措辞。
 - `plugin/dsh-voice-mode/README.md` 第 18 行：兼容列表 + 版本漂移 `v0.7.7 → v0.7.10` + 测试数 `325 → 385`（P0 实测；**2026-09-19 复核修正为 380 项**）。
 - `docs/rules/STATE.md` 本段（重写式 ledger 新任务独立 H2 段，不追加行）。
 
