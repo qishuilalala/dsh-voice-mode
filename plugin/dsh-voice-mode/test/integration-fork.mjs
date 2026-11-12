@@ -1,8 +1,9 @@
 // fork 集成测试：直接加载构建产物 lib/index.js，以假 Context 验证
-// ① 安全守卫（回环/Origin/会话存在性/限流）② 本地 VITS 试听合成全链路。
+// ① 安全守卫（回环/Origin/会话存在性/限流）② 本地 VITS / Kokoro 试听合成全链路。
 // 注意（Issue #15 R1 M6）：参数化手动脚本，不在 npm test 链——需本地模型缓存目录
 // （CI 干净环境无 200MB+ 模型，串联会假绿或超时），按需手动跑。
-// 用法：node test/integration-fork.mjs <model-cache-dir>
+// 手动运行（插件目录）：npm run build && node test/integration-fork.mjs <model-cache-dir>
+// 缓存需包含 VITS / Kokoro 模型及 espeak 数据；缺失时可能联网下载，Kokoro 还需可用原生运行时。
 const CACHE = process.argv[2]
 if (!CACHE) {
   console.error('usage: node test/integration-fork.mjs <model-cache-dir>')

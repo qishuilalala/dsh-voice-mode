@@ -3,7 +3,9 @@
 // （cacheDir 取 DSH_VM_MODELS 或默认 ~/.cache/dsh-voice-mode/models；原硬编码 Windows
 // 路径 K:/DSH-plugin-builds 已于批 I ddd1f7b 移除）。会在 cwd 建 .tmp-tts- 临时目录
 // （结束清理；异常中断可能残留，需手动删）。
-// 用法：node test/verify-bazong-path.mjs
+// 手动运行（插件目录）：DSH_VM_MODELS=<model-cache-dir> node test/verify-bazong-path.mjs
+// 已知阻塞（2026-11-12）：本文件未导入 esbuild 的 build，当前会抛 ReferenceError；
+// 保留作手动诊断对象，修复台架后再验证真实音色，不将其记为离线测试通过。
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 const require = createRequire(import.meta.url)

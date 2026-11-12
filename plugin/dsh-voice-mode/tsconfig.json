@@ -20,9 +20,11 @@
   },
   "include": [
     "src/ambient.d.ts",
+    "src/sherpa-onnx-node.d.ts",
     "src/index.ts",
     "src/asr-host.ts",
     "src/tts-queue.ts",
+    "src/tts-vits-worker.ts",
     "src/segmenter.ts"
   ],
   "exclude": [
