@@ -21,11 +21,11 @@
 
 > 在 DeepSeek Harness 会话内进行语音输入、编辑草稿和按句朗读，支持字幕及发声打断。识别在宿主端推理；默认 Edge 朗读访问微软在线服务，本地 VITS / Kokoro 可选。自动发送和打断行为可在设置中调整，实际效果取决于模型、设备、回声消除和网络。
 
-## 当前状态（2026-10-28）
+## 当前状态（2026-11-12）
 
-兼容跟进（2026-10-30）：已对最新 dsh 0.2.1-rc.5 完成锚点、类型和隔离运行时复核，详见[兼容契约](docs/compat-contract.md)；这不等同真实麦克风或全平台验收。
+兼容跟进：已对最新 dsh 0.2.2-rc.2 完成锚点、类型和隔离运行时复核（含客户端侧，L3 全绿），详见[兼容契约](docs/compat-contract.md)；这不等同真实麦克风或全平台验收。
 
-- **v0.7.34 补丁版**：修复 Kokoro 主模型及固定摘要支持文件因上游替换而下载校验失败的问题；可安装版本以 [npm](https://www.npmjs.com/package/dsh-voice-mode) 与 [Releases](https://github.com/qishuilalala/dsh-voice-mode/releases) 为准。
+- **v0.7.36 补丁版**：覆盖 dsh 0.2.2-rc.2，对外「已验证至」0.2.2-rc.2；可安装版本以 [npm](https://www.npmjs.com/package/dsh-voice-mode) 与 [Releases](https://github.com/qishuilalala/dsh-voice-mode/releases) 为准。
 - **升级提示**：v0.7.33 不包含这项下载修复。v0.7.34 使用与既有摘要匹配的上游历史版本，不改模型、音色或缓存目录；请勿关闭摘要校验。
 - **能力与验证分开**：CI 徽章展示对应分支的检查结果；真实听感、麦克风闭环和跨平台仍有未验收项。没有“所有设备都能精准打断”或“后续所有宿主版本兼容”的承诺。
 - **后续路线**：[当前路线图](docs/plan/roadmap-2026-10.md)；具体发布变化见 [CHANGELOG](CHANGELOG.md)，历史验证见[兼容契约](docs/compat-contract.md)。

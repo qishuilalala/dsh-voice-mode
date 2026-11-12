@@ -16,9 +16,9 @@ interrupts playback and the running turn. No additional speech-service API key i
 
 ![Real recording: streaming transcription → auto-send → sentence-by-sentence read-aloud with live captions](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
 
-> **Current status (2026-10-28):** v0.7.34 fixes Kokoro int8/fp32 model and explicitly hashed support-file downloads using historical upstream revisions that match the existing checksums. Check npm and Releases for availability; v0.7.33 does not contain this fix. Models, voices and cache locations are unchanged. Do not disable checksum verification.
+> **Current status (2026-11-12):** v0.7.36 covers dsh 0.2.2-rc.2, verified through 0.2.2-rc.2. Check npm and Releases for availability.
 
-Host compatibility check (2026-10-30): anchors, types and isolated runtime checks passed for dsh 0.2.1-rc.5. See the [compatibility record](../../docs/compat-contract.md) for evidence and unverified layers; this does not establish microphone or cross-platform acceptance.
+Host compatibility check: anchors, types and isolated runtime checks passed for dsh 0.2.2-rc.2 (including the client side). See the [compatibility record](../../docs/compat-contract.md) for evidence and unverified layers; this does not establish microphone or cross-platform acceptance.
 >
 > CI results do not establish real-device audio quality or compatibility with every host version. See the [changelog](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md), [compatibility evidence](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md), and [roadmap](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md). The declared dsh range is `>=0.1.1-rc.2 <0.3.0-0`; untested versions are not guaranteed.
 
@@ -325,7 +325,7 @@ Also: the on-device recording fixture used for debugging is **off by default**; 
 
 ### Compatibility declaration (what the plugin market's version filter reads)
 
-`package.json` declares `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`. This is an eligibility range, not evidence that every version in it has passed tests. The compatibility record lists tested releases through 0.2.2-alpha.2 and the forms actually exercised. The weekly workflow compares upstream tags and opens an issue for uncovered versions; it does not automatically rerun the full matrix. `peerDependencies` lists `@deepseek-ai/cordis` and `react` supplied by the host.
+`package.json` declares `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`. This is an eligibility range, not evidence that every version in it has passed tests. The compatibility record lists tested releases through 0.2.2-rc.2 and the forms actually exercised. The daily workflow compares upstream tags and opens an issue for uncovered versions; it does not automatically rerun the full matrix. `peerDependencies` lists `@deepseek-ai/cordis` and `react` supplied by the host.
 
 ## 🚧 Known limitations
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 一键多版本全量验证（全部脚本化、可复现），默认覆盖支持区间两端 + 最新预览通道：
-#   1) 锚点存在性检查（check-anchors.mjs，23 版：0.1.1 / 0.1.2 / 0.1.5-rc.1 / 0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.6-alpha.2 / 0.1.7-alpha.1 / 0.1.7-alpha.2 / 0.1.7-rc.1 / 0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2 / 0.2.1-alpha.1 / 0.2.1-alpha.2 / 0.2.1-alpha.3 / 0.2.1-alpha.5 / 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.1-rc.4 / 0.2.1-rc.5 / 0.2.2-alpha.2 / 0.2.2-alpha.3 / 0.2.2-rc.1 / 0.2.2-rc.2）
+#   1) 锚点存在性检查（check-anchors.mjs，24 版：0.1.1 / 0.1.2 / 0.1.5-rc.1 / 0.1.5-rc.2 / 0.1.5-rc.3 / 0.1.6-alpha.2 / 0.1.7-alpha.1 / 0.1.7-alpha.2 / 0.1.7-rc.1 / 0.1.7-rc.2 / 0.2.0-rc.1 / 0.2.0-rc.2 / 0.2.1-alpha.1 / 0.2.1-alpha.2 / 0.2.1-alpha.3 / 0.2.1-alpha.5 / 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.1-rc.4 / 0.2.1-rc.5 / 0.2.2-alpha.2 / 0.2.2-alpha.3 / 0.2.2-rc.1 / 0.2.2-rc.2）
 #   2) 二十四版本 typecheck（typecheck-dual.sh，各跑 host/client tsc）
 #   3) runtime 冒烟 0.1.1（smoke-runtime.sh：boot + host 三端点 + client mic/console）
 #   4) runtime 冒烟 0.1.5-rc.2（同上，本机 dsh 服务的核心）
@@ -30,7 +30,7 @@
 #   隔离核心获取：`bash scripts/ensure-core.sh <ver>`（自动选 pnpm/npm，见 TEST-SYSTEM.md）
 #   （旧路径 /tmp/dsh011-core、/tmp/dsh012-core、/tmp/dsh015-core、/tmp/dsh015-rc2-core、
 #   /tmp/dsh016a2-core 已退役，统一收敛到 /tmp/dshcore/dsh-<ver> 布局，见 compat-contract §11.4）
-#   可显式传参验证（位置参数依次覆盖 9 个默认核心）。
+#   可显式传参验证（位置参数 $1-$21 依次覆盖 21 个默认核心）。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

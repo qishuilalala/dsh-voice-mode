@@ -29,9 +29,9 @@ dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`）�
 - 状态条与字幕默认开启；两项都关掉即上图的「全部收进按钮」形态，此时录音计时显示在按钮下方、提示文字显示在按钮旁
 
 
-> **当前状态（2026-10-28）**：v0.7.34 修复 Kokoro int8/fp32 主模型及固定摘要支持文件下载校验失败；可安装版本以 npm 徽章与 Releases 为准。v0.7.33 不含这项修复。修复使用与既有摘要匹配的上游历史版本，不改模型、音色或缓存目录，请勿关闭摘要校验。
+> **当前状态（2026-11-12）**：v0.7.36 覆盖 dsh 0.2.2-rc.2，对外「已验证至」0.2.2-rc.2；可安装版本以 npm 徽章与 Releases 为准。
 
-兼容跟进（2026-10-30）：最新 dsh 0.2.1-rc.5 的锚点、类型与隔离运行时复核通过；完整证据和未验收层见[兼容契约](../../docs/compat-contract.md)。
+兼容跟进：最新 dsh 0.2.2-rc.2 的锚点、类型与隔离运行时复核通过（含客户端侧）；完整证据和未验收层见[兼容契约](../../docs/compat-contract.md)。
 >
 > CI 通过不代表真实听感、所有硬件或所有宿主版本均已验证。详见 [CHANGELOG](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md)、[兼容证据](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md)和[后续路线图](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md)。包声明范围为 `>=0.1.1-rc.2 <0.3.0-0`，未测版本不保证。
 
@@ -312,7 +312,7 @@ flowchart LR
 
 ### 兼容声明（插件市场的版本筛选依据）
 
-`package.json` 声明 `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`。这是版本准入范围，不代表区间内每个版本都已实测。兼容记录列出了截至 0.2.2-alpha.2 的已测版本及实际测试形态。每周工作流只比对上游标签并为未覆盖版本开 issue，不会自动跑完整矩阵。`peerDependencies` 声明宿主提供的 `@deepseek-ai/cordis` 与 `react`。
+`package.json` 声明 `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`。这是版本准入范围，不代表区间内每个版本都已实测。兼容记录列出了截至 0.2.2-rc.2 的已测版本及实际测试形态。每日工作流比对上游标签并为未覆盖版本开 issue，不会自动跑完整矩阵。`peerDependencies` 声明宿主提供的 `@deepseek-ai/cordis` 与 `react`。
 
 ## 🚧 已知限制
 
