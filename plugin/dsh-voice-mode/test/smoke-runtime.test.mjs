@@ -1,4 +1,10 @@
-/** 冒烟资源边界回归：不启动真实 dsh，不联网。运行：node test/smoke-runtime.test.mjs */
+/**
+ * 冒烟资源边界回归：不启动真实 dsh，不联网。
+ * 不在 npm test 链内：仅适用于 Linux，并断言 smoke-runtime.sh 的 systemd scope
+ * 资源隔离与强制回收合同；当前脚本尚不具备这些实现，macOS 会明确跳过。
+ * 本测试以桩替代 systemd-run，不要求真实 systemd 服务；保留断言，待对应实现恢复后验收。
+ * 手动运行（插件目录）：node test/smoke-runtime.test.mjs [待验证的 smoke-runtime.sh 路径]
+ */
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

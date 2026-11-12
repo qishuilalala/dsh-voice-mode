@@ -14,6 +14,7 @@ AGENTS.md
 CLAUDE.md
 # 本地草稿与临时调查产物（不进 Git）
 .scratch/
+.install/
 pai3/
 # 本机/维护者专属流程与手册（不进 Git）
 # 原则：能不提交都不提交，能不公开都不公开。

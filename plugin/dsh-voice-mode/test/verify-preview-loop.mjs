@@ -1,7 +1,8 @@
 // 验证试听限流修复：连续 6 次 preview（修复前 3 次/分 → 第 4 次 429）。
 // 注意（Issue #15 R1 M6）：参数化手动脚本，不在 npm test 链——需本地模型缓存目录
 // （试听走真实合成），按需手动跑。
-// 用法：node test/verify-preview-loop.mjs <model-cache-dir>
+// 手动运行（插件目录）：npm run build && node test/verify-preview-loop.mjs <model-cache-dir>
+// 缓存需包含完整 VITS 模型；缺失时可能联网下载，不能作为干净环境的离线门禁。
 const CACHE = process.argv[2]
 const plugin = await import(new URL('../lib/index.js', import.meta.url).href)
 
