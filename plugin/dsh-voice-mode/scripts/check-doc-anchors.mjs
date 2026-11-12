@@ -350,6 +350,12 @@ for (const md of mdFiles) {
         continue
       }
 
+      // 规则档案保留历史快照，带行号引用不再参与现行锚点校验。
+      if (relMd.startsWith('docs/rules/archive/') && ln1 !== undefined) {
+        historical.push({ doc: relMd, line: docLine, ref: full, why: '规则档案历史快照：行号锚点不再维护，仅列备查' })
+        continue
+      }
+
       // ① **绑定符号**：锚点之后**紧邻**的那个反引号 token，且间隙**只有**一个领属/方位词
       //    （`file.ext` 的 `SYMBOL` / `file.ext` 中 `SYMBOL`）。
       //    这是「文档断言该文件里有这个符号」的**语法绑定**——
