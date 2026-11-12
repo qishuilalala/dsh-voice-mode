@@ -175,15 +175,31 @@ async function awaitRes(res, ms = 2000) {
   const res = await awaitRes(get('/voice-mode/toggle', makeReq({ body: JSON.stringify({ sessionId: 'ghost', on: true }) })))
   check('unknown session denied (403)', res.statusCode === 403, `status=${res.statusCode}`)
 }
+// 4) 限流：每会话 2 次 on:true / 2000ms；on:false 不占配额且不受限。
+// 固定限流时钟，避免真实 SenseVoice 预热或机器停顿使请求跨过窗口；finally 恢复。
 {
-  const res = await awaitRes(get('/voice-mode/toggle', makeReq({ body: JSON.stringify({ sessionId: 'live-1', on: true }) })))
-  check('known session enters voice mode (200)', res.statusCode === 200, `status=${res.statusCode} body=${res.body}`)
-}
-
-// 4) 限流（2 秒内再次 toggle）
-{
-  const res = await awaitRes(get('/voice-mode/toggle', makeReq({ body: JSON.stringify({ sessionId: 'live-1', on: true }) })))
-  check('toggle rate limit (429)', res.statusCode === 429, `status=${res.statusCode}`)
+  const realNow = Date.now
+  let now = realNow()
+  Date.now = () => now
+  const toggle = (on) => awaitRes(get('/voice-mode/toggle', makeReq({
+    body: JSON.stringify({ sessionId: 'live-1', on }),
+  })), 7000) // warmupSense 上限 5s，旧 2s 等待可能在响应完成前误报。
+  try {
+    const first = await toggle(true)
+    check('known session enters voice mode (200)', first.statusCode === 200, `status=${first.statusCode} body=${first.body}`)
+    const second = await toggle(true)
+    check('second toggle within window allowed (200)', second.statusCode === 200, `status=${second.statusCode}`)
+    const third = await toggle(true)
+    check('third toggle rate limit (429)', third.statusCode === 429, `status=${third.statusCode}`)
+    check('toggle rate limit error code', JSON.parse(third.body ?? '{}').code === 'rate_limited')
+    const off = await toggle(false)
+    check('exit while rate limited (200)', off.statusCode === 200 && JSON.parse(off.body ?? '{}').active === null, `status=${off.statusCode}`)
+    now += 2000
+    const afterWindow = await toggle(true)
+    check('toggle allowed at window expiry (200)', afterWindow.statusCode === 200, `status=${afterWindow.statusCode}`)
+  } finally {
+    Date.now = realNow
+  }
 }
 
 // 5) 本地 VITS 试听（真实合成：模型加载 + 推理 + WAV 编码）
@@ -273,9 +289,8 @@ async function awaitRes(res, ms = 2000) {
   }
 }
 
-// 7) 退出语音模式（已知会话；先等限流窗口过期）
+// 7) 退出语音模式（已知会话；on:false 不受限流）
 {
-  await new Promise((r) => setTimeout(r, 2200))
   const res = await awaitRes(get('/voice-mode/toggle', makeReq({ body: JSON.stringify({ sessionId: 'live-1', on: false }) })))
   check('exit voice mode (200)', res.statusCode === 200, `status=${res.statusCode} body=${res.body}`)
 }
