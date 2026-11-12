@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.7.37] - 2026-11-12
+
 ### 修复
 
 - 朗读流式回复时，小数和版本号跨消息片段也不会在小数点处被拆开。
@@ -16,9 +18,14 @@
 
 - 切换会话即停止原会话朗读，清除待播内容；迟到的合成结果不会重新出声，切回后的新回复仍正常朗读。
 - 「说完就关」模式下，长按麦克风或按 Ctrl 打断回复后会恢复收音并留在语音模式，方便继续说话；下一轮回复自然读完后仍自动退出。
+
 ### 维护
 
 - 按治理决策 5 收敛兼容验证：默认 9 版锚点/双类型检查 + 8 核心冒烟，保留 `--full` 的 24 版/21 核心历史集及显式版本复验；CI 与上游巡检同步选版规则，历史实证与 cordis 映射不删除，纯补验不发版。
+
+### 验证边界
+
+- 以上改动经全量自动化测试与模拟浏览器台架验证；切会话停朗读、打断后续说及真实麦克风启动/退出尚未做真机验收，L4 真 LLM 闭环仍未覆盖。
 
 ## [0.7.36] - 2026-11-12
 
@@ -750,7 +757,8 @@ R2 验真轮发现 6 个新 Important（其中 2 个是 R2 修复自身引入的
 - 采集/门控打断引擎（`asr.ts`）的 finalize 幂等性：重复 finalize 不再破坏识别句柄（不变量 I1 起点）。
 - `client.inject` 9 个锚点冻结：宿主注入契约逐字锁定（不变量 I6 起点）。
 
-[Unreleased]: https://github.com/qishuilalala/dsh-voice-mode/compare/v0.7.36...HEAD
+[Unreleased]: https://github.com/qishuilalala/dsh-voice-mode/compare/v0.7.37...HEAD
+[0.7.37]: https://github.com/qishuilalala/dsh-voice-mode/compare/v0.7.36...v0.7.37
 [0.7.7]: https://github.com/qishuilalala/dsh-voice-mode/releases/tag/v0.7.7
 [0.6.0]: https://github.com/qishuilalala/dsh-voice-mode/compare/v0.5.1...v0.6.0
 [0.5.0]: https://github.com/qishuilalala/dsh-voice-mode/releases/tag/v0.5.0
