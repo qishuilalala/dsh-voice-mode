@@ -76,5 +76,5 @@ jobs:
             echo "Release $TAG 已存在，跳过"
             exit 0
           fi
-          awk -v v="$VER" '$0 ~ "^## \\[" { if (f) exit; if (index($0, "## [" v "]") == 1) f = 1; next } f' ../../CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          awk -v v="$VER" '$0 ~ "^## " { if (f) exit; if (index($0, "## [" v "]") == 1) f = 1; next } f' ../../CHANGELOG.md > "$RUNNER_TEMP/notes.md"
           gh release create "$TAG" --title "dsh-voice-mode $TAG" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag

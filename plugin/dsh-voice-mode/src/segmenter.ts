@@ -59,6 +59,8 @@ export function splitSentences(chunk: string): { sentences: string[]; tail: stri
   let lastEnd = 0
   while ((m = re.exec(chunk)) !== null) {
     const end = m.index + m[0].length
+    // 数字后的末尾句点可能是跨 delta 小数，等下一段或 flush 再决定。
+    if (m[0] === '.' && end === chunk.length && /\d/.test(chunk[m.index - 1] ?? '')) continue
     sentences.push(chunk.slice(start, end))
     start = end
     lastEnd = end

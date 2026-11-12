@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 修复
+
+- 朗读流式回复时，小数和版本号跨消息片段也不会在小数点处被拆开。
+
 ### 交互
 
 - 切换会话即停止原会话朗读，清除待播内容；迟到的合成结果不会重新出声，切回后的新回复仍正常朗读。
@@ -105,7 +109,7 @@
 - **L4 真 LLM 端到端本轮未完成**：rc.3 上 RPC 三步全 `ok`、prompt `accepted:true`，但 SSE 音频帧 0、回复正文为空；**rc.2 对照组用同一脚本、同一凭据结果完全相同**（排除版本回归）。根因直查到位：本机隔离 profile 使用的 `DEEPSEEK_API_KEY` 直连 `api.deepseek.com` 返回 **HTTP 402 `Insufficient Balance`**（密钥值不落盘）——属凭据/账户侧问题，L4 待密钥恢复后补跑。
 - **桌面端 Electron 冒烟未跑**（本服务器无桌面环境），已登记到 `docs/qa/must-verify-manually.md` 交用户侧补跑（0.2.1-rc.3 核心）。
 
-## [Unreleased]
+## 历史记录：0.7.29 发布后的规划与工程（未作为发布承诺）
 
 ### 规划中
 
@@ -745,7 +749,7 @@ R2 验真轮发现 6 个新 Important（其中 2 个是 R2 修复自身引入的
 - 采集/门控打断引擎（`asr.ts`）的 finalize 幂等性：重复 finalize 不再破坏识别句柄（不变量 I1 起点）。
 - `client.inject` 9 个锚点冻结：宿主注入契约逐字锁定（不变量 I6 起点）。
 
-[Unreleased]: https://github.com/qishuilalala/dsh-voice-mode/compare/v0.7.7...HEAD
+[Unreleased]: https://github.com/qishuilalala/dsh-voice-mode/compare/v0.7.36...HEAD
 [0.7.7]: https://github.com/qishuilalala/dsh-voice-mode/releases/tag/v0.7.7
 [0.6.0]: https://github.com/qishuilalala/dsh-voice-mode/compare/v0.5.1...v0.6.0
 [0.5.0]: https://github.com/qishuilalala/dsh-voice-mode/releases/tag/v0.5.0

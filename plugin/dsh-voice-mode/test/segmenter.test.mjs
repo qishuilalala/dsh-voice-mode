@@ -4,6 +4,7 @@
  */
 import { build } from 'esbuild'
 import assert from 'node:assert/strict'
+import test from 'node:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -98,6 +99,31 @@ t('省略号与换行终止', () => {
 })
 
 console.log('SentenceSegmenter')
+test('跨 delta 的小数和版本号不被拆句，流结束时输出悬挂句点', () => {
+  for (const [first, second, expected] of [
+    ['圆周率约为3.', '14。', '圆周率约为3.14。'],
+    ['版本 0.', '7.37 已发布。', '版本 0.7.37 已发布。'],
+  ]) {
+    const s = new SentenceSegmenter()
+    assert.deepEqual(s.feed(first), [])
+    assert.deepEqual(s.feed(second), [expected])
+    assert.deepEqual(s.flush(), [])
+  }
+  const s = new SentenceSegmenter()
+  assert.deepEqual(s.feed('结果为3.'), [])
+  assert.deepEqual(s.flush(), ['结果为3.'])
+  assert.deepEqual(s.feed('结果为3.'), [])
+  assert.deepEqual(s.feed(' 然后继续。'), ['结果为3.', '然后继续。'])
+})
+
+test('英文缩写和 URL 仍按原有规则切句', () => {
+  const s = new SentenceSegmenter()
+  assert.deepEqual(s.feed('See e.g. examples at https://a.b/c. Next'), [
+    'See e.g.', 'examples at https://a.b/c.',
+  ])
+  assert.deepEqual(s.flush(), ['Next'])
+})
+
 t('跨 chunk 累积成句', () => {
   const s = new SentenceSegmenter()
   assert.deepEqual(s.feed('你好，'), [])
