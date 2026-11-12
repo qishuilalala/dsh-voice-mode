@@ -18,7 +18,7 @@
  */
 import sherpa_onnx from 'sherpa-onnx'
 import sherpa_node from 'sherpa-onnx-node'
-import { sanitizeForTts } from './segmenter'
+import { sanitizeForTts } from './segmenter.ts'
 
 interface WasmTts {
   generate(input: { text: string; sid: number; speed: number }): { samples: Float32Array; sampleRate: number }
