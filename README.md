@@ -270,14 +270,14 @@ flowchart LR
 
 **License**: [MIT](LICENSE)
 
-**Contributing**: PR 欢迎，但请先读 [`docs/adr/`](docs/adr/README.md) 12 个 ADR + [`CONTEXT.md`](CONTEXT.md) + [`docs/rules/STATE.md`](docs/rules/STATE.md)。
+**Contributing**: PR 欢迎，但请先读 [`docs/adr/`](docs/adr/README.md) 12 个 ADR + [`CONTEXT.md`](CONTEXT.md) + [当前恢复点](docs/rules/STATE.md)。
 
 **Acknowledgments**：
 
 - 上游：[haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)（派生声明见子包 LICENSE）
 - 核心依赖：[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)（Apache-2.0，本地 ASR / VITS / Kokoro 推理）/ [msedge-tts](https://github.com/Migushthe2nd/MsEdgeTTS)（Edge 云端 TTS）
 - 测试支持：[awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)（收录到精选列表）
-- 11 批次周全修复参与贡献者：见 [`docs/rules/STATE.md`](docs/rules/STATE.md) § 批次进度表
+- 11 批次周全修复参与贡献者：见[历史档案的批次进度表](docs/rules/archive/STATE-until-2026-11-12.md#批次进度表)
 
 ---
 

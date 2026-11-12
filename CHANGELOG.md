@@ -223,7 +223,7 @@ dyguests 在自己的分支上直接改运行产物（`lib/`）做出了整套�
 
 ## [0.7.26] - 2026-10-20
 
-> **数字订正声明（2026-10-21 R15-H 补记）**：本段下方两处**已发布数字被后续订正**——「计数」行的终值由 **624 → 627**（v0.7.26 的 tag 树含 R14 且其后 `test/` 未动，实测 627，故 624 系笔误；订正理由见 `docs/rules/STATE.md` 的计数沿革）、「行为级测试」行的终值由 **87 → 391**（行为级口径自 R15 起两次换基线，87 是 R13 时点值）。**GitHub Release v0.7.26 的正文取自发布时的本段，其数字仍为 624 / 87**——两处对同一数字的表述不一致，**以 Release 正文为准**（发布物不可追改），仓库文件为订正后的准确值。本声明只声明差异，不改已发布的 GitHub Release。
+> **数字订正声明（2026-10-21 R15-H 补记）**：本段下方两处**已发布数字被后续订正**——「计数」行的终值由 **624 → 627**（v0.7.26 的 tag 树含 R14 且其后 `test/` 未动，实测 627，故 624 系笔误；订正理由见 `docs/rules/archive/STATE-until-2026-11-12.md` 的计数沿革）、「行为级测试」行的终值由 **87 → 391**（行为级口径自 R15 起两次换基线，87 是 R13 时点值）。**GitHub Release v0.7.26 的正文取自发布时的本段，其数字仍为 624 / 87**——两处对同一数字的表述不一致，**以 Release 正文为准**（发布物不可追改），仓库文件为订正后的准确值。本声明只声明差异，不改已发布的 GitHub Release。
 
 **Issue #15 体验反馈处置**：打断语音抢救（不再吃句）、运行中语音直接插话（steer）、实时转写回填输入框、准确/快速模式与定稿耗时提示、可选 LLM 纠错（默认关）、发送延迟与静音阈值解耦、设置生效时机与当前生效值可见、静默故障提示与一键复制诊断。
 
@@ -301,7 +301,7 @@ R2 验真轮发现 6 个新 Important（其中 2 个是 R2 修复自身引入的
 **测试**
 
 - 新增 `correct-cycle-behavior` 9 项行为测试；行为级测试总数按**宽口径**（fix-test scope 枚举，含 R2 前存量文件 26 项）回放：R2 时点窄口径 31 项 → R3 时点宽口径 66 项 → R4 终态 **74** 项（+8；明细见 R4 条目）——勿误读为「R3 单轮 31→74」；全套件 `npm test` exit 0 / **611 ✓ / 50 文件**（两种求和法一致；本数字为 R4 后终态，沿革：R2 集成轮 583/48 → R3 后 603/49 → R4 后 611/50，+20 与 +8 拆解见 R4 条目）。
-- R3 验真轮结论（4 只读代理）：**无 Blocker**；R3 修复本体 6/7 关闭 + 1 部分关闭（仅 tts-queue B1 注释行号）；新增 6 个 Important 转 R4 修复中（host-fixes 同步 t 复辟 / 双发防护腿行为锁 / en 前言放宽漏拦 / lib BUILD_TAG dangling / 文档计数与基线 / sweep loop1 守卫零锁），详见 `docs/rules/STATE.md`。
+- R3 验真轮结论（4 只读代理）：**无 Blocker**；R3 修复本体 6/7 关闭 + 1 部分关闭（仅 tts-queue B1 注释行号）；新增 6 个 Important 转 R4 修复中（host-fixes 同步 t 复辟 / 双发防护腿行为锁 / en 前言放宽漏拦 / lib BUILD_TAG dangling / 文档计数与基线 / sweep loop1 守卫零锁），详见 `docs/rules/archive/STATE-until-2026-11-12.md`。
 
 ### Issue #15 R4 修复轮（R3 验真轮 6 Important；2026-10-20，`4916bd8`）
 
@@ -320,7 +320,7 @@ R2 验真轮发现 6 个新 Important（其中 2 个是 R2 修复自身引入的
 **修复（用户可见）**
 
 - **echo-tail 假绿修复**：`echo-tail.test.mjs` 复辟 R2-B1 同款反模式（同步 `t()` + async 用例浮动）——修复前「✓ 假绿 + summary 提前打印 + 之后才崩」，400ms 回声尾音宽限的行为锁恢复可信（变异实证：宽限永不到期）。
-- **B1 缺陷类全库扫尾**：逐文件审计「t 定义形态 × async 用例体 × await 覆盖」，全库 B1 类残留为零（commit message 审计数字不可复现，更正注记见 `docs/rules/STATE.md`）。
+- **B1 缺陷类全库扫尾**：逐文件审计「t 定义形态 × async 用例体 × await 覆盖」，全库 B1 类残留为零（commit message 审计数字不可复现，更正注记见 `docs/rules/archive/STATE-until-2026-11-12.md`）。
 - **dangling hash 修正**：CHANGELOG/STATE 引用的 `ad824b4`（amend 前同树哈希、从未 push）→ `4916bd8` 并补可追溯说明。
 
 ### Issue #15 R6-R8 勘误与口径治理（2026-10-20，`62698e5`+`77cb212`+`4230ba3`+`3cb2046`+`7997b4a`+`a549141`）
@@ -600,7 +600,7 @@ R2 验真轮发现 6 个新 Important（其中 2 个是 R2 修复自身引入的
 - 根 README：对比表语种宣称由「6 语种 auto/zh/en/ja/ko/yue」改为「SenseVoice 自动识别」（`recognitionLanguage` 已于批 7M 移除，语言固定 `auto`）；修正列表编号断裂与「默认值微调」项数不符；**当前版本改为引用 npm 徽章（动态），不再手写版本号**——避免每次发版再次漂移。
 - 插件 README：设置表由 16 项补全到 **23 项**（补 `bargeInMode` / `echoGateDb` / `autoResume` / `senseVoice` / `shortcut` / `toolBeep` / `yieldMs`），与 schema 完全一致；补入英文版独有的「配置 / API / 模型与缓存」三节（12 → 15 节，与英文版一致）；修正英文版「4 new ASR fields」却列 5 项的自相矛盾。
 - `docs/README.md`：修正 2 条失效跨文件锚点（`#设置`、`#工作原理`）。
-- `docs/rules/STATE.md`：状态表测试数 385 → 380（与 README / CHANGELOG 统一）。
+- `docs/rules/archive/STATE-until-2026-11-12.md`：状态表测试数 385 → 380（与 README / CHANGELOG 统一）。
 - `CONTEXT.md`：删除「已落地增量」流水账段并校正自述行数口径；`RELEASE-NOTES.md`：移除机器专属路径。
 
 ## [0.7.12] - 2026-09-19

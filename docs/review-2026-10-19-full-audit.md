@@ -72,7 +72,7 @@
 
 - 巡检机制有效且有先例：2026-09-28 周一巡检失败 → 自动开 issue #13（10-02 关闭）。**今日（10-19 周一 02:17 UTC）巡检截至 02:26Z 尚未出现运行记录**（GitHub 定时延迟有先例：09-28 迟 27 分钟）；若触发将自动开「未覆盖版本 0.2.1-rc.2 / 0.2.1-alpha.5」issue 并失败——预期行为，非故障。
 - **发版工具链断链**：`scripts/check-dsh-version.sh` 第 95 行指引「release.sh 已弃用，走 `.scratch/release-minimal-commit.sh`」；`.scratch/` 被 gitignore 且全机不存在该文件；`docs/RELEASE-WORKFLOW.md` §2 仍以 release.sh 11 步为正典。→ 发版前必须二选一：重建 minimal-commit 脚本，或修订文档与指引回 release.sh，并实测。
-- npm 弃用标记存疑：STATE.md（v0.7.18 轮）称「<0.7.18 已 npm deprecate」，实测 `npm view dsh-voice-mode@0.7.17/0.7.16/0.7.10 deprecated` 均为空——弃用未生效或已丢失（待核对）。
+- npm 弃用标记存疑：docs/rules/archive/STATE-until-2026-11-12.md（v0.7.18 轮）称「<0.7.18 已 npm deprecate」，实测 `npm view dsh-voice-mode@0.7.17/0.7.16/0.7.10 deprecated` 均为空——弃用未生效或已丢失（待核对）。
 - 表面小事：GitHub repo homepageUrl 为空；`plugin/dsh-voice-mode/dsh-voice-mode-0.7.11.tgz` 本地构建残留（2026-09-18 备份指针）；无 Discussions。
 - `/tmp/dshcore` 已清（2026-10-10 磁盘清理）——R4–R8 遗留的「0.1.7-alpha.1/2 重跑 typecheck+full-e2e」需重建隔离核心才能续跑。
 
@@ -183,7 +183,7 @@
 |---|---|---|
 | D1 engines.dsh 带上界 | `">=0.1.1-rc.2"` → `">=0.1.1-rc.2 <0.3.0"`（package.json + 根/插件中英 README + CONTEXT 同步） | ✅ 已落地；官方 market 对宽范围误报（#9907）随之规避 |
 | D2 四层验证 | ensure-core ×2 → anchors 9/9 ×2 → typecheck-dual ×2（cordis 映射补表）→ smoke-runtime 16/16 ×2 → full-e2e（DSHVM_VOICE_LOOP=1）4 帧/0 错 ×2 | ✅ 全绿；**抓到两处静态 diff 未覆盖的宿主行为变化**：① alpha.4 起 engines.dsh 硬校验；② alpha.4/5 起 Settings 入口移入「Account menu」弹出层 + 未认证登录门 |
-| D3 本地 dsh 口径 | 维持 latest（0.2.0-rc.2）；0.2.1 稳定且矩阵覆盖后按 UPGRADES.md SOP 升级 | ✅ 口径成文（STATE.md 恢复点） |
+| D3 本地 dsh 口径 | 维持 latest（0.2.0-rc.2）；0.2.1 稳定且矩阵覆盖后按 UPGRADES.md SOP 升级 | ✅ 口径成文（docs/rules/archive/STATE-until-2026-11-12.md 恢复点） |
 | D4 发版工具链 | check-dsh-version.sh 弃用指引改回 release.sh；RELEASE-WORKFLOW.md §7 记录反转 | ✅ 已落地 |
 | D5 社区 | issue #14（CI 自动开的未覆盖版本单）用 §19 实证跟进后关闭；#8250 回帖稿落盘 `docs/research/reply-8250-draft.md`——**两个 GH token 对官方仓库均无写权限（FORBIDDEN），回帖需维护者网页端发布**（人工步骤） | ⚠ 一半完成 |
 
@@ -191,7 +191,7 @@
 
 **矩阵扩展**：verify-dual.sh 15→17 版锚点/typecheck、12→14 核心冒烟；check-dsh-version.sh --check exit 0 恢复对齐。
 
-**遗留（转 STATE.md 跟踪）**：v0.7.25 兼容补丁版发版（release.sh 全门禁）；0.2.1 stable 发布后本地升级；官方 discussion #8250 人工回帖；D5/D7 社区批次（快捷键卖点、fork 修复评估、Edge 403 自动回落、市场索引元数据）未启动。
+**遗留（转 docs/rules/archive/STATE-until-2026-11-12.md 跟踪）**：v0.7.25 兼容补丁版发版（release.sh 全门禁）；0.2.1 stable 发布后本地升级；官方 discussion #8250 人工回帖；D5/D7 社区批次（快捷键卖点、fork 修复评估、Edge 403 自动回落、市场索引元数据）未启动。
 
 ### 发布完成（2026-10-19 当日）
 

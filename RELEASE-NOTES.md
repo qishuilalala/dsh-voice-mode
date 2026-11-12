@@ -7,7 +7,7 @@
 > - **现行发布说明的唯一载体是 [`CHANGELOG.md`](CHANGELOG.md)**（Keep a Changelog 格式，版本段随实际发布维护；GitHub Release 正文亦由 `.github/workflows/release.yml` 从该文件抽取）。**自 v0.7.12 起，v0.7.12–v0.7.27 共 16 个发布的发布说明只在 CHANGELOG.md 中**——本文件**不补齐**这 16 段。
 > - **为何不补齐（取舍理由）**：① CHANGELOG.md 已是完整且被自动化消费的发布说明真源，再补一份 16 段副本会制造**第二个真源**，每次发版都要双写、必然漂移，违反本仓「现行口径单一真源」的纪律；② 本文件的内容形态本就是**两篇时点里程碑报告**（v0.7.7「60 天时间线」+ v0.7.11「五版本真流程实测」），各自带**当时**的测试基线（254 项 / 28 套件 385 项），与逐版本发布说明的形态不同——补齐会让两种形态混在一处，反而更难读。
 > - **为何不改名**：根 `README.md`、`docs/RELEASE-WORKFLOW.md`、`docs/plan/beautification-plan-2026-09-16.md` 均有指向本文件的链接，改名会破坏既有链接（成本高于收益）——故采用「加标题声明归档性质」的处置。
-> - **文内数字一律是时点值，不随现行口径变动**（v0.7.7 的 254 项、v0.7.11 的 385 项均保持原样）。**现行测试计数与版本沿革以 [`docs/rules/STATE.md`](docs/rules/STATE.md) 与 `CHANGELOG.md` 为准**（本文件中的套件/用例数为历史快照，不作为当前门禁成绩）。
+> - **文内数字一律是时点值，不随现行口径变动**（v0.7.7 的 254 项、v0.7.11 的 385 项均保持原样）。**当前任务与验证证据入口见[STATE](docs/rules/STATE.md)，历史计数见[旧账本档案](docs/rules/archive/STATE-until-2026-11-12.md)，版本沿革以 `CHANGELOG.md` 为准**（本文件中的套件/用例数为历史快照，不作为当前门禁成绩）。
 
 ---
 
@@ -96,7 +96,7 @@
 
 ## 数字真源对齐声明
 
-本文全部数字与现行真源一致：测试 **254** / 60 天 / **0.7.7** / 兼容 **0.1.1-rc.2 → 0.1.5-rc.2** / **11** 批次周全修复 / stars **10** / watcher **2** / fork **4** / open issue **0** / npm `dsh-voice-mode@0.7.7`。若有出入，以 `docs/rules/STATE.md` 与 `plugin/dsh-voice-mode/src/` 为准。
+本文全部数字与现行真源一致：测试 **254** / 60 天 / **0.7.7** / 兼容 **0.1.1-rc.2 → 0.1.5-rc.2** / **11** 批次周全修复 / stars **10** / watcher **2** / fork **4** / open issue **0** / npm `dsh-voice-mode@0.7.7`。若有出入，历史数字见[旧账本档案](docs/rules/archive/STATE-until-2026-11-12.md)，现行状态以[当前恢复点](docs/rules/STATE.md)与 `plugin/dsh-voice-mode/src/` 为准。
 
 ---
 

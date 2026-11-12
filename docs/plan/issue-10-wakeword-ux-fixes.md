@@ -51,7 +51,7 @@
 | README.md / README.en.md | 唤醒词条目更新：容错匹配行为、建议 ≥2 字、打断后回待机需重说唤醒词、打断门控是 VAD 非唤醒词 |
 | CONTEXT.md | 设置语义 wakeWord 行 + 关键结论补 3 行（容错参数 / 待机静音弃段 / reset 门） |
 | docs/glossary.md | wakeWord 词条同步 |
-| docs/rules/STATE.md | 批次进度表加行 |
+| docs/rules/archive/STATE-until-2026-11-12.md | 批次进度表加行 |
 
 ## 四、不变量（I1-I10 对照）
 
@@ -92,7 +92,7 @@
 | D3 | 命中分支 `segment=[]`+`resetHostStream()` | 定稿 `"给我说一百个你"` | 连说时命令前缀被丢 → 只剩尾部几个字 |
 | D4 | 命中后未置 `speechActive`（段留但无定稿判据） | LAG=3000ms 时 **0 条定稿** | 命中落在停口之后 → 命令悬挂不发 |
 
-**修法**（详见 `docs/rules/STATE.md` 两行登记与 commit `c5975a1` / `4df38b8` + 本批）：
+**修法**（详见 `docs/rules/archive/STATE-until-2026-11-12.md` 两行登记与 commit `c5975a1` / `4df38b8` + 本批）：
 待机段音频组装与正常聆听路径同构（朗读期不入段并清残留 / prePad 补起始音 / 开口后尾随静音照常入段 /
 命中不丢段 + 置 `speechActive` + 计入 `speechMs`）；定稿与字幕用 `stripWakePrefix` 从文本头部剥掉唤醒词
 （找不到则原样保留——保内容优先）；待机段清空统一走 `clearWakeSegment()`。

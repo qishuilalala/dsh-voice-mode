@@ -1,6 +1,6 @@
 # dsh-voice-mode 文档索引
 
-当前后续优先级见[语音工作流路线图](plan/roadmap-2026-10.md)：包含证据、候选准入、阶段验收与对抗审查，历史计划不自动构成交付承诺。
+当前任务与发布状态以[当前恢复点](rules/STATE.md)为准，执行顺序见[11 月规划](plan/plan-2026-11.md)。[根 CONTEXT.md](../CONTEXT.md) 是现行开发者上下文，[docs/CONTEXT.md](CONTEXT.md) 是跨文档索引与历史基线；两者冲突以根文件为准。历史计划不自动构成交付承诺。
 
 > 面向开发者与高级用户的项目文档总览。
 > 终端用户请先读仓库根 [README.md](../README.md) / [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)。
@@ -24,7 +24,7 @@
 | [plan/](plan/README.md) | 当前路线图与历史实施计划/执行提示词 |
 | [qa/](qa/README.md) | 真机验收清单与测试体系 |
 | ~~research/~~ | 调研资料（gitignored；本地参考，不入库） |
-| [rules/](rules/README.md) | 状态同步任务帐本（STATE.md + 重写式维护） |
+| [rules/](rules/README.md) | 当前恢复点与历史档案（STATE 按状态重写） |
 
 ## 按角色
 
@@ -45,4 +45,4 @@
 
 ---
 
-> **维护纪律**：本目录索引及子目录 README 由项目美化批次（2026-09-16）补齐；后续内容更新以 [docs/rules/STATE.md](rules/STATE.md) 任务帐本为准。
+> **维护纪律**：本目录索引及子目录 README 由项目美化批次（2026-09-16）补齐；后续内容更新以 [docs/rules/STATE.md](rules/STATE.md) 当前恢复点为准。

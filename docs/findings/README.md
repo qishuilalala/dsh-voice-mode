@@ -20,5 +20,5 @@
 ## 维护纪律
 
 - 真机录音不进入公开仓（用户隐私 / 体积）；纯结论 + 数字进入 findings
-- 数字必须绑定 commit / fixture 配置 / 录制脚本（与 STATE.md § 锚定真源 一致）
+- 数字必须绑定 commit / fixture 配置 / 录制脚本（与 [STATE 的锚定真源](../rules/STATE.md#锚定真源) 一致）
 - 新发现 → 文件名 `<YYYY-MM-DD>-<topic>.md`

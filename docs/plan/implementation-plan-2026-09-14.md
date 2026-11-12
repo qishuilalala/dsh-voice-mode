@@ -1,7 +1,7 @@
 # 拍板后实施计划（2026-09-14 定稿）—— 6 批串行、完全可执行
 
 > **依据**：用户 2026-09-14 拍板（ADR-0007 完整分两步 / ADR-0008 Phase 1 / 3 链断 P0 批量 go / xAI 拒绝 / 声音克隆推迟）+ 4 条真机 fixture 判定（`docs/findings/2026-09-14-fixture-verdict.md`）。
-> **性质**：唯一执行入口。一切实施以本文为准；STATE.md / backlog.md 只做状态回写，不重复内容。
+> **性质**：唯一执行入口。一切实施以本文为准；docs/rules/archive/STATE-until-2026-11-12.md / backlog.md 只做状态回写，不重复内容。
 > **纪律**：CLAUDE.md 全局契约——外科手术式改动、G5 evidence rule（行号已按 build=6d077c2 逐一核实）、git 白名单提交、每批独立 commit 可单独 revert。
 > **核实基础**：下述全部行号于 2026-09-14 对 `plugin/dsh-voice-mode/src/` 当前源码逐一 grep 核实（含 R18/R19 增量后漂移）。
 
@@ -70,7 +70,7 @@ npm test                                                             # ④ 全�
 
 ## 2. 批 0 —— 文档同步（本批，已完成）
 
-产出：`docs/findings/2026-09-14-fixture-verdict.md`（4 条判定）、ADR-0007/0008 状态转正、CONTEXT.md 增量行、backlog 状态标记、STATE.md 新任务段、本计划。提交信息：`docs(批0): 拍板落盘 + fixture 判定 + 实施计划定稿`。
+产出：`docs/findings/2026-09-14-fixture-verdict.md`（4 条判定）、ADR-0007/0008 状态转正、CONTEXT.md 增量行、backlog 状态标记、docs/rules/archive/STATE-until-2026-11-12.md 新任务段、本计划。提交信息：`docs(批0): 拍板落盘 + fixture 判定 + 实施计划定稿`。
 
 ---
 
@@ -295,7 +295,7 @@ Kokoro/VITS 走 sherpa-onnx offline TTS（纯文本+sid 输入），**不支持 
 2. `git log --oneline` 确认批 1-5 各自独立 commit；`git diff main~5..main --stat` 复盘净增行数
 3. `systemctl restart dsh.service` + `curl /voice-mode` 200 + `journalctl -u dsh --since "1 min ago" -p err` 空
 4. 真机冒烟（用户 2 分钟）：热词生效 / 锁 en 抖动消失 / 字幕 24px / `<break>` 停顿 / 说「嗯」跳句
-5. 回写：STATE.md 批次进度表全勾 + CONTEXT.md 设置表补 6 新键 + backlog 状态终态 + ADR-0007/0008 落地标注
+5. 回写：docs/rules/archive/STATE-until-2026-11-12.md 批次进度表全勾 + CONTEXT.md 设置表补 6 新键 + backlog 状态终态 + ADR-0007/0008 落地标注
 6. 可选：`npm run verify:dual`（四版本，若 /tmp 核心可用；不可用则记录跳过原因——R5 审计曾报目录状态存疑，开工时先 `ls /tmp/dsh01*-core/node_modules` 实测）
 
 ---
@@ -455,7 +455,7 @@ I / J 独立可并行
 | `recognitionLanguage` 字段 | 🔴 **砍**（schema 退回 `auto` 单值） | `4532b48` | src/index.ts schema + defaults + /config handler 删；src/client.tsx VoiceBootConfig + bootNow + fetchConfig 白名单删；src/settings-form.tsx secRecognition Row + LANG_OPTIONS 数组清空；src/strings.ts 删 Label/desc；src/asr-host.ts AsrRuntimeOptions getter 删 + getSenseWorker 硬编码 `'auto'` |
 | `asrHotwords` + `asrHotwordsScore` 字段 | 🔴 **砍**（用户原话「完全砍掉」）| `e3423ef` | schema + defaults + /config handler + watch diff 列表 + 注释；VoiceBootConfig + DEFAULT_BOOT + bootNow + fetchConfig 白名单；secRecognition 两个 Row + AsrHotwordsTextarea 整组件（~80 行）；strings.ts 删 Label + desc + placeholder + invalid；asr-host.ts options 解构 + getRecognizer + createOnlineRecognizer + markStale；`git rm src/asr-hotwords.ts`；`git rm test/hotwords.test.mjs`；package.json scripts.test 移除；测试数 254→245 |
 | `docs/qa/user-experience-flow.md`（666 行）| 🔴 **砍**（用户原话「全流程体验文档完全多余」）| `6bed6d4` | `git rm docs/qa/user-experience-flow.md` + 5 处同步引用清理（must-verify-manually.md / docs/qa/README.md / docs/README.md / docs/mkdocs.yml / screenshots/MANIFEST.md）|
-| chore lib rebuild | （工作流收尾）| `735e997` | lib/index.js 删 hotwordsBuf/hotwordsScore/recognitionLanguage getter（按 STATE.md M5 既定工作流）|
+| chore lib rebuild | （工作流收尾）| `735e997` | lib/index.js 删 hotwordsBuf/hotwordsScore/recognitionLanguage getter（按 docs/rules/archive/STATE-until-2026-11-12.md M5 既定工作流）|
 
 **不变量 I1-I10 全保**：纯字段砍除 + 文档砍除 + lib 重建，runtime 行为零变化（用户无配置即旧行为）。**ahead origin/main = 41**。
 

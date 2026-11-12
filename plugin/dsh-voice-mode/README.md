@@ -40,7 +40,7 @@ dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`）�
 
 ## 🤝 Fork 增强（本仓库新增）
 
-本仓库在上游 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice) 基础上加入了大量增强，核心如下（完整清单见 git 历史与 [docs/rules/STATE.md](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/rules/STATE.md)）：
+本仓库在上游 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice) 基础上加入了大量增强，核心如下（完整清单见 git 历史与[旧账本档案](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/rules/archive/STATE-until-2026-11-12.md)）：
 
 - **朗读默认 Edge 云端；本地 TTS 可选（隐私优先）**：本地合成不向独立在线 TTS 服务发送回复文本，宿主 LLM 的网络请求不受此选项控制——
   - 本地 VITS（WASM 运行时，`sherpa-onnx-vits-zh-ll`，纯中文，5 说话人）；

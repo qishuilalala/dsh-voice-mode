@@ -92,6 +92,6 @@
 ## 出处与锚点
 
 - 完整体验验收 → `real-machine-acceptance-checklist.md`（批 2/3/5 三阶段，批 7M 砍 4 项后精简）
-- 不变量定义 → `docs/rules/STATE.md` 与 `docs/adr/`
+- 不变量定义 → [根 CONTEXT](../../CONTEXT.md) 与 [架构决策](../adr/README.md)
 - 基线 HEAD = `3154433`（Issue #15 R15-5/6/7 收口——asr 抢救种子门控感知 / models 逐文件下载超时与 recognizer dispose 守卫 / 设置 scope 可恢复化；含 lib/client.js + lib/index.js，属代码+lib 批；此处为历史批次快照，当前验收另记目标版本，现行约定取代码+lib 批、docs-only 提交不滚动基线）。历史基线陈述保留备查：`d7890a4`（R13 收口）/ `38cc23e`（R12 收口）/ `c4e2c3a`（R11 收口）/ `bb42829`（R9 收口）/ `7997b4a`（R8 收口）/ `77cb212`（R6 收口）/ `2b28539`（R5 收口）/ `6ddfb09`（R3 收口）/ `6995ae7`（R2）/ `d92f43b`（Issue #15 八批收口）/ `5e2d34f`（批 7O 代码块收口）/ `0b63a13`（块 3 HEAD）——`git diff 5e2d34f..HEAD -- src/ lib/` **已非空**（Issue #15 八批代码改动全部在内），旧「应为空」口径作废
-- 批 7M + 批 7N 完成状态 → `docs/rules/STATE.md` 批次进度表 + `docs/competitive/backlog.md`「已落地对照区」节
+- 批 7M + 批 7N 完成状态 → [旧账本档案](../rules/archive/STATE-until-2026-11-12.md) 批次进度表 + `docs/competitive/backlog.md`「已落地对照区」节

@@ -1,6 +1,6 @@
 # dsh-voice-mode 项目美化计划（2026-09-16）—— 6 角色协同
 
-> **⚠️ SUPERSEDED（2026-09-17，批 7P 登记）：本计划已过期——基线 HEAD、测试数（254→325）、 idle 默认（10→5）、bargeInMode 默认（auto→detect）等数字均已漂移，仅作历史存档；正文不动。现真值见 `docs/rules/STATE.md` 批 7O 行 + 根 `CONTEXT.md`。**
+> **⚠️ SUPERSEDED（2026-09-17，批 7P 登记）：本计划已过期——基线 HEAD、测试数（254→325）、 idle 默认（10→5）、bargeInMode 默认（auto→detect）等数字均已漂移，仅作历史存档；正文不动。历史批 7O 见 `docs/rules/archive/STATE-until-2026-11-12.md`；现行状态见 [当前恢复点](../rules/STATE.md)，开发语义见根 `CONTEXT.md`。**
 
 > **范围**：本次美化仅触及文档/传播物料。**严禁改动** `plugin/dsh-voice-mode/src/` `plugin/dsh-voice-mode/lib/` `plugin/dsh-voice-mode/package.json` `plugin/dsh-voice-mode/tsconfig*.json` `plugin/dsh-voice-mode/test/` `plugin/dsh-voice-mode/scripts/` `plugin/dsh-voice-mode/build.mjs`。
 > **可改 / 可新增**：`README.md` `plugin/dsh-voice-mode/README.{md,en.md}` `CHANGELOG.md` `RELEASE-NOTES.md` `screenshots/` `demos/` `assets/`（仅新增） `blog/` `.github/` `docs/`（仅 README 索引与缺失子目录 README 补齐，不动现有 ADR/plan/qa/rules 内容）。
@@ -90,7 +90,7 @@
 
 - 11 批次周全修复后源码已 0 行 diff，docs 引用 254 项 / I1-I10 / ADR-0001~0008 / 11 批次 commit 列表为真值。
 - assets/ 现存 5 张 PNG 不会被替换；新截图走 `screenshots/`。
-- README 中提到的 `docs/rules/STATE.md` 文档 baseline 锚点为 `15be91a`（批 K 收口）/ `b2fd752`（HEAD 含 11 批次状态）。
+- README 中提到的 `docs/rules/archive/STATE-until-2026-11-12.md` 文档 baseline 锚点为 `15be91a`（批 K 收口）/ `b2fd752`（HEAD 含 11 批次状态）。
 
 ---
 
@@ -126,7 +126,7 @@
 - **本地化语言数**：中 / EN（界面随浏览器）
 - **本地 TTS 音色**：Kokoro 103 个（中英混读）/ VITS 5 个（中文）
 - **Edge TTS 音色数**：322 个（自动加载）
-- **批 1-7 + 批 7A-J 周全修复**：11 批次（详见 STATE.md 行 119-145）
+- **批 1-7 + 批 7A-J 周全修复**：11 批次（详见 docs/rules/archive/STATE-until-2026-11-12.md「批次进度表」）
 - **设置项真源表**：`plugin/dsh-voice-mode/README.md` 行 75-98（19 项）+ plan §12 决策表
 
 ### 1.4 数字 / 字段对齐（I8）
@@ -146,7 +146,7 @@
 - `plugin/dsh-voice-mode/README.md` 全文（200 行）
 - `plugin/dsh-voice-mode/README.en.md` 全文（296 行）
 - `CONTEXT.md` 全文（94 行）
-- `docs/rules/STATE.md` 全文（145 行）
+- 旧 STATE 全文（当时 145 行；现存于 [旧账本档案](../rules/archive/STATE-until-2026-11-12.md)）
 - `docs/qa/user-experience-flow.md`（666 行 12 步）
 - `docs/qa/real-machine-acceptance-checklist.md`（394 行 21 项）
 - GitHub repo metadata（已抓取：name=dsh-voice-mode，description=...，topics=10 个）
@@ -239,7 +239,7 @@ GitHub 仓库顶部展示优化：description / topics / social preview / badges
    ```markdown
    [![License: MIT](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue)](LICENSE)
    [![Latest Release](https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases)](releases)
-   [![Tests: 254 passing](https://img.shields.io/badge/tests-254%20%E2%9C%93-2ea043?style=flat-square)](docs/rules/STATE.md)
+   [![Tests: 254 passing](https://img.shields.io/badge/tests-254%20%E2%9C%93-2ea043?style=flat-square)](docs/rules/archive/STATE-until-2026-11-12.md)
    ```
 
 6. **mkdocs.yml**（GitHub Pages 部署配置，**仅文档**；不引入 CI）：

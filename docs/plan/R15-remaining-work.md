@@ -25,7 +25,7 @@
 | 类型检查 | exit 0 | `npm run typecheck` |
 | 宿主锚点 | 9/9 | `npm run check:anchors` |
 | 文档锚点守卫 | exit 0（**在基线内**） | `npm run check:doc-anchors` |
-| 行为级 / 合同级 | 529 / 298（529+298=827） | `docs/rules/STATE.md` 口径段 |
+| 行为级 / 合同级 | 529 / 298（529+298=827） | [旧账本档案](../rules/archive/STATE-until-2026-11-12.md) 口径段 |
 | R13 口径 13 文件子集 | 141 | 同上 |
 | 工作区 | 干净，与 `origin/main` 同步 | `git status --short && git rev-list --left-right --count origin/main...HEAD` |
 
@@ -76,7 +76,7 @@ R15 阶段围绕**已发布代码（v0.7.27）**做了三轮「独立 sweep → 
 
 ⚠️ **回填期间若发现「某符号在 HEAD 根本不存在」**（守卫原本报 ERROR 的那种）→ 那是真缺陷，**不要猜一个符号**，单独记下来。
 
-### P0-2｜重跑第三轮验真 sweep —— ✅ **已完成**（结论见 `docs/rules/STATE.md` 的 `5i.` 条目）
+### P0-2｜重跑第三轮验真 sweep —— ✅ **已完成**（结论见 [旧账本档案](../rules/archive/STATE-until-2026-11-12.md) 的 `5i.` 条目）
 
 **总判**：Round 5 的 7 项改动**代码本身全部正确**（46 条变异实证：41 条真红 / 3 条等价变异 / 1 条假绿）；**文档 ↔ 代码一致、计数自洽、CHANGELOG「已发布事实」纪律守住**。
 **新发现**：H-11（Important）+ C-15/C-16/C-17/M-7/M-8 + 计数兜底注释差一，均已派修（见下条 P0-3 与 `5i.`）。**否定性结论（不必再查）**已登记在 `5i.`。
@@ -125,10 +125,10 @@ R15 阶段围绕**已发布代码（v0.7.27）**做了三轮「独立 sweep → 
 ### P0-5｜全仓现行口径计数刷新 —— ⏳ **等主会话给终态数字**（Round 8 第二批新增待办）
 
 **背景**：主会话已实测 **803 ✓ / 53 套件**（HEAD `85a4e18` + 在途三份测试文件：`tts-queue-engine` 21→25 · `host-security-behavior` 54→57 · `asr-host-rebuild` 11→12），但**本轮还有 4 位队友在补锁**（fix-client / fix-tts / fix-models / fix-seg），**计数还会再涨** ⇒ **本批不刷计数**（避免刷两次）。
-**待办（拿到终态数字后一次刷完）**：全仓现行口径（README 徽章 / 正文 / 博客表、plugin 两语 README、`docs/CONTEXT.md`、`docs/qa/*`、`docs/plan/*`、`docs/rules/STATE.md`、`CHANGELOG.md`、`docs/mkdocs.yml`），**历史时点值一律不动**；行为级口径（主口径 / 合同级）按终态逐条判定重算，并保证「行为级 + 合同级 = 全套件」与「R13 口径 13 文件子集」自洽。
+**待办（拿到终态数字后一次刷完）**：全仓现行口径（README 徽章 / 正文 / 博客表、plugin 两语 README、`docs/CONTEXT.md`、`docs/qa/*`、`docs/plan/*`、[STATE](../rules/STATE.md)、`CHANGELOG.md`、`docs/mkdocs.yml`），**历史时点值一律不动**；行为级口径（主口径 / 合同级）按终态逐条判定重算，并保证「行为级 + 合同级 = 全套件」与「R13 口径 13 文件子集」自洽。
 **本批已顺带订正的措辞问题**（验真轮查出「同句内两套数并存、分项停在旧版本」）：
 - docs/CONTEXT.md:50 的沿革链原停在 **R15-J（785）**、句内行为级数原写 **492**（R15-J 口径）——**已补 R15-K 一跳**（+10 = mic-gesture 50→56 + host-security-behavior 52→54 + llm-correct 22→24）并把行为级口径同步到 **500 / 合同级 295 / 子集 143**；
-- docs/rules/STATE.md 同句内的「全套件 53 文件 / **785** 项」原停在旧值——**已订正为 795**，实测批次标注由 R15-J 改为 R15-K。
+- docs/rules/archive/STATE-until-2026-11-12.md 同句内的「全套件 53 文件 / **785** 项」原停在旧值——**已订正为 795**，实测批次标注由 R15-J 改为 R15-K。
 ⇒ 刷计数时这两处**只需替换数字**，不必再动句式。
 
 
@@ -149,7 +149,7 @@ R15 阶段围绕**已发布代码（v0.7.27）**做了三轮「独立 sweep → 
 - `docs/competitive/backlog.md` 的「删 3 个误传字段」条目要删的 3 个字段（`heldHint`/`cursorHint`/`recallAuto`）**本仓从未存在**（`git log --all -S` 对 `src/` 与 `test/` 均 0 提交，来源是 2026-09-15 沉睡能力审计记录的**上游 fork**）→ 该条是「无对象」还是「漏记」，待定。
 - `docs/competitive/backlog.md` §三 Frozen 6 条是否解冻。
 - `docs/research/` 断头引用（不入库但被已入库文档引用）——**知情取舍**，`docs/README.md` 已声明，待定。
-- **`abandonTurn` 的「不补发 tts-idle」**：方法层成立（只清 `openTurns`），**组合层不成立**——`index.ts` 的 `/cancel` 里 `cancel()` 与 `abandonTurn()` 同一 tick 连发，`cancel()` 不中止在途 pump，该 pump 落定后按 `openTurns` 已清的条件**补发一条 `tts-idle`**。验真轮判断方向与「用户确实打断了这一轮」一致、未找到反例可达路径，**故不定为缺陷**；**需产品拍板**：`mode:once` 下用户手动打断后继续说话，客户端是否仍应留在语音模式（即「回合被用户打断而结束」是否等同于「说完就关」的收尾条件）。详见 `docs/rules/STATE.md` 的「待决登记｜`TtsQueue.abandonTurn`」条。**〔Round 8 状态〕只登记，未改代码。**
+- **`abandonTurn` 的「不补发 tts-idle」**：方法层成立（只清 `openTurns`），**组合层不成立**——`index.ts` 的 `/cancel` 里 `cancel()` 与 `abandonTurn()` 同一 tick 连发，`cancel()` 不中止在途 pump，该 pump 落定后按 `openTurns` 已清的条件**补发一条 `tts-idle`**。验真轮判断方向与「用户确实打断了这一轮」一致、未找到反例可达路径，**故不定为缺陷**；**需产品拍板**：`mode:once` 下用户手动打断后继续说话，客户端是否仍应留在语音模式（即「回合被用户打断而结束」是否等同于「说完就关」的收尾条件）。详见 [旧账本档案](../rules/archive/STATE-until-2026-11-12.md) 的「待决登记｜`TtsQueue.abandonTurn`」条。**〔Round 8 状态〕只登记，未改代码。**
 - Issue #15 的回帖口径：`docs/issue-15-reply.md` 已订正版本引用；**是否补一段「发布后又做了一轮全库对抗审查」的说明**待用户定（对外发声，取舍由维护者定）。
 
 ### P3｜真机验收点（本机无法代跑）
@@ -220,4 +220,4 @@ npm run check:doc-anchors        # 期望 exit 0（在基线内）
 ```
 **当前待办 = 剩余 P1 / P2 / P3**（P0-1 回填、P0-2 验真 sweep、P0-3 的 H-11 均已完成，见 §2 与 STATE 的 `5i.`/`5k.`）。
 
-〔P0-1（回填 130 处行号）与 P0-2（重跑第三轮验真 sweep）**均已完成**；第三轮验真轮提出的 3 个 Open Question 已由**守卫硬化**闭合（`docs/rules/STATE.md` 的 `5j.` 条目）〕
+〔P0-1（回填 130 处行号）与 P0-2（重跑第三轮验真 sweep）**均已完成**；第三轮验真轮提出的 3 个 Open Question 已由**守卫硬化**闭合（[旧账本档案](../rules/archive/STATE-until-2026-11-12.md) 的 `5j.` 条目）〕
