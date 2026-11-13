@@ -9,6 +9,14 @@
 #   DSHVM_SHOT=<目录>：客户端冒烟时把右键菜单截图存到该目录（人工核对视觉）。
 set -euo pipefail
 
+# 配置目录隔离不隔离内存：从生产 dsh 启动时，把测试移入独立且有时限的 cgroup。
+if [ -r /proc/self/cgroup ] && grep -qE ':/system.slice/dsh\.service(/|$)' /proc/self/cgroup; then
+  exec systemd-run --scope --quiet --collect --expand-environment=no \
+    -p MemoryHigh=1536M -p MemoryMax=2G -p CPUQuota=200% \
+    -p 'IOReadBandwidthMax=/ 20M' -p RuntimeMaxSec=300s -p TimeoutStopSec=5s \
+    bash "$0" "$@"
+fi
+
 BIN="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 PORT="${2:-3120}"
 [ -f "$BIN" ] || { echo "✗ dsh 核心不存在: $BIN"; exit 2; }
@@ -27,10 +35,20 @@ BOOTLOG="$WORK/boot.log"
 NODE_PID=""
 
 cleanup() {
-  [ -n "$NODE_PID" ] && kill "$NODE_PID" 2>/dev/null || true
+  if [ -n "$NODE_PID" ]; then
+    kill "$NODE_PID" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+      kill -0 "$NODE_PID" 2>/dev/null || break
+      sleep 1
+    done
+    kill -KILL "$NODE_PID" 2>/dev/null || true
+    wait "$NODE_PID" 2>/dev/null || true
+  fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo "== 初始化隔离 profile（DSH_HOME=$DSH_HOME）=="
 mkdir -p "$DSH_HOME/profiles/web"
@@ -137,8 +155,8 @@ fail=0
 ORIGIN="http://127.0.0.1:$PORT"
 check() {  # name, url, expect_substr
   local body code
-  body=$(curl -s -H "Origin:$ORIGIN" "$2" 2>/dev/null)
-  code=$(curl -s -o /dev/null -w "%{http_code}" -H "Origin:$ORIGIN" "$2" 2>/dev/null)
+  body=$(curl -s --max-time 10 -H "Origin:$ORIGIN" "$2" 2>/dev/null) || { echo "   ✗ $1 请求失败"; fail=1; return; }
+  code=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" -H "Origin:$ORIGIN" "$2" 2>/dev/null) || { echo "   ✗ $1 请求失败"; fail=1; return; }
   if [ "$code" = "200" ] && printf '%s' "$body" | grep -q "$3"; then
     echo "   ✓ $1 ($code)"
   else
