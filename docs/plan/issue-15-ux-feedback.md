@@ -46,7 +46,7 @@
 ### 问题④识别慢 —— 部分基线已存在，缺口待代理取证合并
 
 - 定稿链：asr.ts:585-723 finalizeSegment（3 次有界重试、10s 超时）→ host asr-host.ts SenseVoice 整句重转（模型 int8 ~228MB）。
-- `src/client.tsx:4010-4014`：定稿期状态条已有「识别中」（`transcribing` → `t('recognizing')`；原锚 2513-2530 已漂移）——用户「显示定稿中进度」诉求部分已覆盖，缺的是**耗时可见性**（elapsed）与快速模式（待代理取证）。
+- `src/client.tsx:4010-4014`（当时行号）：定稿期状态条已有「识别中」（`transcribing` → `t('recognizing')`；原锚 2513-2530 已漂移）——用户「显示定稿中进度」诉求部分已覆盖，缺的是**耗时可见性**（elapsed）与快速模式（待代理取证）。
 - 用户建议的「先用流式结果立即发送、后台校正后替换」需要宿主支持编辑已发送 user message——主会话预判宿主无此 API（QueueAction 仅对待入队项生效，contract/session.d.ts:95-97），预计降级为「快速/准确模式开关」。
 
 ## 2. 代理取证结论（5 路并行，回报后合并+对抗校验）
