@@ -30,7 +30,7 @@ if [ "\${FAIL_STAGE:-}" = '${stage}' ]; then exit 7; fi
   }
   const current = run(['--list']).output.split('\n')
   const full = run(['--list', '--full']).output.split('\n')
-  assert.equal(full.length, 24, '历史全集不得丢失')
+  assert.equal(full.length, 25, '历史全集不得丢失')
   assert.equal(current.length, 9)
   const latestPerLine = new Map(full.map(v => [v.split('-')[0], v]))
   assert.deepEqual(new Set(current), new Set([full[0], full.at(-1), ...latestPerLine.values(), '0.2.2-rc.1']), '端点、各线最新与 latest/next 均须保留')
@@ -42,7 +42,7 @@ if [ "\${FAIL_STAGE:-}" = '${stage}' ]; then exit 7; fi
   assert.equal(defaults.calls[1], 'types ' + current.join(' ') + ' hmr=0')
   assert.equal(defaults.calls.filter(c => c.startsWith('runtime ')).length, 8)
   assert.match(defaults.calls[2], /dsh-0-1-1-rc-2.*3135 hmr=1$/)
-  assert.equal(run(['--full']).calls.filter(c => c.startsWith('runtime ')).length, 21)
+  assert.equal(run(['--full']).calls.filter(c => c.startsWith('runtime ')).length, 22)
   const historical = run(['0.1.5-rc.2', '0.1.5-rc.2'], { DSHVM_CORE_ROOT: '/tmp/custom cores', DSHVM_SMOKE_PORT: '4200' })
   assert.equal(historical.calls.length, 3, '显式版本去重，保留三层检查')
   assert.match(historical.calls[2], /^runtime \/tmp\/custom cores\/dsh-0-1-5-rc-2\/node_modules\/@deepseek-ai\/dsh\/lib\/bin.js 4200 hmr=0$/)
@@ -62,9 +62,9 @@ if [ "\${FAIL_STAGE:-}" = '${stage}' ]; then exit 7; fi
   mkdirSync(join(fixture, 'bin'))
   writeFileSync(join(fixture, 'bin/npm'), `#!/usr/bin/env bash\nprintf '%s\\n' "$MATRIX_TAGS"\n`, { mode: 0o755 })
   for (const [tags, status] of [
-    [{ alpha: '0.2.2-alpha.3', latest: '0.2.2-rc.1', next: '0.2.2-rc.2' }, 0],
+    [{ alpha: '0.2.2-alpha.3', latest: '0.2.2-rc.1', next: '0.2.2-rc.3' }, 0],
     [{ latest: '0.2.1-rc.4', next: '0.2.2-rc.2' }, 1],
-    [{ latest: '0.2.2-rc.1', next: '0.2.2-rc.3' }, 1],
+    [{ latest: '0.2.2-rc.1', next: '0.2.2-rc.3' }, 0],
   ]) {
     const result = spawnSync('bash', ['-c', readOnly], {
       cwd: fixture, encoding: 'utf8', env: { ...process.env, LC_ALL: 'C', PATH: join(fixture, 'bin') + ':' + process.env.PATH, MATRIX_TAGS: JSON.stringify(tags) },
