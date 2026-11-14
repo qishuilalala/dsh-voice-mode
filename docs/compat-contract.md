@@ -834,3 +834,20 @@ class AgentDefaultModelConfig extends Service {
 - **与 §25/§26 的差异**：alpha.3/rc.1 两轮 L3 客户端 headless `page.goto waitUntil load 30s` 超时（对照组同症，判环境阻塞）；本轮 rc.2 同脚本同环境**一次通过**（mic/host/设置 16 断言全绿），证实此前确为环境波动，非版本回归。
 - **矩阵扩展**：`verify-dual.sh` 锚点/typecheck **23 → 24 版**、隔离核心冒烟 **20 → 21**（新增 rc.2 端口 3156）；`check-dsh-version.sh --check` 零未覆盖。
 - **兼容声明**：`engines.dsh` 维持 `">=0.1.1-rc.2 <0.3.0-0"` 不变——rc.2 落在范围内；对外「已验证至」更新为 **0.2.2-rc.2**（next 通道）。本轮矩阵与映射先行落盘（随 0.7.36 发版；无产品代码变更；L4 仍未覆盖）。
+
+## 28. 0.2.2-rc.3 复核（2026-11-14，scheduled issue 触发的四步验证）
+
+- **发现途径**：scheduled workflow `dsh upstream version check` 每日比对发现 `next=0.2.2-rc.3` 未覆盖（当时 `latest=0.2.2-rc.1`、`alpha=0.2.2-alpha.3` 均已在矩阵内），按流程自动开单。
+- **依赖面**（`npm view` 实证）：rc.3 的宿主类型包对等依赖仍是 **`cordis ~4.1.0`**（与 rc.1/rc.2 同档，0.2.2-rc 线稳定）→ `typecheck-dual.sh` 的 cordis 映射表并入 `0.2.2-rc.1|0.2.2-rc.2|0.2.2-rc.3 → 4.1.0`（未知线仍显式报错）。
+- **四层验证结果**：
+
+| 层 | 0.2.2-rc.3 |
+|---|---|
+| L1 锚点（9 个 client.inject 包） | ✅ 9/9（`check-anchors.mjs 0.2.2-rc.3`，registry 直查；25 版全矩阵复跑亦绿） |
+| L2 双 typecheck（host + client） | ✅（cordis 4.1.0，补表后实跑通过） |
+| L3 runtime 冒烟（boot + host 三端点 + mic 双语 + 右键菜单 + console 0 error + 设置卡片 16 断言） | ✅ 全绿（隔离核心 `/tmp/dshcore/dsh-0-2-2-rc-3`，端口 3157） |
+| L4 真 LLM 闭环 | ❌ 未跑（沿 §24–§27 口径：账户 is_available=false，不归咎版本） |
+
+- **与 §27 的关系**：rc.2 已证 L3 客户端恢复正常；rc.3 同脚本同环境一次通过，再次确认环境波动已消除，非版本回归。
+- **矩阵扩展**：`verify-dual.sh` 现行集保持 9 版（rc.2→rc.3 轮换：latest/next 跟进）、历史全集 **24 → 25 版** / 冒烟 **21 → 22 核心**（新增 rc.3 端口 3157）；`check-dsh-version.sh --check` 零未覆盖（巡检脚本已同步 `--list --full` 机读口径，见 §26 后记）。
+- **兼容声明**：`engines.dsh` 维持 `">=0.1.1-rc.2 <0.3.0-0"` 不变——rc.3 落在范围内；对外「已验证至」更新为 **0.2.2-rc.3**（next 通道）。本轮**不发版**（无产品代码变更；L4 仍未覆盖），矩阵与映射先行落盘。

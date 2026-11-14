@@ -4,7 +4,7 @@
 # 固定已补验的版本快照，不在运行时把未验证的 dist-tag 自动纳入支持承诺。
 # 用法（插件目录）：
 #   bash scripts/verify-dual.sh                    # 收敛集
-#   bash scripts/verify-dual.sh --full             # 历史全集：24 版 / 21 核心
+#   bash scripts/verify-dual.sh --full             # 历史全集：25 版 / 22 核心
 #   bash scripts/verify-dual.sh 0.1.5-rc.2 [...]    # 显式版本，含历史版本；重复项去重
 #   bash scripts/verify-dual.sh --list [--full]    # 只列版本，供 CI / 巡检读取
 # 核心预先用 bash scripts/ensure-core.sh <版本> 准备；默认在 /tmp/dshcore。
@@ -16,8 +16,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DEFAULT_VERSIONS=(0.1.1-rc.2 0.1.2-rc.1 0.1.5-rc.3 0.1.6-alpha.2 0.1.7-rc.2 0.2.0-rc.2 0.2.1-rc.5 0.2.2-rc.1 0.2.2-rc.2)
-FULL_VERSIONS=(0.1.1-rc.2 0.1.2-rc.1 0.1.5-rc.1 0.1.5-rc.2 0.1.5-rc.3 0.1.6-alpha.2 0.1.7-alpha.1 0.1.7-alpha.2 0.1.7-rc.1 0.1.7-rc.2 0.2.0-rc.1 0.2.0-rc.2 0.2.1-alpha.1 0.2.1-alpha.2 0.2.1-alpha.3 0.2.1-alpha.5 0.2.1-rc.2 0.2.1-rc.3 0.2.1-rc.4 0.2.1-rc.5 0.2.2-alpha.2 0.2.2-alpha.3 0.2.2-rc.1 0.2.2-rc.2)
+DEFAULT_VERSIONS=(0.1.1-rc.2 0.1.2-rc.1 0.1.5-rc.3 0.1.6-alpha.2 0.1.7-rc.2 0.2.0-rc.2 0.2.1-rc.5 0.2.2-rc.1 0.2.2-rc.3)
+FULL_VERSIONS=(0.1.1-rc.2 0.1.2-rc.1 0.1.5-rc.1 0.1.5-rc.2 0.1.5-rc.3 0.1.6-alpha.2 0.1.7-alpha.1 0.1.7-alpha.2 0.1.7-rc.1 0.1.7-rc.2 0.2.0-rc.1 0.2.0-rc.2 0.2.1-alpha.1 0.2.1-alpha.2 0.2.1-alpha.3 0.2.1-alpha.5 0.2.1-rc.2 0.2.1-rc.3 0.2.1-rc.4 0.2.1-rc.5 0.2.2-alpha.2 0.2.2-alpha.3 0.2.2-rc.1 0.2.2-rc.2 0.2.2-rc.3)
 
 full=0
 list=0

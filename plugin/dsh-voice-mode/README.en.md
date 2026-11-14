@@ -18,7 +18,7 @@ interrupts playback and the running turn. No additional speech-service API key i
 
 > **Current status (2026-11-13):** v0.7.37 stop-on-focus-switch, once-interrupt resume, no-split decimals, mic release on early stop. Check npm and Releases for availability.
 
-Host compatibility check: anchors, types and isolated runtime checks passed for dsh 0.2.2-rc.2 (including the client side). See the [compatibility record](../../docs/compat-contract.md) for evidence and unverified layers; this does not establish microphone or cross-platform acceptance.
+Host compatibility check: anchors, types and isolated runtime checks passed for dsh 0.2.2-rc.3 (including the client side). See the [compatibility record](../../docs/compat-contract.md) for evidence and unverified layers; this does not establish microphone or cross-platform acceptance.
 >
 > CI results do not establish real-device audio quality or compatibility with every host version. See the [changelog](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md), [compatibility evidence](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md), and [roadmap](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md). The declared dsh range is `>=0.1.1-rc.2 <0.3.0-0`; untested versions are not guaranteed.
 
@@ -325,7 +325,7 @@ Also: the on-device recording fixture used for debugging is **off by default**; 
 
 ### Compatibility declaration (what the plugin market's version filter reads)
 
-`package.json` declares `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`. This is an eligibility range, not evidence that every version in it has passed tests. The compatibility record lists tested releases through 0.2.2-rc.2 and the forms actually exercised. The default set deduplicates the support endpoints, the latest verified release on each version line, and upstream latest/next: currently 9 versions for anchors and host/client typechecks, with 8 runtime cores. Historical evidence remains available; use `verify-dual.sh --full` or explicit versions to rerun it. Compatibility-only verification does not trigger a release. The daily workflow compares upstream tags and opens an issue for uncovered versions; it does not automatically rerun the full matrix. `peerDependencies` lists `@deepseek-ai/cordis` and `react` supplied by the host.
+`package.json` declares `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`. This is an eligibility range, not evidence that every version in it has passed tests. The compatibility record lists tested releases through 0.2.2-rc.3 and the forms actually exercised. The default set deduplicates the support endpoints, the latest verified release on each version line, and upstream latest/next: currently 9 versions for anchors and host/client typechecks, with 8 runtime cores. Historical evidence remains available; use `verify-dual.sh --full` or explicit versions to rerun it. Compatibility-only verification does not trigger a release. The daily workflow compares upstream tags and opens an issue for uncovered versions; it does not automatically rerun the full matrix. `peerDependencies` lists `@deepseek-ai/cordis` and `react` supplied by the host.
 
 ## 🚧 Known limitations
 

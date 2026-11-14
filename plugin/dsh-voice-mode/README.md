@@ -31,7 +31,7 @@ dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`）�
 
 > **当前状态（2026-11-13）**：v0.7.37 切会话停朗读、once 打断续说、小数点不拆句、启动窗口释放麦克风；可安装版本以 npm 徽章与 Releases 为准。
 
-兼容跟进：最新 dsh 0.2.2-rc.2 的锚点、类型与隔离运行时复核通过（含客户端侧）；完整证据和未验收层见[兼容契约](../../docs/compat-contract.md)。
+兼容跟进：最新 dsh 0.2.2-rc.3 的锚点、类型与隔离运行时复核通过（含客户端侧）；完整证据和未验收层见[兼容契约](../../docs/compat-contract.md)。
 >
 > CI 通过不代表真实听感、所有硬件或所有宿主版本均已验证。详见 [CHANGELOG](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md)、[兼容证据](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md)和[后续路线图](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md)。包声明范围为 `>=0.1.1-rc.2 <0.3.0-0`，未测版本不保证。
 
@@ -312,7 +312,7 @@ flowchart LR
 
 ### 兼容声明（插件市场的版本筛选依据）
 
-`package.json` 声明 `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`。这是版本准入范围，不代表区间内每个版本都已实测。兼容记录列出了截至 0.2.2-rc.2 的已测版本及实际测试形态。默认验证集按“支持区间两端 + 每条小版本线最新已验证版 + latest/next”去重，当前为 9 版锚点/双类型检查、8 核心冒烟。历史实证保留，可用 `verify-dual.sh --full` 或显式版本复验；纯补验不发版。每日工作流比对上游标签并为未覆盖版本开 issue，不会自动跑完整矩阵。`peerDependencies` 声明宿主提供的 `@deepseek-ai/cordis` 与 `react`。
+`package.json` 声明 `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`。这是版本准入范围，不代表区间内每个版本都已实测。兼容记录列出了截至 0.2.2-rc.3 的已测版本及实际测试形态。默认验证集按“支持区间两端 + 每条小版本线最新已验证版 + latest/next”去重，当前为 9 版锚点/双类型检查、8 核心冒烟。历史实证保留，可用 `verify-dual.sh --full` 或显式版本复验；纯补验不发版。每日工作流比对上游标签并为未覆盖版本开 issue，不会自动跑完整矩阵。`peerDependencies` 声明宿主提供的 `@deepseek-ai/cordis` 与 `react`。
 
 ## 🚧 已知限制
 

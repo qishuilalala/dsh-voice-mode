@@ -23,7 +23,7 @@
 
 ## 当前状态（2026-11-13）
 
-兼容跟进：已对最新 dsh 0.2.2-rc.2 完成锚点、类型和隔离运行时复核（含客户端侧，L3 全绿），详见[兼容契约](docs/compat-contract.md)；这不等同真实麦克风或全平台验收。
+兼容跟进：已对最新 dsh 0.2.2-rc.3 完成锚点、类型和隔离运行时复核（含客户端侧，L3 全绿），详见[兼容契约](docs/compat-contract.md)；这不等同真实麦克风或全平台验收。
 
 - **v0.7.37 补丁版**：切会话停朗读、once 打断续说、小数点不拆句、启动窗口释放麦克风；可安装版本以 [npm](https://www.npmjs.com/package/dsh-voice-mode) 与 [Releases](https://github.com/qishuilalala/dsh-voice-mode/releases) 为准。
 - **v0.7.36 补丁版**：覆盖 dsh 0.2.2-rc.2，对外「已验证至」0.2.2-rc.2。
