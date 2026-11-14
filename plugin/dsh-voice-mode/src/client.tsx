@@ -21,6 +21,7 @@ import {
   applyTurnEvent,
   auxClickPending,
   cancelPayload,
+  clampMenuRect,
   createScopeBridge,
   decayConfirmCount,
   eqPaintMode,
@@ -37,6 +38,7 @@ import {
   onceFinished,
   registerScopeDispose,
   reportFocus,
+  shouldSkipDraftWriteback,
   takeToggleSlot,
   FOCUS_OWNER_DEFAULT,
   type FocusOwners,
@@ -1924,6 +1926,28 @@ function MicMenu({ scope, anchor, onClose }: { scope: MenuScope; anchor: HTMLEle
   const [snap, setSnap] = useState(() => scope.getSnapshot())
   useEffect(() => scope.subscribe(() => setSnap({ ...scope.getSnapshot() })), [scope])
   const menuRef = useRef<HTMLDivElement | null>(null)
+  // 二次钳制偏移（Issue #64）：首帧按 208 宽估算定位，挂载后用实测尺寸修正，
+  // 窄视口下保证菜单完整可见（向内平移；极窄时收缩宽度）。
+  const [adj, setAdj] = useState<{ dx: number; dy: number; w: number } | null>(null)
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const el = menuRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const next = clampMenuRect({
+        menuW: el.offsetWidth || 208,
+        menuH: el.offsetHeight || 0,
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        vw: window.innerWidth,
+        vh: window.innerHeight,
+      })
+      if (next.dx !== 0 || next.dy !== 0 || next.w !== 0) setAdj(next)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [])
   useEffect(() => {
     menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
     const onDown = (e: PointerEvent): void => {
@@ -1958,9 +1982,10 @@ function MicMenu({ scope, anchor, onClose }: { scope: MenuScope; anchor: HTMLEle
   const pos: React.CSSProperties = {
     position: 'fixed',
     zIndex: 9999,
-    width,
+    width: adj?.w || width,
     left: r ? Math.max(8, Math.min(window.innerWidth - width - 8, Math.round(r.right - width))) : 8,
     ...(below ? { top: r ? Math.round(r.bottom + 8) : 96 } : { bottom: Math.round(window.innerHeight - r.top + 8) }),
+    ...(adj && (adj.dx !== 0 || adj.dy !== 0) ? { transform: `translate(${adj.dx}px, ${adj.dy}px)` } : null),
   }
   const item = (role: 'menuitemradio' | 'menuitemcheckbox', checked: boolean, label: string, onPick: () => void): React.ReactElement => (
     <button key={label} type="button" role={role} aria-checked={checked} className="dshvm-menu-item" onClick={onPick}>
@@ -2950,6 +2975,9 @@ export function MicButton({
         const composed = composeDraft(draftRef.current, lastPartialRef.current, text)
         if (!composed) return
         lastPartialRef.current = text.trim()
+        // Issue #65：引用/附件非空时跳过回填——宿主 setDraft(纯文本) 会洗掉
+        // Lexical 的引用卡片与图片附件（退化为「> 纯文本」+破图）。状态条仍预览。
+        if (shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) return
         try {
           partialActions.setDraft(composed)
         } catch {
@@ -2985,14 +3013,17 @@ export function MicButton({
         // 尾不匹配 → composeDraft 自愈从定稿新起。
         let nextDraft = composeDraft(draftRef.current, lastPartialRef.current, trimmed)
         lastPartialRef.current = ''
-        try {
-          // M9：删 else-if 死分支——与 if 条件字面重复，永不可达。
-          if (typeof actions?.setDraft === 'function') actions.setDraft(nextDraft)
-        } catch {
+        // Issue #65：引用/附件非空时跳过定稿回填（同 onPartial 门控，防洗引用卡片）。
+        if (!shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
           try {
-            actions?.setDraft?.(trimmed)
+            // M9：删 else-if 死分支——与 if 条件字面重复，永不可达。
+            if (typeof actions?.setDraft === 'function') actions.setDraft(nextDraft)
           } catch {
-            // 提交失败：文字已留在草稿（Q16）
+            try {
+              actions?.setDraft?.(trimmed)
+            } catch {
+              // 提交失败：文字已留在草稿（Q16）
+            }
           }
         }
         // 强制发送（按住 Ctrl / hold 松手）恒立即提交，绕过播放门与 autoSend 开关。
@@ -3438,6 +3469,16 @@ export function MicButton({
   const liveDraft = useInput ? useInput((s: any) => (s?.draft as string) ?? '') : ''
   const draftRef = useRef('')
   draftRef.current = liveDraft
+  // Issue #65：宿主引用/附件是非文本态（quotes/attachmentIds 独立于 draft 字符串；
+  // setDraft(纯文本) 会把 Lexical 的引用卡片/图片附件洗成纯文本+破图）。
+  // 识别回填（onPartial/onSegment）前若引用/附件非空则跳过 setDraft——状态条保留
+  // 预览，不丢字；提交路径（用户意图）不受影响，引用随提交发送。
+  const liveQuoteCount = useInput ? useInput((s: any) => (s?.quotes as unknown[] | undefined)?.length ?? 0) : 0
+  const liveAttachCount = useInput ? useInput((s: any) => (s?.attachmentIds as unknown[] | undefined)?.length ?? 0) : 0
+  const quoteRef = useRef(0)
+  quoteRef.current = liveQuoteCount
+  const attachRef = useRef(0)
+  attachRef.current = liveAttachCount
   // Issue #15 批 3：partial 回填的尾记录——定稿时从草稿末尾剥掉它再拼定稿文本
   // （composeDraft 的 tail 参数；防 partial 被 double-append）。
   const lastPartialRef = useRef('')

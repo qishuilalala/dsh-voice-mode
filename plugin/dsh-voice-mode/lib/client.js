@@ -2547,6 +2547,24 @@ function idleAction(input) {
   if (input.busy && input.sinceUserActivityMs <= IDLE_USER_ACTIVITY_CAP_MS) return "renew";
   return input.warn ? "warn" : "exit";
 }
+function clampMenuRect(input) {
+  const { menuW, menuH, left, top, right, bottom, vw, vh } = input;
+  if (!(menuW > 0)) return { dx: 0, dy: 0, w: 0 };
+  let dx = 0;
+  let dy = 0;
+  let w = 0;
+  if (right > vw - 8) dx = vw - 8 - right;
+  if (left + dx < 8) dx = 8 - left;
+  if (vw < menuW + 16) w = Math.max(120, vw - 16);
+  if (menuH > 0) {
+    if (bottom > vh - 8) dy = vh - 8 - bottom;
+    if (top + dy < 8) dy = 8 - top;
+  }
+  return { dx, dy, w };
+}
+function shouldSkipDraftWriteback(quoteCount, attachCount) {
+  return quoteCount > 0 || attachCount > 0;
+}
 
 // src/runtime-boot.ts
 var runtimeBoot = null;
@@ -3993,7 +4011,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "8b30ccb";
+var BUILD_TAG = "a00fd6a";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -5205,6 +5223,26 @@ function MicMenu({ scope, anchor, onClose }) {
   const [snap, setSnap] = (0, import_react3.useState)(() => scope.getSnapshot());
   (0, import_react3.useEffect)(() => scope.subscribe(() => setSnap({ ...scope.getSnapshot() })), [scope]);
   const menuRef = (0, import_react3.useRef)(null);
+  const [adj, setAdj] = (0, import_react3.useState)(null);
+  (0, import_react3.useEffect)(() => {
+    const id = requestAnimationFrame(() => {
+      const el = menuRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const next = clampMenuRect({
+        menuW: el.offsetWidth || 208,
+        menuH: el.offsetHeight || 0,
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        vw: window.innerWidth,
+        vh: window.innerHeight
+      });
+      if (next.dx !== 0 || next.dy !== 0 || next.w !== 0) setAdj(next);
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
   (0, import_react3.useEffect)(() => {
     menuRef.current?.querySelector("button")?.focus();
     const onDown = (e) => {
@@ -5238,9 +5276,10 @@ function MicMenu({ scope, anchor, onClose }) {
   const pos = {
     position: "fixed",
     zIndex: 9999,
-    width,
+    width: adj?.w || width,
     left: r ? Math.max(8, Math.min(window.innerWidth - width - 8, Math.round(r.right - width))) : 8,
-    ...below ? { top: r ? Math.round(r.bottom + 8) : 96 } : { bottom: Math.round(window.innerHeight - r.top + 8) }
+    ...below ? { top: r ? Math.round(r.bottom + 8) : 96 } : { bottom: Math.round(window.innerHeight - r.top + 8) },
+    ...adj && (adj.dx !== 0 || adj.dy !== 0) ? { transform: `translate(${adj.dx}px, ${adj.dy}px)` } : null
   };
   const item = (role, checked, label, onPick) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("button", { type: "button", role, "aria-checked": checked, className: "dshvm-menu-item", onClick: onPick, children: [
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: label }),
@@ -5989,6 +6028,7 @@ function MicButton({
         const composed = composeDraft(draftRef.current, lastPartialRef.current, text);
         if (!composed) return;
         lastPartialRef.current = text.trim();
+        if (shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) return;
         try {
           partialActions.setDraft(composed);
         } catch {
@@ -6014,12 +6054,14 @@ function MicButton({
         if (!trimmed) return;
         let nextDraft = composeDraft(draftRef.current, lastPartialRef.current, trimmed);
         lastPartialRef.current = "";
-        try {
-          if (typeof actions?.setDraft === "function") actions.setDraft(nextDraft);
-        } catch {
+        if (!shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
           try {
-            actions?.setDraft?.(trimmed);
+            if (typeof actions?.setDraft === "function") actions.setDraft(nextDraft);
           } catch {
+            try {
+              actions?.setDraft?.(trimmed);
+            } catch {
+            }
           }
         }
         if (meta?.force) {
@@ -6365,6 +6407,12 @@ function MicButton({
   const liveDraft = useInput ? useInput((s) => s?.draft ?? "") : "";
   const draftRef = (0, import_react3.useRef)("");
   draftRef.current = liveDraft;
+  const liveQuoteCount = useInput ? useInput((s) => s?.quotes?.length ?? 0) : 0;
+  const liveAttachCount = useInput ? useInput((s) => s?.attachmentIds?.length ?? 0) : 0;
+  const quoteRef = (0, import_react3.useRef)(0);
+  quoteRef.current = liveQuoteCount;
+  const attachRef = (0, import_react3.useRef)(0);
+  attachRef.current = liveAttachCount;
   const lastPartialRef = (0, import_react3.useRef)("");
   const submitInFlightRef = (0, import_react3.useRef)(false);
   const correctCycleRef = (0, import_react3.useRef)(0);

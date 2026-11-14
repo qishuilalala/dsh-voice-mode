@@ -570,3 +570,47 @@ export function idleAction(input: {
   if (input.busy && input.sinceUserActivityMs <= IDLE_USER_ACTIVITY_CAP_MS) return 'renew'
   return input.warn ? 'warn' : 'exit'
 }
+
+/** 右键菜单二次钳制（Issue #64，纯判定，无 DOM 依赖）。
+ *
+ *  首帧按固定宽估算定位后，用菜单实测尺寸修正，保证窄视口下完整可见：
+ *  水平向内平移，极窄时收缩宽度；纵向超出则向上平移。
+ *  返回相对首帧位置的偏移与覆盖宽度（0 = 不调整）。 */
+export function clampMenuRect(input: {
+  /** 菜单实测宽（offsetWidth，0 表示测不到则不调整） */
+  menuW: number
+  /** 菜单实测高（offsetHeight，0 表示不做纵向钳制） */
+  menuH: number
+  /** 菜单首帧矩形（getBoundingClientRect） */
+  left: number
+  top: number
+  right: number
+  bottom: number
+  /** 视口尺寸 */
+  vw: number
+  vh: number
+}): { dx: number; dy: number; w: number } {
+  const { menuW, menuH, left, top, right, bottom, vw, vh } = input
+  if (!(menuW > 0)) return { dx: 0, dy: 0, w: 0 }
+  let dx = 0
+  let dy = 0
+  let w = 0
+  if (right > vw - 8) dx = vw - 8 - right
+  if (left + dx < 8) dx = 8 - left
+  if (vw < menuW + 16) w = Math.max(120, vw - 16)
+  if (menuH > 0) {
+    if (bottom > vh - 8) dy = vh - 8 - bottom
+    if (top + dy < 8) dy = 8 - top
+  }
+  return { dx, dy, w }
+}
+
+/** 识别回填写草稿门控（Issue #65，纯判定，无 DOM 依赖）。
+ *
+ *  宿主引用/附件是非文本态（quotes/attachmentIds 独立于 draft 字符串）；
+ *  宿主 setDraft(纯文本) 会把 Lexical 的引用卡片/图片附件洗成纯文本与破图。
+ *  引用或附件非空时，识别回填（onPartial/onSegment）必须跳过 setDraft——
+ *  状态条保留预览，不丢字；提交路径（用户意图）不受此门控，引用随提交发送。 */
+export function shouldSkipDraftWriteback(quoteCount: number, attachCount: number): boolean {
+  return quoteCount > 0 || attachCount > 0
+}

@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { applyTurnEvent, auxClickPending, cancelPayload, createScopeBridge, decayConfirmCount, eqPaintMode, focusFailureAction, handleReplaced, isAuxClickToIgnore, isEditingShortcut, isGestureEnd, isPrimaryPress, menuFocusIndex, pointerUpAction, onceFinished, registerScopeDispose, reportFocus, shouldReleaseStopLine, takeToggleSlot } from '../src/mic-gesture.ts'
+import { applyTurnEvent, auxClickPending, cancelPayload, clampMenuRect, createScopeBridge, decayConfirmCount, eqPaintMode, focusFailureAction, handleReplaced, isAuxClickToIgnore, isEditingShortcut, isGestureEnd, isPrimaryPress, menuFocusIndex, pointerUpAction, onceFinished, registerScopeDispose, reportFocus, shouldReleaseStopLine, shouldSkipDraftWriteback, takeToggleSlot } from '../src/mic-gesture.ts'
 import { createHttpScope } from '../src/settings-http-scope.ts'
 
 let passed = 0
@@ -358,6 +358,44 @@ t('接线：MicMenu 的方向键走 menuFocusIndex（旧的内联环绕算式已
     !/items\[\(i \+ \(e\.key/.test(body),
     '旧的内联环绕算式仍在——i=-1 时 ArrowUp 会落到倒数第二项',
   )
+})
+t('菜单视口钳制：右溢出时向内平移（Issue #64）', () => {
+  // 锚点贴右：首帧 right=1310 超出 vw=1280，二次钳制左移。
+  const r = clampMenuRect({ menuW: 208, menuH: 300, left: 1102, top: 100, right: 1310, bottom: 400, vw: 1280, vh: 800 })
+  assert.equal(r.dx, 1280 - 8 - 1310, '右溢出应左移贴边')
+  assert.equal(1102 + r.dx + 208 <= 1280, true, '平移后右缘不得出视口')
+  assert.equal(r.dy, 0, '纵向未溢出不应动')
+  assert.equal(r.w, 0, '宽度足够不应收缩')
+})
+t('菜单视口钳制：极窄视口收缩宽度（Issue #64）', () => {
+  // vw=200 < 208+16：宽度收缩到 vw-16，且左缘贴 8。
+  const r = clampMenuRect({ menuW: 208, menuH: 300, left: 8, top: 100, right: 216, bottom: 400, vw: 200, vh: 800 })
+  assert.equal(r.w, 184, '极窄视口宽度应收缩到 vw-16')
+  assert.ok(r.dx <= 0, '收缩后应左移或不动')
+})
+t('菜单视口钳制：纵向溢出向上平移（Issue #64）', () => {
+  const r = clampMenuRect({ menuW: 208, menuH: 400, left: 100, top: 500, right: 308, bottom: 900, vw: 1280, vh: 800 })
+  assert.equal(r.dy, 800 - 8 - 900, '底部溢出应上移贴边')
+  assert.equal(r.dx, 0, '横向未溢出不应动')
+})
+t('菜单视口钳制：测不到尺寸时不调整（Issue #64）', () => {
+  const r = clampMenuRect({ menuW: 0, menuH: 0, left: 1102, top: 100, right: 1310, bottom: 400, vw: 1280, vh: 800 })
+  assert.deepEqual(r, { dx: 0, dy: 0, w: 0 }, '无实测尺寸不得臆测偏移')
+})
+t('接线：MicMenu 的二次钳制走 clampMenuRect（旧的内联算式已下线）', () => {
+  const body = srcBetween('const [adj, setAdj]', 'cancelAnimationFrame(id)')
+  assert.ok(body.includes('clampMenuRect'), 'MicMenu 二次钳制未走 clampMenuRect 纯判定')
+  assert.ok(!/rect\.right > vw - 8/.test(body), '旧的内联钳制算式仍在——应走纯函数以便单测锁定')
+})
+t('引用态保护：引用/附件非空时跳过识别回填（Issue #65）', () => {
+  assert.equal(shouldSkipDraftWriteback(0, 0), false, '无引用无附件应正常回填')
+  assert.equal(shouldSkipDraftWriteback(1, 0), true, '有引用应跳过回填（防洗引用卡片）')
+  assert.equal(shouldSkipDraftWriteback(0, 2), true, '有附件应跳过回填（防图片变破图）')
+  assert.equal(shouldSkipDraftWriteback(1, 1), true, '两者都有更应跳过')
+})
+t('接线：onPartial/onSegment 回填前查引用门控（Issue #65）', () => {
+  const body = readFileSync(new URL('../src/client.tsx', import.meta.url), 'utf8')
+  assert.ok(body.includes('shouldSkipDraftWriteback(quoteRef.current, attachRef.current)'), '识别回填未走引用门控')
 })
 
 // --------------------------------------------------------------------------
