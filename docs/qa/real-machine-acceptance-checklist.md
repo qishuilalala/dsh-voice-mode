@@ -40,7 +40,7 @@
   2. 找到「语音模式 / Voice Mode」分组（或「Recognition」/「Interaction」分组）
   3. 滚动查看所有 Row
 - **预期**：4 个新 Row 标签都是中文：
-  - 「逆文本归一化」（senseITN；与 `src/strings.ts`（`senseITNLabel: '逆文本归一化'`）+ `src/settings-form.tsx:1323-1324`（`<Row name="senseITN" desc={tr('descSenseITN')}>` 的 checkbox 行）一致）
+  - 「逆文本归一化」（senseITN；与 `src/strings.ts`（`senseITNLabel: '逆文本归一化'`）+ `src/settings-form.tsx:1344-1345`（`<Row name="senseITN" desc={tr('descSenseITN')}>` 的 checkbox 行）一致）
   - 「字幕字号」/「字幕宽度」（captionFontSize / captionMaxWidth）
   - 「短应答让位」（backchannelYield）
 - **失败信号**：Row 标签显示 `senseITN` / `captionFontSize` 等原始 key 而非中文

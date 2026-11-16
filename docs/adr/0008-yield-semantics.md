@@ -60,7 +60,7 @@ YIELDING (let the user interrupt)
 |---|---|---|---|
 | 🥇 P0 | **Backchannel detector**（"嗯/哎/so"等 6+ 中英文词检测）+ 半双工暂停（停下 TTS 不 hardBreak，等 1s） | `src/asr.ts` `matchWakeWord` 同位置加 `matchBackchannel`；`src/tts-queue.ts` 新 `pauseAtBoundary()` 走 epoch 通道 | 2-3 天 |
 | 🥈 P0 | **Hume EVI 风格让位 prompt 注入**（48 维 prosody top-3 注入 system prompt） | `src/index.ts` 的 `system-prompt/assemble` 瀑布扩展（`ctx.on('system-prompt/assemble'`；原值 896 与 2026-10-21 前快照的 `:966` 均已漂移——2026-10-21 R15-J 改按**符号锚**重锚）；如无云端 emotion2vec，本地替代 0 | 1-2 天 |
-| 🥉 P2 | **Inattentive silence 自动 break**（6s 沉默后模型主动 break silence） | `src/index.ts:633` `ownerYieldTimer` 旁加 `silenceBreakTimer`（原值 537 已漂移 Δ47） | 1-2 天 |
+| 🥉 P2 | **Inattentive silence 自动 break**（6s 沉默后模型主动 break silence） | `src/index.ts:664` `ownerYieldTimer` 旁加 `silenceBreakTimer`（原值 537 已漂移 Δ47） | 1-2 天 |
 | ❄ | **End-of-turn probability 让位** | 需 ADR-0003 VAD 下沉前置 | 推迟 |
 | ❄ | **让位历史记忆**（环形 buffer） | 配 ADR-0005 fixture，需先扩展 | 推迟 |
 
