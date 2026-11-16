@@ -1759,10 +1759,14 @@ var zh = {
   voiceNext: "\u4E0B\u4E00\u97F3\u8272",
   descVoice: "Edge \u4E91\u7AEF\u97F3\u8272\uFF08\u8FDB\u5165\u65F6\u81EA\u52A8\u52A0\u8F7D\u5FAE\u8F6F\u5168\u90E8\u97F3\u8272\uFF0C\u5E38\u7528\u4E2D\u6587\u97F3\u8272\u7F6E\u9876\uFF0C\u4E0B\u62C9\u6216 \u25C0\u25B6 \u9009\uFF1B\u4E5F\u53EF\u300C\u81EA\u5B9A\u4E49\u300D\u586B ShortName\uFF09",
   descVoiceLocal: "\u672C\u5730\u97F3\u8272\uFF08vits \u4E94\u4E2A\u8BF4\u8BDD\u4EBA\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B\u65E0\u9700\u81EA\u5B9A\u4E49\uFF09",
-  descTtsEngine: "\u672C\u5730 VITS\uFF08\u7EAF\u4E2D\u6587\uFF09/ \u672C\u5730 Kokoro\uFF08\u4E2D\u82F1\u5747\u53EF\uFF09/ Edge \u4E91\u7AEF\uFF08\u97F3\u8D28\u6700\u81EA\u7136\uFF0C\u6587\u672C\u4E0A\u5FAE\u8F6F\uFF09",
+  descTtsEngine: "\u672C\u5730 VITS\uFF08\u7EAF\u4E2D\u6587\uFF09/ \u672C\u5730 Kokoro\uFF08\u4E2D\u82F1\u5747\u53EF\uFF09/ Edge \u4E91\u7AEF\uFF08\u97F3\u8D28\u6700\u81EA\u7136\uFF0C\u6587\u672C\u4E0A\u5FAE\u8F6F\uFF09/ OpenAI \u517C\u5BB9\u670D\u52A1\uFF08\u81EA\u5EFA\u6216\u6258\u7BA1\uFF0C\u6587\u672C\u53D1\u5F80\u914D\u7F6E\u7684\u5730\u5740\uFF09",
   engineVits: "\u672C\u5730 VITS",
   engineKokoro: "\u672C\u5730\u4E2D\u82F1",
   engineEdge: "Edge \u4E91\u7AEF",
+  engineOpenai: "OpenAI \u517C\u5BB9",
+  descVoiceOpenai: "\u670D\u52A1\u7AEF\u7684\u97F3\u8272\u540D\uFF08\u7559\u7A7A = \u914D\u7F6E\u91CC\u7684 openaiTts.voice\uFF09",
+  engineRemoteDown: "\u670D\u52A1\u4E0D\u53EF\u7528",
+  errRemoteTts: "\u6717\u8BFB\u670D\u52A1\u8FDE\u4E0D\u4E0A\u3001\u62A5\u9519\u6216\u592A\u6162\uFF1B\u914D\u7F6E\u4E86\u56DE\u9000\u65F6\u8FD9\u671F\u95F4\u7528\u672C\u5730\u5F15\u64CE\u6717\u8BFB",
   descVoiceKokoro: "Kokoro \u4E2D\u82F1\u97F3\u8272\uFF08103 \u4E2A\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B48-51 \u4E2D\u6587\u540D\uFF0C\u5176\u4F59\u6309\u7F16\u53F7+\u5B9E\u6D4B\u6027\u522B\u6807\u6CE8\uFF0C\u4E2D\u82F1\u6DF7\u8BFB\u5747\u53EF\uFF09",
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.1 \u9ED8\u8BA4\uFF1B\u8BA9\u56DE\u590D\u66F4\u7D27\u51D1\uFF09",
   descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB \u22480.3s \u786E\u8BA4 / 1 \u4E2D\u95E8\u69DB \u22480.2s / 2 \u4F4E\u95E8\u69DB \u22480.1s\uFF0C\u6700\u7075\u654F\uFF09\uFF1B\u503C\u8D8A\u4F4E\u95E8\u69DB\u8D8A\u9AD8\uFF0C\u8D8A\u96BE\u6253\u65AD",
@@ -1962,6 +1966,7 @@ var zh = {
   hostOfficial: "\u5B98\u65B9\u6E90",
   hostMirror: "\u56FD\u5185\u955C\u50CF",
   engineBadgeCloud: "\u8BC6\u522B\u672C\u5730 \xB7 \u6717\u8BFB\u4E91\u7AEF",
+  engineBadgeRemote: "\u8BC6\u522B\u672C\u5730 \xB7 \u6717\u8BFB\u8D70\u914D\u7F6E\u7684\u670D\u52A1",
   engineBadgeLocal: "\u8BC6\u522B\u672C\u5730 \xB7 \u6717\u8BFB\u672C\u5730",
   errRateLimited: "\u8BF7\u6C42\u8FC7\u4E8E\u9891\u7E41\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5",
   errUnknownSession: "\u8BED\u97F3\u4F1A\u8BDD\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u5F00\u542F\u8BED\u97F3\u6A21\u5F0F",
@@ -2046,10 +2051,14 @@ var en = {
   voiceNext: "Next voice",
   descVoice: "Edge cloud voices (auto-loads all Microsoft voices; common Chinese voices pinned on top; \u25C0\u25B6 or dropdown; custom ShortName allowed)",
   descVoiceLocal: "Local voice (vits, all 5 speakers listed; dropdown or \u25C0\u25B6; no custom needed)",
-  descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft)",
+  descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft) / OpenAI-compatible server (self-hosted or hosted, text sent to the configured URL)",
   engineVits: "Local VITS",
   engineKokoro: "Local Kokoro",
   engineEdge: "Edge cloud",
+  engineOpenai: "OpenAI-compatible",
+  descVoiceOpenai: "Voice name on the server (empty = openaiTts.voice from the config)",
+  engineRemoteDown: "server unavailable",
+  errRemoteTts: "The TTS server is unreachable, failing or too slow; the local fallback reads aloud meanwhile if one is configured",
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
   descInterrupt: "Interrupt sensitivity (0 high \u22480.3 s confirm / 1 medium \u22480.2 s / 2 low \u22480.1 s, most responsive); lower = higher barrier = harder to interrupt",
@@ -2240,6 +2249,7 @@ var en = {
   hostOfficial: "Official",
   hostMirror: "Mirror (CN)",
   engineBadgeCloud: "ASR local \xB7 TTS cloud",
+  engineBadgeRemote: "ASR local \xB7 TTS on your configured server",
   engineBadgeLocal: "ASR local \xB7 TTS local",
   errRateLimited: "Too many requests \u2014 try again shortly",
   errUnknownSession: "Voice session expired \u2014 re-enter voice mode",
@@ -2876,7 +2886,9 @@ var ENGINE_DEFAULT_VOICE = {
   // 避免「config 直连」与「面板切引擎」落到不同默认音色。
   vits: "suyingxue",
   kokoro: "zf_xiaobei",
-  edge: "zh-CN-XiaoxiaoNeural"
+  edge: "zh-CN-XiaoxiaoNeural",
+  // 空 = 用配置里的 openaiTts.voice（服务端音色名各家不同，没有通用默认）。
+  openai: ""
 };
 function NumberField({
   score,
@@ -3252,7 +3264,7 @@ function VoicePreviewButton({ voice, rate }) {
         if (res.ok && alive) {
           const st = await res.json();
           const tts = st.tts;
-          if (tts.engine === "edge") {
+          if (tts.engine === "edge" || tts.engine === "openai") {
             setLocalReady(true);
           } else {
             setLocalReady(!!tts.local?.ready);
@@ -3452,7 +3464,7 @@ function EngineStatusInline() {
   }, []);
   const tts = st?.tts;
   if (!tts) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, {});
-  const engineName = tts.engine === "vits" ? t("engineVits") : tts.engine === "kokoro" ? t("engineKokoro") : t("engineEdge");
+  const engineName = tts.engine === "vits" ? t("engineVits") : tts.engine === "kokoro" ? t("engineKokoro") : tts.engine === "openai" ? t("engineOpenai") : t("engineEdge");
   const isLocal = !!tts.local;
   const localReady = isLocal ? !!tts.local?.ready : false;
   let statusText;
@@ -3461,7 +3473,7 @@ function EngineStatusInline() {
     statusText = t("engineLoading");
     statusColor = t2.term;
   } else if (tts.error) {
-    statusText = t("engineError");
+    statusText = t(tts.engine === "openai" ? "engineRemoteDown" : "engineError");
     statusColor = "var(--dsw-alias-state-error-primary)";
   } else if (isLocal && !localReady) {
     statusText = t("ttsModelsMissing");
@@ -3492,7 +3504,7 @@ function EngineStatusInline() {
           borderRadius: 6,
           background: "var(--dsw-alias-bg-layer-1)"
         },
-        children: t(tts.engine === "edge" ? "engineBadgeCloud" : "engineBadgeLocal")
+        children: t(tts.engine === "edge" ? "engineBadgeCloud" : tts.engine === "openai" ? "engineBadgeRemote" : "engineBadgeLocal")
       }
     ),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: statusText === t("engineReady") || statusText === t("engineError") ? 600 : 400, color: statusColor }, children: statusText }),
@@ -3523,7 +3535,7 @@ function EngineStatusInline() {
         children: acting ? acting === "clean" ? t("ttsDeleting") : t("ttsDownloading") : action === "clean" ? t("ttsDelete") : t("ttsDownload")
       }
     ),
-    tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: tts.errorCode === "kokoro_needs_node" ? t("errKokoroNeedsNode") : t("engineError") })
+    tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: tts.errorCode === "kokoro_needs_node" ? t("errKokoroNeedsNode") : tts.engine === "openai" ? t("errRemoteTts") : t("engineError") })
   ] });
 }
 function ModelStatusView() {
@@ -3631,7 +3643,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
   );
   const value = snap?.value ?? {};
   const unavailable = snap?.status === "unavailable" || snap?.status === "error";
-  const engine = value.ttsEngine === "edge" ? "edge" : value.ttsEngine === "kokoro" ? "kokoro" : "vits";
+  const engine = value.ttsEngine === "edge" ? "edge" : value.ttsEngine === "kokoro" ? "kokoro" : value.ttsEngine === "openai" ? "openai" : "vits";
   const [edgeRaw, setEdgeRaw] = (0, import_react2.useState)(null);
   (0, import_react2.useEffect)(() => {
     if (engine !== "edge") return;
@@ -3643,7 +3655,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
       alive = false;
     };
   }, [engine]);
-  const voiceOptions = engine === "edge" ? edgeRaw ? edgeAllOptions(edgeRaw, activeLocale()) : edgeCommonOptions() : engine === "kokoro" ? kokoroOptions() : vitsOptions();
+  const voiceOptions = engine === "edge" ? edgeRaw ? edgeAllOptions(edgeRaw, activeLocale()) : edgeCommonOptions() : engine === "kokoro" ? kokoroOptions() : engine === "openai" ? [] : vitsOptions();
   if (unavailable) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: t2.term, fontSize: 12, padding: "14px 16px", ...cardStyle }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)" }, children: t("configUnavailable") }),
@@ -3672,7 +3684,8 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               options: [
                 { v: "vits", label: t("engineVits") },
                 { v: "kokoro", label: t("engineKokoro") },
-                { v: "edge", label: t("engineEdge") }
+                { v: "edge", label: t("engineEdge") },
+                { v: "openai", label: t("engineOpenai") }
               ],
               onSelect: (v) => {
                 if (v !== engine) {
@@ -3698,7 +3711,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
             Row,
             {
               name: "voice",
-              desc: (engine === "edge" ? t("descVoice") : engine === "kokoro" ? t("descVoiceKokoro") : t("descVoiceLocal")) + voiceLangHint(engine, String(value.voice ?? "")),
+              desc: (engine === "edge" ? t("descVoice") : engine === "kokoro" ? t("descVoiceKokoro") : engine === "openai" ? t("descVoiceOpenai") : t("descVoiceLocal")) + voiceLangHint(engine, String(value.voice ?? "")),
               children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 VoiceSelect,
                 {
@@ -3707,7 +3720,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
                   value: value.voice ?? "",
                   options: voiceOptions,
                   placeholder: ENGINE_DEFAULT_VOICE[engine] ?? "zh-CN-XiaoxiaoNeural",
-                  showCustom: engine === "edge",
+                  showCustom: engine === "edge" || engine === "openai",
                   footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1.1) })
                 }
               )
@@ -4011,7 +4024,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "e931c32";
+var BUILD_TAG = "c8eed54";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
