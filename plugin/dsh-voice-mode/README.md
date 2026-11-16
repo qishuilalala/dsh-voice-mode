@@ -121,7 +121,7 @@ dsh plugin --profile web add dsh-voice-mode
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
-| `ttsEngine` | `edge` | 朗读引擎：`edge` 微软云端（默认，快）/ `vits` 本地中文 / `kokoro` 本地中英；**即时生效** |
+| `ttsEngine` | `edge` | 朗读引擎：`edge` 微软云端（默认，快）/ `vits` 本地中文 / `kokoro` 本地中英 / `openai` 任意 OpenAI 兼容服务（见下文）；**即时生效** |
 | `kokoroModel` | `int8` | Kokoro 模型精度：`int8`（默认，109MB，纯 CPU/低带宽推荐）/ `fp32`（311MB，音质更好，独显/大内存推荐）；两档共用 103 音色，**即时生效** |
 | `voice` | 按引擎 | 音色：VITS 五说话人；Kokoro 103 个（下拉+◀▶，62 深沉/68 浑厚/75 清亮/76 磁性置顶）；Edge 进入时自动加载全量 322 个。行内「试听」可即时预览 |
 | `rate` | `1.1` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
@@ -200,6 +200,30 @@ dsh plugin --profile web add dsh-voice-mode
 > 的**生效值来自设置面板**；bundle 配置只负责为这些键播种默认值
 > （`enabled` / `cacheDir` 则仅由 bundle 配置决定）。
 > 插件 HTTP 命名空间固定为 `/voice-mode`（与客户端打包契约一致，不可配置）。
+
+### OpenAI 兼容的 TTS 服务（`ttsEngine: openai`）
+
+任何实现了 OpenAI `POST /v1/audio/speech` 的服务都能用来朗读：自己 GPU 机器上的（[vLLM-Omni](https://github.com/vllm-project/vllm-omni)、[Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI)、LocalAI 等），或者 OpenAI、[OpenRouter](https://openrouter.ai/docs/guides/overview/multimodal/tts) 这类托管 API。服务地址写在组合包 config 里（仅 host 侧，key 不会下发到浏览器），引擎和其他引擎一样在设置面板里选：
+
+```yaml
+- id: voice-mode
+  name: dsh-voice-mode
+  config:
+    ttsEngine: openai
+    voice: vivian                       # 服务端的音色名；留空 = openaiTts.voice
+    openaiTts:
+      baseUrl: http://gpu-box:8091/v1   # OpenRouter: https://openrouter.ai/api/v1，OpenAI: https://api.openai.com/v1
+      apiKey: ''                        # Bearer key，服务无鉴权时留空
+      model: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+      voice: vivian
+      responseFormat: mp3               # mp3 | wav
+      timeoutMs: 8000                   # 单句超时，超过视为不可用
+      fallback: kokoro                  # none | vits | kokoro：服务挂了或太慢时用的本地引擎
+      fallbackVoice: zf_xiaobei         # 留空 = 该引擎的默认音色
+      instructions: ''                  # 可选，支持风格说明的模型才用
+```
+
+每句一个请求（队列本来就在回复还在生成时逐句合成，句内流式不会让播放更早开始）。`rate` 不为 1 时作为 `speed` 发送。配置了 `fallback` 时，请求失败或超时的那句（以及之后 30 秒）改用本地引擎，然后再试服务，服务挂掉不会让每句都等一次超时。被朗读的文本会发到 `baseUrl`，请选你信得过的服务。
 
 ---
 
@@ -297,7 +321,7 @@ flowchart LR
 
 | 类别 | 具体行为 | 数据去向 |
 | --- | --- | --- |
-| **network** | Edge 将待朗读文本发往微软在线服务；本地模型从官方源或配置镜像下载，主要模型及清单内支持文件做摘要校验，辅助目录用清单/存在性检查；插件在宿主注册 `/voice-mode/*` 路由 | 浏览器音频发送到所连接的 dsh 宿主识别，不使用独立云 ASR；提交文本及可选 LLM 纠错遵循宿主配置。切换本地 TTS 不会让宿主 LLM 自动离线 |
+| **network** | Edge 将待朗读文本发往微软在线服务；`ttsEngine: openai` 时将待朗读文本发往配置的 `openaiTts.baseUrl`（不发往别处）；本地模型从官方源或配置镜像下载，主要模型及清单内支持文件做摘要校验，辅助目录用清单/存在性检查；插件在宿主注册 `/voice-mode/*` 路由 | 浏览器音频发送到所连接的 dsh 宿主识别，不使用独立云 ASR；提交文本及可选 LLM 纠错遵循宿主配置。切换本地 TTS 不会让宿主 LLM 自动离线 |
 | **fs-read / fs-write** | 模型缓存（Linux/macOS `~/.cache/dsh-voice-mode/models/`，Windows `%LOCALAPPDATA%\dsh-voice-mode\models\`）；dsh 0.1.7+ 的设置覆盖层 `$DSH_HOME/voice-mode.settings.json`；**不读写你的工作区文件** | 全部在本机 |
 | **shell（子进程）** | 本地 TTS 合成跑在独立子进程（`child_process.fork` → `lib/tts-vits-worker.cjs`）；宿主为 Electron（官方桌面端）时，为 Kokoro 额外探测并启动一个真正的 Node.js（`node -p …` 探测版本，见 ADR/兼容契约）。**不执行用户输入、不经 shell 拼接命令** | 本机 |
 | **env** | 使用目录和运行时定位相关环境设置，如 `DSH_HOME`、`LOCALAPPDATA`、`PATH` 和可选 `DSHVM_NODE`；默认语音路径无需额外语音服务密钥 | 宿主 LLM 的配置和费用另计 |

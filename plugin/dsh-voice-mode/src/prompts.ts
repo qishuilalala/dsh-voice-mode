@@ -56,8 +56,8 @@ const SAMPLE_BY_LANG: Readonly<Record<string, string>> = {
   ru: 'Здравствуйте, добро пожаловать в голосовой режим.',
 }
 
-export function previewSample(engine: 'edge' | 'vits' | 'kokoro', voice: string): string {
-  if (engine === 'kokoro') return `${SAMPLE_ZH}${SAMPLE_EN}`
+export function previewSample(engine: 'edge' | 'vits' | 'kokoro' | 'openai', voice: string): string {
+  if (engine === 'kokoro' || engine === 'openai') return `${SAMPLE_ZH}${SAMPLE_EN}`
   if (engine === 'vits') return SAMPLE_ZH
   const m = /^([a-z]{2,3})-/i.exec(voice)
   return (m && SAMPLE_BY_LANG[m[1].toLowerCase()]) || SAMPLE_EN
