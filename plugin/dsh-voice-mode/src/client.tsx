@@ -63,6 +63,7 @@ let lastReenterAt = 0
 const INT_CONFIRM_FRAMES: Record<0 | 1 | 2, number> = { 0: 3, 1: 2, 2: 1 }
 import { VoiceSettingsCard } from './settings-form.tsx'
 import { createHttpScope } from './settings-http-scope.ts'
+import { takeOnceHint } from './once-hint.ts'
 
 // settingsScope 仅 ≤0.1.6 客户端提供；0.1.7+ 已移除，列入 inject 会使插件永远 pending（真机冒烟实证）。
 // 故不声明，改用 ctx.get 可选查找（见 settings.plugin.item 注册处）。
@@ -411,6 +412,9 @@ function parseShortcut(s: string): { ctrl: boolean; shift: boolean; alt: boolean
   if (!mods.ctrl && !mods.shift && !mods.alt && !mods.meta) return null
   return { ...mods, key }
 }
+
+/** 自动恢复引导只在每个浏览器提示一次（localStorage 记忆）。 */
+const AUTO_RESUME_HINT_KEY = 'dshvm-autoresume-hint-seen'
 
 /** I5：上次语音会话记忆（localStorage 持久，autoResume 切回时自动恢复）。 */
 function getLastVoiceSession(): string | null {
@@ -3180,7 +3184,7 @@ export function MicButton({
       // 批 H 任务 4：autoResume 关 + 切回上次会话 → 状态条一次性提示（5s 后清）。
       // 与 idleTimeoutQuit toast 共用模式：仅当 notice 仍是本次提示文案才清，避免冲掉用户新提示。
       if (!cfg.autoResume) {
-        if (getLastVoiceSession() === sid) {
+        if (getLastVoiceSession() === sid && takeOnceHint(AUTO_RESUME_HINT_KEY)) {
           const hint = t('autoResumeHint')
           if (autoResumeHintTimerRef.current) clearTimeout(autoResumeHintTimerRef.current)
           bus.setUi({ notice: hint })
@@ -3800,6 +3804,9 @@ export function MicButton({
           bus.ui.ttsNotice ??
           '')
 
+  // 纯提示（notice，非错误）用中性色，红色只留给错误。
+  const micHintInfo = !bus.ui.error && !!bus.ui.notice && micHint === bus.ui.notice
+
   // 按钮形态（CSS 按 data-state 着色）：按住 > 朗读 > once 收尾/等待 > 语音中 > 进入中 > 关。
   const visual: 'off' | 'pending' | 'on' | 'hold' | 'holding' | 'reading' | 'waiting' | 'ending' = holding
     ? 'holding'
@@ -3991,7 +3998,7 @@ export function MicButton({
           title={micHint}
           style={{
             fontSize: 11,
-            color: 'var(--dsw-alias-state-error-primary, #f85149)',
+            color: micHintInfo ? 'var(--dsw-alias-label-tertiary, #8b949e)' : 'var(--dsw-alias-state-error-primary, #f85149)',
             maxWidth: 240,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
