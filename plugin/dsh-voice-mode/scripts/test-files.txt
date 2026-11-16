@@ -84,3 +84,4 @@ test/llm-correct-similarity.test.mjs
 test/asr-lifecycle-races.test.mjs
 test/smoke-runtime.test.mjs
 test/tts-openai.test.mjs
+test/asr-replacements.test.mjs

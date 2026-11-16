@@ -119,7 +119,7 @@ YIELDING (let the user interrupt)
 - `src/index.ts` 的 `system-prompt/assemble` 注入点（`ctx.on('system-prompt/assemble'`；原值 896 与 2026-10-21 前快照的 `:966`/`:966-972` 均已漂移——2026-10-21 R15-J 改按**符号锚**重锚，行号待最终 HEAD 稳定后统一回填）
 - `src/asr.ts:933-998`（echoFloor/echoPeak 跨区 + ADR-0006 真机结论）
 - `src/asr.ts:192`（历史时点快照）（wakeEnabled 唤醒词门：唤醒词非空且非 hold 模式，逻辑可参考）
-- `src/asr-host.ts:623`（finalize 同步路径 `finalizeP`，"不丢句"不变量；原 442-466 区现为 senseTranscribe、原 584 锚点已漂移；2026-10-20 10:30 实测刷新）
+- `src/asr-host.ts:627`（finalize 同步路径 `finalizeP`，"不丢句"不变量；原 442-466 区现为 senseTranscribe、原 584 锚点已漂移；2026-10-20 10:30 实测刷新）
 - `src/tts-queue.ts:555`（`cancel()` 硬打断；epoch 守卫；不丢句；原值 379 已漂移 Δ73——该行现为 `this.engine.status?.()`；原 268-307 区现为 updateVoice、原 325 锚点已漂移；2026-10-21 按符号定位刷新）
 - `src/tts-queue.ts`（`q.epoch` 逐队列代际字段——epoch 通道本体：类型声明 `QueuedSentence.epoch` :204 / `SessionQueue.epoch` :212（接口 :207），自增 :366（prune 路径）/ :455（cancel）/ :471（re-enter 新队列），入队快照 :444，泵内守卫 :490（break）/ :511（continue）。**勘误（2026-10-20）**：原「`_SSMLTemplate` epoch 通道」全 src 0 命中，系幻影符号。**刷新口径声明（2026-10-21）**：原 `:296`（setEngine）/`:382`（cancel）两处自增锚点系幻影符号——HEAD 中 `cancel` 的 `q.epoch++` 在 :455、`:296` 与 `:382` 均无自增语句；原 `:371` 入队快照实为 :444、原 `:416`/`:437` 泵内守卫实为 :490/:511。**fix-host R14 引擎级 closed 标志改动的终验至今未做**（原 :124 文末「需终验」为遗留待办），故本段锚点为 2026-10-21 符号定位结果，不构成 R14 终验结论）
 - `src/client.tsx` 的 `hardBreak` 定义（`const hardBreak = async`；原值 1946 与 2026-10-21 前快照的 `:2392` 均已漂移——旧文自述的「Δ946」与自述现值互相矛盾，已更正；2026-10-21 R15-J 改按**符号锚**重锚）
