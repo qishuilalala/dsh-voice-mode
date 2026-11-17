@@ -49,13 +49,15 @@ export class OpenAiTtsError extends Error {
   }
 }
 
-/** `{baseUrl}/audio/speech`，容忍末尾斜杠；只接受 http(s)。 */
+/** `{baseUrl}/audio/speech`，容忍末尾斜杠与已带后缀；只接受 http(s)。 */
 export function speechUrl(baseUrl: string): string {
   const url = new URL(baseUrl.trim())
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new OpenAiTtsError('openai_bad_url', 'baseUrl must be http(s)')
   }
-  url.pathname = `${url.pathname.replace(/\/+$/, '')}/audio/speech`
+  const noSlash = url.pathname.replace(/\/+$/, '')
+  const base = noSlash.endsWith('/audio/speech') ? noSlash.slice(0, -'/audio/speech'.length) : noSlash
+  url.pathname = `${base}/audio/speech`
   return url.toString()
 }
 
@@ -104,7 +106,8 @@ export class OpenAiTtsEngine implements TtsEngine {
   }
 
   updateVoice(voice: string, rate?: number): void {
-    if (voice) this.voice = voice
+    // 空串 = 回落到配置值（设置面板清空音色时，须用回配置而非残留旧音色）。
+    this.voice = voice || this.options.voice
     if (rate !== undefined && Number.isFinite(rate)) this.rate = rate
   }
 
@@ -189,7 +192,9 @@ export class OpenAiTtsEngine implements TtsEngine {
     const fallingBack = this.now() < this.downUntil
     return {
       engine: 'openai',
-      ready: !fallingBack,
+      // 未配置（baseUrl/model 缺失）即非就绪：ready 与 error 必须一致，
+      // 不得出现 ready=true 却带 openai_not_configured 的矛盾态。
+      ready: !fallingBack && !this.configError,
       loading: false,
       error: this.lastError?.message,
       errorCode: this.lastError?.code,

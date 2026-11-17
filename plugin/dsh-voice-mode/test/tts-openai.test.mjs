@@ -57,10 +57,12 @@ function fakeLocal() {
   }
 }
 
-// speechUrl：保留路径前缀、容忍末尾斜杠、拒绝非 http(s)。
+// speechUrl：保留路径前缀、容忍末尾斜杠与已带后缀、拒绝非 http(s)。
 assert.equal(speechUrl('https://openrouter.ai/api/v1'), 'https://openrouter.ai/api/v1/audio/speech')
 assert.equal(speechUrl('https://api.openai.com/v1/'), 'https://api.openai.com/v1/audio/speech')
 assert.equal(speechUrl('http://127.0.0.1:8091/v1'), 'http://127.0.0.1:8091/v1/audio/speech')
+assert.equal(speechUrl('http://127.0.0.1:8091/v1/audio/speech'), 'http://127.0.0.1:8091/v1/audio/speech')
+assert.equal(speechUrl('http://127.0.0.1:8091/v1/audio/speech/'), 'http://127.0.0.1:8091/v1/audio/speech')
 assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
 
 // 1) OpenRouter 形状：/api/v1 前缀 + Bearer key + OpenAI 请求体。
@@ -108,7 +110,7 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   const last = requests.at(-1)
   assert.equal(last.headers.authorization, undefined)
   assert.equal(last.body.speed, undefined)
-  assert.equal(last.body.voice, 'v')
+  assert.equal(last.body.voice, 'v', '空串 updateVoice 应回落到配置值 v，而非残留旧音色')
   assert.equal(last.body.response_format, 'wav')
   assert.equal(plain.mime, 'audio/wav')
   await closeServer(server)
@@ -218,6 +220,7 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   const local = fakeLocal()
   const engine = new OpenAiTtsEngine({ baseUrl: '', model: '', voice: '', fallback: () => local })
   assert.equal(engine.status().errorCode, 'openai_not_configured')
+  assert.equal(engine.status().ready, false, '未配置时 ready 必须为 false（不得与 error 共存矛盾）')
   assert.deepEqual(await engine.synthesize('hello'), Buffer.from('RIFF-local'))
   await engine.close()
   assert.equal(local.closed, true)

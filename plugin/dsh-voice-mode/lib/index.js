@@ -2807,7 +2807,9 @@ function speechUrl(baseUrl) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new OpenAiTtsError("openai_bad_url", "baseUrl must be http(s)");
   }
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}/audio/speech`;
+  const noSlash = url.pathname.replace(/\/+$/, "");
+  const base = noSlash.endsWith("/audio/speech") ? noSlash.slice(0, -"/audio/speech".length) : noSlash;
+  url.pathname = `${base}/audio/speech`;
   return url.toString();
 }
 var OpenAiTtsEngine = class {
@@ -2850,7 +2852,7 @@ var OpenAiTtsEngine = class {
     return this.lastMime;
   }
   updateVoice(voice, rate) {
-    if (voice) this.voice = voice;
+    this.voice = voice || this.options.voice;
     if (rate !== void 0 && Number.isFinite(rate)) this.rate = rate;
   }
   async synthesize(text, options = {}) {
@@ -2928,7 +2930,9 @@ var OpenAiTtsEngine = class {
     const fallingBack = this.now() < this.downUntil;
     return {
       engine: "openai",
-      ready: !fallingBack,
+      // 未配置（baseUrl/model 缺失）即非就绪：ready 与 error 必须一致，
+      // 不得出现 ready=true 却带 openai_not_configured 的矛盾态。
+      ready: !fallingBack && !this.configError,
       loading: false,
       error: this.lastError?.message,
       errorCode: this.lastError?.code
