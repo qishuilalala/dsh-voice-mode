@@ -135,7 +135,7 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `ttsEngine` | `edge` | Read-aloud engine: `edge` Microsoft cloud (default, fast) / `vits` local Chinese / `kokoro` local zh+en; **applies live** |
+| `ttsEngine` | `edge` | Read-aloud engine: `edge` Microsoft cloud (default, fast) / `vits` local Chinese / `kokoro` local zh+en / `openai` any OpenAI-compatible server (see below); **applies live** |
 | `kokoroModel` | `int8` | Kokoro precision: `int8` (default, 109 MB, CPU/low-bandwidth) / `fp32` (311 MB, better quality, GPU/large memory); same 103 voices; **applies live** |
 | `voice` | per engine | Voice: 5 VITS speakers; 103 Kokoro voices (◀▶ stepper; 62/68/75/76 favourite males pinned); Edge ShortNames below. The inline "试听" button previews it at the current rate |
 | `rate` | `1.1` | Reading speed multiplier (0.5 slow ～ 2.0 fast), **applies live** (batch J 1.0→1.1) |
@@ -213,6 +213,30 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 > come from the **settings panel**; the bundle config only seeds defaults for those keys
 > (`enabled/cacheDir` remain bundle-config-only).
 > The plugin HTTP namespace is fixed to `/voice-mode` (matching the client bundle contract; not configurable).
+
+### OpenAI-compatible TTS server (`ttsEngine: openai`)
+
+Any server that implements OpenAI's `POST /v1/audio/speech` can read replies aloud: a self-hosted one on a GPU machine ([vLLM-Omni](https://github.com/vllm-project/vllm-omni), [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), LocalAI, ...) or a hosted API such as OpenAI or [OpenRouter](https://openrouter.ai/docs/guides/overview/multimodal/tts). The server is set in the bundle config (it is host-only; the key never reaches the browser), and the engine is picked in the settings panel like the others:
+
+```yaml
+- id: voice-mode
+  name: dsh-voice-mode
+  config:
+    ttsEngine: openai
+    voice: vivian                       # voice name on the server; empty = openaiTts.voice
+    openaiTts:
+      baseUrl: http://gpu-box:8091/v1   # OpenRouter: https://openrouter.ai/api/v1, OpenAI: https://api.openai.com/v1
+      apiKey: ''                        # Bearer key, empty for servers without auth
+      model: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+      voice: vivian
+      responseFormat: mp3               # mp3 | wav
+      timeoutMs: 8000                   # per sentence; slower counts as unavailable
+      fallback: kokoro                  # none | vits | kokoro: local engine while the server is down or slow
+      fallbackVoice: zf_xiaobei         # empty = that engine's default voice
+      instructions: ''                  # optional style text for models that accept it
+```
+
+Each sentence is one request (the queue already synthesizes sentence by sentence while the reply is still streaming, so in-sentence streaming would not start playback any sooner). `rate` is sent as `speed` when it is not 1. With a `fallback`, a failed or timed-out request makes that sentence (and the next 30 s) use the local engine, then the server is tried again, so a dead server does not cost a timeout per sentence. The text to be spoken goes to `baseUrl`, so pick a server you trust with your replies.
 
 ---
 
@@ -310,7 +334,7 @@ An honest disclosure of what the plugin does (mapped to the awesome-dsh-plugin c
 
 | Category | What it does | Where data goes |
 | --- | --- | --- |
-| **network** | (1) The default read-aloud engine **Edge** sends the **reply text to be spoken** over WebSocket to Microsoft `speech.platform.bing.com` (cloud synthesis — local VITS / Kokoro avoids this TTS request after its models are ready; host LLM traffic is separate); (2) downloads local models on first use from `huggingface.co` (or your configured mirror `hf-mirror.com`) with host restrictions and pinned digests for primary/listed files; auxiliary directories use manifest/presence checks; (3) registers loopback HTTP routes `/voice-mode/*` on the dsh host (loopback only by default; LAN needs `allowLan`) | Browser audio is sent to the configured dsh host for recognition; the plugin does not use an independent cloud ASR. Edge sends text to Microsoft. Submitted transcripts and optional LLM correction follow the host LLM configuration |
+| **network** | (1) The default read-aloud engine **Edge** sends the **reply text to be spoken** over WebSocket to Microsoft `speech.platform.bing.com` (cloud synthesis — local VITS / Kokoro avoids this TTS request after its models are ready; host LLM traffic is separate); (2) downloads local models on first use from `huggingface.co` (or your configured mirror `hf-mirror.com`) with host restrictions and pinned digests for primary/listed files; auxiliary directories use manifest/presence checks; (3) with `ttsEngine: openai`, sends the text to be spoken to the configured `openaiTts.baseUrl` (and to nothing else); (4) registers loopback HTTP routes `/voice-mode/*` on the dsh host (loopback only by default; LAN needs `allowLan`) | Browser audio is sent to the configured dsh host for recognition; the plugin does not use an independent cloud ASR. Edge sends text to Microsoft. Submitted transcripts and optional LLM correction follow the host LLM configuration |
 | **fs-read / fs-write** | Model cache (Linux/macOS `~/.cache/dsh-voice-mode/models/`, Windows `%LOCALAPPDATA%\dsh-voice-mode\models\`); the dsh 0.1.7+ settings overlay `$DSH_HOME/voice-mode.settings.json`; **never touches your workspace files** | All local |
 | **shell (child processes)** | Local TTS synthesis runs in a separate child process (`child_process.fork` → `lib/tts-vits-worker.cjs`); when the host is Electron (the official desktop app), it additionally probes and launches a real Node.js for Kokoro (`node -p …` to check the version). **It never executes user input and never builds shell command strings** | Local |
 | **env** | Uses directory/runtime environment settings such as `DSH_HOME`, `LOCALAPPDATA`, `PATH` and optional `DSHVM_NODE`; this default speech path does not require an extra speech-service API key | — |

@@ -2500,10 +2500,14 @@ var en = {
   voiceNext: "Next voice",
   descVoice: "Edge cloud voices (auto-loads all Microsoft voices; common Chinese voices pinned on top; \u25C0\u25B6 or dropdown; custom ShortName allowed)",
   descVoiceLocal: "Local voice (vits, all 5 speakers listed; dropdown or \u25C0\u25B6; no custom needed)",
-  descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft)",
+  descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft) / OpenAI-compatible server (self-hosted or hosted, text sent to the configured URL)",
   engineVits: "Local VITS",
   engineKokoro: "Local Kokoro",
   engineEdge: "Edge cloud",
+  engineOpenai: "OpenAI-compatible",
+  descVoiceOpenai: "Voice name on the server (empty = openaiTts.voice from the config)",
+  engineRemoteDown: "server unavailable",
+  errRemoteTts: "The TTS server is unreachable, failing or too slow; the local fallback reads aloud meanwhile if one is configured",
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
   descInterrupt: "Interrupt sensitivity (0 high \u22480.3 s confirm / 1 medium \u22480.2 s / 2 low \u22480.1 s, most responsive); lower = higher barrier = harder to interrupt",
@@ -2694,6 +2698,7 @@ var en = {
   hostOfficial: "Official",
   hostMirror: "Mirror (CN)",
   engineBadgeCloud: "ASR local \xB7 TTS cloud",
+  engineBadgeRemote: "ASR local \xB7 TTS on your configured server",
   engineBadgeLocal: "ASR local \xB7 TTS local",
   errRateLimited: "Too many requests \u2014 try again shortly",
   errUnknownSession: "Voice session expired \u2014 re-enter voice mode",
@@ -2787,6 +2792,160 @@ async function correctText(ctx, text, lang) {
   }
 }
 
+// src/tts-openai.ts
+var MIME = { mp3: "audio/mpeg", wav: "audio/wav" };
+var OpenAiTtsError = class extends Error {
+  code;
+  constructor(code, message) {
+    super(message);
+    this.name = "OpenAiTtsError";
+    this.code = code;
+  }
+};
+function speechUrl(baseUrl) {
+  const url = new URL(baseUrl.trim());
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new OpenAiTtsError("openai_bad_url", "baseUrl must be http(s)");
+  }
+  const noSlash = url.pathname.replace(/\/+$/, "");
+  const base = noSlash.endsWith("/audio/speech") ? noSlash.slice(0, -"/audio/speech".length) : noSlash;
+  url.pathname = `${base}/audio/speech`;
+  return url.toString();
+}
+var OpenAiTtsEngine = class {
+  voice;
+  rate;
+  url;
+  configError;
+  format;
+  timeoutMs;
+  cooldownMs;
+  fetchImpl;
+  now;
+  fallbackEngine = null;
+  inflight = /* @__PURE__ */ new Set();
+  downUntil = 0;
+  lastError;
+  lastMime;
+  options;
+  constructor(options) {
+    this.options = options;
+    let url = null;
+    try {
+      if (!options.baseUrl.trim() || !options.model.trim()) throw new OpenAiTtsError("openai_not_configured", "openaiTts.baseUrl and openaiTts.model are required");
+      url = speechUrl(options.baseUrl);
+    } catch (e) {
+      this.configError = e instanceof OpenAiTtsError ? e : new OpenAiTtsError("openai_bad_url", String(e));
+    }
+    this.url = url;
+    this.lastError = this.configError;
+    this.voice = options.voice;
+    this.format = options.responseFormat ?? "mp3";
+    this.timeoutMs = options.timeoutMs ?? 8e3;
+    this.cooldownMs = options.cooldownMs ?? 3e4;
+    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.now = options.now ?? Date.now;
+    this.lastMime = MIME[this.format];
+  }
+  /** 最近一次成功合成所用格式（远程或回退引擎的 MIME 可能不同；队列在 synthesize 之后读取）。 */
+  get mime() {
+    return this.lastMime;
+  }
+  updateVoice(voice, rate) {
+    this.voice = voice || this.options.voice;
+    if (rate !== void 0 && Number.isFinite(rate)) this.rate = rate;
+  }
+  async synthesize(text, options = {}) {
+    const input = stripEmotionTags(text).replace(/\s+/g, " ").trim();
+    if (input === "") return Buffer.alloc(0);
+    if (this.now() >= this.downUntil) {
+      try {
+        const buf = await this.remote(input, options);
+        this.lastError = void 0;
+        this.lastMime = MIME[this.format];
+        return buf;
+      } catch (e) {
+        if (e.name === "AbortError" && !(e instanceof OpenAiTtsError)) throw e;
+        const err = e instanceof OpenAiTtsError ? e : new OpenAiTtsError("openai_unreachable", String(e));
+        this.lastError = err;
+        this.downUntil = this.now() + this.cooldownMs;
+        if (!this.options.fallback) throw err;
+        console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${err.message}`);
+      }
+    }
+    return this.viaFallback(text, options);
+  }
+  async remote(input, options) {
+    if (this.url === null) throw this.configError;
+    const body = {
+      model: this.options.model,
+      input,
+      voice: options.voice || this.voice,
+      response_format: this.format
+    };
+    const rate = options.rate ?? this.rate;
+    if (rate !== void 0 && rate > 0 && rate !== 1) body.speed = rate;
+    if (this.options.instructions) body.instructions = this.options.instructions;
+    const headers = { "content-type": "application/json" };
+    if (this.options.apiKey) headers.authorization = `Bearer ${this.options.apiKey}`;
+    const ac = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ac.abort();
+    }, this.timeoutMs);
+    this.inflight.add(ac);
+    try {
+      const res = await this.fetchImpl(this.url, { method: "POST", headers, body: JSON.stringify(body), signal: ac.signal });
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => "")).slice(0, 200);
+        throw new OpenAiTtsError("openai_http_error", `HTTP ${res.status}${detail ? `: ${detail}` : ""}`);
+      }
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length === 0) throw new OpenAiTtsError("openai_empty_audio", "empty audio");
+      return buf;
+    } catch (e) {
+      if (timedOut) throw new OpenAiTtsError("openai_timeout", `no audio within ${this.timeoutMs} ms`);
+      throw e;
+    } finally {
+      clearTimeout(timer);
+      this.inflight.delete(ac);
+    }
+  }
+  async viaFallback(text, options) {
+    if (!this.options.fallback) {
+      throw this.lastError ?? new OpenAiTtsError("openai_unreachable", "remote TTS unavailable");
+    }
+    this.fallbackEngine ??= this.options.fallback();
+    const buf = await this.fallbackEngine.synthesize(text, { rate: options.rate ?? this.rate });
+    this.lastMime = this.fallbackEngine.mime;
+    return buf;
+  }
+  interrupt() {
+    for (const ac of this.inflight) ac.abort();
+    this.inflight.clear();
+    this.fallbackEngine?.interrupt?.();
+  }
+  status() {
+    const fallingBack = this.now() < this.downUntil;
+    return {
+      engine: "openai",
+      // 未配置（baseUrl/model 缺失）即非就绪：ready 与 error 必须一致，
+      // 不得出现 ready=true 却带 openai_not_configured 的矛盾态。
+      ready: !fallingBack && !this.configError,
+      loading: false,
+      error: this.lastError?.message,
+      errorCode: this.lastError?.code
+    };
+  }
+  async close() {
+    this.interrupt();
+    const fb = this.fallbackEngine;
+    this.fallbackEngine = null;
+    await fb?.close();
+  }
+};
+
 // src/prompts.ts
 var ZH = "\u3010\u8BED\u97F3\u6A21\u5F0F\u3011\u5F53\u524D\u56DE\u590D\u4F1A\u88AB\u8BED\u97F3\u6717\u8BFB\uFF0C\u8BF7\u59CB\u7EC8\u7528\u7528\u6237\u6240\u7528\u8BED\u8A00\u3001\u4EE5\u53E3\u8BED\u5316\u7684\u77ED\u53E5\u76F4\u63A5\u56DE\u7B54\uFF0C\u50CF\u9762\u5BF9\u9762\u804A\u5929\u4E00\u6837\u81EA\u7136\uFF0C\u907F\u514D\u4E66\u9762\u8BED\u548C\u957F\u96BE\u53E5\u3002\u4E0D\u8981\u4F7F\u7528\u4EFB\u4F55 Markdown \u6216\u6392\u7248\u7B26\u53F7\uFF08\u661F\u53F7\u3001\u4E0B\u5212\u7EBF\u3001\u53CD\u5F15\u53F7\u3001\u4E95\u53F7\u3001\u5217\u8868\u4E0E\u8868\u683C\u6807\u8BB0\u3001\u4EE3\u7801\u5757\u7B49\uFF09\u3002\u9700\u8981\u5206\u70B9\u8BF4\u660E\u65F6\u7528\u300C\u7B2C\u4E00\u3001\u7B2C\u4E8C\u300D\u6216\u8FDE\u8D2F\u7684\u77ED\u53E5\u8868\u8FBE\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EE3\u7801\u7247\u6BB5\u3001\u5B8C\u6574 URL \u6216\u5197\u957F\u5B9A\u4E49\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u6982\u62EC\u542B\u4E49\u5373\u53EF\u3002\u56DE\u7B54\u7B80\u6D01\u76F4\u63A5\uFF0C\u4E0D\u8981\u91CD\u590D\u548C\u5BD2\u6684\u3002\u5982\u679C\u7528\u6237\u5728\u4F60\u6717\u8BFB\u65F6\u63D2\u8BDD\uFF08\u54EA\u6015\u53EA\u662F\u300C\u55EF/\u5BF9\u300D\u8FD9\u6837\u7684\u77ED\u5E94\u7B54\uFF09\uFF0C\u7ACB\u5373\u505C\u6B62\u5F53\u524D\u53E5\uFF0C\u628A\u8BDD\u8F6E\u8BA9\u7ED9\u7528\u6237\uFF1B\u56DE\u7B54\u540E\u7559\u51FA\u505C\u987F\uFF0C\u4E0D\u8981\u8FDE\u95EE\u4E24\u4E2A\u95EE\u9898\uFF1B\u7528\u6237\u6C89\u9ED8\u65F6\u4E0D\u8981\u4E3B\u52A8\u627E\u65B0\u8BDD\u9898\u3002";
 var EN = '[Voice mode] Your reply will be read aloud. Always answer in the language the user is using, in short conversational sentences, directly and naturally, as if talking face to face; avoid written-style phrasing and long, complex sentences. Do not use any Markdown or formatting symbols (asterisks, underscores, backticks, hash signs, list or table markup, code blocks, etc.). When you need to list points, say them as "first, second" or as connected short sentences; unless the user explicitly asks, do not output code snippets, full URLs or lengthy definitions \u2014 summarize the meaning in a sentence or two. Keep answers concise and direct; no repetition or pleasantries. If the user interrupts while you are being read aloud (even with a short acknowledgment like "uh-huh" or "yeah"), stop the current sentence immediately and yield the turn; leave a pause after answering and never ask two questions in a row; when the user is silent, do not bring up a new topic on your own.';
@@ -2810,7 +2969,7 @@ var SAMPLE_BY_LANG = {
   ru: "\u0417\u0434\u0440\u0430\u0432\u0441\u0442\u0432\u0443\u0439\u0442\u0435, \u0434\u043E\u0431\u0440\u043E \u043F\u043E\u0436\u0430\u043B\u043E\u0432\u0430\u0442\u044C \u0432 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u043E\u0439 \u0440\u0435\u0436\u0438\u043C."
 };
 function previewSample(engine, voice) {
-  if (engine === "kokoro") return `${SAMPLE_ZH}${SAMPLE_EN}`;
+  if (engine === "kokoro" || engine === "openai") return `${SAMPLE_ZH}${SAMPLE_EN}`;
   if (engine === "vits") return SAMPLE_ZH;
   const m = /^([a-z]{2,3})-/i.exec(voice);
   return m && SAMPLE_BY_LANG[m[1].toLowerCase()] || SAMPLE_EN;
@@ -3011,7 +3170,7 @@ var DESC = {
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
   return z.object({
-    ttsEngine: z.union([z.const("vits"), z.const("kokoro"), z.const("edge")]).default(d.ttsEngine).description(
+    ttsEngine: z.union([z.const("vits"), z.const("kokoro"), z.const("edge"), z.const("openai")]).default(d.ttsEngine).description(
       DESC.ttsEngine
     ),
     kokoroModel: z.union([z.const("int8"), z.const("fp32")]).default(d.kokoroModel).description(
@@ -3068,11 +3227,23 @@ function createVoiceSettingsSchema(defs) {
   });
 }
 var VoiceSettingsSchema = createVoiceSettingsSchema();
+var OpenAiTtsConfig = z.object({
+  baseUrl: z.string().default("").description("API base URL, e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1 or a self-hosted server."),
+  apiKey: z.string().role("secret").default("").description("Bearer key; leave empty for servers without auth."),
+  model: z.string().default("").description("Model name sent to the server."),
+  voice: z.string().default("").description("Default voice name on the server (the voice setting overrides it)."),
+  instructions: z.string().default("").description("Optional style instructions for models that accept them."),
+  responseFormat: z.union([z.const("mp3"), z.const("wav")]).default("mp3"),
+  timeoutMs: z.number().min(1e3).max(6e4).default(8e3).description("Per-sentence timeout; slower counts as unavailable."),
+  fallback: z.union([z.const("none"), z.const("vits"), z.const("kokoro")]).default("none").description("Local engine used while the server is unreachable or slow."),
+  fallbackVoice: z.string().default("").description("Voice for the fallback engine (empty = its default).")
+});
 var Config = z.object({
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default("https://huggingface.co"),
-  ttsEngine: z.union([z.const("edge"), z.const("vits"), z.const("kokoro")]).default("edge"),
+  ttsEngine: z.union([z.const("edge"), z.const("vits"), z.const("kokoro"), z.const("openai")]).default("edge"),
+  openaiTts: OpenAiTtsConfig,
   kokoroModel: z.union([z.const("int8"), z.const("fp32")]).default("int8"),
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
@@ -3373,6 +3544,24 @@ function apply(ctx, config) {
   warmupAsrIfCached();
   const makeEngine = (kind) => {
     if (kind === "edge") return new EdgeTtsEngine(config.voice, config.rate);
+    if (kind === "openai") {
+      const o = config.openaiTts;
+      const fallbackKind = o.fallback;
+      return new OpenAiTtsEngine({
+        baseUrl: o.baseUrl,
+        apiKey: o.apiKey || void 0,
+        model: o.model,
+        voice: o.voice,
+        instructions: o.instructions || void 0,
+        responseFormat: o.responseFormat,
+        timeoutMs: o.timeoutMs,
+        fallback: fallbackKind === "none" ? void 0 : () => {
+          const local = makeEngine(fallbackKind);
+          if (o.fallbackVoice) local.updateVoice(o.fallbackVoice, vset.rate);
+          return local;
+        }
+      });
+    }
     if (kind === "kokoro") {
       return createSherpaKokoroEngine({
         cacheDir: config.cacheDir,
@@ -4249,6 +4438,7 @@ async function* tapActiveStream(sessionId, inner, queue, broadcast, onTurn, spea
 }
 export {
   Config,
+  OpenAiTtsConfig,
   VoiceSettingsSchema,
   apply,
   createVoiceSettingsSchema,

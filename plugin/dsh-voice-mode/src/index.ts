@@ -49,6 +49,7 @@ import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts
 import type { HostErrorCode } from './errors.ts'
 import { en } from './strings.ts'
 import { correctText } from './llm-correct.ts'
+import { OpenAiTtsEngine } from './tts-openai.ts'
 import { normalizePromptLang, previewSample, spokenPrompt, type PromptLang } from './prompts.ts'
 import { pickKnownKeys, readLegacyVoiceSettings, readOverrides, settingsFilePath, unknownKeys, writeOverrides } from './settings-store.ts'
 
@@ -190,7 +191,7 @@ const defaultModelCacheDir = (): string =>
  */
 export interface VoiceSettingsValue {
   /** 朗读引擎：edge 微软云端（默认）/ vits 本地中文 / kokoro 本地中英；设置面板即时切换。 */
-  ttsEngine: 'edge' | 'vits' | 'kokoro'
+  ttsEngine: 'edge' | 'vits' | 'kokoro' | 'openai'
   /** Kokoro 模型精度（int8 默认 / fp32 音质更好；仅 kokoro 引擎生效，切换即时重建引擎）。 */
   kokoroModel: KokoroModel
   voice: string
@@ -338,7 +339,7 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs }
   return z.object({
     ttsEngine: z
-      .union([z.const('vits'), z.const('kokoro'), z.const('edge')])
+      .union([z.const('vits'), z.const('kokoro'), z.const('edge'), z.const('openai')])
       .default(d.ttsEngine)
       .description(
         DESC.ttsEngine,
@@ -467,9 +468,11 @@ export interface Config {
   /** 模型上游 host；huggingface.co / hf-mirror.com 均可达（§4 已验证）。 */
   modelHost: string
   /** 朗读引擎：edge（微软云端，默认）/ vits（本地中文）/ kokoro（本地中英，回复文本不出本机）。 */
-  ttsEngine: 'edge' | 'vits' | 'kokoro'
+  ttsEngine: 'edge' | 'vits' | 'kokoro' | 'openai'
   /** Kokoro 模型精度（int8 默认 / fp32 音质更好）。 */
   kokoroModel: KokoroModel
+  /** ttsEngine=openai 时的远程服务（host-only；key 不下发到客户端）。 */
+  openaiTts: OpenAiTtsConfig
   /** 允许局域网访问 /voice-mode/*（默认仅回环；开启后建议前置认证门）。 */
   allowLan: boolean
   /** 允许白名单之外的模型下载源（默认关；仅 https）。 */
@@ -530,11 +533,39 @@ export interface Config {
   yieldMs: number
 }
 
+/** OpenAI 兼容远程 TTS（ttsEngine=openai）：任何实现 POST {baseUrl}/audio/speech 的服务。 */
+export interface OpenAiTtsConfig {
+  baseUrl: string
+  apiKey: string
+  model: string
+  voice: string
+  instructions: string
+  responseFormat: 'mp3' | 'wav'
+  timeoutMs: number
+  /** 远程不可达/超时/报错时改用的本地引擎；none = 不回退（失败照常重试后跳过该句）。 */
+  fallback: 'none' | 'vits' | 'kokoro'
+  /** 回退引擎的音色（空 = 该引擎默认音色）。 */
+  fallbackVoice: string
+}
+
+export const OpenAiTtsConfig: z<OpenAiTtsConfig> = z.object({
+  baseUrl: z.string().default('').description('API base URL, e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1 or a self-hosted server.'),
+  apiKey: z.string().role('secret').default('').description('Bearer key; leave empty for servers without auth.'),
+  model: z.string().default('').description('Model name sent to the server.'),
+  voice: z.string().default('').description('Default voice name on the server (the voice setting overrides it).'),
+  instructions: z.string().default('').description('Optional style instructions for models that accept them.'),
+  responseFormat: z.union([z.const('mp3'), z.const('wav')]).default('mp3'),
+  timeoutMs: z.number().min(1000).max(60000).default(8000).description('Per-sentence timeout; slower counts as unavailable.'),
+  fallback: z.union([z.const('none'), z.const('vits'), z.const('kokoro')]).default('none').description('Local engine used while the server is unreachable or slow.'),
+  fallbackVoice: z.string().default('').description('Voice for the fallback engine (empty = its default).'),
+})
+
 export const Config: z<Config> = z.object({
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default('https://huggingface.co'),
-  ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro')]).default('edge'),
+  ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro'), z.const('openai')]).default('edge'),
+  openaiTts: OpenAiTtsConfig,
   kokoroModel: z.union([z.const('int8'), z.const('fp32')]).default('int8'),
   allowLan: z.boolean().default(false),
   allowCustomModelHost: z.boolean().default(false),
@@ -974,8 +1005,29 @@ export function apply(ctx: Context, config: Config): void {
   warmupAsrIfCached()
 
   // --- TTS 引擎工厂（fork：edge 云端 / vits 本地中文 / kokoro 本地中英；设置面板即时切换）。 ---
-  const makeEngine = (kind: 'edge' | 'vits' | 'kokoro'): TtsEngine => {
+  const makeEngine = (kind: 'edge' | 'vits' | 'kokoro' | 'openai'): TtsEngine => {
     if (kind === 'edge') return new EdgeTtsEngine(config.voice, config.rate)
+    if (kind === 'openai') {
+      const o = config.openaiTts
+      const fallbackKind = o.fallback
+      return new OpenAiTtsEngine({
+        baseUrl: o.baseUrl,
+        apiKey: o.apiKey || undefined,
+        model: o.model,
+        voice: o.voice,
+        instructions: o.instructions || undefined,
+        responseFormat: o.responseFormat,
+        timeoutMs: o.timeoutMs,
+        fallback:
+          fallbackKind === 'none'
+            ? undefined
+            : () => {
+                const local = makeEngine(fallbackKind)
+                if (o.fallbackVoice) local.updateVoice(o.fallbackVoice, vset.rate)
+                return local
+              },
+      })
+    }
     if (kind === 'kokoro') {
       return createSherpaKokoroEngine({
         cacheDir: config.cacheDir,
@@ -992,7 +1044,7 @@ export function apply(ctx: Context, config: Config): void {
       broadcast,
     })
   }
-  let engineKind: 'edge' | 'vits' | 'kokoro' = vset.ttsEngine ?? config.ttsEngine
+  let engineKind: 'edge' | 'vits' | 'kokoro' | 'openai' = vset.ttsEngine ?? config.ttsEngine
   let activeKokoroModel: KokoroModel = vset.kokoroModel
 
   // --- TTS 队列（§8.4）：逐句合成后经 SSE 广播；epoch 机制支撑打断。 ---
@@ -1072,7 +1124,7 @@ export function apply(ctx: Context, config: Config): void {
   const currentVoice = (): string => vset.voice
   const currentRate = (): number => vset.rate
   const currentInterrupt = (): 0 | 1 | 2 => vset.interruptLevel
-  const currentEngine = (): 'edge' | 'vits' | 'kokoro' => engineKind
+  const currentEngine = (): 'edge' | 'vits' | 'kokoro' | 'openai' => engineKind
 
   /** B2：host 侧让出活跃会话（等价 /toggle off 的清理）。owner tab 失联超时调用。 */
   const yieldActiveSession = (expectedSid?: string | null): void => {
