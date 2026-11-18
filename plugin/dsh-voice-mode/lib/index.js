@@ -2563,6 +2563,7 @@ var en = {
   selftestCheck: "Self-test failed: check network, engine status, or voice name",
   selftestTimeout: "Synthesis timed out: model still loading, retry self-test in a few seconds",
   selftestAutoplay: "Browser blocked autoplay \u2014 run self-test again",
+  switchToLocalTts: "Switch to local Kokoro (works offline)",
   custom: "Custom",
   voicePrev: "Previous voice",
   voiceNext: "Next voice",

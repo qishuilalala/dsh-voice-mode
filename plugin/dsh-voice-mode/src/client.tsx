@@ -2638,6 +2638,36 @@ export function MicButton({
       const silenceMs = cfg.silenceMs
       const interruptLevel = cfg.interruptLevel
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2
+      // P1-2 入口探针：云引擎（edge/openai）在进入成功后即用 /preview 试合成一次，
+      // 不阻塞进入（fire-and-forget，纪元守卫防迟到误报）。失败（5xx/网络异常）→
+      // ttsNotice 常驻提示（与 tts-skip streak≥2 同口径 ttsUnavailableNotice，下次成功播音自清）。
+      // 429/403/快照未就绪/非云引擎/无音色名 → 静默跳过（fail-open，不打扰进入）。
+      try {
+        const snap = scope?.getSnapshot?.()
+        const sv = (snap && snap.status === 'ready' && snap.value ? snap.value : {}) as Record<string, unknown>
+        const eng = typeof sv.ttsEngine === 'string' ? sv.ttsEngine : ''
+        const pv = typeof sv.voice === 'string' ? sv.voice.trim() : ''
+        if ((eng === 'edge' || eng === 'openai') && pv) {
+          const pr = typeof sv.rate === 'number' ? Math.min(2, Math.max(0.5, sv.rate)) : 1.1
+          const myProbe = enterEpochRef.current
+          const markDown = (): void => {
+            if (enterEpochRef.current !== myProbe || localRef.current === 'off') return
+            bus.setUi({ ttsNotice: t('ttsUnavailableNotice') })
+          }
+          void fetch(`${location.origin}${basePath}/preview`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ voice: pv, rate: pr }),
+            signal: AbortSignal.timeout(30000),
+          })
+            .then((res) => {
+              if (!res.ok && res.status !== 429 && res.status !== 403) markDown()
+            })
+            .catch(() => markDown())
+        }
+      } catch {
+        // 快照读取异常 → 跳过探针（进入流程不受影响）
+      }
       // 批 7O（ADR-0006）：detect 模式下由 onAecState（第一级探测）在 getUserMedia 后
       // 改写为 'auto'/'manual'；auto/manual 显式取值保持不变。
       let bargeInMode = cfg.bargeInMode

@@ -81,6 +81,7 @@ export const zh = {
   selftestCheck: '自测失败：请检查网络、引擎状态或音色名',
   selftestTimeout: '合成超时：模型仍在加载请稍候几秒再点自测',
   selftestAutoplay: '浏览器拦截了自动播放请再点一次自测',
+  switchToLocalTts: '切换为本地 Kokoro（离线可用）',
   custom: '自定义',
   // settings rows
   voicePrev: '上一音色',
@@ -387,6 +388,7 @@ export const en: Record<keyof typeof zh, string> = {
   selftestCheck: 'Self-test failed: check network, engine status, or voice name',
   selftestTimeout: 'Synthesis timed out: model still loading, retry self-test in a few seconds',
   selftestAutoplay: 'Browser blocked autoplay — run self-test again',
+  switchToLocalTts: 'Switch to local Kokoro (works offline)',
   custom: 'Custom',
   voicePrev: 'Previous voice',
   voiceNext: 'Next voice',

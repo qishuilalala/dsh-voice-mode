@@ -705,7 +705,17 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
  * 与试听按钮的区别：试听只管“听一下音色”，自测要把“哑巴”定位到引擎还是播放。
  * 与 P1-2 共用 TtsEngineStatus 口径（EngineStatusInline 同源数据），不另建健康接口。
  */
-function SelfTestSection({ voice, rate }: { voice: string; rate: number }): React.ReactElement {
+function SelfTestSection({
+  voice,
+  rate,
+  engine,
+  onSwitchLocal,
+}: {
+  voice: string
+  rate: number
+  engine: string
+  onSwitchLocal: () => void
+}): React.ReactElement {
   const [busy, setBusy] = useState(false)
   const [synth, setSynth] = useState<'ok' | 'fail' | null>(null)
   const [synthMs, setSynthMs] = useState(0)
@@ -847,6 +857,28 @@ function SelfTestSection({ voice, rate }: { voice: string; rate: number }): Reac
       </button>
       {verdict(tr('selftestSynth'), synth, synth === 'ok' ? `${synthMs} ${tr('unitMs')}` : undefined)}
       {verdict(tr('selftestPlay'), play)}
+      {synth === 'fail' && (engine === 'edge' || engine === 'openai') && (
+        <button
+          type="button"
+          onClick={onSwitchLocal}
+          style={{
+            font: 'inherit',
+            display: 'inline-flex',
+            alignItems: 'center',
+            alignSelf: 'flex-start',
+            cursor: 'pointer',
+            color: t.label,
+            background: 'var(--dsw-alias-bg-layer-2)',
+            border: `1px solid ${t.border}`,
+            borderRadius: 6,
+            padding: '4px 10px',
+            fontSize: 12,
+            lineHeight: '18px',
+          }}
+        >
+          {tr('switchToLocalTts')}
+        </button>
+      )}
       {note && (
         <span style={{ color: 'var(--dsw-alias-state-error-primary)', fontSize: 12, lineHeight: '18px' }}>{note}</span>
       )}
@@ -1306,7 +1338,15 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
               />
             </Row>
             <EngineStatusInline />
-            <SelfTestSection voice={String(value.voice ?? '')} rate={Number(value.rate ?? 1.1)} />
+            <SelfTestSection
+              voice={String(value.voice ?? '')}
+              rate={Number(value.rate ?? 1.1)}
+              engine={engine}
+              onSwitchLocal={() => {
+                void scope.set('ttsEngine', 'kokoro')
+                void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
+              }}
+            />
             {engine === 'kokoro' && (
               <Row name="kokoroModel" desc={tr('descKokoroModel')}>
                 <SegGroup

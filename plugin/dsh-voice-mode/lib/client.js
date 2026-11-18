@@ -1765,6 +1765,7 @@ var zh = {
   selftestCheck: "\u81EA\u6D4B\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u3001\u5F15\u64CE\u72B6\u6001\u6216\u97F3\u8272\u540D",
   selftestTimeout: "\u5408\u6210\u8D85\u65F6\uFF1A\u6A21\u578B\u4ECD\u5728\u52A0\u8F7D\u8BF7\u7A0D\u5019\u51E0\u79D2\u518D\u70B9\u81EA\u6D4B",
   selftestAutoplay: "\u6D4F\u89C8\u5668\u62E6\u622A\u4E86\u81EA\u52A8\u64AD\u653E\u8BF7\u518D\u70B9\u4E00\u6B21\u81EA\u6D4B",
+  switchToLocalTts: "\u5207\u6362\u4E3A\u672C\u5730 Kokoro\uFF08\u79BB\u7EBF\u53EF\u7528\uFF09",
   custom: "\u81EA\u5B9A\u4E49",
   // settings rows
   voicePrev: "\u4E0A\u4E00\u97F3\u8272",
@@ -2070,6 +2071,7 @@ var en = {
   selftestCheck: "Self-test failed: check network, engine status, or voice name",
   selftestTimeout: "Synthesis timed out: model still loading, retry self-test in a few seconds",
   selftestAutoplay: "Browser blocked autoplay \u2014 run self-test again",
+  switchToLocalTts: "Switch to local Kokoro (works offline)",
   custom: "Custom",
   voicePrev: "Previous voice",
   voiceNext: "Next voice",
@@ -3398,7 +3400,12 @@ function VoicePreviewButton({ voice, rate }) {
     note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
   ] });
 }
-function SelfTestSection({ voice, rate }) {
+function SelfTestSection({
+  voice,
+  rate,
+  engine,
+  onSwitchLocal
+}) {
   const [busy, setBusy] = (0, import_react2.useState)(false);
   const [synth, setSynth] = (0, import_react2.useState)(null);
   const [synthMs, setSynthMs] = (0, import_react2.useState)(0);
@@ -3528,6 +3535,28 @@ function SelfTestSection({ voice, rate }) {
     ),
     verdict(t("selftestSynth"), synth, synth === "ok" ? `${synthMs} ${t("unitMs")}` : void 0),
     verdict(t("selftestPlay"), play),
+    synth === "fail" && (engine === "edge" || engine === "openai") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        type: "button",
+        onClick: onSwitchLocal,
+        style: {
+          font: "inherit",
+          display: "inline-flex",
+          alignItems: "center",
+          alignSelf: "flex-start",
+          cursor: "pointer",
+          color: t2.label,
+          background: "var(--dsw-alias-bg-layer-2)",
+          border: `1px solid ${t2.border}`,
+          borderRadius: 6,
+          padding: "4px 10px",
+          fontSize: 12,
+          lineHeight: "18px"
+        },
+        children: t("switchToLocalTts")
+      }
+    ),
     note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
   ] });
 }
@@ -3852,7 +3881,18 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
             }
           ) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EngineStatusInline, {}),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelfTestSection, { voice: String(value.voice ?? ""), rate: Number(value.rate ?? 1.1) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            SelfTestSection,
+            {
+              voice: String(value.voice ?? ""),
+              rate: Number(value.rate ?? 1.1),
+              engine,
+              onSwitchLocal: () => {
+                void scope.set("ttsEngine", "kokoro");
+                void scope.set("voice", ENGINE_DEFAULT_VOICE["kokoro"] ?? "zf_xiaobei");
+              }
+            }
+          ),
           engine === "kokoro" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "kokoroModel", desc: t("descKokoroModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -4182,7 +4222,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "3aa01da";
+var BUILD_TAG = "7792977";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -5954,6 +5994,29 @@ function MicButton({
       const silenceMs = cfg.silenceMs;
       const interruptLevel = cfg.interruptLevel;
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2;
+      try {
+        const snap = scope?.getSnapshot?.();
+        const sv = snap && snap.status === "ready" && snap.value ? snap.value : {};
+        const eng = typeof sv.ttsEngine === "string" ? sv.ttsEngine : "";
+        const pv = typeof sv.voice === "string" ? sv.voice.trim() : "";
+        if ((eng === "edge" || eng === "openai") && pv) {
+          const pr = typeof sv.rate === "number" ? Math.min(2, Math.max(0.5, sv.rate)) : 1.1;
+          const myProbe = enterEpochRef.current;
+          const markDown = () => {
+            if (enterEpochRef.current !== myProbe || localRef.current === "off") return;
+            bus.setUi({ ttsNotice: t("ttsUnavailableNotice") });
+          };
+          void fetch(`${location.origin}${basePath}/preview`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ voice: pv, rate: pr }),
+            signal: AbortSignal.timeout(3e4)
+          }).then((res) => {
+            if (!res.ok && res.status !== 429 && res.status !== 403) markDown();
+          }).catch(() => markDown());
+        }
+      } catch {
+      }
       let bargeInMode = cfg.bargeInMode;
       let echoRejectStreak = 0;
       debugLog("enter", {
