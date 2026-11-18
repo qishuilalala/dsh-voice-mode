@@ -4038,7 +4038,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "4baf26b";
+var BUILD_TAG = "18723b4";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -6654,7 +6654,7 @@ function MicButton({
   };
   const statusBarShown = bootNow().showStatusBar !== false;
   const micHint = bus.activeSessionId !== sessionId ? bus.ui.error ?? bus.ui.notice ?? "" : statusBarShown ? "" : bus.ui.error ?? (bus.ui.sseDown ? t("sseReconnect") : null) ?? bus.ui.notice ?? (bus.ui.idleWarn ? t("idleWarn30s") : null) ?? bus.ui.ttsNotice ?? "";
-  const micHintInfo = !bus.ui.error && !!bus.ui.notice && micHint === bus.ui.notice;
+  const micHintInfo = !bus.ui.error && micHint !== "";
   const visual = holding ? "holding" : bus.ui.playing ? "reading" : on && onceEnding ? "ending" : on && onceWaiting ? "waiting" : on ? holdMode ? "hold" : "on" : local === "pending" ? "pending" : "off";
   const eqKind = visual === "reading" ? "out" : visual === "on" || visual === "holding" ? "in" : null;
   (0, import_react3.useEffect)(() => {
