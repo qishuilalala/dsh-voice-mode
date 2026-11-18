@@ -3804,8 +3804,8 @@ export function MicButton({
           bus.ui.ttsNotice ??
           '')
 
-  // 纯提示（notice，非错误）用中性色，红色只留给错误。
-  const micHintInfo = !bus.ui.error && !!bus.ui.notice && micHint === bus.ui.notice
+  // 纯提示（notice/sse/idle/tts，非错误）用中性色，红色只留给错误。
+  const micHintInfo = !bus.ui.error && micHint !== ''
 
   // 按钮形态（CSS 按 data-state 着色）：按住 > 朗读 > once 收尾/等待 > 语音中 > 进入中 > 关。
   const visual: 'off' | 'pending' | 'on' | 'hold' | 'holding' | 'reading' | 'waiting' | 'ending' = holding

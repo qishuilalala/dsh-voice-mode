@@ -65,7 +65,7 @@ t('自动恢复引导经 takeOnceHint 把关，key 为固定常量', () => {
   assert.ok(client.includes('getLastVoiceSession() === sid && takeOnceHint(AUTO_RESUME_HINT_KEY)'))
 })
 t('输入框旁提示：纯提示用中性色，错误才用红色', () => {
-  assert.ok(client.includes('const micHintInfo = !bus.ui.error && !!bus.ui.notice && micHint === bus.ui.notice'))
+  assert.ok(client.includes('const micHintInfo = !bus.ui.error && micHint !=='))
   assert.ok(client.includes("color: micHintInfo ? 'var(--dsw-alias-label-tertiary, #8b949e)' : 'var(--dsw-alias-state-error-primary, #f85149)'"))
 })
 
