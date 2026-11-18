@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+## [0.7.39] - 2026-11-18
+
+### 新增
+
+- 第 4 朗读引擎 `ttsEngine: openai`：对应任意 `POST /v1/audio/speech` 服务器（自建 vLLM-Omni/Kokoro-FastAPI/LocalAI 与 OpenAI/OpenRouter 等托管 API）。服务端配置收敛到 host-only `openaiTts` 块（baseUrl/apiKey/model/voice/responseFormat/timeoutMs/instructions），密钥不去浏览器；失败自动回退本地引擎（该句 + 30s cooldown），打断 abort 不计失败；设置卡片显示服务端不可用。详见 `docs/adr/0013-remote-tts-trust-boundary.md`。
+
+### 修复
+
+- OpenAI 引擎三处正确性修复（code-review 双轴审查）：空串 updateVoice 回落配置值（修清空音色后残留旧音色）；未配置时 `status().ready=false`（消与 `openai_not_configured` 共存的语义矛盾）；`speechUrl` 拼接幂等（已带 `/audio/speech` 不再叠加）。
+
 ## [0.7.38] - 2026-11-14
 
 ### 修复
