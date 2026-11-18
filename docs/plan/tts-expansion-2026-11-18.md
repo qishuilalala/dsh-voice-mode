@@ -15,7 +15,8 @@
 | SiliconFlow | OpenAI 兼容 POST /audio/speech，base https://api.siliconflow.cn/v1；voice 用 model:voice（如 FunAudioLLM/CosyVoice2-0.5B:alex）；speed 0.25-4；mp3/opus/wav/pcm | ✅ 直接 preset | CosyVoice2-0.5B $7.15/M UTF-8 bytes（150ms）；fish-1.5 $15/M；8 预置音色+复刻 |
 | OpenRouter / 自建（Kokoro-FastAPI/LocalAI/vLLM-Omni） | OpenAI 形状 | ✅ 直接 preset | 按各家 |
 | 小米 MiMo | 聊天式 messages（assistant 放文本、user 放风格指令）+ {audio:{voice}}；模型 mimo-v2.5-tts/voicedesign/voiceclone；注意 v2.5 系 2026.10.21 下线须切 V2.6；低延迟流式已上线；限时免费 | ❌ 需专用适配器 | 限时免费（收费后重查） |
-| 通义百炼 Qwen | 官方 WebSocket SDK（client.audio.tts）；OpenAI 形状只有社区自托管封装（Qwen3-TTS-Openai-FastAPI） | 官方❌/自托管✅ | CosyVoice 0.8-2元/万字符；MiniMax 2-3.5元/万字符+复刻9.9元 |
+| 通义百炼 Qwen 官方 | WebSocket SDK（client.audio.tts）；社区自托管封装可用 OpenAI 引擎 | 官方❌/自托管✅ | CosyVoice 0.8-2元/万字符 |
+| MiniMax（t2a_v2 专用接口） | 专用形状需适配器（E3 同列） | ❌ | Speech 2.8 现行，$60/1M 字符，Humanness #4 |
 | Qwen3-TTS 开源 | 本地权重（Tokenizer-12Hz），社区已有 OpenAI 兼容 server（97ms 级，GPU） | 自托管✅ | 本地免费，GPU 成本 |
 
 ## 分批交付（每批一 PR，可独立回退）
@@ -24,7 +25,8 @@
 - E1 在线预设化（M，本期核心）：openai 引擎设置页加“预设”下拉：SiliconFlow（首个，中文+复刻）、OpenRouter、vLLM-Omni 自建示例；每预设带 baseUrl/model/voice 示例 + 计费/免费额/数据去向一行说明 + 保存前探针（合成 8 字试听，失败明说）。Edge 不动默认。
 - E2 Edge 探针与状态（M，P1 三件套之一，已含）：握手失败可见错误 + 一键切本地/预设；设置页 engine 健康行。默认引擎不变（I10）。
 - E3 小米 MiMo 专用引擎（M-L，下期）：新 TtsEngine 实现（chat-style TTS，host-only key，失败回退本地+cooldown），先核 V2.6 模型名与定价（v2.5 已下线）再开工；风格指令接 emotion/instructions 位。
-- E4 本地候选评估（候选，GPU 到位后）：Qwen3-TTS 作 roadmap §4 挑战者（同语料/分段/硬件对比基线，最多两 challenger），不先换。
+- E4 本地候选评估（候选，GPU 到位后）：挑战者排序 Qwen3-TTS > Qwen3-ASR > CosyVoice 3 > X-ASR（见前沿备忘 docs/research/frontier-2026-11-18.md），每轮最多两个离线评估，不先换（roadmap §4）。
+- 更正（前沿备忘 2026-11-18）：小米 TTS 现行仍是 v2.5 系列（V2.6 系指 Pro/Flash 推理模型）；E3 核实项改为 V2.5-TTS 定价/限免状态。
 
 ## 默认策略（I10 守恒）
 
