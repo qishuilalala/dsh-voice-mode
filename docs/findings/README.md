@@ -13,6 +13,10 @@
 | [2026-09-14-fixture-verdict.md](2026-09-14-fixture-verdict.md) | 真机 fixture 4 条 2×2 矩阵 verdict（crest≥7dB 成立） |
 | [2026-09-15-sleeping-capabilities-audit.md](2026-09-15-sleeping-capabilities-audit.md) | 沉睡能力审计（已实现但未走通的部分） |
 | [2026-09-15-yield-semantics-research.md](2026-09-15-yield-semantics-research.md) | 让位语义前置调研（拟人度 / 轮次让位） |
+| [2026-10-23-multi-agent-audit.md](2026-10-23-multi-agent-audit.md) | 多智能体对抗审计（基线 v0.7.28，dsh 0.2.0-rc.2 环境） |
+| [2026-10-23-verification-and-fix-plan.md](2026-10-23-verification-and-fix-plan.md) | 验证与修复计划（v0.7.28 基线复核路径） |
+| [2026-10-28-roadmap-research-brief.md](2026-10-28-roadmap-research-brief.md) | 路线图研究简报（委托研究，非实施批准） |
+| [2026-11-02-voice-engines-first-principles.md](2026-11-02-voice-engines-first-principles.md) | 朗读与识别引擎第一性原理复核（测量优先的依据） |
 | [baseline-review-p0-a1-a10.md](baseline-review-p0-a1-a10.md) | 竞品 baseline 评审（A1-A10 各项声学指标） |
 | [dsh-llm-runtime-inventory-2026-09.md](dsh-llm-runtime-inventory-2026-09.md) | dsh-llm 62 运行时导出相关性清单 |
 | [multilang-a11y-compliance-baseline.md](multilang-a11y-compliance-baseline.md) | 多语种 + 字幕 a11y 合规基线 |

@@ -16,7 +16,7 @@ interrupts playback and the running turn. No additional speech-service API key i
 
 ![Real recording: streaming transcription → auto-send → sentence-by-sentence read-aloud with live captions](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
 
-> **Current status (2026-11-13):** v0.7.37 stop-on-focus-switch, once-interrupt resume, no-split decimals, mic release on early stop. Check npm and Releases for availability.
+> **Current status (2026-11-18):** v0.7.39 adds an OpenAI-compatible remote read-aloud engine (auto-fallback to local). Check npm and Releases for availability.
 
 Host compatibility check: anchors, types and isolated runtime checks passed for dsh 0.2.2-rc.3 (including the client side). See the [compatibility record](../../docs/compat-contract.md) for evidence and unverified layers; this does not establish microphone or cross-platform acceptance.
 >
