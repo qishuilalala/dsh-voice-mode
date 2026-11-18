@@ -699,6 +699,161 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
   )
 }
 
+/**
+ * P1-1 一键自测：复用 host /preview（当前音色 + 当前语速）一次性合成，
+ * 分两段上报——合成✓（HTTP 200 + 非空音频 + 耗时）与播放✓（Audio 播到 onended）。
+ * 与试听按钮的区别：试听只管“听一下音色”，自测要把“哑巴”定位到引擎还是播放。
+ * 与 P1-2 共用 TtsEngineStatus 口径（EngineStatusInline 同源数据），不另建健康接口。
+ */
+function SelfTestSection({ voice, rate }: { voice: string; rate: number }): React.ReactElement {
+  const [busy, setBusy] = useState(false)
+  const [synth, setSynth] = useState<'ok' | 'fail' | null>(null)
+  const [synthMs, setSynthMs] = useState(0)
+  const [play, setPlay] = useState<'ok' | 'fail' | 'autoplay' | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const run = (): void => {
+    if (busy) return
+    const v = voice.trim()
+    if (!v) {
+      setNote(tr('previewNameFirst'))
+      return
+    }
+    const prev = audioRef.current
+    if (prev) {
+      prev.pause()
+      if (prev.src.startsWith('blob:')) URL.revokeObjectURL(prev.src)
+    }
+    audioRef.current = null
+    setBusy(true)
+    setSynth(null)
+    setPlay(null)
+    setNote(null)
+    const t0 = Date.now()
+    const audio = new Audio()
+    audioRef.current = audio
+    void (async () => {
+      try {
+        const res = await fetch(`${BASE_PATH}/preview`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ voice: v, rate }),
+          signal: AbortSignal.timeout(90000),
+        })
+        if (!res.ok) {
+          let body: unknown = null
+          try {
+            body = await res.json()
+          } catch {
+            // 非 JSON 错误体：走通用文案
+          }
+          const code = (body as { code?: unknown } | null)?.code
+          setSynth('fail')
+          setNote(
+            code === 'voice_disabled' || res.status === 403
+              ? tr('previewDisabled')
+              : code === 'rate_limited' || res.status === 429
+                ? tr('previewRateLimited')
+                : errorText(body, 'selftestCheck'),
+          )
+          return
+        }
+        const blob = await res.blob()
+        if (blob.size === 0) {
+          setSynth('fail')
+          setNote(tr('selftestCheck'))
+          return
+        }
+        setSynth('ok')
+        setSynthMs(Date.now() - t0)
+        const url = URL.createObjectURL(blob)
+        audio.src = url
+        audio.onended = () => {
+          URL.revokeObjectURL(url)
+          setPlay('ok')
+        }
+        audio.onerror = () => {
+          URL.revokeObjectURL(url)
+          setPlay('fail')
+          setNote(tr('previewPlayFail'))
+        }
+        try {
+          await audio.play()
+        } catch (e) {
+          URL.revokeObjectURL(url)
+          if (e instanceof DOMException && e.name === 'NotAllowedError') {
+            setPlay('autoplay')
+            setNote(tr('selftestAutoplay'))
+          } else {
+            setPlay('fail')
+            setNote(tr('previewPlayFail'))
+          }
+        }
+      } catch (e) {
+        setSynth('fail')
+        setNote(e instanceof DOMException && e.name === 'TimeoutError' ? tr('selftestTimeout') : tr('selftestCheck'))
+      } finally {
+        setBusy(false)
+      }
+    })()
+  }
+
+  const verdict = (label: string, st: 'ok' | 'fail' | 'autoplay' | null, extra?: string): React.ReactElement => (
+    <span style={{ fontSize: 12, color: t.term, display: 'inline-flex', gap: 4 }}>
+      <span>{label}</span>
+      <span
+        style={{
+          fontWeight: 600,
+          color:
+            st === 'ok'
+              ? 'var(--dsw-alias-state-success-primary)'
+              : st === null
+                ? t.term
+                : 'var(--dsw-alias-state-error-primary)',
+        }}
+      >
+        {st === 'ok' ? tr('selftestOk') : st === null ? '–' : st === 'autoplay' ? tr('selftestAutoplay') : tr('selftestFail')}
+      </span>
+      {extra ? <span>{extra}</span> : null}
+    </span>
+  )
+
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', padding: '2px 0 10px' }}>
+      <span style={{ fontSize: 12, color: t.label, fontWeight: 600 }}>{tr('selftestTitle')}</span>
+      <span style={{ fontSize: 11, color: t.term }}>{tr('selftestHint')}</span>
+      <button
+        type="button"
+        onClick={run}
+        disabled={busy}
+        style={{
+          font: 'inherit',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 5,
+          alignSelf: 'flex-start',
+          cursor: busy ? 'default' : 'pointer',
+          color: t.label,
+          background: 'var(--dsw-alias-bg-layer-2)',
+          border: `1px solid ${t.border}`,
+          borderRadius: 6,
+          padding: '4px 10px',
+          fontSize: 12,
+          lineHeight: '18px',
+        }}
+      >
+        {busy ? tr('selftestRunning') : tr('selftestRun')}
+      </button>
+      {verdict(tr('selftestSynth'), synth, synth === 'ok' ? `${synthMs} ${tr('unitMs')}` : undefined)}
+      {verdict(tr('selftestPlay'), play)}
+      {note && (
+        <span style={{ color: 'var(--dsw-alias-state-error-primary)', fontSize: 12, lineHeight: '18px' }}>{note}</span>
+      )}
+    </span>
+  )
+}
+
 function Row({ name, desc, children }: { name: string; desc: string; children: React.ReactNode }): React.ReactElement {
   const label = tr(`${name}Label` as TKey)
   return (
@@ -1151,6 +1306,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
               />
             </Row>
             <EngineStatusInline />
+            <SelfTestSection voice={String(value.voice ?? '')} rate={Number(value.rate ?? 1.1)} />
             {engine === 'kokoro' && (
               <Row name="kokoroModel" desc={tr('descKokoroModel')}>
                 <SegGroup

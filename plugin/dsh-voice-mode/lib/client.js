@@ -1753,6 +1753,18 @@ var zh = {
   previewBtnTitle: "\u8BD5\u542C\u5F53\u524D\u97F3\u8272\uFF08\u5F53\u524D\u8BED\u901F\uFF09",
   synthesizing: "\u5408\u6210\u4E2D\u2026",
   preview: "\u8BD5\u542C",
+  // P1-1 一键自测：合成✓/播放✓分离显示。
+  selftestTitle: "\u4E00\u952E\u81EA\u6D4B",
+  selftestHint: "\u5206\u522B\u9A8C\u8BC1\u201C\u80FD\u5408\u6210\u201D\u4E0E\u201C\u80FD\u51FA\u58F0\u201D\uFF0C\u5B9A\u4F4D\u65E0\u58F0\u662F\u5F15\u64CE\u95EE\u9898\u8FD8\u662F\u64AD\u653E\u95EE\u9898",
+  selftestRun: "\u5F00\u59CB\u81EA\u6D4B",
+  selftestRunning: "\u81EA\u6D4B\u4E2D\u2026",
+  selftestSynth: "\u5408\u6210",
+  selftestPlay: "\u64AD\u653E",
+  selftestOk: "\u6B63\u5E38",
+  selftestFail: "\u5931\u8D25",
+  selftestCheck: "\u81EA\u6D4B\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u3001\u5F15\u64CE\u72B6\u6001\u6216\u97F3\u8272\u540D",
+  selftestTimeout: "\u5408\u6210\u8D85\u65F6\uFF1A\u6A21\u578B\u4ECD\u5728\u52A0\u8F7D\u8BF7\u7A0D\u5019\u51E0\u79D2\u518D\u70B9\u81EA\u6D4B",
+  selftestAutoplay: "\u6D4F\u89C8\u5668\u62E6\u622A\u4E86\u81EA\u52A8\u64AD\u653E\u8BF7\u518D\u70B9\u4E00\u6B21\u81EA\u6D4B",
   custom: "\u81EA\u5B9A\u4E49",
   // settings rows
   voicePrev: "\u4E0A\u4E00\u97F3\u8272",
@@ -2046,6 +2058,18 @@ var en = {
   previewBtnTitle: "Preview voice (current rate)",
   synthesizing: "Synthesizing\u2026",
   preview: "Preview",
+  // P1-1 self-test: separate synthesis / playback verdicts.
+  selftestTitle: "Self-test",
+  selftestHint: "Verifies synthesis and playback separately to tell engine failures from playback failures",
+  selftestRun: "Run self-test",
+  selftestRunning: "Testing\u2026",
+  selftestSynth: "Synthesis",
+  selftestPlay: "Playback",
+  selftestOk: "OK",
+  selftestFail: "Failed",
+  selftestCheck: "Self-test failed: check network, engine status, or voice name",
+  selftestTimeout: "Synthesis timed out: model still loading, retry self-test in a few seconds",
+  selftestAutoplay: "Browser blocked autoplay \u2014 run self-test again",
   custom: "Custom",
   voicePrev: "Previous voice",
   voiceNext: "Next voice",
@@ -3374,6 +3398,139 @@ function VoicePreviewButton({ voice, rate }) {
     note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
   ] });
 }
+function SelfTestSection({ voice, rate }) {
+  const [busy, setBusy] = (0, import_react2.useState)(false);
+  const [synth, setSynth] = (0, import_react2.useState)(null);
+  const [synthMs, setSynthMs] = (0, import_react2.useState)(0);
+  const [play, setPlay] = (0, import_react2.useState)(null);
+  const [note, setNote] = (0, import_react2.useState)(null);
+  const audioRef = (0, import_react2.useRef)(null);
+  const run = () => {
+    if (busy) return;
+    const v = voice.trim();
+    if (!v) {
+      setNote(t("previewNameFirst"));
+      return;
+    }
+    const prev = audioRef.current;
+    if (prev) {
+      prev.pause();
+      if (prev.src.startsWith("blob:")) URL.revokeObjectURL(prev.src);
+    }
+    audioRef.current = null;
+    setBusy(true);
+    setSynth(null);
+    setPlay(null);
+    setNote(null);
+    const t0 = Date.now();
+    const audio = new Audio();
+    audioRef.current = audio;
+    void (async () => {
+      try {
+        const res = await fetch(`${BASE_PATH}/preview`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ voice: v, rate }),
+          signal: AbortSignal.timeout(9e4)
+        });
+        if (!res.ok) {
+          let body = null;
+          try {
+            body = await res.json();
+          } catch {
+          }
+          const code = body?.code;
+          setSynth("fail");
+          setNote(
+            code === "voice_disabled" || res.status === 403 ? t("previewDisabled") : code === "rate_limited" || res.status === 429 ? t("previewRateLimited") : errorText(body, "selftestCheck")
+          );
+          return;
+        }
+        const blob = await res.blob();
+        if (blob.size === 0) {
+          setSynth("fail");
+          setNote(t("selftestCheck"));
+          return;
+        }
+        setSynth("ok");
+        setSynthMs(Date.now() - t0);
+        const url = URL.createObjectURL(blob);
+        audio.src = url;
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          setPlay("ok");
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          setPlay("fail");
+          setNote(t("previewPlayFail"));
+        };
+        try {
+          await audio.play();
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          if (e instanceof DOMException && e.name === "NotAllowedError") {
+            setPlay("autoplay");
+            setNote(t("selftestAutoplay"));
+          } else {
+            setPlay("fail");
+            setNote(t("previewPlayFail"));
+          }
+        }
+      } catch (e) {
+        setSynth("fail");
+        setNote(e instanceof DOMException && e.name === "TimeoutError" ? t("selftestTimeout") : t("selftestCheck"));
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+  const verdict = (label, st, extra) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term, display: "inline-flex", gap: 4 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "span",
+      {
+        style: {
+          fontWeight: 600,
+          color: st === "ok" ? "var(--dsw-alias-state-success-primary)" : st === null ? t2.term : "var(--dsw-alias-state-error-primary)"
+        },
+        children: st === "ok" ? t("selftestOk") : st === null ? "\u2013" : st === "autoplay" ? t("selftestAutoplay") : t("selftestFail")
+      }
+    ),
+    extra ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: extra }) : null
+  ] });
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start", padding: "2px 0 10px" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.label, fontWeight: 600 }, children: t("selftestTitle") }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("selftestHint") }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        type: "button",
+        onClick: run,
+        disabled: busy,
+        style: {
+          font: "inherit",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+          alignSelf: "flex-start",
+          cursor: busy ? "default" : "pointer",
+          color: t2.label,
+          background: "var(--dsw-alias-bg-layer-2)",
+          border: `1px solid ${t2.border}`,
+          borderRadius: 6,
+          padding: "4px 10px",
+          fontSize: 12,
+          lineHeight: "18px"
+        },
+        children: busy ? t("selftestRunning") : t("selftestRun")
+      }
+    ),
+    verdict(t("selftestSynth"), synth, synth === "ok" ? `${synthMs} ${t("unitMs")}` : void 0),
+    verdict(t("selftestPlay"), play),
+    note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
+  ] });
+}
 function Row({ name: name2, desc, children }) {
   const label = t(`${name2}Label`);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, children: [
@@ -3695,6 +3852,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
             }
           ) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EngineStatusInline, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelfTestSection, { voice: String(value.voice ?? ""), rate: Number(value.rate ?? 1.1) }),
           engine === "kokoro" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "kokoroModel", desc: t("descKokoroModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -4024,7 +4182,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "892ee1f";
+var BUILD_TAG = "3aa01da";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
