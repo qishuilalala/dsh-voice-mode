@@ -90,6 +90,7 @@ export interface AsrRuntimeOptions {
    *  manual = 用户按住 mic/Ctrl 才视为在说话。批 7O：detect 取值仅透传，
    *  host 侧闸门仍只判 === 'manual'（detect 的运行时降级由客户端第一级探测决定）。 */
   bargeInMode: () => 'auto' | 'manual' | 'detect'
+  /** 转写文本出口改写（中间结果与定稿）；缺省不改。 */ replaceText?: (text: string) => string
 }
 
 export interface AsrRuntime {
@@ -502,7 +503,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     }
   }
 
-  const feed = async (
+  const feedRaw = async (
     sessionId: string,
     samples: Float32Array,
     final: boolean,
@@ -765,6 +766,12 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     }
   }
   const sweepTimer = setInterval(sweep, 30000)
+
+  // 替换在文本出口统一套用：定稿缓存存原文，重试同一 final 时同样被改写。
+  const feed: AsrRuntime['feed'] = async (...args) => {
+    const out = await feedRaw(...args)
+    return options.replaceText && out.text ? { ...out, text: options.replaceText(out.text) } : out
+  }
 
   return {
     feed,

@@ -41,6 +41,7 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { rm } from 'node:fs/promises'
 import { createAsrRuntime, handleAsrRequest } from './asr-host.ts'
+import { AsrReplacementSchema, createAsrReplacer, type AsrReplacement } from './asr-replacements.ts'
 import { SentenceSegmenter } from './segmenter.ts'
 import { EdgeTtsEngine, TtsQueue, listEdgeVoices, type TtsEngine } from './tts-queue.ts'
 import { createSherpaVitsEngine, createSherpaKokoroEngine, TTS_MODEL_REPO, kokoroModelDir, type KokoroModel } from './tts-local.ts'
@@ -475,6 +476,7 @@ export interface Config {
   openaiTts: OpenAiTtsConfig
   /** 允许局域网访问 /voice-mode/*（默认仅回环；开启后建议前置认证门）。 */
   allowLan: boolean
+  asrReplacements: AsrReplacement[] // 转写后替换表（人名/英文词听错时改写，中间结果与定稿都生效）
   /** 允许白名单之外的模型下载源（默认关；仅 https）。 */
   allowCustomModelHost: boolean
   /** 朗读音色（按 ttsEngine 取值：vits 说话人名 / kokoro sid / edge ShortName）。 */
@@ -568,6 +570,7 @@ export const Config: z<Config> = z.object({
   openaiTts: OpenAiTtsConfig,
   kokoroModel: z.union([z.const('int8'), z.const('fp32')]).default('int8'),
   allowLan: z.boolean().default(false),
+  asrReplacements: z.array(AsrReplacementSchema).default([]),
   allowCustomModelHost: z.boolean().default(false),
   voice: z.string().default('zh-CN-XiaoxiaoNeural'),
   // I3（Issue #15 审查 Important）：数值旋钮补 min/max，与 VoiceSettingsValue schema
@@ -985,6 +988,7 @@ export function apply(ctx: Context, config: Config): void {
     // 待机态 push-to-talk 属产品决策（要改的是客户端手势开放条件），PM 已登记待用户拍板，
     // 此处不加功能；host 侧只保证「manual 时非按压帧不入流」这一既有语义不被悄悄扩大。
     bargeInMode: () => vset.bargeInMode,
+    replaceText: createAsrReplacer(config.asrReplacements ?? []),
   })
   // 卸载/热重载时释放 ASR runtime（清段 + 定时器，防悬挂）。
   ctx.effect(() => () => asr.dispose())

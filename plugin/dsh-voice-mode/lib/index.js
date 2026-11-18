@@ -1,5 +1,5 @@
 // src/index.ts
-import z from "@deepseek-ai/schemastery";
+import z2 from "@deepseek-ai/schemastery";
 import { dirname as dirname2, join as join5 } from "node:path";
 import { homedir as homedir2 } from "node:os";
 import { rm } from "node:fs/promises";
@@ -713,7 +713,7 @@ function createAsrRuntime(options) {
       return null;
     }
   };
-  const feed = async (sessionId, samples, final, offset = 0, epoch = 0, manualPressed = false) => {
+  const feedRaw = async (sessionId, samples, final, offset = 0, epoch = 0, manualPressed = false) => {
     if (bargeInMode() === "manual" && !manualPressed) {
       return { text: "" };
     }
@@ -885,6 +885,10 @@ function createAsrRuntime(options) {
     }
   };
   const sweepTimer = setInterval(sweep, 3e4);
+  const feed = async (...args) => {
+    const out = await feedRaw(...args);
+    return options.replaceText && out.text ? { ...out, text: options.replaceText(out.text) } : out;
+  };
   return {
     feed,
     detect: async (sessionId, samples) => {
@@ -1137,6 +1141,58 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
       respondJson(res, 500, { code: "internal", error: "internal error" });
     });
   });
+}
+
+// src/asr-replacements.ts
+import z from "@deepseek-ai/schemastery";
+var AsrReplacementSchema = z.object({
+  from: z.array(z.string()).description('Spellings the recognizer produces, e.g. ["sakeena"]; case-insensitive, whitespace between Latin and CJK text ignored.'),
+  to: z.string().description('The spelling you want, e.g. "Sakina".')
+});
+var ASCII_WORD = /[A-Za-z0-9]/;
+var escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function patternOf(heard) {
+  const chars = [...heard.replace(/\s+/g, " ").trim()];
+  if (chars.length === 0) return null;
+  let body = "";
+  let prev = "";
+  let spaced = false;
+  for (const ch of chars) {
+    if (ch === " ") {
+      spaced = true;
+      continue;
+    }
+    if (prev && (spaced || ASCII_WORD.test(prev) !== ASCII_WORD.test(ch))) body += "\\s*";
+    body += escapeRegExp(ch);
+    prev = ch;
+    spaced = false;
+  }
+  const first = [...heard.trim()][0];
+  const trimmed = [...heard.trim()];
+  const last = trimmed[trimmed.length - 1];
+  const head = ASCII_WORD.test(first) ? "(?<![A-Za-z0-9])" : "";
+  const tail = ASCII_WORD.test(last) ? "(?![A-Za-z0-9])" : "";
+  return `${head}${body}${tail}`;
+}
+function createAsrReplacer(rules) {
+  const entries = [];
+  for (const rule of rules) {
+    if (!rule.to) continue;
+    for (const heard of rule.from) {
+      const pattern = patternOf(heard);
+      if (!pattern) continue;
+      entries.push({ pattern, key: heard.replace(/\s+/g, "").toLowerCase(), to: rule.to, length: heard.replace(/\s+/g, "").length });
+    }
+  }
+  if (entries.length === 0) return (text) => text;
+  entries.sort((a, b) => b.length - a.length);
+  const targets = /* @__PURE__ */ new Map();
+  for (const e of entries) if (!targets.has(e.key)) targets.set(e.key, e.to);
+  const regex = new RegExp(entries.map((e) => `(${e.pattern})`).join("|"), "giu");
+  return (text) => {
+    if (!text) return text;
+    return text.replace(regex, (match) => targets.get(match.replace(/\s+/g, "").toLowerCase()) ?? match);
+  };
 }
 
 // src/segmenter.ts
@@ -3169,126 +3225,127 @@ var DESC = {
 };
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
-  return z.object({
-    ttsEngine: z.union([z.const("vits"), z.const("kokoro"), z.const("edge"), z.const("openai")]).default(d.ttsEngine).description(
+  return z2.object({
+    ttsEngine: z2.union([z2.const("vits"), z2.const("kokoro"), z2.const("edge"), z2.const("openai")]).default(d.ttsEngine).description(
       DESC.ttsEngine
     ),
-    kokoroModel: z.union([z.const("int8"), z.const("fp32")]).default(d.kokoroModel).description(
+    kokoroModel: z2.union([z2.const("int8"), z2.const("fp32")]).default(d.kokoroModel).description(
       DESC.kokoroModel
     ),
-    voice: z.string().default(d.voice).description(
+    voice: z2.string().default(d.voice).description(
       DESC.voice
     ),
-    rate: z.number().min(0.5).max(2).default(d.rate).description(DESC.rate),
-    interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(d.interruptLevel).description(
+    rate: z2.number().min(0.5).max(2).default(d.rate).description(DESC.rate),
+    interruptLevel: z2.union([z2.const(0), z2.const(1), z2.const(2)]).default(d.interruptLevel).description(
       DESC.interruptLevel
     ),
-    silenceMs: z.number().min(500).max(3e4).default(d.silenceMs).description(DESC.silenceMs),
-    idleTimeoutMinutes: z.number().min(1).max(120).default(d.idleTimeoutMinutes).description(DESC.idleTimeoutMinutes),
-    modelHost: z.string().default(d.modelHost).description(DESC.modelHost),
-    autoSend: z.boolean().default(d.autoSend).description(DESC.autoSend),
+    silenceMs: z2.number().min(500).max(3e4).default(d.silenceMs).description(DESC.silenceMs),
+    idleTimeoutMinutes: z2.number().min(1).max(120).default(d.idleTimeoutMinutes).description(DESC.idleTimeoutMinutes),
+    modelHost: z2.string().default(d.modelHost).description(DESC.modelHost),
+    autoSend: z2.boolean().default(d.autoSend).description(DESC.autoSend),
     // 批 7N 重做 5/5：与 strings.ts descAutoResume 同步——明确「下次进入语音会话即生效」。
-    autoResume: z.boolean().default(d.autoResume).description(DESC.autoResume),
-    mode: z.union([z.const("toggle"), z.const("hold"), z.const("once")]).default(d.mode).description(DESC.mode),
-    readAloud: z.union([z.const("voice"), z.const("always"), z.const("off")]).default(d.readAloud).description(DESC.readAloud),
-    showCaptions: z.boolean().default(d.showCaptions).description(DESC.showCaptions),
-    showStatusBar: z.boolean().default(d.showStatusBar).description(DESC.showStatusBar),
-    composerShortcut: z.string().default(d.composerShortcut).description(DESC.composerShortcut),
-    bargeInMode: z.union([z.const("auto"), z.const("manual"), z.const("detect")]).default(d.bargeInMode).description(DESC.bargeInMode),
-    echoGateDb: z.number().min(3).max(12).default(d.echoGateDb).description(
+    autoResume: z2.boolean().default(d.autoResume).description(DESC.autoResume),
+    mode: z2.union([z2.const("toggle"), z2.const("hold"), z2.const("once")]).default(d.mode).description(DESC.mode),
+    readAloud: z2.union([z2.const("voice"), z2.const("always"), z2.const("off")]).default(d.readAloud).description(DESC.readAloud),
+    showCaptions: z2.boolean().default(d.showCaptions).description(DESC.showCaptions),
+    showStatusBar: z2.boolean().default(d.showStatusBar).description(DESC.showStatusBar),
+    composerShortcut: z2.string().default(d.composerShortcut).description(DESC.composerShortcut),
+    bargeInMode: z2.union([z2.const("auto"), z2.const("manual"), z2.const("detect")]).default(d.bargeInMode).description(DESC.bargeInMode),
+    echoGateDb: z2.number().min(3).max(12).default(d.echoGateDb).description(
       DESC.echoGateDb
     ),
-    shortcut: z.string().default(d.shortcut).description(DESC.shortcut),
-    spokenFormat: z.boolean().default(d.spokenFormat).description(DESC.spokenFormat),
-    senseVoice: z.boolean().default(d.senseVoice).description(DESC.senseVoice),
-    wakeWord: z.string().default(d.wakeWord).description(DESC.wakeWord),
-    toolBeep: z.boolean().default(d.toolBeep).description(DESC.toolBeep),
-    senseITN: z.boolean().default(d.senseITN).description(DESC.senseITN),
-    captionFontSize: z.union([z.const(0), z.const(1), z.const(2), z.const(3)]).default(d.captionFontSize).description(
+    shortcut: z2.string().default(d.shortcut).description(DESC.shortcut),
+    spokenFormat: z2.boolean().default(d.spokenFormat).description(DESC.spokenFormat),
+    senseVoice: z2.boolean().default(d.senseVoice).description(DESC.senseVoice),
+    wakeWord: z2.string().default(d.wakeWord).description(DESC.wakeWord),
+    toolBeep: z2.boolean().default(d.toolBeep).description(DESC.toolBeep),
+    senseITN: z2.boolean().default(d.senseITN).description(DESC.senseITN),
+    captionFontSize: z2.union([z2.const(0), z2.const(1), z2.const(2), z2.const(3)]).default(d.captionFontSize).description(
       DESC.captionFontSize
     ),
-    captionMaxWidth: z.union([z.const(0), z.const(1), z.const(2)]).default(d.captionMaxWidth).description(
+    captionMaxWidth: z2.union([z2.const(0), z2.const(1), z2.const(2)]).default(d.captionMaxWidth).description(
       DESC.captionMaxWidth
     ),
-    backchannelYield: z.boolean().default(d.backchannelYield).description(
+    backchannelYield: z2.boolean().default(d.backchannelYield).description(
       DESC.backchannelYield
     ),
     // Issue #15 批 1 / ADR-0012：打断语音抢救（默认 true，I10 有意豁免）。
-    bargeInSalvage: z.boolean().default(d.bargeInSalvage).description(
+    bargeInSalvage: z2.boolean().default(d.bargeInSalvage).description(
       DESC.bargeInSalvage
     ),
     // Issue #15 批 4：LLM 纠错（默认 false）。
-    llmCorrect: z.boolean().default(d.llmCorrect).description(
+    llmCorrect: z2.boolean().default(d.llmCorrect).description(
       DESC.llmCorrect
     ),
-    yieldMs: z.number().min(500).max(3e3).default(d.yieldMs).description(
+    yieldMs: z2.number().min(500).max(3e3).default(d.yieldMs).description(
       DESC.yieldMs
     )
   });
 }
 var VoiceSettingsSchema = createVoiceSettingsSchema();
-var OpenAiTtsConfig = z.object({
-  baseUrl: z.string().default("").description("API base URL, e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1 or a self-hosted server."),
-  apiKey: z.string().role("secret").default("").description("Bearer key; leave empty for servers without auth."),
-  model: z.string().default("").description("Model name sent to the server."),
-  voice: z.string().default("").description("Default voice name on the server (the voice setting overrides it)."),
-  instructions: z.string().default("").description("Optional style instructions for models that accept them."),
-  responseFormat: z.union([z.const("mp3"), z.const("wav")]).default("mp3"),
-  timeoutMs: z.number().min(1e3).max(6e4).default(8e3).description("Per-sentence timeout; slower counts as unavailable."),
-  fallback: z.union([z.const("none"), z.const("vits"), z.const("kokoro")]).default("none").description("Local engine used while the server is unreachable or slow."),
-  fallbackVoice: z.string().default("").description("Voice for the fallback engine (empty = its default).")
+var OpenAiTtsConfig = z2.object({
+  baseUrl: z2.string().default("").description("API base URL, e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1 or a self-hosted server."),
+  apiKey: z2.string().role("secret").default("").description("Bearer key; leave empty for servers without auth."),
+  model: z2.string().default("").description("Model name sent to the server."),
+  voice: z2.string().default("").description("Default voice name on the server (the voice setting overrides it)."),
+  instructions: z2.string().default("").description("Optional style instructions for models that accept them."),
+  responseFormat: z2.union([z2.const("mp3"), z2.const("wav")]).default("mp3"),
+  timeoutMs: z2.number().min(1e3).max(6e4).default(8e3).description("Per-sentence timeout; slower counts as unavailable."),
+  fallback: z2.union([z2.const("none"), z2.const("vits"), z2.const("kokoro")]).default("none").description("Local engine used while the server is unreachable or slow."),
+  fallbackVoice: z2.string().default("").description("Voice for the fallback engine (empty = its default).")
 });
-var Config = z.object({
-  enabled: z.boolean().default(true),
-  cacheDir: z.string().default(defaultModelCacheDir()),
-  modelHost: z.string().default("https://huggingface.co"),
-  ttsEngine: z.union([z.const("edge"), z.const("vits"), z.const("kokoro"), z.const("openai")]).default("edge"),
+var Config = z2.object({
+  enabled: z2.boolean().default(true),
+  cacheDir: z2.string().default(defaultModelCacheDir()),
+  modelHost: z2.string().default("https://huggingface.co"),
+  ttsEngine: z2.union([z2.const("edge"), z2.const("vits"), z2.const("kokoro"), z2.const("openai")]).default("edge"),
   openaiTts: OpenAiTtsConfig,
-  kokoroModel: z.union([z.const("int8"), z.const("fp32")]).default("int8"),
-  allowLan: z.boolean().default(false),
-  allowCustomModelHost: z.boolean().default(false),
-  voice: z.string().default("zh-CN-XiaoxiaoNeural"),
+  kokoroModel: z2.union([z2.const("int8"), z2.const("fp32")]).default("int8"),
+  allowLan: z2.boolean().default(false),
+  asrReplacements: z2.array(AsrReplacementSchema).default([]),
+  allowCustomModelHost: z2.boolean().default(false),
+  voice: z2.string().default("zh-CN-XiaoxiaoNeural"),
   // I3（Issue #15 审查 Important）：数值旋钮补 min/max，与 VoiceSettingsValue schema
   // （createVoiceSettingsSchema）逐字段一致。早年 Config 层是裸 z.number()——cordis.patch.yml
   // 手滑写 rate:5 会得到五倍速朗读、silenceMs:10 会把每句话按音节碎切，且没有任何一层会拦。
   // 两层同界：Config 是 baseline、settings schema 是覆盖层，任一层失守都让非法值直达运行时。
-  rate: z.number().min(0.5).max(2).default(1.1),
-  interruptLevel: z.union([z.const(0), z.const(1), z.const(2)]).default(0),
-  silenceMs: z.number().min(500).max(3e4).default(1500),
-  idleTimeoutMinutes: z.number().min(1).max(120).default(5),
+  rate: z2.number().min(0.5).max(2).default(1.1),
+  interruptLevel: z2.union([z2.const(0), z2.const(1), z2.const(2)]).default(0),
+  silenceMs: z2.number().min(500).max(3e4).default(1500),
+  idleTimeoutMinutes: z2.number().min(1).max(120).default(5),
   // 设置面板字段（与 VoiceSettingsValue 一一对应；0.1.7+ 由插件自身 Config 派生读取）。
   // 注意：刻意不标 .volatile() —— schemastery 3.18.4 的 volatile 会破坏 schema 函数
   // 调用形态（sv({}) → {field:{}}），而 0.1.5-rc.3 起的设置分层会调用插件 Config 做
   // merge，{} 透过 mergeLayers 污染并触发 ValidationError（2026-09-23 实测）。
   // 0.1.7 功能读取走 config 直接读，不依赖 volatile（仅官方 UI 自动投影受影响，
   // 本插件自带 settings-form 设置面板 + /voice-mode/config，不受影响）。
-  autoSend: z.boolean().default(true),
-  autoResume: z.boolean().default(false),
-  mode: z.union([z.const("toggle"), z.const("hold"), z.const("once")]).default("toggle"),
-  readAloud: z.union([z.const("voice"), z.const("always"), z.const("off")]).default("voice"),
-  showCaptions: z.boolean().default(true),
-  showStatusBar: z.boolean().default(true),
-  bargeInMode: z.union([z.const("auto"), z.const("manual"), z.const("detect")]).default("detect"),
+  autoSend: z2.boolean().default(true),
+  autoResume: z2.boolean().default(false),
+  mode: z2.union([z2.const("toggle"), z2.const("hold"), z2.const("once")]).default("toggle"),
+  readAloud: z2.union([z2.const("voice"), z2.const("always"), z2.const("off")]).default("voice"),
+  showCaptions: z2.boolean().default(true),
+  showStatusBar: z2.boolean().default(true),
+  bargeInMode: z2.union([z2.const("auto"), z2.const("manual"), z2.const("detect")]).default("detect"),
   // I3 + M7（zod 界）：echoGateDb / yieldMs 与 settings schema 同界（3-12 dB / 500-3000ms）。
   // client 与 NumberField 虽会 clamp，但那只是 UI 兜底——Config 层无界时 YAML 手滑
   // 仍可把回声门阈设成 0（句句误打断）或让位窗口设成 60000（让位后一分钟不说话）。
-  echoGateDb: z.number().min(3).max(12).default(6),
-  shortcut: z.string().default("Ctrl+Shift+V"),
-  composerShortcut: z.string().default("Alt+Enter"),
-  spokenFormat: z.boolean().default(true),
-  senseVoice: z.boolean().default(true),
-  wakeWord: z.string().default(""),
-  toolBeep: z.boolean().default(false),
-  senseITN: z.boolean().default(true),
-  captionFontSize: z.union([z.const(0), z.const(1), z.const(2), z.const(3)]).default(0),
-  captionMaxWidth: z.union([z.const(0), z.const(1), z.const(2)]).default(1),
-  backchannelYield: z.boolean().default(true),
+  echoGateDb: z2.number().min(3).max(12).default(6),
+  shortcut: z2.string().default("Ctrl+Shift+V"),
+  composerShortcut: z2.string().default("Alt+Enter"),
+  spokenFormat: z2.boolean().default(true),
+  senseVoice: z2.boolean().default(true),
+  wakeWord: z2.string().default(""),
+  toolBeep: z2.boolean().default(false),
+  senseITN: z2.boolean().default(true),
+  captionFontSize: z2.union([z2.const(0), z2.const(1), z2.const(2), z2.const(3)]).default(0),
+  captionMaxWidth: z2.union([z2.const(0), z2.const(1), z2.const(2)]).default(1),
+  backchannelYield: z2.boolean().default(true),
   // Issue #15 批 4：LLM 纠错默认关。
-  llmCorrect: z.boolean().default(false),
+  llmCorrect: z2.boolean().default(false),
   // Issue #15 批 1 / ADR-0012：打断语音抢救（默认 true，I10 有意豁免）。
-  bargeInSalvage: z.boolean().default(true),
+  bargeInSalvage: z2.boolean().default(true),
   // I3 + M7（zod 界）：500-3000ms，与 settings schema 一致。
-  yieldMs: z.number().min(500).max(3e3).default(1500)
+  yieldMs: z2.number().min(500).max(3e3).default(1500)
 });
 function displayOf(v) {
   return { readAloud: v.readAloud, showCaptions: v.showCaptions, showStatusBar: v.showStatusBar };
@@ -3531,7 +3588,8 @@ function apply(ctx, config) {
     // 而 bargeInMode=detect 在原生 AEC 未生效的机器上会自动落到 manual，即默认路径就可能命中。
     // 待机态 push-to-talk 属产品决策（要改的是客户端手势开放条件），PM 已登记待用户拍板，
     // 此处不加功能；host 侧只保证「manual 时非按压帧不入流」这一既有语义不被悄悄扩大。
-    bargeInMode: () => vset.bargeInMode
+    bargeInMode: () => vset.bargeInMode,
+    replaceText: createAsrReplacer(config.asrReplacements ?? [])
   });
   ctx.effect(() => () => asr.dispose());
   const warmupAsrIfCached = () => {

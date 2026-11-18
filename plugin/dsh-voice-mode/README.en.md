@@ -238,6 +238,20 @@ Any server that implements OpenAI's `POST /v1/audio/speech` can read replies alo
 
 Each sentence is one request (the queue already synthesizes sentence by sentence while the reply is still streaming, so in-sentence streaming would not start playback any sooner). `rate` is sent as `speed` when it is not 1. With a `fallback`, a failed or timed-out request makes that sentence (and the next 30 s) use the local engine, then the server is tried again, so a dead server does not cost a timeout per sentence. The text to be spoken goes to `baseUrl`, so pick a server you trust with your replies.
 
+### Fixing misheard words (`asrReplacements`)
+
+Recognizers keep mishearing some names and English words inside Chinese speech (a name such as "Sakina" can come out as "ski男"). The usual fix, hotwords, doesn't fit here: sherpa-onnx supports hotwords only for transducer models, the streaming zipformer works on Chinese characters and can't spell English words, and the SenseVoice model that produces the final text has no hotword input. Until a model with hotwords covers this, a replacement list is a stopgap: it rewrites the text after recognition, in partial and final results alike, so captions, the draft and the wake word all see the corrected text.
+
+```yaml
+- id: voice-mode
+  config:
+    asrReplacements:
+      - from: [ski男]          # what the recognizer produced, one or more spellings
+        to: Sakina             # what you want
+```
+
+Matching is case-insensitive and ignores whitespace between Latin and CJK text ("ski 男" matches too). A spelling that starts or ends with a Latin letter or digit only matches a whole word, so `sina` leaves `Sinatra` alone; CJK text has no word boundaries, so a Chinese spelling matches as a substring. The longest spelling wins at each position and replaced text is not matched again. Keep entries to what you have actually seen misheard: a short or common spelling will also rewrite real words. The list is read from the plugin config, so a change takes effect with the next recognition request after the profile reloads.
+
 ---
 
 ## 🌐 API
