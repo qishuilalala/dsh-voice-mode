@@ -140,6 +140,14 @@ await t('中间结果和定稿都按替换表改写', async () => {
   assert.equal(final.text, 'Sakina，今天天气怎么样')
   rt.dispose()
 })
+await t('定稿缓存重试同样改写（缓存存原文，重试走出口改写）', async () => {
+  const rt = makeRuntime(createAsrReplacer([{ from: ['ski男'], to: 'Sakina' }]))
+  const first = await rt.feed('s1', pcm(), false, 0, 0)
+  assert.equal(first.text, 'Sakina，今天天气怎么样')
+  const cached = await rt.feed('s1', new Float32Array(0), true, 1600, 0)
+  assert.equal(cached.text, 'Sakina，今天天气怎么样')
+  rt.dispose()
+})
 await t('不配替换表时原样返回', async () => {
   const rt = makeRuntime()
   const partial = await rt.feed('s2', pcm(), false, 0, 0)
