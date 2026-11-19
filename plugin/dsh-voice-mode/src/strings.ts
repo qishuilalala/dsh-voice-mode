@@ -86,7 +86,7 @@ export const zh = {
   presetSelfKokoroNote: '本地服务（默认 127.0.0.1:8880），无逐次费用；文本不出本机网络。首次需自行部署',
   presetSelfVllm: '自建 · vLLM-Omni',
   presetSelfVllmNote: '本地服务（默认 127.0.0.1:8000），无逐次费用；文本不出本机网络。首次需自行部署',
-  presetKeyNote: 'key 填在 profile 的 openaiTts.apiKey，不经过浏览器',
+  presetKeyNote: 'key 填在 profile 的 openaiTts.apiKey，不经过浏览器；本插件只有一个 key 字段——换到另一家服务商的预设时，需同时把 key 换成该家的，否则会 401',
   presetVerify: '验证此预设',
   // P1-4 只听写预设。
   dictationTitle: '只听写',
@@ -439,7 +439,7 @@ export const en: Record<keyof typeof zh, string> = {
   presetSelfKokoroNote: 'Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first',
   presetSelfVllm: 'Self-hosted · vLLM-Omni',
   presetSelfVllmNote: 'Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first',
-  presetKeyNote: 'Put the key in the profile openaiTts.apiKey; it never passes through the browser',
+  presetKeyNote: 'Put the key in the profile openaiTts.apiKey; it never passes through the browser. There is one key field only — when switching to a preset from another provider, update the key too, or the request will 401',
   presetVerify: 'Verify preset',
   // P1-4 dictation-only preset.
   dictationTitle: 'Dictation only',

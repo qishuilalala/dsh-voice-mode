@@ -232,6 +232,10 @@ export interface OpenAiPreset {
  * - openai-official：OpenAI 官方 Text-to-speech 指南（/v1/audio/speech，gpt-4o-mini-tts，
  *   官方推荐 marin/cedar）。
  * - selfhosted-*：本地容器（Kokoro-FastAPI 8880 / vLLM-Omni 8000），端点与音色由用户部署决定。
+ *
+ * 已知限制（如实登记，不做隐式魔法）：key 只有一个字段 `openaiTts.apiKey`，跨服务商切换预设时
+ * 必须同时换 key；UI 的「key 说明」已写明这一点，避免用户把 401 误判成「引擎坏了」。
+ * 若要支持多 key，属于新增能力（需评估密钥分散风险，ADR-0013 的信任边界仍要求 key 只在宿主）。
  */
 export const OPENAI_PRESETS: Record<string, OpenAiPreset> = {
   'siliconflow-cosyvoice2': {
