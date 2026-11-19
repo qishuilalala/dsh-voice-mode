@@ -127,6 +127,18 @@ const ENGINE_DEFAULT_VOICE: Record<string, string> = {
 const OPENAI_PRESET_VOICE: Record<string, string> = {
   'siliconflow-cosyvoice2': 'FunAudioLLM/CosyVoice2-0.5B:alex',
   'siliconflow-fish': 'fishaudio/fish-speech-1.5:anna',
+  'openrouter-openai': 'alloy',
+  'selfhosted-kokoro': 'zf_xiaobei',
+  'selfhosted-vllm': 'default',
+}
+
+/** 预设 → 费用/数据去向说明键（缺省不显示；新增预设必须同时补这条，防“接了没告知”）。 */
+const PRESET_NOTE: Record<string, TKey> = {
+  'siliconflow-cosyvoice2': 'presetCosyNote',
+  'siliconflow-fish': 'presetFishNote',
+  'openrouter-openai': 'presetOpenrouterNote',
+  'selfhosted-kokoro': 'presetSelfKokoroNote',
+  'selfhosted-vllm': 'presetSelfVllmNote',
 }
 
 
@@ -672,6 +684,17 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
     })()
   }
 
+  // A2 Minor：试听音频在组件卸载时停止（同一卡片里自测已单独处理）。
+  useEffect(
+    () => () => {
+      const a = audioRef.current
+      if (a) {
+        a.pause()
+        if (a.src.startsWith('blob:')) URL.revokeObjectURL(a.src)
+      }
+    },
+    [],
+  )
   const btnStyle: React.CSSProperties = {
     font: 'inherit',
     display: 'inline-flex',
@@ -766,14 +789,19 @@ function SelfTestSection({
             // 非 JSON 错误体：走通用文案
           }
           const code = (body as { code?: unknown } | null)?.code
+          // A2 审计 Important：429（与试听共用 20/min 桶）和 403（插件禁用）不是「引擎坏了」，
+          // 若标红会让用户误判引擎故障。这两类只给说明、不置合成失败。
+          if (code === 'rate_limited' || res.status === 429) {
+            setNote(tr('selftestRateLimited'))
+            return
+          }
+          if (code === 'voice_disabled' || res.status === 403) {
+            setNote(tr('selftestDisabled'))
+            return
+          }
           setSynth('fail')
-          setNote(
-            code === 'voice_disabled' || res.status === 403
-              ? tr('previewDisabled')
-              : code === 'rate_limited' || res.status === 429
-                ? tr('previewRateLimited')
-                : errorText(body, 'selftestCheck'),
-          )
+          // 本地引擎模型未就绪是「还没下载」而非引擎坏：给可行动提示（A2 Important）。
+          setNote(code === 'preview_engine' ? tr('previewModelMissing') : errorText(body, 'selftestCheck'))
           return
         }
         const blob = await res.blob()
@@ -816,6 +844,18 @@ function SelfTestSection({
     })()
   }
 
+  // A2 Minor：卡片折叠/卸载后仍在播的音频要停掉，避免“关了设置还在响”。
+  useEffect(
+    () => () => {
+      const a = audioRef.current
+      if (a) {
+        a.pause()
+        if (a.src.startsWith('blob:')) URL.revokeObjectURL(a.src)
+      }
+    },
+    [],
+  )
+
   const verdict = (label: string, st: 'ok' | 'fail' | 'autoplay' | null, extra?: string): React.ReactElement => (
     <span style={{ fontSize: 12, color: t.term, display: 'inline-flex', gap: 4 }}>
       <span>{label}</span>
@@ -837,7 +877,11 @@ function SelfTestSection({
   )
 
   return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', padding: '2px 0 10px' }}>
+    <span
+      role="group"
+      aria-label={tr('selftestTitle')}
+      style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', padding: '2px 0 10px' }}
+    >
       <span style={{ fontSize: 12, color: t.label, fontWeight: 600 }}>{tr('selftestTitle')}</span>
       <span style={{ fontSize: 11, color: t.term }}>{tr('selftestHint')}</span>
       <button
@@ -862,8 +906,11 @@ function SelfTestSection({
       >
         {busy ? tr('selftestRunning') : tr('selftestRun')}
       </button>
-      {verdict(tr('selftestSynth'), synth, synth === 'ok' ? `${synthMs} ${tr('unitMs')}` : undefined)}
-      {verdict(tr('selftestPlay'), play)}
+      {/* A2 a11y：结果变化用 polite live region 播报，读屏用户无需轮询界面。 */}
+      <span role="status" aria-live="polite" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {verdict(tr('selftestSynth'), synth, synth === 'ok' ? `${synthMs} ${tr('unitMs')}` : undefined)}
+        {verdict(tr('selftestPlay'), play)}
+      </span>
       {synth === 'fail' && (engine === 'edge' || engine === 'openai' || engine === 'mimo') && (
         <button
           type="button"
@@ -925,9 +972,14 @@ function ReplacementsSection({
   onChange,
 }: {
   rules: unknown
-  onChange: (next: ReplacementRule[]) => void
+  /** 返回是否写成功（A2 Blocker：失败必须让用户可见，不能静默回滚）。 */
+  onChange: (next: ReplacementRule[]) => Promise<boolean>
 }): React.ReactElement {
-  const list = normalizeRules(rules) ?? []
+  // A2 审计 Blocker：非法/超大已有规则时，normalizeRules 返回 null——此前直接当空表显示，
+  // 用户再点「添加」就会用新数组整表覆盖、丢掉原规则。现在区分「空」与「无法解析」并禁止覆盖。
+  const parsed = normalizeRules(rules)
+  const unreadable = parsed === null
+  const list = parsed ?? []
   const [hits, setHits] = useState<number[]>([])
   const [fromText, setFromText] = useState('')
   const [toText, setToText] = useState('')
@@ -954,7 +1006,27 @@ function ReplacementsSection({
       clearInterval(timer)
     }
   }, [])
+  const commit = async (next: ReplacementRule[]): Promise<boolean> => {
+    // 托管路径 POST 体上限 16KB（index.ts MAX_JSON_BODY）：超限会被 413 拒绝并静默回滚，
+    // 故先在客户端按序列化长度拦截，给出可行动提示而不是假装成功。
+    if (JSON.stringify(next).length > 12000) {
+      setNote(tr('replTooLarge'))
+      return false
+    }
+    const ok = await onChange(next)
+    if (!ok) {
+      setNote(tr('replSaveFail'))
+      return false
+    }
+    setNote(null)
+    setHits([]) // 结构变了，旧命中索引会错位；等下一次轮询回填（5s）
+    return true
+  }
   const add = (): void => {
+    if (unreadable) {
+      setNote(tr('replUnreadable'))
+      return
+    }
     const from = fromText
       .split(/[,，、]/)
       .map((s) => s.trim())
@@ -964,10 +1036,13 @@ function ReplacementsSection({
       setNote(tr('replInvalid'))
       return
     }
-    setNote(null)
-    setFromText('')
-    setToText('')
-    onChange([...list, { from, to }])
+    void (async () => {
+      // 仅在写成功后才清空输入（旧实现先清空，失败即丢用户输入）。
+      if (await commit([...list, { from, to }])) {
+        setFromText('')
+        setToText('')
+      }
+    })()
   }
   const exportFile = (): void => {
     const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' })
@@ -976,7 +1051,8 @@ function ReplacementsSection({
     a.href = url
     a.download = 'voice-replacements.json'
     a.click()
-    URL.revokeObjectURL(url)
+    // A2 Minor：同步 revoke 会取消部分浏览器的下载；延后一拍释放。
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
   const importFile = (f: File | undefined): void => {
     if (!f) return
@@ -992,8 +1068,7 @@ function ReplacementsSection({
           setNote(tr('replBadFile'))
           return
         }
-        setNote(null)
-        onChange(next)
+        await commit(next)
       } catch {
         setNote(tr('replBadFile'))
       }
@@ -1017,7 +1092,11 @@ function ReplacementsSection({
     <span style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start', padding: '2px 0 10px' }}>
       <span style={{ fontSize: 12, color: t.label, fontWeight: 600 }}>{tr('replTitle')}</span>
       <span style={{ fontSize: 11, color: t.term }}>{tr('descAsrReplacements')}</span>
-      {list.length === 0 ? (
+      {unreadable ? (
+        <span role="alert" style={{ fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' }}>
+          {tr('replUnreadable')}
+        </span>
+      ) : list.length === 0 ? (
         <span style={{ fontSize: 12, color: t.term }}>{tr('replEmpty')}</span>
       ) : (
         list.map((r, i) => (
@@ -1030,7 +1109,8 @@ function ReplacementsSection({
             </span>
             <button
               type="button"
-              onClick={() => onChange(list.filter((_, j) => j !== i))}
+              aria-label={`${tr('replDelete')}: ${r.from.join(' / ')} → ${r.to}`}
+              onClick={() => void commit(list.filter((_, j) => j !== i))}
               style={{ ...btnStyle, padding: '2px 8px' }}
             >
               {tr('replDelete')}
@@ -1043,12 +1123,17 @@ function ReplacementsSection({
           value={fromText}
           onChange={(e) => setFromText(e.target.value)}
           placeholder={tr('replFromPh')}
+          aria-label={tr('replFromPh')}
           style={{ fontSize: 12, padding: '4px 8px', maxWidth: 220 }}
         />
         <input
           value={toText}
           onChange={(e) => setToText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') add()
+          }}
           placeholder={tr('replToPh')}
+          aria-label={tr('replToPh')}
           style={{ fontSize: 12, padding: '4px 8px', maxWidth: 140 }}
         />
         <button type="button" onClick={add} style={btnStyle}>
@@ -1103,6 +1188,7 @@ function DictationPreset({
       <span style={{ fontSize: 11, color: t.term }}>{tr('dictationHint')}</span>
       <button
         type="button"
+        aria-pressed={off}
         onClick={() => onPick(off ? lastOn.current : 'off')}
         style={{
           font: 'inherit',
@@ -1646,12 +1732,13 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                       { v: '', label: tr('presetCustom') },
                       { v: 'siliconflow-cosyvoice2', label: tr('presetCosy') },
                       { v: 'siliconflow-fish', label: tr('presetFish') },
+                      { v: 'openrouter-openai', label: tr('presetOpenrouter') },
+                      { v: 'selfhosted-kokoro', label: tr('presetSelfKokoro') },
+                      { v: 'selfhosted-vllm', label: tr('presetSelfVllm') },
                     ]}
                   />
-                  {value.openaiPreset === 'siliconflow-cosyvoice2' ? (
-                    <span style={{ fontSize: 11, color: t.term }}>{tr('presetCosyNote')}</span>
-                  ) : value.openaiPreset === 'siliconflow-fish' ? (
-                    <span style={{ fontSize: 11, color: t.term }}>{tr('presetFishNote')}</span>
+                  {PRESET_NOTE[String(value.openaiPreset)] ? (
+                    <span style={{ fontSize: 11, color: t.term }}>{tr(PRESET_NOTE[String(value.openaiPreset)])}</span>
                   ) : null}
                   <span style={{ fontSize: 11, color: t.term }}>{tr('presetKeyNote')}</span>
                   {typeof value.openaiPreset === 'string' && OPENAI_PRESET_VOICE[value.openaiPreset] ? (
@@ -1848,7 +1935,10 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
             <Row name="idleTimeoutMinutes" desc={tr('descIdle')}>
               <NumberField score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 5} min={1} max={120} step={1} />
             </Row>
-            <ReplacementsSection rules={value.asrReplacements} onChange={(next) => void scope.set('asrReplacements', next)} />
+            <ReplacementsSection
+              rules={value.asrReplacements}
+              onChange={(next) => scope.set('asrReplacements', next) as Promise<boolean>}
+            />
             </Section>
             <Section title={tr('secModel')}>
             <Row name="modelHost" desc={tr('descModelHost')}>

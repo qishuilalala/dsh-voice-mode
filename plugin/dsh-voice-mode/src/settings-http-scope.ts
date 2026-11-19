@@ -20,7 +20,8 @@ export interface HttpScopeSnapshot {
 export interface HttpScope {
   getSnapshot(): HttpScopeSnapshot
   subscribe(fn: () => void): () => void
-  set(field: string, value: unknown): Promise<void>
+  /** 写入覆盖层；返回是否成功（失败时内部已回滚到服务端当前值）。 */
+  set(field: string, value: unknown): Promise<boolean>
   /**
    * 摘除本 scope 自建的资源（窗口 focus 监听 + 后台重试定时器）。
    * 插件每次 apply（热重载/卸载重建）都会新建一个 scope——不调用本方法则每次泄漏
@@ -155,7 +156,7 @@ export function createHttpScope(origin: string = location.origin, fetchImpl: typ
     },
     async set(field, value) {
       // 置死后不再写（插件卸载期的悬空写请求没有意义）。
-      if (disposed) return
+      if (disposed) return false
       // 乐观更新：失败则以服务端当前值回滚（卡片不需要感知错误细节）。
       const before = snap
       writing++
@@ -182,6 +183,9 @@ export function createHttpScope(origin: string = location.origin, fetchImpl: typ
       }
       // 写失败：回滚后以服务端当前值兜底（成功路径已由 POST 响应带回全量值）。
       if (!ok) await load()
+      // A2 审计 Blocker：返回写结果，供需要「失败必须让用户知道」的调用方（如词表编辑）
+      // 区分「写入成功」与「静默回滚」——旧实现恒返回 undefined，UI 无从判断。
+      return ok
     },
     dispose: () => {
       // 置死：dispose 之后本 scope 不再拉取、不再重试、不再写
