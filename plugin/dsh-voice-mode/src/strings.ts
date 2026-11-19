@@ -69,6 +69,16 @@ export const zh = {
   previewBtnTitle: '试听当前音色（当前语速）',
   synthesizing: '合成中…',
   preview: '试听',
+  // E1 在线预设。
+  openaiPresetLabel: '在线预设',
+  descOpenaiPreset: '在线 TTS 预设：选中后地址与模型按预设走（key 仍走 profile 文件 openaiTts.apiKey，不经过浏览器）；空 = 手动沿用配置文件。切换后点下方自测验证',
+  presetCustom: '手动配置（profile 文件）',
+  presetCosy: '硅基流动 · CosyVoice2',
+  presetFish: '硅基流动 · Fish Speech 1.5',
+  presetCosyNote: '约 $7.15/百万 UTF-8 字节，150ms 级；文本发往 api.siliconflow.cn',
+  presetFishNote: '约 $15/百万 UTF-8 字节；文本发往 api.siliconflow.cn',
+  presetKeyNote: 'key 填在 profile 的 openaiTts.apiKey，不经过浏览器',
+  presetFillVoice: '填入示例音色',
   // P1-4 只听写预设。
   dictationTitle: '只听写',
   dictationHint: '关闭回复朗读，专注听写；再点一次恢复',
@@ -394,6 +404,16 @@ export const en: Record<keyof typeof zh, string> = {
   previewBtnTitle: 'Preview voice (current rate)',
   synthesizing: 'Synthesizing…',
   preview: 'Preview',
+  // E1 online presets.
+  openaiPresetLabel: 'Online preset',
+  descOpenaiPreset: 'Online TTS preset: endpoint and model follow the preset (key stays in the profile file openaiTts.apiKey, never passes through the browser); empty = manual config file values. Run the self-test below after switching',
+  presetCustom: 'Manual (profile file)',
+  presetCosy: 'SiliconFlow · CosyVoice2',
+  presetFish: 'SiliconFlow · Fish Speech 1.5',
+  presetCosyNote: 'About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn',
+  presetFishNote: 'About $15 per million UTF-8 bytes; text goes to api.siliconflow.cn',
+  presetKeyNote: 'Put the key in the profile openaiTts.apiKey; it never passes through the browser',
+  presetFillVoice: 'Fill example voice',
   // P1-4 dictation-only preset.
   dictationTitle: 'Dictation only',
   dictationHint: 'Turn off reply read-aloud for focused dictation; click again to restore',

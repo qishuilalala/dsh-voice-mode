@@ -229,4 +229,21 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   await assert.rejects(bare.synthesize('hello'), (e) => e.code === 'openai_not_configured')
 }
 
+{
+  // E1：预设解析（纯函数；未知/空回 null 调用方回落 Config 文件值）。
+  const { OPENAI_PRESETS, resolveOpenAiEndpoint } = await import('../src/tts-openai.ts')
+  assert.deepEqual(resolveOpenAiEndpoint('siliconflow-cosyvoice2'), {
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    model: 'FunAudioLLM/CosyVoice2-0.5B',
+  })
+  assert.deepEqual(resolveOpenAiEndpoint('siliconflow-fish'), {
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    model: 'fishaudio/fish-speech-1.5',
+  })
+  assert.equal(resolveOpenAiEndpoint(''), null)
+  assert.equal(resolveOpenAiEndpoint('unknown-preset'), null)
+  assert.ok(String(OPENAI_PRESETS['siliconflow-cosyvoice2'].voice).includes(':'))
+  assert.ok(String(OPENAI_PRESETS['siliconflow-fish'].voice).includes(':'))
+}
+
 console.log('tts-openai: all assertions passed')

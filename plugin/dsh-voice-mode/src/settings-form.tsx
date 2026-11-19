@@ -122,6 +122,12 @@ const ENGINE_DEFAULT_VOICE: Record<string, string> = {
   openai: '',
 }
 
+// E1 preset example voices (UX fill only; baseUrl/model source of truth is host tts-openai.ts OPENAI_PRESETS).
+const OPENAI_PRESET_VOICE: Record<string, string> = {
+  'siliconflow-cosyvoice2': 'FunAudioLLM/CosyVoice2-0.5B:alex',
+  'siliconflow-fish': 'fishaudio/fish-speech-1.5:anna',
+}
+
 
 /** 批 G 任务 1：NumberField 加红框校验 + clamp 提示。
  *  - 非数值/空串：commit() 拒绝（保留 draft，红框 + 「数值非法」hint）。
@@ -1617,6 +1623,52 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                 footer={(v) => <VoicePreviewButton voice={v} rate={Number(value.rate ?? 1.1)} />}
               />
             </Row>
+            {engine === 'openai' && (
+              <Row name="openaiPreset" desc={tr('descOpenaiPreset')}>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                  <SegGroup
+                    score={scope}
+                    field="openaiPreset"
+                    value={typeof value.openaiPreset === 'string' ? value.openaiPreset : ''}
+                    options={[
+                      { v: '', label: tr('presetCustom') },
+                      { v: 'siliconflow-cosyvoice2', label: tr('presetCosy') },
+                      { v: 'siliconflow-fish', label: tr('presetFish') },
+                    ]}
+                  />
+                  {value.openaiPreset === 'siliconflow-cosyvoice2' ? (
+                    <span style={{ fontSize: 11, color: t.term }}>{tr('presetCosyNote')}</span>
+                  ) : value.openaiPreset === 'siliconflow-fish' ? (
+                    <span style={{ fontSize: 11, color: t.term }}>{tr('presetFishNote')}</span>
+                  ) : null}
+                  <span style={{ fontSize: 11, color: t.term }}>{tr('presetKeyNote')}</span>
+                  {typeof value.openaiPreset === 'string' && OPENAI_PRESET_VOICE[value.openaiPreset] ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void scope.set('voice', OPENAI_PRESET_VOICE[String(value.openaiPreset)] ?? '')
+                      }
+                      style={{
+                        font: 'inherit',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        alignSelf: 'flex-start',
+                        cursor: 'pointer',
+                        color: t.label,
+                        background: 'var(--dsw-alias-bg-layer-2)',
+                        border: `1px solid ${t.border}`,
+                        borderRadius: 6,
+                        padding: '4px 10px',
+                        fontSize: 12,
+                        lineHeight: '18px',
+                      }}
+                    >
+                      {tr('presetFillVoice')}
+                    </button>
+                  ) : null}
+                </span>
+              </Row>
+            )}
             <Row name="rate" desc={tr('descRate')}>
               <NumberField score={scope} field="rate" value={value.rate ?? 1.1} min={0.5} max={2} step={0.1} />
             </Row>

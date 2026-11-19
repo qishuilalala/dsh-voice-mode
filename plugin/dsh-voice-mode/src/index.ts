@@ -50,7 +50,7 @@ import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts
 import type { HostErrorCode } from './errors.ts'
 import { en } from './strings.ts'
 import { correctText } from './llm-correct.ts'
-import { OpenAiTtsEngine } from './tts-openai.ts'
+import { OpenAiTtsEngine, resolveOpenAiEndpoint } from './tts-openai.ts'
 import { normalizePromptLang, previewSample, spokenPrompt, type PromptLang } from './prompts.ts'
 import { pickKnownKeys, readLegacyVoiceSettings, readOverrides, settingsFilePath, unknownKeys, writeOverrides } from './settings-store.ts'
 
@@ -255,6 +255,8 @@ export interface VoiceSettingsValue {
    *  「只改错别字/同音字/标点，保持原意」的纠错（复用宿主已配置模型，不引入新凭据）；
    *  失败/无模型/空结果一律回退原文。默认关 = 未申报的 I10 豁免+每条多一次 RTT/token。 */
   llmCorrect: boolean
+  /** E1 在线预设 id（'' = 手动沿用 Config 文件；已知 id 见 tts-openai.ts OPENAI_PRESETS；用户覆盖层专属，无 Config 基线）。 */
+  openaiPreset: string
   /** 批 G 任务 3：让位窗口时长（ms，500-3000，默认 1500）。
    *  onBackchannel 命中后 TTS 丢帧持续时间；hold 期内用户真要说则原 hardBreak 接管。 */
   yieldMs: number
@@ -297,6 +299,8 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   bargeInSalvage: true,
   // Issue #15 批 4：LLM 纠错默认关（默认开=未申报的 I10 豁免+每条多一次 RTT/token）。
   llmCorrect: false,
+  // E1：在线预设默认空 = 手动（沿用 Config 文件值，零行为变化）。
+  openaiPreset: '',
   // P1-3：纠错词表默认空（与 Config 层 asrReplacements 默认 [] 对齐）。
   asrReplacements: [],
   // 批 G 任务 3：让位窗口默认 1500ms（与改造前批 5 行为字节等价；用户可调 500-3000ms）。
@@ -336,6 +340,7 @@ const DESC = {
   backchannelYield: en.descBackchannelYield,
   bargeInSalvage: en.descBargeInSalvage,
   llmCorrect: en.descLlmCorrect,
+  openaiPreset: en.descOpenaiPreset,
   asrReplacements: en.descAsrReplacements,
   yieldMs: en.descYieldMs,
 } as const
@@ -450,6 +455,13 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .default(d.llmCorrect)
       .description(
         DESC.llmCorrect,
+      ),
+    // E1：在线预设 id（'' = 手动沿用 Config 文件；已知 id 见 tts-openai.ts OPENAI_PRESETS）。
+    openaiPreset: z
+      .string()
+      .default(d.openaiPreset)
+      .description(
+        DESC.openaiPreset,
       ),
     // P1-3：用户纠错词表（默认空；非法条目由 zod 整表拒绝，POST 回 400；上限 200 条与设置卡片一致，防超大覆盖层）。
     asrReplacements: z
@@ -652,6 +664,8 @@ function voiceSettingsFromConfig(config: Config): VoiceSettingsValue {
     echoGateDb, shortcut, composerShortcut, spokenFormat, senseVoice, wakeWord, toolBeep,
     senseITN, captionFontSize, captionMaxWidth, backchannelYield, yieldMs, bargeInSalvage, llmCorrect,
     asrReplacements,
+    // E1：预设无 Config 基线（用户覆盖层专属），默认空 = 手动。
+    openaiPreset: '',
   }
 }
 
@@ -1042,10 +1056,12 @@ export function apply(ctx: Context, config: Config): void {
     if (kind === 'openai') {
       const o = config.openaiTts
       const fallbackKind = o.fallback
+      // E1：已知预设覆盖 baseUrl/model（未知/空预设回落 Config 文件值；key 恒走 Config）。
+      const preset = resolveOpenAiEndpoint(vset.openaiPreset ?? '')
       return new OpenAiTtsEngine({
-        baseUrl: o.baseUrl,
+        baseUrl: preset?.baseUrl ?? o.baseUrl,
         apiKey: o.apiKey || undefined,
-        model: o.model,
+        model: preset?.model ?? o.model,
         voice: o.voice,
         instructions: o.instructions || undefined,
         responseFormat: o.responseFormat,
@@ -1119,6 +1135,9 @@ export function apply(ctx: Context, config: Config): void {
       // Kokoro 精度切换：重建引擎指向另一模型目录（已缓存则即时，否则下次下载）。
       activeKokoroModel = next.kokoroModel
       queue.setEngine(makeEngine('kokoro'))
+    } else if (engineKind === 'openai' && next.openaiPreset !== prev.openaiPreset) {
+      // E1：预设切换重建远端引擎（baseUrl/model 随预设走；key 恒走 Config）。
+      queue.setEngine(makeEngine('openai'))
     }
     queue.updateVoice(next.voice, next.rate)
     if (

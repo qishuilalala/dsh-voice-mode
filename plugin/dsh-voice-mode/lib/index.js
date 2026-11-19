@@ -2562,6 +2562,21 @@ var en = {
   previewBtnTitle: "Preview voice (current rate)",
   synthesizing: "Synthesizing\u2026",
   preview: "Preview",
+  // E1 online presets.
+  openaiPresetLabel: "Online preset",
+  descOpenaiPreset: "Online TTS preset: endpoint and model follow the preset (key stays in the profile file openaiTts.apiKey, never passes through the browser); empty = manual config file values. Run the self-test below after switching",
+  presetCustom: "Manual (profile file)",
+  presetCosy: "SiliconFlow \xB7 CosyVoice2",
+  presetFish: "SiliconFlow \xB7 Fish Speech 1.5",
+  presetCosyNote: "About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn",
+  presetFishNote: "About $15 per million UTF-8 bytes; text goes to api.siliconflow.cn",
+  presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser",
+  presetFillVoice: "Fill example voice",
+  // P1-4 dictation-only preset.
+  dictationTitle: "Dictation only",
+  dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
+  dictationEnable: "Dictate only, no read-aloud",
+  dictationRestore: "Restore read-aloud",
   // P1-3 correction wordlist.
   replTitle: "Correction wordlist",
   replFromPh: "Misheard spellings, comma-separated",
@@ -3038,6 +3053,22 @@ var OpenAiTtsEngine = class {
     await fb?.close();
   }
 };
+var OPENAI_PRESETS = {
+  "siliconflow-cosyvoice2": {
+    baseUrl: "https://api.siliconflow.cn/v1",
+    model: "FunAudioLLM/CosyVoice2-0.5B",
+    voice: "FunAudioLLM/CosyVoice2-0.5B:alex"
+  },
+  "siliconflow-fish": {
+    baseUrl: "https://api.siliconflow.cn/v1",
+    model: "fishaudio/fish-speech-1.5",
+    voice: "fishaudio/fish-speech-1.5:anna"
+  }
+};
+function resolveOpenAiEndpoint(preset) {
+  const p = OPENAI_PRESETS[preset];
+  return p ? { baseUrl: p.baseUrl, model: p.model } : null;
+}
 
 // src/prompts.ts
 var ZH = "\u3010\u8BED\u97F3\u6A21\u5F0F\u3011\u5F53\u524D\u56DE\u590D\u4F1A\u88AB\u8BED\u97F3\u6717\u8BFB\uFF0C\u8BF7\u59CB\u7EC8\u7528\u7528\u6237\u6240\u7528\u8BED\u8A00\u3001\u4EE5\u53E3\u8BED\u5316\u7684\u77ED\u53E5\u76F4\u63A5\u56DE\u7B54\uFF0C\u50CF\u9762\u5BF9\u9762\u804A\u5929\u4E00\u6837\u81EA\u7136\uFF0C\u907F\u514D\u4E66\u9762\u8BED\u548C\u957F\u96BE\u53E5\u3002\u4E0D\u8981\u4F7F\u7528\u4EFB\u4F55 Markdown \u6216\u6392\u7248\u7B26\u53F7\uFF08\u661F\u53F7\u3001\u4E0B\u5212\u7EBF\u3001\u53CD\u5F15\u53F7\u3001\u4E95\u53F7\u3001\u5217\u8868\u4E0E\u8868\u683C\u6807\u8BB0\u3001\u4EE3\u7801\u5757\u7B49\uFF09\u3002\u9700\u8981\u5206\u70B9\u8BF4\u660E\u65F6\u7528\u300C\u7B2C\u4E00\u3001\u7B2C\u4E8C\u300D\u6216\u8FDE\u8D2F\u7684\u77ED\u53E5\u8868\u8FBE\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EE3\u7801\u7247\u6BB5\u3001\u5B8C\u6574 URL \u6216\u5197\u957F\u5B9A\u4E49\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u6982\u62EC\u542B\u4E49\u5373\u53EF\u3002\u56DE\u7B54\u7B80\u6D01\u76F4\u63A5\uFF0C\u4E0D\u8981\u91CD\u590D\u548C\u5BD2\u6684\u3002\u5982\u679C\u7528\u6237\u5728\u4F60\u6717\u8BFB\u65F6\u63D2\u8BDD\uFF08\u54EA\u6015\u53EA\u662F\u300C\u55EF/\u5BF9\u300D\u8FD9\u6837\u7684\u77ED\u5E94\u7B54\uFF09\uFF0C\u7ACB\u5373\u505C\u6B62\u5F53\u524D\u53E5\uFF0C\u628A\u8BDD\u8F6E\u8BA9\u7ED9\u7528\u6237\uFF1B\u56DE\u7B54\u540E\u7559\u51FA\u505C\u987F\uFF0C\u4E0D\u8981\u8FDE\u95EE\u4E24\u4E2A\u95EE\u9898\uFF1B\u7528\u6237\u6C89\u9ED8\u65F6\u4E0D\u8981\u4E3B\u52A8\u627E\u65B0\u8BDD\u9898\u3002";
@@ -3226,6 +3257,8 @@ var VOICE_SETTINGS_DEFAULTS = {
   bargeInSalvage: true,
   // Issue #15 批 4：LLM 纠错默认关（默认开=未申报的 I10 豁免+每条多一次 RTT/token）。
   llmCorrect: false,
+  // E1：在线预设默认空 = 手动（沿用 Config 文件值，零行为变化）。
+  openaiPreset: "",
   // P1-3：纠错词表默认空（与 Config 层 asrReplacements 默认 [] 对齐）。
   asrReplacements: [],
   // 批 G 任务 3：让位窗口默认 1500ms（与改造前批 5 行为字节等价；用户可调 500-3000ms）。
@@ -3260,6 +3293,7 @@ var DESC = {
   backchannelYield: en.descBackchannelYield,
   bargeInSalvage: en.descBargeInSalvage,
   llmCorrect: en.descLlmCorrect,
+  openaiPreset: en.descOpenaiPreset,
   asrReplacements: en.descAsrReplacements,
   yieldMs: en.descYieldMs
 };
@@ -3316,6 +3350,10 @@ function createVoiceSettingsSchema(defs) {
     // Issue #15 批 4：LLM 纠错（默认 false）。
     llmCorrect: z2.boolean().default(d.llmCorrect).description(
       DESC.llmCorrect
+    ),
+    // E1：在线预设 id（'' = 手动沿用 Config 文件；已知 id 见 tts-openai.ts OPENAI_PRESETS）。
+    openaiPreset: z2.string().default(d.openaiPreset).description(
+      DESC.openaiPreset
     ),
     // P1-3：用户纠错词表（默认空；非法条目由 zod 整表拒绝，POST 回 400；上限 200 条与设置卡片一致，防超大覆盖层）。
     asrReplacements: z2.array(AsrReplacementSchema).max(200).default(d.asrReplacements).description(
@@ -3457,7 +3495,9 @@ function voiceSettingsFromConfig(config) {
     yieldMs,
     bargeInSalvage,
     llmCorrect,
-    asrReplacements
+    asrReplacements,
+    // E1：预设无 Config 基线（用户覆盖层专属），默认空 = 手动。
+    openaiPreset: ""
   };
 }
 function apply(ctx, config) {
@@ -3662,10 +3702,11 @@ function apply(ctx, config) {
     if (kind === "openai") {
       const o = config.openaiTts;
       const fallbackKind = o.fallback;
+      const preset = resolveOpenAiEndpoint(vset.openaiPreset ?? "");
       return new OpenAiTtsEngine({
-        baseUrl: o.baseUrl,
+        baseUrl: preset?.baseUrl ?? o.baseUrl,
         apiKey: o.apiKey || void 0,
-        model: o.model,
+        model: preset?.model ?? o.model,
         voice: o.voice,
         instructions: o.instructions || void 0,
         responseFormat: o.responseFormat,
@@ -3722,6 +3763,8 @@ function apply(ctx, config) {
     } else if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) {
       activeKokoroModel = next.kokoroModel;
       queue.setEngine(makeEngine("kokoro"));
+    } else if (engineKind === "openai" && next.openaiPreset !== prev.openaiPreset) {
+      queue.setEngine(makeEngine("openai"));
     }
     queue.updateVoice(next.voice, next.rate);
     if (next.senseITN !== prev.senseITN || next.senseVoice !== prev.senseVoice) {

@@ -208,3 +208,36 @@ export class OpenAiTtsEngine implements TtsEngine {
     await fb?.close()
   }
 }
+
+/**
+ * E1 在线预设（一手文档核实，2026-11-18；单价为时点价，下单前重查）。
+ * key 永不进预设表：各家 key 一律走 Config 文件 openaiTts.apiKey（host-only，不经过浏览器）。
+ */
+export interface OpenAiPreset {
+  baseUrl: string
+  model: string
+  /** 客户端「填入示例音色」按钮的取值（SiliconFlow 形如 model:voice）。 */
+  voice: string
+}
+
+export const OPENAI_PRESETS: Record<string, OpenAiPreset> = {
+  'siliconflow-cosyvoice2': {
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    model: 'FunAudioLLM/CosyVoice2-0.5B',
+    voice: 'FunAudioLLM/CosyVoice2-0.5B:alex',
+  },
+  'siliconflow-fish': {
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    model: 'fishaudio/fish-speech-1.5',
+    voice: 'fishaudio/fish-speech-1.5:anna',
+  },
+}
+
+/**
+ * 按预设解析远端地址与模型：未知/空预设返回 null（调用方回落 Config 文件值）。
+ * 纯函数（便于单测；网络形状见 docs/plan/tts-expansion-2026-11-18.md 一手表）。
+ */
+export function resolveOpenAiEndpoint(preset: string): { baseUrl: string; model: string } | null {
+  const p = OPENAI_PRESETS[preset]
+  return p ? { baseUrl: p.baseUrl, model: p.model } : null
+}

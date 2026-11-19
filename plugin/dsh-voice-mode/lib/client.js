@@ -1753,6 +1753,16 @@ var zh = {
   previewBtnTitle: "\u8BD5\u542C\u5F53\u524D\u97F3\u8272\uFF08\u5F53\u524D\u8BED\u901F\uFF09",
   synthesizing: "\u5408\u6210\u4E2D\u2026",
   preview: "\u8BD5\u542C",
+  // E1 在线预设。
+  openaiPresetLabel: "\u5728\u7EBF\u9884\u8BBE",
+  descOpenaiPreset: "\u5728\u7EBF TTS \u9884\u8BBE\uFF1A\u9009\u4E2D\u540E\u5730\u5740\u4E0E\u6A21\u578B\u6309\u9884\u8BBE\u8D70\uFF08key \u4ECD\u8D70 profile \u6587\u4EF6 openaiTts.apiKey\uFF0C\u4E0D\u7ECF\u8FC7\u6D4F\u89C8\u5668\uFF09\uFF1B\u7A7A = \u624B\u52A8\u6CBF\u7528\u914D\u7F6E\u6587\u4EF6\u3002\u5207\u6362\u540E\u70B9\u4E0B\u65B9\u81EA\u6D4B\u9A8C\u8BC1",
+  presetCustom: "\u624B\u52A8\u914D\u7F6E\uFF08profile \u6587\u4EF6\uFF09",
+  presetCosy: "\u7845\u57FA\u6D41\u52A8 \xB7 CosyVoice2",
+  presetFish: "\u7845\u57FA\u6D41\u52A8 \xB7 Fish Speech 1.5",
+  presetCosyNote: "\u7EA6 $7.15/\u767E\u4E07 UTF-8 \u5B57\u8282\uFF0C150ms \u7EA7\uFF1B\u6587\u672C\u53D1\u5F80 api.siliconflow.cn",
+  presetFishNote: "\u7EA6 $15/\u767E\u4E07 UTF-8 \u5B57\u8282\uFF1B\u6587\u672C\u53D1\u5F80 api.siliconflow.cn",
+  presetKeyNote: "key \u586B\u5728 profile \u7684 openaiTts.apiKey\uFF0C\u4E0D\u7ECF\u8FC7\u6D4F\u89C8\u5668",
+  presetFillVoice: "\u586B\u5165\u793A\u4F8B\u97F3\u8272",
   // P1-4 只听写预设。
   dictationTitle: "\u53EA\u542C\u5199",
   dictationHint: "\u5173\u95ED\u56DE\u590D\u6717\u8BFB\uFF0C\u4E13\u6CE8\u542C\u5199\uFF1B\u518D\u70B9\u4E00\u6B21\u6062\u590D",
@@ -2077,6 +2087,16 @@ var en = {
   previewBtnTitle: "Preview voice (current rate)",
   synthesizing: "Synthesizing\u2026",
   preview: "Preview",
+  // E1 online presets.
+  openaiPresetLabel: "Online preset",
+  descOpenaiPreset: "Online TTS preset: endpoint and model follow the preset (key stays in the profile file openaiTts.apiKey, never passes through the browser); empty = manual config file values. Run the self-test below after switching",
+  presetCustom: "Manual (profile file)",
+  presetCosy: "SiliconFlow \xB7 CosyVoice2",
+  presetFish: "SiliconFlow \xB7 Fish Speech 1.5",
+  presetCosyNote: "About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn",
+  presetFishNote: "About $15 per million UTF-8 bytes; text goes to api.siliconflow.cn",
+  presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser",
+  presetFillVoice: "Fill example voice",
   // P1-4 dictation-only preset.
   dictationTitle: "Dictation only",
   dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
@@ -2951,6 +2971,10 @@ var ENGINE_DEFAULT_VOICE = {
   edge: "zh-CN-XiaoxiaoNeural",
   // 空 = 用配置里的 openaiTts.voice（服务端音色名各家不同，没有通用默认）。
   openai: ""
+};
+var OPENAI_PRESET_VOICE = {
+  "siliconflow-cosyvoice2": "FunAudioLLM/CosyVoice2-0.5B:alex",
+  "siliconflow-fish": "fishaudio/fish-speech-1.5:anna"
 };
 function NumberField({
   score,
@@ -4164,6 +4188,45 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               )
             }
           ),
+          engine === "openai" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiPreset", desc: t("descOpenaiPreset"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              SegGroup,
+              {
+                score: scope,
+                field: "openaiPreset",
+                value: typeof value.openaiPreset === "string" ? value.openaiPreset : "",
+                options: [
+                  { v: "", label: t("presetCustom") },
+                  { v: "siliconflow-cosyvoice2", label: t("presetCosy") },
+                  { v: "siliconflow-fish", label: t("presetFish") }
+                ]
+              }
+            ),
+            value.openaiPreset === "siliconflow-cosyvoice2" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetCosyNote") }) : value.openaiPreset === "siliconflow-fish" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetFishNote") }) : null,
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetKeyNote") }),
+            typeof value.openaiPreset === "string" && OPENAI_PRESET_VOICE[value.openaiPreset] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                type: "button",
+                onClick: () => void scope.set("voice", OPENAI_PRESET_VOICE[String(value.openaiPreset)] ?? ""),
+                style: {
+                  font: "inherit",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  alignSelf: "flex-start",
+                  cursor: "pointer",
+                  color: t2.label,
+                  background: "var(--dsw-alias-bg-layer-2)",
+                  border: `1px solid ${t2.border}`,
+                  borderRadius: 6,
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  lineHeight: "18px"
+                },
+                children: t("presetFillVoice")
+              }
+            ) : null
+          ] }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1.1, min: 0.5, max: 2, step: 0.1 }) })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secInterrupt"), children: [
@@ -4464,7 +4527,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "22eeff1";
+var BUILD_TAG = "5b3e58e";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
