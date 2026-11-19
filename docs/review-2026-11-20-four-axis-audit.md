@@ -7,7 +7,7 @@
 
 - Blocker：2（均在客户端交互；已修）
 - Important：19（已修 19，代码层清零）
-- Minor：21（已修 14）
+- Minor：21（已修 18）
 - 无 Blocker 的子系统：ASR、TTS、配置/路由（三条链路的并发与密钥边界均成立）
 
 ## 客户端交互（A4）
@@ -68,4 +68,4 @@
 | Important | 202 的 5s 延迟重试发请求前不判 active/segmentEpoch，退出后仍上行（host 重建幽灵段） | 已修 |
 | Important | models.ts 提前 return 未取消响应体，socket/缓冲滞留 | 已修 |
 | Important | sweep 删除 resetGen → 代际回落 0、单调性丢失 | 已修 |
-| Minor | pcmToSamples 不验 NaN/Inf；SenseVoice 失败静默降级；64s 单包同步解码占事件循环；测试缺口 | 部分修（PCM 清洗 + 降级提示；解码 yield 与测试缺口待后续） |
+| Minor | pcmToSamples 不验 NaN/Inf；SenseVoice 失败静默降级；64s 单包同步解码占事件循环；测试缺口 | 已修（PCM 清洗 + 降级提示 + 解码让出 + 缓存驱逐保护 + 4 处弱断言改行为级） |
