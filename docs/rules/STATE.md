@@ -101,3 +101,10 @@ Playwright 在运行中的 3018 上量测到的硬问题：
 - 已修项均有回归测试；门禁 HOST/CLIENT/BUILD/DRIFT/DOCANCHOR/SUITE 全 0（99 文件）。
 - **未重启 dsh**（用户要求）：host 侧改动随下次重启生效；客户端改动刷新页面即可。
 
+## 离线门禁替跑（2026-11-20）
+
+node test/offline-gates.mjs --write-doc：真实本地 VITS 合成 → 真实 host ASR 识别闭环，不依赖麦克风/浏览器。
+- 基线：10/10 通过；热态首包 partial 160ms、冷启动首包 5.1s（含模型加载）、5s 语音定稿 3.3s、定稿文本覆盖率 100%。
+- detect 通道：人声 6/10 包判真、静音 0/10 误判。
+- 结果写入 docs/qa/offline-gates.md；真机仍需人工确认回声消除与实际听感。
+

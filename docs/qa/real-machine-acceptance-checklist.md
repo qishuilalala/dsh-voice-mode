@@ -455,3 +455,12 @@
 > 以下为最近一次真机验证时 `curl /voice-mode/config` 返回的用户配置快照；与上方「默认值」表是两套不同语义，请勿混读。
 
 - captionMaxWidth：2（90vw；用户在默认 1=70vw 基础上放宽）
+
+## 离线替身门禁（2026-11-20，先用它筛回归，再上真机）
+
+真机四项门禁（打断/回声/字幕/延迟）里，除了「回声消除实际听感」之外都可以离线先验证：
+
+    cd plugin/dsh-voice-mode && node test/offline-gates.mjs --write-doc
+
+用真实本地 VITS 合成一句话 → 送进真实 host ASR runtime（zipformer partial + Silero VAD + SenseVoice 定稿），断言：首包 partial 延迟（冷/热分开）、定稿文本与源文本覆盖率、detect 对人声/静音的判别、合成与定稿耗时。结果自动写入 docs/qa/offline-gates.md。当前基线：10/10 通过，热态首包 160ms、定稿覆盖 100%。
+
