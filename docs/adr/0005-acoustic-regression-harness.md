@@ -12,12 +12,12 @@
 |---|---|---|
 | `echoGateDb` | 6 dB | 设置默认 |
 | 检测 VAD 阈值 | 0.35 | `src/asr-host.ts:371`（`newVad(vadPath, 0.35)`） |
-| 端点 VAD 阈值 | 0.5 | `src/asr-host.ts:356`（`seg.vad = newVad(vadPath, 0.5, silenceMs() / 1000)`，默认阈值 :333 `newVad`；原锚 340 已指向 `maxSpeechDuration`，属指错） |
+| 端点 VAD 阈值 | 0.5 | `src/asr-host.ts:367`（`seg.vad = newVad(vadPath, 0.5, silenceMs() / 1000)`，默认阈值 :333 `newVad`；原锚 340 已指向 `maxSpeechDuration`，属指错） |
 | `INT_CONFIRM_FRAMES` | 3 / 2 / 1 | `src/client.tsx:53`（:54 为其文档注释；原值 `:38`/`:37` 为 2026-10-21 前快照，已随 R15 各批重写漂移） |
 | `peakDecay` 基数 | 0.9 per 64ms | `src/asr.ts:1021`（历史时点快照） |
 | `floorAlpha` 基数 | 0.98 per 64ms | `src/asr.ts:1022`（历史时点快照） |
 | `SPEECH_RMS` | 0.015 | `src/asr.ts:169`（历史时点快照） |
-| `VAD_CONTINUE_RMS` | 0.02 | `src/asr-host.ts:171` |
+| `VAD_CONTINUE_RMS` | 0.02 | `src/asr-host.ts:182` |
 | `MIN_SPEECH_MS` | 250 | `src/asr.ts:174`（历史时点快照） |
 | 确认窗口 | 800 / 350 / 200ms（连词/长句/短句；另有「无新实词 ≥400ms」提前判完） | src/asr-host.ts（原锚 174-177）（+ :573-585 提前判完分支；原写 :529 现为 `}`、`:546-563` 为 2026-10-21 前快照，已随 R15 各批重写漂移） |
 | delay 置信门 | peak > 0.5 | `src/client.tsx` 的 `est.peak > 0.5` 置信门（原写 :856-859 落在 P1-5 延迟埋点 `telemetryStages`、`:988-991` 为 2026-10-21 前快照，已随 R15 各批重写漂移） |
@@ -48,9 +48,9 @@
 | `MIN_SPEECH_MS` 250 | `src/asr.ts:174`（历史时点快照） | ⏳ 阶段二 |
 | delay 置信门 0.5 | `src/client.tsx` 的 `est.peak > 0.5` | ⚠️ 仅间接（经 `playingTailUntil` 影响播放态） |
 | 检测 VAD 0.35 | `src/asr-host.ts:371`（`newVad(vadPath, 0.35)`） | ❌ host 侧，需独立重放脚本 |
-| 端点 VAD 0.5 | `src/asr-host.ts:356`（`seg.vad = newVad(vadPath, 0.5, silenceMs() / 1000)`） | ❌ |
-| `VAD_CONTINUE_RMS` 0.02 | `src/asr-host.ts:171` | ❌ |
-| 确认窗口 800/350/200 | `src/asr-host.ts:174-177`（`CONFIRM_CONJUNCTION_MS` / `CONFIRM_LONG_SENTENCE_MS` / `CONFIRM_MIN_MS`） | ❌ |
+| 端点 VAD 0.5 | `src/asr-host.ts:367`（`seg.vad = newVad(vadPath, 0.5, silenceMs() / 1000)`） | ❌ |
+| `VAD_CONTINUE_RMS` 0.02 | `src/asr-host.ts:182` | ❌ |
+| 确认窗口 800/350/200 | `src/asr-host.ts:185-188`（`CONFIRM_CONJUNCTION_MS` / `CONFIRM_LONG_SENTENCE_MS` / `CONFIRM_MIN_MS`） | ❌ |
 
 即：**第一批覆盖 5 个，阶段二 +2，host 侧 4 个需要另一条重放路径**（依赖 `sherpa-onnx` + 模型下载）。
 不要在任何地方宣称"12 个常数全有守卫"。

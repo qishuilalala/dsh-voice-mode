@@ -332,6 +332,13 @@ interface VoiceBus {
   playingTailUntil(): number
 }
 
+/**
+ * 状态条「退出」需要走完整的 exitMode（本地清态 + 停 ASR + 让出 host），但状态条与麦克风
+ * 按钮是两个独立 slot 组件。这里由麦克风按钮组件挂载时登记逃生口；未挂载（异常/热重载）时
+ * 状态条回落到 bus.exit（A4 审计 Minor：SSE 断开时点退出仍显示绿色、麦克风还开着）。
+ */
+let exitModeExternal: (() => void) | null = null
+
 export interface VoiceSlotActions {
   bus: VoiceBus
   /** 设置读写面（与设置卡片同一个 scope；麦克风右键菜单用）。 */
@@ -1403,6 +1410,20 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         notify()
       }
     })
+    // A1 审计 Minor：SenseVoice 这类定稿模型失败后宿主会静默降级到 FunASR（识别质量变化但无解释）。
+    // 宿主下发 asr-notice（瞬态），这里转成 5s 自动清除的提示。
+    source.addEventListener('asr-notice', (e: MessageEvent<string>) => {
+      try {
+        const p = JSON.parse(e.data) as { code?: string }
+        if (!activeSessionId) return
+        if (p.code === 'sense_degraded') {
+          ui.notice = t('senseDegradedNotice')
+          notify()
+        }
+      } catch {
+        // ignore malformed frame
+      }
+    })
     source.addEventListener('asr-error', (e: MessageEvent<string>) => {
       try {
         const p = JSON.parse(e.data) as { file?: string }
@@ -1881,12 +1902,19 @@ interface VoiceBootConfig {
 }
 
 let styleInjected = false
+/** 注入样式节点的稳定标记：热重载换模块作用域后 styleInjected 归 false，必须按标记去重。 */
+const VOICE_CSS_ATTR = 'data-dshvm-css'
 
 function useVoiceCss(): void {
   useEffect(() => {
     if (styleInjected) return
     styleInjected = true
+    // A4 审计 Minor：此前每次热重载都再 append 一份 <style>，永不摘除。
+    // 现在先按标记移除上一代（同一时刻只保留一份），并登记卸载清理。
+    // 测试台架的 document 桩没有 querySelectorAll：能力探测后再去重（生产环境必有）。
+    document.head.querySelectorAll?.(`style[${VOICE_CSS_ATTR}]`).forEach?.((n) => n.remove())
     const el = document.createElement('style')
+    el.setAttribute?.(VOICE_CSS_ATTR, '')
     el.textContent = `
 @keyframes dshvm-fadein { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
 @keyframes dshvm-eq { 0%, 100% { transform: scaleY(0.35) } 50% { transform: scaleY(1) } }
@@ -1950,6 +1978,11 @@ html.dshvm-holding, html.dshvm-holding * {
 @media (prefers-reduced-motion: reduce) { .dshvm-spin, .dshvm-menu { animation: none; } }
 `
     document.head.appendChild(el)
+    // 卸载（插件 dispose）时摘除；热重载的下一次注入也会先按标记清理旧节点。
+    return () => {
+      el.remove()
+      styleInjected = false
+    }
   }, [])
 }
 
@@ -3249,6 +3282,14 @@ export function MicButton({
   toggleRef.current = toggle
   const exitModeRef = useRef(exitMode)
   exitModeRef.current = exitMode
+  useEffect(() => {
+    exitModeExternal = () => {
+      void exitModeRef.current('manual')
+    }
+    return () => {
+      exitModeExternal = null
+    }
+  }, [])
 
   useEffect(() => {
     actionsRef.current = inputActions
@@ -4085,7 +4126,16 @@ export function MicButton({
         ref={btnRef}
         data-dshvm="mic"
         // 图标按钮：可访问名 = 模式 + 当前状态（看得见的状态由颜色/竖条表达）。
-        aria-label={reading ? t('stopReading') : on ? `${t('ariaActive')} · ${label}` : local === 'pending' ? label : t('ariaEnter')}
+        // A4 审计 Minor：pending 态此前可访问名是「进入中」，但点击实际=取消 → 名字必须说清动作。
+        aria-label={
+          reading
+            ? t('stopReading')
+            : on
+              ? `${t('ariaActive')} · ${label}`
+              : local === 'pending'
+                ? `${label} · ${t('ariaPendingCancelHint')}`
+                : t('ariaEnter')
+        }
         aria-pressed={on}
         aria-haspopup={scope ? 'menu' : undefined}
         aria-expanded={scope ? menuOpen : undefined}
@@ -4135,10 +4185,14 @@ export function MicButton({
           style={{
             fontSize: 11,
             color: micHintInfo ? 'var(--dsw-alias-label-tertiary, #8b949e)' : 'var(--dsw-alias-state-error-primary, #f85149)',
-            maxWidth: 240,
+            // A4 审计 Minor：原来 nowrap+ellipsis+固定 240px，长错误被截断且挤压同排输入控件。
+            maxWidth: 'min(320px, 42vw)',
             overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            whiteSpace: 'normal',
+            overflowWrap: 'anywhere',
           }}
         >
           {micHint}
@@ -4484,7 +4538,10 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
         )}
         <button
           onClick={() => {
-            void bus.exit(sessionId!)
+            // A4 审计 Minor：此前只调 bus.exit()（等 host 回广播才清本地态）——SSE 断开时
+            // 点了仍显示绿色、麦克风还开着。改走 exitMode：本地先清态、停 ASR、让出 host。
+            if (exitModeExternal) exitModeExternal()
+            else void bus.exit(sessionId!)
           }}
           style={{
             border: 'none',

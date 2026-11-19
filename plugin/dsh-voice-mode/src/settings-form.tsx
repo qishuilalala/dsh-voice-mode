@@ -1834,14 +1834,20 @@ function EngineStatusInline({ onSwitchLocal }: { onSwitchLocal?: () => void }): 
     statusText = tr('engineReady')
     statusColor = 'var(--dsw-alias-state-success-primary)'
   }
+  const [actError, setActError] = useState<string | null>(null)
   const act = (kind: 'download' | 'clean'): void => {
     setActing(kind)
+    setActError(null)
     void fetch(location.origin + BASE_PATH + (kind === 'clean' ? '/models/clean' : '/models/download'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ engine: tts.engine }),
+      signal: AbortSignal.timeout(15000),
     })
-      .catch(() => undefined)
+      .then((res) => {
+        setActError(res.ok ? null : tr('modelActionFailed'))
+      })
+      .catch(() => setActError(tr('modelActionFailed')))
       .finally(() => setTimeout(() => setActing(null), 1500))
   }
   // 契约：就绪→删除本地；未就绪→触发下载。
@@ -1895,6 +1901,11 @@ function EngineStatusInline({ onSwitchLocal }: { onSwitchLocal?: () => void }): 
               : tr('ttsDownload')}
         </button>
       )}
+      {actError ? (
+        <span role="status" aria-live="polite" style={{ fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', flexBasis: '100%' }}>
+          {actError}
+        </span>
+      ) : null}
       {tts.error && (
         <>
           <span style={{ fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', flexBasis: '100%' }}>
@@ -1937,17 +1948,25 @@ function EngineStatusInline({ onSwitchLocal }: { onSwitchLocal?: () => void }): 
 function ModelStatusView(): React.ReactElement {
   const st = useModelsStatus()
   const [retrying, setRetrying] = useState<string | null>(null)
-  const retry = (kind: string): void => {
-    setRetrying(kind)
-    void fetch(`${location.origin}${BASE_PATH}/models/retry`, {
+  // A4 审计 Important：下载/清理/重试 POST 失败此前被 catch 吞掉，按钮 1.5s 复原像「点了没反应」。
+  const [actionError, setActionError] = useState<string | null>(null)
+  const postModelAction = (path: string, body: unknown): void => {
+    void fetch(`${location.origin}${BASE_PATH}${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind }),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15000),
     })
-      .catch(() => undefined)
-      .finally(() => {
-        setTimeout(() => setRetrying(null), 2000)
+      .then((res) => {
+        setActionError(res.ok ? null : tr('modelActionFailed'))
       })
+      .catch(() => setActionError(tr('modelActionFailed')))
+  }
+  const retry = (kind: string): void => {
+    setRetrying(kind)
+    setActionError(null)
+    postModelAction('/models/retry', { kind })
+    setTimeout(() => setRetrying(null), 2000)
   }
   const mkRow = (
     label: string,
@@ -2024,6 +2043,11 @@ function ModelStatusView(): React.ReactElement {
         'sense',
         anyDownloading ? st.progress : null,
       )}
+      {actionError ? (
+        <div role="status" aria-live="polite" style={{ fontSize: 12, color: 'var(--dsw-alias-state-error-primary)', lineHeight: '18px', padding: '2px 0' }}>
+          {actionError}
+        </div>
+      ) : null}
       <div style={{ fontSize: 12, color: t.term, lineHeight: '18px', padding: '4px 0 8px' }}>{tr('modelsHint')}</div>
     </div>
   )

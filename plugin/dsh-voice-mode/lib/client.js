@@ -1707,6 +1707,7 @@ var ERROR_I18N_KEY = {
   preview_engine: "previewEngine",
   preview_text: "previewText",
   preview_unknown: "previewCheck",
+  sense_degraded: "senseDegradedNotice",
   internal: "errInternal"
 };
 var isHostErrorCode = (v) => typeof v === "string" && Object.prototype.hasOwnProperty.call(ERROR_I18N_KEY, v);
@@ -1740,6 +1741,7 @@ var zh = {
   voiceBtn: "\u8BED\u97F3",
   ariaActive: "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D",
   ariaEnter: "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F",
+  ariaPendingCancelHint: "\u518D\u6309\u4E00\u6B21\u53D6\u6D88",
   titleHold: "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF1B\u77ED\u6309\u9000\u51FA\uFF1BEsc/\u5931\u53BB\u7126\u70B9\u653E\u5F03\uFF1BCtrl+Shift+V \u9000\u51FA",
   titleToggle: "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u70B9\u51FB\u9000\u51FA\uFF08Ctrl+Shift+V\uFF09\xB7 \u8BF4\u8BDD\u65F6\u6309\u4F4F Ctrl \u7ACB\u5373\u53D1\u9001",
   titleEnter: "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F\uFF08Ctrl+Shift+V\uFF09",
@@ -1755,6 +1757,7 @@ var zh = {
   holdTrimmedNotice: "\u6309\u4F4F\u8BF4\u8BDD\u8D85\u8FC7 90 \u79D2\uFF1A\u53EA\u8BC6\u522B\u4E86\u6700\u540E\u4E00\u6BB5\uFF08\u524D\u9762\u7684\u97F3\u9891\u5DF2\u4E22\u5F03\uFF09",
   utteranceTooLong: "\u8FD9\u6B21\u8BF4\u8BDD\u592A\u957F\uFF08\u8D85\u8FC7\u7EA6 90 \u79D2\uFF09\uFF1A\u5DF2\u8DF3\u8FC7\uFF0C\u8BF7\u5206\u6BB5\u518D\u8BF4\u4E00\u6B21",
   interruptedNotice: "\u5DF2\u6253\u65AD\u6717\u8BFB\uFF0C\u7B49\u4F60\u7EE7\u7EED\u8BF4",
+  senseDegradedNotice: "\u5B9A\u7A3F\u6A21\u578B\u52A0\u8F7D\u5931\u8D25\uFF0C\u5DF2\u4E34\u65F6\u964D\u7EA7\u4E3A\u5907\u7528\u8BC6\u522B\uFF08\u51C6\u786E\u7387\u53EF\u80FD\u7565\u964D\uFF09",
   partialFail: "\u5B9E\u65F6\u5B57\u5E55\u6682\u65F6\u4E0D\u53EF\u7528\uFF08\u8BC6\u522B\u901A\u9053\u5F02\u5E38\uFF0C\u91CD\u8BD5\u4E2D\uFF09",
   detectFail: "\u6253\u65AD\u68C0\u6D4B\u6682\u65F6\u4E0D\u53EF\u7528\uFF08\u68C0\u6D4B\u901A\u9053\u5F02\u5E38\uFF0C\u91CD\u8BD5\u4E2D\uFF09",
   sseReconnect: "\u72B6\u6001\u540C\u6B65\u65AD\u8FDE\uFF0C\u91CD\u8FDE\u4E2D\u2026",
@@ -1994,6 +1997,7 @@ var zh = {
   modelsRetrying: "\u91CD\u8BD5\u4E2D\u2026",
   modelsRetryHint: "\u955C\u50CF\u5207\u6362\u6216\u4E0B\u8F7D\u5931\u8D25\u540E\u70B9\u51FB\u7ACB\u5373\u91CD\u8BD5",
   modelsHint: "\u4E0B\u8F7D/\u8FDB\u5EA6\u5B9E\u65F6\u8DDF\u8FDB\uFF1B\u5931\u8D25\u81EA\u52A8\u9000\u907F 60s \u91CD\u8BD5\u3002\u955C\u50CF\u6E90\u5207\u6362\u540E\u70B9\u300C\u91CD\u8BD5\u4E0B\u8F7D\u300D\u7ACB\u5373\u751F\u6548\uFF1B\u4E5F\u53EF\u7528 npm run prefetch \u9884\u4E0B\u8F7D\u3002",
+  modelActionFailed: "\u64CD\u4F5C\u6CA1\u6709\u751F\u6548\uFF1A\u5BBF\u4E3B\u672A\u63A5\u53D7\uFF08\u7A0D\u540E\u91CD\u8BD5\uFF0C\u6216\u67E5\u770B\u5BBF\u4E3B\u65E5\u5FD7\uFF09",
   // 朗读引擎状态（设置面板内联展示）
   engineLoading: "\u52A0\u8F7D\u4E2D\u2026",
   engineReady: "\u5C31\u7EEA",
@@ -2121,6 +2125,7 @@ var en = {
   voiceBtn: "Voice",
   ariaActive: "Voice mode active",
   ariaEnter: "Enter voice mode",
+  ariaPendingCancelHint: "activate again to cancel",
   titleHold: "Voice mode \xB7 hold to talk, release to send; tap to exit; Esc/blur cancels; Ctrl+Shift+V exits",
   titleToggle: "Voice mode \xB7 click to exit (Ctrl+Shift+V) \xB7 hold Ctrl while speaking to send now",
   titleEnter: "Enter voice mode (Ctrl+Shift+V)",
@@ -2136,6 +2141,7 @@ var en = {
   holdTrimmedNotice: "Hold-to-talk exceeded 90 s: only the last part was recognised (earlier audio was dropped)",
   utteranceTooLong: "That utterance was too long (about 90 s): skipped \u2014 please speak it again in shorter parts",
   interruptedNotice: "Playback interrupted \u2014 go ahead",
+  senseDegradedNotice: "Final-pass model failed to load; temporarily using the backup recogniser (accuracy may drop slightly)",
   partialFail: "Live captions temporarily unavailable (recognition channel error, retrying)",
   detectFail: "Break-in detection temporarily unavailable (detect channel error, retrying)",
   sseReconnect: "State sync disconnected, reconnecting\u2026",
@@ -2368,6 +2374,7 @@ var en = {
   modelsRetrying: "Retrying\u2026",
   modelsRetryHint: "Click to retry now after switching mirror or a failure",
   modelsHint: "Live download state; failures auto-backoff 60s. After switching the mirror, click Retry to take effect immediately; npm run prefetch pre-downloads.",
+  modelActionFailed: "Action did not take effect: the host rejected it (retry later or check host logs)",
   engineLoading: "loading\u2026",
   engineReady: "ready",
   engineError: "failed",
@@ -5356,13 +5363,18 @@ function EngineStatusInline({ onSwitchLocal }) {
     statusText = t("engineReady");
     statusColor = "var(--dsw-alias-state-success-primary)";
   }
+  const [actError, setActError] = (0, import_react2.useState)(null);
   const act = (kind) => {
     setActing(kind);
+    setActError(null);
     void fetch(location.origin + BASE_PATH + (kind === "clean" ? "/models/clean" : "/models/download"), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ engine: tts.engine })
-    }).catch(() => void 0).finally(() => setTimeout(() => setActing(null), 1500));
+      body: JSON.stringify({ engine: tts.engine }),
+      signal: AbortSignal.timeout(15e3)
+    }).then((res) => {
+      setActError(res.ok ? null : t("modelActionFailed"));
+    }).catch(() => setActError(t("modelActionFailed"))).finally(() => setTimeout(() => setActing(null), 1500));
   };
   const action = localReady ? "clean" : "download";
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, padding: "2px 0 10px" }, children: [
@@ -5409,6 +5421,7 @@ function EngineStatusInline({ onSwitchLocal }) {
         children: acting ? acting === "clean" ? t("ttsDeleting") : t("ttsDownloading") : action === "clean" ? t("ttsDelete") : t("ttsDownload")
       }
     ),
+    actError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "status", "aria-live": "polite", style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: actError }) : null,
     tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: tts.errorCode === "kokoro_needs_node" ? t("errKokoroNeedsNode") : tts.errorCode === "mimo_not_configured" ? t("errMimoKeyMissing") : tts.errorCode === "openai_not_configured" ? t("errOpenaiConfigMissing") : isThirdPartyEngine(tts.engine) ? t("errRemoteTts") : t("engineError") }),
       !isLocal && onSwitchLocal ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -5435,15 +5448,22 @@ function EngineStatusInline({ onSwitchLocal }) {
 function ModelStatusView() {
   const st = useModelsStatus();
   const [retrying, setRetrying] = (0, import_react2.useState)(null);
-  const retry = (kind) => {
-    setRetrying(kind);
-    void fetch(`${location.origin}${BASE_PATH}/models/retry`, {
+  const [actionError, setActionError] = (0, import_react2.useState)(null);
+  const postModelAction = (path, body) => {
+    void fetch(`${location.origin}${BASE_PATH}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ kind })
-    }).catch(() => void 0).finally(() => {
-      setTimeout(() => setRetrying(null), 2e3);
-    });
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15e3)
+    }).then((res) => {
+      setActionError(res.ok ? null : t("modelActionFailed"));
+    }).catch(() => setActionError(t("modelActionFailed")));
+  };
+  const retry = (kind) => {
+    setRetrying(kind);
+    setActionError(null);
+    postModelAction("/models/retry", { kind });
+    setTimeout(() => setRetrying(null), 2e3);
   };
   const mkRow = (label, info, key, progressFor) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { width: 92, flexShrink: 0, fontSize: 12, color: t2.label }, children: label }),
@@ -5506,6 +5526,7 @@ function ModelStatusView() {
       "sense",
       anyDownloading ? st.progress : null
     ),
+    actionError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { role: "status", "aria-live": "polite", style: { fontSize: 12, color: "var(--dsw-alias-state-error-primary)", lineHeight: "18px", padding: "2px 0" }, children: actionError }) : null,
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("modelsHint") })
   ] });
 }
@@ -6131,7 +6152,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "842ca3e";
+var BUILD_TAG = "8343285";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -6161,6 +6182,7 @@ function playToolBeep() {
   } catch {
   }
 }
+var exitModeExternal = null;
 var SAMPLE_RATE_16K = 16e3;
 var ECHO_DELAY_MS = 0;
 var AUTO_SEND_EXTRA_MS = 1200;
@@ -6946,6 +6968,17 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         notify();
       }
     });
+    source.addEventListener("asr-notice", (e) => {
+      try {
+        const p = JSON.parse(e.data);
+        if (!activeSessionId) return;
+        if (p.code === "sense_degraded") {
+          ui.notice = t("senseDegradedNotice");
+          notify();
+        }
+      } catch {
+      }
+    });
     source.addEventListener("asr-error", (e) => {
       try {
         const p = JSON.parse(e.data);
@@ -7266,11 +7299,14 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   };
 }
 var styleInjected = false;
+var VOICE_CSS_ATTR = "data-dshvm-css";
 function useVoiceCss() {
   (0, import_react3.useEffect)(() => {
     if (styleInjected) return;
     styleInjected = true;
+    document.head.querySelectorAll?.(`style[${VOICE_CSS_ATTR}]`).forEach?.((n) => n.remove());
     const el = document.createElement("style");
+    el.setAttribute?.(VOICE_CSS_ATTR, "");
     el.textContent = `
 @keyframes dshvm-fadein { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
 @keyframes dshvm-eq { 0%, 100% { transform: scaleY(0.35) } 50% { transform: scaleY(1) } }
@@ -7334,6 +7370,10 @@ html.dshvm-holding, html.dshvm-holding * {
 @media (prefers-reduced-motion: reduce) { .dshvm-spin, .dshvm-menu { animation: none; } }
 `;
     document.head.appendChild(el);
+    return () => {
+      el.remove();
+      styleInjected = false;
+    };
   }, []);
 }
 var IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
@@ -8328,6 +8368,14 @@ function MicButton({
   const exitModeRef = (0, import_react3.useRef)(exitMode);
   exitModeRef.current = exitMode;
   (0, import_react3.useEffect)(() => {
+    exitModeExternal = () => {
+      void exitModeRef.current("manual");
+    };
+    return () => {
+      exitModeExternal = null;
+    };
+  }, []);
+  (0, import_react3.useEffect)(() => {
     actionsRef.current = inputActions;
   }, [inputActions]);
   (0, import_react3.useEffect)(() => {
@@ -8921,7 +8969,7 @@ function MicButton({
         },
         ref: btnRef,
         "data-dshvm": "mic",
-        "aria-label": reading ? t("stopReading") : on ? `${t("ariaActive")} \xB7 ${label}` : local === "pending" ? label : t("ariaEnter"),
+        "aria-label": reading ? t("stopReading") : on ? `${t("ariaActive")} \xB7 ${label}` : local === "pending" ? `${label} \xB7 ${t("ariaPendingCancelHint")}` : t("ariaEnter"),
         "aria-pressed": on,
         "aria-haspopup": scope ? "menu" : void 0,
         "aria-expanded": scope ? menuOpen : void 0,
@@ -8961,10 +9009,14 @@ function MicButton({
         style: {
           fontSize: 11,
           color: micHintInfo ? "var(--dsw-alias-label-tertiary, #8b949e)" : "var(--dsw-alias-state-error-primary, #f85149)",
-          maxWidth: 240,
+          // A4 审计 Minor：原来 nowrap+ellipsis+固定 240px，长错误被截断且挤压同排输入控件。
+          maxWidth: "min(320px, 42vw)",
           overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap"
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          whiteSpace: "normal",
+          overflowWrap: "anywhere"
         },
         children: micHint
       }
@@ -9237,7 +9289,8 @@ function VoiceStatusBar({ bus, sessionId }) {
             "button",
             {
               onClick: () => {
-                void bus.exit(sessionId);
+                if (exitModeExternal) exitModeExternal();
+                else void bus.exit(sessionId);
               },
               style: {
                 border: "none",

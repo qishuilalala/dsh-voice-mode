@@ -156,7 +156,18 @@ export interface ModelsStatus {
 export function pcmToSamples(buf: Buffer): Float32Array | null {
   // 0 长度留给增量定稿（final=1 空包）由调用方构造空样本；此处仍拒非法对齐。
   if (buf.length % 4 !== 0) return null
-  return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4)
+  const out = new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4)
+  // A1 审计 Minor：只验对齐不验内容。NaN/Inf 会污染 VAD 门限与解码器状态
+  //（客户端已清洗，但宿主不能假设调用方可信——本机任何进程都能 POST /asr）。
+  let bad = 0
+  for (let i = 0; i < out.length; i++) {
+    if (!Number.isFinite(out[i])) {
+      out[i] = 0
+      bad++
+    }
+  }
+  if (bad > 0) console.warn(`[dsh-voice-mode] pcm contained ${bad} non-finite sample(s); coerced to 0`)
+  return out
 }
 
 /**
@@ -473,6 +484,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         return client
       } catch (e) {
         console.warn('[dsh-voice-mode] SenseVoice worker init failed: ' + String(e))
+        // A1 审计 Minor：静默降级到 FunASR 时用户无感知（质量变了但无解释）。
+        // 走 SSE 下行提示（瞬态、不阻断识别）。
+        broadcast?.('asr-notice', { code: 'sense_degraded' })
         return null
       }
     })().finally(() => {

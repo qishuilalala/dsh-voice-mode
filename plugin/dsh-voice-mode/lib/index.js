@@ -484,7 +484,16 @@ var SENSE_FILES = [
 ];
 function pcmToSamples(buf) {
   if (buf.length % 4 !== 0) return null;
-  return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
+  const out = new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
+  let bad = 0;
+  for (let i = 0; i < out.length; i++) {
+    if (!Number.isFinite(out[i])) {
+      out[i] = 0;
+      bad++;
+    }
+  }
+  if (bad > 0) console.warn(`[dsh-voice-mode] pcm contained ${bad} non-finite sample(s); coerced to 0`);
+  return out;
 }
 var MAX_ASR_BYTES = 4 * 1024 * 1024;
 var SEGMENT_IDLE_MS = 9e4;
@@ -695,6 +704,7 @@ function createAsrRuntime(options) {
         return client;
       } catch (e) {
         console.warn("[dsh-voice-mode] SenseVoice worker init failed: " + String(e));
+        broadcast?.("asr-notice", { code: "sense_degraded" });
         return null;
       }
     })().finally(() => {
@@ -2631,6 +2641,7 @@ var en = {
   voiceBtn: "Voice",
   ariaActive: "Voice mode active",
   ariaEnter: "Enter voice mode",
+  ariaPendingCancelHint: "activate again to cancel",
   titleHold: "Voice mode \xB7 hold to talk, release to send; tap to exit; Esc/blur cancels; Ctrl+Shift+V exits",
   titleToggle: "Voice mode \xB7 click to exit (Ctrl+Shift+V) \xB7 hold Ctrl while speaking to send now",
   titleEnter: "Enter voice mode (Ctrl+Shift+V)",
@@ -2646,6 +2657,7 @@ var en = {
   holdTrimmedNotice: "Hold-to-talk exceeded 90 s: only the last part was recognised (earlier audio was dropped)",
   utteranceTooLong: "That utterance was too long (about 90 s): skipped \u2014 please speak it again in shorter parts",
   interruptedNotice: "Playback interrupted \u2014 go ahead",
+  senseDegradedNotice: "Final-pass model failed to load; temporarily using the backup recogniser (accuracy may drop slightly)",
   partialFail: "Live captions temporarily unavailable (recognition channel error, retrying)",
   detectFail: "Break-in detection temporarily unavailable (detect channel error, retrying)",
   sseReconnect: "State sync disconnected, reconnecting\u2026",
@@ -2878,6 +2890,7 @@ var en = {
   modelsRetrying: "Retrying\u2026",
   modelsRetryHint: "Click to retry now after switching mirror or a failure",
   modelsHint: "Live download state; failures auto-backoff 60s. After switching the mirror, click Retry to take effect immediately; npm run prefetch pre-downloads.",
+  modelActionFailed: "Action did not take effect: the host rejected it (retry later or check host logs)",
   engineLoading: "loading\u2026",
   engineReady: "ready",
   engineError: "failed",
