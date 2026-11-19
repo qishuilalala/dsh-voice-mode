@@ -61,4 +61,17 @@ t('SECRET_SETTING_KEYS 是显式清单（新增密钥字段必须登记）', () 
   assert.deepEqual([...SECRET_SETTING_KEYS].sort(), ['mimoApiKey', 'openaiApiKey'])
 })
 
+
+t('清掉设置层后 keysFromConfig 能解释「为何仍显示已配置」（A3 审计 Minor）', () => {
+  const view = publicSettingsView(
+    { openaiApiKey: '', mimoApiKey: '' },
+    { openaiApiKey: true, mimoApiKey: false },
+    { openaiApiKey: true, mimoApiKey: false },
+  )
+  assert.equal(view.keys.openaiApiKey, true, '连接后仍应显示已配置')
+  assert.equal(view.keysFromConfig.openaiApiKey, true, '必须标出来源是配置文件')
+  assert.equal(view.keys.mimoApiKey, false)
+  assert.equal(view.keysFromConfig.mimoApiKey, false)
+})
+
 console.log(`\n${passed} passed`)

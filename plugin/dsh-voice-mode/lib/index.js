@@ -2713,6 +2713,7 @@ var en = {
   secretHintBrowser: "Typed values go straight to the local host and are stored with 0600; never written to chat or logs",
   secretPlaceholderEmpty: "Paste the key (after saving only Saved is shown)",
   secretCleared: "Cleared",
+  secretClearedConfigRemains: "Removed the key from settings; the config file (openaiTts/mimoTts) still has one and will keep using it",
   // P1-4 dictation-only preset.
   dictationTitle: "Dictation only",
   dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
@@ -3329,10 +3330,14 @@ function engineRebuildReason(prev, next, engineKind, activeKokoroModel) {
 
 // src/settings-view.ts
 var SECRET_SETTING_KEYS = ["openaiApiKey", "mimoApiKey"];
-function publicSettingsView(vset, presence) {
+function publicSettingsView(vset, presence, fromConfig) {
   return {
     value: { ...vset, openaiApiKey: "", mimoApiKey: "" },
-    keys: { openaiApiKey: Boolean(presence.openaiApiKey), mimoApiKey: Boolean(presence.mimoApiKey) }
+    keys: { openaiApiKey: Boolean(presence.openaiApiKey), mimoApiKey: Boolean(presence.mimoApiKey) },
+    keysFromConfig: {
+      openaiApiKey: Boolean(fromConfig?.openaiApiKey),
+      mimoApiKey: Boolean(fromConfig?.mimoApiKey)
+    }
   };
 }
 function applyClearSecrets(patch, clearList) {
@@ -4956,10 +4961,17 @@ function apply(ctx, config) {
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
         if (req.method === "GET") {
-          const view = publicSettingsView(vset, {
-            openaiApiKey: hasSecret(vset.openaiApiKey, config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {})),
-            mimoApiKey: hasSecret(vset.mimoApiKey, config.mimoTts?.apiKey)
-          });
+          const cfgKey = hasSecret(config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {}));
+          const cfgMimo = hasSecret(config.mimoTts?.apiKey);
+          const view = publicSettingsView(
+            vset,
+            {
+              openaiApiKey: hasSecret(vset.openaiApiKey, config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {})),
+              mimoApiKey: hasSecret(vset.mimoApiKey, config.mimoTts?.apiKey)
+            },
+            // 仅配置层是否仍有 key：清掉设置层后前端据此解释「为什么还显示已配置」。
+            { openaiApiKey: cfgKey, mimoApiKey: cfgMimo }
+          );
           respondJson2(res, 200, { managedBy: settingsScopeRef ? "dsh" : "plugin", ...view });
           return;
         }

@@ -39,7 +39,7 @@ __export(client_exports, {
   inject: () => inject
 });
 module.exports = __toCommonJS(client_exports);
-var React = __toESM(require("react"), 1);
+var React2 = __toESM(require("react"), 1);
 var import_react3 = require("react");
 
 // src/resample.ts
@@ -1823,6 +1823,7 @@ var zh = {
   secretHintBrowser: "\u586B\u5199\u540E\u4F1A\u7ACB\u5373\u53D1\u5230\u672C\u673A\u5BBF\u4E3B\u5E76\u843D\u76D8\uFF080600\uFF09\uFF0C\u4E0D\u4F1A\u5199\u8FDB\u804A\u5929\u6216\u65E5\u5FD7",
   secretPlaceholderEmpty: "\u7C98\u8D34 key\uFF08\u4FDD\u5B58\u540E\u53EA\u663E\u793A\u300C\u5DF2\u4FDD\u5B58\u300D\uFF09",
   secretCleared: "\u5DF2\u6E05\u9664",
+  secretClearedConfigRemains: "\u5DF2\u6E05\u9664\u8BBE\u7F6E\u91CC\u7684 key\uFF1B\u914D\u7F6E\u6587\u4EF6\uFF08openaiTts/mimoTts\uFF09\u91CC\u4ECD\u914D\u7740 key\uFF0C\u5B9E\u9645\u4ECD\u4F1A\u4F7F\u7528\u5B83",
   // P1-4 只听写预设。
   dictationTitle: "\u53EA\u542C\u5199",
   dictationHint: "\u5173\u95ED\u56DE\u590D\u6717\u8BFB\uFF0C\u4E13\u6CE8\u542C\u5199\uFF1B\u518D\u70B9\u4E00\u6B21\u6062\u590D",
@@ -2202,6 +2203,7 @@ var en = {
   secretHintBrowser: "Typed values go straight to the local host and are stored with 0600; never written to chat or logs",
   secretPlaceholderEmpty: "Paste the key (after saving only Saved is shown)",
   secretCleared: "Cleared",
+  secretClearedConfigRemains: "Removed the key from settings; the config file (openaiTts/mimoTts) still has one and will keep using it",
   // P1-4 dictation-only preset.
   dictationTitle: "Dictation only",
   dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
@@ -2804,6 +2806,7 @@ function getRuntimeBoot() {
 }
 
 // src/settings-form.tsx
+var React = __toESM(require("react"), 1);
 var import_react2 = require("react");
 
 // src/voice-catalog.ts
@@ -4162,6 +4165,7 @@ function SecretField({
   score,
   field,
   saved,
+  configOnly = false,
   onChanged
 }) {
   const [draft, setDraft] = (0, import_react2.useState)("");
@@ -4194,8 +4198,10 @@ function SecretField({
       if (res.ok) {
         setNote("cleared");
         onChanged();
+      } else {
+        setFailed(true);
       }
-    }).catch(() => void 0).finally(() => setBusy(false));
+    }).catch(() => setFailed(true)).finally(() => setBusy(false));
   };
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -4241,7 +4247,7 @@ function SecretField({
         role: "status",
         "aria-live": "polite",
         style: { fontSize: 11, color: failed ? "var(--dsw-alias-state-error-primary)" : note === "cleared" ? t2.term : "var(--dsw-alias-state-success-primary)" },
-        children: failed ? t("secretSaveFailed") : note === "saved" ? t("secretSaved") : note === "cleared" ? t("secretCleared") : saved ? t("secretSaved") : t("secretHintBrowser")
+        children: failed ? t("secretSaveFailed") : note === "saved" ? t("secretSaved") : note === "cleared" ? t(configOnly ? "secretClearedConfigRemains" : "secretCleared") : saved ? t("secretSaved") : t("secretHintBrowser")
       }
     )
   ] });
@@ -5503,7 +5509,11 @@ function ModelStatusView() {
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("modelsHint") })
   ] });
 }
-function VoiceSettingsCard({ scope, defaultOpen = false }) {
+function VoiceSettingsCard({
+  scope,
+  defaultOpen = false
+}) {
+  const cardBodyId = React.useId();
   useLang();
   const [snap, setSnap] = (0, import_react2.useState)(() => scope.getSnapshot());
   const [collapsed, setCollapsed] = (0, import_react2.useState)(!defaultOpen);
@@ -5515,16 +5525,19 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
   );
   const value = snap?.value ?? {};
   const unavailable = snap?.status === "unavailable" || snap?.status === "error";
-  const [secretKeys, setSecretKeys] = (0, import_react2.useState)({
-    openaiApiKey: false,
-    mimoApiKey: false
-  });
+  const [secretKeys, setSecretKeys] = (0, import_react2.useState)({ openaiApiKey: false, mimoApiKey: false, fromConfig: { openaiApiKey: false, mimoApiKey: false } });
   const refreshSecretKeys = () => {
-    void fetch(location.origin + BASE_PATH + "/settings").then((res) => res.ok ? res.json() : null).then((data) => {
+    void fetch(location.origin + BASE_PATH + "/settings", { signal: AbortSignal.timeout(8e3) }).then(
+      (res) => res.ok ? res.json() : null
+    ).then((data) => {
       if (data?.keys) {
         setSecretKeys({
           openaiApiKey: Boolean(data.keys.openaiApiKey),
-          mimoApiKey: Boolean(data.keys.mimoApiKey)
+          mimoApiKey: Boolean(data.keys.mimoApiKey),
+          fromConfig: {
+            openaiApiKey: Boolean(data.keysFromConfig?.openaiApiKey),
+            mimoApiKey: Boolean(data.keysFromConfig?.mimoApiKey)
+          }
         });
       }
     }).catch(() => void 0);
@@ -5617,7 +5630,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
   }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: cardStyle, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: focusVisibleCss }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-expanded": !collapsed, "aria-controls": "dshvm-settings-card-body", onClick: () => setCollapsed((c) => !c), style: { ...setHeader, background: collapsed ? "transparent" : t2.bgOpen }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-expanded": !collapsed, "aria-controls": cardBodyId, onClick: () => setCollapsed((c) => !c), style: { ...setHeader, background: collapsed ? "transparent" : t2.bgOpen }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: setHeadText, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setName, children: t("stateVoiceMode") }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -5631,7 +5644,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...setChevron, transform: collapsed ? "rotate(0deg)" : "rotate(180deg)" }, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 14, height: 14, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 6l4 4 4-4z" }) }) })
     ] }),
-    !collapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { id: "dshvm-settings-card-body", style: setBody, children: [
+    !collapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { id: cardBodyId, style: setBody, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EffectivePending, { effective: getRuntimeBoot(), value, ready: snap?.status === "ready" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRead"), defaultOpen: true, children: [
@@ -5762,6 +5775,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
                 score: scope,
                 field: "openaiApiKey",
                 saved: secretKeys.openaiApiKey,
+                configOnly: secretKeys.fromConfig.openaiApiKey,
                 onChanged: refreshSecretKeys
               }
             ) })
@@ -5772,6 +5786,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               score: scope,
               field: "mimoApiKey",
               saved: secretKeys.mimoApiKey,
+              configOnly: secretKeys.fromConfig.mimoApiKey,
               onChanged: refreshSecretKeys
             }
           ) }),
@@ -6116,7 +6131,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "67dd219";
+var BUILD_TAG = "842ca3e";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -6236,7 +6251,7 @@ function apply(ctx) {
         activityChanged();
       };
     }, []);
-    return React.createElement(MicButton, props);
+    return React2.createElement(MicButton, props);
   };
   const RightMic = (props) => {
     const [show, setShow] = (0, import_react3.useState)(() => !activity.declared);
@@ -6255,7 +6270,7 @@ function apply(ctx) {
         clearTimeout(timer);
       };
     }, []);
-    return show ? React.createElement(MicButton, props) : null;
+    return show ? React2.createElement(MicButton, props) : null;
   };
   ctx.slots.inject("conversation.input.activity", () => {
     activity.declared = true;
@@ -6334,21 +6349,21 @@ function apply(ctx) {
         // 切换语言前的旧文案冻在菜单里；函数形式每次渲染读当前语言。
         label: () => t("stateVoiceMode")
       },
-      () => React.createElement(VoiceSettingsCard, { scope })
+      () => React2.createElement(VoiceSettingsCard, { scope })
     )
   );
   ctx.slots.inject(
     "settings.section",
     () => ctx.slots.register(
       { name: "settings.section", id: "voice-mode", order: 100, label: () => t("stateVoiceMode") },
-      () => React.createElement(VoiceSettingsCard, { scope, defaultOpen: true })
+      () => React2.createElement(VoiceSettingsCard, { scope, defaultOpen: true })
     )
   );
   ctx.slots.inject(
     "plugins.bundle.config",
     () => ctx.slots.register(
       { name: "plugins.bundle.config", key: "dsh-voice-mode" },
-      (props) => props?.view === "summary" ? React.createElement("span", null, t("settingsCardDesc")) : React.createElement(VoiceSettingsCard, { scope })
+      (props) => props?.view === "summary" ? React2.createElement("span", null, t("settingsCardDesc")) : React2.createElement(VoiceSettingsCard, { scope })
     )
   );
 }
@@ -8864,7 +8879,7 @@ function MicButton({
     return () => clearInterval(id);
   }, [showTimer]);
   const [menuOpen, setMenuOpen] = (0, import_react3.useState)(false);
-  const closeMenu = React.useCallback((refocus) => {
+  const closeMenu = React2.useCallback((refocus) => {
     setMenuOpen(false);
     if (refocus) btnRef.current?.focus();
   }, []);

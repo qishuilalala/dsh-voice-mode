@@ -114,6 +114,7 @@ export const zh = {
   secretHintBrowser: '填写后会立即发到本机宿主并落盘（0600），不会写进聊天或日志',
   secretPlaceholderEmpty: '粘贴 key（保存后只显示「已保存」）',
   secretCleared: '已清除',
+  secretClearedConfigRemains: '已清除设置里的 key；配置文件（openaiTts/mimoTts）里仍配着 key，实际仍会使用它',
   // P1-4 只听写预设。
   dictationTitle: '只听写',
   dictationHint: '关闭回复朗读，专注听写；再点一次恢复',
@@ -494,6 +495,7 @@ export const en: Record<keyof typeof zh, string> = {
   secretHintBrowser: 'Typed values go straight to the local host and are stored with 0600; never written to chat or logs',
   secretPlaceholderEmpty: 'Paste the key (after saving only Saved is shown)',
   secretCleared: 'Cleared',
+  secretClearedConfigRemains: 'Removed the key from settings; the config file (openaiTts/mimoTts) still has one and will keep using it',
   // P1-4 dictation-only preset.
   dictationTitle: 'Dictation only',
   dictationHint: 'Turn off reply read-aloud for focused dictation; click again to restore',

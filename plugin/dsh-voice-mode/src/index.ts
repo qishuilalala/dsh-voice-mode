@@ -2150,10 +2150,17 @@ export function apply(ctx: Context, config: Config): void {
         // GET：当前生效设置全量（设置页读取）。路径 A 宿主设置归 dsh 官方存储，此处只读。
         if (req.method === 'GET') {
           // 密钥字段**永不回传**（ADR-0013）：空串表示「未在此层覆盖」，由 has* 说明是否已配置。
-          const view = publicSettingsView(vset, {
-            openaiApiKey: hasSecret(vset.openaiApiKey, config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {})),
-            mimoApiKey: hasSecret(vset.mimoApiKey, config.mimoTts?.apiKey),
-          })
+          const cfgKey = hasSecret(config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {}))
+          const cfgMimo = hasSecret(config.mimoTts?.apiKey)
+          const view = publicSettingsView(
+            vset,
+            {
+              openaiApiKey: hasSecret(vset.openaiApiKey, config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {})),
+              mimoApiKey: hasSecret(vset.mimoApiKey, config.mimoTts?.apiKey),
+            },
+            // 仅配置层是否仍有 key：清掉设置层后前端据此解释「为什么还显示已配置」。
+            { openaiApiKey: cfgKey, mimoApiKey: cfgMimo },
+          )
           respondJson(res, 200, { managedBy: settingsScopeRef ? 'dsh' : 'plugin', ...view })
           return
         }

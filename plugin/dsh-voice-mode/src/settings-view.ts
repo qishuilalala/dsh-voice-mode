@@ -23,10 +23,16 @@ export interface SecretPresence {
 export function publicSettingsView<T extends object>(
   vset: T,
   presence: SecretPresence,
-): { value: T & Record<SecretSettingKey, string>; keys: SecretPresence } {
+  /** 仅配置文件层是否仍有 key（A3 审计 Minor：清掉设置层后仍显示「已配置」要能解释来源）。 */
+  fromConfig?: SecretPresence,
+): { value: T & Record<SecretSettingKey, string>; keys: SecretPresence; keysFromConfig: SecretPresence } {
   return {
     value: { ...(vset as Record<string, unknown>), openaiApiKey: '', mimoApiKey: '' } as T & Record<SecretSettingKey, string>,
     keys: { openaiApiKey: Boolean(presence.openaiApiKey), mimoApiKey: Boolean(presence.mimoApiKey) },
+    keysFromConfig: {
+      openaiApiKey: Boolean(fromConfig?.openaiApiKey),
+      mimoApiKey: Boolean(fromConfig?.mimoApiKey),
+    },
   }
 }
 

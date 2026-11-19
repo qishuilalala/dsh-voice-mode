@@ -332,11 +332,14 @@ function SecretField({
   score,
   field,
   saved,
+  configOnly = false,
   onChanged,
 }: {
   score: ScopeController
   field: string
   saved: boolean
+  /** 设置层已清、但配置文件层仍有 key（A3 审计 Minor：不能显示成「已清除成功但还显示已配置」）。 */
+  configOnly?: boolean
   onChanged: () => void
 }): React.ReactElement {
   // 自带 draft：密钥输入框不显示旧值（GET 恒空串），保存成功后必须清空，否则密码框里
@@ -376,9 +379,11 @@ function SecretField({
         if (res.ok) {
           setNote('cleared')
           onChanged()
+        } else {
+          setFailed(true)
         }
       })
-      .catch(() => undefined)
+      .catch(() => setFailed(true))
       .finally(() => setBusy(false))
   }
   return (
@@ -427,7 +432,7 @@ function SecretField({
           : note === 'saved'
             ? tr('secretSaved')
             : note === 'cleared'
-              ? tr('secretCleared')
+              ? tr(configOnly ? 'secretClearedConfigRemains' : 'secretCleared')
               : saved
                 ? tr('secretSaved')
                 : tr('secretHintBrowser')}
@@ -2024,7 +2029,15 @@ function ModelStatusView(): React.ReactElement {
   )
 }
 
-export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: ScopeController; defaultOpen?: boolean }): React.ReactElement {
+export function VoiceSettingsCard({
+  scope,
+  defaultOpen = false,
+}: {
+  scope: ScopeController
+  defaultOpen?: boolean
+}): React.ReactElement {
+  // A4 审计 Minor：卡片同时注册 settings.section 与 plugin.item，固定 id 会重复 → useId。
+  const cardBodyId = React.useId()
   useLang() // 语言切换时重渲染（字段标题/说明均走词典）
   const [snap, setSnap] = useState(() => scope.getSnapshot())
   const [collapsed, setCollapsed] = useState(!defaultOpen) // 默认折叠，与其他设置卡一致；独立设置页（settings.section）默认展开
@@ -2039,18 +2052,30 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
   const unavailable = snap?.status === 'unavailable' || snap?.status === 'error'
   // E1 预设：数据来自 host 单一真源；验证按钮就地跑一次合成（保存前探针）。
   // 密钥是否已配置（GET /settings 只回 has* 布尔，永不回传密钥本身）。
-  const [secretKeys, setSecretKeys] = useState<{ openaiApiKey: boolean; mimoApiKey: boolean }>({
-    openaiApiKey: false,
-    mimoApiKey: false,
-  })
+  const [secretKeys, setSecretKeys] = useState<{
+    openaiApiKey: boolean
+    mimoApiKey: boolean
+    fromConfig: { openaiApiKey: boolean; mimoApiKey: boolean }
+}>({ openaiApiKey: false, mimoApiKey: false, fromConfig: { openaiApiKey: false, mimoApiKey: false } })
   const refreshSecretKeys = (): void => {
-    void fetch(location.origin + BASE_PATH + '/settings')
-      .then((res) => (res.ok ? (res.json() as Promise<{ keys?: { openaiApiKey?: boolean; mimoApiKey?: boolean } }>) : null))
+    void fetch(location.origin + BASE_PATH + '/settings', { signal: AbortSignal.timeout(8000) })
+      .then((res) =>
+        res.ok
+          ? (res.json() as Promise<{
+              keys?: { openaiApiKey?: boolean; mimoApiKey?: boolean }
+              keysFromConfig?: { openaiApiKey?: boolean; mimoApiKey?: boolean }
+            }>)
+          : null,
+      )
       .then((data) => {
         if (data?.keys) {
           setSecretKeys({
             openaiApiKey: Boolean(data.keys.openaiApiKey),
             mimoApiKey: Boolean(data.keys.mimoApiKey),
+            fromConfig: {
+              openaiApiKey: Boolean(data.keysFromConfig?.openaiApiKey),
+              mimoApiKey: Boolean(data.keysFromConfig?.mimoApiKey),
+            },
           })
         }
       })
@@ -2182,7 +2207,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
   return (
     <div data-dshvm-settings="card" style={cardStyle}>
       <style>{focusVisibleCss}</style>
-      <button type="button" aria-expanded={!collapsed} aria-controls="dshvm-settings-card-body" onClick={() => setCollapsed((c) => !c)} style={{ ...setHeader, background: collapsed ? 'transparent' : t.bgOpen }}>
+      <button type="button" aria-expanded={!collapsed} aria-controls={cardBodyId} onClick={() => setCollapsed((c) => !c)} style={{ ...setHeader, background: collapsed ? 'transparent' : t.bgOpen }}>
         <span style={setHeadText}>
           <span style={setName}>{tr('stateVoiceMode')}</span>
           {/* 折叠态只显示「当前是什么」三要素：引擎 · 音色 · 状态。旧实现把 24 个字段名用
@@ -2202,7 +2227,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
       </button>
 
       {!collapsed && (
-        <div id="dshvm-settings-card-body" style={setBody}>
+        <div id={cardBodyId} style={setBody}>
           <EffectivePending effective={getRuntimeBoot()} value={value} ready={snap?.status === 'ready'} />
           <div style={{ marginTop: 4 }}>
             <Section title={tr('secRead')} defaultOpen>
@@ -2330,6 +2355,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                     score={scope}
                     field="openaiApiKey"
                     saved={secretKeys.openaiApiKey}
+                    configOnly={secretKeys.fromConfig.openaiApiKey}
                     onChanged={refreshSecretKeys}
                   />
                 </Row>
@@ -2341,6 +2367,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                   score={scope}
                   field="mimoApiKey"
                   saved={secretKeys.mimoApiKey}
+                  configOnly={secretKeys.fromConfig.mimoApiKey}
                   onChanged={refreshSecretKeys}
                 />
               </Row>
