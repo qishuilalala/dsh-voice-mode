@@ -1695,6 +1695,7 @@ var zh = {
   ttsNoticeFail: "\u6717\u8BFB\u8FDE\u63A5\u5931\u8D25\uFF1A\u6B63\u5728\u91CD\u8BD5\u2026",
   ttsSkipNotice: "\u6709\u4E00\u53E5\u6717\u8BFB\u5931\u8D25\uFF0C\u5DF2\u8DF3\u8FC7\uFF08\u53EF\u91CD\u53D1\u8FD9\u6761\u6D88\u606F\uFF09",
   ttsUnavailableNotice: "\u6717\u8BFB\u8FDE\u7EED\u5931\u8D25\uFF1A\u4E91\u7AEF\u6717\u8BFB\u6682\u4E0D\u53EF\u7528\u3002\u53EF\u7A0D\u540E\u518D\u8BD5\uFF0C\u6216\u5728\u8BBE\u7F6E\u91CC\u628A\u6717\u8BFB\u5F15\u64CE\u5207\u6362\u4E3A\u672C\u5730 VITS / Kokoro",
+  ttsProbeFail: "\u6717\u8BFB\u5F15\u64CE\u81EA\u68C0\u672A\u901A\u8FC7\uFF1A\u53EF\u80FD\u662F\u4E91\u7AEF\u63A5\u53E3\u53D8\u5316\u6216\u7F51\u7EDC\u95EE\u9898\u3002\u53EF\u5728\u8BBE\u7F6E\u91CC\u5207\u6362\u672C\u5730/\u5176\u5B83\u5F15\u64CE\uFF0C\u518D\u70B9\u300C\u81EA\u6D4B\u300D\u786E\u8BA4",
   enterFail: "\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5931\u8D25",
   disabled: "\u8BED\u97F3\u6A21\u5F0F\u5DF2\u7981\u7528\uFF08\u63D2\u4EF6 enabled=false\uFF09",
   sendFailKept: "\u53D1\u9001\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u5728\u8349\u7A3F",
@@ -1760,7 +1761,13 @@ var zh = {
   presetCosy: "\u7845\u57FA\u6D41\u52A8 \xB7 CosyVoice2",
   presetFish: "\u7845\u57FA\u6D41\u52A8 \xB7 Fish Speech 1.5",
   presetCosyNote: "\u7EA6 $7.15/\u767E\u4E07 UTF-8 \u5B57\u8282\uFF0C150ms \u7EA7\uFF1B\u6587\u672C\u53D1\u5F80 api.siliconflow.cn",
-  presetFishNote: "\u7EA6 $15/\u767E\u4E07 UTF-8 \u5B57\u8282\uFF1B\u6587\u672C\u53D1\u5F80 api.siliconflow.cn",
+  presetFishNote: "\u7EA6 $15/\u767E\u4E07 UTF-8 \u5B57\u8282\uFF08\u6309 UTF-8 \u5B57\u8282\u8BA1\u8D39\uFF09\uFF1B\u6587\u672C\u53D1\u5F80 api.siliconflow.cn",
+  presetOpenrouter: "OpenRouter \xB7 OpenAI \u8BED\u97F3",
+  presetOpenrouterNote: "\u6309 OpenAI \u8BA1\u8D39\uFF08\u7EA6 $15/\u767E\u4E07\u5B57\u7B26\u7EA7\uFF09\uFF1B\u6587\u672C\u53D1\u5F80 openrouter.ai",
+  presetSelfKokoro: "\u81EA\u5EFA \xB7 Kokoro-FastAPI",
+  presetSelfKokoroNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8880\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
+  presetSelfVllm: "\u81EA\u5EFA \xB7 vLLM-Omni",
+  presetSelfVllmNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8000\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
   presetKeyNote: "key \u586B\u5728 profile \u7684 openaiTts.apiKey\uFF0C\u4E0D\u7ECF\u8FC7\u6D4F\u89C8\u5668",
   presetFillVoice: "\u586B\u5165\u793A\u4F8B\u97F3\u8272",
   // P1-4 只听写预设。
@@ -1780,6 +1787,9 @@ var zh = {
   replImport: "\u5BFC\u5165",
   replInvalid: "\u89C4\u5219\u65E0\u6548\uFF1Afrom \u975E\u7A7A\u3001to \u975E\u7A7A\uFF0C\u9017\u53F7\u5206\u9694\u591A\u4E2A\u5199\u6CD5",
   replBadFile: "\u6587\u4EF6\u4E0D\u662F\u6709\u6548\u8BCD\u8868 JSON\uFF08\u6570\u7EC4 [{from[], to}]\uFF0C\u6700\u591A 200 \u6761\uFF09",
+  replUnreadable: "\u73B0\u6709\u8BCD\u8868\u5DF2\u635F\u574F\u6216\u8D85\u51FA\u4E0A\u9650\uFF0C\u4E3A\u907F\u514D\u8986\u76D6\u5DF2\u505C\u6B62\u7F16\u8F91\uFF1A\u8BF7\u5148\u5BFC\u51FA\u5907\u4EFD\uFF0C\u518D\u5BFC\u5165\u4E00\u4EFD\u65B0\u8BCD\u8868",
+  replSaveFail: "\u4FDD\u5B58\u5931\u8D25\uFF08\u672A\u5199\u5165\uFF09\uFF0C\u89C4\u5219\u672A\u6539\u52A8\uFF1B\u8BF7\u68C0\u67E5\u63D2\u4EF6\u662F\u5426\u5DF2\u7981\u7528\u6216\u8BBE\u7F6E\u5B58\u50A8\u4E0D\u53EF\u5199",
+  replTooLarge: "\u8BCD\u8868\u8FC7\u5927\uFF08\u8D85\u8FC7\u7EA6 12KB\uFF09\uFF1A\u8BF7\u51CF\u5C11\u89C4\u5219\u6570\u91CF\u6216\u7F29\u77ED\u5199\u6CD5",
   // P1-1 一键自测：合成✓/播放✓分离显示。
   selftestTitle: "\u4E00\u952E\u81EA\u6D4B",
   selftestHint: "\u5206\u522B\u9A8C\u8BC1\u201C\u80FD\u5408\u6210\u201D\u4E0E\u201C\u80FD\u51FA\u58F0\u201D\uFF0C\u5B9A\u4F4D\u65E0\u58F0\u662F\u5F15\u64CE\u95EE\u9898\u8FD8\u662F\u64AD\u653E\u95EE\u9898",
@@ -1792,7 +1802,9 @@ var zh = {
   selftestCheck: "\u81EA\u6D4B\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u3001\u5F15\u64CE\u72B6\u6001\u6216\u97F3\u8272\u540D",
   selftestTimeout: "\u5408\u6210\u8D85\u65F6\uFF1A\u6A21\u578B\u4ECD\u5728\u52A0\u8F7D\u8BF7\u7A0D\u5019\u51E0\u79D2\u518D\u70B9\u81EA\u6D4B",
   selftestAutoplay: "\u6D4F\u89C8\u5668\u62E6\u622A\u4E86\u81EA\u52A8\u64AD\u653E\u8BF7\u518D\u70B9\u4E00\u6B21\u81EA\u6D4B",
-  switchToLocalTts: "\u5207\u6362\u4E3A\u672C\u5730 Kokoro\uFF08\u79BB\u7EBF\u53EF\u7528\uFF09",
+  selftestRateLimited: "\u81EA\u6D4B\u8BD5\u542C\u592A\u9891\u7E41\uFF08\u4E0E\u300C\u8BD5\u542C\u300D\u5171\u6BCF\u5206\u949F 20 \u6B21\uFF09\uFF1A\u7A0D\u7B49\u51E0\u79D2\u518D\u70B9\u81EA\u6D4B",
+  selftestDisabled: "\u8BED\u97F3\u6A21\u5F0F\u5DF2\u7981\u7528\uFF08\u63D2\u4EF6 enabled=false\uFF09\uFF0C\u65E0\u6CD5\u81EA\u6D4B",
+  switchToLocalTts: "\u5207\u6362\u4E3A\u672C\u5730 Kokoro\uFF08\u9996\u6B21\u9700\u4E0B\u8F7D\u7EA6 109MB\uFF0C\u4E4B\u540E\u79BB\u7EBF\u53EF\u7528\uFF09",
   custom: "\u81EA\u5B9A\u4E49",
   // settings rows
   voicePrev: "\u4E0A\u4E00\u97F3\u8272",
@@ -1871,7 +1883,7 @@ var zh = {
   descBackchannelYield: "\u6717\u8BFB\u671F\u7528\u6237\u8BF4\u300C\u55EF/\u5BF9\u300D\u7B49\u77ED\u5E94\u7B54\u65F6\u81EA\u52A8\u8BA9\u4F4D\uFF08\u8DF3\u8FC7\u5F53\u524D TTS \u53E5 + \u77ED\u6682\u4E22\u5E27 1.5s\uFF1B\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF1B\u5173 = \u4E0D\u8BA9\u4F4D\uFF0C\u884C\u4E3A\u7B49\u540C\u6539\u9020\u524D\uFF09\u3002\u4EC5\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u53EF\u89E6\u53D1\uFF1A\u300C\u6301\u7EED\u8046\u542C\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u4E0D\u8BC6\u522B\u8BED\u97F3\uFF0C\u5F00\u53E3\u8BF4\u8BDD\u6309\u6253\u65AD\u5904\u7406",
   // Issue #15 批 1 / ADR-0012：打断语音抢救。
   descBargeInSalvage: "AI \u6717\u8BFB\u65F6\u4F60\u5F00\u53E3\u6253\u65AD\uFF1A\u81EA\u52A8\u4FDD\u7559\u4ECE\u5F00\u53E3\u5230\u6253\u65AD\u751F\u6548\u4E4B\u95F4\u4F60\u8BF4\u7684\u8BDD\uFF0C\u5E76\u5165\u8BC6\u522B\u7EE7\u7EED\u53D1\u9001\uFF08\u4FEE\u300C\u6253\u65AD\u5403\u53E5\u300D\uFF1B\u5173 = \u4E22\u5F03\u6253\u65AD\u524D\u8BED\u97F3\u2014\u2014\u4EC5\u5916\u653E\u4E14\u65E0\u56DE\u58F0\u6D88\u9664\u7684\u73AF\u5883\u5EFA\u8BAE\u5173\uFF09",
-  descAsrReplacements: '\u7528\u6237\u7EA0\u9519\u8BCD\u8868\uFF08JSON \u6570\u7EC4 [{from:["\u542C\u9519\u5199\u6CD5"],to:"\u60F3\u8981\u5199\u6CD5"}]\uFF0C\u8F6C\u5199\u540E\u7EDF\u4E00\u6539\u5199\uFF1B\u8BBE\u7F6E\u5361\u7247\u53EF\u89C6\u5316\u7BA1\u7406\uFF0C\u547D\u4E2D\u8BA1\u6570\u89C1\u81EA\u6D4B\u533A\uFF09',
+  descAsrReplacements: '\u7528\u6237\u7EA0\u9519\u8BCD\u8868\uFF08JSON \u6570\u7EC4 [{from:["\u542C\u9519\u5199\u6CD5"],to:"\u60F3\u8981\u5199\u6CD5"}]\uFF0C\u8F6C\u5199\u540E\u7EDF\u4E00\u6539\u5199\uFF1B\u8BBE\u7F6E\u5361\u7247\u53EF\u89C6\u5316\u589E\u5220\u4E0E\u5BFC\u5165\u5BFC\u51FA\uFF0C\u89C4\u5219\u540E\u65B9\u6570\u5B57\u4E3A\u300C\u672C\u6B21\u751F\u6548\u4EE5\u6765\u300D\u547D\u4E2D\u6B21\u6570\uFF09',
   descLlmCorrect: "\u53D1\u9001\u524D\u7528\u5927\u6A21\u578B\u5BF9\u6574\u6761\u8BED\u97F3\u6587\u672C\u505A\u4E00\u6B21\u7EA0\u9519\uFF08\u53EA\u6539\u9519\u522B\u5B57/\u540C\u97F3\u5B57/\u6807\u70B9\uFF0C\u4FDD\u6301\u539F\u610F\uFF1B\u9700\u5BBF\u4E3B\u5DF2\u914D\u7F6E\u9ED8\u8BA4\u6A21\u578B\uFF0C\u672A\u914D\u7F6E\u5219\u81EA\u52A8\u7528\u539F\u6587\uFF09\u3002\u5F00 = \u6BCF\u6761\u6D88\u606F\u591A\u4E00\u6B21\u7EA0\u9519\u7B49\u5F85\uFF1A\u901A\u5E38 1 \u79D2\u5185\uFF0C\u6700\u957F\u7EA6 10 \u79D2\uFF1B\u6BCF\u5206\u949F\u6700\u591A 10 \u6B21\uFF0C\u8BED\u97F3\u6A21\u5F0F\u5173\u95ED\u6216\u89E6\u53D1\u9650\u6D41\u65F6\u6309\u539F\u6587\u53D1\u9001\u3002\u7EA0\u9519\u5931\u8D25\u6216\u8F93\u51FA\u5F02\u5E38\u540C\u6837\u81EA\u52A8\u7528\u539F\u6587",
   descYieldMs: "\u8BA9\u4F4D\u8BED\u4E49\u89E6\u53D1\u540E\u7B49\u5F85\u65F6\u957F\uFF08\u6BEB\u79D2\uFF0C500-3000\uFF0C\u9ED8\u8BA4 1500\uFF1B\u7A97\u53E3\u5185\u7528\u6237\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF0C\u7A97\u53E3\u5230\u70B9\u81EA\u52A8\u6062\u590D\u64AD\u653E\uFF09\u3002\u4EC5\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u53EF\u89E6\u53D1",
   descMode: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD / once \u8BF4\u5B8C\u4E00\u6BB5\u3001\u7B49\u56DE\u590D\u6717\u8BFB\u5B8C\u518D\u81EA\u52A8\u9000\u51FA\uFF09",
@@ -2031,6 +2043,7 @@ var en = {
   ttsNoticeFail: "Read-aloud connection failed: retrying\u2026",
   ttsSkipNotice: "One sentence failed to read and was skipped (resend the message to retry)",
   ttsUnavailableNotice: "Read-aloud keeps failing: cloud TTS is unavailable. Try again later, or switch the read-aloud engine to local VITS / Kokoro in settings",
+  ttsProbeFail: "Read-aloud self-check failed: the cloud endpoint may have changed, or the network is down. Switch to local/another engine in settings, then run Self-test",
   enterFail: "Failed to enter voice mode",
   disabled: "Voice mode disabled (plugin enabled=false)",
   sendFailKept: "Send failed; text kept in draft",
@@ -2095,7 +2108,13 @@ var en = {
   presetCosy: "SiliconFlow \xB7 CosyVoice2",
   presetFish: "SiliconFlow \xB7 Fish Speech 1.5",
   presetCosyNote: "About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn",
-  presetFishNote: "About $15 per million UTF-8 bytes; text goes to api.siliconflow.cn",
+  presetFishNote: "About $15 per million UTF-8 bytes (billed per UTF-8 byte); text goes to api.siliconflow.cn",
+  presetOpenrouter: "OpenRouter \xB7 OpenAI TTS",
+  presetOpenrouterNote: "Billed through OpenRouter; text goes to openrouter.ai",
+  presetSelfKokoro: "Self-hosted \xB7 Kokoro-FastAPI",
+  presetSelfKokoroNote: "Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first",
+  presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
+  presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
   presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser",
   presetFillVoice: "Fill example voice",
   // P1-4 dictation-only preset.
@@ -2115,6 +2134,9 @@ var en = {
   replImport: "Import",
   replInvalid: "Invalid rule: non-empty from and to, comma-separate multiple spellings",
   replBadFile: "File is not a valid wordlist JSON (array [{from[], to}], max 200 rules)",
+  replUnreadable: "The stored wordlist is unreadable or over the limit; editing is disabled to avoid overwriting it. Export a backup first, then import a new wordlist",
+  replSaveFail: "Save failed (nothing was written); rules unchanged. Check whether the plugin is disabled or the settings store is read-only",
+  replTooLarge: "Wordlist is too large (over ~12KB): reduce the number of rules or shorten the spellings",
   // P1-1 self-test: separate synthesis / playback verdicts.
   selftestTitle: "Self-test",
   selftestHint: "Verifies synthesis and playback separately to tell engine failures from playback failures",
@@ -2127,7 +2149,9 @@ var en = {
   selftestCheck: "Self-test failed: check network, engine status, or voice name",
   selftestTimeout: "Synthesis timed out: model still loading, retry self-test in a few seconds",
   selftestAutoplay: "Browser blocked autoplay \u2014 run self-test again",
-  switchToLocalTts: "Switch to local Kokoro (works offline)",
+  selftestRateLimited: "Preview requests are rate limited (20/min shared with Preview): wait a few seconds and run self-test again",
+  selftestDisabled: "Voice mode is disabled (plugin enabled=false), so the self-test cannot run",
+  switchToLocalTts: "Switch to local Kokoro (first use downloads ~109MB, then works offline)",
   custom: "Custom",
   voicePrev: "Previous voice",
   voiceNext: "Next voice",
@@ -2204,7 +2228,7 @@ var en = {
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",
-  descAsrReplacements: 'User correction wordlist (JSON array [{from:["misheard"],to:"wanted"}], rewritten after transcription; managed in the settings card, hit counts shown in the self-test area)',
+  descAsrReplacements: 'User correction wordlist (JSON array [{from:["misheard"],to:"wanted"}], rewritten after transcription; add/remove and import/export in the settings card. The number after each rule is its hit count since the last apply)',
   descLlmCorrect: "Before sending, run one LLM pass over the whole transcribed text (typos/homophones/punctuation only, meaning preserved; requires a default model configured in the host \u2014 otherwise the original text is sent as-is). On = one extra correction round trip per message: usually under 1 second, at most ~10 seconds; at most 10 times per minute \u2014 when voice mode is off or the limit is hit, the original text is sent. Failed or abnormal output also falls back to the original text",
   descYieldMs: "How long (ms) to drop frames after a yield trigger (500-3000, default 1500; within the window the existing hardBreak takes over if the user really wants to speak; auto-resume after the window expires). Hold-to-talk mode only, during playback",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk / once: one utterance, then exit after the reply is read aloud)",
@@ -2977,7 +3001,17 @@ var ENGINE_DEFAULT_VOICE = {
 };
 var OPENAI_PRESET_VOICE = {
   "siliconflow-cosyvoice2": "FunAudioLLM/CosyVoice2-0.5B:alex",
-  "siliconflow-fish": "fishaudio/fish-speech-1.5:anna"
+  "siliconflow-fish": "fishaudio/fish-speech-1.5:anna",
+  "openrouter-openai": "alloy",
+  "selfhosted-kokoro": "zf_xiaobei",
+  "selfhosted-vllm": "default"
+};
+var PRESET_NOTE = {
+  "siliconflow-cosyvoice2": "presetCosyNote",
+  "siliconflow-fish": "presetFishNote",
+  "openrouter-openai": "presetOpenrouterNote",
+  "selfhosted-kokoro": "presetSelfKokoroNote",
+  "selfhosted-vllm": "presetSelfVllmNote"
 };
 function NumberField({
   score,
@@ -3438,6 +3472,16 @@ function VoicePreviewButton({ voice, rate }) {
       }
     })();
   };
+  (0, import_react2.useEffect)(
+    () => () => {
+      const a = audioRef.current;
+      if (a) {
+        a.pause();
+        if (a.src.startsWith("blob:")) URL.revokeObjectURL(a.src);
+      }
+    },
+    []
+  );
   const btnStyle = {
     font: "inherit",
     display: "inline-flex",
@@ -3510,10 +3554,16 @@ function SelfTestSection({
           } catch {
           }
           const code = body?.code;
+          if (code === "rate_limited" || res.status === 429) {
+            setNote(t("selftestRateLimited"));
+            return;
+          }
+          if (code === "voice_disabled" || res.status === 403) {
+            setNote(t("selftestDisabled"));
+            return;
+          }
           setSynth("fail");
-          setNote(
-            code === "voice_disabled" || res.status === 403 ? t("previewDisabled") : code === "rate_limited" || res.status === 429 ? t("previewRateLimited") : errorText(body, "selftestCheck")
-          );
+          setNote(code === "preview_engine" ? t("previewModelMissing") : errorText(body, "selftestCheck"));
           return;
         }
         const blob = await res.blob();
@@ -3555,6 +3605,16 @@ function SelfTestSection({
       }
     })();
   };
+  (0, import_react2.useEffect)(
+    () => () => {
+      const a = audioRef.current;
+      if (a) {
+        a.pause();
+        if (a.src.startsWith("blob:")) URL.revokeObjectURL(a.src);
+      }
+    },
+    []
+  );
   const verdict = (label, st, extra) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term, display: "inline-flex", gap: 4 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -3569,59 +3629,69 @@ function SelfTestSection({
     ),
     extra ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: extra }) : null
   ] });
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start", padding: "2px 0 10px" }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.label, fontWeight: 600 }, children: t("selftestTitle") }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("selftestHint") }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "button",
-      {
-        type: "button",
-        onClick: run,
-        disabled: busy,
-        style: {
-          font: "inherit",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 5,
-          alignSelf: "flex-start",
-          cursor: busy ? "default" : "pointer",
-          color: t2.label,
-          background: "var(--dsw-alias-bg-layer-2)",
-          border: `1px solid ${t2.border}`,
-          borderRadius: 6,
-          padding: "4px 10px",
-          fontSize: 12,
-          lineHeight: "18px"
-        },
-        children: busy ? t("selftestRunning") : t("selftestRun")
-      }
-    ),
-    verdict(t("selftestSynth"), synth, synth === "ok" ? `${synthMs} ${t("unitMs")}` : void 0),
-    verdict(t("selftestPlay"), play),
-    synth === "fail" && (engine === "edge" || engine === "openai" || engine === "mimo") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "button",
-      {
-        type: "button",
-        onClick: onSwitchLocal,
-        style: {
-          font: "inherit",
-          display: "inline-flex",
-          alignItems: "center",
-          alignSelf: "flex-start",
-          cursor: "pointer",
-          color: t2.label,
-          background: "var(--dsw-alias-bg-layer-2)",
-          border: `1px solid ${t2.border}`,
-          borderRadius: 6,
-          padding: "4px 10px",
-          fontSize: 12,
-          lineHeight: "18px"
-        },
-        children: t("switchToLocalTts")
-      }
-    ),
-    note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
-  ] });
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+    "span",
+    {
+      role: "group",
+      "aria-label": t("selftestTitle"),
+      style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start", padding: "2px 0 10px" },
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.label, fontWeight: 600 }, children: t("selftestTitle") }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("selftestHint") }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            type: "button",
+            onClick: run,
+            disabled: busy,
+            style: {
+              font: "inherit",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              alignSelf: "flex-start",
+              cursor: busy ? "default" : "pointer",
+              color: t2.label,
+              background: "var(--dsw-alias-bg-layer-2)",
+              border: `1px solid ${t2.border}`,
+              borderRadius: 6,
+              padding: "4px 10px",
+              fontSize: 12,
+              lineHeight: "18px"
+            },
+            children: busy ? t("selftestRunning") : t("selftestRun")
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { role: "status", "aria-live": "polite", style: { display: "flex", flexDirection: "column", gap: 2 }, children: [
+          verdict(t("selftestSynth"), synth, synth === "ok" ? `${synthMs} ${t("unitMs")}` : void 0),
+          verdict(t("selftestPlay"), play)
+        ] }),
+        synth === "fail" && (engine === "edge" || engine === "openai" || engine === "mimo") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            type: "button",
+            onClick: onSwitchLocal,
+            style: {
+              font: "inherit",
+              display: "inline-flex",
+              alignItems: "center",
+              alignSelf: "flex-start",
+              cursor: "pointer",
+              color: t2.label,
+              background: "var(--dsw-alias-bg-layer-2)",
+              border: `1px solid ${t2.border}`,
+              borderRadius: 6,
+              padding: "4px 10px",
+              fontSize: 12,
+              lineHeight: "18px"
+            },
+            children: t("switchToLocalTts")
+          }
+        ),
+        note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
+      ]
+    }
+  );
 }
 function normalizeRules(input) {
   if (!Array.isArray(input) || input.length > 200) return null;
@@ -3641,7 +3711,9 @@ function ReplacementsSection({
   rules,
   onChange
 }) {
-  const list = normalizeRules(rules) ?? [];
+  const parsed = normalizeRules(rules);
+  const unreadable = parsed === null;
+  const list = parsed ?? [];
   const [hits, setHits] = (0, import_react2.useState)([]);
   const [fromText, setFromText] = (0, import_react2.useState)("");
   const [toText, setToText] = (0, import_react2.useState)("");
@@ -3667,17 +3739,37 @@ function ReplacementsSection({
       clearInterval(timer);
     };
   }, []);
+  const commit = async (next) => {
+    if (JSON.stringify(next).length > 12e3) {
+      setNote(t("replTooLarge"));
+      return false;
+    }
+    const ok = await onChange(next);
+    if (!ok) {
+      setNote(t("replSaveFail"));
+      return false;
+    }
+    setNote(null);
+    setHits([]);
+    return true;
+  };
   const add = () => {
+    if (unreadable) {
+      setNote(t("replUnreadable"));
+      return;
+    }
     const from = fromText.split(/[,，、]/).map((s) => s.trim()).filter((s) => s.length > 0);
     const to = toText.trim();
     if (from.length === 0 || !to || list.length >= 200) {
       setNote(t("replInvalid"));
       return;
     }
-    setNote(null);
-    setFromText("");
-    setToText("");
-    onChange([...list, { from, to }]);
+    void (async () => {
+      if (await commit([...list, { from, to }])) {
+        setFromText("");
+        setToText("");
+      }
+    })();
   };
   const exportFile = () => {
     const blob = new Blob([JSON.stringify(list, null, 2)], { type: "application/json" });
@@ -3686,7 +3778,7 @@ function ReplacementsSection({
     a.href = url;
     a.download = "voice-replacements.json";
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1e3);
   };
   const importFile = (f) => {
     if (!f) return;
@@ -3696,14 +3788,13 @@ function ReplacementsSection({
     }
     void (async () => {
       try {
-        const parsed = JSON.parse(await f.text());
-        const next = normalizeRules(parsed);
+        const parsed2 = JSON.parse(await f.text());
+        const next = normalizeRules(parsed2);
         if (!next) {
           setNote(t("replBadFile"));
           return;
         }
-        setNote(null);
-        onChange(next);
+        await commit(next);
       } catch {
         setNote(t("replBadFile"));
       }
@@ -3726,7 +3817,7 @@ function ReplacementsSection({
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start", padding: "2px 0 10px" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.label, fontWeight: 600 }, children: t("replTitle") }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("descAsrReplacements") }),
-    list.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.term }, children: t("replEmpty") }) : list.map((r, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.label, display: "inline-flex", gap: 6, alignItems: "center" }, children: [
+    unreadable ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "alert", style: { fontSize: 12, color: "var(--dsw-alias-state-error-primary)" }, children: t("replUnreadable") }) : list.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.term }, children: t("replEmpty") }) : list.map((r, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.label, display: "inline-flex", gap: 6, alignItems: "center" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
         r.from.join(" / "),
         " ",
@@ -3743,7 +3834,8 @@ function ReplacementsSection({
         "button",
         {
           type: "button",
-          onClick: () => onChange(list.filter((_, j) => j !== i)),
+          "aria-label": `${t("replDelete")}: ${r.from.join(" / ")} \u2192 ${r.to}`,
+          onClick: () => void commit(list.filter((_, j) => j !== i)),
           style: { ...btnStyle, padding: "2px 8px" },
           children: t("replDelete")
         }
@@ -3756,6 +3848,7 @@ function ReplacementsSection({
           value: fromText,
           onChange: (e) => setFromText(e.target.value),
           placeholder: t("replFromPh"),
+          "aria-label": t("replFromPh"),
           style: { fontSize: 12, padding: "4px 8px", maxWidth: 220 }
         }
       ),
@@ -3764,7 +3857,11 @@ function ReplacementsSection({
         {
           value: toText,
           onChange: (e) => setToText(e.target.value),
+          onKeyDown: (e) => {
+            if (e.key === "Enter") add();
+          },
           placeholder: t("replToPh"),
+          "aria-label": t("replToPh"),
           style: { fontSize: 12, padding: "4px 8px", maxWidth: 140 }
         }
       ),
@@ -3807,6 +3904,7 @@ function DictationPreset({
       "button",
       {
         type: "button",
+        "aria-pressed": off,
         onClick: () => onPick(off ? lastOn.current : "off"),
         style: {
           font: "inherit",
@@ -4202,11 +4300,14 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
                 options: [
                   { v: "", label: t("presetCustom") },
                   { v: "siliconflow-cosyvoice2", label: t("presetCosy") },
-                  { v: "siliconflow-fish", label: t("presetFish") }
+                  { v: "siliconflow-fish", label: t("presetFish") },
+                  { v: "openrouter-openai", label: t("presetOpenrouter") },
+                  { v: "selfhosted-kokoro", label: t("presetSelfKokoro") },
+                  { v: "selfhosted-vllm", label: t("presetSelfVllm") }
                 ]
               }
             ),
-            value.openaiPreset === "siliconflow-cosyvoice2" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetCosyNote") }) : value.openaiPreset === "siliconflow-fish" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetFishNote") }) : null,
+            PRESET_NOTE[String(value.openaiPreset)] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t(PRESET_NOTE[String(value.openaiPreset)]) }) : null,
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetKeyNote") }),
             typeof value.openaiPreset === "string" && OPENAI_PRESET_VOICE[value.openaiPreset] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
@@ -4367,7 +4468,13 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 5, min: 1, max: 120, step: 1 }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReplacementsSection, { rules: value.asrReplacements, onChange: (next) => void scope.set("asrReplacements", next) })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            ReplacementsSection,
+            {
+              rules: value.asrReplacements,
+              onChange: (next) => scope.set("asrReplacements", next)
+            }
+          )
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Section, { title: t("secModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: hostOptions(), placeholder: "https://..." }) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("settingsEffectiveNote") }),
@@ -4463,7 +4570,7 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
       };
     },
     async set(field, value) {
-      if (disposed) return;
+      if (disposed) return false;
       const before = snap;
       writing++;
       emit({ status: "ready", value: { ...snap.value, [field]: value } });
@@ -4486,6 +4593,7 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
         writeGen++;
       }
       if (!ok) await load();
+      return ok;
     },
     dispose: () => {
       disposed = true;
@@ -4531,7 +4639,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "ea18c37";
+var BUILD_TAG = "82f469b";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -6308,12 +6416,13 @@ function MicButton({
         const sv = snap && snap.status === "ready" && snap.value ? snap.value : {};
         const eng = typeof sv.ttsEngine === "string" ? sv.ttsEngine : "";
         const pv = typeof sv.voice === "string" ? sv.voice.trim() : "";
-        if ((eng === "edge" || eng === "openai" || eng === "mimo") && pv) {
+        const readAloudOff = sv.readAloud === "off";
+        if (!readAloudOff && (eng === "edge" || eng === "openai" || eng === "mimo") && pv) {
           const pr = typeof sv.rate === "number" ? Math.min(2, Math.max(0.5, sv.rate)) : 1.1;
           const myProbe = enterEpochRef.current;
           const markDown = () => {
             if (enterEpochRef.current !== myProbe || localRef.current === "off") return;
-            bus.setUi({ ttsNotice: t("ttsUnavailableNotice") });
+            bus.setUi({ ttsNotice: t("ttsProbeFail") });
           };
           void fetch(`${location.origin}${basePath}/preview`, {
             method: "POST",

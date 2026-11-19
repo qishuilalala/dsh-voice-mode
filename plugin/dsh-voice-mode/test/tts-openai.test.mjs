@@ -232,14 +232,21 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
 {
   // E1：预设解析（纯函数；未知/空回 null 调用方回落 Config 文件值）。
   const { OPENAI_PRESETS, resolveOpenAiEndpoint } = await import('../src/tts-openai.ts')
+  // 形状含 voice：设置音色为空时用它兜底（A3：否则 model:voice 形态永远用不上）。
   assert.deepEqual(resolveOpenAiEndpoint('siliconflow-cosyvoice2'), {
     baseUrl: 'https://api.siliconflow.cn/v1',
     model: 'FunAudioLLM/CosyVoice2-0.5B',
+    voice: 'FunAudioLLM/CosyVoice2-0.5B:alex',
   })
   assert.deepEqual(resolveOpenAiEndpoint('siliconflow-fish'), {
     baseUrl: 'https://api.siliconflow.cn/v1',
     model: 'fishaudio/fish-speech-1.5',
+    voice: 'fishaudio/fish-speech-1.5:anna',
   })
+  // E1 原计划的三类都要在（SiliconFlow / OpenRouter / 自建）。
+  assert.ok(resolveOpenAiEndpoint('openrouter-openai')?.baseUrl.includes('openrouter.ai'))
+  assert.ok(resolveOpenAiEndpoint('selfhosted-kokoro')?.baseUrl.includes('127.0.0.1'))
+  assert.ok(resolveOpenAiEndpoint('selfhosted-vllm')?.baseUrl.includes('127.0.0.1'))
   assert.equal(resolveOpenAiEndpoint(''), null)
   assert.equal(resolveOpenAiEndpoint('unknown-preset'), null)
   assert.ok(String(OPENAI_PRESETS['siliconflow-cosyvoice2'].voice).includes(':'))

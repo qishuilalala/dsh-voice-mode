@@ -57,7 +57,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 
 | 键 | 默认 | 语义 |
 |---|---|---|
-| ttsEngine | edge | 朗读引擎 edge / vits / kokoro / openai（即时；openai 为自建或托管 `POST /v1/audio/speech`，失败自动回退本地） |
+| ttsEngine | edge | 朗读引擎 edge / vits / kokoro / openai / mimo（即时；openai 为自建或托管 `POST /v1/audio/speech`；mimo 为小米 `POST /v1/chat/completions`，**独立 mimoTts.apiKey**；两者失败均自动回退本地） |
 | kokoroModel | int8 | Kokoro 精度 int8（109MB，CPU）/ fp32（311MB，音质更好）；即时切换，两档共用 103 音色 |
 | voice | 按引擎 | VITS 说话人名 / Kokoro sid 或中文名 / Edge ShortName / OpenAI 兼容引擎自由文本（即时） |
 | bargeInMode | detect | detect：开机探测本机原生 AEC，生效则自动打断，未生效自动落 manual；manual 长按打断（外放推荐）；`auto` 为旧值（src/index.ts:223 默认值 / :503 schema 真源；原值 214/476 为 2026-10-19 实测，已随 v0.7.27 重写漂移，本轮刷新） |

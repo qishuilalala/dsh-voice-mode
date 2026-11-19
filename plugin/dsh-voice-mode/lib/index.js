@@ -2505,6 +2505,7 @@ var en = {
   ttsNoticeFail: "Read-aloud connection failed: retrying\u2026",
   ttsSkipNotice: "One sentence failed to read and was skipped (resend the message to retry)",
   ttsUnavailableNotice: "Read-aloud keeps failing: cloud TTS is unavailable. Try again later, or switch the read-aloud engine to local VITS / Kokoro in settings",
+  ttsProbeFail: "Read-aloud self-check failed: the cloud endpoint may have changed, or the network is down. Switch to local/another engine in settings, then run Self-test",
   enterFail: "Failed to enter voice mode",
   disabled: "Voice mode disabled (plugin enabled=false)",
   sendFailKept: "Send failed; text kept in draft",
@@ -2569,7 +2570,13 @@ var en = {
   presetCosy: "SiliconFlow \xB7 CosyVoice2",
   presetFish: "SiliconFlow \xB7 Fish Speech 1.5",
   presetCosyNote: "About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn",
-  presetFishNote: "About $15 per million UTF-8 bytes; text goes to api.siliconflow.cn",
+  presetFishNote: "About $15 per million UTF-8 bytes (billed per UTF-8 byte); text goes to api.siliconflow.cn",
+  presetOpenrouter: "OpenRouter \xB7 OpenAI TTS",
+  presetOpenrouterNote: "Billed through OpenRouter; text goes to openrouter.ai",
+  presetSelfKokoro: "Self-hosted \xB7 Kokoro-FastAPI",
+  presetSelfKokoroNote: "Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first",
+  presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
+  presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
   presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser",
   presetFillVoice: "Fill example voice",
   // P1-4 dictation-only preset.
@@ -2589,6 +2596,9 @@ var en = {
   replImport: "Import",
   replInvalid: "Invalid rule: non-empty from and to, comma-separate multiple spellings",
   replBadFile: "File is not a valid wordlist JSON (array [{from[], to}], max 200 rules)",
+  replUnreadable: "The stored wordlist is unreadable or over the limit; editing is disabled to avoid overwriting it. Export a backup first, then import a new wordlist",
+  replSaveFail: "Save failed (nothing was written); rules unchanged. Check whether the plugin is disabled or the settings store is read-only",
+  replTooLarge: "Wordlist is too large (over ~12KB): reduce the number of rules or shorten the spellings",
   // P1-1 self-test: separate synthesis / playback verdicts.
   selftestTitle: "Self-test",
   selftestHint: "Verifies synthesis and playback separately to tell engine failures from playback failures",
@@ -2601,7 +2611,9 @@ var en = {
   selftestCheck: "Self-test failed: check network, engine status, or voice name",
   selftestTimeout: "Synthesis timed out: model still loading, retry self-test in a few seconds",
   selftestAutoplay: "Browser blocked autoplay \u2014 run self-test again",
-  switchToLocalTts: "Switch to local Kokoro (works offline)",
+  selftestRateLimited: "Preview requests are rate limited (20/min shared with Preview): wait a few seconds and run self-test again",
+  selftestDisabled: "Voice mode is disabled (plugin enabled=false), so the self-test cannot run",
+  switchToLocalTts: "Switch to local Kokoro (first use downloads ~109MB, then works offline)",
   custom: "Custom",
   voicePrev: "Previous voice",
   voiceNext: "Next voice",
@@ -2678,7 +2690,7 @@ var en = {
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",
-  descAsrReplacements: 'User correction wordlist (JSON array [{from:["misheard"],to:"wanted"}], rewritten after transcription; managed in the settings card, hit counts shown in the self-test area)',
+  descAsrReplacements: 'User correction wordlist (JSON array [{from:["misheard"],to:"wanted"}], rewritten after transcription; add/remove and import/export in the settings card. The number after each rule is its hit count since the last apply)',
   descLlmCorrect: "Before sending, run one LLM pass over the whole transcribed text (typos/homophones/punctuation only, meaning preserved; requires a default model configured in the host \u2014 otherwise the original text is sent as-is). On = one extra correction round trip per message: usually under 1 second, at most ~10 seconds; at most 10 times per minute \u2014 when voice mode is off or the limit is hit, the original text is sent. Failed or abnormal output also falls back to the original text",
   descYieldMs: "How long (ms) to drop frames after a yield trigger (500-3000, default 1500; within the window the existing hardBreak takes over if the user really wants to speak; auto-resume after the window expires). Hold-to-talk mode only, during playback",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk / once: one utterance, then exit after the reply is read aloud)",
@@ -3064,19 +3076,66 @@ var OPENAI_PRESETS = {
     baseUrl: "https://api.siliconflow.cn/v1",
     model: "fishaudio/fish-speech-1.5",
     voice: "fishaudio/fish-speech-1.5:anna"
+  },
+  "openrouter-openai": {
+    baseUrl: "https://openrouter.ai/api/v1",
+    model: "openai/gpt-4o-mini-tts",
+    voice: "alloy"
+  },
+  // 自建示例（本机地址为占位；无鉴权时 key 留空即可）：
+  //   Kokoro-FastAPI / LocalAI 的 OpenAI 兼容面，Kokoro 音色名取自本插件本地目录（zf_xiaobei 等）。
+  "selfhosted-kokoro": {
+    baseUrl: "http://127.0.0.1:8880/v1",
+    model: "kokoro",
+    voice: "zf_xiaobei"
+  },
+  //   vLLM-Omni（ADR-0013 实测过 VoxCPM2 / Qwen3-TTS 部署）。
+  "selfhosted-vllm": {
+    baseUrl: "http://127.0.0.1:8000/v1",
+    model: "tts-1",
+    voice: "default"
   }
 };
 function resolveOpenAiEndpoint(preset) {
-  const p = OPENAI_PRESETS[preset];
-  return p ? { baseUrl: p.baseUrl, model: p.model } : null;
+  return OPENAI_PRESETS[preset] ?? null;
+}
+
+// src/prompts.ts
+var ZH = "\u3010\u8BED\u97F3\u6A21\u5F0F\u3011\u5F53\u524D\u56DE\u590D\u4F1A\u88AB\u8BED\u97F3\u6717\u8BFB\uFF0C\u8BF7\u59CB\u7EC8\u7528\u7528\u6237\u6240\u7528\u8BED\u8A00\u3001\u4EE5\u53E3\u8BED\u5316\u7684\u77ED\u53E5\u76F4\u63A5\u56DE\u7B54\uFF0C\u50CF\u9762\u5BF9\u9762\u804A\u5929\u4E00\u6837\u81EA\u7136\uFF0C\u907F\u514D\u4E66\u9762\u8BED\u548C\u957F\u96BE\u53E5\u3002\u4E0D\u8981\u4F7F\u7528\u4EFB\u4F55 Markdown \u6216\u6392\u7248\u7B26\u53F7\uFF08\u661F\u53F7\u3001\u4E0B\u5212\u7EBF\u3001\u53CD\u5F15\u53F7\u3001\u4E95\u53F7\u3001\u5217\u8868\u4E0E\u8868\u683C\u6807\u8BB0\u3001\u4EE3\u7801\u5757\u7B49\uFF09\u3002\u9700\u8981\u5206\u70B9\u8BF4\u660E\u65F6\u7528\u300C\u7B2C\u4E00\u3001\u7B2C\u4E8C\u300D\u6216\u8FDE\u8D2F\u7684\u77ED\u53E5\u8868\u8FBE\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EE3\u7801\u7247\u6BB5\u3001\u5B8C\u6574 URL \u6216\u5197\u957F\u5B9A\u4E49\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u6982\u62EC\u542B\u4E49\u5373\u53EF\u3002\u56DE\u7B54\u7B80\u6D01\u76F4\u63A5\uFF0C\u4E0D\u8981\u91CD\u590D\u548C\u5BD2\u6684\u3002\u5982\u679C\u7528\u6237\u5728\u4F60\u6717\u8BFB\u65F6\u63D2\u8BDD\uFF08\u54EA\u6015\u53EA\u662F\u300C\u55EF/\u5BF9\u300D\u8FD9\u6837\u7684\u77ED\u5E94\u7B54\uFF09\uFF0C\u7ACB\u5373\u505C\u6B62\u5F53\u524D\u53E5\uFF0C\u628A\u8BDD\u8F6E\u8BA9\u7ED9\u7528\u6237\uFF1B\u56DE\u7B54\u540E\u7559\u51FA\u505C\u987F\uFF0C\u4E0D\u8981\u8FDE\u95EE\u4E24\u4E2A\u95EE\u9898\uFF1B\u7528\u6237\u6C89\u9ED8\u65F6\u4E0D\u8981\u4E3B\u52A8\u627E\u65B0\u8BDD\u9898\u3002";
+var EN = '[Voice mode] Your reply will be read aloud. Always answer in the language the user is using, in short conversational sentences, directly and naturally, as if talking face to face; avoid written-style phrasing and long, complex sentences. Do not use any Markdown or formatting symbols (asterisks, underscores, backticks, hash signs, list or table markup, code blocks, etc.). When you need to list points, say them as "first, second" or as connected short sentences; unless the user explicitly asks, do not output code snippets, full URLs or lengthy definitions \u2014 summarize the meaning in a sentence or two. Keep answers concise and direct; no repetition or pleasantries. If the user interrupts while you are being read aloud (even with a short acknowledgment like "uh-huh" or "yeah"), stop the current sentence immediately and yield the turn; leave a pause after answering and never ask two questions in a row; when the user is silent, do not bring up a new topic on your own.';
+var spokenPrompt = (lang) => lang === "en" ? EN : ZH;
+function normalizePromptLang(raw) {
+  if (typeof raw !== "string" || raw === "" || raw.length > 32) return "zh";
+  return /^zh\b/i.test(raw) ? "zh" : "en";
+}
+var SAMPLE_ZH = "\u4F60\u597D\uFF0C\u6B22\u8FCE\u4F7F\u7528\u8BED\u97F3\u6A21\u5F0F\u3002";
+var SAMPLE_EN = "Hello, welcome to voice mode.";
+var SAMPLE_BY_LANG = {
+  zh: SAMPLE_ZH,
+  en: SAMPLE_EN,
+  ja: "\u3053\u3093\u306B\u3061\u306F\u3001\u97F3\u58F0\u30E2\u30FC\u30C9\u3078\u3088\u3046\u3053\u305D\u3002",
+  ko: "\uC548\uB155\uD558\uC138\uC694, \uC74C\uC131 \uBAA8\uB4DC\uC5D0 \uC624\uC2E0 \uAC83\uC744 \uD658\uC601\uD569\uB2C8\uB2E4.",
+  fr: "Bonjour, bienvenue dans le mode vocal.",
+  de: "Hallo, willkommen im Sprachmodus.",
+  es: "Hola, bienvenido al modo de voz.",
+  pt: "Ol\xE1, bem-vindo ao modo de voz.",
+  it: "Ciao, benvenuto nella modalit\xE0 vocale.",
+  ru: "\u0417\u0434\u0440\u0430\u0432\u0441\u0442\u0432\u0443\u0439\u0442\u0435, \u0434\u043E\u0431\u0440\u043E \u043F\u043E\u0436\u0430\u043B\u043E\u0432\u0430\u0442\u044C \u0432 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u043E\u0439 \u0440\u0435\u0436\u0438\u043C."
+};
+function mimoSpeedInstruction(rate) {
+  return rate > 1 ? `\u8BED\u901F\u52A0\u5FEB\u5230\u7EA6 ${rate} \u500D` : `\u8BED\u901F\u653E\u6162\u5230\u7EA6 ${rate} \u500D`;
+}
+function previewSample(engine, voice) {
+  if (engine === "kokoro" || engine === "openai" || engine === "mimo") return `${SAMPLE_ZH}${SAMPLE_EN}`;
+  if (engine === "vits") return SAMPLE_ZH;
+  const m = /^([a-z]{2,3})-/i.exec(voice);
+  return m && SAMPLE_BY_LANG[m[1].toLowerCase()] || SAMPLE_EN;
 }
 
 // src/tts-mimo.ts
 var MIME2 = {
   wav: "audio/wav",
-  mp3: "audio/mpeg",
-  pcm: "audio/wav",
-  pcm16: "audio/wav"
+  mp3: "audio/mpeg"
 };
 var MimoTtsError = class extends Error {
   code;
@@ -3094,9 +3153,10 @@ function mimoChatUrl(baseUrl) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new MimoTtsError("mimo_bad_url", "baseUrl must be http(s)");
   }
+  const suffix = "/chat/completions";
   const noSlash = url.pathname.replace(/\/+$/, "");
-  const base = noSlash.endsWith("/chat/completions") ? noSlash.slice(0, -"/chat/completions".length) : noSlash;
-  url.pathname = `${base}/chat/completions`;
+  const base = noSlash.endsWith(suffix) ? noSlash.slice(0, -suffix.length) : noSlash;
+  url.pathname = `${base}${suffix}`;
   return url.toString();
 }
 function extractMimoAudio(body) {
@@ -3107,7 +3167,15 @@ function extractMimoAudio(body) {
   if (typeof message !== "object" || message === null) return null;
   const audio = message.audio;
   if (typeof audio !== "object" || audio === null) return null;
-  return typeof audio.data === "string" && audio.data.length > 0 ? audio.data : null;
+  const data = audio.data;
+  return typeof data === "string" && data.length > 0 ? data : null;
+}
+function decodeBase64Audio(data) {
+  const clean = data.replace(/\s+/g, "");
+  if (clean.length === 0 || clean.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(clean)) {
+    throw new MimoTtsError("mimo_bad_audio", "audio payload is not valid base64");
+  }
+  return Buffer.from(clean, "base64");
 }
 var MimoTtsEngine = class {
   voice;
@@ -3130,7 +3198,7 @@ var MimoTtsEngine = class {
     let url = null;
     try {
       if (!options.apiKey?.trim()) {
-        throw new MimoTtsError("mimo_not_configured", "mimo not configured");
+        throw new MimoTtsError("mimo_not_configured", "mimo apiKey is not configured");
       }
       url = mimoChatUrl(options.baseUrl?.trim() || MIMO_DEFAULT_BASE_URL);
     } catch (e) {
@@ -3154,7 +3222,7 @@ var MimoTtsEngine = class {
     if (rate !== void 0 && Number.isFinite(rate)) this.rate = rate;
   }
   async synthesize(text, options = {}) {
-    const input = text.replace(/\s+/g, " ").trim();
+    const input = stripEmotionTags(text).replace(/\s+/g, " ").trim();
     if (input === "") return Buffer.alloc(0);
     if (this.now() >= this.downUntil) {
       try {
@@ -3173,20 +3241,30 @@ var MimoTtsEngine = class {
     }
     return this.viaFallback(text, options);
   }
+  /** 自然语言风格指令：配置的 instructions + 语速（MiMo 无 speed 字段，语速走风格控制）。 */
+  styleInstruction(rate) {
+    const parts = [];
+    const base = (this.options.instructions ?? "").trim();
+    if (base) parts.push(base);
+    if (rate !== void 0 && Number.isFinite(rate) && rate > 0 && rate !== 1) {
+      parts.push(mimoSpeedInstruction(rate));
+    }
+    return parts.join("; ");
+  }
   async remote(input, options) {
     if (this.url === null) throw this.configError;
-    const instructions = (this.options.instructions ?? "").trim();
     const messages = [];
-    if (instructions) messages.push({ role: "user", content: instructions });
+    const instruction = this.styleInstruction(options.rate ?? this.rate);
+    if (instruction) messages.push({ role: "user", content: instruction });
     messages.push({ role: "assistant", content: input });
     const body = {
       model: (this.options.model ?? "").trim() || MIMO_DEFAULT_MODEL,
       messages,
-      audio: { voice: options.voice || this.voice, format: this.format },
+      audio: { voice: (options.voice || this.voice).trim(), format: this.format },
       stream: false
     };
     const headers = { "content-type": "application/json" };
-    if (this.options.apiKey) headers["api-key"] = this.options.apiKey;
+    headers["api-key"] = (this.options.apiKey ?? "").trim();
     const ac = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -3202,7 +3280,7 @@ var MimoTtsEngine = class {
       }
       const data = extractMimoAudio(await res.json());
       if (!data) throw new MimoTtsError("mimo_empty_audio", "empty audio");
-      const buf = Buffer.from(data, "base64");
+      const buf = decodeBase64Audio(data);
       if (buf.length === 0) throw new MimoTtsError("mimo_empty_audio", "empty audio");
       return buf;
     } catch (e) {
@@ -3246,35 +3324,6 @@ var MimoTtsEngine = class {
     await fb?.close();
   }
 };
-
-// src/prompts.ts
-var ZH = "\u3010\u8BED\u97F3\u6A21\u5F0F\u3011\u5F53\u524D\u56DE\u590D\u4F1A\u88AB\u8BED\u97F3\u6717\u8BFB\uFF0C\u8BF7\u59CB\u7EC8\u7528\u7528\u6237\u6240\u7528\u8BED\u8A00\u3001\u4EE5\u53E3\u8BED\u5316\u7684\u77ED\u53E5\u76F4\u63A5\u56DE\u7B54\uFF0C\u50CF\u9762\u5BF9\u9762\u804A\u5929\u4E00\u6837\u81EA\u7136\uFF0C\u907F\u514D\u4E66\u9762\u8BED\u548C\u957F\u96BE\u53E5\u3002\u4E0D\u8981\u4F7F\u7528\u4EFB\u4F55 Markdown \u6216\u6392\u7248\u7B26\u53F7\uFF08\u661F\u53F7\u3001\u4E0B\u5212\u7EBF\u3001\u53CD\u5F15\u53F7\u3001\u4E95\u53F7\u3001\u5217\u8868\u4E0E\u8868\u683C\u6807\u8BB0\u3001\u4EE3\u7801\u5757\u7B49\uFF09\u3002\u9700\u8981\u5206\u70B9\u8BF4\u660E\u65F6\u7528\u300C\u7B2C\u4E00\u3001\u7B2C\u4E8C\u300D\u6216\u8FDE\u8D2F\u7684\u77ED\u53E5\u8868\u8FBE\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EE3\u7801\u7247\u6BB5\u3001\u5B8C\u6574 URL \u6216\u5197\u957F\u5B9A\u4E49\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u6982\u62EC\u542B\u4E49\u5373\u53EF\u3002\u56DE\u7B54\u7B80\u6D01\u76F4\u63A5\uFF0C\u4E0D\u8981\u91CD\u590D\u548C\u5BD2\u6684\u3002\u5982\u679C\u7528\u6237\u5728\u4F60\u6717\u8BFB\u65F6\u63D2\u8BDD\uFF08\u54EA\u6015\u53EA\u662F\u300C\u55EF/\u5BF9\u300D\u8FD9\u6837\u7684\u77ED\u5E94\u7B54\uFF09\uFF0C\u7ACB\u5373\u505C\u6B62\u5F53\u524D\u53E5\uFF0C\u628A\u8BDD\u8F6E\u8BA9\u7ED9\u7528\u6237\uFF1B\u56DE\u7B54\u540E\u7559\u51FA\u505C\u987F\uFF0C\u4E0D\u8981\u8FDE\u95EE\u4E24\u4E2A\u95EE\u9898\uFF1B\u7528\u6237\u6C89\u9ED8\u65F6\u4E0D\u8981\u4E3B\u52A8\u627E\u65B0\u8BDD\u9898\u3002";
-var EN = '[Voice mode] Your reply will be read aloud. Always answer in the language the user is using, in short conversational sentences, directly and naturally, as if talking face to face; avoid written-style phrasing and long, complex sentences. Do not use any Markdown or formatting symbols (asterisks, underscores, backticks, hash signs, list or table markup, code blocks, etc.). When you need to list points, say them as "first, second" or as connected short sentences; unless the user explicitly asks, do not output code snippets, full URLs or lengthy definitions \u2014 summarize the meaning in a sentence or two. Keep answers concise and direct; no repetition or pleasantries. If the user interrupts while you are being read aloud (even with a short acknowledgment like "uh-huh" or "yeah"), stop the current sentence immediately and yield the turn; leave a pause after answering and never ask two questions in a row; when the user is silent, do not bring up a new topic on your own.';
-var spokenPrompt = (lang) => lang === "en" ? EN : ZH;
-function normalizePromptLang(raw) {
-  if (typeof raw !== "string" || raw === "" || raw.length > 32) return "zh";
-  return /^zh\b/i.test(raw) ? "zh" : "en";
-}
-var SAMPLE_ZH = "\u4F60\u597D\uFF0C\u6B22\u8FCE\u4F7F\u7528\u8BED\u97F3\u6A21\u5F0F\u3002";
-var SAMPLE_EN = "Hello, welcome to voice mode.";
-var SAMPLE_BY_LANG = {
-  zh: SAMPLE_ZH,
-  en: SAMPLE_EN,
-  ja: "\u3053\u3093\u306B\u3061\u306F\u3001\u97F3\u58F0\u30E2\u30FC\u30C9\u3078\u3088\u3046\u3053\u305D\u3002",
-  ko: "\uC548\uB155\uD558\uC138\uC694, \uC74C\uC131 \uBAA8\uB4DC\uC5D0 \uC624\uC2E0 \uAC83\uC744 \uD658\uC601\uD569\uB2C8\uB2E4.",
-  fr: "Bonjour, bienvenue dans le mode vocal.",
-  de: "Hallo, willkommen im Sprachmodus.",
-  es: "Hola, bienvenido al modo de voz.",
-  pt: "Ol\xE1, bem-vindo ao modo de voz.",
-  it: "Ciao, benvenuto nella modalit\xE0 vocale.",
-  ru: "\u0417\u0434\u0440\u0430\u0432\u0441\u0442\u0432\u0443\u0439\u0442\u0435, \u0434\u043E\u0431\u0440\u043E \u043F\u043E\u0436\u0430\u043B\u043E\u0432\u0430\u0442\u044C \u0432 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u043E\u0439 \u0440\u0435\u0436\u0438\u043C."
-};
-function previewSample(engine, voice) {
-  if (engine === "kokoro" || engine === "openai" || engine === "mimo") return `${SAMPLE_ZH}${SAMPLE_EN}`;
-  if (engine === "vits") return SAMPLE_ZH;
-  const m = /^([a-z]{2,3})-/i.exec(voice);
-  return m && SAMPLE_BY_LANG[m[1].toLowerCase()] || SAMPLE_EN;
-}
 
 // src/settings-store.ts
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -3553,12 +3602,24 @@ var OpenAiTtsConfig = z2.object({
   fallback: z2.union([z2.const("none"), z2.const("vits"), z2.const("kokoro")]).default("none").description("Local engine used while the server is unreachable or slow."),
   fallbackVoice: z2.string().default("").description("Voice for the fallback engine (empty = its default).")
 });
+var MimoTtsConfig = z2.object({
+  apiKey: z2.string().role("secret").default("").description("MiMo API key (sent as the api-key header; never reuse another vendor key here)."),
+  baseUrl: z2.string().default("https://api.xiaomimimo.com/v1").description("MiMo API base URL; defaults to the official endpoint."),
+  model: z2.string().default("mimo-v2.5-tts").description("Model id: mimo-v2.5-tts / mimo-v2.5-tts-voicedesign / mimo-v2.5-tts-voiceclone."),
+  voice: z2.string().default("mimo_default").description("Preset voice id (the voice setting overrides it)."),
+  instructions: z2.string().default("").description("Natural-language style instruction (emotion, dialect, pace)."),
+  responseFormat: z2.union([z2.const("wav"), z2.const("mp3")]).default("wav").description("Container format; raw pcm is not supported because it cannot be labelled with a decodable MIME."),
+  timeoutMs: z2.number().min(1e3).max(6e4).default(8e3).description("Per-sentence timeout; slower counts as unavailable."),
+  fallback: z2.union([z2.const("none"), z2.const("vits"), z2.const("kokoro")]).default("none").description("Local engine used while the server is unreachable or slow."),
+  fallbackVoice: z2.string().default("").description("Voice for the fallback engine (empty = its default).")
+});
 var Config = z2.object({
   enabled: z2.boolean().default(true),
   cacheDir: z2.string().default(defaultModelCacheDir()),
   modelHost: z2.string().default("https://huggingface.co"),
   ttsEngine: z2.union([z2.const("edge"), z2.const("vits"), z2.const("kokoro"), z2.const("openai"), z2.const("mimo")]).default("edge"),
   openaiTts: OpenAiTtsConfig,
+  mimoTts: MimoTtsConfig,
   kokoroModel: z2.union([z2.const("int8"), z2.const("fp32")]).default("int8"),
   allowLan: z2.boolean().default(false),
   asrReplacements: z2.array(AsrReplacementSchema).default([]),
@@ -3877,11 +3938,21 @@ function apply(ctx, config) {
   const makeEngine = (kind) => {
     if (kind === "edge") return new EdgeTtsEngine(config.voice, config.rate);
     if (kind === "mimo") {
-      const fallbackKind = config.openaiTts.fallback;
+      const m = config.mimoTts;
+      const fb = m.fallback;
       return new MimoTtsEngine({
-        // key 与本地回退走 openai 兼容配置同一套 host-only 项（不新增密钥面）。
-        apiKey: config.openaiTts.apiKey || void 0,
-        fallback: fallbackKind === "none" ? void 0 : () => makeEngine(fallbackKind === "vits" ? "vits" : "kokoro")
+        apiKey: m.apiKey,
+        baseUrl: m.baseUrl,
+        model: m.model,
+        voice: m.voice,
+        instructions: m.instructions,
+        responseFormat: m.responseFormat,
+        timeoutMs: m.timeoutMs,
+        fallback: fb === "none" ? void 0 : () => {
+          const engine = makeEngine(fb === "vits" ? "vits" : "kokoro");
+          if (m.fallbackVoice) engine.updateVoice(m.fallbackVoice);
+          return engine;
+        }
       });
     }
     if (kind === "openai") {
@@ -3892,7 +3963,9 @@ function apply(ctx, config) {
         baseUrl: preset?.baseUrl ?? o.baseUrl,
         apiKey: o.apiKey || void 0,
         model: preset?.model ?? o.model,
-        voice: o.voice,
+        // A3：设置里的音色为空时用预设自带音色（否则 SiliconFlow 的 `model:voice` 形态永远用不上，
+        // 用户只切预设不填音色就会 400）。设置值优先，空才回落。
+        voice: vset.voice?.trim() || preset?.voice || o.voice,
         instructions: o.instructions || void 0,
         responseFormat: o.responseFormat,
         timeoutMs: o.timeoutMs,
@@ -4789,6 +4862,7 @@ async function* tapActiveStream(sessionId, inner, queue, broadcast, onTurn, spea
 }
 export {
   Config,
+  MimoTtsConfig,
   OpenAiTtsConfig,
   VoiceSettingsSchema,
   apply,

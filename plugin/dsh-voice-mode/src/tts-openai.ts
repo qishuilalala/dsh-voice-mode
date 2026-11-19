@@ -231,13 +231,30 @@ export const OPENAI_PRESETS: Record<string, OpenAiPreset> = {
     model: 'fishaudio/fish-speech-1.5',
     voice: 'fishaudio/fish-speech-1.5:anna',
   },
+  'openrouter-openai': {
+    baseUrl: 'https://openrouter.ai/api/v1',
+    model: 'openai/gpt-4o-mini-tts',
+    voice: 'alloy',
+  },
+  // 自建示例（本机地址为占位；无鉴权时 key 留空即可）：
+  //   Kokoro-FastAPI / LocalAI 的 OpenAI 兼容面，Kokoro 音色名取自本插件本地目录（zf_xiaobei 等）。
+  'selfhosted-kokoro': {
+    baseUrl: 'http://127.0.0.1:8880/v1',
+    model: 'kokoro',
+    voice: 'zf_xiaobei',
+  },
+  //   vLLM-Omni（ADR-0013 实测过 VoxCPM2 / Qwen3-TTS 部署）。
+  'selfhosted-vllm': {
+    baseUrl: 'http://127.0.0.1:8000/v1',
+    model: 'tts-1',
+    voice: 'default',
+  },
 }
 
 /**
  * 按预设解析远端地址与模型：未知/空预设返回 null（调用方回落 Config 文件值）。
  * 纯函数（便于单测；网络形状见 docs/plan/tts-expansion-2026-11-18.md 一手表）。
  */
-export function resolveOpenAiEndpoint(preset: string): { baseUrl: string; model: string } | null {
-  const p = OPENAI_PRESETS[preset]
-  return p ? { baseUrl: p.baseUrl, model: p.model } : null
+export function resolveOpenAiEndpoint(preset: string): OpenAiPreset | null {
+  return OPENAI_PRESETS[preset] ?? null
 }

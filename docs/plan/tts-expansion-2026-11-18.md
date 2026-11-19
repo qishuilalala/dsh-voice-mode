@@ -14,7 +14,7 @@
 |---|---|---|---|
 | SiliconFlow | OpenAI 兼容 POST /audio/speech，base https://api.siliconflow.cn/v1；voice 用 model:voice（如 FunAudioLLM/CosyVoice2-0.5B:alex）；speed 0.25-4；mp3/opus/wav/pcm | ✅ 直接 preset | CosyVoice2-0.5B $7.15/M UTF-8 bytes（150ms）；fish-1.5 $15/M；8 预置音色+复刻 |
 | OpenRouter / 自建（Kokoro-FastAPI/LocalAI/vLLM-Omni） | OpenAI 形状 | ✅ 直接 preset | 按各家 |
-| 小米 MiMo | 聊天式 messages（assistant 放文本、user 放风格指令）+ {audio:{voice}}；模型 mimo-v2.5-tts/voicedesign/voiceclone；注意 v2.5 系 2026.10.21 下线须切 V2.6；低延迟流式已上线；限时免费 | ❌ 需专用适配器 | 限时免费（收费后重查） |
+| 小米 MiMo | 聊天式 messages（assistant 放文本、user 放自然语言风格指令）+ {audio:{voice,format}}；模型 mimo-v2.5-tts/voicedesign/voiceclone（**TTS 现行仍是 v2.5**；V2.6 指 Pro/Flash 推理模型，不要混用）；低延迟流式已上线；TTS 系列限时免费 | ❌ 需专用适配器（已实现 E3） | 限时免费（收费后重查） |
 | 通义百炼 Qwen 官方 | WebSocket SDK（client.audio.tts）；社区自托管封装可用 OpenAI 引擎 | 官方❌/自托管✅ | CosyVoice 0.8-2元/万字符 |
 | MiniMax（t2a_v2 专用接口） | 专用形状需适配器（E3 同列） | ❌ | Speech 2.8 现行，$60/1M 字符，Humanness #4 |
 | Qwen3-TTS 开源 | 本地权重（Tokenizer-12Hz），社区已有 OpenAI 兼容 server（97ms 级，GPU） | 自托管✅ | 本地免费，GPU 成本 |
@@ -27,6 +27,16 @@
 - E3 小米 MiMo 专用引擎（M-L）✅ 已完成（commit ccbdf51）：`src/tts-mimo.ts` 新 TtsEngine（POST /v1/chat/completions、`api-key` 头、assistant 放文本、`audio{voice,format}`、取 `choices[0].message.audio.data`）；信任边界同 ADR-0013（key 只 host、失败回退本地 + 30s 冷却、打断不计失败、未配置 key 即 ready=false）。一手核实结论：TTS 现行仍是 **v2.5 系列**（`mimo-v2.5-tts`/`voicedesign`/`voiceclone`），V2.6 仅指 Pro/Flash 推理模型；TTS 系列**限时免费**（官方定价页 2026-10-21）；普通话速不走字段、走风格指令/音频标签，故本期不发 speed。
 - E4 本地候选评估（候选，GPU 到位后）：挑战者排序 Qwen3-TTS > Qwen3-ASR > CosyVoice 3 > X-ASR（见前沿备忘 docs/research/frontier-2026-11-18.md），每轮最多两个离线评估，不先换（roadmap §4）。
 - 更正（前沿备忘 2026-11-18）：小米 TTS 现行仍是 v2.5 系列（V2.6 系指 Pro/Flash 推理模型）；E3 核实项改为 V2.5-TTS 定价/限免状态。
+
+## E1 预设清单（代码真源：`src/tts-openai.ts` OPENAI_PRESETS；UI 同步显示“费用 + 文本发往”）
+
+| 预设 id | 端点 | 模型 | 计费 | 文本发往 |
+|---|---|---|---|---|
+| siliconflow-cosyvoice2 | api.siliconflow.cn/v1 | FunAudioLLM/CosyVoice2-0.5B | 约 $7.15/百万 UTF-8 字节 | api.siliconflow.cn |
+| siliconflow-fish | api.siliconflow.cn/v1 | fishaudio/fish-speech-1.5 | 约 $15/百万 UTF-8 字节 | api.siliconflow.cn |
+| openrouter-openai | openrouter.ai/api/v1 | openai/gpt-4o-mini-tts | 按 OpenRouter 计费 | openrouter.ai |
+| selfhosted-kokoro | 127.0.0.1:8880/v1 | kokoro | 无逐次费用 | 不出本机网络 |
+| selfhosted-vllm | 127.0.0.1:8000/v1 | tts-1 | 无逐次费用 | 不出本机网络 |
 
 ## 默认策略（I10 守恒）
 
