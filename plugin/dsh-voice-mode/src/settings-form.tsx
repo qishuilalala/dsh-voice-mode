@@ -52,6 +52,12 @@ const cardStyle: React.CSSProperties = {
   background: t.bg,
   borderRadius: 12,
   overflow: 'hidden',
+  // 2026-11-20：卡片必须适配所在容器（设置弹窗内容区实测只有 ~800px，旧实现被内容撑到 904px
+  // 直接溢出弹窗 192px、右侧文字被裁）。minWidth:0 是 flex/grid 子项能收缩的前提。
+  boxSizing: 'border-box',
+  width: '100%',
+  maxWidth: '100%',
+  minWidth: 0,
 }
 
 const setHeader: React.CSSProperties = {
@@ -73,13 +79,31 @@ const setHeadText: React.CSSProperties = { flexDirection: 'column', flex: 1, gap
 const setName: React.CSSProperties = { color: t.label, fontSize: 15, fontWeight: 600, lineHeight: 1.4 }
 const setDesc: React.CSSProperties = { color: t.term, fontSize: 13, lineHeight: 1.5 }
 const setChevron: React.CSSProperties = { color: t.term, flex: 'none', transition: 'transform .16s', display: 'inline-flex' }
-const setBody: React.CSSProperties = { borderTop: `1px solid ${t.border}`, margin: '0 16px', paddingBottom: 8 }
-const setRow: React.CSSProperties = { alignItems: 'center', gap: 12, padding: '12px 0', display: 'flex' }
-const setLabelBox: React.CSSProperties = { flexDirection: 'column', flex: 1, gap: 3, minWidth: 0, display: 'flex' }
+const setBody: React.CSSProperties = { borderTop: `1px solid ${t.border}`, margin: '0 16px', paddingBottom: 12, display: 'flex', flexDirection: 'column', minWidth: 0 }
+const setRow: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(120px, 190px) minmax(0, 1fr)',
+  columnGap: 16,
+  rowGap: 4,
+  alignItems: 'start',
+  padding: '10px 0',
+  borderTop: `1px solid ${t.border}`,
+  minWidth: 0,
+}
 const setLabel: React.CSSProperties = { fontSize: 13, lineHeight: '20px' }
 const setHint: React.CSSProperties = { color: t.term, fontSize: 12, lineHeight: '18px' }
-const setSeg: React.CSSProperties = { border: `1px solid ${t.border}`, borderRadius: 8, flexShrink: 0, gap: 2, padding: 2, display: 'inline-flex' }
+const setSeg: React.CSSProperties = {
+  border: `1px solid ${t.border}`,
+  borderRadius: 8,
+  gap: 2,
+  padding: 2,
+  display: 'flex',
+  flexWrap: 'wrap',
+  maxWidth: '100%',
+  minWidth: 0,
+}
 const setSegBtn = (on: boolean): React.CSSProperties => ({
+  flex: '0 0 auto',
   font: 'inherit',
   color: on ? t.label : 'var(--dsw-alias-label-secondary)',
   cursor: 'pointer',
@@ -93,8 +117,8 @@ const setSegBtn = (on: boolean): React.CSSProperties => ({
 })
 const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
-  width: 280,
-  maxWidth: '100%',
+  width: '100%',
+  maxWidth: 420,
   padding: '7px 10px',
   borderRadius: 8,
   border: `1px solid ${t.border}`,
@@ -104,7 +128,16 @@ const inputStyle: React.CSSProperties = {
   fontFamily: 'inherit',
   outline: 'none',
 }
+/**
+ * 容器查询：设置弹窗内容区实测约 564px，两列栅格会把控件压到 324px 且说明换行过多。
+ * 窄容器下改为「标题 / 控件 / 说明」三段堆叠；宽容器（独立设置页）保持左右两列。
+ * 注意：CSS 模板里不写中文（strings-coverage 红线：用户可见文案必须走词典）。
+ */
 const focusVisibleCss = `
+[data-dshvm-settings="card"] { container-type: inline-size; }
+@container (max-width: 620px) {
+  [data-dshvm-row] { grid-template-columns: minmax(0, 1fr) !important; row-gap: 6px !important; }
+}
 [data-dshvm-settings="card"] input:focus-visible,
 [data-dshvm-settings="card"] select:focus-visible,
 [data-dshvm-settings="card"] button:focus-visible {
@@ -276,40 +309,73 @@ function SecretField({
   score,
   field,
   saved,
-  onCleared,
+  onChanged,
 }: {
   score: ScopeController
   field: string
   saved: boolean
-  onCleared: () => void
+  onChanged: () => void
 }): React.ReactElement {
-  const [clearing, setClearing] = useState(false)
+  // 自带 draft：密钥输入框不显示旧值（GET 恒空串），保存成功后必须清空，否则密码框里
+  // 一直留着用户刚敲的那串（视觉上像「还没保存」）。保存/清除都会刷新 has* 状态。
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<'saved' | 'cleared' | null>(null)
+  const commit = (): void => {
+    const value = draft.trim()
+    if (!value || busy) return
+    setBusy(true)
+    void Promise.resolve(score.set(field, value))
+      .then((ok) => {
+        if (ok === false) return
+        setDraft('')
+        setNote('saved')
+        onChanged()
+      })
+      .catch(() => undefined)
+      .finally(() => setBusy(false))
+  }
   const clear = (): void => {
-    if (clearing) return
-    setClearing(true)
+    if (busy) return
+    setBusy(true)
     void fetch(location.origin + BASE_PATH + '/settings', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ clearSecrets: [field] }),
     })
       .then((res) => {
-        if (res.ok) onCleared()
+        if (res.ok) {
+          setNote('cleared')
+          onChanged()
+        }
       })
       .catch(() => undefined)
-      .finally(() => setClearing(false))
+      .finally(() => setBusy(false))
   }
   return (
     <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-      <TextField score={score} field={field} value="" type="password" placeholder={saved ? tr('secretKeep') : ''} />
+      <input
+        style={inputStyle}
+        type="password"
+        autoComplete="new-password"
+        value={draft}
+        placeholder={saved ? tr('secretKeep') : tr('secretPlaceholderEmpty')}
+        aria-label={tr(saved ? 'secretSaved' : 'secretHintBrowser')}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit()
+        }}
+      />
       {saved ? (
         <button
           type="button"
           onClick={clear}
-          aria-busy={clearing || undefined}
+          aria-busy={busy || undefined}
           style={{
             font: 'inherit',
-            cursor: clearing ? 'default' : 'pointer',
-            opacity: clearing ? 0.6 : 1,
+            cursor: busy ? 'default' : 'pointer',
+            opacity: busy ? 0.6 : 1,
             color: t.label,
             background: 'var(--dsw-alias-bg-layer-2)',
             border: `1px solid ${t.border}`,
@@ -319,10 +385,16 @@ function SecretField({
             lineHeight: '16px',
           }}
         >
-          {tr('secretClear')}
+          {busy ? tr('synthesizing') : tr('secretClear')}
         </button>
       ) : null}
-      <span style={{ fontSize: 11, color: t.term }}>{saved ? tr('secretSaved') : tr('secretHintBrowser')}</span>
+      <span
+        role="status"
+        aria-live="polite"
+        style={{ fontSize: 11, color: note === 'cleared' ? t.term : 'var(--dsw-alias-state-success-primary)' }}
+      >
+        {note === 'saved' ? tr('secretSaved') : note === 'cleared' ? tr('secretCleared') : saved ? tr('secretSaved') : tr('secretHintBrowser')}
+      </span>
     </span>
   )
 }
@@ -1371,7 +1443,19 @@ function OpenAiPresetSection({
   const data = presets?.[cur]
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-      <SegGroup score={score} field="openaiPreset" value={cur} options={options} />
+      {/* 预设条目多（含自定义/跟随配置），窄容器里用下拉而不是一排按钮。 */}
+      <select
+        value={cur}
+        aria-label={tr('openaiPresetLabel')}
+        onChange={(e) => void score.set('openaiPreset', e.target.value)}
+        style={{ ...inputStyle, maxWidth: 360 }}
+      >
+        {options.map((o) => (
+          <option key={o.v} value={o.v}>
+            {o.label}
+          </option>
+        ))}
+      </select>
       {data ? (
         <span style={{ fontSize: 11, color: t.term, fontFamily: 'monospace', wordBreak: 'break-all' }}>
           {data.baseUrl} · {data.model} · {data.voice}
@@ -1395,7 +1479,7 @@ function OpenAiPresetSection({
       <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
         <button
           type="button"
-          disabled={!cur || verifying}
+          disabled={verifying}
           aria-busy={verifying || undefined}
           onClick={() => onVerify(cur)}
           style={{
@@ -1404,7 +1488,7 @@ function OpenAiPresetSection({
             alignItems: 'center',
             alignSelf: 'flex-start',
             cursor: cur ? 'pointer' : 'default',
-            opacity: cur ? 1 : 0.5,
+            opacity: 1,
             color: t.label,
             background: 'var(--dsw-alias-bg-layer-2)',
             border: `1px solid ${t.border}`,
@@ -1463,13 +1547,13 @@ function useHostPresets(): { presets: Record<string, HostPreset> | null; reload:
 
 function Row({ name, desc, children }: { name: string; desc: string; children: React.ReactNode }): React.ReactElement {
   const label = tr(`${name}Label` as TKey)
+  // 2026-11-20 重做：左列 = 标题 + 说明（说明不再与控件抢行宽），右列 = 控件（minWidth:0 可收缩）。
   return (
-    <div style={setRow}>
-      <div style={setLabelBox}>
-        <span style={setLabel}>{label}</span>
-        <span style={setHint}>{desc}</span>
-      </div>
-      <span style={{ flexShrink: 0, maxWidth: 300 }}>{children}</span>
+    <div style={setRow} data-dshvm-row={name}>
+      <span style={setLabel}>{label}</span>
+      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>{children}</div>
+      {/* 说明独占整行：放左列会把行撑到 6 行高（实测），放右列会挤压控件。 */}
+      <span style={{ ...setHint, gridColumn: '1 / -1', minWidth: 0 }}>{desc}</span>
     </div>
   )
 }
@@ -1527,14 +1611,54 @@ function EffectivePending({ effective, value, ready }: { effective: Record<strin
 }
 
 /** 设置分组：小标题 + 上分隔线，把罗列字段梳理成块。 */
-function Section({ title, children }: { title: string; children: React.ReactNode }): React.ReactElement {
+function Section({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string
+  defaultOpen?: boolean
+  children: React.ReactNode
+}): React.ReactElement {
+  // 2026-11-20：分节可折叠。旧实现一次全铺开 = 3559px 高的单列，找任何一项都要长滚动。
+  const [open, setOpen] = useState(defaultOpen)
   return (
-    <div style={{ marginTop: 2 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0 2px' }}>
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--dsw-alias-label-secondary)' }}>{title}</span>
-        <span style={{ flex: 1, height: 1, background: t.border }} />
-      </div>
-      {children}
+    <div style={{ minWidth: 0, borderTop: `1px solid ${t.border}` }}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          appearance: 'none',
+          width: '100%',
+          font: 'inherit',
+          textAlign: 'left',
+          cursor: 'pointer',
+          background: 'transparent',
+          border: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '12px 0 10px',
+          color: 'var(--dsw-alias-label-secondary)',
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            display: 'inline-flex',
+            transition: 'transform .16s',
+            transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+            color: t.term,
+          }}
+        >
+          <svg viewBox="0 0 16 16" width={12} height={12}>
+            <path fill="currentColor" d="M6 4l4 4-4 4z" />
+          </svg>
+        </span>
+        <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '.02em' }}>{title}</span>
+      </button>
+      {open ? <div style={{ minWidth: 0, paddingBottom: 6 }}>{children}</div> : null}
     </div>
   )
 }
@@ -1679,7 +1803,9 @@ function EngineStatusInline({ onSwitchLocal }: { onSwitchLocal?: () => void }): 
       >
         {engineBadge(tts.engine)}
       </span>
-      <span style={{ fontSize: 12, fontWeight: statusText === tr('engineReady') || statusText === tr('engineError') ? 600 : 400, color: statusColor }}>{statusText}</span>
+      {/* 2026-11-20：错误原因只在下方错误行出现一次。此前这里已用 engineDownText 输出完整原因，
+          下面 tts.error 区块又重复一遍，界面上出现两条一模一样的红字。 */}
+      <span style={{ fontSize: 12, fontWeight: 600, color: statusColor }}>{tts.error ? tr('engineUnavailableShort') : statusText}</span>
       {tts.loading && tts.progress?.file && (
         <span style={{ fontSize: 12, color: t.term }}>{tts.progress.file} {tts.progress.percent}%</span>
       )}
@@ -1879,6 +2005,8 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
   const hostPresetState = useHostPresets()
   const hostPresets = hostPresetState.presets
   const [presetVerify, setPresetVerify] = useState<{ id: string; state: 'ok' | 'fail'; note?: string } | null>(null)
+  // 折叠态摘要用：一次轮询拿到引擎就绪/错误（与 EngineStatusInline 同源）。
+  const headStatus = useModelsStatus()
   /** 生效音色：设置值优先，空则回落预设音色（与 host 侧 makeEngine 的口径一致）。 */
   const effectiveVoice = (): string => {
     const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
@@ -1997,7 +2125,14 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
       <button type="button" aria-expanded={!collapsed} aria-controls="dshvm-settings-card-body" onClick={() => setCollapsed((c) => !c)} style={{ ...setHeader, background: collapsed ? 'transparent' : t.bgOpen }}>
         <span style={setHeadText}>
           <span style={setName}>{tr('stateVoiceMode')}</span>
-          <span style={setDesc}>{tr('settingsCardDesc')}</span>
+          {/* 折叠态只显示「当前是什么」三要素：引擎 · 音色 · 状态。旧实现把 24 个字段名用
+              「 / 」拼成一行，既读不懂也挤压布局。 */}
+          <span
+            style={{ ...setDesc, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
+            title={tr('settingsCardDesc')}
+          >
+            {collapsed ? `${ENGINE_NAME[engine]()} · ${String(value.voice ?? '') || '—'} · ${headStatus?.tts?.error ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine) : headStatus?.tts?.loading ? tr('engineLoading') : tr('engineReady')}` : tr('settingsCardDesc')}
+          </span>
         </span>
         <span style={{ ...setChevron, transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)' }} aria-hidden="true">
           <svg viewBox="0 0 16 16" width={14} height={14}>
@@ -2010,7 +2145,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
         <div id="dshvm-settings-card-body" style={setBody}>
           <EffectivePending effective={getRuntimeBoot()} value={value} ready={snap?.status === 'ready'} />
           <div style={{ marginTop: 4 }}>
-            <Section title={tr('secRead')}>
+            <Section title={tr('secRead')} defaultOpen>
             <Row name="ttsEngine" desc={tr('descTtsEngine')}>
               <SegGroup
                 score={scope}
@@ -2026,21 +2161,36 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                 }}
               />
             </Row>
-            <EngineStatusInline
-              onSwitchLocal={() => {
-                void scope.set('ttsEngine', 'kokoro')
-                void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
+            {/* 状态与自测合成一个面板：引擎/就绪/错误/一键自测（旧实现在引擎行下方散落三块）。 */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                margin: '4px 0 12px',
+                padding: '10px 12px',
+                border: `1px solid ${t.border}`,
+                borderRadius: 8,
+                background: 'var(--dsw-alias-bg-layer-2)',
+                minWidth: 0,
               }}
-            />
-            <SelfTestSection
-              voice={effectiveVoice()}
-              rate={Number(value.rate ?? 1.1)}
-              engine={engine}
-              onSwitchLocal={() => {
-                void scope.set('ttsEngine', 'kokoro')
-                void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
-              }}
-            />
+            >
+              <EngineStatusInline
+                onSwitchLocal={() => {
+                  void scope.set('ttsEngine', 'kokoro')
+                  void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
+                }}
+              />
+              <SelfTestSection
+                voice={effectiveVoice()}
+                rate={Number(value.rate ?? 1.1)}
+                engine={engine}
+                onSwitchLocal={() => {
+                  void scope.set('ttsEngine', 'kokoro')
+                  void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
+                }}
+              />
+            </div>
             {engine === 'kokoro' && (
               <Row name="kokoroModel" desc={tr('descKokoroModel')}>
                 <SegGroup
@@ -2120,7 +2270,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                     score={scope}
                     field="openaiApiKey"
                     saved={secretKeys.openaiApiKey}
-                    onCleared={refreshSecretKeys}
+                    onChanged={refreshSecretKeys}
                   />
                 </Row>
               </>
@@ -2131,7 +2281,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                   score={scope}
                   field="mimoApiKey"
                   saved={secretKeys.mimoApiKey}
-                  onCleared={refreshSecretKeys}
+                  onChanged={refreshSecretKeys}
                 />
               </Row>
             )}
@@ -2139,7 +2289,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
               <NumberField score={scope} field="rate" value={value.rate ?? 1.1} min={0.5} max={2} step={0.1} />
             </Row>
             </Section>
-            <Section title={tr('secInterrupt')}>
+            <Section title={tr('secInterrupt')} defaultOpen>
             <Row name="interruptLevel" desc={tr('descInterrupt')}>
               <SegGroup
                 score={scope}

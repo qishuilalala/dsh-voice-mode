@@ -233,35 +233,22 @@ t('strings（R1 M-2 补强，R2 Minor-1）：全量零引用死键扫描（动�
   assert.deepEqual(scanDead(['zzFakeLabel']), ['zzFakeLabel'], '无 base Row/field 的假 *Label 键未被报出——白名单仍是 blanket 豁免')
 })
 
-t('strings（R1 M-3/M-4/文案 8）：effectiveNote 补 Kokoro 即时档、cardDesc 补两项、尾句收窄', () => {
-  const note = /settingsEffectiveNote: '([^']*)'/.exec(stringsSrc)[1]
-  assert.ok(/即时[^；]*Kokoro 模型精度/.test(note), 'Kokoro 模型精度应归①即时档（applyVset 重建引擎，已缓存则即时）')
-  const card = /settingsCardDesc: '([^']*)'/.exec(stringsSrc)[1]
-  for (const k of ['打断语音抢救', 'LLM 纠错']) {
-    assert.ok(card.includes(k), `插件摘要卡漏列 ${k}（批 1/批 4 新增项）`)
-  }
-  assert.ok(note.includes('下次进入语音模式才生效的项会列在卡片顶部'), 'effectiveNote 尾句未收窄（tier② 字段不进待生效列表）')
-  assert.ok(!note.includes('已保存但未生效'), 'effectiveNote 仍有旧尾句')
-})
-
-t('strings（R2 Minor B）：settingsCardDesc 补 PR #16 三个新设置（与 settingsEffectiveNote 内部一致）', () => {
-  // 插件列表摘要行（client.tsx:528 渲染 settingsCardDesc）此前漏列 PR #16 的
-  // 朗读回复 / 状态条 / 字幕浮层，而生效说明（settingsEffectiveNote）已列——
-  // 两条文案内部不一致：用户从摘要行看不出这三个设置存在。
+t('strings（R6 UI 重做）：摘要卡改为「一句话说明」，不再罗列字段名', () => {
+  // 2026-11-20 用户反馈「非常丑陋拥挤」：旧 settingsCardDesc 把 24 个字段名用「 / 」拼成一行，
+  // 既是整张卡片最丑的一行，也在窄容器里被截断成乱码。设计改为：
+  //   ① 展开态：一句人话说明这张卡能做什么；
+  //   ② 折叠态：引擎 · 音色 · 就绪状态（由 settings-form 现场拼，不走词典）。
   const cardZh = /settingsCardDesc: '([^']*)'/.exec(stringsSrc)[1]
-  for (const k of ['朗读回复', '状态条', '字幕浮层']) {
-    assert.ok(cardZh.includes(k), `插件摘要卡漏列 ${k}（PR #16 新增设置）`)
-  }
+  assert.ok(cardZh.length <= 90, 'settingsCardDesc 太长（应为一句话，≤90 字）：' + cardZh.length)
+  assert.ok(!cardZh.includes(' / '), 'settingsCardDesc 又变成字段名罗列了（出现过「 / 」分隔）')
   const enBlock = stringsSrc.slice(stringsSrc.indexOf('export const en'))
   const cardEn = /settingsCardDesc: '([^']*)'/.exec(enBlock)[1]
-  for (const k of ['read replies', 'status bar', 'caption overlay']) {
-    assert.ok(cardEn.includes(k), `en 插件摘要卡漏列 ${k}（PR #16 新增设置）`)
-  }
-  // 内部一致性：这三项在生效说明里必须在（对照锚点，防止两边再次漂移）。
-  const note = /settingsEffectiveNote: '([^']*)'/.exec(stringsSrc)[1]
-  for (const k of ['朗读回复', '状态条', '字幕浮层']) {
-    assert.ok(note.includes(k), `settingsEffectiveNote 未列 ${k}（对照锚点缺失）`)
-  }
+  assert.ok(cardEn.length <= 220, 'en settingsCardDesc 太长：' + cardEn.length)
+  assert.ok(!cardEn.includes(' / '), 'en settingsCardDesc 又变成字段名罗列了')
+  // 折叠态摘要必须由「引擎名 + 音色 + 就绪状态」构成（源码级守卫，防回退成罗列）
+  const sf = read('src/settings-form.tsx')
+  assert.ok(/ENGINE_NAME\[engine\]\(\)/.test(sf), '折叠摘要缺引擎名')
+  assert.ok(/tr\('engineReady'\)/.test(sf), '折叠摘要缺就绪状态')
 })
 
 t('strings（R1 文案修正）：hold-only 披露 / detect 回落 / Ctrl 措辞 / 批次号清零 / 跳过本句 / 纠错口径', () => {

@@ -1756,8 +1756,8 @@ var zh = {
   preview: "\u8BD5\u542C",
   // E1 在线预设。
   openaiPresetLabel: "\u5728\u7EBF\u9884\u8BBE",
-  descOpenaiPreset: "\u5728\u7EBF TTS \u9884\u8BBE\uFF1A\u9009\u4E2D\u540E\u5730\u5740\u4E0E\u6A21\u578B\u6309\u9884\u8BBE\u8D70\uFF08key \u8D70 openaiTts.apiKeys[\u9884\u8BBEid] \u6216 openaiTts.apiKey\uFF0C\u5747\u5728\u5BBF\u4E3B\u4FA7\uFF0C\u4E0D\u7ECF\u8FC7\u6D4F\u89C8\u5668\uFF09\uFF1B\u7A7A = \u624B\u52A8\u6CBF\u7528\u914D\u7F6E\u6587\u4EF6\u3002\u5207\u6362\u540E\u70B9\u4E0B\u65B9\u81EA\u6D4B\u9A8C\u8BC1",
-  presetCustom: "\u624B\u52A8\u914D\u7F6E\uFF08profile \u6587\u4EF6\uFF09",
+  descOpenaiPreset: "\u9009\u9884\u8BBE\u5373\u5E26\u51FA\u5730\u5740\u4E0E\u6A21\u578B\uFF08\u4E00\u822C\u53EA\u9700\u586B key\uFF09\uFF1B\u5217\u8868\u91CC\u6CA1\u6709\u5C31\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u586B URL/\u6A21\u578B\u3002\u9009\u300C\u8DDF\u968F\u914D\u7F6E\u6587\u4EF6\u300D= \u4E09\u8005\u90FD\u6CBF\u7528 profile \u7684 openaiTts \u914D\u7F6E\u3002\u6539\u5B8C\u70B9\u300C\u9A8C\u8BC1\u6B64\u9884\u8BBE\u300D\u5C31\u5730\u8BD5\u5408\u6210",
+  presetCustom: "\u8DDF\u968F\u914D\u7F6E\u6587\u4EF6",
   presetCustomCustom: "\u81EA\u5B9A\u4E49\uFF08\u4E0B\u65B9\u624B\u586B\uFF09",
   presetCustomHint: "\u9009\u5B83\u540E\u7528\u4E0B\u9762\u7684\u300C\u63A5\u53E3\u5730\u5740 / \u6A21\u578B\u540D / API Key\u300D\u4E09\u4E2A\u8F93\u5165\u6846\u76F4\u63A5\u914D\u4EFB\u610F OpenAI \u517C\u5BB9\u670D\u52A1",
   presetCosy: "\u7845\u57FA\u6D41\u52A8 \xB7 CosyVoice2",
@@ -1774,7 +1774,7 @@ var zh = {
   presetSelfKokoroNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8880\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
   presetSelfVllm: "\u81EA\u5EFA \xB7 vLLM-Omni",
   presetSelfVllmNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8000\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
-  presetKeyNote: "key \u586B\u5728 profile \u7684 openaiTts.apiKey\uFF08\u6216\u6309\u9884\u8BBE\u7528 openaiTts.apiKeys[\u9884\u8BBEid] \u5206\u522B\u914D\uFF0C\u63A8\u8350\u591A\u5BB6\u5404\u4E00\u628A\uFF09\uFF0C\u4E0D\u7ECF\u8FC7\u6D4F\u89C8\u5668",
+  presetKeyNote: "\u9009\u597D\u540E\u5728\u4E0B\u9762\u300CAPI Key\u300D\u91CC\u586B\u5373\u53EF\uFF08\u4E5F\u53EF\u4EE5\u7EE7\u7EED\u7528 profile \u7684 openaiTts.apiKey/apiKeys\uFF09\u3002key \u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\uFF0C\u4E0D\u56DE\u4F20\u6D4F\u89C8\u5668",
   presetVerify: "\u9A8C\u8BC1\u6B64\u9884\u8BBE",
   presetDataMissing: "\u9884\u8BBE\u6570\u636E\u672A\u52A0\u8F7D\uFF08\u5BBF\u4E3B /presets \u4E0D\u53EF\u7528\uFF09\uFF1A\u8BF7\u91CD\u542F\u5BBF\u4E3B\u6216\u5237\u65B0\u9875\u9762\u540E\u91CD\u8BD5",
   presetReload: "\u91CD\u65B0\u52A0\u8F7D\u9884\u8BBE",
@@ -1791,6 +1791,8 @@ var zh = {
   secretKeep: "\u5DF2\u4FDD\u5B58\uFF08\u7559\u7A7A\u4FDD\u6301\u4E0D\u53D8\uFF09",
   secretClear: "\u6E05\u9664",
   secretHintBrowser: "\u586B\u5199\u540E\u4F1A\u7ACB\u5373\u53D1\u5230\u672C\u673A\u5BBF\u4E3B\u5E76\u843D\u76D8\uFF080600\uFF09\uFF0C\u4E0D\u4F1A\u5199\u8FDB\u804A\u5929\u6216\u65E5\u5FD7",
+  secretPlaceholderEmpty: "\u7C98\u8D34 key\uFF08\u4FDD\u5B58\u540E\u53EA\u663E\u793A\u300C\u5DF2\u4FDD\u5B58\u300D\uFF09",
+  secretCleared: "\u5DF2\u6E05\u9664",
   // P1-4 只听写预设。
   dictationTitle: "\u53EA\u542C\u5199",
   dictationHint: "\u5173\u95ED\u56DE\u590D\u6717\u8BFB\uFF0C\u4E13\u6CE8\u542C\u5199\uFF1B\u518D\u70B9\u4E00\u6B21\u6062\u590D",
@@ -1842,7 +1844,8 @@ var zh = {
   descVoiceMimo: "MiMo \u9884\u7F6E\u97F3\u8272\u540D\uFF08\u7559\u7A7A = \u914D\u7F6E\u91CC\u7684 mimoTts.voice\uFF0C\u9ED8\u8BA4 mimo_default\uFF09\uFF1B\u9884\u7F6E\uFF1Amimo_default\u3001\u51B0\u7CD6\u3001\u8309\u8389\u3001\u82CF\u6253\u3001\u767D\u6866\u3001Mia\u3001Chloe\u3001Milo\u3001Dean",
   engineRemoteDown: "\u670D\u52A1\u4E0D\u53EF\u7528",
   errMimoKeyMissing: "\u672A\u914D\u7F6E\u5C0F\u7C73 MiMo \u7684 API Key\uFF1A\u8BF7\u5728 profile \u7684 mimoTts.apiKey \u586B\u5199\u540E\u91CD\u542F\u5BBF\u4E3B",
-  errOpenaiConfigMissing: "\u672A\u914D\u7F6E OpenAI \u517C\u5BB9\u670D\u52A1\u7684 baseUrl/model\uFF1A\u8BF7\u5728 profile \u7684 openaiTts \u586B\u5199\uFF08key \u53EF\u9009\uFF09",
+  engineUnavailableShort: "\u4E0D\u53EF\u7528",
+  errOpenaiConfigMissing: "\u8FD8\u6CA1\u914D\u597D\u7AEF\u70B9\uFF1A\u5728\u4E0A\u65B9\u300C\u5728\u7EBF\u9884\u8BBE\u300D\u9009\u4E00\u5BB6\uFF08\u901A\u5E38\u53EA\u9700\u586B key\uFF09\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u586B\u63A5\u53E3\u5730\u5740\u4E0E\u6A21\u578B\u540D",
   errRemoteTts: "\u6717\u8BFB\u670D\u52A1\u8FDE\u4E0D\u4E0A\u3001\u62A5\u9519\u6216\u592A\u6162\uFF1B\u914D\u7F6E\u4E86\u56DE\u9000\u65F6\u8FD9\u671F\u95F4\u7528\u672C\u5730\u5F15\u64CE\u6717\u8BFB",
   descVoiceKokoro: "Kokoro \u4E2D\u82F1\u97F3\u8272\uFF08103 \u4E2A\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B48-51 \u4E2D\u6587\u540D\uFF0C\u5176\u4F59\u6309\u7F16\u53F7+\u5B9E\u6D4B\u6027\u522B\u6807\u6CE8\uFF0C\u4E2D\u82F1\u6DF7\u8BFB\u5747\u53EF\uFF09",
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.1 \u9ED8\u8BA4\uFF1B\u8BA9\u56DE\u590D\u66F4\u7D27\u51D1\uFF09",
@@ -1926,7 +1929,7 @@ var zh = {
   descShowStatusBar: "\u5728\u8F93\u5165\u6846\u4E0A\u65B9\u663E\u793A\u8BED\u97F3\u72B6\u6001\u6761\uFF08\u6CE2\u5F62\u3001\u8BC6\u522B\u6587\u5B57\u3001\u8BA1\u65F6\u3001\u63D0\u793A\u3001\u9000\u51FA\uFF09\uFF1B\u5173\u95ED\u540E\u72B6\u6001\u53EA\u5728\u9EA6\u514B\u98CE\u6309\u94AE\u4E0A\u663E\u793A",
   descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF09\uFF1A\u8BF4\u51FA\u8BCD\u5934\u624D\u8FDB\u5165\u8BC6\u522B\uFF0C\u907F\u514D\u8BEF\u89E6\u3002\u53EF\u4E0E\u547D\u4EE4\u8FDE\u8BF4\uFF08\u300C\u4F60\u597D\u5C0FD\uFF0C\u5E2E\u6211\u67E5\u5929\u6C14\u300D\u2014\u2014\u8BCD\u5934\u4F1A\u81EA\u52A8\u5265\u6389\u3001\u4E0D\u8FDB\u6D88\u606F\uFF09\uFF1B\u6BCF\u53E5\u65AD\u53E5\u6216\u6253\u65AD\u540E\u9700\u91CD\u8BF4\uFF1B\u4EC5 toggle \u6A21\u5F0F\u751F\u6548\uFF08hold / \u624B\u52A8\u6253\u65AD\u4E0B\u4E0D\u751F\u6548\uFF1Bdetect \u81EA\u52A8\u63A2\u6D4B\u672A\u751F\u6548\u3001\u56DE\u843D manual \u65F6\u540C\u6837\u4E0D\u751F\u6548\u2014\u2014Safari \u7B49\u65E0\u539F\u751F\u56DE\u58F0\u6D88\u9664\u7684\u673A\u5668\u4F1A\u9ED8\u8BA4\u843D\u5230\u8FD9\u4E00\u6863\uFF09\uFF1B\u6717\u8BFB\u671F\u8BF4\u5524\u9192\u8BCD\u4E0D\u89E6\u53D1\uFF08\u6253\u65AD\u4ECD\u6309 VAD \u5F00\u53E3\u5373\u6253\u65AD\uFF09\u3002\u5339\u914D\u5E26\u5BB9\u9519\uFF08\u540C\u97F3\u5B57 / \u524D\u5BFC\u8BED\u6C14\u8BCD\uFF09\uFF0C\u5EFA\u8BAE 3-4 \u5B57\uFF1B\u975E\u4E13\u7528 KWS \u5F15\u64CE\uFF0C\u5608\u6742\u73AF\u5883\u53EF\u80FD\u5EF6\u8FDF\u6216\u8BEF\u6FC0\u6D3B",
   wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
-  settingsCardDesc: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u6717\u8BFB\u56DE\u590D / \u72B6\u6001\u6761 / \u5B57\u5E55\u6D6E\u5C42 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3 / \u9006\u6587\u672C\u5F52\u4E00\u5316 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3 / \u6253\u65AD\u8BED\u97F3\u62A2\u6551 / LLM \u7EA0\u9519",
+  settingsCardDesc: "\u672C\u5730\u6D41\u5F0F\u8BC6\u522B + \u9010\u53E5\u6717\u8BFB\uFF0C\u5F00\u53E3\u5373\u53EF\u6253\u65AD\u3002\u5C55\u5F00\u4E0B\u9762\u5404\u9879\u6309\u9700\u8C03\u6574\uFF1A\u5F15\u64CE\u4E0E\u58F0\u97F3\u3001\u4EA4\u4E92\u3001\u8BC6\u522B\u3001\u5B57\u5E55\u3001\u6A21\u578B\u3002",
   settingsEffectiveNote: "\u751F\u6548\u65F6\u673A\u5206\u56DB\u6863\uFF1A\u2460 \u5373\u65F6\u2014\u2014\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / Kokoro \u6A21\u578B\u7CBE\u5EA6\uFF08\u5DF2\u7F13\u5B58\u5219\u5373\u65F6\uFF0C\u5426\u5219\u4E0B\u6B21\u4E0B\u8F7D\uFF09/ \u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u5BF9\u540E\u7EED\u56DE\u590D\u751F\u6548\uFF09/ \u6717\u8BFB\u56DE\u590D / \u72B6\u6001\u6761 / \u5B57\u5E55\u6D6E\u5C42 / \u6A21\u578B\u955C\u50CF\uFF08\u4E0B\u6B21\u4E0B\u8F7D\u5C1D\u8BD5\u5373\u751F\u6548\uFF09\uFF1B\u2461 \u4E0B\u6B21\u8BC6\u522B\u65F6\u2014\u2014\u5B9A\u7A3F\u91CD\u8BD1\uFF08SenseVoice\uFF09/ \u9006\u6587\u672C\u5F52\u4E00\u5316\uFF1B\u2462 \u4E0B\u4E00\u6BB5\u8BDD\u2014\u2014\u9759\u97F3\u5224\u5B9A\u65F6\u957F\uFF08\u65AD\u53E5\u7AEF\u70B9\uFF1B\u53D1\u9001\u7B49\u5F85\u56FA\u5B9A 1.2 \u79D2\u4E0D\u53D7\u5F71\u54CD\uFF09\uFF1B\u2463 \u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u2014\u2014\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3 / \u6253\u65AD\u8BED\u97F3\u62A2\u6551 / LLM \u7EA0\u9519 / \u7A7A\u95F2\u65F6\u957F\u3002\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u624D\u751F\u6548\u7684\u9879\u4F1A\u5217\u5728\u5361\u7247\u9876\u90E8\uFF08\u542B\u5F53\u524D\u751F\u6548\u503C\uFF09\u3002",
   effectivePending: "\u6709 {count} \u9879\u4FEE\u6539\u5C06\u5728\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\uFF1A{items}",
   valueOn: "\u5F00",
@@ -2128,7 +2131,7 @@ var en = {
   // E1 online presets.
   openaiPresetLabel: "Online preset",
   descOpenaiPreset: "Online TTS preset: endpoint and model follow the preset (keys live in openaiTts.apiKeys[preset id] or openaiTts.apiKey on the host side, never sent to the browser); empty = manual config file values. Run the self-test below after switching",
-  presetCustom: "Manual (profile file)",
+  presetCustom: "Follow the config file",
   presetCustomCustom: "Custom (fill below)",
   presetCustomHint: "With this selected, configure any OpenAI-compatible service in the Endpoint / Model / API key fields below",
   presetCosy: "SiliconFlow \xB7 CosyVoice2",
@@ -2145,7 +2148,7 @@ var en = {
   presetSelfKokoroNote: "Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first",
   presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
-  presetKeyNote: "Put the key in the profile openaiTts.apiKey, or per preset via openaiTts.apiKeys[preset id] (recommended when using several providers); it never passes through the browser",
+  presetKeyNote: "After picking one, fill the API Key field below (the profile openaiTts.apiKey/apiKeys still work). The key stays on the host and is never sent back to the browser",
   presetVerify: "Verify preset",
   presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
   presetReload: "Reload presets",
@@ -2162,6 +2165,8 @@ var en = {
   secretKeep: "Saved (leave empty to keep)",
   secretClear: "Clear",
   secretHintBrowser: "Typed values go straight to the local host and are stored with 0600; never written to chat or logs",
+  secretPlaceholderEmpty: "Paste the key (after saving only Saved is shown)",
+  secretCleared: "Cleared",
   // P1-4 dictation-only preset.
   dictationTitle: "Dictation only",
   dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
@@ -2212,7 +2217,8 @@ var en = {
   descVoiceMimo: "MiMo preset voice id (empty = mimoTts.voice from the config, default mimo_default). Presets: mimo_default, Mia, Chloe, Milo, Dean, plus four Chinese-named voices (Bingtang/Moli/Suda/Baihua) \u2014 enter them by their native Chinese names as listed on the MiMo docs",
   engineRemoteDown: "server unavailable",
   errMimoKeyMissing: "MiMo API key is not configured: set mimoTts.apiKey in the profile and restart the host",
-  errOpenaiConfigMissing: "OpenAI-compatible baseUrl/model is not configured: set openaiTts in the profile (key optional)",
+  engineUnavailableShort: "Unavailable",
+  errOpenaiConfigMissing: "Endpoint is not configured yet: pick a provider under Online preset (usually only the key is needed), or choose Custom and fill the endpoint and model",
   errRemoteTts: "The TTS server is unreachable, failing or too slow; the local fallback reads aloud meanwhile if one is configured",
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
@@ -2295,7 +2301,7 @@ var en = {
   descShowStatusBar: "Show the voice status bar above the composer (waveform, transcript, timer, notices, exit); when off, state shows only on the mic button",
   descWakeWord: 'Wake word (default off; e.g. "Hey D"): recognition starts only after you say it, to avoid accidental triggers. You may say it together with your command ("Hey D, check the weather" \u2014 the wake word is stripped and never sent); it must be repeated after each utterance split or barge-in; toggle mode only (inactive in hold / manual barge-in \u2014 and equally inactive when the detect probe fails and falls back to manual, the default on machines without native echo cancellation such as Safari); saying it while the agent is reading does not trigger (barge-in stays VAD-based). Fault-tolerant matching (homophones / leading fillers); 3-4 characters recommended; not a dedicated KWS engine \u2014 noisy environments may delay or falsely trigger',
   wakePlaceholder: "e.g. Hey D",
-  settingsCardDesc: "Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / read replies / status bar / caption overlay / auto-resume / mode / wake word / tool beep / ITN / caption font / caption width / yielding / yield window / barge-in salvage / LLM correction",
+  settingsCardDesc: "Streaming local recognition plus sentence-by-sentence read-aloud; speak to interrupt. Expand a group below to tune engines and voices, interaction, recognition, captions or models.",
   settingsEffectiveNote: "When settings apply, in four tiers: \u2460 immediately \u2014 engine / voice / rate / Kokoro model precision (immediate when cached, else next download) / spoken format (applies to later replies) / read replies / status bar / caption overlay / model mirror (next download attempt); \u2461 next recognition \u2014 finalization re-transcription (SenseVoice) / ITN; \u2462 next utterance \u2014 silence threshold (endpoint; the send wait stays a fixed 1.2s); \u2463 next time you enter voice mode \u2014 interrupt sensitivity / barge-in mode / echo gate / shortcut / auto-send / auto-resume / interaction mode / wake word / tool beep / caption font / caption width / backchannel yielding / yield window / barge-in salvage / LLM correction / idle timeout. Items that take effect next time you enter voice mode are listed at the top of this card with their current effective values.",
   effectivePending: "{count} change(s) will apply next time you enter voice mode: {items}",
   valueOn: "On",
@@ -3896,7 +3902,13 @@ var cardStyle = {
   border: `1px solid ${t2.border}`,
   background: t2.bg,
   borderRadius: 12,
-  overflow: "hidden"
+  overflow: "hidden",
+  // 2026-11-20：卡片必须适配所在容器（设置弹窗内容区实测只有 ~800px，旧实现被内容撑到 904px
+  // 直接溢出弹窗 192px、右侧文字被裁）。minWidth:0 是 flex/grid 子项能收缩的前提。
+  boxSizing: "border-box",
+  width: "100%",
+  maxWidth: "100%",
+  minWidth: 0
 };
 var setHeader = {
   appearance: "none",
@@ -3917,13 +3929,31 @@ var setHeadText = { flexDirection: "column", flex: 1, gap: 4, minWidth: 0, displ
 var setName = { color: t2.label, fontSize: 15, fontWeight: 600, lineHeight: 1.4 };
 var setDesc = { color: t2.term, fontSize: 13, lineHeight: 1.5 };
 var setChevron = { color: t2.term, flex: "none", transition: "transform .16s", display: "inline-flex" };
-var setBody = { borderTop: `1px solid ${t2.border}`, margin: "0 16px", paddingBottom: 8 };
-var setRow = { alignItems: "center", gap: 12, padding: "12px 0", display: "flex" };
-var setLabelBox = { flexDirection: "column", flex: 1, gap: 3, minWidth: 0, display: "flex" };
+var setBody = { borderTop: `1px solid ${t2.border}`, margin: "0 16px", paddingBottom: 12, display: "flex", flexDirection: "column", minWidth: 0 };
+var setRow = {
+  display: "grid",
+  gridTemplateColumns: "minmax(120px, 190px) minmax(0, 1fr)",
+  columnGap: 16,
+  rowGap: 4,
+  alignItems: "start",
+  padding: "10px 0",
+  borderTop: `1px solid ${t2.border}`,
+  minWidth: 0
+};
 var setLabel = { fontSize: 13, lineHeight: "20px" };
 var setHint = { color: t2.term, fontSize: 12, lineHeight: "18px" };
-var setSeg = { border: `1px solid ${t2.border}`, borderRadius: 8, flexShrink: 0, gap: 2, padding: 2, display: "inline-flex" };
+var setSeg = {
+  border: `1px solid ${t2.border}`,
+  borderRadius: 8,
+  gap: 2,
+  padding: 2,
+  display: "flex",
+  flexWrap: "wrap",
+  maxWidth: "100%",
+  minWidth: 0
+};
 var setSegBtn = (on) => ({
+  flex: "0 0 auto",
   font: "inherit",
   color: on ? t2.label : "var(--dsw-alias-label-secondary)",
   cursor: "pointer",
@@ -3937,8 +3967,8 @@ var setSegBtn = (on) => ({
 });
 var inputStyle = {
   boxSizing: "border-box",
-  width: 280,
-  maxWidth: "100%",
+  width: "100%",
+  maxWidth: 420,
   padding: "7px 10px",
   borderRadius: 8,
   border: `1px solid ${t2.border}`,
@@ -3949,6 +3979,10 @@ var inputStyle = {
   outline: "none"
 };
 var focusVisibleCss = `
+[data-dshvm-settings="card"] { container-type: inline-size; }
+@container (max-width: 620px) {
+  [data-dshvm-row] { grid-template-columns: minmax(0, 1fr) !important; row-gap: 6px !important; }
+}
 [data-dshvm-settings="card"] input:focus-visible,
 [data-dshvm-settings="card"] select:focus-visible,
 [data-dshvm-settings="card"] button:focus-visible {
@@ -4078,32 +4112,63 @@ function SecretField({
   score,
   field,
   saved,
-  onCleared
+  onChanged
 }) {
-  const [clearing, setClearing] = (0, import_react2.useState)(false);
+  const [draft, setDraft] = (0, import_react2.useState)("");
+  const [busy, setBusy] = (0, import_react2.useState)(false);
+  const [note, setNote] = (0, import_react2.useState)(null);
+  const commit = () => {
+    const value = draft.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    void Promise.resolve(score.set(field, value)).then((ok) => {
+      if (ok === false) return;
+      setDraft("");
+      setNote("saved");
+      onChanged();
+    }).catch(() => void 0).finally(() => setBusy(false));
+  };
   const clear = () => {
-    if (clearing) return;
-    setClearing(true);
+    if (busy) return;
+    setBusy(true);
     void fetch(location.origin + BASE_PATH + "/settings", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ clearSecrets: [field] })
     }).then((res) => {
-      if (res.ok) onCleared();
-    }).catch(() => void 0).finally(() => setClearing(false));
+      if (res.ok) {
+        setNote("cleared");
+        onChanged();
+      }
+    }).catch(() => void 0).finally(() => setBusy(false));
   };
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score, field, value: "", type: "password", placeholder: saved ? t("secretKeep") : "" }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "input",
+      {
+        style: inputStyle,
+        type: "password",
+        autoComplete: "new-password",
+        value: draft,
+        placeholder: saved ? t("secretKeep") : t("secretPlaceholderEmpty"),
+        "aria-label": t(saved ? "secretSaved" : "secretHintBrowser"),
+        onChange: (e) => setDraft(e.target.value),
+        onBlur: commit,
+        onKeyDown: (e) => {
+          if (e.key === "Enter") commit();
+        }
+      }
+    ),
     saved ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "button",
       {
         type: "button",
         onClick: clear,
-        "aria-busy": clearing || void 0,
+        "aria-busy": busy || void 0,
         style: {
           font: "inherit",
-          cursor: clearing ? "default" : "pointer",
-          opacity: clearing ? 0.6 : 1,
+          cursor: busy ? "default" : "pointer",
+          opacity: busy ? 0.6 : 1,
           color: t2.label,
           background: "var(--dsw-alias-bg-layer-2)",
           border: `1px solid ${t2.border}`,
@@ -4112,10 +4177,18 @@ function SecretField({
           fontSize: 12,
           lineHeight: "16px"
         },
-        children: t("secretClear")
+        children: busy ? t("synthesizing") : t("secretClear")
       }
     ) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: saved ? t("secretSaved") : t("secretHintBrowser") })
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "span",
+      {
+        role: "status",
+        "aria-live": "polite",
+        style: { fontSize: 11, color: note === "cleared" ? t2.term : "var(--dsw-alias-state-success-primary)" },
+        children: note === "saved" ? t("secretSaved") : note === "cleared" ? t("secretCleared") : saved ? t("secretSaved") : t("secretHintBrowser")
+      }
+    )
   ] });
 }
 function ShortcutField({
@@ -4972,7 +5045,16 @@ function OpenAiPresetSection({
   }));
   const data = presets?.[cur];
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SegGroup, { score, field: "openaiPreset", value: cur, options }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "select",
+      {
+        value: cur,
+        "aria-label": t("openaiPresetLabel"),
+        onChange: (e) => void score.set("openaiPreset", e.target.value),
+        style: { ...inputStyle, maxWidth: 360 },
+        children: options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v))
+      }
+    ),
     data ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 11, color: t2.term, fontFamily: "monospace", wordBreak: "break-all" }, children: [
       data.baseUrl,
       " \xB7 ",
@@ -5001,7 +5083,7 @@ function OpenAiPresetSection({
         "button",
         {
           type: "button",
-          disabled: !cur || verifying,
+          disabled: verifying,
           "aria-busy": verifying || void 0,
           onClick: () => onVerify(cur),
           style: {
@@ -5010,7 +5092,7 @@ function OpenAiPresetSection({
             alignItems: "center",
             alignSelf: "flex-start",
             cursor: cur ? "pointer" : "default",
-            opacity: cur ? 1 : 0.5,
+            opacity: 1,
             color: t2.label,
             background: "var(--dsw-alias-bg-layer-2)",
             border: `1px solid ${t2.border}`,
@@ -5054,12 +5136,10 @@ function useHostPresets() {
 }
 function Row({ name: name2, desc, children }) {
   const label = t(`${name2}Label`);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setLabelBox, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setLabel, children: label }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setHint, children: desc })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flexShrink: 0, maxWidth: 300 }, children })
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, "data-dshvm-row": name2, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setLabel, children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }, children }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...setHint, gridColumn: "1 / -1", minWidth: 0 }, children: desc })
   ] });
 }
 var NEXT_ENTRY_FMT = {
@@ -5091,13 +5171,52 @@ function EffectivePending({ effective, value, ready }) {
   }).join(t("effectiveItemSep"));
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { "data-dshvm-settings": "effective-pending", style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary)", padding: "8px 2px 4px", lineHeight: 1.6 }, children: t("effectivePending").replace("{count}", String(pending.length)).replace("{items}", items) });
 }
-function Section({ title, children }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 2 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "10px 0 2px" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--dsw-alias-label-secondary)" }, children: title }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, height: 1, background: t2.border } })
-    ] }),
-    children
+function Section({
+  title,
+  defaultOpen = false,
+  children
+}) {
+  const [open, setOpen] = (0, import_react2.useState)(defaultOpen);
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { minWidth: 0, borderTop: `1px solid ${t2.border}` }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "button",
+      {
+        type: "button",
+        "aria-expanded": open,
+        onClick: () => setOpen((v) => !v),
+        style: {
+          appearance: "none",
+          width: "100%",
+          font: "inherit",
+          textAlign: "left",
+          cursor: "pointer",
+          background: "transparent",
+          border: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "12px 0 10px",
+          color: "var(--dsw-alias-label-secondary)"
+        },
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "span",
+            {
+              "aria-hidden": "true",
+              style: {
+                display: "inline-flex",
+                transition: "transform .16s",
+                transform: open ? "rotate(90deg)" : "rotate(0deg)",
+                color: t2.term
+              },
+              children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 12, height: 12, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M6 4l4 4-4 4z" }) })
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: 600, letterSpacing: ".02em" }, children: title })
+        ]
+      }
+    ),
+    open ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { minWidth: 0, paddingBottom: 6 }, children }) : null
   ] });
 }
 function SegGroup({
@@ -5188,7 +5307,7 @@ function EngineStatusInline({ onSwitchLocal }) {
         children: engineBadge(tts.engine)
       }
     ),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: statusText === t("engineReady") || statusText === t("engineError") ? 600 : 400, color: statusColor }, children: statusText }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: 600, color: statusColor }, children: tts.error ? t("engineUnavailableShort") : statusText }),
     tts.loading && tts.progress?.file && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
       tts.progress.file,
       " ",
@@ -5345,6 +5464,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
   const hostPresetState = useHostPresets();
   const hostPresets = hostPresetState.presets;
   const [presetVerify, setPresetVerify] = (0, import_react2.useState)(null);
+  const headStatus = useModelsStatus();
   const effectiveVoice = () => {
     const pid = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
     return resolvePresetVoice(value.voice, pid ? hostPresets?.[pid]?.voice : "");
@@ -5427,14 +5547,21 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-expanded": !collapsed, "aria-controls": "dshvm-settings-card-body", onClick: () => setCollapsed((c) => !c), style: { ...setHeader, background: collapsed ? "transparent" : t2.bgOpen }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: setHeadText, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setName, children: t("stateVoiceMode") }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setDesc, children: t("settingsCardDesc") })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "span",
+          {
+            style: { ...setDesc, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" },
+            title: t("settingsCardDesc"),
+            children: collapsed ? `${ENGINE_NAME[engine]()} \xB7 ${String(value.voice ?? "") || "\u2014"} \xB7 ${headStatus?.tts?.error ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine) : headStatus?.tts?.loading ? t("engineLoading") : t("engineReady")}` : t("settingsCardDesc")
+          }
+        )
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...setChevron, transform: collapsed ? "rotate(0deg)" : "rotate(180deg)" }, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 14, height: 14, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 6l4 4 4-4z" }) }) })
     ] }),
     !collapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { id: "dshvm-settings-card-body", style: setBody, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EffectivePending, { effective: getRuntimeBoot(), value, ready: snap?.status === "ready" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRead"), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRead"), defaultOpen: true, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "ttsEngine", desc: t("descTtsEngine"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -5449,25 +5576,43 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               }
             }
           ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            EngineStatusInline,
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "div",
             {
-              onSwitchLocal: () => {
-                void scope.set("ttsEngine", "kokoro");
-                void scope.set("voice", ENGINE_DEFAULT_VOICE["kokoro"] ?? "zf_xiaobei");
-              }
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            SelfTestSection,
-            {
-              voice: effectiveVoice(),
-              rate: Number(value.rate ?? 1.1),
-              engine,
-              onSwitchLocal: () => {
-                void scope.set("ttsEngine", "kokoro");
-                void scope.set("voice", ENGINE_DEFAULT_VOICE["kokoro"] ?? "zf_xiaobei");
-              }
+              style: {
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                margin: "4px 0 12px",
+                padding: "10px 12px",
+                border: `1px solid ${t2.border}`,
+                borderRadius: 8,
+                background: "var(--dsw-alias-bg-layer-2)",
+                minWidth: 0
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  EngineStatusInline,
+                  {
+                    onSwitchLocal: () => {
+                      void scope.set("ttsEngine", "kokoro");
+                      void scope.set("voice", ENGINE_DEFAULT_VOICE["kokoro"] ?? "zf_xiaobei");
+                    }
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  SelfTestSection,
+                  {
+                    voice: effectiveVoice(),
+                    rate: Number(value.rate ?? 1.1),
+                    engine,
+                    onSwitchLocal: () => {
+                      void scope.set("ttsEngine", "kokoro");
+                      void scope.set("voice", ENGINE_DEFAULT_VOICE["kokoro"] ?? "zf_xiaobei");
+                    }
+                  }
+                )
+              ]
             }
           ),
           engine === "kokoro" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "kokoroModel", desc: t("descKokoroModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -5544,7 +5689,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
                 score: scope,
                 field: "openaiApiKey",
                 saved: secretKeys.openaiApiKey,
-                onCleared: refreshSecretKeys
+                onChanged: refreshSecretKeys
               }
             ) })
           ] }),
@@ -5554,12 +5699,12 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               score: scope,
               field: "mimoApiKey",
               saved: secretKeys.mimoApiKey,
-              onCleared: refreshSecretKeys
+              onChanged: refreshSecretKeys
             }
           ) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1.1, min: 0.5, max: 2, step: 0.1 }) })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secInterrupt"), children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secInterrupt"), defaultOpen: true, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: t("descInterrupt"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -5896,7 +6041,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "490f9df";
+var BUILD_TAG = "3b4ec76";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
