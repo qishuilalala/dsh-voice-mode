@@ -133,13 +133,18 @@ const OPENAI_PRESET_VOICE: Record<string, string> = {
   'selfhosted-vllm': 'default',
 }
 
-/** 预设 → 费用/数据去向说明键（缺省不显示；新增预设必须同时补这条，防“接了没告知”）。 */
-const PRESET_NOTE: Record<string, TKey> = {
-  'siliconflow-cosyvoice2': 'presetCosyNote',
-  'siliconflow-fish': 'presetFishNote',
-  'openrouter-openai': 'presetOpenrouterNote',
-  'selfhosted-kokoro': 'presetSelfKokoroNote',
-  'selfhosted-vllm': 'presetSelfVllmNote',
+/**
+ * 预设 → 费用/数据去向说明（缺省不显示；新增预设必须同时补这条，防“接了没告知”）。
+ * 用「函数」而不是键名字符串：① 语言切换时 tr() 在渲染期取值，保持响应式；
+ * ② 死键扫描（settings-effective.test.mjs）只认字面量 t()/tr() 实参，键名间接引用会被判成
+ *    零引用死键——CI 曾因此失败（2026-11-19）。
+ */
+const PRESET_NOTE: Record<string, () => string> = {
+  'siliconflow-cosyvoice2': () => tr('presetCosyNote'),
+  'siliconflow-fish': () => tr('presetFishNote'),
+  'openrouter-openai': () => tr('presetOpenrouterNote'),
+  'selfhosted-kokoro': () => tr('presetSelfKokoroNote'),
+  'selfhosted-vllm': () => tr('presetSelfVllmNote'),
 }
 
 
@@ -1723,7 +1728,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                     ]}
                   />
                   {PRESET_NOTE[String(value.openaiPreset)] ? (
-                    <span style={{ fontSize: 11, color: t.term }}>{tr(PRESET_NOTE[String(value.openaiPreset)])}</span>
+                    <span style={{ fontSize: 11, color: t.term }}>{PRESET_NOTE[String(value.openaiPreset)]()}</span>
                   ) : null}
                   <span style={{ fontSize: 11, color: t.term }}>{tr('presetKeyNote')}</span>
                   {typeof value.openaiPreset === 'string' && OPENAI_PRESET_VOICE[value.openaiPreset] ? (

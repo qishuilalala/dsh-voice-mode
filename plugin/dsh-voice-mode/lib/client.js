@@ -3883,11 +3883,11 @@ var OPENAI_PRESET_VOICE = {
   "selfhosted-vllm": "default"
 };
 var PRESET_NOTE = {
-  "siliconflow-cosyvoice2": "presetCosyNote",
-  "siliconflow-fish": "presetFishNote",
-  "openrouter-openai": "presetOpenrouterNote",
-  "selfhosted-kokoro": "presetSelfKokoroNote",
-  "selfhosted-vllm": "presetSelfVllmNote"
+  "siliconflow-cosyvoice2": () => t("presetCosyNote"),
+  "siliconflow-fish": () => t("presetFishNote"),
+  "openrouter-openai": () => t("presetOpenrouterNote"),
+  "selfhosted-kokoro": () => t("presetSelfKokoroNote"),
+  "selfhosted-vllm": () => t("presetSelfVllmNote")
 };
 function NumberField({
   score,
@@ -5145,7 +5145,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
                 ]
               }
             ),
-            PRESET_NOTE[String(value.openaiPreset)] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t(PRESET_NOTE[String(value.openaiPreset)]) }) : null,
+            PRESET_NOTE[String(value.openaiPreset)] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: PRESET_NOTE[String(value.openaiPreset)]() }) : null,
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetKeyNote") }),
             typeof value.openaiPreset === "string" && OPENAI_PRESET_VOICE[value.openaiPreset] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
@@ -5491,7 +5491,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "7e82f21";
+var BUILD_TAG = "30916e4";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
