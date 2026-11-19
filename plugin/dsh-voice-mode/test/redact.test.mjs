@@ -101,22 +101,25 @@ t('JSON 里的短 key 字段也遮（R6 Minor-4）', () => {
   assert.equal(redactSecrets('{"model":"mimo-v2.5-tts"}'), '{"model":"mimo-v2.5-tts"}')
 })
 
-await t('宿主日志边界守卫：所有打印异常原文的日志必须经 redactSecrets（R7 反馈）', async () => {
-  const { readFileSync } = await import('node:fs')
-  const readSrc = (p) => readFileSync(new URL(p, import.meta.url), 'utf8')
-  const sites = [
-    '../src/tts-queue.ts',
-    '../src/index.ts',
-  ]
+await t('宿主日志边界守卫：**全部** src 文件里打印异常原文的日志必须经 redactSecrets（A2 审计：此前只扫 2 个文件、只认 String(e)）', async () => {
+  const { readFileSync, readdirSync } = await import('node:fs')
+  const srcDir = new URL('../src/', import.meta.url)
+  const sites = readdirSync(srcDir).filter((f) => /\.tsx?$/.test(f))
+  // 异常形状：e / err / error / ex / errMsg / e.message / String(e) / e.stack 等插值。
+  const errShape = /\$\{[^}]*(\b(e|err|error|ex|errMsg)\b|String\((e|err|error|ex)\))[^}]*\}/
+  // 安全形状：异常只用于布尔/数值判定（不打印原文）。
+  const safeExpr = /\$\{[^}]*(Boolean\(|Number\(|Array\.isArray|instanceof)/
+  const rawText = /\$\{String\([^)]*\)\}|\$\{[^}]*\.(message|stack)\}|\$\{errMsg\}|\$\{e\}|\$\{err\}/
   const offenders = []
   for (const f of sites) {
-    const src = readSrc(f)
-    for (const line of src.split('\n')) {
-      if (!/console\.(warn|error)/.test(line)) continue
-      if (!/\$\{String\(e\)\}|\$\{errMsg\}|\$\{String\(err\)\}/.test(line)) continue
-      if (line.includes('redactSecrets')) continue
-      offenders.push(f + '：' + line.trim().slice(0, 90))
-    }
+    const src = readFileSync(new URL(f, srcDir), 'utf8')
+    src.split('\n').forEach((line, i) => {
+      if (!/console\.(warn|error|log)/.test(line)) return
+      if (!errShape.test(line)) return
+      if (line.includes('redactSecrets')) return
+      if (safeExpr.test(line) && !rawText.test(line)) return
+      offenders.push(f + ':' + (i + 1) + ' ' + line.trim().slice(0, 100))
+    })
   }
   assert.deepEqual(offenders, [], '这些日志直接打印异常原文且未脱敏（可能含第三方回显的 key 片段）：' + offenders.join(' | '))
 })

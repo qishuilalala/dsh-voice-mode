@@ -36,7 +36,7 @@ npm test                                                             # ④ 全�
 
 | # | 不变量 | 锚点 | 含义 |
 |---|---|---|---|
-| I1 | finalize 不丢句（幂等 + 并发守卫） | `asr-host.ts:244-247`（finalized 真址；旧锚实指 senseTranscribe 段） | 不改 finalized 缓存/resetGen 语义 |
+| I1 | finalize 不丢句（幂等 + 并发守卫） | `asr-host.ts:249-252`（finalized 真址；旧锚实指 senseTranscribe 段） | 不改 finalized 缓存/resetGen 语义 |
 | I2 | 打断计数仅播放期累积 | `client.tsx` isSpeechTrueCount 复位分支 | 不把非播放期计数带进开播 |
 | I3 | 播放门分支不得 return | `asr.ts（原锚 728-747）` 轮询块 | 改动不得在该分支引入 return |
 | I4 | TTS 单 chunk + final 帧协议 | `tts-queue.ts` pump 帧结构 | 客户端拼帧逻辑不动 |

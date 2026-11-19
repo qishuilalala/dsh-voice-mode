@@ -287,6 +287,50 @@ await t('T-2：失败退避墙钟封顶 8s（1s 起步递增，封顶后不外�
   }
 })
 
+
+// A2 审计缺口（2026-11-20）：退避此前只有「onSkip 抛错」这条生产不经过的死路径能触发，
+// 真实路径（onSkip 正常回调）下 errorNotified 永不置位 → 退避不生效。本用例用**正常 onSkip**
+// 的恒失败引擎验证：连败 2 句后进入整体退避（≥1s），且退避期间不再狂打引擎。
+await t('A2 缺口：正常 onSkip 的恒失败引擎也会进入整体退避（≥1s，且不刷接口）', async () => {
+  const realSetTimeout = globalThis.setTimeout
+  const realSleep = (ms) => new Promise((r) => realSetTimeout(r, ms))
+  const delays = []
+  globalThis.setTimeout = (fn, ms, ...rest) => {
+    if (typeof ms !== 'number') return realSetTimeout(fn, ms, ...rest)
+    if (ms >= 1000) {
+      delays.push(ms)
+      return realSetTimeout(fn, 1, ...rest)
+    }
+    return realSetTimeout(fn, ms >= 200 ? 1 : ms, ...rest)
+  }
+  let q
+  try {
+    let calls = 0
+    const skips = []
+    const eng = {
+      mime: 'audio/wav',
+      updateVoice() {},
+      async synthesize() {
+        calls++
+        throw new Error('ETIMEDOUT (stub)')
+      },
+      async close() {},
+    }
+    q = new TtsQueue({ engine: eng, onSkip: (_sid, _text, streak) => skips.push(streak) })
+    for (let i = 0; i < 4; i++) q.enqueue('s1', `F${i + 1}`)
+    const t0 = Date.now()
+    while (delays.length < 1 && Date.now() - t0 < 5000) await realSleep(5)
+    assert.ok(delays.length >= 1, '正常 onSkip 路径下退避仍未触发（errorNotified 不可达回归）')
+    assert.ok(delays[0] >= 1000, `首档退避应 ≥1s（实际 ${delays[0]}ms）`)
+    assert.ok(skips.length >= 1, '失败句必须有 onSkip 通知（静默丢句回归）')
+    // 连败后的句子不再无退避地狂打引擎：4 句 × 3 次重试 = 12 次为理论上限，实际应更少。
+    assert.ok(calls <= 12, `退避期间仍在狂打引擎（${calls} 次调用）`)
+  } finally {
+    globalThis.setTimeout = realSetTimeout
+    await q?.close()
+  }
+})
+
 // ---------------------------------------------------------------------------
 // I-1（Issue #15 R12，Important）：TtsQueue 缺 closed 闸门。
 // 泄漏链（热重载常态路径，非异常路径）：close() 后仍有三条路触达 engine.synthesize——

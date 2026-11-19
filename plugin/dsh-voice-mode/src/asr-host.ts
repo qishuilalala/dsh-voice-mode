@@ -10,6 +10,7 @@
  * - 下载进度经 SSE `asr-progress` 广播，完成发 `asr-ready`（client 状态条用）。
  */
 import { statSync } from 'node:fs'
+import { redactSecrets } from './redact.ts'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
@@ -153,6 +154,10 @@ export interface ModelsStatus {
 }
 
 /** PCM f32 LE 载荷 -> Float32Array（校验长度对齐）。 */
+/** 每解 N 帧让出一次事件循环：64s 单包（403 全量重发）同步 decode 会阻塞 host 主进程。 */
+const DECODE_YIELD_EVERY = 8
+const yieldToLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+
 export function pcmToSamples(buf: Buffer): Float32Array | null {
   // 0 长度留给增量定稿（final=1 空包）由调用方构造空样本；此处仍拒非法对齐。
   if (buf.length % 4 !== 0) return null
@@ -576,7 +581,14 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       // P4-1：累积本段全量（SenseVoice 定稿重译输入）；有界防御——异常客户端绕过
       // 前端 30s 段上限时，超 60s 不再累积（防无界内存；zipformer 流不受影响）。
       if (seg.fed <= rec.config.featConfig.sampleRate * 60) seg.allSamples.push(inc) 
-      while (rec.isReady(seg.stream)) rec.decode(seg.stream)
+      {
+        let n = 0
+        while (rec.isReady(seg.stream)) {
+          rec.decode(seg.stream)
+          // 分块让出：大包（全量重发/长段）不再整段霸占事件循环。
+          if (++n % DECODE_YIELD_EVERY === 0) await yieldToLoop()
+        }
+      }
       // 取 ASR 结果（确认窗口的无新实词判据用）。
       text = rec.getResult(seg.stream).text
       seg.lastText = text
@@ -665,7 +677,13 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       // 定稿：尾垫 0.5s 静音让尾部字 flush 出来。
       const pad = new Float32Array(rec.config.featConfig.sampleRate / 2)
       seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad)
-      while (rec.isReady(seg.stream)) rec.decode(seg.stream)
+      {
+        let n = 0
+        while (rec.isReady(seg.stream)) {
+          rec.decode(seg.stream)
+          if (++n % DECODE_YIELD_EVERY === 0) await yieldToLoop()
+        }
+      }
       const settled = rec.getResult(seg.stream).text
       try {
         seg.vad?.free?.()
@@ -690,8 +708,15 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       }
       fm.set(epoch, finalText)
       if (fm.size > 32) {
-        const first = fm.keys().next().value
-        if (first !== undefined) fm.delete(first)
+        // A1 审计 Important：FIFO 驱逐可能删掉**仍在重试中**的 epoch（客户端 403 恢复后会重发
+        // 同一 final），导致重试拿不到缓存文本而重跑 SenseVoice（甚至重复定稿）。
+        // 跳过仍在 finalizing 的 epoch，取最老的可驱逐项。
+        const busy = finalizing.get(sessionId)
+        for (const [k] of fm) {
+          if (busy?.has(k)) continue
+          fm.delete(k)
+          break
+        }
       }
       const ff = finalizing.get(sessionId)
       ff?.delete(epoch)
@@ -1073,7 +1098,7 @@ export function handleAsrRequest(
           respondJson(res, 200, { isSpeech: out.isSpeech })
         })
         .catch((e: unknown) => {
-          console.warn(`[dsh-voice-mode] asr detect failed: ${String(e)}`)
+          console.warn(`[dsh-voice-mode] asr detect failed: ${redactSecrets(e)}`)
           respondJson(res, 500, { code: 'internal', error: 'internal error' })
         })
       return
@@ -1093,7 +1118,7 @@ export function handleAsrRequest(
         respondJson(res, 200, body)
       })
       .catch((e: unknown) => {
-        console.warn(`[dsh-voice-mode] asr decode failed: ${String(e)}`)
+        console.warn(`[dsh-voice-mode] asr decode failed: ${redactSecrets(e)}`)
         respondJson(res, 500, { code: 'internal', error: 'internal error' })
       })
   })

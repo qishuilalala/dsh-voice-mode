@@ -6,6 +6,47 @@ import { rm } from "node:fs/promises";
 
 // src/asr-host.ts
 import { statSync } from "node:fs";
+
+// src/redact.ts
+var PREFIXED = [
+  { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
+  { re: /\b((?:api[-_]?key|x-api-key)\s*[:=]\s*)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
+  // JSON 形态：{"apiKey":"..."} / {"token":"..."}（长度门槛降到 6，短 key 也能遮；只遮引号内的值）
+  {
+    re: /("(?:api[_-]?key|token|secret|password|x-api-key)"\s*:\s*")([^"\\]{6,})(")/gi,
+    to: "$1<redacted>$3"
+  }
+];
+var BARE = [
+  /\bsk[-_][A-Za-z0-9._-]{8,}/g,
+  // 更多厂商前缀（2026-11-20 审计实测：Groq 的 gsk_ 原样漏出，而 Groq 就在本仓预设里）。
+  /\bgsk_[A-Za-z0-9._-]{8,}/g,
+  /\bsk-(?:proj|live|test)-[A-Za-z0-9._-]{8,}/g,
+  /\brk_(?:live|test)_[A-Za-z0-9]{8,}/g,
+  /\bAIza[A-Za-z0-9._-]{10,}/g,
+  /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
+  // 通用兜底：≥20 连续 base64-ish 字符，要求**同时含大写、小写与数字**（真密钥的典型特征），
+  // 且排除纯十六进制（SHA256/MD5 是排障信息）。这样不会吃掉全小写的模型名、
+  // 也不会吃掉被 - / 分隔的 UUID 与路径。
+  // 注意：字符类**不含 '/'**——路径与 provider/model:voice 形态都靠 '/' 分隔，含进来会误伤排障信息。
+  // 豁免仅限 64 位 sha256（模型摘要）；32 位 hex 也可能是 key（审计实测漏遮）。
+  /\b(?![0-9a-fA-F]{64}\b)(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[0-9])[A-Za-z0-9+=_-]{20,}\b/g,
+  // 32 位 hex（md5 形状）也可能是 key：通用规则要求大小写混合，纯小写 hex 会被漏掉。
+  // 64 位 sha256 不在此列（模型摘要要保留排障）。
+  /\b[0-9a-f]{32}\b/gi
+];
+function redactSecrets(text) {
+  let out = typeof text === "string" ? text : String(text ?? "");
+  for (const { re, to } of PREFIXED) out = out.replace(re, to);
+  for (const re of BARE) out = out.replace(re, "<redacted>");
+  return out;
+}
+function redactBodySnippet(body, n = 200) {
+  const raw = typeof body === "string" ? body : String(body ?? "");
+  return redactSecrets(raw.slice(0, n + 128)).slice(0, n);
+}
+
+// src/asr-host.ts
 import { join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
@@ -482,6 +523,8 @@ var SENSE_FILES = [
   { file: "model.int8.onnx", sha256: "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51" },
   { file: "tokens.txt", sha256: "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc" }
 ];
+var DECODE_YIELD_EVERY = 8;
+var yieldToLoop = () => new Promise((resolve) => setImmediate(resolve));
 function pcmToSamples(buf) {
   if (buf.length % 4 !== 0) return null;
   const out = new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
@@ -765,7 +808,13 @@ function createAsrRuntime(options) {
       seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc);
       seg.fed = offset + samples.length;
       if (seg.fed <= rec.config.featConfig.sampleRate * 60) seg.allSamples.push(inc);
-      while (rec.isReady(seg.stream)) rec.decode(seg.stream);
+      {
+        let n = 0;
+        while (rec.isReady(seg.stream)) {
+          rec.decode(seg.stream);
+          if (++n % DECODE_YIELD_EVERY === 0) await yieldToLoop();
+        }
+      }
       text = rec.getResult(seg.stream).text;
       seg.lastText = text;
       if (!final) {
@@ -822,7 +871,13 @@ function createAsrRuntime(options) {
       }) : Promise.resolve(null);
       const pad = new Float32Array(rec.config.featConfig.sampleRate / 2);
       seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad);
-      while (rec.isReady(seg.stream)) rec.decode(seg.stream);
+      {
+        let n = 0;
+        while (rec.isReady(seg.stream)) {
+          rec.decode(seg.stream);
+          if (++n % DECODE_YIELD_EVERY === 0) await yieldToLoop();
+        }
+      }
       const settled = rec.getResult(seg.stream).text;
       try {
         seg.vad?.free?.();
@@ -840,8 +895,12 @@ function createAsrRuntime(options) {
       }
       fm.set(epoch, finalText);
       if (fm.size > 32) {
-        const first = fm.keys().next().value;
-        if (first !== void 0) fm.delete(first);
+        const busy = finalizing.get(sessionId);
+        for (const [k] of fm) {
+          if (busy?.has(k)) continue;
+          fm.delete(k);
+          break;
+        }
       }
       const ff = finalizing.get(sessionId);
       ff?.delete(epoch);
@@ -1134,7 +1193,7 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
       void asr.detect(sessionId, samples).then((out) => {
         respondJson(res, 200, { isSpeech: out.isSpeech });
       }).catch((e) => {
-        console.warn(`[dsh-voice-mode] asr detect failed: ${String(e)}`);
+        console.warn(`[dsh-voice-mode] asr detect failed: ${redactSecrets(e)}`);
         respondJson(res, 500, { code: "internal", error: "internal error" });
       });
       return;
@@ -1149,7 +1208,7 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
       if (out.isSpeech !== void 0) body.isSpeech = out.isSpeech;
       respondJson(res, 200, body);
     }).catch((e) => {
-      console.warn(`[dsh-voice-mode] asr decode failed: ${String(e)}`);
+      console.warn(`[dsh-voice-mode] asr decode failed: ${redactSecrets(e)}`);
       respondJson(res, 500, { code: "internal", error: "internal error" });
     });
   });
@@ -1417,45 +1476,6 @@ function parseEmotionTags(raw) {
     for (const s of out) s.whisper = false;
   }
   return out;
-}
-
-// src/redact.ts
-var PREFIXED = [
-  { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
-  { re: /\b((?:api[-_]?key|x-api-key)\s*[:=]\s*)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
-  // JSON 形态：{"apiKey":"..."} / {"token":"..."}（长度门槛降到 6，短 key 也能遮；只遮引号内的值）
-  {
-    re: /("(?:api[_-]?key|token|secret|password|x-api-key)"\s*:\s*")([^"\\]{6,})(")/gi,
-    to: "$1<redacted>$3"
-  }
-];
-var BARE = [
-  /\bsk[-_][A-Za-z0-9._-]{8,}/g,
-  // 更多厂商前缀（2026-11-20 审计实测：Groq 的 gsk_ 原样漏出，而 Groq 就在本仓预设里）。
-  /\bgsk_[A-Za-z0-9._-]{8,}/g,
-  /\bsk-(?:proj|live|test)-[A-Za-z0-9._-]{8,}/g,
-  /\brk_(?:live|test)_[A-Za-z0-9]{8,}/g,
-  /\bAIza[A-Za-z0-9._-]{10,}/g,
-  /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
-  // 通用兜底：≥20 连续 base64-ish 字符，要求**同时含大写、小写与数字**（真密钥的典型特征），
-  // 且排除纯十六进制（SHA256/MD5 是排障信息）。这样不会吃掉全小写的模型名、
-  // 也不会吃掉被 - / 分隔的 UUID 与路径。
-  // 注意：字符类**不含 '/'**——路径与 provider/model:voice 形态都靠 '/' 分隔，含进来会误伤排障信息。
-  // 豁免仅限 64 位 sha256（模型摘要）；32 位 hex 也可能是 key（审计实测漏遮）。
-  /\b(?![0-9a-fA-F]{64}\b)(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[0-9])[A-Za-z0-9+=_-]{20,}\b/g,
-  // 32 位 hex（md5 形状）也可能是 key：通用规则要求大小写混合，纯小写 hex 会被漏掉。
-  // 64 位 sha256 不在此列（模型摘要要保留排障）。
-  /\b[0-9a-f]{32}\b/gi
-];
-function redactSecrets(text) {
-  let out = typeof text === "string" ? text : String(text ?? "");
-  for (const { re, to } of PREFIXED) out = out.replace(re, to);
-  for (const re of BARE) out = out.replace(re, "<redacted>");
-  return out;
-}
-function redactBodySnippet(body, n = 200) {
-  const raw = typeof body === "string" ? body : String(body ?? "");
-  return redactSecrets(raw.slice(0, n + 128)).slice(0, n);
 }
 
 // src/tts-queue.ts
@@ -3194,7 +3214,7 @@ var OpenAiTtsEngine = class {
         this.lastError = err;
         this.downUntil = this.now() + this.cooldownMs;
         if (!this.options.fallback) throw err;
-        console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${err.message}`);
+        console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${redactSecrets(err)}`);
       }
     }
     return this.viaFallback(text, options);
@@ -3524,7 +3544,7 @@ var MimoTtsEngine = class {
         this.lastError = err;
         this.downUntil = this.now() + this.cooldownMs;
         if (!this.options.fallback) throw err;
-        console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${err.message}`);
+        console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${redactSecrets(err)}`);
       }
     }
     return this.viaFallback(text, options);
@@ -4194,7 +4214,7 @@ function apply(ctx, config) {
         resolveSettings({ [k]: v });
         valid[k] = v;
       } catch (e) {
-        console.warn(`[dsh-voice-mode] ignoring invalid settings override "${k}" (falling back to the Config baseline): ${String(e).slice(0, 160)}`);
+        console.warn(`[dsh-voice-mode] ignoring invalid settings override "${k}" (falling back to the Config baseline): ${redactSecrets(e).slice(0, 160)}`);
       }
     }
     try {

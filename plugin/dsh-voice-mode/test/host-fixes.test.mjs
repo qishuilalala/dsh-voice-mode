@@ -209,10 +209,12 @@ await t('两个扫描循环的 continue 条件都含 finalizing.has(sid)', () =>
   // 本锁对 loop1 的失守不可见（两条循环同形），行为级用例才分得开。
   // 2026-11-20 A1 审计：sweep **只允许**清扫 finalized 缓存；resetGen 是会话代际计数器，
   // 一旦随 sweep 删除就会回落到 0、破坏单调性（旧 epoch 可能与新会话撞号）。
-  const guards = [...asrSrc.matchAll(/if \(segments\.has\(sid\)[^\n]*continue/g)]
-  assert.equal(guards.length, 1, `sweep 应只剩 1 处孤立 sid 扫描循环（finalized），实际 ${guards.length}`)
+  // A1 审计：旧锁只要求行内含 finalizing.has(sid) 子串（改成恒真表达式仍绿）。
+  // 改为整条 if 条件形状锁：segments 与 finalizing 必须同时参与判定，且紧接 continue。
+  const guards = [...asrSrc.matchAll(/if \(\s*segments\.has\(sid\)[^\n]*finalizing\.has\(sid\)[^\n]*\)\s*continue/g)]
+  assert.equal(guards.length, 1, `sweep 应只剩 1 处「segments || finalizing → continue」形状，实际 ${guards.length}`)
   for (const [full] of guards) {
-    assert.ok(full.includes('finalizing.has(sid)'), `扫描循环漏判 finalizing 在途定稿：${full.trim()}`)
+    assert.ok(/segments\.has\(sid\)\s*\|\|\s*finalizing\.has\(sid\)/.test(full), `两个判据必须是「或」关系：${full.trim()}`)
   }
   assert.ok(!/for \(const sid of resetGen\.keys\(\)\)/.test(asrSrc), 'resetGen 不得有 sweep 扫描循环（代际必须单调）')
 })

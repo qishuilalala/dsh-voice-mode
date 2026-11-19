@@ -13,7 +13,7 @@
  */
 import type { TtsEngine, TtsEngineStatus } from './tts-queue.ts'
 import { stripEmotionTags } from './emotion.ts'
-import { redactBodySnippet } from './redact.ts'
+import { redactBodySnippet, redactSecrets } from './redact.ts'
 import { sniffAudioMime } from './audio-format.ts'
 // resolvePresetVoice 的语义已并入 online-tts 的解析（voice 优先级），此处不再单独使用。
 import { resolveOnlineTts } from './online-tts.ts'
@@ -130,7 +130,7 @@ export class OpenAiTtsEngine implements TtsEngine {
         this.lastError = err
         this.downUntil = this.now() + this.cooldownMs
         if (!this.options.fallback) throw err
-        console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${err.message}`)
+        console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${redactSecrets(err)}`)
       }
     }
     return this.viaFallback(text, options)

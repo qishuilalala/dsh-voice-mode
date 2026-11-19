@@ -1057,7 +1057,7 @@ export function apply(ctx: Context, config: Config): void {
         resolveSettings({ [k]: v })
         valid[k] = v
       } catch (e) {
-        console.warn(`[dsh-voice-mode] ignoring invalid settings override "${k}" (falling back to the Config baseline): ${String(e).slice(0, 160)}`)
+        console.warn(`[dsh-voice-mode] ignoring invalid settings override "${k}" (falling back to the Config baseline): ${redactSecrets(e).slice(0, 160)}`)
       }
     }
     try {
