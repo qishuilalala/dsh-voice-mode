@@ -33,6 +33,40 @@
 | 11 | 疑点 | fish 预设音色无一手出处 | 已核对硅基流动文档明确举例 `fishaudio/fish-speech-1.5:anna`；在 OPENAI_PRESETS 注释逐条登记出处 |
 | 12 | 疑点 | 客户端另存预设音色表，与 host 双表可漂移 | 删除客户端表，统一走 `/presets` |
 
+
+## 第四轮复核（R4）与治理审计（G1）
+
+| 核查员 | 范围 | 结论 |
+|---|---|---|
+| R4 | 前 14 项修复真实性 | **不通过**：11 项已修、2 项部分、1 项未修 |
+| G1 | 四类治理一致性 | **不通过**：2 Blocker + 6 Important + 3 Minor |
+
+### R4 的实质发现（均已修，commit 9543afc）
+
+1. **ADR-0004 行号填成了修复前快照**（792 而非 794 等）——该表格行含「原值」字样，被 check-doc-anchors 判为历史时点而**豁免校验**，于是写错也全绿。这是门禁盲区，不是笔误。→ 补 test/doc-current-anchors.test.mjs，对少量最关键现态锚直接断言「文档声称行号 == 源码实际行号」；它立刻又抓出 ADR-0008 应为 731。
+2. index.ts 两处仍手写 kokoro/vits 级联 → 改用 isLocalEngine。
+3. client.tsx 助手函数插在 import 之间 → 移到 import 之后。
+4. 共享轮询无在途守卫（慢响应时 3s 定时器叠加请求）→ 加 modelsStatusInflight。
+5. 入口探针**先写时间戳再发请求**，一次瞬时失败会压制 10 分钟 → 改为请求结束后写（成功 10 分钟 / 失败 2 分钟短冷却）。
+6. 预设验证无在途去重（连点重复整句合成）→ 加 verifying 状态并在 finally 释放。
+
+### G1 的实质发现（均已修，commit 9543afc）
+
+1. Blocker：docs/adr/0015-*.md 标题误写「ADR-0014」（PR #68 带来的重号）→ 更正。
+2. Blocker：ADR 索引仍记 0014 为「提议」→ 转「已接受」。
+3. master-plan 七批只标 E3 → 逐批补 ✅ 与 commit，纠正「README 未动」的过期陈述。
+4. STATE 预设数 5 → 6（漏 openai-official）。
+5. plugin README 引擎清单缺 mimo、设置表缺 openaiPreset/asrReplacements。
+6. CONTEXT 键表缺 9 个键（rate/idleTimeoutMinutes/modelHost/autoSend/composerShortcut/spokenFormat/senseVoice/wakeWord/toolBeep）→ 全部补齐。
+7. 新增模块未登记产物映射 → engine-kind/tts-openai/tts-mimo/asr-replacements 补齐。
+8. ADR-0014 内部措辞矛盾（P3 否决 vs 只做 TTS 部分）、tts-expansion E2/E4 状态含糊 → 澄清。
+9. docs/CONTEXT 残留已删文件 asr-sense-key.ts → 更正。
+
+### 本轮教训
+
+- 依赖「文档自述」是审查最易失效处：14 项里 2 项（ADR-0004 行号、ADR-0014 标题/状态）都是声称已修但没真修，靠第三/四轮独立复核才暴露。
+- 门禁的豁免条款必须配守卫：任何「这类锚点允许过时」的规则，都要有对关键子集的强制校验，否则错误会沉淀。
+
 ## 回归
 
 - 双端 typecheck、词表覆盖、settings-effective（15 项）、引擎种类守卫（5 项）、prefetch 守卫、tts-mimo（15 项）、tts-openai、asr-replacements、i18n-protocol、lib 漂移、文档锚点、全套件：**全绿（显式退出码全 0）**。
