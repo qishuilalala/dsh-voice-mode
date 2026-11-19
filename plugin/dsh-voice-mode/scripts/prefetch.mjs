@@ -164,11 +164,23 @@ for (const [repo, files] of Object.entries(MODELS)) {
 
 // --- Kokoro 中英朗读模型：文件多（含 espeak-ng-data 全目录），走 HF 树枚举批量下载。
 //     int8（默认，CPU 友好）与 fp32（音质更好）两档，主模型文件不同、支持文件同源。 ---
+// revision 必须与 src/tts-local.ts 的 kokoroSpec（主模型 + 共享文件继承同一 revision）一致：
+// 上游 main 已多次替换同名文件，不锁 revision 时 prefetch 必校验失败（E0 报告 2026-11-18）。
 for (const kokoro of [
-  { repo: 'csukuangfj/kokoro-int8-multi-lang-v1_1', main: 'model.int8.onnx', sha: 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26' },
-  { repo: 'csukuangfj/kokoro-multi-lang-v1_1', main: 'model.onnx', sha: 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38' },
+  {
+    repo: 'csukuangfj/kokoro-int8-multi-lang-v1_1',
+    rev: '155831f1b4ba23b1f5c058be6a61df90cefb2a37',
+    main: 'model.int8.onnx',
+    sha: 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26',
+  },
+  {
+    repo: 'csukuangfj/kokoro-multi-lang-v1_1',
+    rev: '914313412b607d95400bcd12446233fbd1248801',
+    main: 'model.onnx',
+    sha: 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38',
+  },
 ]) {
-  const { repo, main, sha } = kokoro
+  const { repo, main, sha, rev } = kokoro
   const repoDir = join(cacheDir, repo)
   const SENTINELS = {
     [main]: sha,
@@ -181,7 +193,7 @@ for (const kokoro of [
   const sentinelOk = await Promise.all(Object.entries(SENTINELS).map(async ([f, sha2]) => (await sha256OfFile(join(repoDir, f)).catch(() => '')) === sha2))
   if (!sentinelOk.every(Boolean)) {
     console.log(`Kokoro 模型（${repo}）：文件不全，走 HF 树枚举下载`)
-    const treeRes = await fetch(`${HOST_FALLBACK}/api/models/${repo}/tree/main?recursive=true`, { headers: { 'user-agent': 'dsh-voice-mode/prefetch' } })
+    const treeRes = await fetch(`${HOST_FALLBACK}/api/models/${repo}/tree/${rev}?recursive=true`, { headers: { 'user-agent': 'dsh-voice-mode/prefetch' } })
     if (treeRes.ok) {
       const tree = await treeRes.json()
       const files = (tree ?? []).map((x) => x.path).filter((p) => !p.endsWith('/') && !['.gitattributes', 'README.md', 'LICENSE'].includes(p))
@@ -198,7 +210,7 @@ for (const kokoro of [
           if (want && (await sha256OfFile(localPath).catch(() => '')) === want) { doneCount++; continue }
           try {
             await mkdir(localPath.replace(/[\\/][^\\/]*$/, ''), { recursive: true })
-            const res = await fetch(`${HOST_FALLBACK}/${repo}/resolve/main/${encodeURIComponent(rel)}`, { headers: { 'user-agent': 'dsh-voice-mode/prefetch' } })
+            const res = await fetch(`${HOST_FALLBACK}/${repo}/resolve/${rev}/${encodeURIComponent(rel)}`, { headers: { 'user-agent': 'dsh-voice-mode/prefetch' } })
             if (res.status !== 200) { console.error(`  ✗ ${rel} (status ${res.status})`); ok = false; continue }
             const sink = createWriteStream(partPath)
             const reader = res.body?.getReader()
