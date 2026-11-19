@@ -27,7 +27,7 @@
 | Minor | micHint nowrap+ellipsis，长错误被截且挤压同排控件 | 待修 |
 | Minor | /models/status 轮询无超时，一次挂起永久停摆 | 已修（8s AbortSignal） |
 | Minor | NumberField 无 aria-invalid/describedby，`#d33` 硬编码 | 待修 |
-| Minor | 固定 id `dshvm-settings-card-body`，两处挂载可能重复 | 待修 |
+| Minor | 固定 id `dshvm-settings-card-body`，两处挂载可能重复 | 已修（useId） |
 | Minor | select 的 aria-label 是当前值；清密钥 busy 文案用 synthesizing | 待修 |
 | Minor | 注入的 <style> 永不摘除，热重载每次再加一份 | 待修 |
 
@@ -42,7 +42,7 @@
 | Minor | edge 引擎按 config 构造，靠后续 updateVoice 补救 | 已修（直接用 vset） |
 | Minor | engine-switch 不更新 activeKokoroModel → 多一次无谓重建 | 已修 |
 | Minor | 单键失效日志未脱敏 | 已修 |
-| Minor | clear 只清覆盖层，config 层 key 仍在、presence 恒 true | 待修 |
+| Minor | clear 只清覆盖层，config 层 key 仍在、presence 恒 true | 已修（keysFromConfig + 来源文案） |
 | Minor | /correct /toggle /mode /cancel /voices 缺方法校验 | 已修（非 GET/POST → 405） |
 | Minor | settings-http-scope dispose 后响应仍 emit | 已修 |
 | Minor | 并发 set 响应无序号，迟到旧响应覆盖新值 | 已修（writeSeq） |
