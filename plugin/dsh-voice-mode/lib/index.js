@@ -1407,6 +1407,37 @@ function parseEmotionTags(raw) {
   return out;
 }
 
+// src/redact.ts
+var PREFIXED = [
+  { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
+  { re: /\b((?:api[-_]?key|x-api-key)\s*[:=]\s*)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
+  // JSON 形态：{"apiKey":"..."} / {"token":"..."}（长度门槛降到 6，短 key 也能遮；只遮引号内的值）
+  {
+    re: /("(?:api[_-]?key|token|secret|password|x-api-key)"\s*:\s*")([^"\\]{6,})(")/gi,
+    to: "$1<redacted>$3"
+  }
+];
+var BARE = [
+  /\bsk[-_][A-Za-z0-9._-]{8,}/g,
+  /\bAIza[A-Za-z0-9._-]{10,}/g,
+  /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
+  // 通用兜底：≥20 连续 base64-ish 字符，要求**同时含大写、小写与数字**（真密钥的典型特征），
+  // 且排除纯十六进制（SHA256/MD5 是排障信息）。这样不会吃掉全小写的模型名、
+  // 也不会吃掉被 - / 分隔的 UUID 与路径。
+  // 注意：字符类**不含 '/'**——路径与 provider/model:voice 形态都靠 '/' 分隔，含进来会误伤排障信息。
+  /\b(?![0-9a-fA-F]{32,}\b)(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[0-9])[A-Za-z0-9+=_-]{20,}\b/g
+];
+function redactSecrets(text) {
+  let out = typeof text === "string" ? text : String(text ?? "");
+  for (const { re, to } of PREFIXED) out = out.replace(re, to);
+  for (const re of BARE) out = out.replace(re, "<redacted>");
+  return out;
+}
+function redactBodySnippet(body, n = 200) {
+  const raw = typeof body === "string" ? body : String(body ?? "");
+  return redactSecrets(raw.slice(0, n + 128)).slice(0, n);
+}
+
 // src/tts-queue.ts
 var MP3_MAGIC = 255;
 var TTS_METADATA = { wordBoundaryEnabled: false, sentenceBoundaryEnabled: false };
@@ -1779,7 +1810,7 @@ var TtsQueue = class {
             buf = await this.engine.synthesize(item.text);
             break;
           } catch (e) {
-            console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${String(e)}`);
+            console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${redactSecrets(e)}`);
             if (attempt < MAX_SYNTH_ATTEMPTS - 1) {
               await this.retrySleep(400 * (attempt + 1));
             }
@@ -2918,29 +2949,6 @@ async function correctText(ctx, text, lang) {
   } catch {
     return text;
   }
-}
-
-// src/redact.ts
-var PREFIXED = [
-  { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
-  { re: /\b((?:api[-_]?key|x-api-key)\s*[:=]\s*)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" }
-];
-var BARE = [
-  /\bsk[-_][A-Za-z0-9._-]{8,}/g,
-  /\bAIza[A-Za-z0-9._-]{10,}/g,
-  /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
-  // 兜底：超长连续 ASCII 串。排除纯十六进制（哈希是排障信息，不是密钥）。
-  /\b(?![0-9a-fA-F]{32,}\b)[A-Za-z0-9+/=_-]{20,}\b/g
-];
-function redactSecrets(text) {
-  let out = typeof text === "string" ? text : String(text ?? "");
-  for (const { re, to } of PREFIXED) out = out.replace(re, to);
-  for (const re of BARE) out = out.replace(re, "<redacted>");
-  return out;
-}
-function redactBodySnippet(body, n = 200) {
-  const raw = typeof body === "string" ? body : String(body ?? "");
-  return redactSecrets(raw.slice(0, n));
 }
 
 // src/voice-resolution.ts
@@ -4335,7 +4343,7 @@ function apply(ctx, config) {
             const engineStatus = queue.status();
             const sampleLen = sample.length;
             console.warn(
-              `[dsh-voice-mode] preview synthesis failed: category=${category} engine=${engineName} engineReady=${engineStatus.ready} sampleLen=${sampleLen} attempt=1 voice=${voice} err=${errMsg}`
+              `[dsh-voice-mode] preview synthesis failed: category=${category} engine=${engineName} engineReady=${engineStatus.ready} sampleLen=${sampleLen} attempt=1 voice=${redactSecrets(voice)} err=${redactSecrets(errMsg)}`
             );
             respondJson2(res, 502, { code: PREVIEW_ERROR_CODES[category], error: `preview failed (${category})` });
             return;
@@ -4605,7 +4613,7 @@ function apply(ctx, config) {
           const voices = await listEdgeVoices();
           respondJson2(res, 200, { voices });
         } catch (e) {
-          console.warn(`[dsh-voice-mode] listing Edge voices failed: ${String(e)}`);
+          console.warn(`[dsh-voice-mode] listing Edge voices failed: ${redactSecrets(e)}`);
           respondJson2(res, 502, { code: "internal", error: "voice list unavailable" });
         }
       }
@@ -4719,7 +4727,7 @@ function apply(ctx, config) {
             respondJson2(res, 200, { ok: true, managedBy: "plugin", value: next });
           } catch (e) {
             const isValidation = e instanceof Error && e.name === "ValidationError";
-            console.warn(`[dsh-voice-mode] settings update failed: ${String(e)}`);
+            console.warn(`[dsh-voice-mode] settings update failed: ${redactSecrets(e)}`);
             respondJson2(res, isValidation ? 400 : 500, {
               code: isValidation ? "bad_request" : "internal",
               error: isValidation ? `invalid value: ${e.message.slice(0, 200)}` : "settings update failed"

@@ -44,6 +44,7 @@ import { createAsrRuntime, handleAsrRequest } from './asr-host.ts'
 import { AsrReplacementSchema, createAsrReplacer, type AsrReplacement } from './asr-replacements.ts'
 import { SentenceSegmenter } from './segmenter.ts'
 import { EdgeTtsEngine, TtsQueue, listEdgeVoices, type TtsEngine } from './tts-queue.ts'
+import { redactSecrets } from './redact.ts'
 import { createSherpaVitsEngine, createSherpaKokoroEngine, TTS_MODEL_REPO, kokoroModelDir, type KokoroModel } from './tts-local.ts'
 import { HOST_PRIMARY, validateModelHost } from './models.ts'
 import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts'
@@ -1575,7 +1576,7 @@ export function apply(ctx: Context, config: Config): void {
             const engineStatus = queue.status()
             const sampleLen = sample.length
             console.warn(
-              `[dsh-voice-mode] preview synthesis failed: category=${category} engine=${engineName} engineReady=${engineStatus.ready} sampleLen=${sampleLen} attempt=1 voice=${voice} err=${errMsg}`,
+              `[dsh-voice-mode] preview synthesis failed: category=${category} engine=${engineName} engineReady=${engineStatus.ready} sampleLen=${sampleLen} attempt=1 voice=${redactSecrets(voice)} err=${redactSecrets(errMsg)}`,
             )
             // UI 端只暴露归类提示——不传 errMsg / 引擎 ready / sample 长度等诊断细节
             // （防止 errMsg 泄露模型路径 / 内部错误堆栈 / 第三方 SDK 字面量）。
@@ -1934,7 +1935,7 @@ export function apply(ctx: Context, config: Config): void {
           const voices = await listEdgeVoices()
           respondJson(res, 200, { voices })
         } catch (e) {
-          console.warn(`[dsh-voice-mode] listing Edge voices failed: ${String(e)}`)
+          console.warn(`[dsh-voice-mode] listing Edge voices failed: ${redactSecrets(e)}`)
           respondJson(res, 502, { code: 'internal', error: 'voice list unavailable' })
         }
       },
@@ -2097,7 +2098,7 @@ export function apply(ctx: Context, config: Config): void {
           } catch (e) {
             // schema 校验失败 = 客户端输入问题（400）；其余（落盘等）= 500。不回显内部路径。
             const isValidation = e instanceof Error && e.name === 'ValidationError'
-            console.warn(`[dsh-voice-mode] settings update failed: ${String(e)}`)
+            console.warn(`[dsh-voice-mode] settings update failed: ${redactSecrets(e)}`)
             respondJson(res, isValidation ? 400 : 500, {
               code: isValidation ? 'bad_request' : 'internal',
               error: isValidation ? `invalid value: ${(e as Error).message.slice(0, 200)}` : 'settings update failed',

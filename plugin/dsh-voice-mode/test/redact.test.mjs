@@ -63,4 +63,41 @@ t('非字符串输入不抛（错误路径不能因脱敏再炸一次）', () =>
   assert.equal(redactSecrets(42), '42')
 })
 
+t('截断边界：key 起点在可见窗口尾部时不得漏出残段（R6 Important-1）', () => {
+  // 原实现「先截 200 再脱敏」：key 若跨边界会被切成 <20 字符残段而漏过通用规则。
+  for (const offset of [181, 185, 190, 195, 199]) {
+    const prefix = 'x'.repeat(offset - 2)
+    const key = 'Zx8Qw3Er7Ty2Ui5Op9AsDfGhJkL'
+    const out = redactBodySnippet(prefix + ' ' + key, 200)
+    // 允许输出里出现 key 的极短前缀以外的内容：任何 ≥4 字符的连续片段都不该出现
+    for (let i = 0; i + 4 <= key.length; i++) {
+      assert.ok(!out.includes(key.slice(i, i + 4)), `offset=${offset} 漏出片段 ${key.slice(i, i + 4)}：${out.slice(-40)}`)
+    }
+  }
+})
+
+t('不误伤排障信息：模型名 / UUID / 路径 / 长哈希（R6 Important-2）', () => {
+  const samples = [
+    'openai/gpt-4o-mini-tts-2025-12-15',
+    'FunAudioLLM/CosyVoice2-0.5B:alex',
+    '550e8400-e29b-41d4-a716-446655440000',
+    '/usr/local/lib/node_modules/@deepseek-ai/dsh/index.js',
+    'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26',
+    'HTTP 404: model_not_found for kokoro-int8-multi-lang-v1_1',
+  ]
+  for (const s of samples) assert.equal(redactSecrets(s), s, '被误伤：' + s)
+})
+
+t('Bearer 规则独立生效（只有小写随机串，靠通用规则抓不到）', () => {
+  // 删掉 Bearer 规则后，这条必须变红：值里没有 sk- 前缀、全小写（通用规则要求大小写+数字混合）
+  assert.equal(redactSecrets('Authorization: Bearer abcdefghijklmnopqrstuvwxyz'), 'Authorization: Bearer <redacted>')
+})
+
+t('JSON 里的短 key 字段也遮（R6 Minor-4）', () => {
+  assert.equal(redactSecrets('{"apiKey":"abc12345xyz98765"}'), '{"apiKey":"<redacted>"}')
+  assert.equal(redactSecrets('{"token":"short-token-1"}'), '{"token":"<redacted>"}')
+  // 不误伤普通字段
+  assert.equal(redactSecrets('{"model":"mimo-v2.5-tts"}'), '{"model":"mimo-v2.5-tts"}')
+})
+
 console.log(`\n${passed} passed`)

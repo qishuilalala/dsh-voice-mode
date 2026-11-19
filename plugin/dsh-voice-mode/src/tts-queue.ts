@@ -13,6 +13,7 @@
  */
 import { MsEdgeTTS, OUTPUT_FORMAT, type ProsodyOptions } from 'msedge-tts'
 import { stripEmotionTags } from './emotion.ts'
+import { redactSecrets } from './redact.ts'
 import type { TtsEngineKind } from './engine-kind.ts'
 
 /** 合成引擎统一接口（云端/本地实现互替）。 */
@@ -609,7 +610,7 @@ export class TtsQueue {
             buf = await this.engine.synthesize(item.text)
             break
           } catch (e) {
-            console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${String(e)}`)
+            console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${redactSecrets(e)}`)
             if (attempt < MAX_SYNTH_ATTEMPTS - 1) {
               await this.retrySleep(400 * (attempt + 1))
             }
