@@ -63,6 +63,10 @@ let lastReenterAt = 0
 /** 打断灵敏度三档 → isSpeech 连续确认帧数（墙钟节拍 100ms/拍 + 上行往返 → 确认阶段约 0.3/0.2/0.1s；语义对齐旧能量持续时长档位）。 */
 const INT_CONFIRM_FRAMES: Record<0 | 1 | 2, number> = { 0: 3, 1: 2, 2: 1 }
 
+import { VoiceSettingsCard } from './settings-form.tsx'
+import { createHttpScope } from './settings-http-scope.ts'
+import { takeOnceHint } from './once-hint.ts'
+
 /** /presets 缓存（模块级，一次拉取；失败返回 null 且不缓存，下次重试）。 */
 let presetVoiceCache: Record<string, string> | null = null
 /**
@@ -86,9 +90,7 @@ async function fetchPresetVoice(presetId: string): Promise<string | null> {
   }
   return presetVoiceCache[presetId] ?? null
 }
-import { VoiceSettingsCard } from './settings-form.tsx'
-import { createHttpScope } from './settings-http-scope.ts'
-import { takeOnceHint } from './once-hint.ts'
+
 
 // settingsScope 仅 ≤0.1.6 客户端提供；0.1.7+ 已移除，列入 inject 会使插件永远 pending（真机冒烟实证）。
 // 故不声明，改用 ctx.get 可选查找（见 settings.plugin.item 注册处）。
@@ -2695,11 +2697,20 @@ export function MicButton({
             if (pid) pv = (await fetchPresetVoice(pid)) ?? ''
           }
         }
+        if (!readAloudOff && !recentProbe && isCloudEngine(eng) && !pv) {
+          debugLog('tts-probe-skip', { reason: 'no-voice', engine: eng })
+        } else if (!readAloudOff && recentProbe && isCloudEngine(eng)) {
+          debugLog('tts-probe-skip', { reason: 'throttled', engine: eng })
+        }
         if (!readAloudOff && !recentProbe && isCloudEngine(eng) && pv) {
-          try {
-            sessionStorage.setItem(probeKey, String(Date.now()))
-          } catch {
-            // 忽略存储失败
+          // 时间戳**在请求结束后**才写：先写会让一次瞬时失败把探针压制 10 分钟（R4 复核发现）。
+          // 成功 → 10 分钟；失败 → 2 分钟短冷却（仍是 fail-open，不打扰进入）。
+          const markProbe = (ok: boolean): void => {
+            try {
+              sessionStorage.setItem(probeKey, String(ok ? Date.now() : Date.now() - probeTtlMs + 2 * 60 * 1000))
+            } catch {
+              // 忽略存储失败
+            }
           }
           const pr = typeof sv.rate === 'number' ? Math.min(2, Math.max(0.5, sv.rate)) : 1.1
           const myProbe = enterEpochRef.current
@@ -2714,9 +2725,17 @@ export function MicButton({
             signal: AbortSignal.timeout(30000),
           })
             .then((res) => {
-              if (!res.ok && res.status !== 429 && res.status !== 403) markDown()
+              // 429/403 是配额/禁用，不是引擎坏 → 不提示；但都要留日志（排障时看得到原因）。
+              const skipped = res.status === 429 || res.status === 403
+              if (!res.ok && !skipped) markDown()
+              markProbe(res.ok)
+              debugLog('tts-probe', { ok: res.ok, status: res.status, skipped, engine: eng })
             })
-            .catch(() => markDown())
+            .catch((e: unknown) => {
+              markProbe(false)
+              debugLog('tts-probe', { ok: false, error: String(e).slice(0, 80), engine: eng })
+              markDown()
+            })
         }
       } catch {
         // 快照读取异常 → 跳过探针（进入流程不受影响）

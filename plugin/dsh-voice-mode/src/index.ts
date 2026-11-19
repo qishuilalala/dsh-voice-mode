@@ -51,7 +51,7 @@ import type { HostErrorCode } from './errors.ts'
 import { en } from './strings.ts'
 import { correctText } from './llm-correct.ts'
 import { OPENAI_PRESETS, OpenAiTtsEngine, resolveOpenAiEndpoint } from './tts-openai.ts'
-import { asTtsEngineKind, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
+import { asTtsEngineKind, isLocalEngine, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
 import { MimoTtsEngine } from './tts-mimo.ts'
 import { normalizePromptLang, previewSample, spokenPrompt, type PromptLang } from './prompts.ts'
 import { pickKnownKeys, readLegacyVoiceSettings, readOverrides, settingsFilePath, unknownKeys, writeOverrides } from './settings-store.ts'
@@ -1828,7 +1828,8 @@ export function apply(ctx: Context, config: Config): void {
           let engine: 'vits' | 'kokoro' = 'vits'
           try {
             const p = JSON.parse(body || '{}') as { engine?: unknown }
-            if (p.engine === 'kokoro' || p.engine === 'vits') engine = p.engine
+            // 本地引擎判定走单一真源（engine-kind）；加新本地引擎不必再改这里。
+            if (isLocalEngine(p.engine)) engine = p.engine as 'vits' | 'kokoro'
             else {
               respondJson(res, 400, { code: 'bad_request', error: 'invalid engine' })
               return
@@ -1879,7 +1880,8 @@ export function apply(ctx: Context, config: Config): void {
           let engine: 'vits' | 'kokoro' = 'vits'
           try {
             const p = JSON.parse(body || '{}') as { engine?: unknown }
-            if (p.engine === 'kokoro' || p.engine === 'vits') engine = p.engine
+            // 本地引擎判定走单一真源（engine-kind）；加新本地引擎不必再改这里。
+            if (isLocalEngine(p.engine)) engine = p.engine as 'vits' | 'kokoro'
             else {
               respondJson(res, 400, { code: 'bad_request', error: 'invalid engine' })
               return

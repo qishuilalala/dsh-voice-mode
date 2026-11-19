@@ -4790,14 +4790,19 @@ function DictationPreset({
 var modelsStatusSubs = /* @__PURE__ */ new Set();
 var modelsStatusTimer = null;
 var modelsStatusLast = null;
+var modelsStatusInflight = false;
 var MODELS_STATUS_INTERVAL_MS = 3e3;
 async function pollModelsStatusOnce() {
+  if (modelsStatusInflight) return;
+  modelsStatusInflight = true;
   try {
     const res = await fetch(location.origin + BASE_PATH + "/models/status");
     if (!res.ok) return;
     modelsStatusLast = await res.json();
     for (const fn of [...modelsStatusSubs]) fn(modelsStatusLast);
   } catch {
+  } finally {
+    modelsStatusInflight = false;
   }
 }
 function subscribeModelsStatus(fn) {
@@ -4833,7 +4838,8 @@ function OpenAiPresetSection({
   value,
   presets,
   onVerify,
-  verifyState
+  verifyState,
+  verifying
 }) {
   const cur = typeof value === "string" ? value : "";
   const ids = ["", ...Object.keys(presets ?? {})];
@@ -4855,7 +4861,7 @@ function OpenAiPresetSection({
         "button",
         {
           type: "button",
-          disabled: !cur,
+          disabled: !cur || verifying,
           onClick: () => onVerify(cur),
           style: {
             font: "inherit",
@@ -5187,10 +5193,14 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
     const pid = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
     return pid && hostPresets?.[pid]?.voice || "";
   };
+  const [verifying, setVerifying] = (0, import_react2.useState)(false);
   const verifyPreset = (presetId) => {
+    if (verifying) return;
+    setVerifying(true);
     const voice = (value.openaiPreset === presetId ? effectiveVoice() : "") || hostPresets?.[presetId]?.voice || "";
     if (!voice) {
       setPresetVerify({ id: presetId, state: "fail", note: t("previewNameFirst") });
+      setVerifying(false);
       return;
     }
     void (async () => {
@@ -5218,6 +5228,8 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
         });
       } catch {
         setPresetVerify({ id: presetId, state: "fail", note: t("selftestCheck") });
+      } finally {
+        setVerifying(false);
       }
     })();
   };
@@ -5326,7 +5338,8 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               value: value.openaiPreset,
               presets: hostPresets,
               onVerify: verifyPreset,
-              verifyState: presetVerify
+              verifyState: presetVerify,
+              verifying
             }
           ) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1.1, min: 0.5, max: 2, step: 0.1 }) })
@@ -5668,7 +5681,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "0f8442b";
+var BUILD_TAG = "3e97138";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -7461,11 +7474,18 @@ function MicButton({
             if (pid) pv = await fetchPresetVoice(pid) ?? "";
           }
         }
+        if (!readAloudOff && !recentProbe && isCloudEngine(eng) && !pv) {
+          debugLog("tts-probe-skip", { reason: "no-voice", engine: eng });
+        } else if (!readAloudOff && recentProbe && isCloudEngine(eng)) {
+          debugLog("tts-probe-skip", { reason: "throttled", engine: eng });
+        }
         if (!readAloudOff && !recentProbe && isCloudEngine(eng) && pv) {
-          try {
-            sessionStorage.setItem(probeKey, String(Date.now()));
-          } catch {
-          }
+          const markProbe = (ok) => {
+            try {
+              sessionStorage.setItem(probeKey, String(ok ? Date.now() : Date.now() - probeTtlMs + 2 * 60 * 1e3));
+            } catch {
+            }
+          };
           const pr = typeof sv.rate === "number" ? Math.min(2, Math.max(0.5, sv.rate)) : 1.1;
           const myProbe = enterEpochRef.current;
           const markDown = () => {
@@ -7478,8 +7498,15 @@ function MicButton({
             body: JSON.stringify({ voice: pv, rate: pr }),
             signal: AbortSignal.timeout(3e4)
           }).then((res) => {
-            if (!res.ok && res.status !== 429 && res.status !== 403) markDown();
-          }).catch(() => markDown());
+            const skipped = res.status === 429 || res.status === 403;
+            if (!res.ok && !skipped) markDown();
+            markProbe(res.ok);
+            debugLog("tts-probe", { ok: res.ok, status: res.status, skipped, engine: eng });
+          }).catch((e) => {
+            markProbe(false);
+            debugLog("tts-probe", { ok: false, error: String(e).slice(0, 80), engine: eng });
+            markDown();
+          });
         }
       } catch {
       }

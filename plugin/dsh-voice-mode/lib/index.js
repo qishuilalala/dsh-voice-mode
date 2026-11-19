@@ -3115,8 +3115,12 @@ function resolveOpenAiEndpoint(preset) {
 
 // src/engine-kind.ts
 var TTS_ENGINE_KINDS = ["vits", "kokoro", "edge", "openai", "mimo"];
+var LOCAL_ENGINE_KINDS = ["vits", "kokoro"];
 function asTtsEngineKind(value) {
   return TTS_ENGINE_KINDS.includes(value) ? value : "vits";
+}
+function isLocalEngine(value) {
+  return LOCAL_ENGINE_KINDS.includes(value);
 }
 function usesBilingualSample(value) {
   return value === "kokoro" || value === "openai" || value === "mimo";
@@ -4474,7 +4478,7 @@ function apply(ctx, config) {
           let engine = "vits";
           try {
             const p = JSON.parse(body || "{}");
-            if (p.engine === "kokoro" || p.engine === "vits") engine = p.engine;
+            if (isLocalEngine(p.engine)) engine = p.engine;
             else {
               respondJson2(res, 400, { code: "bad_request", error: "invalid engine" });
               return;
@@ -4513,7 +4517,7 @@ function apply(ctx, config) {
           let engine = "vits";
           try {
             const p = JSON.parse(body || "{}");
-            if (p.engine === "kokoro" || p.engine === "vits") engine = p.engine;
+            if (isLocalEngine(p.engine)) engine = p.engine;
             else {
               respondJson2(res, 400, { code: "bad_request", error: "invalid engine" });
               return;

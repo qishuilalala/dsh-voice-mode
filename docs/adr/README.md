@@ -19,7 +19,7 @@
 | [0011](0011-bundle-msedge-tts-inline.md) | msedge-tts 连同依赖内联为独立 CJS（修 npm 安装与 dsh ≥0.1.7 加载） | 已接受 |
 | [0012](0012-barge-in-salvage.md) | 打断语音抢救（bargeInSalvage 默认开的 I10 豁免） | 已接受 |
 | [0013](0013-remote-tts-trust-boundary.md) | 远程 TTS 引擎信任边界（OpenAI 兼容端点 + 本地回退） | 已接受 |
-| [0014](0014-voice-direction-2026-11.md) | 语音方向 2026-11 收敛（P1 可靠性优先 + doctor 先行，待拍板） | 提议 |
+| [0014](0014-voice-direction-2026-11.md) | 语音方向 2026-11 收敛（P1 可靠性优先 + TTS 扩张；P2 不做，下一个开源项目不做） | 已接受（2026-11-18 用户拍板） |
 | [0015](0015-asr-replacements-stopgap.md) | 误听词替换表（asrReplacements，文本层权宜，热词不可用时的统一后处理） | 已接受 |
 
 ## 格式

@@ -34,18 +34,18 @@
 
 ## 4. 项目治理：分批（每批一 PR，可独立回退）
 
-顺序：E0 与 P1-1~P1-4 并行 → E1 → E3（已完成；V2.5-TTS 定价/限免已核实）。P2/C 全砍。
+顺序：E0 与 P1-1~P1-4 并行 → E1 → E3（**七批已全部交付**；V2.5-TTS 定价/限免已核实；E2/E4 未做）。P2/C 全砍。
 每批命令在 plugin/dsh-voice-mode 执行：`pnpm build` + 双 typecheck + `npm test` + 相关 e2e；文档批随 `npm run check:doc-anchors`。
 
 | 批 | 交付 | 验收边界 | 依赖 |
 |---|---|---|---|
-| P1-1 自测页 | 合成✓/播放✓分离 | Edge 挂红本地绿 | task-5 |
-| P1-2 探针换源 | 可见错误+一键切 | 默认不变 | task-6 |
-| P1-3 词表 | 本地优先+命中统计 | LLM 纠错仍默认关 | task-7 |
-| P1-4 极简预设 | 一键只听写 | 三模式语义不动 | task-8 |
-| E0 基座检查 | 报告 only | 无行为变更 | task-9 |
-| E1 预设化 | SiliconFlow 首个+探针 | 费用/去向双行 | task-10 |
-| E3 小米引擎 | 专用适配+回退 ✅ ccbdf51 | 独立 key + 15 项单测 | task-11 |
+| P1-1 自测页 | 合成✓/播放✓分离 ✅ a469ea0 | Edge 挂红本地绿 | task-5 |
+| P1-2 探针换源 | 可见错误+一键切 ✅ d2d087e（一键切本地 2026-11-19 补） | 默认不变 | task-6 |
+| P1-3 词表 | 本地优先+命中统计 ✅ 211f554 | LLM 纠错仍默认关 | task-7 |
+| P1-4 极简预设 | 一键只听写 ✅ 5b3e58e | 三模式语义不动 | task-8 |
+| E0 基座检查 | 报告 only + prefetch revision 修复（越界，见 e0-report 例外声明）✅ dac007b | 无运行时行为变更 | task-9 |
+| E1 预设化 | 6 预设（硅基×2/OpenRouter/OpenAI 官方/自建×2）+「验证此预设」探针 + `/presets` 单一真源 ✅ ea18c37/632ae72/6d4af2b | 费用/去向双行 | task-10 |
+| E3 小米引擎 | 专用适配+回退 ✅ ccbdf51 | 独立 key + 16 项单测 | task-11 |
 
 门禁（Blocker）：无分层 p95+四项真机门禁不得立项传输/模型大改；云 preset 无费用授权+去向说明不得进默认；唤醒/hold/salvage 耦合区冻结大改。
 
@@ -53,7 +53,7 @@
 
 - 总纲本文件；方向 [voice-direction-decision](voice-direction-decision-2026-11-18.md)；TTS [tts-expansion](tts-expansion-2026-11-18.md)；对抗 [../review-2026-11-18-plan.md](../review-2026-11-18-plan.md)；ADR-0014（本轮）/0013/0004 等。
 - 取证底稿在 gitignored `docs/research/`（T1/T2-final/T3-final/interim），不入库；结论以本目录为准。
-- ADR-0014 索引行由 PR68 在途改动代管（docs/adr/README.md 未动，避免冲突），合入后核对。
+- ADR 索引已核对并回填：0014 转「已接受」、0015（asrReplacements，来自 PR68）标题更正为 ADR-0015（原误写 0014）。
 
 ## 6. 待用户确认（Q1–Q3 默认组合）
 

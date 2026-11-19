@@ -11,9 +11,9 @@
 ## 当前任务与唯一下一步
 
 - **唯一下一步：维护者对 0.7.39 做真机验收**（[四项必过](../qa/must-verify-manually.md) + 远程引擎真服务试听 + 切会话停朗读/once 打断续说）；失败即开补丁 PR。
-- **P1+TTS 七批已交付（分支 `plan/p1-tts-2026-11-18`，未合 main，用户明确要求暂不合并）**：P1-1 自测页、P1-2 入口探针/一键切本地、P1-3 纠错词表（含命中计数）、P1-4 只听写预设、E0 基座检查+prefetch revision 修复、E1 在线预设（6 个：硅基×2/OpenRouter/OpenAI 官方/自建×2）、E3 小米 MiMo 引擎（独立 `mimoTts.apiKey`）。
+- **P1+TTS 七批已交付（分支 `plan/p1-tts-2026-11-18`，未合 main，用户明确要求暂不合并）**：P1-1 自测页、P1-2 入口探针/一键切本地、P1-3 纠错词表（含命中计数）、P1-4 只听写预设、E0 基座检查+prefetch revision 修复、E1 在线预设（6 个：硅基×2 / OpenRouter / OpenAI 官方 / 自建 Kokoro / 自建 vLLM）、E3 小米 MiMo 引擎（独立 `mimoTts.apiKey`）。
 - **已完成三轮对抗核查 + 两轴代码审查**：三路审计（[review-2026-11-19](../review-2026-11-19-audits.md)）、两轮复核（B1 通过/B2 不通过→已修）、Standards+Spec 两轴（[review-2026-11-19-two-axis.md](../review-2026-11-19-two-axis.md)，14 项发现全修）。
-- **治理收敛**：新增 `src/engine-kind.ts` 作为引擎种类单一真源（清单+云端/本地/第三方判别+双语判据），替换 6 文件手写级联并加守卫测试；`GET /voice-mode/presets` 成为预设单一真源。
+- **治理收敛**：新增 `src/engine-kind.ts`（`TTS_ENGINE_KINDS`）作为引擎种类单一真源（清单+云端/本地/第三方判别+双语判据），替换 6 文件手写级联并加守卫测试；`GET /voice-mode/presets` 成为预设单一真源。
 - 2026-10-15 静态审计余项：④ 回声地板棘轮、③ hold 取消后 host 流未 reset（台架未复现残留文本），见根 CONTEXT「已知待办」。
 
 ## 在途事项

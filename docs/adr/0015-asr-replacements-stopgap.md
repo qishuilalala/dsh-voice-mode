@@ -1,4 +1,4 @@
-# ADR-0014 误听词替换表（asrReplacements，文本层权宜）
+# ADR-0015 误听词替换表（asrReplacements，文本层权宜）
 
 > 状态：已接受（随 PR #68 落地，2026-11 起）。
 

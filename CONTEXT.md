@@ -76,6 +76,15 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 | bargeInSalvage | true | Issue #15 批 1 / ADR-0012：打断语音抢救。播放期预录 2s 环，hardBreak 时把「语音起始前 250ms」起的音频并入新段（修打断吃句）；关=回退丢句（外放无 AEC 环境逃生口） |
 | llmCorrect | false | Issue #15 批 4：发送前 LLM 纠错（只改错别字/同音字/标点，复用宿主模型；失败回退原文）。默认关 |
 | yieldMs | 1500 | 让位窗口时长（500-3000） |
+| rate | 1.1 | 朗读语速倍率（0.5–2.0，即时）；MiMo 无 speed 字段，译成自然语言风格指令 |
+| idleTimeoutMinutes | 5 | 无活动自动退出语音模式（朗读计为活动） |
+| modelHost | ''（官方源） | 模型下载源，国内可填 `https://hf-mirror.com`；允许自定义需 `allowCustomModelHost` |
+| autoSend | true | 定稿后自动发送（关=只填输入框不发送） |
+| composerShortcut | Alt+Enter | 光标在输入框时切语音模式的快捷键；留空=禁用；不插入换行 |
+| spokenFormat | true | 朗读前把 Markdown/代码块等转成口语化文本 |
+| senseVoice | true | 是否启用 SenseVoice 定稿通道（关则只用流式 zipformer） |
+| wakeWord | '' | 唤醒词（空=不启用；配套 wakeWordEnabled 等键见 schema） |
+| toolBeep | false | 工具调用提示音（AI 调工具时轻响，避免误以为卡住） |
 
 **生效时机四档**（Issue #15 批 6）：① 即时（引擎/音色/语速/口语化提示词/模型镜像）② 下次识别（定稿重译/ITN）③ 下一段话（silenceMs 端点）④ 下次进入语音模式（其余，含上表大部分）。设置卡片顶部显示「已保存未生效」项及当前生效值（与运行态 boot 快照比对）。**自动发送附加等待固定 1200ms**（批 5，与 silenceMs 解耦——调低断句阈值不再压缩发送窗）。
 
@@ -109,4 +118,4 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 
 ## 关键源文件
 
-src/asr.ts（采集/门控/打断引擎）· fixture-recorder.ts（真机录制，默认关）· client.tsx（播放/参考池/手势/UI）· mic-gesture.ts（麦克风按钮纯判定：快捷键与编辑撞车让位 / 进出语音节流 / once 回复读完判据；无 DOM 依赖，PR #16 新增）· aec.ts（NLMS）· asr-host.ts（host ASR/检测通道）· index.ts（路由/SSE/owner）· tts-local.ts（本地 TTS VITS/Kokoro + 精度）· tts-queue.ts（逐会话队列/epoch 打断）· settings-form.tsx（设置面板）；tts-runtime.ts（Electron 宿主下 Kokoro 子进程的真 Node 选择，ADR-0011 后续）· settings-store.ts / settings-http-scope.ts（≥0.1.7 设置自持久化，ADR-0009）· i18n.ts / strings.ts / error-text.ts / errors.ts（国际化，ADR-0010）。测试装置：scripts/smoke-runtime.sh（已安装形态/Electron 宿主/桌面外壳 DSHVM_ELECTRON/语音链路 DSHVM_VOICE_CHAIN）、scripts/full-e2e.sh（DSHVM_VOICE_LOOP 真 LLM 闭环）、scripts/verify-install.sh（安装门禁）；test/host-hardening.test.mjs（/models/retry 仅同源 POST、模型树路径校验、错误原文不下行的守卫）
+src/asr.ts（采集/门控/打断引擎）· fixture-recorder.ts（真机录制，默认关）· client.tsx（播放/参考池/手势/UI）· mic-gesture.ts（麦克风按钮纯判定：快捷键与编辑撞车让位 / 进出语音节流 / once 回复读完判据；无 DOM 依赖，PR #16 新增）· aec.ts（NLMS）· asr-host.ts（host ASR/检测通道）· index.ts（路由/SSE/owner）· tts-local.ts（本地 TTS VITS/Kokoro + 精度）· tts-queue.ts（逐会话队列/epoch 打断）· engine-kind.ts（**引擎种类单一真源**：清单 + 云端/本地/第三方判别 + 双语例句判据；加新引擎只改此处）· tts-openai.ts（OpenAI 兼容引擎 + 6 预设表，经 `/presets` 下发）· tts-mimo.ts（小米 MiMo 引擎，独立 key/冷却回退）· asr-replacements.ts（纠错词表 replacer + 体积口径）· settings-form.tsx（设置面板）；tts-runtime.ts（Electron 宿主下 Kokoro 子进程的真 Node 选择，ADR-0011 后续）· settings-store.ts / settings-http-scope.ts（≥0.1.7 设置自持久化，ADR-0009）· i18n.ts / strings.ts / error-text.ts / errors.ts（国际化，ADR-0010）。测试装置：scripts/smoke-runtime.sh（已安装形态/Electron 宿主/桌面外壳 DSHVM_ELECTRON/语音链路 DSHVM_VOICE_CHAIN）、scripts/full-e2e.sh（DSHVM_VOICE_LOOP 真 LLM 闭环）、scripts/verify-install.sh（安装门禁）；test/host-hardening.test.mjs（/models/retry 仅同源 POST、模型树路径校验、错误原文不下行的守卫）

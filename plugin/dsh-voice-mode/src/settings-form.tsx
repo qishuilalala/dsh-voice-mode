@@ -1209,9 +1209,13 @@ type ModelsStatusSub = (st: ModelsStatusPayload) => void
 const modelsStatusSubs = new Set<ModelsStatusSub>()
 let modelsStatusTimer: ReturnType<typeof setInterval> | null = null
 let modelsStatusLast: ModelsStatusPayload | null = null
+/** 在途守卫：慢响应时 3s 定时器会叠加请求，串起来会让连接数持续上涨（R4 复核发现）。 */
+let modelsStatusInflight = false
 const MODELS_STATUS_INTERVAL_MS = 3000
 
 async function pollModelsStatusOnce(): Promise<void> {
+  if (modelsStatusInflight) return
+  modelsStatusInflight = true
   try {
     const res = await fetch(location.origin + BASE_PATH + '/models/status')
     if (!res.ok) return
@@ -1220,6 +1224,8 @@ async function pollModelsStatusOnce(): Promise<void> {
     for (const fn of [...modelsStatusSubs]) fn(modelsStatusLast)
   } catch {
     // 轮询失败保留上次快照（下一次再试）
+  } finally {
+    modelsStatusInflight = false
   }
 }
 
@@ -1270,12 +1276,14 @@ function OpenAiPresetSection({
   presets,
   onVerify,
   verifyState,
+  verifying,
 }: {
   score: ScopeController
   value: unknown
   presets: Record<string, HostPreset> | null
   onVerify: (presetId: string) => void
   verifyState: { id: string; state: 'ok' | 'fail'; note?: string } | null
+  verifying: boolean
 }): React.ReactElement {
   const cur = typeof value === 'string' ? value : ''
   const ids = ['', ...Object.keys(presets ?? {})]
@@ -1294,7 +1302,7 @@ function OpenAiPresetSection({
       <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
         <button
           type="button"
-          disabled={!cur}
+          disabled={!cur || verifying}
           onClick={() => onVerify(cur)}
           style={{
             font: 'inherit',
@@ -1756,10 +1764,15 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
     const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
     return (pid && hostPresets?.[pid]?.voice) || ''
   }
+  // 连点去重：一次验证就是一次整句合成（有成本、占 20/分桶），在途时不重发（R4 复核发现）。
+  const [verifying, setVerifying] = useState(false)
   const verifyPreset = (presetId: string): void => {
+    if (verifying) return
+    setVerifying(true)
     const voice = (value.openaiPreset === presetId ? effectiveVoice() : '') || hostPresets?.[presetId]?.voice || ''
     if (!voice) {
       setPresetVerify({ id: presetId, state: 'fail', note: tr('previewNameFirst') })
+      setVerifying(false)
       return
     }
     void (async () => {
@@ -1774,6 +1787,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
           setPresetVerify({ id: presetId, state: 'ok' })
           return
         }
+        // 失败分支在下方统一 setPresetVerify；verifying 由 finally 释放
         let body: unknown = null
         try {
           body = await res.json()
@@ -1793,6 +1807,8 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
         })
       } catch {
         setPresetVerify({ id: presetId, state: 'fail', note: tr('selftestCheck') })
+      } finally {
+        setVerifying(false)
       }
     })()
   }
@@ -1933,6 +1949,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                   presets={hostPresets}
                   onVerify={verifyPreset}
                   verifyState={presetVerify}
+                  verifying={verifying}
                 />
               </Row>
             )}

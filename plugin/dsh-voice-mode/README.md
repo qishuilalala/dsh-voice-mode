@@ -121,7 +121,7 @@ dsh plugin --profile web add dsh-voice-mode
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
-| `ttsEngine` | `edge` | 朗读引擎：`edge` 微软云端（默认，快）/ `vits` 本地中文 / `kokoro` 本地中英 / `openai` 任意 OpenAI 兼容服务（见下文）；**即时生效** |
+| `ttsEngine` | `edge` | 朗读引擎：`edge` 微软云端（默认，快）/ `vits` 本地中文 / `kokoro` 本地中英 / `openai` 任意 OpenAI 兼容服务 / `mimo` 小米 MiMo（独立 `mimoTts.apiKey`）；**即时生效** |
 | `kokoroModel` | `int8` | Kokoro 模型精度：`int8`（默认，109MB，纯 CPU/低带宽推荐）/ `fp32`（311MB，音质更好，独显/大内存推荐）；两档共用 103 音色，**即时生效** |
 | `voice` | 按引擎 | 音色：VITS 五说话人；Kokoro 103 个（下拉+◀▶，62 深沉/68 浑厚/75 清亮/76 磁性置顶）；Edge 进入时自动加载全量 322 个。行内「试听」可即时预览 |
 | `rate` | `1.1` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
@@ -143,6 +143,8 @@ dsh plugin --profile web add dsh-voice-mode
 | `toolBeep` | `false` | 工具调用提示音（默认关）：开启后 AI 调用工具时「滴」一声；关闭则全程静默 |
 | `spokenFormat` | `true` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效** |
 | `senseITN` | `true` | SenseVoice 逆文本归一化（数字/日期/货币规范化；默认开） |
+| `openaiPreset` | 空（手动） | 在线 TTS 预设：`siliconflow-cosyvoice2` / `siliconflow-fish` / `openrouter-openai` / `openai-official` / `selfhosted-kokoro` / `selfhosted-vllm`。选中后按预设的 baseUrl/model 走，**音色留空时回落预设音色**；key 仍用 `openaiTts.apiKey`；卡片可「验证此预设」就地试合成；**即时生效** |
+| `asrReplacements` | `[]` | 纠错词表 `[{from:[听错写法],to:想要写法}]`（≤200 条 / ≤12KB UTF-8）：转写后统一改写（中间结果+定稿）；卡片显示「本次生效以来」命中次数；与 LLM 纠错串联；**即时生效** |
 | `senseVoice` | `true` | 定稿是否用 SenseVoice 重译（带标点 + 数字归一化，更准；默认开）。**关闭可省 ~228MB 模型**，只走流式识别（更快、精度下降） |
 | `captionFontSize` | `0` | 字幕字号档位 0=12px / 1=14px / 2=18px / 3=24px（默认 0 与现状字节等价） |
 | `captionMaxWidth` | `1` | 字幕宽度档位 0=50vw / 1=70vw / 2=90vw（视口 <686px 窄于 480px，≈686px 接近 480px，>686px 宽于 480px） |
