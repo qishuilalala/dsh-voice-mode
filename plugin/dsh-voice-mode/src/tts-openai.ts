@@ -220,6 +220,19 @@ export interface OpenAiPreset {
   voice: string
 }
 
+/**
+ * E1 在线预设表（单一真源；经 GET /voice-mode/presets 下发给设置卡片，客户端不再自维护）。
+ *
+ * 每个预设置 baseUrl/model/voice 三项**均有一手出处**，避免用户选完直接 400：
+ * - siliconflow-cosyvoice2 / siliconflow-fish：硅基流动官方「语音合成」文档给出的
+ *   端点 `POST /v1/audio/speech`、`voice` 必须写成 `模型名:音色名`（文档明确举例
+ *   `FunAudioLLM/CosyVoice2-0.5B:alex` 与 `fishaudio/fish-speech-1.5:anna`）。
+ * - openrouter-openai：OpenRouter 官方 TTS 文档（2026-05-01 公告，/api/v1/audio/speech），
+ *   示例 slug 为带日期的 `openai/gpt-4o-mini-tts-2025-12-15`。
+ * - openai-official：OpenAI 官方 Text-to-speech 指南（/v1/audio/speech，gpt-4o-mini-tts，
+ *   官方推荐 marin/cedar）。
+ * - selfhosted-*：本地容器（Kokoro-FastAPI 8880 / vLLM-Omni 8000），端点与音色由用户部署决定。
+ */
 export const OPENAI_PRESETS: Record<string, OpenAiPreset> = {
   'siliconflow-cosyvoice2': {
     baseUrl: 'https://api.siliconflow.cn/v1',

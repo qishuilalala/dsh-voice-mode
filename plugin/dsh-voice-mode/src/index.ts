@@ -1181,6 +1181,24 @@ export function apply(ctx: Context, config: Config): void {
   // 会导致 markStale 永远不被调）；ASR 字段（ITN/senseVoice）
   // 任一变化 → asr.markStale() 让现有 fingerprint-gated lazy 重建路径（asr-host.ts:396-401）
   // 下次自动触发，避开主动 free 破坏 I1 的反模式。
+  /**
+   * 远端引擎配置体检（启动 + 引擎重建时各一次）。
+   * 目的：配置漏填时**日志里能直接看到原因**（日志完备），与 UI 的可行动提示互相印证；
+   * 不是静默降级——引擎仍按既有语义报错/回退，这里只补一条可 grep 的线索。
+   * 注意：宿主日志**必须英文**（strings-coverage 的 CJK 红线：用户可见文案才走词典）。
+   */
+  const checkRemoteConfig = (kind: TtsEngineKind): void => {
+    if (kind === 'mimo' && !config.mimoTts?.apiKey) {
+      console.warn('[dsh-voice-mode] tts engine is mimo but mimoTts.apiKey is not configured: synthesis will fail (falls back to local if configured)')
+    } else if (kind === 'openai') {
+      const o = config.openaiTts
+      const preset = resolveOpenAiEndpoint(vset.openaiPreset ?? '')
+      if (!(preset?.baseUrl ?? o.baseUrl) || !(preset?.model ?? o.model)) {
+        console.warn('[dsh-voice-mode] tts engine is openai-compatible but baseUrl/model is missing (and no preset selected): synthesis will fail')
+      }
+    }
+  }
+
   // 路径 B（0.1.7+）无 watch：vset 取自 apply 时 config 快照，配置变更经 reload 重跑 apply 生效。
   const applyVset = (next: VoiceSettingsValue): void => {
     const prev = vset
@@ -1189,6 +1207,7 @@ export function apply(ctx: Context, config: Config): void {
     broadcast('display', displayOf(next))
     if (next.ttsEngine !== engineKind) {
       engineKind = next.ttsEngine
+      checkRemoteConfig(engineKind)
       queue.setEngine(makeEngine(engineKind))
     } else if (engineKind === 'kokoro' && next.kokoroModel !== activeKokoroModel) {
       // Kokoro 精度切换：重建引擎指向另一模型目录（已缓存则即时，否则下次下载）。
@@ -1196,6 +1215,7 @@ export function apply(ctx: Context, config: Config): void {
       queue.setEngine(makeEngine('kokoro'))
     } else if (engineKind === 'openai' && next.openaiPreset !== prev.openaiPreset) {
       // E1：预设切换重建远端引擎（baseUrl/model 随预设走；key 恒走 Config）。
+      checkRemoteConfig('openai')
       queue.setEngine(makeEngine('openai'))
     }
     queue.updateVoice(next.voice, next.rate)
@@ -1240,6 +1260,7 @@ export function apply(ctx: Context, config: Config): void {
   const currentRate = (): number => vset.rate
   const currentInterrupt = (): 0 | 1 | 2 => vset.interruptLevel
   const currentEngine = (): TtsEngineKind => engineKind
+  checkRemoteConfig(engineKind)
 
   /** B2：host 侧让出活跃会话（等价 /toggle off 的清理）。owner tab 失联超时调用。 */
   const yieldActiveSession = (expectedSid?: string | null): void => {

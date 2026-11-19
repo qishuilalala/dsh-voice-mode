@@ -4033,17 +4033,30 @@ function apply(ctx, config) {
   const unsubscribe = queue.subscribe((frame) => broadcast("audio", frame));
   ctx.effect(() => unsubscribe);
   ctx.effect(() => () => void queue.close());
+  const checkRemoteConfig = (kind) => {
+    if (kind === "mimo" && !config.mimoTts?.apiKey) {
+      console.warn("[dsh-voice-mode] tts engine is mimo but mimoTts.apiKey is not configured: synthesis will fail (falls back to local if configured)");
+    } else if (kind === "openai") {
+      const o = config.openaiTts;
+      const preset = resolveOpenAiEndpoint(vset.openaiPreset ?? "");
+      if (!(preset?.baseUrl ?? o.baseUrl) || !(preset?.model ?? o.model)) {
+        console.warn("[dsh-voice-mode] tts engine is openai-compatible but baseUrl/model is missing (and no preset selected): synthesis will fail");
+      }
+    }
+  };
   const applyVset = (next) => {
     const prev = vset;
     vset = next;
     broadcast("display", displayOf(next));
     if (next.ttsEngine !== engineKind) {
       engineKind = next.ttsEngine;
+      checkRemoteConfig(engineKind);
       queue.setEngine(makeEngine(engineKind));
     } else if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) {
       activeKokoroModel = next.kokoroModel;
       queue.setEngine(makeEngine("kokoro"));
     } else if (engineKind === "openai" && next.openaiPreset !== prev.openaiPreset) {
+      checkRemoteConfig("openai");
       queue.setEngine(makeEngine("openai"));
     }
     queue.updateVoice(next.voice, next.rate);
@@ -4076,6 +4089,7 @@ function apply(ctx, config) {
   const currentRate = () => vset.rate;
   const currentInterrupt = () => vset.interruptLevel;
   const currentEngine = () => engineKind;
+  checkRemoteConfig(engineKind);
   const yieldActiveSession = (expectedSid) => {
     ownerYieldTimer = null;
     const sid = activeVoiceSession;
