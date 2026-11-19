@@ -50,7 +50,7 @@ import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts
 import type { HostErrorCode } from './errors.ts'
 import { en } from './strings.ts'
 import { correctText } from './llm-correct.ts'
-import { OPENAI_PRESETS, OpenAiTtsEngine, resolveOpenAiEndpoint, resolveOpenAiSpeech } from './tts-openai.ts'
+import { OPENAI_PRESETS, OpenAiTtsEngine, resolveOpenAiApiKey, resolveOpenAiEndpoint, resolveOpenAiSpeech } from './tts-openai.ts'
 import { asTtsEngineKind, isLocalEngine, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
 import { MimoTtsEngine } from './tts-mimo.ts'
 import { normalizePromptLang, previewSample, spokenPrompt, type PromptLang } from './prompts.ts'
@@ -569,6 +569,12 @@ export interface Config {
 export interface OpenAiTtsConfig {
   baseUrl: string
   apiKey: string
+  /**
+   * 按预设 id 覆盖的 key（可选）。一个 key 字段无法服务多家服务商：
+   * 硅基流动/OpenRouter/OpenAI/自建各需自己的 key，切换预设时不换 key 必然 401（本轮实测痛点）。
+   * 优先级：apiKeys[预设 id] > apiKey。两者都 host-only，绝不下发浏览器。
+   */
+  apiKeys: Record<string, string>
   model: string
   voice: string
   instructions: string
@@ -583,6 +589,7 @@ export interface OpenAiTtsConfig {
 export const OpenAiTtsConfig: z<OpenAiTtsConfig> = z.object({
   baseUrl: z.string().default('').description('API base URL, e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1 or a self-hosted server.'),
   apiKey: z.string().role('secret').default('').description('Bearer key; leave empty for servers without auth.'),
+  apiKeys: z.dict(z.string().role('secret')).default({}).description('Per-preset key override keyed by preset id (apiKeys[id] wins over apiKey). Keeps one credential per provider without editing the single key on every switch.'),
   model: z.string().default('').description('Model name sent to the server.'),
   voice: z.string().default('').description('Default voice name on the server (the voice setting overrides it).'),
   instructions: z.string().default('').description('Optional style instructions for models that accept them.'),
@@ -1122,7 +1129,8 @@ export function apply(ctx: Context, config: Config): void {
       })
       return new OpenAiTtsEngine({
         baseUrl: resolved.baseUrl,
-        apiKey: o.apiKey || undefined,
+        // E1 多 key：预设专属 key 优先（换服务商不必再手改单个 key）。key 始终只在宿主侧。
+        apiKey: resolveOpenAiApiKey(vset.openaiPreset ?? '', o) || undefined,
         model: resolved.model,
         voice: resolved.voice,
         instructions: o.instructions || undefined,

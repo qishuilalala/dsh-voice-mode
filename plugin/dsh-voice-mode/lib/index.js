@@ -2579,7 +2579,7 @@ var en = {
   presetSelfKokoroNote: "Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first",
   presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
-  presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser. There is one key field only \u2014 when switching to a preset from another provider, update the key too, or the request will 401",
+  presetKeyNote: "Put the key in the profile openaiTts.apiKey, or per preset via openaiTts.apiKeys[preset id] (recommended when using several providers); it never passes through the browser",
   presetVerify: "Verify preset",
   presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
   presetReload: "Reload presets",
@@ -3119,6 +3119,11 @@ var OPENAI_PRESETS = {
     voice: "default"
   }
 };
+function resolveOpenAiApiKey(presetId, config) {
+  const perPreset = presetId ? (config.apiKeys?.[presetId] ?? "").trim() : "";
+  if (perPreset) return perPreset;
+  return (config.apiKey ?? "").trim();
+}
 function resolveOpenAiEndpoint(preset) {
   return OPENAI_PRESETS[preset] ?? null;
 }
@@ -3640,6 +3645,7 @@ var VoiceSettingsSchema = createVoiceSettingsSchema();
 var OpenAiTtsConfig = z2.object({
   baseUrl: z2.string().default("").description("API base URL, e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1 or a self-hosted server."),
   apiKey: z2.string().role("secret").default("").description("Bearer key; leave empty for servers without auth."),
+  apiKeys: z2.dict(z2.string().role("secret")).default({}).description("Per-preset key override keyed by preset id (apiKeys[id] wins over apiKey). Keeps one credential per provider without editing the single key on every switch."),
   model: z2.string().default("").description("Model name sent to the server."),
   voice: z2.string().default("").description("Default voice name on the server (the voice setting overrides it)."),
   instructions: z2.string().default("").description("Optional style instructions for models that accept them."),
@@ -4011,7 +4017,8 @@ function apply(ctx, config) {
       });
       return new OpenAiTtsEngine({
         baseUrl: resolved.baseUrl,
-        apiKey: o.apiKey || void 0,
+        // E1 多 key：预设专属 key 优先（换服务商不必再手改单个 key）。key 始终只在宿主侧。
+        apiKey: resolveOpenAiApiKey(vset.openaiPreset ?? "", o) || void 0,
         model: resolved.model,
         voice: resolved.voice,
         instructions: o.instructions || void 0,

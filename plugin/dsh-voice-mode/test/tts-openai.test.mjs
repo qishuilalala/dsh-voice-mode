@@ -300,4 +300,54 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   console.log('  ✓ 预设组合：命中 / 自定义音色优先 / 未知 id 回落 Config / 三方缺失 / 六预设完整性')
 }
 
+
+// ---- 多 key（E1 后续）：每个预设可用独立 key，换服务商不再 401 ----
+{
+  const { resolveOpenAiApiKey } = await import('../src/tts-openai.ts')
+
+  // 预设专属 key 优先
+  assert.equal(
+    resolveOpenAiApiKey('siliconflow-cosyvoice2', { apiKey: 'single', apiKeys: { 'siliconflow-cosyvoice2': 'sf' } }),
+    'sf',
+  )
+  // 该预设没配 → 回落单 key
+  assert.equal(resolveOpenAiApiKey('openrouter-openai', { apiKey: 'single', apiKeys: { 'siliconflow-cosyvoice2': 'sf' } }), 'single')
+  // 无预设（手动配置）→ 单 key
+  assert.equal(resolveOpenAiApiKey('', { apiKey: 'single', apiKeys: { 'siliconflow-cosyvoice2': 'sf' } }), 'single')
+  // 都没有 → 空串（引擎报 not_configured，不猜）
+  assert.equal(resolveOpenAiApiKey('openai-official', {}), '')
+  assert.equal(resolveOpenAiApiKey('openai-official', { apiKeys: {} }), '')
+  // 粘贴带空格要 trim（否则头里带空格必然 401）
+  assert.equal(resolveOpenAiApiKey('openai-official', { apiKeys: { 'openai-official': '  sk-abc  ' } }), 'sk-abc')
+  // 空串专属 key 不得覆盖单 key（视为未配置）
+  assert.equal(resolveOpenAiApiKey('openai-official', { apiKey: 'single', apiKeys: { 'openai-official': '   ' } }), 'single')
+  console.log('  ✓ 多 key：预设优先 / 回落单 key / 手动配置 / 空值不覆盖 / trim')
+}
+
+
+// ---- 多 key 的安全边界（ADR-0013：key 只在宿主侧，绝不下发浏览器）----
+{
+  const { OPENAI_PRESETS } = await import('../src/tts-openai.ts')
+  const { readFileSync } = await import('node:fs')
+  const idx = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8')
+
+  // 1) 预设表本身绝不携带 key（key 属 Config，不属预设；预设经 /presets 下发）
+  for (const [id, p] of Object.entries(OPENAI_PRESETS)) {
+    for (const k of Object.keys(p)) {
+      assert.ok(!/key/i.test(k), `预设 ${id} 含疑似 key 字段 ${k}——预设会经 /presets 下发`)
+    }
+  }
+
+  // 2) /presets 响应体形状固定；/config 载荷不得出现 apiKey
+  assert.ok(idx.includes('respondJson(res, 200, { presets: OPENAI_PRESETS })'), '/presets 响应体形状变了，请复核是否引入密钥')
+  const at = idx.indexOf('/config`,')
+  assert.ok(at > 0, '找不到 /config 路由')
+  const configPayload = idx.slice(at, at + 2600)
+  assert.ok(!/apiKey/.test(configPayload), '/config 载荷疑似包含 apiKey')
+
+  // 3) schema 里两个 key 字段都必须标 secret（防被通用设置页展示/回显）
+  assert.ok(idx.includes("apiKey: z.string().role('secret')"), 'apiKey 未标 secret 角色')
+  assert.ok(idx.includes("apiKeys: z.dict(z.string().role('secret'))"), 'apiKeys 未标 secret 角色')
+  console.log('  ✓ 多 key 安全边界：预设无 key 字段 / 载荷无 key / schema 标 secret')
+}
 console.log('tts-openai: all assertions passed')

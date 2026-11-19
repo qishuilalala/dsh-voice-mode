@@ -281,6 +281,23 @@ export const OPENAI_PRESETS: Record<string, OpenAiPreset> = {
  * 按预设解析远端地址与模型：未知/空预设返回 null（调用方回落 Config 文件值）。
  * 纯函数（便于单测；网络形状见 docs/plan/tts-expansion-2026-11-18.md 一手表）。
  */
+/**
+ * 解析该预设应使用的 key：`apiKeys[presetId]` 优先，其次 `apiKey`。
+ *
+ * 为什么需要：一个 key 字段无法服务多家服务商（硅基流动 / OpenRouter / OpenAI / 自建各需自己的 key），
+ * 切换预设不换 key 必然 401，而用户很难把 401 与「忘了换 key」联系起来。多 key 让切换预设真正一键可用。
+ * 安全边界（ADR-0013）：key 只在宿主侧读取，不进 `/presets`、不进 `/config`、不下发浏览器、不写日志。
+ */
+export function resolveOpenAiApiKey(
+  presetId: string,
+  config: { apiKey?: string; apiKeys?: Record<string, string> },
+): string {
+  // 先各自 trim 再判空：空白字符串（粘贴多余空格）不得把单 key 覆盖掉。
+  const perPreset = presetId ? (config.apiKeys?.[presetId] ?? '').trim() : ''
+  if (perPreset) return perPreset
+  return (config.apiKey ?? '').trim()
+}
+
 export function resolveOpenAiEndpoint(preset: string): OpenAiPreset | null {
   return OPENAI_PRESETS[preset] ?? null
 }

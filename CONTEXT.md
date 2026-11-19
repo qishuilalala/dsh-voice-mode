@@ -68,7 +68,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 | showStatusBar | true | PR #16：输入框上方语音状态条；关则状态只显于麦克风按钮（计时在按钮下方、提示在按钮旁） |
 | showCaptions | true | PR #16：朗读字幕浮层；关则不显示字幕 |
 | senseITN | true | 批 2 P0：SenseVoice 逆文本归一化（数字/日期规范化；默认开） |
-| openaiPreset | ''（手动） | E1 在线 TTS 预设 id（siliconflow-cosyvoice2 / siliconflow-fish / openrouter-openai / openai-official / selfhosted-kokoro / selfhosted-vllm）；选中后 baseUrl/model 按预设、**音色留空时回落预设音色**，key 仍走 openaiTts.apiKey；真源 `src/tts-openai.ts` OPENAI_PRESETS，经 `GET /voice-mode/presets` 下发 |
+| openaiPreset | ''（手动） | E1 在线 TTS 预设 id（siliconflow-cosyvoice2 / siliconflow-fish / openrouter-openai / openai-official / selfhosted-kokoro / selfhosted-vllm）；选中后 baseUrl/model 按预设、**音色留空时回落预设音色**，key 走 openaiTts.apiKeys[预设id]（推荐，多家各一把）→ 兜底 openaiTts.apiKey；真源 `src/tts-openai.ts` OPENAI_PRESETS，经 `GET /voice-mode/presets` 下发 |
 | asrReplacements | [] | P1-3 用户纠错词表 `[{from:[听错写法],to:想要写法}]`（≤200 条 / ≤12KB UTF-8）：转写后统一改写（中间结果+定稿），命中计数经 /models/status.replacements 暴露；与 PR #68 文本层引擎复用 |
 | captionFontSize | 0 | 批 3 P0：字幕字号档位 0=12px/1=14px/2=18px/3=24px（默认 0 与现状字节等价） |
 | captionMaxWidth | 1 | 批 3 P0：字幕宽度档位 0=50vw/1=70vw/2=90vw；视口 <686px 窄于 480px、≈686px 接近、>686px 宽于 480px |
