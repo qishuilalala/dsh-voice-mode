@@ -3219,6 +3219,14 @@ var MIME2 = {
   wav: "audio/wav",
   mp3: "audio/mpeg"
 };
+function sniffAudioMime(buf, fallback) {
+  if (buf.length >= 12 && buf.subarray(0, 4).toString("latin1") === "RIFF" && buf.subarray(8, 12).toString("latin1") === "WAVE") {
+    return "audio/wav";
+  }
+  if (buf.length >= 3 && buf[0] === 73 && buf[1] === 68 && buf[2] === 51) return "audio/mpeg";
+  if (buf.length >= 2 && buf[0] === 255 && (buf[1] & 224) === 224) return "audio/mpeg";
+  return fallback;
+}
 var MimoTtsError = class extends Error {
   code;
   constructor(code, message) {
@@ -3310,7 +3318,6 @@ var MimoTtsEngine = class {
       try {
         const buf = await this.remote(input, options);
         this.lastError = void 0;
-        this.lastMime = MIME2[this.format];
         return buf;
       } catch (e) {
         if (e.name === "AbortError" && !(e instanceof MimoTtsError)) throw e;
@@ -3364,6 +3371,7 @@ var MimoTtsEngine = class {
       if (!data) throw new MimoTtsError("mimo_empty_audio", "empty audio");
       const buf = decodeBase64Audio(data);
       if (buf.length === 0) throw new MimoTtsError("mimo_empty_audio", "empty audio");
+      this.lastMime = sniffAudioMime(buf, MIME2[this.format]);
       return buf;
     } catch (e) {
       if (timedOut) throw new MimoTtsError("mimo_timeout", `no audio within ${this.timeoutMs} ms`);

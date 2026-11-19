@@ -14,6 +14,7 @@
 - **P1+TTS 七批已交付（分支 `plan/p1-tts-2026-11-18`，未合 main，用户明确要求暂不合并）**：P1-1 自测页、P1-2 入口探针/一键切本地、P1-3 纠错词表（含命中计数）、P1-4 只听写预设、E0 基座检查+prefetch revision 修复、E1 在线预设（6 个：硅基×2 / OpenRouter / OpenAI 官方 / 自建 Kokoro / 自建 vLLM）、E3 小米 MiMo 引擎（独立 `mimoTts.apiKey`）。
 - **已完成三轮对抗核查 + 两轴代码审查**：三路审计（[review-2026-11-19](../review-2026-11-19-audits.md)）、两轮复核（B1 通过/B2 不通过→已修）、Standards+Spec 两轴（[review-2026-11-19-two-axis.md](../review-2026-11-19-two-axis.md)，14 项发现全修）。
 - **T6 三类弱测试已补强（2026-11-19）**：EffectivePending 判定抽成 `src/effective-pending.ts` + 8 项真实单测；prefetch 守卫改为解析运行时 *_REPO/*_FILES 后逐条比对并做突变验证；词表「同 epoch 二次 final」真进缓存分支 + `$&` 字面量用例。
+- **MiMo 真实链路已验证（2026-11-19，真 key）**：密钥头 `api-key` 经官方 curl 示例核实；真实返回为 WAV 24kHz/单声道/16bit；**实测发现请求 mp3 仍返回 WAV**，已加 `sniffAudioMime` 按字节判容器并加测试；401 错误体与脱敏行为已用真实响应核对。key 只存 `~/.dsh/.env`（600），不入库、不入文档。
 - **在线预设多 key（2026-11-19）**：新增 `openaiTts.apiKeys`（预设 id → key，secret），`apiKeys[id] > apiKey`，消除「换服务商不换 key 必 401」；ADR-0013 补记，信任边界不变（key 仍 host-only，有守卫测试）。
 - **治理收敛**：新增 `src/engine-kind.ts`（`TTS_ENGINE_KINDS`）作为引擎种类单一真源（清单+云端/本地/第三方判别+双语判据），替换 6 文件手写级联并加守卫测试；`GET /voice-mode/presets` 成为预设单一真源。
 - 2026-10-15 静态审计余项：④ 回声地板棘轮、③ hold 取消后 host 流未 reset（台架未复现残留文本），见根 CONTEXT「已知待办」。

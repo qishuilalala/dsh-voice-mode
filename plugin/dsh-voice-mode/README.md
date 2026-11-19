@@ -255,6 +255,15 @@ dsh plugin --profile web add dsh-voice-mode
 
 MiMo **没有 `speed` 字段**：`rate` 不为 1 时会译成自然语言风格指令（「语速加快到约 1.2 倍」）随请求下发。失败/超时同样进入 30 秒冷却并回退本地，打断（barge-in）不记为失败。官方文档：<https://mimo.mi.com>。
 
+
+**真实链路实测（2026-11-19，真 key）**：
+
+- 鉴权头是 `api-key: sk-…`（官方 curl 示例口径，非 `Authorization: Bearer`）；key 从控制台「API Keys」创建。
+- 可用模型 `mimo-v2.5-tts`（V2.5-TTS 系列未随 V2.5-Pro 下线）。
+- 返回为 base64，解码后是 **WAV：单声道 / 24kHz / 16bit**；实测约 30 字一句话得 5.8s 音频，合成耗时 2~5s。
+- **请求 `audio.format: mp3` 时服务端仍返回 WAV**（200 OK）。引擎按响应字节嗅探容器格式（`sniffAudioMime`），不信配置值，避免把 WAV 当 MP3 解码而播不出声。
+- 401 错误体是 JSON（`type: invalid_key`），错误消息经脱敏后才进日志。
+- 预置音色实测可用：`mimo_default`（中国集群落「冰糖」）、`冰糖`、`苏打`、`茉莉`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。
 ### 纠正听错的词（`asrReplacements`）
 
 识别器会把中文里夹的人名、英文词听错（例如「Sakina」听成「ski男」）。常规办法热词在这里用不上：sherpa-onnx 只有 transducer 模型支持热词，流式 zipformer 以汉字为单位、写不出英文词，出定稿的 SenseVoice 又没有热词入口。在有热词能力的模型能覆盖之前，替换表是权宜办法：识别之后改写文本，中间结果和定稿都改，所以字幕、草稿和唤醒词看到的都是改好的文本。

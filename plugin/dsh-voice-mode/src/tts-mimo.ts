@@ -53,6 +53,23 @@ const MIME: Record<MimoResponseFormat, string> = {
   mp3: 'audio/mpeg',
 }
 
+/**
+ * 按**真实字节**判定容器格式，而不是相信请求里的 `audio.format`。
+ *
+ * 实测（2026-11-19，真 key）：请求 `format: 'mp3'` 时服务端返回 200，但响应体仍是 WAV（RIFF/WAVE）。
+ * 若照配置标成 `audio/mpeg`，客户端会按 MP3 解码一个 RIFF 文件 —— 播放/解码必然出错。
+ * 因此以魔数为准，配置值只在魔数不认识时兜底。
+ */
+export function sniffAudioMime(buf: Buffer, fallback: string): string {
+  if (buf.length >= 12 && buf.subarray(0, 4).toString('latin1') === 'RIFF' && buf.subarray(8, 12).toString('latin1') === 'WAVE') {
+    return 'audio/wav'
+  }
+  // ID3 标签或 MPEG 帧同步（0xFF 0xEx）
+  if (buf.length >= 3 && buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) return 'audio/mpeg'
+  if (buf.length >= 2 && buf[0] === 0xff && (buf[1]! & 0xe0) === 0xe0) return 'audio/mpeg'
+  return fallback
+}
+
 export class MimoTtsError extends Error {
   readonly code: string
   constructor(code: string, message: string) {
@@ -163,7 +180,7 @@ export class MimoTtsEngine implements TtsEngine {
       try {
         const buf = await this.remote(input, options)
         this.lastError = undefined
-        this.lastMime = MIME[this.format]
+        // 注意：不要在这里用配置值覆盖 —— remote() 已按真实字节嗅探过容器格式。
         return buf
       } catch (e) {
         if ((e as Error).name === 'AbortError' && !(e instanceof MimoTtsError)) throw e
@@ -223,6 +240,8 @@ export class MimoTtsEngine implements TtsEngine {
       if (!data) throw new MimoTtsError('mimo_empty_audio', 'empty audio')
       const buf = decodeBase64Audio(data)
       if (buf.length === 0) throw new MimoTtsError('mimo_empty_audio', 'empty audio')
+      // 实测：请求 mp3 时服务端仍返回 WAV → MIME 以真实字节为准，不信配置。
+      this.lastMime = sniffAudioMime(buf, MIME[this.format])
       return buf
     } catch (e) {
       if (timedOut) throw new MimoTtsError('mimo_timeout', `no audio within ${this.timeoutMs} ms`)

@@ -300,9 +300,11 @@ await t('空 choices / 缺 audio.data → 明确报错并回退（不产生静�
 })
 
 await t('mp3 格式：请求体 audio.format=mp3 且 mime 随格式变', async () => {
+  // 注意：MIME 以真实字节为准，所以这里必须喂**真 MP3**（ID3 标签）才应得到 audio/mpeg。
+  const mp3 = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(120)])
   const { server, requests, origin } = await startServer((r, res) => {
     res.setHeader('content-type', 'application/json')
-    res.end(JSON.stringify(chatOk()))
+    res.end(JSON.stringify(chatOk(mp3.toString('base64'))))
   })
   try {
     const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k', responseFormat: 'mp3' })
@@ -503,6 +505,35 @@ await t('401 响应体回显 key 时：错误消息里不得出现 key 原文（
   } finally {
     await closeServer(server)
   }
+})
+
+
+await t('MIME 以真实字节为准：请求 mp3 但服务端返回 WAV 时不得标成 audio/mpeg（真实链路发现）', async () => {
+  // 实测（2026-11-19 真 key）：audio.format='mp3' 仍返回 RIFF/WAVE。若信配置，客户端会按 MP3 解码 WAV。
+  const riff = Buffer.concat([
+    Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WAVE'),
+  ])
+  const payload = Buffer.concat([riff, Buffer.alloc(64)])
+  const { server, origin } = await startServer((r, res) => {
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify(chatOk(payload.toString('base64'))))
+  })
+  try {
+    const e = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k', responseFormat: 'mp3' })
+    await e.synthesize('你好')
+    assert.equal(e.mime, 'audio/wav', '真实字节是 RIFF/WAVE，MIME 必须是 audio/wav')
+    await e.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
+await t('MIME 判定：真 MP3（ID3 / 帧同步）仍识别为 audio/mpeg；未知魔数回落到配置值', async () => {
+  const { sniffAudioMime } = await import('../src/tts-mimo.ts')
+  assert.equal(sniffAudioMime(Buffer.from('ID3\x04\x00\x00\x00\x00\x00\x00', 'latin1'), 'audio/wav'), 'audio/mpeg')
+  assert.equal(sniffAudioMime(Buffer.from([0xff, 0xfb, 0x90, 0x64]), 'audio/wav'), 'audio/mpeg')
+  assert.equal(sniffAudioMime(Buffer.from('RIFF\x00\x00\x00\x00WAVE', 'latin1'), 'audio/mpeg'), 'audio/wav')
+  assert.equal(sniffAudioMime(Buffer.from('zzzz'), 'audio/wav'), 'audio/wav', '未知魔数回落配置值')
 })
 
 console.log(`\n${passed} passed`)
