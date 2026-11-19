@@ -2579,7 +2579,7 @@ var en = {
   presetSelfKokoroNote: "Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first",
   presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
-  presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser",
+  presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser. There is one key field only \u2014 when switching to a preset from another provider, update the key too, or the request will 401",
   presetVerify: "Verify preset",
   // P1-4 dictation-only preset.
   dictationTitle: "Dictation only",

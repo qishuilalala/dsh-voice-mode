@@ -194,7 +194,7 @@ const defaultModelCacheDir = (): string =>
  */
 export interface VoiceSettingsValue {
   /** 朗读引擎：edge 微软云端（默认）/ vits 本地中文 / kokoro 本地中英；设置面板即时切换。 */
-  ttsEngine: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo'
+  ttsEngine: TtsEngineKind
   /** Kokoro 模型精度（int8 默认 / fp32 音质更好；仅 kokoro 引擎生效，切换即时重建引擎）。 */
   kokoroModel: KokoroModel
   voice: string
@@ -497,7 +497,7 @@ export interface Config {
   /** 模型上游 host；huggingface.co / hf-mirror.com 均可达（§4 已验证）。 */
   modelHost: string
   /** 朗读引擎：edge（微软云端，默认）/ vits（本地中文）/ kokoro（本地中英，回复文本不出本机）。 */
-  ttsEngine: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo'
+  ttsEngine: TtsEngineKind
   /** Kokoro 模型精度（int8 默认 / fp32 音质更好）。 */
   kokoroModel: KokoroModel
   /** ttsEngine=openai 时的远程服务（host-only；key 不下发到客户端）。 */

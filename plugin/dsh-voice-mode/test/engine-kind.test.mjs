@@ -46,6 +46,13 @@ t('host 设置 schema 的 ttsEngine 联合由清单派生（不再手写字面�
   assert.ok(!/z\.union\(\[z\.const\('edge'\), z\.const\('vits'\)/.test(src), 'index.ts 仍有手写引擎联合')
 })
 
+t('全仓不再手写引擎联合类型（一律 TtsEngineKind）', () => {
+  for (const f of ['../src/index.ts', '../src/prompts.ts', '../src/settings-form.tsx', '../src/client.tsx']) {
+    const src = read(f)
+    assert.ok(!/'edge' \| 'vits' \| 'kokoro'/.test(src), `${f} 仍有手写引擎联合类型`)
+  }
+})
+
 t('客户端设置卡不再手写引擎级联（改用 asTtsEngineKind / ENGINE_NAME_KEY）', () => {
   const sf = read('../src/settings-form.tsx')
   assert.ok(!/'edge' \| 'vits' \| 'kokoro'/.test(sf), 'settings-form 仍有手写引擎联合类型')

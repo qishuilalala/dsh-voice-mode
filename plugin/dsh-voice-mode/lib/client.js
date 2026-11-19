@@ -1770,7 +1770,7 @@ var zh = {
   presetSelfKokoroNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8880\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
   presetSelfVllm: "\u81EA\u5EFA \xB7 vLLM-Omni",
   presetSelfVllmNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8000\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
-  presetKeyNote: "key \u586B\u5728 profile \u7684 openaiTts.apiKey\uFF0C\u4E0D\u7ECF\u8FC7\u6D4F\u89C8\u5668",
+  presetKeyNote: "key \u586B\u5728 profile \u7684 openaiTts.apiKey\uFF0C\u4E0D\u7ECF\u8FC7\u6D4F\u89C8\u5668\uFF1B\u672C\u63D2\u4EF6\u53EA\u6709\u4E00\u4E2A key \u5B57\u6BB5\u2014\u2014\u6362\u5230\u53E6\u4E00\u5BB6\u670D\u52A1\u5546\u7684\u9884\u8BBE\u65F6\uFF0C\u9700\u540C\u65F6\u628A key \u6362\u6210\u8BE5\u5BB6\u7684\uFF0C\u5426\u5219\u4F1A 401",
   presetVerify: "\u9A8C\u8BC1\u6B64\u9884\u8BBE",
   // P1-4 只听写预设。
   dictationTitle: "\u53EA\u542C\u5199",
@@ -2122,7 +2122,7 @@ var en = {
   presetSelfKokoroNote: "Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first",
   presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
-  presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser",
+  presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser. There is one key field only \u2014 when switching to a preset from another provider, update the key too, or the request will 401",
   presetVerify: "Verify preset",
   // P1-4 dictation-only preset.
   dictationTitle: "Dictation only",
@@ -5682,7 +5682,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "7f484f9";
+var BUILD_TAG = "6041b4c";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

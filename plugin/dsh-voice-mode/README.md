@@ -227,6 +227,30 @@ dsh plugin --profile web add dsh-voice-mode
 
 每句一个请求（队列本来就在回复还在生成时逐句合成，句内流式不会让播放更早开始）。`rate` 不为 1 时作为 `speed` 发送。配置了 `fallback` 时，请求失败或超时的那句（以及之后 30 秒）改用本地引擎，然后再试服务，服务挂掉不会让每句都等一次超时。被朗读的文本会发到 `baseUrl`，请选你信得过的服务。
 
+### 小米 MiMo 语音合成（`ttsEngine: mimo`）
+
+小米 MiMo 的 TTS 走 **Chat Completions 形态**（`POST /v1/chat/completions`，音频以 base64 放在 `choices[0].message.audio.data`），不是 OpenAI 的 `/audio/speech`，所以有独立配置块。**与 OpenAI 兼容引擎各用各的 key**（`mimoTts.apiKey` 不借用 `openaiTts.apiKey`，避免把一家的凭据发给另一家）：
+
+```yaml
+- id: voice-mode
+  name: dsh-voice-mode
+  config:
+    ttsEngine: mimo
+    voice: 冰糖                      # 预置音色：mimo_default / 冰糖 / 茉莉 / 苏打 / 白桦 / Mia / Chloe / Milo / Dean；留空 = mimoTts.voice
+    mimoTts:
+      apiKey: ''                     # 必填；走 api-key 头（不是 Bearer），key 只在宿主侧
+      baseUrl: https://api.xiaomimimo.com/v1
+      model: mimo-v2.5-tts           # 现行仍是 v2.5 系列（V2.6 指的是 Pro/Flash 推理模型）
+      voice: mimo_default
+      instructions: ''               # 可选：自然语言风格说明（如「温和一些」）
+      responseFormat: wav            # wav | mp3
+      timeoutMs: 30000
+      fallback: kokoro               # none | vits | kokoro：失败或超时后 30 秒内用本地引擎
+      fallbackVoice: zf_xiaobei
+```
+
+MiMo **没有 `speed` 字段**：`rate` 不为 1 时会译成自然语言风格指令（「语速加快到约 1.2 倍」）随请求下发。失败/超时同样进入 30 秒冷却并回退本地，打断（barge-in）不记为失败。官方文档：<https://mimo.mi.com>。
+
 ### 纠正听错的词（`asrReplacements`）
 
 识别器会把中文里夹的人名、英文词听错（例如「Sakina」听成「ski男」）。常规办法热词在这里用不上：sherpa-onnx 只有 transducer 模型支持热词，流式 zipformer 以汉字为单位、写不出英文词，出定稿的 SenseVoice 又没有热词入口。在有热词能力的模型能覆盖之前，替换表是权宜办法：识别之后改写文本，中间结果和定稿都改，所以字幕、草稿和唤醒词看到的都是改好的文本。
