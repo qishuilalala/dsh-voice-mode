@@ -53,6 +53,7 @@ import { en } from './strings.ts'
 import { correctText } from './llm-correct.ts'
 import { OPENAI_PRESETS, OpenAiTtsEngine } from './tts-openai.ts'
 import { resolveOnlineTts } from './online-tts.ts'
+import { engineRebuildReason } from './engine-rebuild.ts'
 import { applyClearSecrets, hasSecret, publicSettingsView } from './settings-view.ts'
 import { asTtsEngineKind, isLocalEngine, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
 import { MimoTtsEngine } from './tts-mimo.ts'
@@ -1252,48 +1253,47 @@ export function apply(ctx: Context, config: Config): void {
       )
       if (!r.baseUrl || !r.model) {
         console.warn('[dsh-voice-mode] tts engine is openai-compatible but baseUrl/model is missing: fill them in the settings card or the profile openaiTts block')
+      } else if (!r.voice) {
+        console.warn('[dsh-voice-mode] tts engine is openai-compatible but no voice is set: the server default voice will be used (set one in the settings card or via a preset)')
       }
     }
   }
 
   // 路径 B（0.1.7+）无 watch：vset 取自 apply 时 config 快照，配置变更经 reload 重跑 apply 生效。
-  const applyVset = (next: VoiceSettingsValue): void => {
+  const applyVset = (incoming: VoiceSettingsValue): void => {
     const prev = vset
-    // 归一：宿主热更可能给出局部对象，补齐默认值后再向下游分发。
+    // 归一：宿主热更可能只给**已存键**。统一用归一化值做判定与下发，避免
+    // ① undefined 与 '' 永不相等 → 每次改设置都误重建引擎；
+    // ② next.voice 为 undefined 时把用户刚选的音色写回默认（真实风险）。
+    let next: VoiceSettingsValue
     try {
-      vset = resolveSettings(next as unknown as Record<string, unknown>)
-    } catch {
-      vset = next
+      next = resolveSettings(incoming as unknown as Record<string, unknown>)
+    } catch (e) {
+      console.warn(`[dsh-voice-mode] settings update rejected by schema; keeping previous values: ${redactSecrets(e)}`)
+      return
     }
+    vset = next
     // 显示类设置即时同步到所有标签页（不论从哪个标签页/哪条设置路径改的）。
     broadcast('display', displayOf(next))
-    if (next.ttsEngine !== engineKind) {
-      engineKind = next.ttsEngine
+    const reason = engineRebuildReason(prev, next, engineKind, activeKokoroModel)
+    if (reason === 'engine-switch') {
+      engineKind = next.ttsEngine as TtsEngineKind
       checkRemoteConfig(engineKind)
       queue.setEngine(makeEngine(engineKind))
-    } else if (engineKind === 'mimo' && next.mimoApiKey !== prev.mimoApiKey) {
+    } else if (reason === 'mimo-key') {
       checkRemoteConfig('mimo')
       queue.setEngine(makeEngine('mimo'))
-    } else if (engineKind === 'kokoro' && next.kokoroModel !== activeKokoroModel) {
+    } else if (reason === 'kokoro-model') {
       // Kokoro 精度切换：重建引擎指向另一模型目录（已缓存则即时，否则下次下载）。
       activeKokoroModel = next.kokoroModel
       queue.setEngine(makeEngine('kokoro'))
-    } else if (
-      engineKind === 'openai' &&
-      (next.openaiPreset !== prev.openaiPreset ||
-        next.openaiBaseUrl !== prev.openaiBaseUrl ||
-        next.openaiModel !== prev.openaiModel ||
-        next.openaiApiKey !== prev.openaiApiKey)
-    ) {
-      // E1：预设切换重建远端引擎（baseUrl/model 随预设走；key 恒走 Config）。
+    } else if (reason === 'openai-config') {
+      // E1：预设/端点/模型/key 任一变化重建远程引擎。
       checkRemoteConfig('openai')
       queue.setEngine(makeEngine('openai'))
     }
     queue.updateVoice(next.voice, next.rate)
-    if (
-      next.senseITN !== prev.senseITN ||
-      next.senseVoice !== prev.senseVoice
-    ) {
+    if (next.senseITN !== prev.senseITN || next.senseVoice !== prev.senseVoice) {
       asr.markStale()
     }
     // P1-3：词表变更热重建 replacer（命中计数随之清零，UI 标注“本次生效以来”）。

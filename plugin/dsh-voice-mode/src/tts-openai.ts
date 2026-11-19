@@ -140,9 +140,12 @@ export class OpenAiTtsEngine implements TtsEngine {
     const body: Record<string, unknown> = {
       model: this.options.model,
       input,
-      voice: options.voice || this.voice,
       response_format: this.format,
     }
+    // 音色为空时**不发该字段**：部分服务端把 voice:'' 当非法参数（400），而不发则用其默认音色。
+    // 设置面板里「自定义」场景常见「地址/模型填了、音色没填」，这里避免把可恢复配置变成 400。
+    const voice = (options.voice || this.voice || '').trim()
+    if (voice) body.voice = voice
     const rate = options.rate ?? this.rate
     if (rate !== undefined && rate > 0 && rate !== 1) body.speed = rate
     if (this.options.instructions) body.instructions = this.options.instructions

@@ -3068,9 +3068,10 @@ var OpenAiTtsEngine = class {
     const body = {
       model: this.options.model,
       input,
-      voice: options.voice || this.voice,
       response_format: this.format
     };
+    const voice = (options.voice || this.voice || "").trim();
+    if (voice) body.voice = voice;
     const rate = options.rate ?? this.rate;
     if (rate !== void 0 && rate > 0 && rate !== 1) body.speed = rate;
     if (this.options.instructions) body.instructions = this.options.instructions;
@@ -3220,6 +3221,17 @@ function resolveOnlineTts(overrides, config) {
       apiKey: settingKey ? "settings" : presetKey ? "presetKey" : configKey ? "configKey" : "none"
     }
   };
+}
+
+// src/engine-rebuild.ts
+function engineRebuildReason(prev, next, engineKind, activeKokoroModel) {
+  if (next.ttsEngine !== engineKind) return "engine-switch";
+  if (engineKind === "mimo" && next.mimoApiKey !== prev.mimoApiKey) return "mimo-key";
+  if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) return "kokoro-model";
+  if (engineKind === "openai" && (next.openaiPreset !== prev.openaiPreset || next.openaiBaseUrl !== prev.openaiBaseUrl || next.openaiModel !== prev.openaiModel || next.openaiApiKey !== prev.openaiApiKey)) {
+    return "openai-config";
+  }
+  return null;
 }
 
 // src/settings-view.ts
@@ -4217,28 +4229,34 @@ function apply(ctx, config) {
       );
       if (!r.baseUrl || !r.model) {
         console.warn("[dsh-voice-mode] tts engine is openai-compatible but baseUrl/model is missing: fill them in the settings card or the profile openaiTts block");
+      } else if (!r.voice) {
+        console.warn("[dsh-voice-mode] tts engine is openai-compatible but no voice is set: the server default voice will be used (set one in the settings card or via a preset)");
       }
     }
   };
-  const applyVset = (next) => {
+  const applyVset = (incoming) => {
     const prev = vset;
+    let next;
     try {
-      vset = resolveSettings(next);
-    } catch {
-      vset = next;
+      next = resolveSettings(incoming);
+    } catch (e) {
+      console.warn(`[dsh-voice-mode] settings update rejected by schema; keeping previous values: ${redactSecrets(e)}`);
+      return;
     }
+    vset = next;
     broadcast("display", displayOf(next));
-    if (next.ttsEngine !== engineKind) {
+    const reason = engineRebuildReason(prev, next, engineKind, activeKokoroModel);
+    if (reason === "engine-switch") {
       engineKind = next.ttsEngine;
       checkRemoteConfig(engineKind);
       queue.setEngine(makeEngine(engineKind));
-    } else if (engineKind === "mimo" && next.mimoApiKey !== prev.mimoApiKey) {
+    } else if (reason === "mimo-key") {
       checkRemoteConfig("mimo");
       queue.setEngine(makeEngine("mimo"));
-    } else if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) {
+    } else if (reason === "kokoro-model") {
       activeKokoroModel = next.kokoroModel;
       queue.setEngine(makeEngine("kokoro"));
-    } else if (engineKind === "openai" && (next.openaiPreset !== prev.openaiPreset || next.openaiBaseUrl !== prev.openaiBaseUrl || next.openaiModel !== prev.openaiModel || next.openaiApiKey !== prev.openaiApiKey)) {
+    } else if (reason === "openai-config") {
       checkRemoteConfig("openai");
       queue.setEngine(makeEngine("openai"));
     }
