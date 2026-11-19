@@ -465,4 +465,38 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   }
 }
 
+
+// 12) MIME 必须随结果返回（A2 审计 Important：引擎级 lastMime 在并发下会串味）
+{
+  const wav = Buffer.from('RIFF....WAVEfmt ', 'binary')
+  const { server, origin } = await startServer((r, res) => {
+    res.writeHead(200, { 'content-type': 'audio/wav' })
+    res.end(wav)
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: 'v' })
+    const [a, b] = await Promise.all([engine.synthesizeWithMime('one'), engine.synthesizeWithMime('two')])
+    assert.equal(a.mime, 'audio/wav', 'synthesizeWithMime 应返回本段嗅探出的 MIME')
+    assert.equal(b.mime, 'audio/wav', 'synthesizeWithMime 应返回本段嗅探出的 MIME')
+    console.log('  ✓ MIME 随合成结果返回（并发试听/朗读不串味）')
+  } finally {
+    await closeServer(server)
+  }
+}
+
+// 13) 200 但返回 HTML（反代登录页）必须判失败，不得当音频发出去
+{
+  const { server, origin } = await startServer((r, res) => {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+    res.end('<html><body>login</body></html>')
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: 'v' })
+    await assert.rejects(() => engine.synthesizeWithMime('hi'), /non-audio response/, 'HTML 200 必须判失败')
+    console.log('  ✓ 200 但返回 HTML（反代登录页）判失败（不再当 audio/mpeg 发出）')
+  } finally {
+    await closeServer(server)
+  }
+}
+
 console.log('tts-openai: all assertions passed')

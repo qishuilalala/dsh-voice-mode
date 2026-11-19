@@ -1748,6 +1748,17 @@ var TtsQueue = class {
     if (this.closed) throw new Error("tts queue closed");
     return this.engine.synthesize(text, options);
   }
+  /**
+   * 一次性合成并返回 MIME（试听/自测用）。
+   * A2 审计 Important：不能 await 之后再读 engine.mime——引擎级「最近一次」状态在
+   * 试听与朗读并发时会串味，客户端按错容器解码，整句无声。
+   */
+  async synthesizeWithMime(text, options = {}) {
+    if (this.closed) throw new Error("tts queue closed");
+    const withMime = this.engine.synthesizeWithMime;
+    if (withMime) return withMime.call(this.engine, text, options);
+    return { buf: await this.engine.synthesize(text, options), mime: this.engine.mime };
+  }
   subscribe(listener) {
     this.listeners.add(listener);
     return () => {
@@ -1815,11 +1826,19 @@ var TtsQueue = class {
         const item = q.pending.shift();
         const MAX_SYNTH_ATTEMPTS = 3;
         let buf = null;
+        let frameMime = null;
         for (let attempt = 0; attempt < MAX_SYNTH_ATTEMPTS; attempt++) {
           if (item.epoch !== q.epoch) break;
           if (this.closed) break;
           try {
-            buf = await this.engine.synthesize(item.text);
+            const withMime = this.engine.synthesizeWithMime;
+            if (withMime) {
+              const r = await withMime.call(this.engine, item.text);
+              buf = r.buf;
+              frameMime = r.mime;
+            } else {
+              buf = await this.engine.synthesize(item.text);
+            }
             break;
           } catch (e) {
             console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${redactSecrets(e)}`);
@@ -1844,7 +1863,7 @@ var TtsQueue = class {
         q.failStreak = 0;
         q.backoff = 0;
         const sentenceId = this.seq++;
-        const mime = this.engine.mime;
+        const mime = frameMime ?? this.engine.mime;
         const dataFrame = {
           sessionId,
           sentenceId,
@@ -3123,6 +3142,11 @@ var OpenAiTtsEngine = class {
     }
     return this.viaFallback(text, options);
   }
+  /** 合成并**随结果返回** MIME（A2 审计 Important：引擎级 lastMime 在并发下会串味）。 */
+  async synthesizeWithMime(text, options = {}) {
+    const buf = await this.synthesize(text, options);
+    return { buf, mime: this.mime };
+  }
   async remote(input, options) {
     if (this.url === null) throw this.configError;
     const body = {
@@ -3150,9 +3174,17 @@ var OpenAiTtsEngine = class {
         const detail = redactBodySnippet(await res.text().catch(() => ""));
         throw new OpenAiTtsError("openai_http_error", `HTTP ${res.status}${detail ? `: ${detail}` : ""}`);
       }
+      const ctype = (res.headers.get("content-type") ?? "").toLowerCase();
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.length === 0) throw new OpenAiTtsError("openai_empty_audio", "empty audio");
-      this.lastMime = sniffAudioMime(buf, MIME[this.format]);
+      const sniffed = sniffAudioMime(buf, "");
+      if (sniffed) {
+        this.lastMime = sniffed;
+      } else if (ctype.startsWith("audio/")) {
+        this.lastMime = ctype.split(";")[0].trim();
+      } else {
+        throw new OpenAiTtsError("openai_bad_payload", `non-audio response (content-type: ${ctype || "none"})`);
+      }
       return buf;
     } catch (e) {
       if (timedOut) throw new OpenAiTtsError("openai_timeout", `no audio within ${this.timeoutMs} ms`);
@@ -3412,6 +3444,11 @@ var MimoTtsEngine = class {
     this.voice = voice.trim() || this.options.voice?.trim() || MIMO_DEFAULT_VOICE;
     if (rate !== void 0 && Number.isFinite(rate)) this.rate = rate;
   }
+  /** 合成并**随结果返回** MIME（同 openai 引擎：引擎级 lastMime 在并发下会串味）。 */
+  async synthesizeWithMime(text, options = {}) {
+    const buf = await this.synthesize(text, options);
+    return { buf, mime: this.mime };
+  }
   async synthesize(text, options = {}) {
     const input = stripEmotionTags(text).replace(/\s+/g, " ").trim();
     if (input === "") return Buffer.alloc(0);
@@ -3472,7 +3509,11 @@ var MimoTtsEngine = class {
       if (!data) throw new MimoTtsError("mimo_empty_audio", "empty audio");
       const buf = decodeBase64Audio(data);
       if (buf.length === 0) throw new MimoTtsError("mimo_empty_audio", "empty audio");
-      this.lastMime = sniffAudioMime(buf, MIME2[this.format]);
+      const ctype = (res.headers.get("content-type") ?? "").toLowerCase();
+      const sniffed = sniffAudioMime(buf, "");
+      if (sniffed) this.lastMime = sniffed;
+      else if (ctype.startsWith("audio/")) this.lastMime = ctype.split(";")[0].trim();
+      else throw new MimoTtsError("mimo_bad_payload", `non-audio response (content-type: ${ctype || "none"})`);
       return buf;
     } catch (e) {
       if (timedOut) throw new MimoTtsError("mimo_timeout", `no audio within ${this.timeoutMs} ms`);
@@ -4495,8 +4536,11 @@ function apply(ctx, config) {
           }
           const sample = previewSample(currentEngine(), voice);
           let buf;
+          let mime = queue.mime;
           try {
-            buf = await queue.synthesize(sample, { voice, rate });
+            const r = await queue.synthesizeWithMime(sample, { voice, rate });
+            buf = r.buf;
+            mime = r.mime;
           } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
             const category = classifyPreviewError(errMsg);
@@ -4509,7 +4553,7 @@ function apply(ctx, config) {
             respondJson2(res, 502, { code: PREVIEW_ERROR_CODES[category], error: `preview failed (${category})` });
             return;
           }
-          res.writeHead(200, { "content-type": queue.mime, "cache-control": "no-store" });
+          res.writeHead(200, { "content-type": mime, "cache-control": "no-store" });
           res.end(buf);
         });
       }

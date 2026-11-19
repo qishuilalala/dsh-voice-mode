@@ -60,7 +60,7 @@ export interface TtsEngine {
 - 解析 `<\w+(?:\s+\d+ms)?>` → 按引擎映射替换为对应 SSML/停顿/emoji
 - 返回**纯字符串**（注意：Edge 引擎后续需走 `rawToFile`/`rawToStream` 路径而非 `_SSMLTemplate`，因为后者的 `<prosody>` 包裹破坏 `<mstts:express-as>` 嵌入）
 
-**`src/tts-queue.ts` Edge 引擎 (`src/tts-queue.ts:142` 的 `EdgeTtsEngine`)**：
+**`src/tts-queue.ts` Edge 引擎 (`src/tts-queue.ts:152` 的 `EdgeTtsEngine`)**：
 - 检测 `text` 是否包含 emotion 标签（已 stripped 时不含）
 - 不含：走原 `synthesize` 路径
 - 含：切换到 rawSSML 路径（用 **`MsEdgeTTS.rawToFile` 或 `rawToStream`**（按符号定位；2026-09-14 时点 L122/L132，安装版 2.1.0 时点实测 :136 `rawToFile` / :146 `rawToStream`）—— 仓库公开 API；私有 `_rawSSMLRequest` 不可直接调用）—— 无需 fork
@@ -76,7 +76,7 @@ export interface TtsEngine {
 - [ ] 未知标签按字面文本朗读
 - [ ] 三引擎跑通样例句 `"你好<laugh>今天天气真好"`：Kokoro 笑声 token、VITS emoji+停顿、Edge `<mstts:express-as style="cheerful">`
 - [ ] 现有 `ttsEngine: edge/vits/kokoro` 切换不影响其他字段
-- [ ] **不破坏现有不丢句不变量**：`tts-queue.ts:593-611` 重试（`MAX_SYNTH_ATTEMPTS = 3` :595）+ `:366`/`:455`/`:471`（epoch 自增：prune / cancel / re-enter）/`:490`（泵内守卫 break，另 :550 continue）不动（原写 `413-430`/`:296`/`:382`/`:416`/`:437` 全部已漂移 Δ57~Δ161，且 `:296`/`:382` 在 HEAD 无 epoch 自增语句、系幻影锚点；2026-10-21 按符号定位刷新）
+- [ ] **不破坏现有不丢句不变量**：`tts-queue.ts:620-640` 重试（`MAX_SYNTH_ATTEMPTS = 3` :626）+ `:479`/`:584`/`:610`（epoch 自增：prune / cancel / re-enter）/`:631`（泵内守卫 break，另 :659 continue）不动（原写 `413-430`/`:296`/`:382`/`:416`/`:437` 全部已漂移 Δ57~Δ161，且 `:296`/`:382` 在 HEAD 无 epoch 自增语句、系幻影锚点；2026-10-21 按符号定位刷新）
 
 ## 后果
 

@@ -159,6 +159,12 @@ export class MimoTtsEngine implements TtsEngine {
     if (rate !== undefined && Number.isFinite(rate)) this.rate = rate
   }
 
+  /** 合成并**随结果返回** MIME（同 openai 引擎：引擎级 lastMime 在并发下会串味）。 */
+  async synthesizeWithMime(text: string, options: { voice?: string; rate?: number } = {}): Promise<{ buf: Buffer; mime: string }> {
+    const buf = await this.synthesize(text, options)
+    return { buf, mime: this.mime }
+  }
+
   async synthesize(text: string, options: { voice?: string; rate?: number } = {}): Promise<Buffer> {
     const input = stripEmotionTags(text).replace(/\s+/g, ' ').trim()
     if (input === '') return Buffer.alloc(0)
@@ -227,7 +233,12 @@ export class MimoTtsEngine implements TtsEngine {
       const buf = decodeBase64Audio(data)
       if (buf.length === 0) throw new MimoTtsError('mimo_empty_audio', 'empty audio')
       // 实测：请求 mp3 时服务端仍返回 WAV → MIME 以真实字节为准，不信配置。
-      this.lastMime = sniffAudioMime(buf, MIME[this.format])
+      // 200 不等于音频：网关可能回 HTML/JSON。魔数未知且 content-type 非音频 → 判失败（A2 审计）。
+      const ctype = (res.headers.get('content-type') ?? '').toLowerCase()
+      const sniffed = sniffAudioMime(buf, '')
+      if (sniffed) this.lastMime = sniffed
+      else if (ctype.startsWith('audio/')) this.lastMime = ctype.split(';')[0].trim()
+      else throw new MimoTtsError("mimo_bad_payload", `non-audio response (content-type: ${ctype || "none"})`)
       return buf
     } catch (e) {
       if (timedOut) throw new MimoTtsError('mimo_timeout', `no audio within ${this.timeoutMs} ms`)

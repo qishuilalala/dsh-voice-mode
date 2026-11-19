@@ -136,6 +136,12 @@ export class OpenAiTtsEngine implements TtsEngine {
     return this.viaFallback(text, options)
   }
 
+  /** 合成并**随结果返回** MIME（A2 审计 Important：引擎级 lastMime 在并发下会串味）。 */
+  async synthesizeWithMime(text: string, options: { voice?: string; rate?: number } = {}): Promise<{ buf: Buffer; mime: string }> {
+    const buf = await this.synthesize(text, options)
+    return { buf, mime: this.mime }
+  }
+
   private async remote(input: string, options: { voice?: string; rate?: number }): Promise<Buffer> {
     if (this.url === null) throw this.configError!
     const body: Record<string, unknown> = {
@@ -167,10 +173,20 @@ export class OpenAiTtsEngine implements TtsEngine {
         const detail = redactBodySnippet(await res.text().catch(() => ''))
         throw new OpenAiTtsError('openai_http_error', `HTTP ${res.status}${detail ? `: ${detail}` : ''}`)
       }
+      const ctype = (res.headers.get('content-type') ?? '').toLowerCase()
       const buf = Buffer.from(await res.arrayBuffer())
       if (buf.length === 0) throw new OpenAiTtsError('openai_empty_audio', 'empty audio')
       // 以真实字节为准：自建/代理常忽略 response_format（MiMo 实测过 mp3 请求返回 WAV）。
-      this.lastMime = sniffAudioMime(buf, MIME[this.format])
+      // 且 200 不等于音频：反代/网关可能回登录页 HTML——魔数未知且 content-type 非音频时必须判失败，
+      // 否则会被 sniff 兜底标成 audio/mpeg 照发，客户端解码出无声（A2 审计 Important）。
+      const sniffed = sniffAudioMime(buf, '')
+      if (sniffed) {
+        this.lastMime = sniffed
+      } else if (ctype.startsWith('audio/')) {
+        this.lastMime = ctype.split(';')[0].trim()
+      } else {
+        throw new OpenAiTtsError('openai_bad_payload', `non-audio response (content-type: ${ctype || 'none'})`)
+      }
       return buf
     } catch (e) {
       if (timedOut) throw new OpenAiTtsError('openai_timeout', `no audio within ${this.timeoutMs} ms`)

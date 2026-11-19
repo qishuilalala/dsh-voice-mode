@@ -1633,8 +1633,12 @@ export function apply(ctx: Context, config: Config): void {
           // 试听例句由音色语种决定（prompts.ts previewSample）。
           const sample = previewSample(currentEngine(), voice)
           let buf: Buffer
+          let mime = queue.mime
           try {
-            buf = await queue.synthesize(sample, { voice, rate })
+            // 与朗读同口径：MIME 随这次合成的字节一起返回（并发试听/朗读不串味）。
+            const r = await queue.synthesizeWithMime(sample, { voice, rate })
+            buf = r.buf
+            mime = r.mime
           } catch (e) {
             // 批 I 任务 4/4：错误归类 + 诊断上下文（model 状态 / sample 长度 / attempt）；
             // 模式与 tts-queue.ts:418-422 pump catch（批 A：补 sessionId + err）一致——日志含上下文，UI 只拿归类提示。
@@ -1651,7 +1655,7 @@ export function apply(ctx: Context, config: Config): void {
             respondJson(res, 502, { code: PREVIEW_ERROR_CODES[category], error: `preview failed (${category})` })
             return
           }
-          res.writeHead(200, { 'content-type': queue.mime, 'cache-control': 'no-store' })
+          res.writeHead(200, { 'content-type': mime, 'cache-control': 'no-store' })
           res.end(buf)
         })
       },

@@ -24,6 +24,14 @@ export interface TtsEngine {
   updateVoice(voice: string, rate?: number): void
   /** 合成一段文本为音频字节；失败抛错（上层退避重试）。 */
   synthesize(text: string, options?: { voice?: string; rate?: number }): Promise<Buffer>
+  /**
+   * 合成并同时返回该段音频的 MIME（可选；远程引擎按真实字节嗅探，并发下必须随结果返回）。
+   * 未实现时调用方回落到 `synthesize` + `engine.mime`。
+   */
+  synthesizeWithMime?(
+    text: string,
+    options?: { voice?: string; rate?: number },
+  ): Promise<{ buf: Buffer; mime: string }>
   /** 打断：立刻中止在途合成并释放计算资源（本地引擎杀子进程；下一句自动重建）。 */
   interrupt?(): void
   /** 释放引擎资源（插件卸载/热重载）。 */
@@ -508,6 +516,21 @@ export class TtsQueue {
     return this.engine.synthesize(text, options)
   }
 
+  /**
+   * 一次性合成并返回 MIME（试听/自测用）。
+   * A2 审计 Important：不能 await 之后再读 engine.mime——引擎级「最近一次」状态在
+   * 试听与朗读并发时会串味，客户端按错容器解码，整句无声。
+   */
+  async synthesizeWithMime(
+    text: string,
+    options: { voice?: string; rate?: number } = {},
+  ): Promise<{ buf: Buffer; mime: string }> {
+    if (this.closed) throw new Error('tts queue closed')
+    const withMime = this.engine.synthesizeWithMime
+    if (withMime) return withMime.call(this.engine, text, options)
+    return { buf: await this.engine.synthesize(text, options), mime: this.engine.mime }
+  }
+
   subscribe(listener: FrameListener): () => void {
     this.listeners.add(listener)
     return () => {
@@ -602,6 +625,8 @@ export class TtsQueue {
         // 失败即静默丢句会表现为「长话没规律跳过几句」——重试 3 次、退避后仍失败才跳过。
         const MAX_SYNTH_ATTEMPTS = 3
         let buf: Buffer | null = null
+        // 远程引擎按真实字节嗅探出的 MIME：必须与本句字节一同传递，不能读引擎级「最近一次」。
+        let frameMime: string | null = null
         for (let attempt = 0; attempt < MAX_SYNTH_ATTEMPTS; attempt++) {
           if (item.epoch !== q.epoch) break // 打断：停止重试
           // R13（Issue #15 Important-1）：重试 sleep 期间 close 落进来 → 睡醒直接
@@ -612,7 +637,14 @@ export class TtsQueue {
           // close→kill child→在途 synthesize 被 child.on('exit') 的 rejectAll 打回即可进入。
           if (this.closed) break
           try {
-            buf = await this.engine.synthesize(item.text)
+            const withMime = this.engine.synthesizeWithMime
+            if (withMime) {
+              const r = await withMime.call(this.engine, item.text)
+              buf = r.buf
+              frameMime = r.mime
+            } else {
+              buf = await this.engine.synthesize(item.text)
+            }
             break
           } catch (e) {
             console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${redactSecrets(e)}`)
@@ -650,7 +682,7 @@ export class TtsQueue {
         // R15 T-3：发号器是全局的（会话维度不再持有 seq），故本会话的句号必然大于它
         // 历史上的任何一句——即使中间的队列对象已被回收，见 queues 声明处的 seq 单调不变式。
         const sentenceId = this.seq++
-        const mime = this.engine.mime
+        const mime = frameMime ?? this.engine.mime
         // 单 chunk（整句音频）+ final 帧（字幕文本）：客户端按句拼帧后解码起播。
         const dataFrame: TtsChunkFrame = {
           sessionId,
