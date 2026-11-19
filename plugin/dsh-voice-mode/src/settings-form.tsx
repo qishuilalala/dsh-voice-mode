@@ -148,6 +148,29 @@ const focusVisibleCss = `
   [data-dshvm-settings="card"], [data-dshvm-settings="card"] * { transition: none !important; }
 }`
 
+/**
+ * 单个复选框 + 可读名称（A4 审计 Important：Row 标题是裸 span，12+ 开关读屏只报「复选框」）。
+ * 用 aria-label 而不是 <label>:卡片是栅格布局，标题不在控件旁边，隐式关联会让点击标题意外切换。
+ */
+function CheckRow({
+  field,
+  checked,
+  score,
+}: {
+  field: string
+  checked: boolean
+  score: { set: (field: string, value: unknown) => unknown }
+}): React.ReactElement {
+  return (
+    <input
+      type="checkbox"
+      aria-label={tr(`${field}Label` as TKey)}
+      checked={checked}
+      onChange={(e) => void score.set(field, e.target.checked)}
+    />
+  )
+}
+
 /** 各引擎切换时的默认音色（语义不同，切换引擎时自动重置）。 */
 const ENGINE_DEFAULT_VOICE: Record<string, string> = {
   // 与 host 侧引擎 defaultVoice 对齐（VITS suyingxue / Kokoro zf_xiaobei），
@@ -2355,10 +2378,10 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
               <TextField score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder={tr('wakePlaceholder')} />
             </Row>
             <Row name="toolBeep" desc={tr('descToolBeep')}>
-              <input type="checkbox" checked={Boolean(value.toolBeep)} onChange={(e) => void scope.set('toolBeep', e.target.checked)} />
+              <CheckRow field="toolBeep" checked={Boolean(value.toolBeep)} score={scope} />
             </Row>
             <Row name="autoSend" desc={tr('descAutoSend')}>
-              <input type="checkbox" checked={Boolean(value.autoSend)} onChange={(e) => void scope.set('autoSend', e.target.checked)} />
+              <CheckRow field="autoSend" checked={Boolean(value.autoSend)} score={scope} />
             </Row>
             <Row name="readAloud" desc={tr('descReadAloud')}>
               <SegGroup
@@ -2374,13 +2397,13 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
             </Row>
             <DictationPreset readAloud={value.readAloud} onPick={(v) => void scope.set('readAloud', v)} />
             <Row name="showStatusBar" desc={tr('descShowStatusBar')}>
-              <input type="checkbox" checked={value.showStatusBar !== false} onChange={(e) => void scope.set('showStatusBar', e.target.checked)} />
+              <CheckRow field="showStatusBar" checked={value.showStatusBar !== false} score={scope} />
             </Row>
             <Row name="showCaptions" desc={tr('descShowCaptions')}>
-              <input type="checkbox" checked={value.showCaptions !== false} onChange={(e) => void scope.set('showCaptions', e.target.checked)} />
+              <CheckRow field="showCaptions" checked={value.showCaptions !== false} score={scope} />
             </Row>
             <Row name="autoResume" desc={tr('descAutoResume')}>
-              <input type="checkbox" checked={Boolean(value.autoResume)} onChange={(e) => void scope.set('autoResume', e.target.checked)} />
+              <CheckRow field="autoResume" checked={Boolean(value.autoResume)} score={scope} />
             </Row>
             <Row name="captionFontSize" desc={tr('descCaptionFontSize')}>
               <SegGroup
@@ -2408,14 +2431,14 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
               />
             </Row>
             <Row name="backchannelYield" desc={tr('descBackchannelYield')}>
-              <input type="checkbox" checked={value.backchannelYield !== false} onChange={(e) => void scope.set('backchannelYield', e.target.checked)} />
+              <CheckRow field="backchannelYield" checked={value.backchannelYield !== false} score={scope} />
             </Row>
             {/* Issue #15 批 1 / ADR-0012：打断语音抢救（显式 Row，非数据驱动）。 */}
             <Row name="bargeInSalvage" desc={tr('descBargeInSalvage')}>
-              <input type="checkbox" checked={value.bargeInSalvage !== false} onChange={(e) => void scope.set('bargeInSalvage', e.target.checked)} />
+              <CheckRow field="bargeInSalvage" checked={value.bargeInSalvage !== false} score={scope} />
             </Row>
             <Row name="llmCorrect" desc={tr('descLlmCorrect')}>
-              <input type="checkbox" checked={value.llmCorrect === true} onChange={(e) => void scope.set('llmCorrect', e.target.checked)} />
+              <CheckRow field="llmCorrect" checked={value.llmCorrect === true} score={scope} />
             </Row>
             <Row name="yieldMs" desc={tr('descYieldMs')}>
               <NumberField score={scope} field="yieldMs" value={value.yieldMs ?? 1500} min={500} max={3000} step={100} />
@@ -2458,13 +2481,13 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
             </Section>
             <Section title={tr('secRecognition')}>
             <Row name="senseVoice" desc={tr('descSenseVoice')}>
-              <input type="checkbox" checked={Boolean(value.senseVoice)} onChange={(e) => void scope.set('senseVoice', e.target.checked)} />
+              <CheckRow field="senseVoice" checked={Boolean(value.senseVoice)} score={scope} />
             </Row>
             <Row name="senseITN" desc={tr('descSenseITN')}>
-              <input type="checkbox" checked={value.senseITN !== false} onChange={(e) => void scope.set('senseITN', e.target.checked)} />
+              <CheckRow field="senseITN" checked={value.senseITN !== false} score={scope} />
             </Row>
             <Row name="spokenFormat" desc={tr('descSpokenFormat')}>
-              <input type="checkbox" checked={Boolean(value.spokenFormat)} onChange={(e) => void scope.set('spokenFormat', e.target.checked)} />
+              <CheckRow field="spokenFormat" checked={Boolean(value.spokenFormat)} score={scope} />
             </Row>
             <Row name="silenceMs" desc={tr('descSilence')}>
               <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 1500} min={500} max={30000} step={100} />

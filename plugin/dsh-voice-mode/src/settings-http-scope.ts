@@ -51,6 +51,8 @@ export function createHttpScope(origin: string = location.origin, fetchImpl: typ
    * 计数在语义上不可能正确，必须靠单调序号。
    */
   let writeGen = 0
+  // A3 审计 Minor：并发 set 的响应没有序号，迟到的旧响应会覆盖新值。
+  let writeSeq = 0
   /**
    * 在途读期间到来的重拉请求（失效/获焦/重挂载触发）。
    *
@@ -103,9 +105,10 @@ export function createHttpScope(origin: string = location.origin, fetchImpl: typ
       //  ① writing === 0：写未落定期间发出的读，其数据可能早于那次写；
       //  ② myGen === writeGen：写在本读发出**之后**落定过（无论成功还是回滚）——
       //     本读的快照已过期，回写就是把刚写好的值盖回旧值。
-      if (writing === 0 && myGen === writeGen) emit({ status: 'ready', value: data.value ?? {} })
+      // A3 审计 Minor：卸载后不得再向订阅者派发（旧读响应仍可能落在 dispose 之后）。
+      if (!disposed && writing === 0 && myGen === writeGen) emit({ status: 'ready', value: data.value ?? {} })
     } catch {
-      emit({ status: 'unavailable', value: snap.value })
+      if (!disposed) emit({ status: 'unavailable', value: snap.value })
       scheduleRetry()
     } finally {
       inFlight = false
@@ -159,6 +162,7 @@ export function createHttpScope(origin: string = location.origin, fetchImpl: typ
       if (disposed) return false
       // 乐观更新：失败则以服务端当前值回滚（卡片不需要感知错误细节）。
       const before = snap
+      const mySeq = ++writeSeq
       writing++
       emit({ status: 'ready', value: { ...snap.value, [field]: value } })
       let ok = false
@@ -171,10 +175,11 @@ export function createHttpScope(origin: string = location.origin, fetchImpl: typ
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = (await res.json()) as { value?: Record<string, unknown> }
-        emit({ status: 'ready', value: data.value ?? before.value })
+        // 卸载后 / 已不是最新写：不回写快照（旧响应覆盖新值 = 用户看到的设置倒退）。
+        if (!disposed && mySeq === writeSeq) emit({ status: 'ready', value: data.value ?? before.value })
         ok = true
       } catch {
-        emit(before)
+        if (!disposed && mySeq === writeSeq) emit(before)
       } finally {
         writing--
         // 写落定（成功或回滚）→ 写代数自增：在途的旧读（发出于本次写之前或期间）

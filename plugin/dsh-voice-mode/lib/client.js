@@ -4000,6 +4000,21 @@ var focusVisibleCss = `
 @media (prefers-reduced-motion: reduce) {
   [data-dshvm-settings="card"], [data-dshvm-settings="card"] * { transition: none !important; }
 }`;
+function CheckRow({
+  field,
+  checked,
+  score
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "input",
+    {
+      type: "checkbox",
+      "aria-label": t(`${field}Label`),
+      checked,
+      onChange: (e) => void score.set(field, e.target.checked)
+    }
+  );
+}
 var ENGINE_DEFAULT_VOICE = {
   // 与 host 侧引擎 defaultVoice 对齐（VITS suyingxue / Kokoro zf_xiaobei），
   // 避免「config 直连」与「面板切引擎」落到不同默认音色。
@@ -5766,8 +5781,8 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
             }
           ) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.toolBeep), onChange: (e) => void scope.set("toolBeep", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoSend), onChange: (e) => void scope.set("autoSend", e.target.checked) }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "toolBeep", checked: Boolean(value.toolBeep), score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "autoSend", checked: Boolean(value.autoSend), score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "readAloud", desc: t("descReadAloud"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -5782,9 +5797,9 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
             }
           ) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DictationPreset, { readAloud: value.readAloud, onPick: (v) => void scope.set("readAloud", v) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showStatusBar", desc: t("descShowStatusBar"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.showStatusBar !== false, onChange: (e) => void scope.set("showStatusBar", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showCaptions", desc: t("descShowCaptions"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.showCaptions !== false, onChange: (e) => void scope.set("showCaptions", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoResume), onChange: (e) => void scope.set("autoResume", e.target.checked) }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showStatusBar", desc: t("descShowStatusBar"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "showStatusBar", checked: value.showStatusBar !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showCaptions", desc: t("descShowCaptions"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "showCaptions", checked: value.showCaptions !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "autoResume", checked: Boolean(value.autoResume), score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "captionFontSize", desc: t("descCaptionFontSize"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -5812,9 +5827,9 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               ]
             }
           ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "backchannelYield", desc: t("descBackchannelYield"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.backchannelYield !== false, onChange: (e) => void scope.set("backchannelYield", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "bargeInSalvage", desc: t("descBargeInSalvage"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.bargeInSalvage !== false, onChange: (e) => void scope.set("bargeInSalvage", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "llmCorrect", desc: t("descLlmCorrect"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.llmCorrect === true, onChange: (e) => void scope.set("llmCorrect", e.target.checked) }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "backchannelYield", desc: t("descBackchannelYield"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "backchannelYield", checked: value.backchannelYield !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "bargeInSalvage", desc: t("descBargeInSalvage"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "bargeInSalvage", checked: value.bargeInSalvage !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "llmCorrect", desc: t("descLlmCorrect"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "llmCorrect", checked: value.llmCorrect === true, score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "yieldMs", desc: t("descYieldMs"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "yieldMs", value: value.yieldMs ?? 1500, min: 500, max: 3e3, step: 100 }) })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secShortcut"), children: [
@@ -5851,9 +5866,9 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
           ] })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRecognition"), children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseITN", desc: t("descSenseITN"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.senseITN !== false, onChange: (e) => void scope.set("senseITN", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "senseVoice", checked: Boolean(value.senseVoice), score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseITN", desc: t("descSenseITN"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "senseITN", checked: value.senseITN !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "spokenFormat", checked: Boolean(value.spokenFormat), score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 5, min: 1, max: 120, step: 1 }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -5883,6 +5898,7 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
   let inFlight = false;
   let writing = 0;
   let writeGen = 0;
+  let writeSeq = 0;
   let pendingReload = false;
   let disposed = false;
   let retryTimer = null;
@@ -5917,9 +5933,9 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       retryDelay = 0;
-      if (writing === 0 && myGen === writeGen) emit({ status: "ready", value: data.value ?? {} });
+      if (!disposed && writing === 0 && myGen === writeGen) emit({ status: "ready", value: data.value ?? {} });
     } catch {
-      emit({ status: "unavailable", value: snap.value });
+      if (!disposed) emit({ status: "unavailable", value: snap.value });
       scheduleRetry();
     } finally {
       inFlight = false;
@@ -5960,6 +5976,7 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
     async set(field, value) {
       if (disposed) return false;
       const before = snap;
+      const mySeq = ++writeSeq;
       writing++;
       emit({ status: "ready", value: { ...snap.value, [field]: value } });
       let ok = false;
@@ -5972,10 +5989,10 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        emit({ status: "ready", value: data.value ?? before.value });
+        if (!disposed && mySeq === writeSeq) emit({ status: "ready", value: data.value ?? before.value });
         ok = true;
       } catch {
-        emit(before);
+        if (!disposed && mySeq === writeSeq) emit(before);
       } finally {
         writing--;
         writeGen++;
@@ -6059,7 +6076,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "2cff287";
+var BUILD_TAG = "f05578f";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
