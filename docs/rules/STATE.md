@@ -22,7 +22,7 @@
 | 仓库设置 | 待维护者将 install/audit 与漂移门设为必需检查，并核对后清理已合入远端分支。 |
 | 测试入口 | 结论 C 已入主干：保留顺序脚本，以逐行清单 `scripts/test-files.txt` 执行。 |
 | 中期工作 | Q2/Q3、失败率聚合及安装/浏览器验证入口见 [11 月规划](../plan/plan-2026-11.md)。 |
-| P1+TTS 分支合入 | 规划+七批交付在 `plan/p1-tts-2026-11-18`；待本轮终审后合 main 并发版（发版需真机四项门禁） |
+| P1+TTS 分支合入 | PR [#72](https://github.com/qishuilalala/dsh-voice-mode/pull/72)（`plan/p1-tts-2026-11-18`，已 rebase main、CI 运行中）；合入后按真机四项门禁决定是否发版 |
 | MiMo 真 key 验证 | 形状与回退已用本地桩覆盖；真 key 下 stream/messages/audio.format/audio.data 形状需维护者实测（失败会静默回退本地） |
 
 ## 阻塞项与只有维护者能做的事
