@@ -34,7 +34,8 @@
 |---|---|---|---|---|
 | siliconflow-cosyvoice2 | api.siliconflow.cn/v1 | FunAudioLLM/CosyVoice2-0.5B | 约 $7.15/百万 UTF-8 字节 | api.siliconflow.cn |
 | siliconflow-fish | api.siliconflow.cn/v1 | fishaudio/fish-speech-1.5 | 约 $15/百万 UTF-8 字节 | api.siliconflow.cn |
-| openrouter-openai | openrouter.ai/api/v1 | openai/gpt-4o-mini-tts | 按 OpenRouter 计费 | openrouter.ai |
+| openrouter-openai | openrouter.ai/api/v1 | openai/gpt-4o-mini-tts-2025-12-15 | 按所选模型计费 | openrouter.ai |
+| openai-official | api.openai.com/v1 | gpt-4o-mini-tts | OpenAI 官方价 | api.openai.com |
 | selfhosted-kokoro | 127.0.0.1:8880/v1 | kokoro | 无逐次费用 | 不出本机网络 |
 | selfhosted-vllm | 127.0.0.1:8000/v1 | tts-1 | 无逐次费用 | 不出本机网络 |
 

@@ -13,6 +13,7 @@
  */
 import { MsEdgeTTS, OUTPUT_FORMAT, type ProsodyOptions } from 'msedge-tts'
 import { stripEmotionTags } from './emotion.ts'
+import type { TtsEngineKind } from './engine-kind.ts'
 
 /** 合成引擎统一接口（云端/本地实现互替）。 */
 export interface TtsEngine {
@@ -54,7 +55,7 @@ export interface TtsModelGroup {
 /** 引擎/模型现状（设置面板轮询）。 */
 export interface TtsEngineStatus {
   /** 当前生效引擎。 */
-  engine: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo'
+  engine: TtsEngineKind
   /** 当前引擎是否就绪（本地：模型校验 + 子进程 init；edge：恒 true）。 */
   ready: boolean
   /** 当前引擎正在初始化/加载。 */

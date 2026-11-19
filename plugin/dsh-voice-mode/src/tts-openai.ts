@@ -231,10 +231,18 @@ export const OPENAI_PRESETS: Record<string, OpenAiPreset> = {
     model: 'fishaudio/fish-speech-1.5',
     voice: 'fishaudio/fish-speech-1.5:anna',
   },
+  // OpenRouter 官方 TTS 文档（2026-05-01 公告）：POST /api/v1/audio/speech，
+  // 示例模型 slug 为带日期的 `openai/gpt-4o-mini-tts-2025-12-15`、voice `alloy`、response_format mp3。
   'openrouter-openai': {
     baseUrl: 'https://openrouter.ai/api/v1',
-    model: 'openai/gpt-4o-mini-tts',
+    model: 'openai/gpt-4o-mini-tts-2025-12-15',
     voice: 'alloy',
+  },
+  // OpenAI 官方（docs: /v1/audio/speech，模型 gpt-4o-mini-tts，官方推荐 marin/cedar 音质最佳）。
+  'openai-official': {
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini-tts',
+    voice: 'marin',
   },
   // 自建示例（本机地址为占位；无鉴权时 key 留空即可）：
   //   Kokoro-FastAPI / LocalAI 的 OpenAI 兼容面，Kokoro 音色名取自本插件本地目录（zf_xiaobei 等）。

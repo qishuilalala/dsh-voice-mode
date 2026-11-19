@@ -1763,13 +1763,15 @@ var zh = {
   presetCosyNote: "\u7EA6 $7.15/\u767E\u4E07 UTF-8 \u5B57\u8282\uFF0C150ms \u7EA7\uFF1B\u6587\u672C\u53D1\u5F80 api.siliconflow.cn",
   presetFishNote: "\u7EA6 $15/\u767E\u4E07 UTF-8 \u5B57\u8282\uFF08\u6309 UTF-8 \u5B57\u8282\u8BA1\u8D39\uFF09\uFF1B\u6587\u672C\u53D1\u5F80 api.siliconflow.cn",
   presetOpenrouter: "OpenRouter \xB7 OpenAI \u8BED\u97F3",
-  presetOpenrouterNote: "\u6309 OpenAI \u8BA1\u8D39\uFF08\u7EA6 $15/\u767E\u4E07\u5B57\u7B26\u7EA7\uFF09\uFF1B\u6587\u672C\u53D1\u5F80 openrouter.ai",
+  presetOpenrouterNote: "\u6309\u6240\u7528\u6A21\u578B\u8BA1\u8D39\uFF1B\u6587\u672C\u53D1\u5F80 openrouter.ai\uFF1B\u5B98\u65B9\u8981\u6C42\u5411\u7EC8\u7AEF\u7528\u6237\u62AB\u9732\u8BE5\u8BED\u97F3\u4E3A AI \u751F\u6210",
+  presetOpenaiOfficial: "OpenAI \u5B98\u65B9 \xB7 gpt-4o-mini-tts",
+  presetOpenaiOfficialNote: "\u6309 OpenAI \u5B98\u65B9\u4EF7\u683C\u8BA1\u8D39\uFF1B\u6587\u672C\u53D1\u5F80 api.openai.com\uFF1B\u5B98\u65B9\u8981\u6C42\u5411\u7EC8\u7AEF\u7528\u6237\u62AB\u9732\u8BE5\u8BED\u97F3\u4E3A AI \u751F\u6210",
   presetSelfKokoro: "\u81EA\u5EFA \xB7 Kokoro-FastAPI",
   presetSelfKokoroNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8880\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
   presetSelfVllm: "\u81EA\u5EFA \xB7 vLLM-Omni",
   presetSelfVllmNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8000\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
   presetKeyNote: "key \u586B\u5728 profile \u7684 openaiTts.apiKey\uFF0C\u4E0D\u7ECF\u8FC7\u6D4F\u89C8\u5668",
-  presetFillVoice: "\u586B\u5165\u793A\u4F8B\u97F3\u8272",
+  presetVerify: "\u9A8C\u8BC1\u6B64\u9884\u8BBE",
   // P1-4 只听写预设。
   dictationTitle: "\u53EA\u542C\u5199",
   dictationHint: "\u5173\u95ED\u56DE\u590D\u6717\u8BFB\uFF0C\u4E13\u6CE8\u542C\u5199\uFF1B\u518D\u70B9\u4E00\u6B21\u6062\u590D",
@@ -1818,7 +1820,10 @@ var zh = {
   engineOpenai: "OpenAI \u517C\u5BB9",
   engineMimo: "\u5C0F\u7C73 MiMo",
   descVoiceOpenai: "\u670D\u52A1\u7AEF\u7684\u97F3\u8272\u540D\uFF08\u7559\u7A7A = \u914D\u7F6E\u91CC\u7684 openaiTts.voice\uFF09",
+  descVoiceMimo: "MiMo \u9884\u7F6E\u97F3\u8272\u540D\uFF08\u7559\u7A7A = \u914D\u7F6E\u91CC\u7684 mimoTts.voice\uFF0C\u9ED8\u8BA4 mimo_default\uFF09\uFF1B\u9884\u7F6E\uFF1Amimo_default\u3001\u51B0\u7CD6\u3001\u8309\u8389\u3001\u82CF\u6253\u3001\u767D\u6866\u3001Mia\u3001Chloe\u3001Milo\u3001Dean",
   engineRemoteDown: "\u670D\u52A1\u4E0D\u53EF\u7528",
+  errMimoKeyMissing: "\u672A\u914D\u7F6E\u5C0F\u7C73 MiMo \u7684 API Key\uFF1A\u8BF7\u5728 profile \u7684 mimoTts.apiKey \u586B\u5199\u540E\u91CD\u542F\u5BBF\u4E3B",
+  errOpenaiConfigMissing: "\u672A\u914D\u7F6E OpenAI \u517C\u5BB9\u670D\u52A1\u7684 baseUrl/model\uFF1A\u8BF7\u5728 profile \u7684 openaiTts \u586B\u5199\uFF08key \u53EF\u9009\uFF09",
   errRemoteTts: "\u6717\u8BFB\u670D\u52A1\u8FDE\u4E0D\u4E0A\u3001\u62A5\u9519\u6216\u592A\u6162\uFF1B\u914D\u7F6E\u4E86\u56DE\u9000\u65F6\u8FD9\u671F\u95F4\u7528\u672C\u5730\u5F15\u64CE\u6717\u8BFB",
   descVoiceKokoro: "Kokoro \u4E2D\u82F1\u97F3\u8272\uFF08103 \u4E2A\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B48-51 \u4E2D\u6587\u540D\uFF0C\u5176\u4F59\u6309\u7F16\u53F7+\u5B9E\u6D4B\u6027\u522B\u6807\u6CE8\uFF0C\u4E2D\u82F1\u6DF7\u8BFB\u5747\u53EF\uFF09",
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.1 \u9ED8\u8BA4\uFF1B\u8BA9\u56DE\u590D\u66F4\u7D27\u51D1\uFF09",
@@ -2110,13 +2115,15 @@ var en = {
   presetCosyNote: "About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn",
   presetFishNote: "About $15 per million UTF-8 bytes (billed per UTF-8 byte); text goes to api.siliconflow.cn",
   presetOpenrouter: "OpenRouter \xB7 OpenAI TTS",
-  presetOpenrouterNote: "Billed through OpenRouter; text goes to openrouter.ai",
+  presetOpenrouterNote: "Billed through the selected model; text goes to openrouter.ai; OpenAI terms require disclosing that the voice is AI-generated",
+  presetOpenaiOfficial: "OpenAI official \xB7 gpt-4o-mini-tts",
+  presetOpenaiOfficialNote: "Billed at OpenAI list prices; text goes to api.openai.com; OpenAI terms require disclosing that the voice is AI-generated",
   presetSelfKokoro: "Self-hosted \xB7 Kokoro-FastAPI",
   presetSelfKokoroNote: "Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first",
   presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
   presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser",
-  presetFillVoice: "Fill example voice",
+  presetVerify: "Verify preset",
   // P1-4 dictation-only preset.
   dictationTitle: "Dictation only",
   dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
@@ -2164,7 +2171,10 @@ var en = {
   engineOpenai: "OpenAI-compatible",
   engineMimo: "Xiaomi MiMo",
   descVoiceOpenai: "Voice name on the server (empty = openaiTts.voice from the config)",
+  descVoiceMimo: "MiMo preset voice id (empty = mimoTts.voice from the config, default mimo_default). Presets: mimo_default, Mia, Chloe, Milo, Dean, plus four Chinese-named voices (Bingtang/Moli/Suda/Baihua) \u2014 enter them by their native Chinese names as listed on the MiMo docs",
   engineRemoteDown: "server unavailable",
+  errMimoKeyMissing: "MiMo API key is not configured: set mimoTts.apiKey in the profile and restart the host",
+  errOpenaiConfigMissing: "OpenAI-compatible baseUrl/model is not configured: set openaiTts in the profile (key optional)",
   errRemoteTts: "The TTS server is unreachable, failing or too slow; the local fallback reads aloud meanwhile if one is configured",
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
@@ -2682,6 +2692,19 @@ function clampMenuRect(input) {
 }
 function shouldSkipDraftWriteback(quoteCount, attachCount) {
   return quoteCount > 0 || attachCount > 0;
+}
+
+// src/engine-kind.ts
+var TTS_ENGINE_KINDS = ["vits", "kokoro", "edge", "openai", "mimo"];
+var CLOUD_ENGINE_KINDS = ["edge", "openai", "mimo"];
+function asTtsEngineKind(value) {
+  return TTS_ENGINE_KINDS.includes(value) ? value : "vits";
+}
+function isCloudEngine(value) {
+  return CLOUD_ENGINE_KINDS.includes(value);
+}
+function isThirdPartyEngine(value) {
+  return value === "openai" || value === "mimo";
 }
 
 // src/runtime-boot.ts
@@ -3875,17 +3898,11 @@ var ENGINE_DEFAULT_VOICE = {
   openai: "",
   mimo: "mimo_default"
 };
-var OPENAI_PRESET_VOICE = {
-  "siliconflow-cosyvoice2": "FunAudioLLM/CosyVoice2-0.5B:alex",
-  "siliconflow-fish": "fishaudio/fish-speech-1.5:anna",
-  "openrouter-openai": "alloy",
-  "selfhosted-kokoro": "zf_xiaobei",
-  "selfhosted-vllm": "default"
-};
 var PRESET_NOTE = {
   "siliconflow-cosyvoice2": () => t("presetCosyNote"),
   "siliconflow-fish": () => t("presetFishNote"),
   "openrouter-openai": () => t("presetOpenrouterNote"),
+  "openai-official": () => t("presetOpenaiOfficialNote"),
   "selfhosted-kokoro": () => t("presetSelfKokoroNote"),
   "selfhosted-vllm": () => t("presetSelfVllmNote")
 };
@@ -4255,7 +4272,7 @@ function VoicePreviewButton({ voice, rate }) {
   const audioRef = (0, import_react2.useRef)(null);
   const status = useModelsStatus();
   const stTts = status?.tts;
-  const localReady = stTts ? stTts.engine === "edge" || stTts.engine === "openai" || stTts.engine === "mimo" ? true : !!stTts.local?.ready : null;
+  const localReady = stTts ? isCloudEngine(stTts.engine) ? true : !!stTts.local?.ready : null;
   const ttsLoading = !!stTts?.loading;
   const disabledByModel = localReady === false;
   const play = () => {
@@ -4519,7 +4536,7 @@ function SelfTestSection({
           verdict(t("selftestSynth"), synth, synth === "ok" ? `${synthMs} ${t("unitMs")}` : void 0),
           verdict(t("selftestPlay"), play)
         ] }),
-        synth === "fail" && (engine === "edge" || engine === "openai" || engine === "mimo") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        synth === "fail" && isCloudEngine(engine) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {
             type: "button",
@@ -4573,20 +4590,17 @@ function ReplacementsSection({
   const fileRef = (0, import_react2.useRef)(null);
   const status = useModelsStatus();
   const hits = status?.replacements?.hits?.filter((n) => typeof n === "number") ?? [];
-  const [hitsOverride, setHits] = (0, import_react2.useState)(null);
-  const shownHits = hitsOverride ?? hits;
   const commit = async (next) => {
     if (replacementsPayloadBytes(next) > REPLACEMENTS_MAX_PAYLOAD_BYTES) {
       setNote(t("replTooLarge"));
       return false;
     }
     const ok = await onChange(next);
-    if (!ok) {
+    if (ok === false) {
       setNote(t("replSaveFail"));
       return false;
     }
     setNote(null);
-    setHits([]);
     return true;
   };
   const add = () => {
@@ -4665,7 +4679,7 @@ function ReplacementsSection({
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: t2.term }, children: [
         t("replHits"),
         " ",
-        shownHits[i] ?? 0
+        hits[i] ?? 0
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         "button",
@@ -4795,6 +4809,90 @@ function useModelsStatus() {
   (0, import_react2.useEffect)(() => subscribeModelsStatus(setSt), []);
   return st;
 }
+var PRESET_LABEL = {
+  "siliconflow-cosyvoice2": () => t("presetCosy"),
+  "siliconflow-fish": () => t("presetFish"),
+  "openrouter-openai": () => t("presetOpenrouter"),
+  "openai-official": () => t("presetOpenaiOfficial"),
+  "selfhosted-kokoro": () => t("presetSelfKokoro"),
+  "selfhosted-vllm": () => t("presetSelfVllm")
+};
+function OpenAiPresetSection({
+  score,
+  value,
+  presets,
+  onVerify,
+  verifyState
+}) {
+  const cur = typeof value === "string" ? value : "";
+  const ids = ["", ...Object.keys(presets ?? {})];
+  const options = ids.map((id) => ({ v: id, label: id ? PRESET_LABEL[id]?.() ?? id : t("presetCustom") }));
+  const data = presets?.[cur];
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SegGroup, { score, field: "openaiPreset", value: cur, options }),
+    data ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 11, color: t2.term, fontFamily: "monospace", wordBreak: "break-all" }, children: [
+      data.baseUrl,
+      " \xB7 ",
+      data.model,
+      " \xB7 ",
+      data.voice
+    ] }) : null,
+    PRESET_NOTE[cur] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: PRESET_NOTE[cur]() }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetKeyNote") }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          type: "button",
+          disabled: !cur,
+          onClick: () => onVerify(cur),
+          style: {
+            font: "inherit",
+            display: "inline-flex",
+            alignItems: "center",
+            alignSelf: "flex-start",
+            cursor: cur ? "pointer" : "default",
+            opacity: cur ? 1 : 0.5,
+            color: t2.label,
+            background: "var(--dsw-alias-bg-layer-2)",
+            border: `1px solid ${t2.border}`,
+            borderRadius: 6,
+            padding: "4px 10px",
+            fontSize: 12,
+            lineHeight: "18px"
+          },
+          children: t("presetVerify")
+        }
+      ),
+      verifyState && verifyState.id === cur ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "span",
+        {
+          role: "status",
+          "aria-live": "polite",
+          style: {
+            fontSize: 12,
+            fontWeight: 600,
+            color: verifyState.state === "ok" ? "var(--dsw-alias-state-success-primary)" : "var(--dsw-alias-state-error-primary)"
+          },
+          children: verifyState.state === "ok" ? t("selftestOk") : verifyState.note ?? t("selftestCheck")
+        }
+      ) : null
+    ] })
+  ] });
+}
+function useHostPresets() {
+  const [presets, setPresets] = (0, import_react2.useState)(null);
+  (0, import_react2.useEffect)(() => {
+    let alive = true;
+    void fetch(location.origin + BASE_PATH + "/presets").then((res) => res.ok ? res.json() : null).then((data) => {
+      if (alive && data?.presets) setPresets(data.presets);
+    }).catch(() => void 0);
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return presets;
+}
 function Row({ name: name2, desc, children }) {
   const label = t(`${name2}Label`);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, children: [
@@ -4863,13 +4961,31 @@ function SegGroup({
     String(o.v)
   )) });
 }
+var ENGINE_NAME = {
+  vits: () => t("engineVits"),
+  kokoro: () => t("engineKokoro"),
+  edge: () => t("engineEdge"),
+  openai: () => t("engineOpenai"),
+  mimo: () => t("engineMimo")
+};
+function engineBadge(engine) {
+  if (engine === "edge") return t("engineBadgeCloud");
+  if (isThirdPartyEngine(engine)) return t("engineBadgeRemote");
+  return t("engineBadgeLocal");
+}
+function engineDownText(errorCode, engine) {
+  if (errorCode === "mimo_not_configured") return t("errMimoKeyMissing");
+  if (errorCode === "openai_not_configured") return t("errOpenaiConfigMissing");
+  if (isThirdPartyEngine(engine)) return t("engineRemoteDown");
+  return t("engineError");
+}
 var fmtMB = (b) => b >= 1048576 ? `${(b / 1048576).toFixed(0)}MB` : b > 0 ? `${Math.round(b / 1024)}KB` : "\u2013";
-function EngineStatusInline() {
+function EngineStatusInline({ onSwitchLocal }) {
   const st = useModelsStatus();
   const [acting, setActing] = (0, import_react2.useState)(null);
   const tts = st?.tts;
   if (!tts) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, {});
-  const engineName = tts.engine === "vits" ? t("engineVits") : tts.engine === "kokoro" ? t("engineKokoro") : tts.engine === "openai" ? t("engineOpenai") : tts.engine === "mimo" ? t("engineMimo") : t("engineEdge");
+  const engineName = ENGINE_NAME[tts.engine]();
   const isLocal = !!tts.local;
   const localReady = isLocal ? !!tts.local?.ready : false;
   let statusText;
@@ -4878,7 +4994,7 @@ function EngineStatusInline() {
     statusText = t("engineLoading");
     statusColor = t2.term;
   } else if (tts.error) {
-    statusText = t(tts.engine === "openai" || tts.engine === "mimo" ? "engineRemoteDown" : "engineError");
+    statusText = engineDownText(tts.errorCode, tts.engine);
     statusColor = "var(--dsw-alias-state-error-primary)";
   } else if (isLocal && !localReady) {
     statusText = t("ttsModelsMissing");
@@ -4909,7 +5025,7 @@ function EngineStatusInline() {
           borderRadius: 6,
           background: "var(--dsw-alias-bg-layer-1)"
         },
-        children: t(tts.engine === "edge" ? "engineBadgeCloud" : tts.engine === "openai" || tts.engine === "mimo" ? "engineBadgeRemote" : "engineBadgeLocal")
+        children: engineBadge(tts.engine)
       }
     ),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: statusText === t("engineReady") || statusText === t("engineError") ? 600 : 400, color: statusColor }, children: statusText }),
@@ -4940,7 +5056,27 @@ function EngineStatusInline() {
         children: acting ? acting === "clean" ? t("ttsDeleting") : t("ttsDownloading") : action === "clean" ? t("ttsDelete") : t("ttsDownload")
       }
     ),
-    tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: tts.errorCode === "kokoro_needs_node" ? t("errKokoroNeedsNode") : tts.engine === "openai" || tts.engine === "mimo" ? t("errRemoteTts") : t("engineError") })
+    tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: tts.errorCode === "kokoro_needs_node" ? t("errKokoroNeedsNode") : tts.errorCode === "mimo_not_configured" ? t("errMimoKeyMissing") : tts.errorCode === "openai_not_configured" ? t("errOpenaiConfigMissing") : isThirdPartyEngine(tts.engine) ? t("errRemoteTts") : t("engineError") }),
+      !isLocal && onSwitchLocal ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          type: "button",
+          onClick: onSwitchLocal,
+          style: {
+            font: "inherit",
+            cursor: "pointer",
+            color: t2.label,
+            background: "var(--dsw-alias-bg-layer-2)",
+            border: `1px solid ${t2.border}`,
+            borderRadius: 8,
+            padding: "3px 10px",
+            flexShrink: 0
+          },
+          children: t("switchToLocalTts")
+        }
+      ) : null
+    ] })
   ] });
 }
 function ModelStatusView() {
@@ -5032,7 +5168,49 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
   );
   const value = snap?.value ?? {};
   const unavailable = snap?.status === "unavailable" || snap?.status === "error";
-  const engine = value.ttsEngine === "edge" ? "edge" : value.ttsEngine === "kokoro" ? "kokoro" : value.ttsEngine === "openai" ? "openai" : value.ttsEngine === "mimo" ? "mimo" : "vits";
+  const hostPresets = useHostPresets();
+  const [presetVerify, setPresetVerify] = (0, import_react2.useState)(null);
+  const effectiveVoice = () => {
+    const own = typeof value.voice === "string" ? value.voice.trim() : "";
+    if (own) return own;
+    const pid = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
+    return pid && hostPresets?.[pid]?.voice || "";
+  };
+  const verifyPreset = (presetId) => {
+    const voice = (value.openaiPreset === presetId ? effectiveVoice() : "") || hostPresets?.[presetId]?.voice || "";
+    if (!voice) {
+      setPresetVerify({ id: presetId, state: "fail", note: t("previewNameFirst") });
+      return;
+    }
+    void (async () => {
+      try {
+        const res = await fetch(`${BASE_PATH}/preview`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ voice, rate: Number(value.rate ?? 1.1) }),
+          signal: AbortSignal.timeout(3e4)
+        });
+        if (res.ok) {
+          setPresetVerify({ id: presetId, state: "ok" });
+          return;
+        }
+        let body = null;
+        try {
+          body = await res.json();
+        } catch {
+        }
+        const code = body?.code;
+        setPresetVerify({
+          id: presetId,
+          state: "fail",
+          note: code === "rate_limited" || res.status === 429 ? t("selftestRateLimited") : code === "voice_disabled" || res.status === 403 ? t("selftestDisabled") : errorText(body, "selftestCheck")
+        });
+      } catch {
+        setPresetVerify({ id: presetId, state: "fail", note: t("selftestCheck") });
+      }
+    })();
+  };
+  const engine = asTtsEngineKind(value.ttsEngine);
   const [edgeRaw, setEdgeRaw] = (0, import_react2.useState)(null);
   (0, import_react2.useEffect)(() => {
     if (engine !== "edge") return;
@@ -5044,7 +5222,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
       alive = false;
     };
   }, [engine]);
-  const voiceOptions = engine === "edge" ? edgeRaw ? edgeAllOptions(edgeRaw, activeLocale()) : edgeCommonOptions() : engine === "kokoro" ? kokoroOptions() : engine === "openai" || engine === "mimo" ? [] : vitsOptions();
+  const voiceOptions = engine === "edge" ? edgeRaw ? edgeAllOptions(edgeRaw, activeLocale()) : edgeCommonOptions() : engine === "kokoro" ? kokoroOptions() : isThirdPartyEngine(engine) ? [] : vitsOptions();
   if (unavailable) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: t2.term, fontSize: 12, padding: "14px 16px", ...cardStyle }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)" }, children: t("configUnavailable") }),
@@ -5070,13 +5248,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               score: scope,
               field: "ttsEngine",
               value: engine,
-              options: [
-                { v: "vits", label: t("engineVits") },
-                { v: "kokoro", label: t("engineKokoro") },
-                { v: "edge", label: t("engineEdge") },
-                { v: "openai", label: t("engineOpenai") },
-                { v: "mimo", label: t("engineMimo") }
-              ],
+              options: TTS_ENGINE_KINDS.map((k) => ({ v: k, label: ENGINE_NAME[k]() })),
               onSelect: (v) => {
                 if (v !== engine) {
                   void scope.set("voice", ENGINE_DEFAULT_VOICE[String(v)] ?? "zh-CN-XiaoxiaoNeural");
@@ -5084,11 +5256,19 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               }
             }
           ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EngineStatusInline, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            EngineStatusInline,
+            {
+              onSwitchLocal: () => {
+                void scope.set("ttsEngine", "kokoro");
+                void scope.set("voice", ENGINE_DEFAULT_VOICE["kokoro"] ?? "zf_xiaobei");
+              }
+            }
+          ),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SelfTestSection,
             {
-              voice: String(value.voice ?? ""),
+              voice: effectiveVoice(),
               rate: Number(value.rate ?? 1.1),
               engine,
               onSwitchLocal: () => {
@@ -5113,7 +5293,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
             Row,
             {
               name: "voice",
-              desc: (engine === "edge" ? t("descVoice") : engine === "kokoro" ? t("descVoiceKokoro") : engine === "openai" ? t("descVoiceOpenai") : t("descVoiceLocal")) + voiceLangHint(engine, String(value.voice ?? "")),
+              desc: (engine === "edge" ? t("descVoice") : engine === "kokoro" ? t("descVoiceKokoro") : engine === "openai" ? t("descVoiceOpenai") : engine === "mimo" ? t("descVoiceMimo") : t("descVoiceLocal")) + voiceLangHint(engine, String(value.voice ?? "")),
               children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 VoiceSelect,
                 {
@@ -5122,54 +5302,22 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
                   value: value.voice ?? "",
                   options: voiceOptions,
                   placeholder: ENGINE_DEFAULT_VOICE[engine] ?? "zh-CN-XiaoxiaoNeural",
-                  showCustom: engine === "edge" || engine === "openai" || engine === "mimo",
+                  showCustom: isCloudEngine(engine),
                   footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1.1) })
                 }
               )
             }
           ),
-          engine === "openai" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiPreset", desc: t("descOpenaiPreset"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              SegGroup,
-              {
-                score: scope,
-                field: "openaiPreset",
-                value: typeof value.openaiPreset === "string" ? value.openaiPreset : "",
-                options: [
-                  { v: "", label: t("presetCustom") },
-                  { v: "siliconflow-cosyvoice2", label: t("presetCosy") },
-                  { v: "siliconflow-fish", label: t("presetFish") },
-                  { v: "openrouter-openai", label: t("presetOpenrouter") },
-                  { v: "selfhosted-kokoro", label: t("presetSelfKokoro") },
-                  { v: "selfhosted-vllm", label: t("presetSelfVllm") }
-                ]
-              }
-            ),
-            PRESET_NOTE[String(value.openaiPreset)] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: PRESET_NOTE[String(value.openaiPreset)]() }) : null,
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetKeyNote") }),
-            typeof value.openaiPreset === "string" && OPENAI_PRESET_VOICE[value.openaiPreset] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "button",
-              {
-                type: "button",
-                onClick: () => void scope.set("voice", OPENAI_PRESET_VOICE[String(value.openaiPreset)] ?? ""),
-                style: {
-                  font: "inherit",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  alignSelf: "flex-start",
-                  cursor: "pointer",
-                  color: t2.label,
-                  background: "var(--dsw-alias-bg-layer-2)",
-                  border: `1px solid ${t2.border}`,
-                  borderRadius: 6,
-                  padding: "4px 10px",
-                  fontSize: 12,
-                  lineHeight: "18px"
-                },
-                children: t("presetFillVoice")
-              }
-            ) : null
-          ] }) }),
+          engine === "openai" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiPreset", desc: t("descOpenaiPreset"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            OpenAiPresetSection,
+            {
+              score: scope,
+              value: value.openaiPreset,
+              presets: hostPresets,
+              onVerify: verifyPreset,
+              verifyState: presetVerify
+            }
+          ) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1.1, min: 0.5, max: 2, step: 0.1 }) })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secInterrupt"), children: [
@@ -5466,6 +5614,24 @@ var interruptFirstAt = 0;
 var isSpeechFalseRun = 0;
 var lastReenterAt = 0;
 var INT_CONFIRM_FRAMES = { 0: 3, 1: 2, 2: 1 };
+var presetVoiceCache = null;
+async function fetchPresetVoice(presetId) {
+  if (!presetVoiceCache) {
+    try {
+      const res = await fetch(`${BASE_PATH2}/presets`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const next = {};
+      for (const [id, p] of Object.entries(data.presets ?? {})) {
+        if (typeof p?.voice === "string") next[id] = p.voice;
+      }
+      presetVoiceCache = next;
+    } catch {
+      return null;
+    }
+  }
+  return presetVoiceCache[presetId] ?? null;
+}
 var inject = ["slots", "sessions"];
 var TELEMETRY_VIEW = [
   { stage: "utterance-end", key: "telUtteranceEnd" },
@@ -5491,7 +5657,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "30916e4";
+var BUILD_TAG = "84b9282";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -7268,9 +7434,27 @@ function MicButton({
         const snap = scope?.getSnapshot?.();
         const sv = snap && snap.status === "ready" && snap.value ? snap.value : {};
         const eng = typeof sv.ttsEngine === "string" ? sv.ttsEngine : "";
-        const pv = typeof sv.voice === "string" ? sv.voice.trim() : "";
+        let pv = typeof sv.voice === "string" ? sv.voice.trim() : "";
         const readAloudOff = sv.readAloud === "off";
-        if (!readAloudOff && (eng === "edge" || eng === "openai" || eng === "mimo") && pv) {
+        const probeKey = "dshvm:ttsProbeAt";
+        const probeTtlMs = 10 * 60 * 1e3;
+        let recentProbe = false;
+        try {
+          const at = Number(sessionStorage.getItem(probeKey) ?? "0");
+          recentProbe = Number.isFinite(at) && at > 0 && Date.now() - at < probeTtlMs;
+        } catch {
+        }
+        if (!readAloudOff && !recentProbe && isCloudEngine(eng)) {
+          if (!pv && eng === "openai") {
+            const pid = typeof sv.openaiPreset === "string" ? sv.openaiPreset : "";
+            if (pid) pv = await fetchPresetVoice(pid) ?? "";
+          }
+        }
+        if (!readAloudOff && !recentProbe && isCloudEngine(eng) && pv) {
+          try {
+            sessionStorage.setItem(probeKey, String(Date.now()));
+          } catch {
+          }
           const pr = typeof sv.rate === "number" ? Math.min(2, Math.max(0.5, sv.rate)) : 1.1;
           const myProbe = enterEpochRef.current;
           const markDown = () => {

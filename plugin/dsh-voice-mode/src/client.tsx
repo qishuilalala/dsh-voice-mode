@@ -43,6 +43,7 @@ import {
   FOCUS_OWNER_DEFAULT,
   type FocusOwners,
 } from './mic-gesture.ts'
+import { isCloudEngine } from './engine-kind.ts'
 import { setRuntimeBoot } from './runtime-boot.ts'
 import { activeLocale, bindLocale, t, useLang, type TKey } from './i18n.ts'
 
@@ -61,6 +62,30 @@ let isSpeechFalseRun = 0
 let lastReenterAt = 0
 /** 打断灵敏度三档 → isSpeech 连续确认帧数（墙钟节拍 100ms/拍 + 上行往返 → 确认阶段约 0.3/0.2/0.1s；语义对齐旧能量持续时长档位）。 */
 const INT_CONFIRM_FRAMES: Record<0 | 1 | 2, number> = { 0: 3, 1: 2, 2: 1 }
+
+/** /presets 缓存（模块级，一次拉取；失败返回 null 且不缓存，下次重试）。 */
+let presetVoiceCache: Record<string, string> | null = null
+/**
+ * 按预设 id 取示例音色。host 的 `/presets` 是单一真源，客户端**不再自维护一份表**
+ * （Spec 审查 #12：两份表会独立漂移）。用于入口探针在「音色为空 + 选了预设」时兜底。
+ */
+async function fetchPresetVoice(presetId: string): Promise<string | null> {
+  if (!presetVoiceCache) {
+    try {
+      const res = await fetch(`${BASE_PATH}/presets`)
+      if (!res.ok) return null
+      const data = (await res.json()) as { presets?: Record<string, { voice?: string }> }
+      const next: Record<string, string> = {}
+      for (const [id, p] of Object.entries(data.presets ?? {})) {
+        if (typeof p?.voice === 'string') next[id] = p.voice
+      }
+      presetVoiceCache = next
+    } catch {
+      return null
+    }
+  }
+  return presetVoiceCache[presetId] ?? null
+}
 import { VoiceSettingsCard } from './settings-form.tsx'
 import { createHttpScope } from './settings-http-scope.ts'
 import { takeOnceHint } from './once-hint.ts'
@@ -2642,18 +2667,40 @@ export function MicButton({
       const silenceMs = cfg.silenceMs
       const interruptLevel = cfg.interruptLevel
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2
-      // P1-2 入口探针：云引擎（edge/openai/mimo）在进入成功后即用 /preview 试合成一次，
-      // 不阻塞进入（fire-and-forget，纪元守卫防迟到误报）。
-      // A2 审计修复：① readAloud=off（只听写）不该被朗读探针打扰；② 单次失败不等于“连续失败”，
-      // 改用独立的 ttsProbeFail 文案（不声称“连续”），只在真实合成失败时提示。
-      // 429/403/快照未就绪/非云引擎/无音色名 → 静默跳过（fail-open，不打扰进入）。
+      // P1-2 入口探针：云引擎（edge/openai/mimo）在进入成功后试合成一次，不阻塞进入
+      // （fire-and-forget + 纪元守卫，迟到结果不误报）。
+      // A2 修复：① readAloud=off 不打扰；② 单次失败用 ttsProbeFail（不谎称“连续失败”）。
+      // Spec 修复 #7：整句合成有成本、且与试听/自测共用 20 次/分桶 → 每会话 10 分钟最多探一次。
+      // Spec 修复 #8：音色为空时回落**预设音色**（/presets 单一真源），否则「只选预设不填音色」
+      //   这一最常见用法永远探不到，而它正是 model:voice 形态最易 400 的场景。
+      // 429/403/快照未就绪/非云引擎/仍无音色 → 静默跳过（fail-open）。
       try {
         const snap = scope?.getSnapshot?.()
         const sv = (snap && snap.status === 'ready' && snap.value ? snap.value : {}) as Record<string, unknown>
         const eng = typeof sv.ttsEngine === 'string' ? sv.ttsEngine : ''
-        const pv = typeof sv.voice === 'string' ? sv.voice.trim() : ''
+        let pv = typeof sv.voice === 'string' ? sv.voice.trim() : ''
         const readAloudOff = sv.readAloud === 'off'
-        if (!readAloudOff && (eng === 'edge' || eng === 'openai' || eng === 'mimo') && pv) {
+        const probeKey = 'dshvm:ttsProbeAt'
+        const probeTtlMs = 10 * 60 * 1000
+        let recentProbe = false
+        try {
+          const at = Number(sessionStorage.getItem(probeKey) ?? '0')
+          recentProbe = Number.isFinite(at) && at > 0 && Date.now() - at < probeTtlMs
+        } catch {
+          // 隐私模式禁写：退回每次都探（功能优先于配额）
+        }
+        if (!readAloudOff && !recentProbe && isCloudEngine(eng)) {
+          if (!pv && eng === 'openai') {
+            const pid = typeof sv.openaiPreset === 'string' ? sv.openaiPreset : ''
+            if (pid) pv = (await fetchPresetVoice(pid)) ?? ''
+          }
+        }
+        if (!readAloudOff && !recentProbe && isCloudEngine(eng) && pv) {
+          try {
+            sessionStorage.setItem(probeKey, String(Date.now()))
+          } catch {
+            // 忽略存储失败
+          }
           const pr = typeof sv.rate === 'number' ? Math.min(2, Math.max(0.5, sv.rate)) : 1.1
           const myProbe = enterEpochRef.current
           const markDown = (): void => {

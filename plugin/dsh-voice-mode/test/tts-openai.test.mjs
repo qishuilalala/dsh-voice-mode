@@ -244,7 +244,14 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
     voice: 'fishaudio/fish-speech-1.5:anna',
   })
   // E1 原计划的三类都要在（SiliconFlow / OpenRouter / 自建）。
-  assert.ok(resolveOpenAiEndpoint('openrouter-openai')?.baseUrl.includes('openrouter.ai'))
+  const or = resolveOpenAiEndpoint('openrouter-openai')
+  assert.ok(or?.baseUrl.includes('openrouter.ai'))
+  // OpenRouter 官方示例用的是带日期 slug；写错的 model 会被 404 后静默回退本地。
+  assert.equal(or?.model, 'openai/gpt-4o-mini-tts-2025-12-15')
+  const oa = resolveOpenAiEndpoint('openai-official')
+  assert.equal(oa?.baseUrl, 'https://api.openai.com/v1')
+  assert.equal(oa?.model, 'gpt-4o-mini-tts')
+  assert.equal(oa?.voice, 'marin')
   assert.ok(resolveOpenAiEndpoint('selfhosted-kokoro')?.baseUrl.includes('127.0.0.1'))
   assert.ok(resolveOpenAiEndpoint('selfhosted-vllm')?.baseUrl.includes('127.0.0.1'))
   assert.equal(resolveOpenAiEndpoint(''), null)

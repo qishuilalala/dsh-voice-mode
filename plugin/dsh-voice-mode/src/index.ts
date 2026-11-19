@@ -50,7 +50,8 @@ import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts
 import type { HostErrorCode } from './errors.ts'
 import { en } from './strings.ts'
 import { correctText } from './llm-correct.ts'
-import { OpenAiTtsEngine, resolveOpenAiEndpoint } from './tts-openai.ts'
+import { OPENAI_PRESETS, OpenAiTtsEngine, resolveOpenAiEndpoint } from './tts-openai.ts'
+import { asTtsEngineKind, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
 import { MimoTtsEngine } from './tts-mimo.ts'
 import { normalizePromptLang, previewSample, spokenPrompt, type PromptLang } from './prompts.ts'
 import { pickKnownKeys, readLegacyVoiceSettings, readOverrides, settingsFilePath, unknownKeys, writeOverrides } from './settings-store.ts'
@@ -351,7 +352,8 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs }
   return z.object({
     ttsEngine: z
-      .union([z.const('vits'), z.const('kokoro'), z.const('edge'), z.const('openai'), z.const('mimo')])
+      // 由 TTS_ENGINE_KINDS 派生：加新引擎只改 engine-kind.ts（Standards ⑤）。
+      .union(TTS_ENGINE_KINDS.map((k) => z.const(k)) as [z<TtsEngineKind>, ...Array<z<TtsEngineKind>>])
       .default(d.ttsEngine)
       .description(
         DESC.ttsEngine,
@@ -623,7 +625,7 @@ export const Config: z<Config> = z.object({
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default('https://huggingface.co'),
-  ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro'), z.const('openai'), z.const('mimo')]).default('edge'),
+  ttsEngine: z.union(TTS_ENGINE_KINDS.map((k) => z.const(k)) as [z<TtsEngineKind>, ...Array<z<TtsEngineKind>>]).default('edge'),
   openaiTts: OpenAiTtsConfig,
   mimoTts: MimoTtsConfig,
   kokoroModel: z.union([z.const('int8'), z.const('fp32')]).default('int8'),
@@ -1084,7 +1086,7 @@ export function apply(ctx: Context, config: Config): void {
   warmupAsrIfCached()
 
   // --- TTS 引擎工厂（fork：edge 云端 / vits 本地中文 / kokoro 本地中英；设置面板即时切换）。 ---
-  const makeEngine = (kind: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo'): TtsEngine => {
+  const makeEngine = (kind: TtsEngineKind): TtsEngine => {
     if (kind === 'edge') return new EdgeTtsEngine(config.voice, config.rate)
     if (kind === 'mimo') {
       // A1 审计 Blocker：独立 mimoTts 配置（绝不复用 openaiTts.apiKey，避免跨厂商密钥外泄）。
@@ -1149,7 +1151,7 @@ export function apply(ctx: Context, config: Config): void {
       broadcast,
     })
   }
-  let engineKind: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo' = vset.ttsEngine ?? config.ttsEngine
+  let engineKind: TtsEngineKind = asTtsEngineKind(vset.ttsEngine ?? config.ttsEngine)
   let activeKokoroModel: KokoroModel = vset.kokoroModel
 
   // --- TTS 队列（§8.4）：逐句合成后经 SSE 广播；epoch 机制支撑打断。 ---
@@ -1237,7 +1239,7 @@ export function apply(ctx: Context, config: Config): void {
   const currentVoice = (): string => vset.voice
   const currentRate = (): number => vset.rate
   const currentInterrupt = (): 0 | 1 | 2 => vset.interruptLevel
-  const currentEngine = (): 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo' => engineKind
+  const currentEngine = (): TtsEngineKind => engineKind
 
   /** B2：host 侧让出活跃会话（等价 /toggle off 的清理）。owner tab 失联超时调用。 */
   const yieldActiveSession = (expectedSid?: string | null): void => {
@@ -1406,6 +1408,19 @@ export function apply(ctx: Context, config: Config): void {
           enabled: config.enabled,
           active: activeVoiceSession,
         })
+      },
+    }),
+  )
+
+  // E1 预设单一真源：把 OPENAI_PRESETS（baseUrl/model/voice，均为非机密）下发给设置卡片，
+  // 避免客户端另抄一份表导致漂移（Spec 轴审查 #12），同时让用户在 UI 看到实际端点与模型（#2）。
+  ctx.effect(() =>
+    ctx.webServer.register({
+      kind: 'exact',
+      path: `${base}/presets`,
+      handler: (req, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
+        respondJson(res, 200, { presets: OPENAI_PRESETS })
       },
     }),
   )

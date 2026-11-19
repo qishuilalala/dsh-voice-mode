@@ -2572,13 +2572,15 @@ var en = {
   presetCosyNote: "About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn",
   presetFishNote: "About $15 per million UTF-8 bytes (billed per UTF-8 byte); text goes to api.siliconflow.cn",
   presetOpenrouter: "OpenRouter \xB7 OpenAI TTS",
-  presetOpenrouterNote: "Billed through OpenRouter; text goes to openrouter.ai",
+  presetOpenrouterNote: "Billed through the selected model; text goes to openrouter.ai; OpenAI terms require disclosing that the voice is AI-generated",
+  presetOpenaiOfficial: "OpenAI official \xB7 gpt-4o-mini-tts",
+  presetOpenaiOfficialNote: "Billed at OpenAI list prices; text goes to api.openai.com; OpenAI terms require disclosing that the voice is AI-generated",
   presetSelfKokoro: "Self-hosted \xB7 Kokoro-FastAPI",
   presetSelfKokoroNote: "Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first",
   presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
   presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser",
-  presetFillVoice: "Fill example voice",
+  presetVerify: "Verify preset",
   // P1-4 dictation-only preset.
   dictationTitle: "Dictation only",
   dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
@@ -2626,7 +2628,10 @@ var en = {
   engineOpenai: "OpenAI-compatible",
   engineMimo: "Xiaomi MiMo",
   descVoiceOpenai: "Voice name on the server (empty = openaiTts.voice from the config)",
+  descVoiceMimo: "MiMo preset voice id (empty = mimoTts.voice from the config, default mimo_default). Presets: mimo_default, Mia, Chloe, Milo, Dean, plus four Chinese-named voices (Bingtang/Moli/Suda/Baihua) \u2014 enter them by their native Chinese names as listed on the MiMo docs",
   engineRemoteDown: "server unavailable",
+  errMimoKeyMissing: "MiMo API key is not configured: set mimoTts.apiKey in the profile and restart the host",
+  errOpenaiConfigMissing: "OpenAI-compatible baseUrl/model is not configured: set openaiTts in the profile (key optional)",
   errRemoteTts: "The TTS server is unreachable, failing or too slow; the local fallback reads aloud meanwhile if one is configured",
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
@@ -3077,10 +3082,18 @@ var OPENAI_PRESETS = {
     model: "fishaudio/fish-speech-1.5",
     voice: "fishaudio/fish-speech-1.5:anna"
   },
+  // OpenRouter 官方 TTS 文档（2026-05-01 公告）：POST /api/v1/audio/speech，
+  // 示例模型 slug 为带日期的 `openai/gpt-4o-mini-tts-2025-12-15`、voice `alloy`、response_format mp3。
   "openrouter-openai": {
     baseUrl: "https://openrouter.ai/api/v1",
-    model: "openai/gpt-4o-mini-tts",
+    model: "openai/gpt-4o-mini-tts-2025-12-15",
     voice: "alloy"
+  },
+  // OpenAI 官方（docs: /v1/audio/speech，模型 gpt-4o-mini-tts，官方推荐 marin/cedar 音质最佳）。
+  "openai-official": {
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4o-mini-tts",
+    voice: "marin"
   },
   // 自建示例（本机地址为占位；无鉴权时 key 留空即可）：
   //   Kokoro-FastAPI / LocalAI 的 OpenAI 兼容面，Kokoro 音色名取自本插件本地目录（zf_xiaobei 等）。
@@ -3098,6 +3111,15 @@ var OPENAI_PRESETS = {
 };
 function resolveOpenAiEndpoint(preset) {
   return OPENAI_PRESETS[preset] ?? null;
+}
+
+// src/engine-kind.ts
+var TTS_ENGINE_KINDS = ["vits", "kokoro", "edge", "openai", "mimo"];
+function asTtsEngineKind(value) {
+  return TTS_ENGINE_KINDS.includes(value) ? value : "vits";
+}
+function usesBilingualSample(value) {
+  return value === "kokoro" || value === "openai" || value === "mimo";
 }
 
 // src/prompts.ts
@@ -3126,7 +3148,7 @@ function mimoSpeedInstruction(rate) {
   return rate > 1 ? `\u8BED\u901F\u52A0\u5FEB\u5230\u7EA6 ${rate} \u500D` : `\u8BED\u901F\u653E\u6162\u5230\u7EA6 ${rate} \u500D`;
 }
 function previewSample(engine, voice) {
-  if (engine === "kokoro" || engine === "openai" || engine === "mimo") return `${SAMPLE_ZH}${SAMPLE_EN}`;
+  if (usesBilingualSample(engine)) return `${SAMPLE_ZH}${SAMPLE_EN}`;
   if (engine === "vits") return SAMPLE_ZH;
   const m = /^([a-z]{2,3})-/i.exec(voice);
   return m && SAMPLE_BY_LANG[m[1].toLowerCase()] || SAMPLE_EN;
@@ -3526,7 +3548,7 @@ var DESC = {
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
   return z2.object({
-    ttsEngine: z2.union([z2.const("vits"), z2.const("kokoro"), z2.const("edge"), z2.const("openai"), z2.const("mimo")]).default(d.ttsEngine).description(
+    ttsEngine: z2.union(TTS_ENGINE_KINDS.map((k) => z2.const(k))).default(d.ttsEngine).description(
       DESC.ttsEngine
     ),
     kokoroModel: z2.union([z2.const("int8"), z2.const("fp32")]).default(d.kokoroModel).description(
@@ -3617,7 +3639,7 @@ var Config = z2.object({
   enabled: z2.boolean().default(true),
   cacheDir: z2.string().default(defaultModelCacheDir()),
   modelHost: z2.string().default("https://huggingface.co"),
-  ttsEngine: z2.union([z2.const("edge"), z2.const("vits"), z2.const("kokoro"), z2.const("openai"), z2.const("mimo")]).default("edge"),
+  ttsEngine: z2.union(TTS_ENGINE_KINDS.map((k) => z2.const(k))).default("edge"),
   openaiTts: OpenAiTtsConfig,
   mimoTts: MimoTtsConfig,
   kokoroModel: z2.union([z2.const("int8"), z2.const("fp32")]).default("int8"),
@@ -3992,7 +4014,7 @@ function apply(ctx, config) {
       broadcast
     });
   };
-  let engineKind = vset.ttsEngine ?? config.ttsEngine;
+  let engineKind = asTtsEngineKind(vset.ttsEngine ?? config.ttsEngine);
   let activeKokoroModel = vset.kokoroModel;
   const queue = new TtsQueue({
     engine: makeEngine(engineKind),
@@ -4134,6 +4156,16 @@ function apply(ctx, config) {
           enabled: config.enabled,
           active: activeVoiceSession
         });
+      }
+    })
+  );
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: "exact",
+      path: `${base}/presets`,
+      handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
+        respondJson2(res, 200, { presets: OPENAI_PRESETS });
       }
     })
   );

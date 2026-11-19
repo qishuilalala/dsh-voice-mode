@@ -19,6 +19,7 @@ import { t as tr, useLang, activeLocale, type TKey } from './i18n.ts'
 import { errorText } from './error-text.ts'
 import { edgeAllOptions, edgeCommonOptions, hostOptions, kokoroOptions, vitsOptions, voiceLangHint, type EdgeRawVoice } from './voice-labels.ts'
 import { getRuntimeBoot } from './runtime-boot.ts'
+import { asTtsEngineKind, isCloudEngine, isThirdPartyEngine, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
 import { REPLACEMENTS_MAX_PAYLOAD_BYTES, replacementsPayloadBytes } from './asr-replacements.ts'
 
 interface ScopeController {
@@ -28,7 +29,7 @@ interface ScopeController {
     [k: string]: unknown
   }
   subscribe(fn: () => void): () => void
-  set(field: string, value: unknown): unknown
+  set(field: string, value: unknown): Promise<unknown> | unknown
 }
 
 // 与 dshmarket .set* 一致的标签变量
@@ -124,15 +125,6 @@ const ENGINE_DEFAULT_VOICE: Record<string, string> = {
   mimo: 'mimo_default',
 }
 
-// E1 preset example voices (UX fill only; baseUrl/model source of truth is host tts-openai.ts OPENAI_PRESETS).
-const OPENAI_PRESET_VOICE: Record<string, string> = {
-  'siliconflow-cosyvoice2': 'FunAudioLLM/CosyVoice2-0.5B:alex',
-  'siliconflow-fish': 'fishaudio/fish-speech-1.5:anna',
-  'openrouter-openai': 'alloy',
-  'selfhosted-kokoro': 'zf_xiaobei',
-  'selfhosted-vllm': 'default',
-}
-
 /**
  * 预设 → 费用/数据去向说明（缺省不显示；新增预设必须同时补这条，防“接了没告知”）。
  * 用「函数」而不是键名字符串：① 语言切换时 tr() 在渲染期取值，保持响应式；
@@ -143,6 +135,7 @@ const PRESET_NOTE: Record<string, () => string> = {
   'siliconflow-cosyvoice2': () => tr('presetCosyNote'),
   'siliconflow-fish': () => tr('presetFishNote'),
   'openrouter-openai': () => tr('presetOpenrouterNote'),
+  'openai-official': () => tr('presetOpenaiOfficialNote'),
   'selfhosted-kokoro': () => tr('presetSelfKokoroNote'),
   'selfhosted-vllm': () => tr('presetSelfVllmNote'),
 }
@@ -581,7 +574,7 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
   const status = useModelsStatus()
   const stTts = status?.tts
   const localReady: boolean | null = stTts
-    ? stTts.engine === 'edge' || stTts.engine === 'openai' || stTts.engine === 'mimo'
+    ? isCloudEngine(stTts.engine)
       ? true
       : !!stTts.local?.ready
     : null
@@ -896,7 +889,7 @@ function SelfTestSection({
         {verdict(tr('selftestSynth'), synth, synth === 'ok' ? `${synthMs} ${tr('unitMs')}` : undefined)}
         {verdict(tr('selftestPlay'), play)}
       </span>
-      {synth === 'fail' && (engine === 'edge' || engine === 'openai' || engine === 'mimo') && (
+      {synth === 'fail' && isCloudEngine(engine) && (
         <button
           type="button"
           onClick={onSwitchLocal}
@@ -957,8 +950,12 @@ function ReplacementsSection({
   onChange,
 }: {
   rules: unknown
-  /** 返回是否写成功（A2 Blocker：失败必须让用户可见，不能静默回滚）。 */
-  onChange: (next: ReplacementRule[]) => Promise<boolean>
+  /**
+   * 写入词表。返回**显式 false** 表示写失败（A2 Blocker：失败必须让用户可见）；
+   * 返回 undefined/void（≤0.1.6 官方 settingsScope 路径不回报结果）按成功处理——
+   * 否则旧宿主上每次编辑都会误报“保存失败”（Standards 轴 OQ 实测风险）。
+   */
+  onChange: (next: ReplacementRule[]) => Promise<unknown> | unknown
 }): React.ReactElement {
   // A2 审计 Blocker：非法/超大已有规则时，normalizeRules 返回 null——此前直接当空表显示，
   // 用户再点「添加」就会用新数组整表覆盖、丢掉原规则。现在区分「空」与「无法解析」并禁止覆盖。
@@ -972,8 +969,9 @@ function ReplacementsSection({
   // 共享轮询器（单例）：命中计数随卡片其余状态一起刷新，不再自建 5s 定时器。
   const status = useModelsStatus()
   const hits = status?.replacements?.hits?.filter((n): n is number => typeof n === 'number') ?? []
-  const [hitsOverride, setHits] = useState<number[] | null>(null)
-  const shownHits = hitsOverride ?? hits
+  // 命中计数直接取共享快照：结构变更后**由服务端**清零（applyVset → rebuildReplacer 重置数组），
+  // 客户端不再自设覆盖层——旧实现用 `override ?? hits`，一旦写入 [] 就会永久掩盖实时计数
+  // （[] 非 nullish，?? 不生效），属于本轮自查抓到的真实缺陷。
   const commit = async (next: ReplacementRule[]): Promise<boolean> => {
     // 托管路径 POST 体上限 16KB（index.ts MAX_JSON_BODY，按 Buffer **字节**计）：超限会被 413
     // 拒绝并回滚，故先在客户端拦截。必须按 UTF-8 字节而不是字符串长度——中文一字 3 字节，
@@ -983,12 +981,12 @@ function ReplacementsSection({
       return false
     }
     const ok = await onChange(next)
-    if (!ok) {
+    if (ok === false) {
       setNote(tr('replSaveFail'))
       return false
     }
     setNote(null)
-    setHits([]) // 结构变了，旧命中索引会错位：先清空，等共享轮询回填新计数
+
     return true
   }
   const add = (): void => {
@@ -1081,7 +1079,7 @@ function ReplacementsSection({
               {r.from.join(' / ')} {'→'} {r.to}
             </span>
             <span style={{ color: t.term }}>
-              {tr('replHits')} {shownHits[i] ?? 0}
+              {tr('replHits')} {hits[i] ?? 0}
             </span>
             <button
               type="button"
@@ -1235,6 +1233,113 @@ function useModelsStatus(): ModelsStatusPayload | null {
   return st
 }
 
+/** 预设标签（i18n 走字面量 tr，便于死键扫描识别）；未知 id 回落显示 id 本身。 */
+const PRESET_LABEL: Record<string, () => string> = {
+  'siliconflow-cosyvoice2': () => tr('presetCosy'),
+  'siliconflow-fish': () => tr('presetFish'),
+  'openrouter-openai': () => tr('presetOpenrouter'),
+  'openai-official': () => tr('presetOpenaiOfficial'),
+  'selfhosted-kokoro': () => tr('presetSelfKokoro'),
+  'selfhosted-vllm': () => tr('presetSelfVllm'),
+}
+
+/** host 下发的预设数据形状（/presets；非机密）。 */
+interface HostPreset { baseUrl: string; model: string; voice: string }
+
+/**
+ * 在线预设区块（E1）：数据来自 host `/presets` 单一真源（此前客户端另抄一份 voice 表，会漂移）。
+ * 含「验证此预设」按钮 = E1 规格要求的**保存前探针**：用生效音色（设置值 → 预设值）合成一句，
+ * 成功/失败就地可见，失败文案区分限流/禁用/引擎/网络（与自测同一套归类）。
+ */
+function OpenAiPresetSection({
+  score,
+  value,
+  presets,
+  onVerify,
+  verifyState,
+}: {
+  score: ScopeController
+  value: unknown
+  presets: Record<string, HostPreset> | null
+  onVerify: (presetId: string) => void
+  verifyState: { id: string; state: 'ok' | 'fail'; note?: string } | null
+}): React.ReactElement {
+  const cur = typeof value === 'string' ? value : ''
+  const ids = ['', ...Object.keys(presets ?? {})]
+  const options = ids.map((id) => ({ v: id, label: id ? (PRESET_LABEL[id]?.() ?? id) : tr('presetCustom') }))
+  const data = presets?.[cur]
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+      <SegGroup score={score} field="openaiPreset" value={cur} options={options} />
+      {data ? (
+        <span style={{ fontSize: 11, color: t.term, fontFamily: 'monospace', wordBreak: 'break-all' }}>
+          {data.baseUrl} · {data.model} · {data.voice}
+        </span>
+      ) : null}
+      {PRESET_NOTE[cur] ? <span style={{ fontSize: 11, color: t.term }}>{PRESET_NOTE[cur]()}</span> : null}
+      <span style={{ fontSize: 11, color: t.term }}>{tr('presetKeyNote')}</span>
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+        <button
+          type="button"
+          disabled={!cur}
+          onClick={() => onVerify(cur)}
+          style={{
+            font: 'inherit',
+            display: 'inline-flex',
+            alignItems: 'center',
+            alignSelf: 'flex-start',
+            cursor: cur ? 'pointer' : 'default',
+            opacity: cur ? 1 : 0.5,
+            color: t.label,
+            background: 'var(--dsw-alias-bg-layer-2)',
+            border: `1px solid ${t.border}`,
+            borderRadius: 6,
+            padding: '4px 10px',
+            fontSize: 12,
+            lineHeight: '18px',
+          }}
+        >
+          {tr('presetVerify')}
+        </button>
+        {verifyState && verifyState.id === cur ? (
+          <span
+            role="status"
+            aria-live="polite"
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color:
+                verifyState.state === 'ok'
+                  ? 'var(--dsw-alias-state-success-primary)'
+                  : 'var(--dsw-alias-state-error-primary)',
+            }}
+          >
+            {verifyState.state === 'ok' ? tr('selftestOk') : (verifyState.note ?? tr('selftestCheck'))}
+          </span>
+        ) : null}
+      </span>
+    </span>
+  )
+}
+
+/** 拉取 host 预设表（一次；失败返回 null，UI 退化为仅有「手动配置」）。 */
+function useHostPresets(): Record<string, HostPreset> | null {
+  const [presets, setPresets] = useState<Record<string, HostPreset> | null>(null)
+  useEffect(() => {
+    let alive = true
+    void fetch(location.origin + BASE_PATH + '/presets')
+      .then((res) => (res.ok ? (res.json() as Promise<{ presets?: Record<string, HostPreset> }>) : null))
+      .then((data) => {
+        if (alive && data?.presets) setPresets(data.presets)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [])
+  return presets
+}
+
 function Row({ name, desc, children }: { name: string; desc: string; children: React.ReactNode }): React.ReactElement {
   const label = tr(`${name}Label` as TKey)
   return (
@@ -1349,7 +1454,7 @@ interface ModelsStatusPayload {
   vad: { repo: string; ready: boolean; size: number; failLatchMs: number }
   sense: { repo: string; ready: boolean; size: number; failLatchMs: number; enabled: boolean }
   tts: {
-    engine: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo'
+    engine: TtsEngineKind
     ready: boolean
     loading: boolean
     error?: string
@@ -1362,27 +1467,46 @@ interface ModelsStatusPayload {
   progress: { file: string; percent: number } | null
 }
 
+/** 引擎种类 → 名称文案键（加新引擎：改 engine-kind.ts + 此表 + 词条）。 */
+/**
+ * 引擎种类 → 名称文案。用回调而非键名：死键扫描只认 `tr('字面量')` 实参，
+ * 键名间接引用会被判零引用（2026-11-19 CI 实证两次）。
+ */
+const ENGINE_NAME: Record<TtsEngineKind, () => string> = {
+  vits: () => tr('engineVits'),
+  kokoro: () => tr('engineKokoro'),
+  edge: () => tr('engineEdge'),
+  openai: () => tr('engineOpenai'),
+  mimo: () => tr('engineMimo'),
+}
+
+/** 引擎徽标：edge=官方免费云通道 / 第三方托管 / 本地。 */
+function engineBadge(engine: TtsEngineKind): string {
+  if (engine === 'edge') return tr('engineBadgeCloud')
+  if (isThirdPartyEngine(engine)) return tr('engineBadgeRemote')
+  return tr('engineBadgeLocal')
+}
+
+/** 云端引擎「不可用」文案：先按配置缺失给出可行动提示，再区分第三方/内置。 */
+function engineDownText(errorCode: string | undefined, engine: TtsEngineKind): string {
+  if (errorCode === 'mimo_not_configured') return tr('errMimoKeyMissing')
+  if (errorCode === 'openai_not_configured') return tr('errOpenaiConfigMissing')
+  if (isThirdPartyEngine(engine)) return tr('engineRemoteDown')
+  return tr('engineError')
+}
+
 const fmtMB = (b: number): string => (b >= 1048576 ? `${(b / 1048576).toFixed(0)}MB` : b > 0 ? `${Math.round(b / 1024)}KB` : '–')
 
 /**
  * 朗读引擎内联状态：紧挨「朗读引擎」选择器下方展示当前引擎的可用/加载中/失败，
  * 以及重新下载按钮——切换引擎/点试听时立刻可见，无需滚到页面底部找模型状态。
  */
-function EngineStatusInline(): React.ReactElement {
+function EngineStatusInline({ onSwitchLocal }: { onSwitchLocal?: () => void }): React.ReactElement {
   const st = useModelsStatus()
   const [acting, setActing] = useState<'download' | 'clean' | null>(null)
   const tts = st?.tts
   if (!tts) return <></>
-  const engineName =
-    tts.engine === 'vits'
-      ? tr('engineVits')
-      : tts.engine === 'kokoro'
-        ? tr('engineKokoro')
-        : tts.engine === 'openai'
-          ? tr('engineOpenai')
-          : tts.engine === 'mimo'
-            ? tr('engineMimo')
-            : tr('engineEdge')
+  const engineName = ENGINE_NAME[tts.engine]()
   const isLocal = !!tts.local
   // 就绪以「本地模型文件是否已下载」为准：切换引擎不动本地文件，
   // 故一次下载后（只要不点「删除」）跨引擎始终保持就绪（用户契约）。
@@ -1393,7 +1517,8 @@ function EngineStatusInline(): React.ReactElement {
     statusText = tr('engineLoading')
     statusColor = t.term
   } else if (tts.error) {
-    statusText = tr(tts.engine === 'openai' || tts.engine === 'mimo' ? 'engineRemoteDown' : 'engineError')
+    // Spec 审查 #9：未配 key 与“云端挂了”必须可区分，否则用户不会想到去填 key。
+    statusText = engineDownText(tts.errorCode, tts.engine)
     statusColor = 'var(--dsw-alias-state-error-primary)'
   } else if (isLocal && !localReady) {
     statusText = tr('ttsModelsMissing')
@@ -1428,7 +1553,7 @@ function EngineStatusInline(): React.ReactElement {
           background: 'var(--dsw-alias-bg-layer-1)',
         }}
       >
-        {tr(tts.engine === 'edge' ? 'engineBadgeCloud' : tts.engine === 'openai' || tts.engine === 'mimo' ? 'engineBadgeRemote' : 'engineBadgeLocal')}
+        {engineBadge(tts.engine)}
       </span>
       <span style={{ fontSize: 12, fontWeight: statusText === tr('engineReady') || statusText === tr('engineError') ? 600 : 400, color: statusColor }}>{statusText}</span>
       {tts.loading && tts.progress?.file && (
@@ -1461,7 +1586,40 @@ function EngineStatusInline(): React.ReactElement {
               : tr('ttsDownload')}
         </button>
       )}
-      {tts.error && <span style={{ fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', flexBasis: '100%' }}>{tts.errorCode === 'kokoro_needs_node' ? tr('errKokoroNeedsNode') : tts.engine === 'openai' || tts.engine === 'mimo' ? tr('errRemoteTts') : tr('engineError')}</span>}
+      {tts.error && (
+        <>
+          <span style={{ fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', flexBasis: '100%' }}>
+            {tts.errorCode === 'kokoro_needs_node'
+              ? tr('errKokoroNeedsNode')
+              : tts.errorCode === 'mimo_not_configured'
+                ? tr('errMimoKeyMissing')
+                : tts.errorCode === 'openai_not_configured'
+                  ? tr('errOpenaiConfigMissing')
+                  : isThirdPartyEngine(tts.engine)
+                    ? tr('errRemoteTts')
+                    : tr('engineError')}
+          </span>
+          {/* P1-2「可见错误 + 一键切换」：错误就地提供逃生口，不必再滚到引擎选择器。 */}
+          {!isLocal && onSwitchLocal ? (
+            <button
+              type="button"
+              onClick={onSwitchLocal}
+              style={{
+                font: 'inherit',
+                cursor: 'pointer',
+                color: t.label,
+                background: 'var(--dsw-alias-bg-layer-2)',
+                border: `1px solid ${t.border}`,
+                borderRadius: 8,
+                padding: '3px 10px',
+                flexShrink: 0,
+              }}
+            >
+              {tr('switchToLocalTts')}
+            </button>
+          ) : null}
+        </>
+      )}
     </div>
   )
 }
@@ -1575,17 +1733,59 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
   )
   const value = (snap?.value ?? {}) as Record<string, unknown>
   const unavailable = snap?.status === 'unavailable' || snap?.status === 'error'
+  // E1 预设：数据来自 host 单一真源；验证按钮就地跑一次合成（保存前探针）。
+  const hostPresets = useHostPresets()
+  const [presetVerify, setPresetVerify] = useState<{ id: string; state: 'ok' | 'fail'; note?: string } | null>(null)
+  /** 生效音色：设置值优先，空则回落预设音色（与 host 侧 makeEngine 的口径一致）。 */
+  const effectiveVoice = (): string => {
+    const own = typeof value.voice === 'string' ? value.voice.trim() : ''
+    if (own) return own
+    const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
+    return (pid && hostPresets?.[pid]?.voice) || ''
+  }
+  const verifyPreset = (presetId: string): void => {
+    const voice = (value.openaiPreset === presetId ? effectiveVoice() : '') || hostPresets?.[presetId]?.voice || ''
+    if (!voice) {
+      setPresetVerify({ id: presetId, state: 'fail', note: tr('previewNameFirst') })
+      return
+    }
+    void (async () => {
+      try {
+        const res = await fetch(`${BASE_PATH}/preview`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ voice, rate: Number(value.rate ?? 1.1) }),
+          signal: AbortSignal.timeout(30000),
+        })
+        if (res.ok) {
+          setPresetVerify({ id: presetId, state: 'ok' })
+          return
+        }
+        let body: unknown = null
+        try {
+          body = await res.json()
+        } catch {
+          // 非 JSON 错误体走通用文案
+        }
+        const code = (body as { code?: unknown } | null)?.code
+        setPresetVerify({
+          id: presetId,
+          state: 'fail',
+          note:
+            code === 'rate_limited' || res.status === 429
+              ? tr('selftestRateLimited')
+              : code === 'voice_disabled' || res.status === 403
+                ? tr('selftestDisabled')
+                : errorText(body, 'selftestCheck'),
+        })
+      } catch {
+        setPresetVerify({ id: presetId, state: 'fail', note: tr('selftestCheck') })
+      }
+    })()
+  }
   // 朗读引擎（设置项，即时生效）：决定音色列表与试听行为。
-  const engine =
-    value.ttsEngine === 'edge'
-      ? 'edge'
-      : value.ttsEngine === 'kokoro'
-        ? 'kokoro'
-        : value.ttsEngine === 'openai'
-          ? 'openai'
-          : value.ttsEngine === 'mimo'
-            ? 'mimo'
-            : 'vits'
+  // 引擎种类来自单一真源（engine-kind.ts）；未知值按 vits 处理（与 host 侧 asTtsEngineKind 一致）。
+  const engine = asTtsEngineKind(value.ttsEngine)
   // Edge 全量音色：选 Edge 时从 /voices 拉取（几百个），失败回退常用 14 个。存原始数据，标签在渲染时按当前语言生成。
   const [edgeRaw, setEdgeRaw] = useState<EdgeRawVoice[] | null>(null)
   useEffect(() => {
@@ -1612,7 +1812,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
         : edgeCommonOptions()
       : engine === 'kokoro'
         ? kokoroOptions()
-        : engine === 'openai' || engine === 'mimo'
+        : isThirdPartyEngine(engine)
           ? []
           : vitsOptions()
 
@@ -1649,13 +1849,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                 score={scope}
                 field="ttsEngine"
                 value={engine}
-                options={[
-                  { v: 'vits', label: tr('engineVits') },
-                  { v: 'kokoro', label: tr('engineKokoro') },
-                  { v: 'edge', label: tr('engineEdge') },
-                  { v: 'openai', label: tr('engineOpenai') },
-                { v: 'mimo', label: tr('engineMimo') },
-                ]}
+                options={TTS_ENGINE_KINDS.map((k) => ({ v: k, label: ENGINE_NAME[k]() }))}
                 onSelect={(v) => {
                   // 引擎语义不同：仅在引擎真正切换时重置音色；
                   // 点击已选中的引擎不再误重置（曾导致"选了霸总却变女声"）。
@@ -1665,9 +1859,14 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                 }}
               />
             </Row>
-            <EngineStatusInline />
+            <EngineStatusInline
+              onSwitchLocal={() => {
+                void scope.set('ttsEngine', 'kokoro')
+                void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
+              }}
+            />
             <SelfTestSection
-              voice={String(value.voice ?? '')}
+              voice={effectiveVoice()}
               rate={Number(value.rate ?? 1.1)}
               engine={engine}
               onSwitchLocal={() => {
@@ -1697,7 +1896,9 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                     ? tr('descVoiceKokoro')
                     : engine === 'openai'
                       ? tr('descVoiceOpenai')
-                      : tr('descVoiceLocal')) +
+                      : engine === 'mimo'
+                        ? tr('descVoiceMimo')
+                        : tr('descVoiceLocal')) +
                 voiceLangHint(engine, String(value.voice ?? ''))
               }
             >
@@ -1707,55 +1908,19 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                 value={value.voice ?? ''}
                 options={voiceOptions}
                 placeholder={ENGINE_DEFAULT_VOICE[engine] ?? 'zh-CN-XiaoxiaoNeural'}
-                showCustom={engine === 'edge' || engine === 'openai' || engine === 'mimo'}
+                showCustom={isCloudEngine(engine)}
                 footer={(v) => <VoicePreviewButton voice={v} rate={Number(value.rate ?? 1.1)} />}
               />
             </Row>
             {engine === 'openai' && (
               <Row name="openaiPreset" desc={tr('descOpenaiPreset')}>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-                  <SegGroup
-                    score={scope}
-                    field="openaiPreset"
-                    value={typeof value.openaiPreset === 'string' ? value.openaiPreset : ''}
-                    options={[
-                      { v: '', label: tr('presetCustom') },
-                      { v: 'siliconflow-cosyvoice2', label: tr('presetCosy') },
-                      { v: 'siliconflow-fish', label: tr('presetFish') },
-                      { v: 'openrouter-openai', label: tr('presetOpenrouter') },
-                      { v: 'selfhosted-kokoro', label: tr('presetSelfKokoro') },
-                      { v: 'selfhosted-vllm', label: tr('presetSelfVllm') },
-                    ]}
-                  />
-                  {PRESET_NOTE[String(value.openaiPreset)] ? (
-                    <span style={{ fontSize: 11, color: t.term }}>{PRESET_NOTE[String(value.openaiPreset)]()}</span>
-                  ) : null}
-                  <span style={{ fontSize: 11, color: t.term }}>{tr('presetKeyNote')}</span>
-                  {typeof value.openaiPreset === 'string' && OPENAI_PRESET_VOICE[value.openaiPreset] ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void scope.set('voice', OPENAI_PRESET_VOICE[String(value.openaiPreset)] ?? '')
-                      }
-                      style={{
-                        font: 'inherit',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        alignSelf: 'flex-start',
-                        cursor: 'pointer',
-                        color: t.label,
-                        background: 'var(--dsw-alias-bg-layer-2)',
-                        border: `1px solid ${t.border}`,
-                        borderRadius: 6,
-                        padding: '4px 10px',
-                        fontSize: 12,
-                        lineHeight: '18px',
-                      }}
-                    >
-                      {tr('presetFillVoice')}
-                    </button>
-                  ) : null}
-                </span>
+                <OpenAiPresetSection
+                  score={scope}
+                  value={value.openaiPreset}
+                  presets={hostPresets}
+                  onVerify={verifyPreset}
+                  verifyState={presetVerify}
+                />
               </Row>
             )}
             <Row name="rate" desc={tr('descRate')}>
@@ -1927,7 +2092,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
             </Row>
             <ReplacementsSection
               rules={value.asrReplacements}
-              onChange={(next) => scope.set('asrReplacements', next) as Promise<boolean>}
+              onChange={(next) => scope.set('asrReplacements', next)}
             />
             </Section>
             <Section title={tr('secModel')}>
