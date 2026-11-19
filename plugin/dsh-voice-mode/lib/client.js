@@ -5445,6 +5445,20 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
   return scope;
 }
 
+// src/once-hint.ts
+var shownInMemory = /* @__PURE__ */ new Set();
+function takeOnceHint(key, storage) {
+  if (shownInMemory.has(key)) return false;
+  shownInMemory.add(key);
+  try {
+    const store = storage ?? localStorage;
+    if (store.getItem(key) === "1") return false;
+    store.setItem(key, "1");
+  } catch {
+  }
+  return true;
+}
+
 // src/client.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
 var isSpeechTrueCount = 0;
@@ -5477,7 +5491,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "d3a0dad";
+var BUILD_TAG = "7e82f21";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -5563,6 +5577,7 @@ function parseShortcut(s) {
   if (!mods.ctrl && !mods.shift && !mods.alt && !mods.meta) return null;
   return { ...mods, key };
 }
+var AUTO_RESUME_HINT_KEY = "dshvm-autoresume-hint-seen";
 function getLastVoiceSession() {
   try {
     return localStorage.getItem("dshvm-last-voice");
@@ -7674,7 +7689,7 @@ function MicButton({
     void (async () => {
       const cfg = await fetchConfig();
       if (!cfg.autoResume) {
-        if (getLastVoiceSession() === sid) {
+        if (getLastVoiceSession() === sid && takeOnceHint(AUTO_RESUME_HINT_KEY)) {
           const hint = t("autoResumeHint");
           if (autoResumeHintTimerRef.current) clearTimeout(autoResumeHintTimerRef.current);
           bus.setUi({ notice: hint });
@@ -8116,6 +8131,7 @@ function MicButton({
   };
   const statusBarShown = bootNow().showStatusBar !== false;
   const micHint = bus.activeSessionId !== sessionId ? bus.ui.error ?? bus.ui.notice ?? "" : statusBarShown ? "" : bus.ui.error ?? (bus.ui.sseDown ? t("sseReconnect") : null) ?? bus.ui.notice ?? (bus.ui.idleWarn ? t("idleWarn30s") : null) ?? bus.ui.ttsNotice ?? "";
+  const micHintInfo = !bus.ui.error && micHint !== "";
   const visual = holding ? "holding" : bus.ui.playing ? "reading" : on && onceEnding ? "ending" : on && onceWaiting ? "waiting" : on ? holdMode ? "hold" : "on" : local === "pending" ? "pending" : "off";
   const eqKind = visual === "reading" ? "out" : visual === "on" || visual === "holding" ? "in" : null;
   (0, import_react3.useEffect)(() => {
@@ -8251,7 +8267,7 @@ function MicButton({
         title: micHint,
         style: {
           fontSize: 11,
-          color: "var(--dsw-alias-state-error-primary, #f85149)",
+          color: micHintInfo ? "var(--dsw-alias-label-tertiary, #8b949e)" : "var(--dsw-alias-state-error-primary, #f85149)",
           maxWidth: 240,
           overflow: "hidden",
           textOverflow: "ellipsis",

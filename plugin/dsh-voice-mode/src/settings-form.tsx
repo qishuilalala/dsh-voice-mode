@@ -1020,6 +1020,11 @@ function ReplacementsSection({
     // A2 Minor：同步 revoke 会取消部分浏览器的下载；延后一拍释放。
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
+  /**
+   * 导入是**恢复路径**：即使现有词表不可解析（unreadable）也允许整表替换——用户按警示
+   * “先导出备份”后，唯一的修复手段就是把一份合法词表导入回来。故此处刻意不加 unreadable 闸门。
+   * （注：超过 200 条的原始表导出后再原样导入会被 normalizeRules 拒绝，提示 replBadFile。）
+   */
   const importFile = (f: File | undefined): void => {
     if (!f) return
     if (f.size > 1048576) {
