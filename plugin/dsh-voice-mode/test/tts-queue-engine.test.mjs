@@ -1313,4 +1313,38 @@ await t('全部用例结束后无残留计时器，进程可自然退出', async
   console.log('  ✓ Edge interrupt：立刻中止在途合成（不再等 60s 库超时）')
 }
 
+
+// A2 审计缺口：cancel 后立即重入 / close 撞在途 / 500 条上限
+await t('cancel 后立即重入：旧句作废、新句正常、序号单调（A2 审计缺口）', async () => {
+  const eng = makeEngine('reenter')
+  const q = new TtsQueue({ engine: eng })
+  const frames = []
+  q.subscribe((f) => frames.push(f))
+  q.enqueue('s1', '第一句')
+  await waitFrames(frames, 2)
+  q.cancel('s1')
+  q.enqueue('s1', '第二句')
+  await waitFor(() => frames.filter((f) => f.final).length >= 2, '第二句广播')
+  const finals = frames.filter((f) => f.final)
+  assert.ok(finals.length >= 2)
+  assert.ok(finals.at(-1).sentenceId > finals[0].sentenceId, 'cancel 后重入的新句序号必须更大')
+  await q.close()
+})
+
+await t('close 撞在途：关闭后不再广播、引擎被关闭（A2 审计缺口）', async () => {
+  let release
+  const gate = new Promise((r) => (release = r))
+  const eng = makeEngine('close-busy', gate)
+  const q = new TtsQueue({ engine: eng })
+  const frames = []
+  q.subscribe((f) => frames.push(f))
+  q.enqueue('s1', '在途句')
+  await waitFor(() => eng.calls.length === 1, '引擎已开始合成')
+  await q.close()
+  release()
+  await sleep(30)
+  assert.equal(frames.filter((f) => f.final).length, 0, 'close 后不得再广播（客户端已断开）')
+  assert.ok(eng.closed >= 1, 'close 必须关闭引擎')
+})
+
 console.log(`\ntts-queue-engine：${passed} 项通过`)

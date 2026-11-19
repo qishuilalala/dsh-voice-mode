@@ -254,17 +254,22 @@ function NumberField({
     setHint(null)
     void score.set(field, n)
   }
+  // A4 审计 Minor：非法态此前只有红框 + 纯文本 hint，读屏无感知；色值也硬编码。
   const invalidStyle: React.CSSProperties = hint
     ? {
         ...inputStyle,
-        border: '1px solid #d33',
+        border: '1px solid var(--dsw-alias-state-error-primary)',
         background: 'rgba(221, 51, 51, 0.08)',
       }
     : inputStyle
+  const hintId = `${field}-number-hint`
   return (
     <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3, flexShrink: 0 }}>
       <input
         style={invalidStyle}
+        aria-label={tr(`${field}Label` as TKey)}
+        aria-invalid={hint ? true : undefined}
+        aria-describedby={hint ? hintId : undefined}
         type="number"
         step={step}
         min={min}
@@ -281,7 +286,9 @@ function NumberField({
         }}
       />
       {hint && (
-        <span style={{ color: '#d33', fontSize: 11, lineHeight: '14px' }}>{hint}</span>
+        <span id={hintId} role="status" aria-live="polite" style={{ color: 'var(--dsw-alias-state-error-primary)', fontSize: 11, lineHeight: '14px' }}>
+          {hint}
+        </span>
       )}
     </span>
   )
@@ -696,7 +703,8 @@ function VoiceSelect({
     backgroundSize: '12px 12px',
     paddingRight: 32,
   }
-  const label = inOptions ? options[idx].label : custom || placeholder || ''
+  // 当前值 label：仅用于「自定义音色」输入框的提示（下拉可访问名改用字段名，见下）。
+  const currentValueLabel = inOptions ? options[idx].label : custom || placeholder || ''
   // 非自定义引擎（全量列出）：值不在列表视为异常，下拉回退到第一项；自定义引擎才出现手输框。
   const selectValue = inOptions ? cur : showCustom ? '__custom__' : options[0]?.v ?? ''
   return (
@@ -708,7 +716,8 @@ function VoiceSelect({
         <select
           style={selectStyle}
           value={selectValue}
-          aria-label={label}
+          // A4 审计 Minor：此前 aria-label 传的是当前值 label（读屏念值不报名）。
+          aria-label={tr(`${field}Label` as TKey)}
           onChange={(e) => {
             const v = e.target.value
             if (v === '__custom__') setCustom(inOptions ? '' : custom)
@@ -731,6 +740,7 @@ function VoiceSelect({
           style={inputStyle}
           value={custom}
           placeholder={placeholder}
+          aria-label={currentValueLabel}
           onChange={(e) => setCustom(e.target.value)}
           onBlur={() => void score.set(field, custom)}
           onKeyDown={(e) => {

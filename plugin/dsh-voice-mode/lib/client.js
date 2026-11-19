@@ -4112,14 +4112,18 @@ function NumberField({
   };
   const invalidStyle = hint ? {
     ...inputStyle,
-    border: "1px solid #d33",
+    border: "1px solid var(--dsw-alias-state-error-primary)",
     background: "rgba(221, 51, 51, 0.08)"
   } : inputStyle;
+  const hintId = `${field}-number-hint`;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", flexDirection: "column", gap: 3, flexShrink: 0 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "input",
       {
         style: invalidStyle,
+        "aria-label": t(`${field}Label`),
+        "aria-invalid": hint ? true : void 0,
+        "aria-describedby": hint ? hintId : void 0,
         type: "number",
         step,
         min,
@@ -4135,7 +4139,7 @@ function NumberField({
         }
       }
     ),
-    hint && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#d33", fontSize: 11, lineHeight: "14px" }, children: hint })
+    hint && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { id: hintId, role: "status", "aria-live": "polite", style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 11, lineHeight: "14px" }, children: hint })
   ] });
 }
 function TextField({
@@ -4483,7 +4487,7 @@ function VoiceSelect({
     backgroundSize: "12px 12px",
     paddingRight: 32
   };
-  const label = inOptions ? options[idx].label : custom || placeholder || "";
+  const currentValueLabel = inOptions ? options[idx].label : custom || placeholder || "";
   const selectValue = inOptions ? cur : showCustom ? "__custom__" : options[0]?.v ?? "";
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: "100%", alignItems: "stretch" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", gap: 6, alignItems: "center" }, children: [
@@ -4493,7 +4497,7 @@ function VoiceSelect({
         {
           style: selectStyle,
           value: selectValue,
-          "aria-label": label,
+          "aria-label": t(`${field}Label`),
           onChange: (e) => {
             const v = e.target.value;
             if (v === "__custom__") setCustom(inOptions ? "" : custom);
@@ -4516,6 +4520,7 @@ function VoiceSelect({
         style: inputStyle,
         value: custom,
         placeholder,
+        "aria-label": currentValueLabel,
         onChange: (e) => setCustom(e.target.value),
         onBlur: () => void score.set(field, custom),
         onKeyDown: (e) => {
@@ -6152,7 +6157,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "8343285";
+var BUILD_TAG = "c67ee9e";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
