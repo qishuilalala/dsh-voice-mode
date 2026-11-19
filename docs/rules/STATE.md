@@ -61,10 +61,11 @@
 | `~/.dsh/profiles/web/cordis.patch.yml` | 新增 `- id: voice-mode` → `mimoTts.apiKey: !!js process.env.MIMO_API_KEY`（host-only，不静默改 ttsEngine 默认值） |
 | `/root/.env`（600，service 的 EnvironmentFile） | 新增 `MIMO_API_KEY`（唯一明文真源；~/.dsh/.env 的副本已删除，避免两处明文） |
 | web profile 组合校验 | `dsh --profile web --dump-config` 通过，条目 id = voice-mode，配置来自 patch |
-| 运行中服务（PID 1022） | **仍是旧插件 + 无 MIMO_API_KEY**，需重启后生效 |
+| 运行中服务 | **已于 2026-11-19 23:17 重启完成**：pid 220021，`openaiPreset`/`/presets`/`replacements` 均在线，env 有 MIMO_API_KEY；`POST /voice-mode/settings {ttsEngine:mimo}` 后 `/models/status` → tts:{engine:mimo,ready:true}，`POST /preview` → 200 + audio/wav + 4.16s + RMS 4028（2.95s） |
 
 重启（会断开当前页面，刷新即可回到会话）：`systemctl restart dsh.service`
 
 回滚：`cp /tmp/web-package.json.bak-* ~/.dsh/profiles/web/package.json && cp /tmp/web-cordis.patch.yml.bak-* ~/.dsh/profiles/web/cordis.patch.yml && cd ~/.dsh/profiles/web && pnpm install && systemctl restart dsh.service`
 
 重启后在设置卡片把「朗读引擎」切到 MiMo 即可（默认仍是 edge，符合 I10）。
+已知新告警（2026-11-19 重启后首次出现，功能无影响）：日志出现 `optional-terminal-pwsh: a PTY backend named "shell" is already registered` → 既有配置冲突（用户 patch 显式 `disabled: false` 启用 pwsh 条目，而 bundle 在 Linux 上启用 bash 条目，两者同包争注册 shell 后端；本机未安装 pwsh）。建议 patch 该条目改 `disabled: true`。
