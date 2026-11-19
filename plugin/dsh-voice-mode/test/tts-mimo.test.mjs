@@ -42,8 +42,12 @@ function fakeLocal() {
   return {
     calls,
     closed: false,
+    interrupted: 0,
     mime: 'audio/wav',
     updateVoice() {},
+    interrupt() {
+      this.interrupted += 1
+    },
     async synthesize(text, options = {}) {
       calls.push({ text, options })
       return Buffer.from('RIFF-local')
@@ -416,6 +420,61 @@ await t('非法 base64 拒绝（Buffer 静默丢弃会产出不可播音频）',
     const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k' })
     await assert.rejects(engine.synthesize('你好'), (e) => e.code === 'mimo_bad_audio')
     await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
+
+await t('打断转发到已创建的回退引擎（MiMo 与 OpenAI 引擎同源缺陷）', async () => {
+  const { server, origin } = await startServer((r, res) => {
+    res.statusCode = 500
+    res.end('boom')
+  })
+  try {
+    const local = fakeLocal()
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k', cooldownMs: 60000, fallback: () => local })
+    await engine.synthesize('第一句') // 触发回退，创建 fallbackEngine
+    assert.equal(local.calls.length, 1)
+    engine.interrupt()
+    assert.equal(local.interrupted, 1, 'interrupt 未转发到回退引擎')
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
+await t('status 语义：未冷却且已配置 → ready=true 且无 error；冷却期 → ready=false', async () => {
+  const { server, origin } = await startServer((r, res) => {
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify(chatOk()))
+  })
+  try {
+    let clock = 1_000_000
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k', cooldownMs: 1000, now: () => clock })
+    const before = engine.status()
+    assert.equal(before.ready, true, '已配置且未冷却应为就绪')
+    assert.equal(before.error, undefined)
+    assert.equal(before.errorCode, undefined)
+    await engine.synthesize('你好')
+    assert.equal(engine.status().ready, true, '合成成功后仍应就绪')
+    await engine.close()
+
+    // 失败 → 冷却期 ready=false（无回退也必须反映不可用，避免 UI 骗人）
+    const { server: s2, origin: o2 } = await startServer((r, res) => {
+      res.statusCode = 500
+      res.end('boom')
+    })
+    try {
+      const e2 = new MimoTtsEngine({ baseUrl: o2, apiKey: 'k', cooldownMs: 1000, now: () => clock })
+      await assert.rejects(() => e2.synthesize('你好'))
+      const st = e2.status()
+      assert.equal(st.ready, false)
+      assert.ok(st.error && st.error.length > 0, '失败必须带可见错误')
+      await e2.close()
+    } finally {
+      await closeServer(s2)
+    }
   } finally {
     await closeServer(server)
   }

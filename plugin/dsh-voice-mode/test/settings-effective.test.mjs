@@ -130,6 +130,19 @@ t('settings-form（R1 I-1）：NEXT_ENTRY_FIELDS 五项枚举/数字字段全部
   }
 })
 
+
+t('strings（T6 补强）：死键扫描的匹配器自测', () => {
+  // 死键扫描靠一条正则判断「键是否被 t()/tr()/tk() 字面量引用」。正则改了却没人测它，
+  // 就会出现「扫描恒过」的假绿。这里对匹配器做自测（引号/三元/前缀/注释四类）。
+  const Q = String.fromCharCode(39) // '
+  const RE = (k) => new RegExp('\\b(?:t|tr|tk)\\([^()]*([' + Q + '\"])' + k + '\\1')
+  const hit = (src, k) => RE(k).test(src)
+  assert.equal(hit('tr(' + Q + 'fooBar' + Q + ')', 'fooBar'), true, '单引号引用应命中')
+  assert.equal(hit('t("fooBar")', 'fooBar'), true, '双引号引用应命中')
+  assert.equal(hit('tr(cond ? ' + Q + 'fooBar' + Q + ' : ' + Q + 'x' + Q + ')', 'fooBar'), true, '三元分支应命中')
+  assert.equal(hit('tr(' + Q + 'fooBarBaz' + Q + ')', 'fooBar'), false, '前缀相同但键不同不得误判')
+  assert.equal(hit('// 注释里写 fooBar', 'fooBar'), false, '纯注释不算引用')
+})
 t('strings（R1 M-2）：*Label 孪生 base 键零死键（批 C 双轨残留清零）', () => {
   // 孪生 base 键（X 与 X+'Label' 同在词典）只应经 t()/tr() 消费；0 引用 = 死键。
   const zhBlock = stringsSrc.slice(stringsSrc.indexOf('export const zh = {'), stringsSrc.indexOf('} as const'))

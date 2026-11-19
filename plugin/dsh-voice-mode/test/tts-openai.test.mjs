@@ -215,6 +215,32 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   await closeServer(server)
 }
 
+
+// 6.5) 打断要**转发到已创建的回退引擎**（T6：fakeLocal.interrupted 从未被断言）
+{
+  const local = fakeLocal()
+  const { server, origin } = await startServer((r, res) => {
+    res.statusCode = 500
+    res.end('boom')
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: 'v', cooldownMs: 60000, fallback: () => local })
+    // 第一次远程失败 → 走回退（此时 fallbackEngine 已被创建）
+    const buf = await engine.synthesize('第一句')
+    assert.ok(buf.length > 0)
+    assert.equal(local.calls.length, 1)
+    // 打断必须透传到回退引擎（否则本地合成停不下来，用户按打断无声但后台仍占资源）
+    engine.interrupt()
+    assert.equal(local.interrupted, 1, 'interrupt 未转发到回退引擎')
+    // 冷却内再合成：不再打远程（服务器只收到 1 次请求）
+    await engine.synthesize('第二句')
+    assert.equal(local.calls.length, 2)
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+}
+
 // 6) 未配置：构造不抛；每句走回退；close 关闭已创建的回退引擎。
 {
   const local = fakeLocal()

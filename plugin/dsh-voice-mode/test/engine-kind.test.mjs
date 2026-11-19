@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { TTS_ENGINE_KINDS, LOCAL_ENGINE_KINDS, CLOUD_ENGINE_KINDS, asTtsEngineKind, isCloudEngine, isLocalEngine } from '../src/engine-kind.ts'
+import { TTS_ENGINE_KINDS, LOCAL_ENGINE_KINDS, CLOUD_ENGINE_KINDS, asTtsEngineKind, isCloudEngine, isLocalEngine, isThirdPartyEngine, usesBilingualSample } from '../src/engine-kind.ts'
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8')
 let passed = 0
@@ -58,6 +58,35 @@ t('客户端设置卡不再手写引擎级联（改用 asTtsEngineKind / ENGINE_
   assert.ok(!/'edge' \| 'vits' \| 'kokoro'/.test(sf), 'settings-form 仍有手写引擎联合类型')
   assert.ok(sf.includes('asTtsEngineKind(value.ttsEngine)'))
   assert.ok(!/eng === 'edge' \|\| eng === 'openai'/.test(read('../src/client.tsx')), 'client 仍有手写云端级联')
+})
+
+
+t('云端/本地/第三方 三分类互斥且覆盖全部引擎', () => {
+  for (const k of TTS_ENGINE_KINDS) {
+    const cloud = isCloudEngine(k)
+    const local = isLocalEngine(k)
+    const third = isThirdPartyEngine(k)
+    assert.ok(cloud !== local, `${k} 必须且只能属于云端或本地`)
+    if (third) assert.ok(cloud, `${k} 是第三方远程引擎，必须同时属云端`)
+    if (k === 'edge') { assert.ok(cloud); assert.ok(!third, 'edge 是官方通道，不算第三方') }
+    if (k === 'openai' || k === 'mimo') assert.ok(third, `${k} 应属第三方远程`)
+  }
+  assert.equal(isThirdPartyEngine('edge'), false)
+  assert.equal(isThirdPartyEngine('vits'), false)
+  assert.equal(isThirdPartyEngine('nope'), false)
+})
+
+t('试听例句双语判据：kokoro/openai/mimo 双语，edge/vits 不是', () => {
+  // 回归背景：曾把 edge 当普通云端 → 英文音色被塞中文例句（i18n-protocol 测试抓到）
+  for (const k of TTS_ENGINE_KINDS) {
+    const expected = k === 'kokoro' || k === 'openai' || k === 'mimo'
+    assert.equal(usesBilingualSample(k), expected, `${k} 的双语判据不符`)
+  }
+  assert.equal(usesBilingualSample('unknown'), false)
+})
+
+t('asTtsEngineKind 覆盖全部合法值（不做静默改写）', () => {
+  for (const k of TTS_ENGINE_KINDS) assert.equal(asTtsEngineKind(k), k)
 })
 
 console.log(`\n${passed} passed`)
