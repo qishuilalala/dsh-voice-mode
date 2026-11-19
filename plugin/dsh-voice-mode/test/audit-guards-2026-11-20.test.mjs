@@ -57,4 +57,27 @@ t('Edge 引擎 interrupt 关闭在途连接并让 synthesize 尽快失败', () =
   assert.ok(block.includes('if (this.aborted) throw new Error'), '流循环未判中止')
 })
 
+
+t('设置写入恒要求回环（allowLan 不得放大到配置/密钥写入）', () => {
+  const s = src('index.ts')
+  const i = s.indexOf("path: `${base}/settings`")
+  assert.ok(i > 0, '找不到 /settings 路由')
+  const block = s.slice(i, i + 2200)
+  assert.ok(/isLoopbackRequest\(req\)/.test(block), '/settings 写入缺回环判定（allowLan=true 时 LAN 可改密钥）')
+  assert.ok(block.includes('settings writes are loopback-only'), '缺明确 403 文案')
+})
+
+t('快捷键录制态放行 Tab（焦点不得被困）', () => {
+  const s = src('settings-form.tsx')
+  const i = s.indexOf('const onKey = (e: KeyboardEvent): void => {')
+  assert.ok(i > 0, '找不到录制键盘处理器')
+  const block = s.slice(i, i + 400)
+  assert.ok(/if \(e\.key === 'Tab'\) return/.test(block), '录制态必须放行 Tab（此前 preventDefault 吞掉 Tab）')
+})
+
+t('打断后有可见提示（不再只有 3s「…」占位）', () => {
+  const s = src('client.tsx')
+  assert.ok(s.includes("bus.setNotice(t('interruptedNotice'))"), '打断缺瞬时提示')
+})
+
 console.log(`\naudit-guards：${passed} 项通过`)

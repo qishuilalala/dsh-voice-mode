@@ -2830,6 +2830,9 @@ export function MicButton({
         // M3：hardBreak 后的「…」占位 3s 后自清——用户不再开口时不在状态条留残留
         // 字幕（下一拍 onPartial/onSegment 会自然覆盖，此处只兜底）。
         bus.setUi({ partial: '…' })
+        // A4 审计 Important：打断此前只有「…」占位，浮层立刻消失、按钮马上变绿，
+        // 用户不确定打断是否生效。补一条瞬时提示（与其它 notice 同样 5s 自动清除）。
+        bus.setNotice(t('interruptedNotice'))
         if (breakDotsTimerRef.current) clearTimeout(breakDotsTimerRef.current)
         breakDotsTimerRef.current = setTimeout(() => {
           breakDotsTimerRef.current = null

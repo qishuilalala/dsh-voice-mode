@@ -1670,6 +1670,10 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/correct`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (req.method !== 'POST' && req.method !== 'GET') {
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'method not allowed' })
+          return
+        }
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -1724,6 +1728,10 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/toggle`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (req.method !== 'POST' && req.method !== 'GET') {
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'method not allowed' })
+          return
+        }
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
@@ -2000,6 +2008,10 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/voices`,
       handler: async (req: IncomingMessage, res: ServerResponse) => {
+        if (req.method !== 'POST' && req.method !== 'GET') {
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'method not allowed' })
+          return
+        }
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
         // Edge 全量音色（设置面板选 Edge 时拉取；网络失败由 client 回退常用清单）。
@@ -2072,6 +2084,10 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/cancel`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (req.method !== 'POST' && req.method !== 'GET') {
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'method not allowed' })
+          return
+        }
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -2152,6 +2168,12 @@ export function apply(ctx: Context, config: Config): void {
           respondJson(res, 409, { code: 'settings_managed', error: 'settings are managed by dsh on this host' })
           return
         }
+        // 写设置（含密钥/端点/引擎）**永远要求回环**：allowLan 只放宽只读与语音通道。
+        // A3 审计 Important：allowLan=true 时局域网任意主机都能改端点与密钥，可把 TTS 文本引向攻击者。
+        if (!isLoopbackRequest(req)) {
+          respondJson(res, 403, { code: 'forbidden', error: 'settings writes are loopback-only' })
+          return
+        }
         // 写设置是重操作（原子落盘 + 引擎重建）：限 30 次/分钟（A3 审计：此前无限流）。
         if (!limiter.hit(`settings:${clientKey(req)}`, 30, 60000)) {
           respondJson(res, 429, { code: 'rate_limited', error: 'too many settings updates, retry in a minute' })
@@ -2207,6 +2229,10 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/mode`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (req.method !== 'POST' && req.method !== 'GET') {
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'method not allowed' })
+          return
+        }
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
         collectBody(req, res, MAX_JSON_BODY, (body) => {

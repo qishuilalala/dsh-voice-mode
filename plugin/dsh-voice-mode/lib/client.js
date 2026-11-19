@@ -1754,6 +1754,7 @@ var zh = {
   recognitionFail: "\u8BC6\u522B\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
   holdTrimmedNotice: "\u6309\u4F4F\u8BF4\u8BDD\u8D85\u8FC7 90 \u79D2\uFF1A\u53EA\u8BC6\u522B\u4E86\u6700\u540E\u4E00\u6BB5\uFF08\u524D\u9762\u7684\u97F3\u9891\u5DF2\u4E22\u5F03\uFF09",
   utteranceTooLong: "\u8FD9\u6B21\u8BF4\u8BDD\u592A\u957F\uFF08\u8D85\u8FC7\u7EA6 90 \u79D2\uFF09\uFF1A\u5DF2\u8DF3\u8FC7\uFF0C\u8BF7\u5206\u6BB5\u518D\u8BF4\u4E00\u6B21",
+  interruptedNotice: "\u5DF2\u6253\u65AD\u6717\u8BFB\uFF0C\u7B49\u4F60\u7EE7\u7EED\u8BF4",
   partialFail: "\u5B9E\u65F6\u5B57\u5E55\u6682\u65F6\u4E0D\u53EF\u7528\uFF08\u8BC6\u522B\u901A\u9053\u5F02\u5E38\uFF0C\u91CD\u8BD5\u4E2D\uFF09",
   detectFail: "\u6253\u65AD\u68C0\u6D4B\u6682\u65F6\u4E0D\u53EF\u7528\uFF08\u68C0\u6D4B\u901A\u9053\u5F02\u5E38\uFF0C\u91CD\u8BD5\u4E2D\uFF09",
   sseReconnect: "\u72B6\u6001\u540C\u6B65\u65AD\u8FDE\uFF0C\u91CD\u8FDE\u4E2D\u2026",
@@ -2133,6 +2134,7 @@ var en = {
   recognitionFail: "Recognition failed, try again",
   holdTrimmedNotice: "Hold-to-talk exceeded 90 s: only the last part was recognised (earlier audio was dropped)",
   utteranceTooLong: "That utterance was too long (about 90 s): skipped \u2014 please speak it again in shorter parts",
+  interruptedNotice: "Playback interrupted \u2014 go ahead",
   partialFail: "Live captions temporarily unavailable (recognition channel error, retrying)",
   detectFail: "Break-in detection temporarily unavailable (detect channel error, retrying)",
   sseReconnect: "State sync disconnected, reconnecting\u2026",
@@ -4268,6 +4270,7 @@ function ShortcutField({
   (0, import_react2.useEffect)(() => {
     if (!recording) return;
     const onKey = (e) => {
+      if (e.key === "Tab") return;
       e.preventDefault();
       e.stopPropagation();
       if (e.key === "Escape") {
@@ -4614,10 +4617,22 @@ function VoicePreviewButton({ voice, rate }) {
   const btnDisabledStyle = disabledByModel ? { ...btnStyle, opacity: 0.5, cursor: "default" } : btnStyle;
   const btnTitle = disabledByModel ? t("previewModelMissing") : t("previewBtnTitle");
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", onClick: play, disabled: busy || disabledByModel, style: btnDisabledStyle, title: btnTitle, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 11, height: 11, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 3l9 5-9 5z" }) }),
-      busy ? t("synthesizing") : t("preview")
-    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "button",
+      {
+        type: "button",
+        onClick: play,
+        disabled: busy || disabledByModel,
+        style: btnDisabledStyle,
+        title: btnTitle,
+        "aria-describedby": disabledByModel ? "dshvm-preview-hint" : void 0,
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 11, height: 11, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 3l9 5-9 5z" }) }),
+          busy ? t("synthesizing") : t("preview")
+        ]
+      }
+    ),
+    disabledByModel ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { id: "dshvm-preview-hint", style: { fontSize: 11, color: t2.term }, children: t("previewModelMissing") }) : null,
     note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
   ] });
 }
@@ -6101,7 +6116,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "f179256";
+var BUILD_TAG = "67dd219";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -7985,6 +8000,7 @@ function MicButton({
         } else if (engineRef.current && !engineRef.current.holding) await engineRef.current.discardSegment();
         await cancelP;
         bus.setUi({ partial: "\u2026" });
+        bus.setNotice(t("interruptedNotice"));
         if (breakDotsTimerRef.current) clearTimeout(breakDotsTimerRef.current);
         breakDotsTimerRef.current = setTimeout(() => {
           breakDotsTimerRef.current = null;

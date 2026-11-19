@@ -464,6 +464,9 @@ function ShortcutField({
   useEffect(() => {
     if (!recording) return
     const onKey = (e: KeyboardEvent): void => {
+      // A4 审计 Important：录制态此前对所有键 preventDefault，Tab 也被吞 → 键盘焦点被困。
+      // Tab 是纯导航键，不可能是快捷键组合的一部分，必须放行。
+      if (e.key === 'Tab') return
       e.preventDefault()
       e.stopPropagation()
       if (e.key === 'Escape') {
@@ -869,12 +872,26 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
   const btnTitle = disabledByModel ? tr('previewModelMissing') : tr('previewBtnTitle')
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-      <button type="button" onClick={play} disabled={busy || disabledByModel} style={btnDisabledStyle} title={btnTitle}>
+      <button
+        type="button"
+        onClick={play}
+        disabled={busy || disabledByModel}
+        style={btnDisabledStyle}
+        title={btnTitle}
+        // A4 审计 Important：禁用时原因此前只在 title（键盘/读屏都看不到）→ 按钮变灰像坏了。
+        aria-describedby={disabledByModel ? 'dshvm-preview-hint' : undefined}
+      >
         <svg viewBox="0 0 16 16" width={11} height={11} aria-hidden="true">
           <path fill="currentColor" d="M4 3l9 5-9 5z" />
         </svg>
         {busy ? tr('synthesizing') : tr('preview')}
       </button>
+      {/* 禁用原因就地可见（而非只在 title 里）。 */}
+      {disabledByModel ? (
+        <span id="dshvm-preview-hint" style={{ fontSize: 11, color: t.term }}>
+          {tr('previewModelMissing')}
+        </span>
+      ) : null}
       {note && (
         <span style={{ color: 'var(--dsw-alias-state-error-primary)', fontSize: 12, lineHeight: '18px' }}>{note}</span>
       )}

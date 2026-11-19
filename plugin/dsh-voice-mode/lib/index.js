@@ -2645,6 +2645,7 @@ var en = {
   recognitionFail: "Recognition failed, try again",
   holdTrimmedNotice: "Hold-to-talk exceeded 90 s: only the last part was recognised (earlier audio was dropped)",
   utteranceTooLong: "That utterance was too long (about 90 s): skipped \u2014 please speak it again in shorter parts",
+  interruptedNotice: "Playback interrupted \u2014 go ahead",
   partialFail: "Live captions temporarily unavailable (recognition channel error, retrying)",
   detectFail: "Break-in detection temporarily unavailable (detect channel error, retrying)",
   sseReconnect: "State sync disconnected, reconnecting\u2026",
@@ -4606,6 +4607,10 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/correct`,
       handler: (req, res) => {
+        if (req.method !== "POST" && req.method !== "GET") {
+          respondJson2(res, 405, { code: "method_not_allowed", error: "method not allowed" });
+          return;
+        }
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -4642,6 +4647,10 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/toggle`,
       handler: (req, res) => {
+        if (req.method !== "POST" && req.method !== "GET") {
+          respondJson2(res, 405, { code: "method_not_allowed", error: "method not allowed" });
+          return;
+        }
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
@@ -4854,6 +4863,10 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/voices`,
       handler: async (req, res) => {
+        if (req.method !== "POST" && req.method !== "GET") {
+          respondJson2(res, 405, { code: "method_not_allowed", error: "method not allowed" });
+          return;
+        }
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
         try {
@@ -4904,6 +4917,10 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/cancel`,
       handler: (req, res) => {
+        if (req.method !== "POST" && req.method !== "GET") {
+          respondJson2(res, 405, { code: "method_not_allowed", error: "method not allowed" });
+          return;
+        }
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -4956,6 +4973,10 @@ function apply(ctx, config) {
           respondJson2(res, 409, { code: "settings_managed", error: "settings are managed by dsh on this host" });
           return;
         }
+        if (!isLoopbackRequest(req)) {
+          respondJson2(res, 403, { code: "forbidden", error: "settings writes are loopback-only" });
+          return;
+        }
         if (!limiter.hit(`settings:${clientKey(req)}`, 30, 6e4)) {
           respondJson2(res, 429, { code: "rate_limited", error: "too many settings updates, retry in a minute" });
           return;
@@ -5006,6 +5027,10 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/mode`,
       handler: (req, res) => {
+        if (req.method !== "POST" && req.method !== "GET") {
+          respondJson2(res, 405, { code: "method_not_allowed", error: "method not allowed" });
+          return;
+        }
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
         collectBody(req, res, MAX_JSON_BODY, (body) => {
