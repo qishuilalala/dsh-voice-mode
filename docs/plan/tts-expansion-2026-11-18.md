@@ -21,10 +21,10 @@
 
 ## 分批交付（每批一 PR，可独立回退）
 
-- E0 本地基座健康检查（S）：逐项重下验证 6 仓库 pin（含 revision 固定），失配则按 PR #32/#33 模式补修；输出健康报告。无行为变更。
+- E0 本地基座健康检查（S）✅ 已完成：报告见 [e0-report-2026-11-18](e0-report-2026-11-18.md)。真漂移 3 文件（Kokoro int8/fp32 主模型 + lexicon-zh，上游 main 已替换）；运行时因 `tts-local.ts` 锁 revision 未破，**真正 broken 的是 prefetch**——已修（commit dac007b：树枚举/下载改用 pin revision），并加 `test/prefetch-pins.test.mjs` 双向一致性守卫。
 - E1 在线预设化（M，本期核心）：openai 引擎设置页加“预设”下拉：SiliconFlow（首个，中文+复刻）、OpenRouter、vLLM-Omni 自建示例；每预设带 baseUrl/model/voice 示例 + 计费/免费额/数据去向一行说明 + 保存前探针（合成 8 字试听，失败明说）。Edge 不动默认。
 - E2 Edge 探针与状态（M，P1 三件套之一，已含）：握手失败可见错误 + 一键切本地/预设；设置页 engine 健康行。默认引擎不变（I10）。
-- E3 小米 MiMo 专用引擎（M-L，下期）：新 TtsEngine 实现（chat-style TTS，host-only key，失败回退本地+cooldown），先核 V2.6 模型名与定价（v2.5 已下线）再开工；风格指令接 emotion/instructions 位。
+- E3 小米 MiMo 专用引擎（M-L）✅ 已完成（commit ccbdf51）：`src/tts-mimo.ts` 新 TtsEngine（POST /v1/chat/completions、`api-key` 头、assistant 放文本、`audio{voice,format}`、取 `choices[0].message.audio.data`）；信任边界同 ADR-0013（key 只 host、失败回退本地 + 30s 冷却、打断不计失败、未配置 key 即 ready=false）。一手核实结论：TTS 现行仍是 **v2.5 系列**（`mimo-v2.5-tts`/`voicedesign`/`voiceclone`），V2.6 仅指 Pro/Flash 推理模型；TTS 系列**限时免费**（官方定价页 2026-10-21）；普通话速不走字段、走风格指令/音频标签，故本期不发 speed。
 - E4 本地候选评估（候选，GPU 到位后）：挑战者排序 Qwen3-TTS > Qwen3-ASR > CosyVoice 3 > X-ASR（见前沿备忘 docs/research/frontier-2026-11-18.md），每轮最多两个离线评估，不先换（roadmap §4）。
 - 更正（前沿备忘 2026-11-18）：小米 TTS 现行仍是 v2.5 系列（V2.6 系指 Pro/Flash 推理模型）；E3 核实项改为 V2.5-TTS 定价/限免状态。
 
