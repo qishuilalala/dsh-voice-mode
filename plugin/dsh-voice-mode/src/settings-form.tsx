@@ -886,6 +886,193 @@ function SelfTestSection({
   )
 }
 
+/**
+ * P1-3 用户纠错词表：规则增删 + 导入/导出 + 命中计数（本次生效以来）。
+ * 显式不碰解码器：只读写 overlay 的 asrReplacements 数组 + 展示 /models/status 的计数。
+ * 规则上限 200 条（防超大覆盖层）；非法输入整单拒绝并提示（与 host POST 400 整单口径一致）。
+ */
+interface ReplacementRule {
+  from: string[]
+  to: string
+}
+
+function normalizeRules(input: unknown): ReplacementRule[] | null {
+  if (!Array.isArray(input) || input.length > 200) return null
+  const out: ReplacementRule[] = []
+  for (const r of input) {
+    if (typeof r !== 'object' || r === null) return null
+    const rec = r as Record<string, unknown>
+    if (typeof rec.to !== 'string' || !rec.to.trim()) return null
+    if (!Array.isArray(rec.from)) return null
+    const from = rec.from
+      .filter((s): s is string => typeof s === 'string' && !!s.trim())
+      .map((s) => s.trim())
+    if (from.length === 0) return null
+    out.push({ from, to: rec.to.trim() })
+  }
+  return out
+}
+
+function ReplacementsSection({
+  rules,
+  onChange,
+}: {
+  rules: unknown
+  onChange: (next: ReplacementRule[]) => void
+}): React.ReactElement {
+  const list = normalizeRules(rules) ?? []
+  const [hits, setHits] = useState<number[]>([])
+  const [fromText, setFromText] = useState('')
+  const [toText, setToText] = useState('')
+  const [note, setNote] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    let alive = true
+    const poll = async (): Promise<void> => {
+      try {
+        const res = await fetch(location.origin + BASE_PATH + '/models/status')
+        if (res.ok && alive) {
+          const st = (await res.json()) as ModelsStatusPayload
+          const h = st.replacements?.hits
+          if (Array.isArray(h)) setHits(h.filter((n): n is number => typeof n === 'number'))
+        }
+      } catch {
+        // 轮询失败保持上次计数
+      }
+    }
+    void poll()
+    const timer = setInterval(() => void poll(), 5000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [])
+  const add = (): void => {
+    const from = fromText
+      .split(/[,，、]/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+    const to = toText.trim()
+    if (from.length === 0 || !to || list.length >= 200) {
+      setNote(tr('replInvalid'))
+      return
+    }
+    setNote(null)
+    setFromText('')
+    setToText('')
+    onChange([...list, { from, to }])
+  }
+  const exportFile = (): void => {
+    const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'voice-replacements.json'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const importFile = (f: File | undefined): void => {
+    if (!f) return
+    if (f.size > 1048576) {
+      setNote(tr('replBadFile'))
+      return
+    }
+    void (async () => {
+      try {
+        const parsed: unknown = JSON.parse(await f.text())
+        const next = normalizeRules(parsed)
+        if (!next) {
+          setNote(tr('replBadFile'))
+          return
+        }
+        setNote(null)
+        onChange(next)
+      } catch {
+        setNote(tr('replBadFile'))
+      }
+    })()
+  }
+  const btnStyle: React.CSSProperties = {
+    font: 'inherit',
+    display: 'inline-flex',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    cursor: 'pointer',
+    color: t.label,
+    background: 'var(--dsw-alias-bg-layer-2)',
+    border: `1px solid ${t.border}`,
+    borderRadius: 6,
+    padding: '4px 10px',
+    fontSize: 12,
+    lineHeight: '18px',
+  }
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start', padding: '2px 0 10px' }}>
+      <span style={{ fontSize: 12, color: t.label, fontWeight: 600 }}>{tr('replTitle')}</span>
+      <span style={{ fontSize: 11, color: t.term }}>{tr('descAsrReplacements')}</span>
+      {list.length === 0 ? (
+        <span style={{ fontSize: 12, color: t.term }}>{tr('replEmpty')}</span>
+      ) : (
+        list.map((r, i) => (
+          <span key={i} style={{ fontSize: 12, color: t.label, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            <span>
+              {r.from.join(' / ')} {'→'} {r.to}
+            </span>
+            <span style={{ color: t.term }}>
+              {tr('replHits')} {hits[i] ?? 0}
+            </span>
+            <button
+              type="button"
+              onClick={() => onChange(list.filter((_, j) => j !== i))}
+              style={{ ...btnStyle, padding: '2px 8px' }}
+            >
+              {tr('replDelete')}
+            </button>
+          </span>
+        ))
+      )}
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          value={fromText}
+          onChange={(e) => setFromText(e.target.value)}
+          placeholder={tr('replFromPh')}
+          style={{ fontSize: 12, padding: '4px 8px', maxWidth: 220 }}
+        />
+        <input
+          value={toText}
+          onChange={(e) => setToText(e.target.value)}
+          placeholder={tr('replToPh')}
+          style={{ fontSize: 12, padding: '4px 8px', maxWidth: 140 }}
+        />
+        <button type="button" onClick={add} style={btnStyle}>
+          {tr('replAdd')}
+        </button>
+      </span>
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+        <button type="button" onClick={exportFile} style={btnStyle}>
+          {tr('replExport')}
+        </button>
+        <button type="button" onClick={() => fileRef.current?.click()} style={btnStyle}>
+          {tr('replImport')}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            importFile(e.target.files?.[0])
+            e.target.value = ''
+          }}
+        />
+      </span>
+      {note && (
+        <span style={{ color: 'var(--dsw-alias-state-error-primary)', fontSize: 12, lineHeight: '18px' }}>{note}</span>
+      )}
+    </span>
+  )
+}
+
 function Row({ name, desc, children }: { name: string; desc: string; children: React.ReactNode }): React.ReactElement {
   const label = tr(`${name}Label` as TKey)
   return (
@@ -1008,6 +1195,8 @@ interface ModelsStatusPayload {
     progress?: { file: string; percent: number }
     local?: { repo: string; ready: boolean; loading: boolean; error?: string; files: Array<{ name: string; exists: boolean; size: number }> }
   }
+  // P1-3：词表规则数与命中计数（本次生效以来；设置变更重建即清零）。
+  replacements?: { rules: number; hits: number[] }
   progress: { file: string; percent: number } | null
 }
 
@@ -1549,6 +1738,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
             <Row name="idleTimeoutMinutes" desc={tr('descIdle')}>
               <NumberField score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 5} min={1} max={120} step={1} />
             </Row>
+            <ReplacementsSection rules={value.asrReplacements} onChange={(next) => void scope.set('asrReplacements', next)} />
             </Section>
             <Section title={tr('secModel')}>
             <Row name="modelHost" desc={tr('descModelHost')}>

@@ -164,5 +164,35 @@ await t('asrReplacements 默认空数组，并接受 from 列表 + to', () => {
   assert.deepEqual(cfg.asrReplacements, [{ from: ['ski男', 'sina'], to: 'Sakina' }])
 })
 
+console.log('onHit 命中计数')
+
+await t('每次实际替换按规则序号回调（含重复命中）', () => {
+  const calls = []
+  const rep = createAsrReplacer(
+    [
+      { from: ['ski男'], to: 'Sakina' },
+      { from: ['sina'], to: 'Sinatra' },
+    ],
+    (i) => calls.push(i),
+  )
+  assert.equal(rep('ski男爱听sina和小sina'), 'Sakina爱听Sinatra和小Sinatra')
+  assert.deepEqual(calls, [0, 1, 1])
+})
+
+await t('未命中不回调；同写法多规则只有首胜计数', () => {
+  const calls = []
+  const rep = createAsrReplacer(
+    [
+      { from: ['sina'], to: 'Sinatra' },
+      { from: ['sina'], to: 'Later' },
+    ],
+    (i) => calls.push(i),
+  )
+  assert.equal(rep('今天天气不错'), '今天天气不错')
+  assert.deepEqual(calls, [])
+  assert.equal(rep('sina来了'), 'Sinatra来了')
+  assert.deepEqual(calls, [0])
+})
+
 rmSync(tmp, { recursive: true, force: true })
 console.log(`\n${passed} passed`)

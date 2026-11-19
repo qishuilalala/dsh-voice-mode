@@ -249,6 +249,8 @@ export interface VoiceSettingsValue {
    *  「语音起始-250ms」起的音频并入新识别段，修「打断吃句」）。关 = 回退丢句现状
    *  （外放+无原生 AEC 等回声劣化环境的逃生口）。I10 有意豁免见 ADR-0012。 */
   bargeInSalvage: boolean
+  /** P1-3 用户纠错词表（默认空）：转写后替换 `[{from, to}]`，中间结果与定稿都生效；设置卡片可视化管理，命中计数见 /models/status。 */
+  asrReplacements: AsrReplacement[]
   /** Issue #15 批 4：LLM 纠错（默认 false = 关）。开 = 发送前对整条草稿做一次
    *  「只改错别字/同音字/标点，保持原意」的纠错（复用宿主已配置模型，不引入新凭据）；
    *  失败/无模型/空结果一律回退原文。默认关 = 未申报的 I10 豁免+每条多一次 RTT/token。 */
@@ -295,6 +297,8 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   bargeInSalvage: true,
   // Issue #15 批 4：LLM 纠错默认关（默认开=未申报的 I10 豁免+每条多一次 RTT/token）。
   llmCorrect: false,
+  // P1-3：纠错词表默认空（与 Config 层 asrReplacements 默认 [] 对齐）。
+  asrReplacements: [],
   // 批 G 任务 3：让位窗口默认 1500ms（与改造前批 5 行为字节等价；用户可调 500-3000ms）。
   yieldMs: 1500,
 }
@@ -332,6 +336,7 @@ const DESC = {
   backchannelYield: en.descBackchannelYield,
   bargeInSalvage: en.descBargeInSalvage,
   llmCorrect: en.descLlmCorrect,
+  asrReplacements: en.descAsrReplacements,
   yieldMs: en.descYieldMs,
 } as const
 
@@ -445,6 +450,14 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .default(d.llmCorrect)
       .description(
         DESC.llmCorrect,
+      ),
+    // P1-3：用户纠错词表（默认空；非法条目由 zod 整表拒绝，POST 回 400；上限 200 条与设置卡片一致，防超大覆盖层）。
+    asrReplacements: z
+      .array(AsrReplacementSchema)
+      .max(200)
+      .default(d.asrReplacements)
+      .description(
+        DESC.asrReplacements,
       ),
     yieldMs: z
       .number()
@@ -631,12 +644,14 @@ function voiceSettingsFromConfig(config: Config): VoiceSettingsValue {
     idleTimeoutMinutes, modelHost, autoSend, autoResume, mode, readAloud, showCaptions, showStatusBar, bargeInMode,
     echoGateDb, shortcut, composerShortcut, spokenFormat, senseVoice, wakeWord, toolBeep,
     senseITN, captionFontSize, captionMaxWidth, backchannelYield, yieldMs, bargeInSalvage, llmCorrect,
+    asrReplacements,
   } = config
   return {
     ttsEngine, kokoroModel, voice, rate, interruptLevel, silenceMs,
     idleTimeoutMinutes, modelHost, autoSend, autoResume, mode, readAloud, showCaptions, showStatusBar, bargeInMode,
     echoGateDb, shortcut, composerShortcut, spokenFormat, senseVoice, wakeWord, toolBeep,
     senseITN, captionFontSize, captionMaxWidth, backchannelYield, yieldMs, bargeInSalvage, llmCorrect,
+    asrReplacements,
   }
 }
 
@@ -963,6 +978,19 @@ export function apply(ctx: Context, config: Config): void {
     }
   }
 
+  /** P1-3 词表命中计数（本次生效以来；设置变更重建 replacer 即清零，UI 按此口径标注）。 */
+  let replacementHits: number[] = []
+  let replacementRuleCount = 0
+  /** 可热更换的 replacer 盒：feed 出口经 options.replaceText 每次调用读取，重建即生效，无需重建 asr runtime。 */
+  const replacerBox: { fn: (text: string) => string } = { fn: (text: string) => text }
+  const rebuildReplacer = (rules: readonly AsrReplacement[]): void => {
+    replacementRuleCount = rules.length
+    replacementHits = new Array<number>(rules.length).fill(0)
+    replacerBox.fn = createAsrReplacer(rules, (i) => {
+      replacementHits[i] = (replacementHits[i] ?? 0) + 1
+    })
+  }
+  rebuildReplacer(vset.asrReplacements ?? [])
   // --- zipformer2 流式 ASR runtime（模型懒下载 + SHA256 校验，§8.3）。 ---
   // modelHost 用 getter：下载期读取最新设置（国内可切 hf-mirror，无需改 YAML）。
   const asr = createAsrRuntime({
@@ -988,7 +1016,7 @@ export function apply(ctx: Context, config: Config): void {
     // 待机态 push-to-talk 属产品决策（要改的是客户端手势开放条件），PM 已登记待用户拍板，
     // 此处不加功能；host 侧只保证「manual 时非按压帧不入流」这一既有语义不被悄悄扩大。
     bargeInMode: () => vset.bargeInMode,
-    replaceText: createAsrReplacer(config.asrReplacements ?? []),
+    replaceText: (text: string) => replacerBox.fn(text),
   })
   // 卸载/热重载时释放 ASR runtime（清段 + 定时器，防悬挂）。
   ctx.effect(() => () => asr.dispose())
@@ -1098,6 +1126,11 @@ export function apply(ctx: Context, config: Config): void {
       next.senseVoice !== prev.senseVoice
     ) {
       asr.markStale()
+    }
+    // P1-3：词表变更热重建 replacer（命中计数随之清零，UI 标注“本次生效以来”）。
+    // JSON 比对（数组小）：不同路径 vset 对象恒新，引用比对恒真会误清零。
+    if (JSON.stringify(next.asrReplacements ?? []) !== JSON.stringify(prev.asrReplacements ?? [])) {
+      rebuildReplacer(next.asrReplacements ?? [])
     }
   }
   // 路径 B（0.1.7+）由 persistSettings 在写入覆盖层后同样调用 applyVset，热更换语义与路径 A 一致。
@@ -1605,7 +1638,12 @@ export function apply(ctx: Context, config: Config): void {
       handler: (req, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
         // 模型实时状态（设置面板轮询；无需语音模式）。
-        respondJson(res, 200, { ...asr.modelStatus(), tts: queue.status() })
+        respondJson(res, 200, {
+          ...asr.modelStatus(),
+          tts: queue.status(),
+          // P1-3：词表规则数与命中计数（本次生效以来；设置变更重建即清零）。
+          replacements: { rules: replacementRuleCount, hits: [...replacementHits] },
+        })
       },
     }),
   )

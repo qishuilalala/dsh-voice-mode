@@ -60,24 +60,42 @@ function patternOf(heard: string): string | null {
   return `${head}${body}${tail}`
 }
 
-/** 编译替换表；空表返回恒等函数。 */
-export function createAsrReplacer(rules: readonly AsrReplacement[]): AsrReplacer {
-  const entries: Array<{ pattern: string; key: string; to: string; length: number }> = []
-  for (const rule of rules) {
-    if (!rule.to) continue
+/**
+ * 编译替换表；空表返回恒等函数。
+ * onHit（可选）：每次实际发生替换时按规则序号回调（P1-3 命中计数；与 targets 首胜口径一致——
+ * 同一写法被多条规则命中时只有首胜规则计数）。无回调时行为与旧版逐字一致。
+ */
+export function createAsrReplacer(
+  rules: readonly AsrReplacement[],
+  onHit?: (ruleIndex: number) => void,
+): AsrReplacer {
+  const entries: Array<{ pattern: string; key: string; to: string; length: number; ruleIndex: number }> = []
+  rules.forEach((rule, ruleIndex) => {
+    if (!rule.to) return
     for (const heard of rule.from) {
       const pattern = patternOf(heard)
       if (!pattern) continue
-      entries.push({ pattern, key: heard.replace(/\s+/g, '').toLowerCase(), to: rule.to, length: heard.replace(/\s+/g, '').length })
+      entries.push({
+        pattern,
+        key: heard.replace(/\s+/g, '').toLowerCase(),
+        to: rule.to,
+        length: heard.replace(/\s+/g, '').length,
+        ruleIndex,
+      })
     }
-  }
+  })
   if (entries.length === 0) return (text) => text
   entries.sort((a, b) => b.length - a.length)
-  const targets = new Map<string, string>()
-  for (const e of entries) if (!targets.has(e.key)) targets.set(e.key, e.to)
+  const targets = new Map<string, { to: string; ruleIndex: number }>()
+  for (const e of entries) if (!targets.has(e.key)) targets.set(e.key, { to: e.to, ruleIndex: e.ruleIndex })
   const regex = new RegExp(entries.map((e) => `(${e.pattern})`).join('|'), 'giu')
   return (text) => {
     if (!text) return text
-    return text.replace(regex, (match) => targets.get(match.replace(/\s+/g, '').toLowerCase()) ?? match)
+    return text.replace(regex, (match) => {
+      const hit = targets.get(match.replace(/\s+/g, '').toLowerCase())
+      if (!hit) return match
+      if (onHit) onHit(hit.ruleIndex)
+      return hit.to
+    })
   }
 }

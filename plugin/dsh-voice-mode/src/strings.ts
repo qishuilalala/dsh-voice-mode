@@ -69,6 +69,18 @@ export const zh = {
   previewBtnTitle: '试听当前音色（当前语速）',
   synthesizing: '合成中…',
   preview: '试听',
+  // P1-3 用户纠错词表。
+  replTitle: '纠错词表',
+  replFromPh: '听错写法，逗号分隔',
+  replToPh: '想要写法',
+  replAdd: '添加',
+  replDelete: '删',
+  replEmpty: '暂无规则',
+  replHits: '命中',
+  replExport: '导出',
+  replImport: '导入',
+  replInvalid: '规则无效：from 非空、to 非空，逗号分隔多个写法',
+  replBadFile: '文件不是有效词表 JSON（数组 [{from[], to}]，最多 200 条）',
   // P1-1 一键自测：合成✓/播放✓分离显示。
   selftestTitle: '一键自测',
   selftestHint: '分别验证“能合成”与“能出声”，定位无声是引擎问题还是播放问题',
@@ -159,6 +171,7 @@ export const zh = {
   descBackchannelYield: '朗读期用户说「嗯/对」等短应答时自动让位（跳过当前 TTS 句 + 短暂丢帧 1.5s；真要说则原 hardBreak 接管；关 = 不让位，行为等同改造前）。仅「按住说话」模式播放期可触发：「持续聆听」模式播放期不识别语音，开口说话按打断处理',
   // Issue #15 批 1 / ADR-0012：打断语音抢救。
   descBargeInSalvage: 'AI 朗读时你开口打断：自动保留从开口到打断生效之间你说的话，并入识别继续发送（修「打断吃句」；关 = 丢弃打断前语音——仅外放且无回声消除的环境建议关）',
+  descAsrReplacements: '用户纠错词表（JSON 数组 [{from:["听错写法"],to:"想要写法"}]，转写后统一改写；设置卡片可视化管理，命中计数见自测区）',
   descLlmCorrect: '发送前用大模型对整条语音文本做一次纠错（只改错别字/同音字/标点，保持原意；需宿主已配置默认模型，未配置则自动用原文）。开 = 每条消息多一次纠错等待：通常 1 秒内，最长约 10 秒；每分钟最多 10 次，语音模式关闭或触发限流时按原文发送。纠错失败或输出异常同样自动用原文',
   descYieldMs: '让位语义触发后等待时长（毫秒，500-3000，默认 1500；窗口内用户真要说则原 hardBreak 接管，窗口到点自动恢复播放）。仅「按住说话」模式播放期可触发',
   descMode: '交互模式（toggle 持续聆听+静音断句 / hold 按住说话 / once 说完一段、等回复朗读完再自动退出）',
@@ -376,6 +389,18 @@ export const en: Record<keyof typeof zh, string> = {
   previewBtnTitle: 'Preview voice (current rate)',
   synthesizing: 'Synthesizing…',
   preview: 'Preview',
+  // P1-3 correction wordlist.
+  replTitle: 'Correction wordlist',
+  replFromPh: 'Misheard spellings, comma-separated',
+  replToPh: 'Wanted spelling',
+  replAdd: 'Add',
+  replDelete: 'Del',
+  replEmpty: 'No rules yet',
+  replHits: 'hits',
+  replExport: 'Export',
+  replImport: 'Import',
+  replInvalid: 'Invalid rule: non-empty from and to, comma-separate multiple spellings',
+  replBadFile: 'File is not a valid wordlist JSON (array [{from[], to}], max 200 rules)',
   // P1-1 self-test: separate synthesis / playback verdicts.
   selftestTitle: 'Self-test',
   selftestHint: 'Verifies synthesis and playback separately to tell engine failures from playback failures',
@@ -464,6 +489,7 @@ export const en: Record<keyof typeof zh, string> = {
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: 'When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)',
+  descAsrReplacements: 'User correction wordlist (JSON array [{from:["misheard"],to:"wanted"}], rewritten after transcription; managed in the settings card, hit counts shown in the self-test area)',
   descLlmCorrect: 'Before sending, run one LLM pass over the whole transcribed text (typos/homophones/punctuation only, meaning preserved; requires a default model configured in the host — otherwise the original text is sent as-is). On = one extra correction round trip per message: usually under 1 second, at most ~10 seconds; at most 10 times per minute — when voice mode is off or the limit is hit, the original text is sent. Failed or abnormal output also falls back to the original text',
   descYieldMs: 'How long (ms) to drop frames after a yield trigger (500-3000, default 1500; within the window the existing hardBreak takes over if the user really wants to speak; auto-resume after the window expires). Hold-to-talk mode only, during playback',
   descMode: 'Interaction mode (toggle: continuous listen + auto-send / hold: press to talk / once: one utterance, then exit after the reply is read aloud)',

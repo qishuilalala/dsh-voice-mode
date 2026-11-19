@@ -1174,24 +1174,35 @@ function patternOf(heard) {
   const tail = ASCII_WORD.test(last) ? "(?![A-Za-z0-9])" : "";
   return `${head}${body}${tail}`;
 }
-function createAsrReplacer(rules) {
+function createAsrReplacer(rules, onHit) {
   const entries = [];
-  for (const rule of rules) {
-    if (!rule.to) continue;
+  rules.forEach((rule, ruleIndex) => {
+    if (!rule.to) return;
     for (const heard of rule.from) {
       const pattern = patternOf(heard);
       if (!pattern) continue;
-      entries.push({ pattern, key: heard.replace(/\s+/g, "").toLowerCase(), to: rule.to, length: heard.replace(/\s+/g, "").length });
+      entries.push({
+        pattern,
+        key: heard.replace(/\s+/g, "").toLowerCase(),
+        to: rule.to,
+        length: heard.replace(/\s+/g, "").length,
+        ruleIndex
+      });
     }
-  }
+  });
   if (entries.length === 0) return (text) => text;
   entries.sort((a, b) => b.length - a.length);
   const targets = /* @__PURE__ */ new Map();
-  for (const e of entries) if (!targets.has(e.key)) targets.set(e.key, e.to);
+  for (const e of entries) if (!targets.has(e.key)) targets.set(e.key, { to: e.to, ruleIndex: e.ruleIndex });
   const regex = new RegExp(entries.map((e) => `(${e.pattern})`).join("|"), "giu");
   return (text) => {
     if (!text) return text;
-    return text.replace(regex, (match) => targets.get(match.replace(/\s+/g, "").toLowerCase()) ?? match);
+    return text.replace(regex, (match) => {
+      const hit = targets.get(match.replace(/\s+/g, "").toLowerCase());
+      if (!hit) return match;
+      if (onHit) onHit(hit.ruleIndex);
+      return hit.to;
+    });
   };
 }
 
@@ -2551,6 +2562,18 @@ var en = {
   previewBtnTitle: "Preview voice (current rate)",
   synthesizing: "Synthesizing\u2026",
   preview: "Preview",
+  // P1-3 correction wordlist.
+  replTitle: "Correction wordlist",
+  replFromPh: "Misheard spellings, comma-separated",
+  replToPh: "Wanted spelling",
+  replAdd: "Add",
+  replDelete: "Del",
+  replEmpty: "No rules yet",
+  replHits: "hits",
+  replExport: "Export",
+  replImport: "Import",
+  replInvalid: "Invalid rule: non-empty from and to, comma-separate multiple spellings",
+  replBadFile: "File is not a valid wordlist JSON (array [{from[], to}], max 200 rules)",
   // P1-1 self-test: separate synthesis / playback verdicts.
   selftestTitle: "Self-test",
   selftestHint: "Verifies synthesis and playback separately to tell engine failures from playback failures",
@@ -2639,6 +2662,7 @@ var en = {
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",
+  descAsrReplacements: 'User correction wordlist (JSON array [{from:["misheard"],to:"wanted"}], rewritten after transcription; managed in the settings card, hit counts shown in the self-test area)',
   descLlmCorrect: "Before sending, run one LLM pass over the whole transcribed text (typos/homophones/punctuation only, meaning preserved; requires a default model configured in the host \u2014 otherwise the original text is sent as-is). On = one extra correction round trip per message: usually under 1 second, at most ~10 seconds; at most 10 times per minute \u2014 when voice mode is off or the limit is hit, the original text is sent. Failed or abnormal output also falls back to the original text",
   descYieldMs: "How long (ms) to drop frames after a yield trigger (500-3000, default 1500; within the window the existing hardBreak takes over if the user really wants to speak; auto-resume after the window expires). Hold-to-talk mode only, during playback",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk / once: one utterance, then exit after the reply is read aloud)",
@@ -3202,6 +3226,8 @@ var VOICE_SETTINGS_DEFAULTS = {
   bargeInSalvage: true,
   // Issue #15 批 4：LLM 纠错默认关（默认开=未申报的 I10 豁免+每条多一次 RTT/token）。
   llmCorrect: false,
+  // P1-3：纠错词表默认空（与 Config 层 asrReplacements 默认 [] 对齐）。
+  asrReplacements: [],
   // 批 G 任务 3：让位窗口默认 1500ms（与改造前批 5 行为字节等价；用户可调 500-3000ms）。
   yieldMs: 1500
 };
@@ -3234,6 +3260,7 @@ var DESC = {
   backchannelYield: en.descBackchannelYield,
   bargeInSalvage: en.descBargeInSalvage,
   llmCorrect: en.descLlmCorrect,
+  asrReplacements: en.descAsrReplacements,
   yieldMs: en.descYieldMs
 };
 function createVoiceSettingsSchema(defs) {
@@ -3289,6 +3316,10 @@ function createVoiceSettingsSchema(defs) {
     // Issue #15 批 4：LLM 纠错（默认 false）。
     llmCorrect: z2.boolean().default(d.llmCorrect).description(
       DESC.llmCorrect
+    ),
+    // P1-3：用户纠错词表（默认空；非法条目由 zod 整表拒绝，POST 回 400；上限 200 条与设置卡片一致，防超大覆盖层）。
+    asrReplacements: z2.array(AsrReplacementSchema).max(200).default(d.asrReplacements).description(
+      DESC.asrReplacements
     ),
     yieldMs: z2.number().min(500).max(3e3).default(d.yieldMs).description(
       DESC.yieldMs
@@ -3393,7 +3424,8 @@ function voiceSettingsFromConfig(config) {
     backchannelYield,
     yieldMs,
     bargeInSalvage,
-    llmCorrect
+    llmCorrect,
+    asrReplacements
   } = config;
   return {
     ttsEngine,
@@ -3424,7 +3456,8 @@ function voiceSettingsFromConfig(config) {
     backchannelYield,
     yieldMs,
     bargeInSalvage,
-    llmCorrect
+    llmCorrect,
+    asrReplacements
   };
 }
 function apply(ctx, config) {
@@ -3579,6 +3612,17 @@ function apply(ctx, config) {
       vset = voiceSettingsFromConfig(config);
     }
   }
+  let replacementHits = [];
+  let replacementRuleCount = 0;
+  const replacerBox = { fn: (text) => text };
+  const rebuildReplacer = (rules) => {
+    replacementRuleCount = rules.length;
+    replacementHits = new Array(rules.length).fill(0);
+    replacerBox.fn = createAsrReplacer(rules, (i) => {
+      replacementHits[i] = (replacementHits[i] ?? 0) + 1;
+    });
+  };
+  rebuildReplacer(vset.asrReplacements ?? []);
   const asr = createAsrRuntime({
     cacheDir: config.cacheDir,
     modelHost: () => vset.modelHost,
@@ -3602,7 +3646,7 @@ function apply(ctx, config) {
     // 待机态 push-to-talk 属产品决策（要改的是客户端手势开放条件），PM 已登记待用户拍板，
     // 此处不加功能；host 侧只保证「manual 时非按压帧不入流」这一既有语义不被悄悄扩大。
     bargeInMode: () => vset.bargeInMode,
-    replaceText: createAsrReplacer(config.asrReplacements ?? [])
+    replaceText: (text) => replacerBox.fn(text)
   });
   ctx.effect(() => () => asr.dispose());
   const warmupAsrIfCached = () => {
@@ -3682,6 +3726,9 @@ function apply(ctx, config) {
     queue.updateVoice(next.voice, next.rate);
     if (next.senseITN !== prev.senseITN || next.senseVoice !== prev.senseVoice) {
       asr.markStale();
+    }
+    if (JSON.stringify(next.asrReplacements ?? []) !== JSON.stringify(prev.asrReplacements ?? [])) {
+      rebuildReplacer(next.asrReplacements ?? []);
     }
   };
   if (settingsScopeRef) {
@@ -4015,7 +4062,12 @@ function apply(ctx, config) {
       path: `${base}/models/status`,
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
-        respondJson2(res, 200, { ...asr.modelStatus(), tts: queue.status() });
+        respondJson2(res, 200, {
+          ...asr.modelStatus(),
+          tts: queue.status(),
+          // P1-3：词表规则数与命中计数（本次生效以来；设置变更重建即清零）。
+          replacements: { rules: replacementRuleCount, hits: [...replacementHits] }
+        });
       }
     })
   );

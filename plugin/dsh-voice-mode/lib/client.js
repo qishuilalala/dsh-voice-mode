@@ -1753,6 +1753,18 @@ var zh = {
   previewBtnTitle: "\u8BD5\u542C\u5F53\u524D\u97F3\u8272\uFF08\u5F53\u524D\u8BED\u901F\uFF09",
   synthesizing: "\u5408\u6210\u4E2D\u2026",
   preview: "\u8BD5\u542C",
+  // P1-3 用户纠错词表。
+  replTitle: "\u7EA0\u9519\u8BCD\u8868",
+  replFromPh: "\u542C\u9519\u5199\u6CD5\uFF0C\u9017\u53F7\u5206\u9694",
+  replToPh: "\u60F3\u8981\u5199\u6CD5",
+  replAdd: "\u6DFB\u52A0",
+  replDelete: "\u5220",
+  replEmpty: "\u6682\u65E0\u89C4\u5219",
+  replHits: "\u547D\u4E2D",
+  replExport: "\u5BFC\u51FA",
+  replImport: "\u5BFC\u5165",
+  replInvalid: "\u89C4\u5219\u65E0\u6548\uFF1Afrom \u975E\u7A7A\u3001to \u975E\u7A7A\uFF0C\u9017\u53F7\u5206\u9694\u591A\u4E2A\u5199\u6CD5",
+  replBadFile: "\u6587\u4EF6\u4E0D\u662F\u6709\u6548\u8BCD\u8868 JSON\uFF08\u6570\u7EC4 [{from[], to}]\uFF0C\u6700\u591A 200 \u6761\uFF09",
   // P1-1 一键自测：合成✓/播放✓分离显示。
   selftestTitle: "\u4E00\u952E\u81EA\u6D4B",
   selftestHint: "\u5206\u522B\u9A8C\u8BC1\u201C\u80FD\u5408\u6210\u201D\u4E0E\u201C\u80FD\u51FA\u58F0\u201D\uFF0C\u5B9A\u4F4D\u65E0\u58F0\u662F\u5F15\u64CE\u95EE\u9898\u8FD8\u662F\u64AD\u653E\u95EE\u9898",
@@ -1843,6 +1855,7 @@ var zh = {
   descBackchannelYield: "\u6717\u8BFB\u671F\u7528\u6237\u8BF4\u300C\u55EF/\u5BF9\u300D\u7B49\u77ED\u5E94\u7B54\u65F6\u81EA\u52A8\u8BA9\u4F4D\uFF08\u8DF3\u8FC7\u5F53\u524D TTS \u53E5 + \u77ED\u6682\u4E22\u5E27 1.5s\uFF1B\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF1B\u5173 = \u4E0D\u8BA9\u4F4D\uFF0C\u884C\u4E3A\u7B49\u540C\u6539\u9020\u524D\uFF09\u3002\u4EC5\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u53EF\u89E6\u53D1\uFF1A\u300C\u6301\u7EED\u8046\u542C\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u4E0D\u8BC6\u522B\u8BED\u97F3\uFF0C\u5F00\u53E3\u8BF4\u8BDD\u6309\u6253\u65AD\u5904\u7406",
   // Issue #15 批 1 / ADR-0012：打断语音抢救。
   descBargeInSalvage: "AI \u6717\u8BFB\u65F6\u4F60\u5F00\u53E3\u6253\u65AD\uFF1A\u81EA\u52A8\u4FDD\u7559\u4ECE\u5F00\u53E3\u5230\u6253\u65AD\u751F\u6548\u4E4B\u95F4\u4F60\u8BF4\u7684\u8BDD\uFF0C\u5E76\u5165\u8BC6\u522B\u7EE7\u7EED\u53D1\u9001\uFF08\u4FEE\u300C\u6253\u65AD\u5403\u53E5\u300D\uFF1B\u5173 = \u4E22\u5F03\u6253\u65AD\u524D\u8BED\u97F3\u2014\u2014\u4EC5\u5916\u653E\u4E14\u65E0\u56DE\u58F0\u6D88\u9664\u7684\u73AF\u5883\u5EFA\u8BAE\u5173\uFF09",
+  descAsrReplacements: '\u7528\u6237\u7EA0\u9519\u8BCD\u8868\uFF08JSON \u6570\u7EC4 [{from:["\u542C\u9519\u5199\u6CD5"],to:"\u60F3\u8981\u5199\u6CD5"}]\uFF0C\u8F6C\u5199\u540E\u7EDF\u4E00\u6539\u5199\uFF1B\u8BBE\u7F6E\u5361\u7247\u53EF\u89C6\u5316\u7BA1\u7406\uFF0C\u547D\u4E2D\u8BA1\u6570\u89C1\u81EA\u6D4B\u533A\uFF09',
   descLlmCorrect: "\u53D1\u9001\u524D\u7528\u5927\u6A21\u578B\u5BF9\u6574\u6761\u8BED\u97F3\u6587\u672C\u505A\u4E00\u6B21\u7EA0\u9519\uFF08\u53EA\u6539\u9519\u522B\u5B57/\u540C\u97F3\u5B57/\u6807\u70B9\uFF0C\u4FDD\u6301\u539F\u610F\uFF1B\u9700\u5BBF\u4E3B\u5DF2\u914D\u7F6E\u9ED8\u8BA4\u6A21\u578B\uFF0C\u672A\u914D\u7F6E\u5219\u81EA\u52A8\u7528\u539F\u6587\uFF09\u3002\u5F00 = \u6BCF\u6761\u6D88\u606F\u591A\u4E00\u6B21\u7EA0\u9519\u7B49\u5F85\uFF1A\u901A\u5E38 1 \u79D2\u5185\uFF0C\u6700\u957F\u7EA6 10 \u79D2\uFF1B\u6BCF\u5206\u949F\u6700\u591A 10 \u6B21\uFF0C\u8BED\u97F3\u6A21\u5F0F\u5173\u95ED\u6216\u89E6\u53D1\u9650\u6D41\u65F6\u6309\u539F\u6587\u53D1\u9001\u3002\u7EA0\u9519\u5931\u8D25\u6216\u8F93\u51FA\u5F02\u5E38\u540C\u6837\u81EA\u52A8\u7528\u539F\u6587",
   descYieldMs: "\u8BA9\u4F4D\u8BED\u4E49\u89E6\u53D1\u540E\u7B49\u5F85\u65F6\u957F\uFF08\u6BEB\u79D2\uFF0C500-3000\uFF0C\u9ED8\u8BA4 1500\uFF1B\u7A97\u53E3\u5185\u7528\u6237\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF0C\u7A97\u53E3\u5230\u70B9\u81EA\u52A8\u6062\u590D\u64AD\u653E\uFF09\u3002\u4EC5\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u53EF\u89E6\u53D1",
   descMode: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD / once \u8BF4\u5B8C\u4E00\u6BB5\u3001\u7B49\u56DE\u590D\u6717\u8BFB\u5B8C\u518D\u81EA\u52A8\u9000\u51FA\uFF09",
@@ -2059,6 +2072,18 @@ var en = {
   previewBtnTitle: "Preview voice (current rate)",
   synthesizing: "Synthesizing\u2026",
   preview: "Preview",
+  // P1-3 correction wordlist.
+  replTitle: "Correction wordlist",
+  replFromPh: "Misheard spellings, comma-separated",
+  replToPh: "Wanted spelling",
+  replAdd: "Add",
+  replDelete: "Del",
+  replEmpty: "No rules yet",
+  replHits: "hits",
+  replExport: "Export",
+  replImport: "Import",
+  replInvalid: "Invalid rule: non-empty from and to, comma-separate multiple spellings",
+  replBadFile: "File is not a valid wordlist JSON (array [{from[], to}], max 200 rules)",
   // P1-1 self-test: separate synthesis / playback verdicts.
   selftestTitle: "Self-test",
   selftestHint: "Verifies synthesis and playback separately to tell engine failures from playback failures",
@@ -2147,6 +2172,7 @@ var en = {
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",
+  descAsrReplacements: 'User correction wordlist (JSON array [{from:["misheard"],to:"wanted"}], rewritten after transcription; managed in the settings card, hit counts shown in the self-test area)',
   descLlmCorrect: "Before sending, run one LLM pass over the whole transcribed text (typos/homophones/punctuation only, meaning preserved; requires a default model configured in the host \u2014 otherwise the original text is sent as-is). On = one extra correction round trip per message: usually under 1 second, at most ~10 seconds; at most 10 times per minute \u2014 when voice mode is off or the limit is hit, the original text is sent. Failed or abnormal output also falls back to the original text",
   descYieldMs: "How long (ms) to drop frames after a yield trigger (500-3000, default 1500; within the window the existing hardBreak takes over if the user really wants to speak; auto-resume after the window expires). Hold-to-talk mode only, during playback",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk / once: one utterance, then exit after the reply is read aloud)",
@@ -3560,6 +3586,173 @@ function SelfTestSection({
     note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
   ] });
 }
+function normalizeRules(input) {
+  if (!Array.isArray(input) || input.length > 200) return null;
+  const out = [];
+  for (const r of input) {
+    if (typeof r !== "object" || r === null) return null;
+    const rec = r;
+    if (typeof rec.to !== "string" || !rec.to.trim()) return null;
+    if (!Array.isArray(rec.from)) return null;
+    const from = rec.from.filter((s) => typeof s === "string" && !!s.trim()).map((s) => s.trim());
+    if (from.length === 0) return null;
+    out.push({ from, to: rec.to.trim() });
+  }
+  return out;
+}
+function ReplacementsSection({
+  rules,
+  onChange
+}) {
+  const list = normalizeRules(rules) ?? [];
+  const [hits, setHits] = (0, import_react2.useState)([]);
+  const [fromText, setFromText] = (0, import_react2.useState)("");
+  const [toText, setToText] = (0, import_react2.useState)("");
+  const [note, setNote] = (0, import_react2.useState)(null);
+  const fileRef = (0, import_react2.useRef)(null);
+  (0, import_react2.useEffect)(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const res = await fetch(location.origin + BASE_PATH + "/models/status");
+        if (res.ok && alive) {
+          const st = await res.json();
+          const h = st.replacements?.hits;
+          if (Array.isArray(h)) setHits(h.filter((n) => typeof n === "number"));
+        }
+      } catch {
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 5e3);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+  const add = () => {
+    const from = fromText.split(/[,，、]/).map((s) => s.trim()).filter((s) => s.length > 0);
+    const to = toText.trim();
+    if (from.length === 0 || !to || list.length >= 200) {
+      setNote(t("replInvalid"));
+      return;
+    }
+    setNote(null);
+    setFromText("");
+    setToText("");
+    onChange([...list, { from, to }]);
+  };
+  const exportFile = () => {
+    const blob = new Blob([JSON.stringify(list, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "voice-replacements.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const importFile = (f) => {
+    if (!f) return;
+    if (f.size > 1048576) {
+      setNote(t("replBadFile"));
+      return;
+    }
+    void (async () => {
+      try {
+        const parsed = JSON.parse(await f.text());
+        const next = normalizeRules(parsed);
+        if (!next) {
+          setNote(t("replBadFile"));
+          return;
+        }
+        setNote(null);
+        onChange(next);
+      } catch {
+        setNote(t("replBadFile"));
+      }
+    })();
+  };
+  const btnStyle = {
+    font: "inherit",
+    display: "inline-flex",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    cursor: "pointer",
+    color: t2.label,
+    background: "var(--dsw-alias-bg-layer-2)",
+    border: `1px solid ${t2.border}`,
+    borderRadius: 6,
+    padding: "4px 10px",
+    fontSize: 12,
+    lineHeight: "18px"
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start", padding: "2px 0 10px" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.label, fontWeight: 600 }, children: t("replTitle") }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("descAsrReplacements") }),
+    list.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.term }, children: t("replEmpty") }) : list.map((r, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.label, display: "inline-flex", gap: 6, alignItems: "center" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+        r.from.join(" / "),
+        " ",
+        "\u2192",
+        " ",
+        r.to
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: t2.term }, children: [
+        t("replHits"),
+        " ",
+        hits[i] ?? 0
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          type: "button",
+          onClick: () => onChange(list.filter((_, j) => j !== i)),
+          style: { ...btnStyle, padding: "2px 8px" },
+          children: t("replDelete")
+        }
+      )
+    ] }, i)),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "input",
+        {
+          value: fromText,
+          onChange: (e) => setFromText(e.target.value),
+          placeholder: t("replFromPh"),
+          style: { fontSize: 12, padding: "4px 8px", maxWidth: 220 }
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "input",
+        {
+          value: toText,
+          onChange: (e) => setToText(e.target.value),
+          placeholder: t("replToPh"),
+          style: { fontSize: 12, padding: "4px 8px", maxWidth: 140 }
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: add, style: btnStyle, children: t("replAdd") })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: exportFile, style: btnStyle, children: t("replExport") }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => fileRef.current?.click(), style: btnStyle, children: t("replImport") }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "input",
+        {
+          ref: fileRef,
+          type: "file",
+          accept: "application/json,.json",
+          style: { display: "none" },
+          onChange: (e) => {
+            importFile(e.target.files?.[0]);
+            e.target.value = "";
+          }
+        }
+      )
+    ] }),
+    note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
+  ] });
+}
 function Row({ name: name2, desc, children }) {
   const label = t(`${name2}Label`);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, children: [
@@ -4058,7 +4251,8 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseITN", desc: t("descSenseITN"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.senseITN !== false, onChange: (e) => void scope.set("senseITN", e.target.checked) }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 5, min: 1, max: 120, step: 1 }) })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 5, min: 1, max: 120, step: 1 }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReplacementsSection, { rules: value.asrReplacements, onChange: (next) => void scope.set("asrReplacements", next) })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Section, { title: t("secModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: hostOptions(), placeholder: "https://..." }) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("settingsEffectiveNote") }),
@@ -4222,7 +4416,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "7792977";
+var BUILD_TAG = "d2d087e";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
