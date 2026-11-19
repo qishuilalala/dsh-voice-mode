@@ -972,7 +972,19 @@ function ReplacementsSection({
   // 命中计数直接取共享快照：结构变更后**由服务端**清零（applyVset → rebuildReplacer 重置数组），
   // 客户端不再自设覆盖层——旧实现用 `override ?? hits`，一旦写入 [] 就会永久掩盖实时计数
   // （[] 非 nullish，?? 不生效），属于本轮自查抓到的真实缺陷。
+  // 写入在途锁：整表写入是「读旧 list → 提交新数组」，连点会让两次写入都基于同一份旧 list，
+  // 后写覆盖前写 = 丢规则。锁住期间禁用增删/导入按钮（自查 2026-11-19）。
+  const [busy, setBusy] = useState(false)
   const commit = async (next: ReplacementRule[]): Promise<boolean> => {
+    if (busy) return false
+    setBusy(true)
+    try {
+      return await commitUnlocked(next)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const commitUnlocked = async (next: ReplacementRule[]): Promise<boolean> => {
     // 托管路径 POST 体上限 16KB（index.ts MAX_JSON_BODY，按 Buffer **字节**计）：超限会被 413
     // 拒绝并回滚，故先在客户端拦截。必须按 UTF-8 字节而不是字符串长度——中文一字 3 字节，
     // 200 条中文规则 8421 字符但 16421 字节，按字符预检会漏放（二轮核查 B2 实证）。
@@ -1084,6 +1096,7 @@ function ReplacementsSection({
             <button
               type="button"
               aria-label={`${tr('replDelete')}: ${r.from.join(' / ')} → ${r.to}`}
+              disabled={busy}
               onClick={() => void commit(list.filter((_, j) => j !== i))}
               style={{ ...btnStyle, padding: '2px 8px' }}
             >
@@ -1110,7 +1123,7 @@ function ReplacementsSection({
           aria-label={tr('replToPh')}
           style={{ fontSize: 12, padding: '4px 8px', maxWidth: 140 }}
         />
-        <button type="button" onClick={add} style={btnStyle}>
+        <button type="button" onClick={add} disabled={busy} style={btnStyle}>
           {tr('replAdd')}
         </button>
       </span>
@@ -1118,7 +1131,7 @@ function ReplacementsSection({
         <button type="button" onClick={exportFile} style={btnStyle}>
           {tr('replExport')}
         </button>
-        <button type="button" onClick={() => fileRef.current?.click()} style={btnStyle}>
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} style={btnStyle}>
           {tr('replImport')}
         </button>
         <input

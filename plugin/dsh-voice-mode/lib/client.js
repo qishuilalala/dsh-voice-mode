@@ -4590,7 +4590,17 @@ function ReplacementsSection({
   const fileRef = (0, import_react2.useRef)(null);
   const status = useModelsStatus();
   const hits = status?.replacements?.hits?.filter((n) => typeof n === "number") ?? [];
+  const [busy, setBusy] = (0, import_react2.useState)(false);
   const commit = async (next) => {
+    if (busy) return false;
+    setBusy(true);
+    try {
+      return await commitUnlocked(next);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const commitUnlocked = async (next) => {
     if (replacementsPayloadBytes(next) > REPLACEMENTS_MAX_PAYLOAD_BYTES) {
       setNote(t("replTooLarge"));
       return false;
@@ -4686,6 +4696,7 @@ function ReplacementsSection({
         {
           type: "button",
           "aria-label": `${t("replDelete")}: ${r.from.join(" / ")} \u2192 ${r.to}`,
+          disabled: busy,
           onClick: () => void commit(list.filter((_, j) => j !== i)),
           style: { ...btnStyle, padding: "2px 8px" },
           children: t("replDelete")
@@ -4716,11 +4727,11 @@ function ReplacementsSection({
           style: { fontSize: 12, padding: "4px 8px", maxWidth: 140 }
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: add, style: btnStyle, children: t("replAdd") })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: add, disabled: busy, style: btnStyle, children: t("replAdd") })
     ] }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: exportFile, style: btnStyle, children: t("replExport") }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => fileRef.current?.click(), style: btnStyle, children: t("replImport") }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => fileRef.current?.click(), disabled: busy, style: btnStyle, children: t("replImport") }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         "input",
         {
@@ -5657,7 +5668,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "6d4af2b";
+var BUILD_TAG = "0f8442b";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
