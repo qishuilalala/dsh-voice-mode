@@ -69,3 +69,12 @@
 
 重启后在设置卡片把「朗读引擎」切到 MiMo 即可（默认仍是 edge，符合 I10）。
 已知新告警（2026-11-19 重启后首次出现，功能无影响）：日志出现 `optional-terminal-pwsh: a PTY backend named "shell" is already registered` → 既有配置冲突（用户 patch 显式 `disabled: false` 启用 pwsh 条目，而 bundle 在 Linux 上启用 bash 条目，两者同包争注册 shell 后端；本机未安装 pwsh）。建议 patch 该条目改 `disabled: true`。
+## 在线 TTS 的 UI 配置（2026-11-19 落地）
+
+用户反馈「一个 OpenAI 兼容都不能直接配置路径、各种兼容平台应当预置好只填 key」后重做：
+
+- **设置卡片直接填**：`openaiBaseUrl` / `openaiModel` / `openaiApiKey`（以及 `mimoApiKey`）。优先级 **设置 > 预设 > profile 配置文件**，由 `src/online-tts.ts` 的 `resolveOnlineTts` 统一裁决（9 项单测）。
+- **预设只填 key**：内置 siliconflow×2 / OpenRouter / OpenAI 官方 / **Groq PlayAI**（本轮官方文档核实后新增）/ 自建×2；下拉里另有「自定义（下方手填）」，选它即可接任意 OpenAI 兼容平台。
+- **key 安全边界不变**（ADR-0013）：GET `/voice-mode/settings` 把密钥字段抹成空串、只回 `keys.*` 布尔；POST 支持 `clearSecrets` 显式清除；规则在 `src/settings-view.ts`（7 项单测）。key 只在宿主 0600 设置文件里。
+- **MIME 以真实字节为准**：实测发现「配置 mp3 但服务端返回 WAV」会让客户端按 MP3 解码而静默无声。两个远程引擎都改为按魔数判定（`src/audio-format.ts` 的 `sniffAudioMime`），并有 4 项测试锁住（含 live 复验：配置 mp3、服务端回 WAV → 响应头 `audio/wav`）。
+- **live 验证**：用本地 mock OpenAI 兼容服务端到端跑通——mock 收到 `Bearer sk-mo…`、`/v1/audio/speech`、`model/voice/response_format/speed` 全对；`POST /voice-mode/preview` 返回 200 + 正确 MIME 的音频。验证后已把设置还原为验证前的 `vits` + `suyingxue`、清除临时 key。

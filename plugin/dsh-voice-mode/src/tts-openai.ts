@@ -14,6 +14,7 @@
 import type { TtsEngine, TtsEngineStatus } from './tts-queue.ts'
 import { stripEmotionTags } from './emotion.ts'
 import { redactBodySnippet } from './redact.ts'
+import { sniffAudioMime } from './audio-format.ts'
 import { resolvePresetVoice } from './voice-resolution.ts'
 
 export type OpenAiResponseFormat = 'mp3' | 'wav'
@@ -120,7 +121,7 @@ export class OpenAiTtsEngine implements TtsEngine {
       try {
         const buf = await this.remote(input, options)
         this.lastError = undefined
-        this.lastMime = MIME[this.format]
+        // 注意：不要在这里用配置值覆盖 —— remote() 已按真实字节嗅探容器格式。
         return buf
       } catch (e) {
         if ((e as Error).name === 'AbortError' && !(e instanceof OpenAiTtsError)) throw e
@@ -164,6 +165,8 @@ export class OpenAiTtsEngine implements TtsEngine {
       }
       const buf = Buffer.from(await res.arrayBuffer())
       if (buf.length === 0) throw new OpenAiTtsError('openai_empty_audio', 'empty audio')
+      // 以真实字节为准：自建/代理常忽略 response_format（MiMo 实测过 mp3 请求返回 WAV）。
+      this.lastMime = sniffAudioMime(buf, MIME[this.format])
       return buf
     } catch (e) {
       if (timedOut) throw new OpenAiTtsError('openai_timeout', `no audio within ${this.timeoutMs} ms`)

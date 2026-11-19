@@ -235,6 +235,18 @@ dsh plugin --profile web add dsh-voice-mode
 
 每句一个请求（队列本来就在回复还在生成时逐句合成，句内流式不会让播放更早开始）。`rate` 不为 1 时作为 `speed` 发送。配置了 `fallback` 时，请求失败或超时的那句（以及之后 30 秒）改用本地引擎，然后再试服务，服务挂掉不会让每句都等一次超时。被朗读的文本会发到 `baseUrl`，请选你信得过的服务。
 
+## 在线 TTS 怎么配（2026-11-19 起）
+
+设置卡片 →「朗读引擎」选 `openai`（OpenAI 兼容）或 `mimo`（小米 MiMo）：
+
+1. **有预设的平台**：在「在线预设」里选一家（硅基流动 CosyVoice2 / 硅基流动 Fish / OpenRouter / OpenAI 官方 / Groq PlayAI / 自建 Kokoro-FastAPI / 自建 vLLM-Omni），只在「API Key」里填 key 即可，地址与模型自动带出。
+2. **列表里没有的平台**：预设选「自定义（下方手填）」，然后填三个框——**接口地址（Base URL）**、**模型名**、**API Key**（音色用上面「朗读音色」那栏填）。
+3. **想改某个预设的地址/模型**：选预设后直接在 URL/模型框里填，覆盖预设值即可（留空 = 用预设值）。
+
+优先级：**设置卡片 > 内置预设 > profile 配置文件**。key 只存宿主（0600 设置文件），GET 设置接口永不回传；卡片上的「清除」用于显式清空。
+
+验证：填完点「验证此预设」（或设置卡片顶部「一键自测」），成功会就地提示；失败会区分限流/禁用/引擎/网络。
+
 ### 小米 MiMo 语音合成（`ttsEngine: mimo`）
 
 小米 MiMo 的 TTS 走 **Chat Completions 形态**（`POST /v1/chat/completions`，音频以 base64 放在 `choices[0].message.audio.data`），不是 OpenAI 的 `/audio/speech`，所以有独立配置块。**与 OpenAI 兼容引擎各用各的 key**（`mimoTts.apiKey` 不借用 `openaiTts.apiKey`，避免把一家的凭据发给另一家）：

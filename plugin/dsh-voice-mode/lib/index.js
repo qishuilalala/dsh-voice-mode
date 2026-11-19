@@ -2968,6 +2968,16 @@ async function correctText(ctx, text, lang) {
   }
 }
 
+// src/audio-format.ts
+function sniffAudioMime(buf, fallback) {
+  if (buf.length >= 12 && buf.subarray(0, 4).toString("latin1") === "RIFF" && buf.subarray(8, 12).toString("latin1") === "WAVE") {
+    return "audio/wav";
+  }
+  if (buf.length >= 3 && buf[0] === 73 && buf[1] === 68 && buf[2] === 51) return "audio/mpeg";
+  if (buf.length >= 2 && buf[0] === 255 && (buf[1] & 224) === 224) return "audio/mpeg";
+  return fallback;
+}
+
 // src/tts-openai.ts
 var MIME = { mp3: "audio/mpeg", wav: "audio/wav" };
 var OpenAiTtsError = class extends Error {
@@ -3038,7 +3048,6 @@ var OpenAiTtsEngine = class {
       try {
         const buf = await this.remote(input, options);
         this.lastError = void 0;
-        this.lastMime = MIME[this.format];
         return buf;
       } catch (e) {
         if (e.name === "AbortError" && !(e instanceof OpenAiTtsError)) throw e;
@@ -3079,6 +3088,7 @@ var OpenAiTtsEngine = class {
       }
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.length === 0) throw new OpenAiTtsError("openai_empty_audio", "empty audio");
+      this.lastMime = sniffAudioMime(buf, MIME[this.format]);
       return buf;
     } catch (e) {
       if (timedOut) throw new OpenAiTtsError("openai_timeout", `no audio within ${this.timeoutMs} ms`);
@@ -3285,14 +3295,6 @@ var MIME2 = {
   wav: "audio/wav",
   mp3: "audio/mpeg"
 };
-function sniffAudioMime(buf, fallback) {
-  if (buf.length >= 12 && buf.subarray(0, 4).toString("latin1") === "RIFF" && buf.subarray(8, 12).toString("latin1") === "WAVE") {
-    return "audio/wav";
-  }
-  if (buf.length >= 3 && buf[0] === 73 && buf[1] === 68 && buf[2] === 51) return "audio/mpeg";
-  if (buf.length >= 2 && buf[0] === 255 && (buf[1] & 224) === 224) return "audio/mpeg";
-  return fallback;
-}
 var MimoTtsError = class extends Error {
   code;
   constructor(code, message) {

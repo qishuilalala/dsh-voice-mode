@@ -11,6 +11,16 @@ import { createServer } from 'node:http'
 import { OpenAiTtsEngine, OpenAiTtsError, OPENAI_PRESETS, resolveOpenAiEndpoint, speechUrl } from '../src/tts-openai.ts'
 
 const MP3 = Buffer.from([0xff, 0xfb, 0x90, 0x44, 0x00, 0x01, 0x02, 0x03])
+// 真 WAV（RIFF/WAVE）：MIME 以字节为准后，wav 用例必须喂真 WAV 才能得到 audio/wav。
+const WAV = (() => {
+  const data = Buffer.alloc(64)
+  const b = Buffer.alloc(44 + data.length)
+  b.write('RIFF', 0); b.writeUInt32LE(36 + data.length, 4); b.write('WAVE', 8)
+  b.write('fmt ', 12); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22)
+  b.writeUInt32LE(24000, 24); b.writeUInt32LE(48000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34)
+  b.write('data', 36); b.writeUInt32LE(data.length, 40)
+  return b
+})()
 
 function startServer(handler) {
   return new Promise((resolve) => {
@@ -68,8 +78,10 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
 // 1) OpenRouter 形状：/api/v1 前缀 + Bearer key + OpenAI 请求体。
 {
   const { server, requests, origin } = await startServer((r, res) => {
-    res.writeHead(200, { 'content-type': 'audio/mpeg' })
-    res.end(MP3)
+    // MIME 以真实字节为准：wav 用例必须返回真 WAV，否则引擎会（正确地）按 MP3 标注。
+    const wantsWav = r.body?.response_format === 'wav'
+    res.writeHead(200, { 'content-type': wantsWav ? 'audio/wav' : 'audio/mpeg' })
+    res.end(wantsWav ? WAV : MP3)
   })
   const engine = new OpenAiTtsEngine({
     baseUrl: `${origin}/api/v1`,
@@ -399,4 +411,41 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   assert.ok(idx.includes("apiKeys: z.dict(z.string().role('secret')).role('secret')"), 'apiKeys 容器未标 secret 角色（通用设置页可能整表展示）')
   console.log('  ✓ 多 key 安全边界：预设无 key 字段 / 载荷无 key / schema 标 secret')
 }
+
+
+// 9) MIME 以真实字节为准（2026-11-19 真实链路发现：自建/代理常忽略 response_format）
+{
+  const riff = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WAVE'), Buffer.alloc(64)])
+  const { server, origin } = await startServer((r, res) => {
+    res.setHeader('content-type', 'audio/mpeg') // 服务端连 content-type 都声称 mp3，但字节是 WAV
+    res.end(riff)
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: 'v', responseFormat: 'mp3' })
+    await engine.synthesize('x')
+    assert.equal(engine.mime, 'audio/wav', '真实字节是 RIFF/WAVE，MIME 必须是 audio/wav')
+    await engine.close()
+    console.log('  ✓ MIME 以真实字节为准：配置 mp3 但返回 WAV → audio/wav')
+  } finally {
+    await closeServer(server)
+  }
+}
+
+// 10) 真 MP3 仍识别为 audio/mpeg（嗅探不能把正常路径弄坏）
+{
+  const mp3 = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(160)])
+  const { server, origin } = await startServer((r, res) => {
+    res.end(mp3)
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: 'v', responseFormat: 'mp3' })
+    await engine.synthesize('x')
+    assert.equal(engine.mime, 'audio/mpeg')
+    await engine.close()
+    console.log('  ✓ 真 MP3（ID3）仍识别为 audio/mpeg')
+  } finally {
+    await closeServer(server)
+  }
+}
+
 console.log('tts-openai: all assertions passed')

@@ -34,4 +34,11 @@ E1 引入在线预设后暴露一个真实陷阱：一个 `openaiTts.apiKey` 无
 - key 只在宿主侧读取，不进 `/presets`、不进 `/config`、不下发浏览器、**不写日志**（错误详情经 `src/redact.ts` 的 `redactBodySnippet` 脱敏后才进消息/日志——401 时厂商可能回显 key 片段）；
 - 两个字段在 schema 中都标 `secret`（含 `apiKeys` 容器，避免被通用设置页整表展示）；
 - 有守卫测试断言「预设表无 key 字段 / /config 载荷无 apiKey / 字段标 secret」。
+## 补记（2026-11-19）：密钥允许在设置卡片里填写
 
+背景：旧要求是「key 只写在 profile YAML」，用户要在设置卡片里接一家新平台必须去编辑宿主文件——不直观也不可用。
+
+决定：设置层新增 `openaiBaseUrl` / `openaiModel` / `openaiApiKey` / `mimoApiKey`，可在设置卡片直接填写；优先级 设置 > 预设 > 配置文件。**信任边界不变**：
+- key 只写入宿主 0600 设置文件，GET `/voice-mode/settings` 一律把密钥字段抹成空串、只回 `keys.*` 布尔；
+- `POST /voice-mode/settings` 支持 `clearSecrets` 显式清除；规则抽到 `src/settings-view.ts` 并有单测；
+- key 不进 `/presets`、不进 `/config`、不下发浏览器、不写日志（错误详情仍经 `src/redact.ts` 的 `redactBodySnippet` 脱敏）。
