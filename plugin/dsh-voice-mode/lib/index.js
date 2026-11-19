@@ -3193,7 +3193,7 @@ function extractMimoAudio(body) {
   return typeof data === "string" && data.length > 0 ? data : null;
 }
 function decodeBase64Audio(data) {
-  const clean = data.replace(/\s+/g, "");
+  const clean = data.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
   if (clean.length === 0 || clean.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(clean)) {
     throw new MimoTtsError("mimo_bad_audio", "audio payload is not valid base64");
   }

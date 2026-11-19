@@ -296,6 +296,25 @@ await t('rate≠1 以自然语言风格指令下发（MiMo 无 speed 字段）',
   }
 })
 
+await t('URL-safe base64 归一化后正常解码（网关把 +/ 换成 -_ 不该误判为坏载荷）', async () => {
+  // 构造含 +/ 的载荷，再换成 URL-safe 变体：解码结果必须与原字节一致。
+  const raw = Buffer.concat([WAV, Buffer.from([0xfb, 0xef, 0xbe])])
+  const urlsafe = raw.toString('base64').replace(/\+/g, '-').replace(/\//g, '_')
+  const { server, origin } = await startServer((r, res) => {
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify(chatOk(urlsafe)))
+  })
+  try {
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k' })
+    const buf = await engine.synthesize('你好')
+    assert.equal(buf.length, raw.length)
+    assert.ok(buf.equals(raw), 'URL-safe base64 应解码出与原始字节一致的结果')
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
 await t('非法 base64 拒绝（Buffer 静默丢弃会产出不可播音频）', async () => {
   const { server, origin } = await startServer((r, res) => {
     res.setHeader('content-type', 'application/json')

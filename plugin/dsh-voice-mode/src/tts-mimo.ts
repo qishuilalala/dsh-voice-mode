@@ -91,9 +91,13 @@ export function extractMimoAudio(body: unknown): string | null {
   return typeof data === 'string' && data.length > 0 ? data : null
 }
 
-/** base64 严格校验：非法字符会让 Buffer 静默丢弃前缀，产出不可播音频。 */
+/**
+ * base64 严格校验：非法字符会让 Buffer 静默丢弃前缀，产出不可播音频（→ 播放端“有声音但听不懂”）。
+ * 同时容忍 **URL-safe 变体**（`-`/`_`）：不同网关会把 `+`/`/` 换成这两种，若不归一化会被误判成
+ * 坏载荷而白白回退本地（自查 2026-11-19）。
+ */
 function decodeBase64Audio(data: string): Buffer {
-  const clean = data.replace(/\s+/g, '')
+  const clean = data.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/')
   if (clean.length === 0 || clean.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(clean)) {
     throw new MimoTtsError('mimo_bad_audio', 'audio payload is not valid base64')
   }
