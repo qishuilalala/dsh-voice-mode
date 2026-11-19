@@ -36,7 +36,8 @@ t('超长 base64 风格串兜底脱敏（≥20 连续 ASCII，非纯 hex）', ()
 t('纯十六进制哈希（SHA256/MD5）不被遮蔽：模型下载排障需要 expected/got', () => {
   const sha = 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38'
   assert.equal(redactSecrets('sha256 mismatch: want ' + sha), 'sha256 mismatch: want ' + sha)
-  assert.equal(redactSecrets('md5 ' + 'abcdef0123456789abcdef0123456789'), 'md5 abcdef0123456789abcdef0123456789')
+  // 32 位 hex 现在也遮（可能是 key）；sha256 仍保留（见另一条用例与 A2 审计）。
+  assert.equal(redactSecrets('md5 ' + 'abcdef0123456789abcdef0123456789'), 'md5 <redacted>')
 })
 t('普通错误文案不受影响（不误伤可读性）', () => {
   const msg = 'HTTP 401: {"error":"invalid api key","code":"invalid_api_key"}'
@@ -119,4 +120,15 @@ await t('宿主日志边界守卫：所有打印异常原文的日志必须经 r
   }
   assert.deepEqual(offenders, [], '这些日志直接打印异常原文且未脱敏（可能含第三方回显的 key 片段）：' + offenders.join(' | '))
 })
+
+t('Groq 的 gsk_ 前缀与 32 位 hex key 也必须遮（A2 审计实测绕过）', () => {
+  const gsk = 'gsk_abcdefghijklmnopqrstuvwxyz012345'
+  assert.ok(!redactSecrets('401: ' + gsk).includes(gsk), 'gsk_ 前缀漏遮')
+  const hex32 = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
+  assert.ok(!redactSecrets('invalid key ' + hex32).includes(hex32), '32 位 hex key 漏遮')
+  // 64 位 sha256 仍必须保留（排障需要）
+  const sha = 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38'
+  assert.equal(redactSecrets('sha256 mismatch: want ' + sha), 'sha256 mismatch: want ' + sha)
+})
+
 console.log(`\n${passed} passed`)

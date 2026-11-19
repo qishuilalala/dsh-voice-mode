@@ -272,11 +272,13 @@ await t('T-2：失败退避墙钟封顶 8s（1s 起步递增，封顶后不外�
     // 第 11 句把队列排空走 onIdle 分支（不排 timer）→ 共 9 个可观测退避 delay。
     for (let i = 0; i < 11; i++) q.enqueue('s1', `S${i + 1}`)
     const t0 = Date.now()
-    while (delays.length < 9 && Date.now() - t0 < 20000) await realSleep(5)
-    assert.equal(delays.length, 9, `前置条件：应观察到 9 个退避 delay（实际 ${delays.length}：${JSON.stringify(delays)}）`)
+    while (delays.length < 10 && Date.now() - t0 < 20000) await realSleep(5)
+    // 2026-11-20：连败 2 句即进入整体退避（此前 errorNotified 永不置位，退避实际不生效），
+    // 因此同一批 11 句会多出一次退避延迟；序列语义不变（1s 起步、8s 封顶）。
+    assert.equal(delays.length, 10, `前置条件：应观察到 10 个退避 delay（实际 ${delays.length}：${JSON.stringify(delays)}）`)
     assert.deepEqual(
       delays,
-      [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 8000],
+      [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 8000, 8000],
       `退避序列不是「1s 起步递增 + 8s 封顶」：${JSON.stringify(delays)}——封顶放宽会让连败时句间静默从 8s 一路涨到 30s`,
     )
   } finally {
@@ -1203,31 +1205,39 @@ await t('R15 T-4：cancel 不清回合闸门（不得把 abort 与「停止朗�
 // ---------------------------------------------------------------------------
 console.log('Round 8 第二批：T-7 cancel→interrupt 转发 + T-8 abandonTurn 队列已空不补发')
 
-await t('Round 8 T-7：cancel() 转发 engine.interrupt()（每次 cancel 恰好一次）', async () => {
-  const eng = makeEngine('a')
-  const q = new TtsQueue({ engine: eng })
-  const frames = []
-  q.subscribe((f) => frames.push(f))
-  // 真实调用点：/toggle off 退出、/cancel「停止朗读」与用户打断、会话让出（index.ts 的
-  // 5 处 queue.cancel）。先跑一句确认泵在役，再打断。
-  q.enqueue('s1', '一句')
-  await waitFrames(frames, 2)
-  assert.equal(
-    eng.interrupts,
-    0,
-    '前置条件：正常合成不得触发 interrupt（否则本锁无法区分「转发」与「一直都在转发」）',
-  )
-  q.cancel('s1')
-  assert.equal(
-    eng.interrupts,
-    1,
-    'cancel() 未转发 engine.interrupt()——本地引擎不会立刻杀子进程，在途句继续满核合成：打断后定稿等待可达分钟级（实测根因），且满核合成会饿死主进程的 ASR 解码',
-  )
-  // 恰好一次：第二次 cancel 再转发一次（不重复、不少发）。
-  q.cancel('s1')
-  assert.equal(eng.interrupts, 2, `两次 cancel 应转发两次 interrupt（实际 ${eng.interrupts} 次）`)
-  await q.close()
-  assert.equal(eng.interrupts, 2, 'close() 不得转发 interrupt（关停路径与打断路径是两回事）')
+await t('Round 8 T-7（2026-11-20 修正语义）：在途合成时 cancel 才转发 interrupt；空闲 cancel 不转发', async () => {
+  // 语义修正依据（A2 审计）：旧实现无论队列是否在合成都转发 interrupt → 每次 toggle off/让出
+  // 都会杀掉本地引擎子进程（下句重载模型），并误杀同引擎在途的 /preview。
+  //   - 在途（busy）时：必须转发（否则满核合成饿死 ASR 解码，打断后定稿等待可达分钟级）；
+  //   - 空闲时：不转发（无在途工作可中止，转发只会付出重载成本）；
+  //   - 他会话 busy 时：不转发（保护其它会话的共享引擎）。
+  const gate = (() => {
+    let release
+    const p = new Promise((r) => (release = r))
+    return { p, release }
+  })()
+  const busyEng = makeEngine('busy', gate.p)
+  const busyQ = new TtsQueue({ engine: busyEng })
+  const busyFrames = []
+  busyQ.subscribe((f) => busyFrames.push(f))
+  busyQ.enqueue('s1', '在途句')
+  await waitFor(() => busyEng.calls.length === 1, '引擎已开始合成')
+  busyQ.cancel('s1')
+  assert.equal(busyEng.interrupts, 1, '在途合成被 cancel 时必须转发 interrupt（否则子进程继续满核合成）')
+  gate.release()
+  await sleep(20)
+  await busyQ.close()
+
+  // 空闲 cancel：刚跑完一句，泵已收工 → 不转发。
+  const idleEng = makeEngine('idle')
+  const idleQ = new TtsQueue({ engine: idleEng })
+  const idleFrames = []
+  idleQ.subscribe((f) => idleFrames.push(f))
+  idleQ.enqueue('s1', '一句')
+  await waitFrames(idleFrames, 2)
+  idleQ.cancel('s1')
+  assert.equal(idleEng.interrupts, 0, '空闲 cancel 不得转发 interrupt（否则每次退出都杀本地子进程、下句重载模型）')
+  await idleQ.close()
 })
 
 await t('Round 8 T-8：队列已空时 abandonTurn 不补发 tts-idle（abort 路径不得复发 R15 Important-1）', async () => {

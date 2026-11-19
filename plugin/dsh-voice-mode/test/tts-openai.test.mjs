@@ -448,4 +448,21 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   }
 }
 
+
+// 11) 音色为空时不发 voice 字段（避免服务端把 voice:'' 当 400）
+{
+  const { server, requests, origin } = await startServer((r, res) => {
+    res.writeHead(200, { 'content-type': 'audio/wav' })
+    res.end(WAV)
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: '' })
+    await engine.synthesize('hi')
+    assert.equal('voice' in (requests.at(-1).body ?? {}), false, '音色为空时不应发送 voice 字段')
+    console.log('  ✓ 音色为空时不发 voice 字段（用服务端默认音色）')
+  } finally {
+    await closeServer(server)
+  }
+}
+
 console.log('tts-openai: all assertions passed')

@@ -235,7 +235,10 @@ async function downloadVerified(opts: {
   const res = await fetchWithHeadersTimeout(url, { headers, redirect: 'follow' }, ac)
   idle.kick() // I-2：头已到，开始计 body 空闲
   // 重定向后的最终域名必须仍在白名单内（防恶意模型源把请求导去任意地址）。
-  if (!redirectHostAllowed(res.url, allowCustomHost)) return false
+  if (!redirectHostAllowed(res.url, allowCustomHost)) {
+    await res.body?.cancel().catch(() => undefined)
+    return false
+  }
   if (res.status === 416) {
     // Range 不可满足 = 已完整：直接校验后改名。
     if ((await sha256OfFile(partPath).catch(() => '')) === spec.sha256) {
@@ -243,9 +246,14 @@ async function downloadVerified(opts: {
       return true
     }
     await unlink(partPath).catch(() => undefined)
+    await res.body?.cancel().catch(() => undefined)
     return false
   }
-  if (res.status !== 200 && res.status !== 206) return false
+  if (res.status !== 200 && res.status !== 206) {
+    // 提前返回必须取消响应体：不读不取消会让 socket/缓冲滞留（A1 审计 Important）。
+    await res.body?.cancel().catch(() => undefined)
+    return false
+  }
   // 续传只在服务端返回 206 时成立；若带已有 .part 却返回 200 全量（部分镜像/CDN
   // 忽略 Range），必须从头重写，否则在旧字节上追加全量 → 半旧半新损坏（SHA256 会拦下，但浪费一次全量下载）。
   const resume = res.status === 206 ? resumeFrom : 0

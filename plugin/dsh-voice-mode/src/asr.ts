@@ -475,6 +475,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         if (state !== 'wake') setState('loading-model')
         const retry = await new Promise<Response>((resolve) => {
           setTimeout(async () => {
+            // A1 审计 Important：5s 等待期间可能已 stop/弃段。请求前必须复核，否则退出后仍上行，
+            // host 会为旧 epoch 重建段并驻留到 90s 清扫（幽灵段）。410 走统一失败分支。
+            if (!active || epoch !== segmentEpoch) {
+              resolve(new Response(null, { status: 410 }))
+              return
+            }
             try {
               const r2 = await fetch(asrUrl(false, from, epoch), {
                 method: 'POST',

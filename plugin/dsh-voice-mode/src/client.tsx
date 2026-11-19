@@ -3521,15 +3521,33 @@ export function MicButton({
     return () => window.removeEventListener('input', onInput, true)
   }, [])
 
-  // hold 模式收尾兜底：Escape 放弃当前段；切走标签页/隐藏文档时取消（防持续收音）。
+  // 收尾兜底：Escape 停止朗读/放弃当前段；切走标签页/隐藏文档时取消（防持续收音）。
+  // A4 审计 Important：此前只在 hold 模式生效，toggle/once 下键盘无法 Esc 退出或停朗读。
+  // 现在任意模式：先停朗读（skipAudio 幂等），hold 再放弃当前段；连按两次则退出语音模式。
+  const escAtRef = useRef(0)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
-      if (localRef.current !== 'on' || bootNow().mode !== 'hold') return
-      engineRef.current?.endHeld(true)
-      holdCtrlRef.current = false
-      setHolding(false)
-      bus.setUi({ partial: '' })
+      if (localRef.current !== 'on') return
+      // 输入框内的 Esc 交给编辑器（取消补全等），不抢。
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable)) return
+      e.preventDefault()
+      bus.skipAudio()
+      if (bootNow().mode === 'hold') {
+        engineRef.current?.endHeld(true)
+        holdCtrlRef.current = false
+        setHolding(false)
+        bus.setUi({ partial: '' })
+      }
+      // 双击 Esc（600ms 内）= 退出语音模式（键盘用户的逃生口）。
+      const now = Date.now()
+      if (now - escAtRef.current < 600) {
+        escAtRef.current = 0
+        void exitModeRef.current('manual')
+        return
+      }
+      escAtRef.current = now
     }
     const onVisibility = (): void => {
       if (document.hidden) {
@@ -4260,7 +4278,9 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
         borderRadius: 10,
         fontSize: 12,
         fontFamily: 'system-ui, sans-serif',
-        color: '#3fb950',
+        // A4 审计 Blocker：根节点硬编码成功绿会让错误文案继承绿字（「麦克风不可用」看着像成功）。
+        // 正常态保持品牌绿系；错误态在下方 error 分支用 error token 覆盖前景色。
+        color: 'var(--dsw-alias-state-success-primary, #3fb950)',
         background: 'rgba(63, 185, 80, 0.08)',
         border: '1px solid rgba(63, 185, 80, 0.25)',
         animation: 'dshvm-fadein 0.2s ease',
@@ -4329,7 +4349,14 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
         </span>
         <span
           aria-hidden="true"
-          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexGrow: 1 }}
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            flexGrow: 1,
+            // 错误必须是错误色（此前继承父级成功绿 → 状态骗人，浅色主题对比≈2.3:1）。
+            color: b.ui.error ? 'var(--dsw-alias-state-error-primary)' : undefined,
+          }}
         >
           {b.ui.error
             ? b.ui.error
@@ -4576,9 +4603,11 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
         onClick={() => bus.skipAudio()}
         aria-label={t('skipReading')}
         style={{
-          border: 'none',
-          background: 'rgba(255, 255, 255, 0.14)',
-          color: '#fff',
+          // 2026-11-20 A4 审计 Blocker：原为 #fff 字 + rgba(255,255,255,.14) 底，浅色主题下
+          // 白字白底（≈1:1）→ 浮层唯一可点控件看不见，字幕卡住时无法跳过。改走主题 token。
+          border: '1px solid var(--dsw-alias-border-l2)',
+          background: 'var(--dsw-alias-bg-layer-2)',
+          color: 'var(--dsw-alias-label-primary)',
           borderRadius: 999,
           padding: '3px 12px',
           fontSize: 11,

@@ -207,11 +207,14 @@ await t('两个扫描循环的 continue 条件都含 finalizing.has(sid)', () =>
   //   loop2（resetGen 扫描）= R2 毒链用例；loop1（finalized 扫描）= R3 两段式用例。
   // 本快速锁不依赖时序，但单独不足以定位到具体循环——变异实证：只废 loop1 守卫时
   // 本锁对 loop1 的失守不可见（两条循环同形），行为级用例才分得开。
+  // 2026-11-20 A1 审计：sweep **只允许**清扫 finalized 缓存；resetGen 是会话代际计数器，
+  // 一旦随 sweep 删除就会回落到 0、破坏单调性（旧 epoch 可能与新会话撞号）。
   const guards = [...asrSrc.matchAll(/if \(segments\.has\(sid\)[^\n]*continue/g)]
-  assert.equal(guards.length, 2, `sweep 应有 2 处孤立 sid 扫描循环，实际 ${guards.length}`)
+  assert.equal(guards.length, 1, `sweep 应只剩 1 处孤立 sid 扫描循环（finalized），实际 ${guards.length}`)
   for (const [full] of guards) {
     assert.ok(full.includes('finalizing.has(sid)'), `扫描循环漏判 finalizing 在途定稿：${full.trim()}`)
   }
+  assert.ok(!/for \(const sid of resetGen\.keys\(\)\)/.test(asrSrc), 'resetGen 不得有 sweep 扫描循环（代际必须单调）')
 })
 
 // ---------------------------------------------------------------------------

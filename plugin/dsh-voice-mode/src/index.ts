@@ -1011,23 +1011,29 @@ export function apply(ctx: Context, config: Config): void {
       NS_VOICE_MODE,
       createVoiceSettingsSchema(),
       {
-        base: {
-          ttsEngine: config.ttsEngine,
-          voice: config.voice,
-          rate: config.rate,
-          interruptLevel: config.interruptLevel,
-          silenceMs: config.silenceMs,
-          idleTimeoutMinutes: config.idleTimeoutMinutes,
-          modelHost: config.modelHost,
-        },
+        // base 用**全量** Config 映射：此前只给 7 键，其余落到 schema 默认值；旧宿主若 get() 返回
+        // 全量，config 基线（如 voice/rate 之外的 openaiPreset 等）会被默认值覆盖（A3 审计 Minor）。
+        base: voiceSettingsFromConfig(config),
       },
     )
     // 旧宿主/部分实现可能只回已存键：经 schema 归一补齐默认值（否则新增设置键在此路径下 undefined）。
+    // 整份非法时**逐键**丢弃坏键（与路径 B 同口径）：一个越界值不得清空用户全部设置。
+    const fromScope = (settingsScope.get() ?? {}) as unknown as Record<string, unknown>
     try {
-      vset = resolveSettings(settingsScope.get() as unknown as Record<string, unknown>)
+      vset = resolveSettings(fromScope)
     } catch (e) {
-      console.warn(`[dsh-voice-mode] settings scope returned invalid values; falling back to defaults: ${redactSecrets(e)}`)
-      vset = resolveSettings({})
+      console.warn(`[dsh-voice-mode] settings scope returned invalid values; keeping valid keys only: ${redactSecrets(e)}`)
+      const salvaged: Record<string, unknown> = {}
+      for (const k of SETTING_KEYS) {
+        if (!(k in fromScope)) continue
+        try {
+          resolveSettings({ [k]: fromScope[k] })
+          salvaged[k] = fromScope[k]
+        } catch {
+          console.warn(`[dsh-voice-mode] ignoring invalid setting from host scope: ${k}`)
+        }
+      }
+      vset = resolveSettings(salvaged)
     }
     settingsScopeRef = settingsScope
   } else {
@@ -1131,7 +1137,8 @@ export function apply(ctx: Context, config: Config): void {
 
   // --- TTS 引擎工厂（fork：edge 云端 / vits 本地中文 / kokoro 本地中英；设置面板即时切换）。 ---
   const makeEngine = (kind: TtsEngineKind): TtsEngine => {
-    if (kind === 'edge') return new EdgeTtsEngine(config.voice, config.rate)
+    // 用 vset 而非 config：设置层覆盖过的音色/语速在构造期就正确（A3 审计 Minor）。
+    if (kind === 'edge') return new EdgeTtsEngine(vset.voice, vset.rate)
     if (kind === 'mimo') {
       // A1 审计 Blocker：独立 mimoTts 配置（绝不复用 openaiTts.apiKey，避免跨厂商密钥外泄）。
       const m = config.mimoTts
@@ -1278,6 +1285,8 @@ export function apply(ctx: Context, config: Config): void {
     const reason = engineRebuildReason(prev, next, engineKind, activeKokoroModel)
     if (reason === 'engine-switch') {
       engineKind = next.ttsEngine as TtsEngineKind
+      // 切到 kokoro 时同步当前精度：否则紧接着的 updateVoice 之后再来一次无谓重建（A3 Minor）。
+      if (engineKind === 'kokoro') activeKokoroModel = next.kokoroModel
       checkRemoteConfig(engineKind)
       queue.setEngine(makeEngine(engineKind))
     } else if (reason === 'mimo-key') {
@@ -2139,6 +2148,11 @@ export function apply(ctx: Context, config: Config): void {
           respondJson(res, 409, { code: 'settings_managed', error: 'settings are managed by dsh on this host' })
           return
         }
+        // 写设置是重操作（原子落盘 + 引擎重建）：限 30 次/分钟（A3 审计：此前无限流）。
+        if (!limiter.hit(`settings:${clientKey(req)}`, 30, 60000)) {
+          respondJson(res, 429, { code: 'rate_limited', error: 'too many settings updates, retry in a minute' })
+          return
+        }
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
           let patch: unknown
           try {
@@ -2159,12 +2173,13 @@ export function apply(ctx: Context, config: Config): void {
             respondJson(res, 400, { code: 'bad_request', error: String((e as Error).message).slice(0, 120) })
             return
           }
-          const rest = { ...(pickKnownKeys(cleared, SETTING_KEYS) as Record<string, unknown>) }
-          const unknown = unknownKeys(rest, SETTING_KEYS)
+          // 未知键必须在**过滤前**判定：先 pickKnownKeys 再查等于恒空 → 错拼键静默丢失且回 200（A3 审计）。
+          const unknown = unknownKeys(cleared, SETTING_KEYS)
           if (unknown.length > 0) {
             respondJson(res, 400, { code: 'bad_request', error: `unknown settings: ${unknown.slice(0, 5).join(', ')}` })
             return
           }
+          const rest = { ...(pickKnownKeys(cleared, SETTING_KEYS) as Record<string, unknown>) }
           try {
             const next = await persistSettings(rest as Partial<VoiceSettingsValue>)
             const out = { ...next, openaiApiKey: '', mimoApiKey: '' }

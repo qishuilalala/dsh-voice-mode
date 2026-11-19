@@ -15,7 +15,8 @@ import type { TtsEngine, TtsEngineStatus } from './tts-queue.ts'
 import { stripEmotionTags } from './emotion.ts'
 import { redactBodySnippet } from './redact.ts'
 import { sniffAudioMime } from './audio-format.ts'
-import { resolvePresetVoice } from './voice-resolution.ts'
+// resolvePresetVoice 的语义已并入 online-tts 的解析（voice 优先级），此处不再单独使用。
+import { resolveOnlineTts } from './online-tts.ts'
 
 export type OpenAiResponseFormat = 'mp3' | 'wav'
 
@@ -306,10 +307,13 @@ export function resolveOpenAiApiKey(
   presetId: string,
   config: { apiKey?: string; apiKeys?: Record<string, string> },
 ): string {
-  // 先各自 trim 再判空：空白字符串（粘贴多余空格）不得把单 key 覆盖掉。
-  const perPreset = presetId ? (config.apiKeys?.[presetId] ?? '').trim() : ''
-  if (perPreset) return perPreset
-  return (config.apiKey ?? '').trim()
+  // 2026-11-20 A2 审计 Important：解析逻辑必须只有一份。本函数此前是第二份实现
+  //（优先级「预设 key > 单 key」，不含设置层），与 resolveOnlineTts 并存且注释互称单一真源；
+  // 现改为委托——语义 = 设置层为空时的那份结果，行为与线上 makeEngine 完全一致。
+  return resolveOnlineTts(
+    { presetId, baseUrl: '', model: '', apiKey: '', voice: '' },
+    { baseUrl: '', model: '', voice: '', apiKey: config.apiKey ?? '', apiKeys: config.apiKeys },
+  ).apiKey
 }
 
 /** 按预设 id 取预设（空/未知 → null，调用方回落 Config 文件值）。 */
@@ -342,11 +346,11 @@ export function resolveOpenAiSpeech(params: {
   config: { baseUrl?: string; model?: string; voice?: string }
 }): ResolvedOpenAiSpeech {
   const { presetId, settingVoice, config } = params
-  const preset = resolveOpenAiEndpoint(presetId)
-  return {
-    baseUrl: preset?.baseUrl ?? config.baseUrl ?? '',
-    model: preset?.model ?? config.model ?? '',
-    voice: resolvePresetVoice(settingVoice, preset?.voice ?? config.voice),
-    presetId: preset ? presetId : '',
-  }
+  // 同上：委托 resolveOnlineTts（设置层按空处理 = 旧调用方的口径），只保留本函数对外形状。
+  const r = resolveOnlineTts(
+    { presetId, baseUrl: '', model: '', apiKey: '', voice: typeof settingVoice === 'string' ? settingVoice : '' },
+    { baseUrl: config.baseUrl ?? '', model: config.model ?? '', voice: config.voice ?? '', apiKey: '' },
+  )
+  // 保持旧契约：未知/空预设 → presetId ''（仅用于日志/排障）。
+  return { baseUrl: r.baseUrl, model: r.model, voice: r.voice, presetId: resolveOpenAiEndpoint(presetId) ? r.presetId : '' }
 }

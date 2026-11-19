@@ -321,18 +321,24 @@ function SecretField({
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<'saved' | 'cleared' | null>(null)
+  const [failed, setFailed] = useState(false)
   const commit = (): void => {
     const value = draft.trim()
     if (!value || busy) return
     setBusy(true)
     void Promise.resolve(score.set(field, value))
       .then((ok) => {
-        if (ok === false) return
+        // A4 审计 Important：失败必须可见（此前 ok===false 直接 return，用户以为已保存）。
+        if (ok === false) {
+          setFailed(true)
+          return
+        }
+        setFailed(false)
         setDraft('')
         setNote('saved')
         onChanged()
       })
-      .catch(() => undefined)
+      .catch(() => setFailed(true))
       .finally(() => setBusy(false))
   }
   const clear = (): void => {
@@ -391,9 +397,17 @@ function SecretField({
       <span
         role="status"
         aria-live="polite"
-        style={{ fontSize: 11, color: note === 'cleared' ? t.term : 'var(--dsw-alias-state-success-primary)' }}
+        style={{ fontSize: 11, color: failed ? 'var(--dsw-alias-state-error-primary)' : note === 'cleared' ? t.term : 'var(--dsw-alias-state-success-primary)' }}
       >
-        {note === 'saved' ? tr('secretSaved') : note === 'cleared' ? tr('secretCleared') : saved ? tr('secretSaved') : tr('secretHintBrowser')}
+        {failed
+          ? tr('secretSaveFailed')
+          : note === 'saved'
+            ? tr('secretSaved')
+            : note === 'cleared'
+              ? tr('secretCleared')
+              : saved
+                ? tr('secretSaved')
+                : tr('secretHintBrowser')}
       </span>
     </span>
   )
@@ -1358,7 +1372,7 @@ async function pollModelsStatusOnce(): Promise<void> {
   if (modelsStatusInflight) return
   modelsStatusInflight = true
   try {
-    const res = await fetch(location.origin + BASE_PATH + '/models/status')
+    const res = await fetch(location.origin + BASE_PATH + '/models/status', { signal: AbortSignal.timeout(8000) })
     if (!res.ok) return
     modelsStatusLast = (await res.json()) as ModelsStatusPayload
     // 复制一份再遍历：订阅者在回调里退订不会中断本轮分发。
@@ -2036,8 +2050,14 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
     void (async () => {
       try {
         // T5 B②：先确保 host 已切到该预设再合成——否则「点了预设立刻点验证」会用旧端点出结果。
-        // scope.set 是幂等写（同值也安全），失败不阻断验证（下面会按实际结果给提示）。
-        await scope.set('openaiPreset', presetId)
+        // A2 审计 Important：写入失败必须直接判 fail——否则会用**旧端点/旧 key** 合成成功，
+        // 让用户以为「这个预设可用」，实际切过去仍不可用。
+        const wrotePreset = await Promise.resolve(scope.set('openaiPreset', presetId))
+        if (wrotePreset === false) {
+          setPresetVerify({ id: presetId, state: 'fail', note: tr('presetWriteFailed') })
+          setVerifying(false)
+          return
+        }
         await scope.set('voice', voice)
       } catch {
         // 写入失败：仍尝试验证，由结果决定提示

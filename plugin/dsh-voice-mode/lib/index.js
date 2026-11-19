@@ -258,16 +258,23 @@ async function downloadVerified(opts) {
     if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;
     const res = await fetchWithHeadersTimeout(url, { headers, redirect: "follow" }, ac);
     idle.kick();
-    if (!redirectHostAllowed(res.url, allowCustomHost)) return false;
+    if (!redirectHostAllowed(res.url, allowCustomHost)) {
+      await res.body?.cancel().catch(() => void 0);
+      return false;
+    }
     if (res.status === 416) {
       if (await sha256OfFile(partPath).catch(() => "") === spec.sha256) {
         await rename(partPath, localPath);
         return true;
       }
       await unlink(partPath).catch(() => void 0);
+      await res.body?.cancel().catch(() => void 0);
       return false;
     }
-    if (res.status !== 200 && res.status !== 206) return false;
+    if (res.status !== 200 && res.status !== 206) {
+      await res.body?.cancel().catch(() => void 0);
+      return false;
+    }
     const resume = res.status === 206 ? resumeFrom : 0;
     const total = Number(res.headers.get("content-length") ?? 0) + resume;
     const src = res.body;
@@ -867,11 +874,6 @@ function createAsrRuntime(options) {
     for (const sid of finalized.keys()) {
       if (segments.has(sid) || finalizing.has(sid)) continue;
       finalized.delete(sid);
-      resetGen.delete(sid);
-    }
-    for (const sid of resetGen.keys()) {
-      if (segments.has(sid) || finalizing.has(sid)) continue;
-      resetGen.delete(sid);
     }
     for (const [sid, at] of detectVadLastUse) {
       if (now - at > SEGMENT_IDLE_MS) {
@@ -1419,13 +1421,21 @@ var PREFIXED = [
 ];
 var BARE = [
   /\bsk[-_][A-Za-z0-9._-]{8,}/g,
+  // 更多厂商前缀（2026-11-20 审计实测：Groq 的 gsk_ 原样漏出，而 Groq 就在本仓预设里）。
+  /\bgsk_[A-Za-z0-9._-]{8,}/g,
+  /\bsk-(?:proj|live|test)-[A-Za-z0-9._-]{8,}/g,
+  /\brk_(?:live|test)_[A-Za-z0-9]{8,}/g,
   /\bAIza[A-Za-z0-9._-]{10,}/g,
   /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
   // 通用兜底：≥20 连续 base64-ish 字符，要求**同时含大写、小写与数字**（真密钥的典型特征），
   // 且排除纯十六进制（SHA256/MD5 是排障信息）。这样不会吃掉全小写的模型名、
   // 也不会吃掉被 - / 分隔的 UUID 与路径。
   // 注意：字符类**不含 '/'**——路径与 provider/model:voice 形态都靠 '/' 分隔，含进来会误伤排障信息。
-  /\b(?![0-9a-fA-F]{32,}\b)(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[0-9])[A-Za-z0-9+=_-]{20,}\b/g
+  // 豁免仅限 64 位 sha256（模型摘要）；32 位 hex 也可能是 key（审计实测漏遮）。
+  /\b(?![0-9a-fA-F]{64}\b)(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[0-9])[A-Za-z0-9+=_-]{20,}\b/g,
+  // 32 位 hex（md5 形状）也可能是 key：通用规则要求大小写混合，纯小写 hex 会被漏掉。
+  // 64 位 sha256 不在此列（模型摘要要保留排障）。
+  /\b[0-9a-f]{32}\b/gi
 ];
 function redactSecrets(text) {
   let out = typeof text === "string" ? text : String(text ?? "");
@@ -1778,11 +1788,13 @@ var TtsQueue = class {
    */
   cancel(sessionId) {
     const q = this.queues.get(sessionId);
+    const wasBusy = Boolean(q?.busy);
     if (q) {
       q.epoch++;
       q.pending.length = 0;
     }
-    if (![...this.queues].some(([sid, other]) => sid !== sessionId && other.busy)) this.engine.interrupt?.();
+    const othersBusy = [...this.queues].some(([sid, other]) => sid !== sessionId && other.busy);
+    if (wasBusy && !othersBusy) this.engine.interrupt?.();
   }
   /** 会话退出/被抢占时彻底清理其队列（防止 Map 长期累积）。 */
   prune(sessionId) {
@@ -1821,6 +1833,10 @@ var TtsQueue = class {
         if (buf === null) {
           q.failStreak++;
           this.onSkip?.(sessionId, item.text, q.failStreak);
+          if (q.failStreak >= 2) {
+            q.errorNotified = true;
+            break;
+          }
           continue;
         }
         if (isEmptyAudio(buf)) continue;
@@ -1878,7 +1894,7 @@ var TtsQueue = class {
         }
         this.queues.delete(sessionId);
       } else {
-        const delay = q.errorNotified ? q.backoff : 0;
+        const delay = q.errorNotified ? Math.max(1e3, q.backoff) : 0;
         q.backoff = Math.min(8e3, delay + 1e3);
         if (delay > 0) {
           const timer = setTimeout(() => {
@@ -2616,6 +2632,7 @@ var en = {
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
   presetKeyNote: "After picking one, fill the API Key field below (the profile openaiTts.apiKey/apiKeys still work). The key stays on the host and is never sent back to the browser",
   presetVerify: "Verify preset",
+  presetWriteFailed: "Could not save the setting (host rejected it); verification was skipped",
   presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
   presetReload: "Reload presets",
   // 2026-11-19: online TTS is configurable from the settings card (URL/model/key), no profile YAML edit needed.
@@ -2628,6 +2645,7 @@ var en = {
   mimoApiKeyLabel: "MiMo API key",
   descMimoApiKey: "Xiaomi MiMo key (sent as the api-key header, not Bearer). Host-side only; empty = use the profile mimoTts.apiKey",
   secretSaved: "Saved",
+  secretSaveFailed: "Save failed: the host did not accept it (check for policy restrictions)",
   secretKeep: "Saved (leave empty to keep)",
   secretClear: "Clear",
   secretHintBrowser: "Typed values go straight to the local host and are stored with 0600; never written to chat or logs",
@@ -2981,6 +2999,48 @@ function sniffAudioMime(buf, fallback) {
   return fallback;
 }
 
+// src/online-tts.ts
+var CUSTOM_PRESET_ID = "custom";
+var trim = (v) => typeof v === "string" ? v.trim() : "";
+function lookupPreset(presetId) {
+  const id = trim(presetId);
+  if (!id || id === CUSTOM_PRESET_ID) return null;
+  return OPENAI_PRESETS[id] ?? null;
+}
+function resolveOnlineTts(overrides, config) {
+  const preset = lookupPreset(overrides.presetId);
+  const settingBase = trim(overrides.baseUrl);
+  const presetBase = trim(preset?.baseUrl);
+  const configBase = trim(config.baseUrl);
+  const baseUrl = settingBase || presetBase || configBase;
+  const settingModel = trim(overrides.model);
+  const presetModel = trim(preset?.model);
+  const configModel = trim(config.model);
+  const model = settingModel || presetModel || configModel;
+  const settingVoice = trim(overrides.voice);
+  const presetVoice = trim(preset?.voice);
+  const configVoice = trim(config.voice);
+  const voice = settingVoice || presetVoice || configVoice;
+  const settingKey = trim(overrides.apiKey);
+  const presetId = trim(overrides.presetId);
+  const presetKey = presetId ? trim(config.apiKeys?.[presetId]) : "";
+  const configKey = trim(config.apiKey);
+  const apiKey = settingKey || presetKey || configKey;
+  return {
+    presetId,
+    baseUrl,
+    model,
+    voice,
+    apiKey,
+    from: {
+      baseUrl: settingBase ? "settings" : presetBase ? "preset" : configBase ? "config" : "none",
+      model: settingModel ? "settings" : presetModel ? "preset" : configModel ? "config" : "none",
+      voice: settingVoice ? "settings" : presetVoice ? "preset" : configVoice ? "config" : "none",
+      apiKey: settingKey ? "settings" : presetKey ? "presetKey" : configKey ? "configKey" : "none"
+    }
+  };
+}
+
 // src/tts-openai.ts
 var MIME = { mp3: "audio/mpeg", wav: "audio/wav" };
 var OpenAiTtsError = class extends Error {
@@ -3180,48 +3240,6 @@ var OPENAI_PRESETS = {
     voice: "default"
   }
 };
-
-// src/online-tts.ts
-var CUSTOM_PRESET_ID = "custom";
-var trim = (v) => typeof v === "string" ? v.trim() : "";
-function lookupPreset(presetId) {
-  const id = trim(presetId);
-  if (!id || id === CUSTOM_PRESET_ID) return null;
-  return OPENAI_PRESETS[id] ?? null;
-}
-function resolveOnlineTts(overrides, config) {
-  const preset = lookupPreset(overrides.presetId);
-  const settingBase = trim(overrides.baseUrl);
-  const presetBase = trim(preset?.baseUrl);
-  const configBase = trim(config.baseUrl);
-  const baseUrl = settingBase || presetBase || configBase;
-  const settingModel = trim(overrides.model);
-  const presetModel = trim(preset?.model);
-  const configModel = trim(config.model);
-  const model = settingModel || presetModel || configModel;
-  const settingVoice = trim(overrides.voice);
-  const presetVoice = trim(preset?.voice);
-  const configVoice = trim(config.voice);
-  const voice = settingVoice || presetVoice || configVoice;
-  const settingKey = trim(overrides.apiKey);
-  const presetId = trim(overrides.presetId);
-  const presetKey = presetId ? trim(config.apiKeys?.[presetId]) : "";
-  const configKey = trim(config.apiKey);
-  const apiKey = settingKey || presetKey || configKey;
-  return {
-    presetId,
-    baseUrl,
-    model,
-    voice,
-    apiKey,
-    from: {
-      baseUrl: settingBase ? "settings" : presetBase ? "preset" : configBase ? "config" : "none",
-      model: settingModel ? "settings" : presetModel ? "preset" : configModel ? "config" : "none",
-      voice: settingVoice ? "settings" : presetVoice ? "preset" : configVoice ? "config" : "none",
-      apiKey: settingKey ? "settings" : presetKey ? "presetKey" : configKey ? "configKey" : "none"
-    }
-  };
-}
 
 // src/engine-rebuild.ts
 function engineRebuildReason(prev, next, engineKind, activeKokoroModel) {
@@ -4034,22 +4052,27 @@ function apply(ctx, config) {
       NS_VOICE_MODE,
       createVoiceSettingsSchema(),
       {
-        base: {
-          ttsEngine: config.ttsEngine,
-          voice: config.voice,
-          rate: config.rate,
-          interruptLevel: config.interruptLevel,
-          silenceMs: config.silenceMs,
-          idleTimeoutMinutes: config.idleTimeoutMinutes,
-          modelHost: config.modelHost
-        }
+        // base 用**全量** Config 映射：此前只给 7 键，其余落到 schema 默认值；旧宿主若 get() 返回
+        // 全量，config 基线（如 voice/rate 之外的 openaiPreset 等）会被默认值覆盖（A3 审计 Minor）。
+        base: voiceSettingsFromConfig(config)
       }
     );
+    const fromScope = settingsScope.get() ?? {};
     try {
-      vset = resolveSettings(settingsScope.get());
+      vset = resolveSettings(fromScope);
     } catch (e) {
-      console.warn(`[dsh-voice-mode] settings scope returned invalid values; falling back to defaults: ${redactSecrets(e)}`);
-      vset = resolveSettings({});
+      console.warn(`[dsh-voice-mode] settings scope returned invalid values; keeping valid keys only: ${redactSecrets(e)}`);
+      const salvaged = {};
+      for (const k of SETTING_KEYS) {
+        if (!(k in fromScope)) continue;
+        try {
+          resolveSettings({ [k]: fromScope[k] });
+          salvaged[k] = fromScope[k];
+        } catch {
+          console.warn(`[dsh-voice-mode] ignoring invalid setting from host scope: ${k}`);
+        }
+      }
+      vset = resolveSettings(salvaged);
     }
     settingsScopeRef = settingsScope;
   } else {
@@ -4134,7 +4157,7 @@ function apply(ctx, config) {
   };
   warmupAsrIfCached();
   const makeEngine = (kind) => {
-    if (kind === "edge") return new EdgeTtsEngine(config.voice, config.rate);
+    if (kind === "edge") return new EdgeTtsEngine(vset.voice, vset.rate);
     if (kind === "mimo") {
       const m = config.mimoTts;
       const fb = m.fallback;
@@ -4248,6 +4271,7 @@ function apply(ctx, config) {
     const reason = engineRebuildReason(prev, next, engineKind, activeKokoroModel);
     if (reason === "engine-switch") {
       engineKind = next.ttsEngine;
+      if (engineKind === "kokoro") activeKokoroModel = next.kokoroModel;
       checkRemoteConfig(engineKind);
       queue.setEngine(makeEngine(engineKind));
     } else if (reason === "mimo-key") {
@@ -4846,6 +4870,10 @@ function apply(ctx, config) {
           respondJson2(res, 409, { code: "settings_managed", error: "settings are managed by dsh on this host" });
           return;
         }
+        if (!limiter.hit(`settings:${clientKey(req)}`, 30, 6e4)) {
+          respondJson2(res, 429, { code: "rate_limited", error: "too many settings updates, retry in a minute" });
+          return;
+        }
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
           let patch;
           try {
@@ -4865,12 +4893,12 @@ function apply(ctx, config) {
             respondJson2(res, 400, { code: "bad_request", error: String(e.message).slice(0, 120) });
             return;
           }
-          const rest = { ...pickKnownKeys(cleared, SETTING_KEYS) };
-          const unknown = unknownKeys(rest, SETTING_KEYS);
+          const unknown = unknownKeys(cleared, SETTING_KEYS);
           if (unknown.length > 0) {
             respondJson2(res, 400, { code: "bad_request", error: `unknown settings: ${unknown.slice(0, 5).join(", ")}` });
             return;
           }
+          const rest = { ...pickKnownKeys(cleared, SETTING_KEYS) };
           try {
             const next = await persistSettings(rest);
             const out = { ...next, openaiApiKey: "", mimoApiKey: "" };

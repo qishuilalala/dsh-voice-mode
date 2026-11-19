@@ -92,6 +92,7 @@ export const zh = {
   presetSelfVllmNote: '本地服务（默认 127.0.0.1:8000），无逐次费用；文本不出本机网络。首次需自行部署',
   presetKeyNote: '选好后在下面「API Key」里填即可（也可以继续用 profile 的 openaiTts.apiKey/apiKeys）。key 只保存在宿主，不回传浏览器',
   presetVerify: '验证此预设',
+  presetWriteFailed: '写入设置失败（宿主未接受），未做验证',
   presetDataMissing: '预设数据未加载（宿主 /presets 不可用）：请重启宿主或刷新页面后重试',
   presetReload: '重新加载预设',
   // 2026-11-19：在线 TTS 可在设置卡片直接配置（URL/模型/key），不必改 profile YAML。
@@ -104,6 +105,7 @@ export const zh = {
   mimoApiKeyLabel: '小米 MiMo 密钥',
   descMimoApiKey: '小米 MiMo 的 key（走 api-key 头，不是 Bearer）。只保存在宿主侧；留空 = 沿用 profile 的 mimoTts.apiKey',
   secretSaved: '已保存',
+  secretSaveFailed: '保存失败：宿主未接受（检查是否被策略拦截）',
   secretKeep: '已保存（留空保持不变）',
   secretClear: '清除',
   secretHintBrowser: '填写后会立即发到本机宿主并落盘（0600），不会写进聊天或日志',
@@ -467,6 +469,7 @@ export const en: Record<keyof typeof zh, string> = {
   presetSelfVllmNote: 'Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first',
   presetKeyNote: 'After picking one, fill the API Key field below (the profile openaiTts.apiKey/apiKeys still work). The key stays on the host and is never sent back to the browser',
   presetVerify: 'Verify preset',
+  presetWriteFailed: 'Could not save the setting (host rejected it); verification was skipped',
   presetDataMissing: 'Preset data not loaded (host /presets unavailable): restart the host or reload the page',
   presetReload: 'Reload presets',
   // 2026-11-19: online TTS is configurable from the settings card (URL/model/key), no profile YAML edit needed.
@@ -479,6 +482,7 @@ export const en: Record<keyof typeof zh, string> = {
   mimoApiKeyLabel: 'MiMo API key',
   descMimoApiKey: 'Xiaomi MiMo key (sent as the api-key header, not Bearer). Host-side only; empty = use the profile mimoTts.apiKey',
   secretSaved: 'Saved',
+  secretSaveFailed: 'Save failed: the host did not accept it (check for policy restrictions)',
   secretKeep: 'Saved (leave empty to keep)',
   secretClear: 'Clear',
   secretHintBrowser: 'Typed values go straight to the local host and are stored with 0600; never written to chat or logs',

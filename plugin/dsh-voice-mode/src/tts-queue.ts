@@ -556,14 +556,19 @@ export class TtsQueue {
    */
   cancel(sessionId: string): void {
     const q = this.queues.get(sessionId)
+    const wasBusy = Boolean(q?.busy)
     if (q) {
       q.epoch++
       q.pending.length = 0
     }
     // 立刻中止在途合成：本地引擎杀子进程释放 CPU（在途句已被作废；否则其
     // 满核合成会饿死主进程的 ASR 解码，打断后定稿等待可达分钟级——实测根因）。
-    // 引擎由所有会话共享；有其它会话在途时只作废本会话，不能杀掉它们的合成。
-    if (![...this.queues].some(([sid, other]) => sid !== sessionId && other.busy)) this.engine.interrupt?.()
+    // 只有「本会话确实在合成」才转发 interrupt：
+    // - 空闲 cancel（本会话没在合成）不该杀本地子进程，也不该误杀同引擎在途的 /preview；
+    // - 他会话 busy 时要保护它们，同样不转发；
+    // - 本会话在途时必须立刻中止（否则满核合成饿死 ASR 解码，打断后定稿等待可达分钟级）。
+    const othersBusy = [...this.queues].some(([sid, other]) => sid !== sessionId && other.busy)
+    if (wasBusy && !othersBusy) this.engine.interrupt?.()
   }
 
   /** 会话退出/被抢占时彻底清理其队列（防止 Map 长期累积）。 */
@@ -625,6 +630,13 @@ export class TtsQueue {
           // 表现为「AI 回复偶尔整条/某句不朗读」，用户无从判断是网络还是功能坏了。
           q.failStreak++
           this.onSkip?.(sessionId, item.text, q.failStreak)
+          // A2 审计 Important：errorNotified 只在外层 catch 置位（注释自述近乎不可达），
+          // 于是恒失败时 while 继续空转、1s→8s 退避永不生效（实测 3 句恒失败 = 9 次调用、0 个≥1s 定时器）。
+          // 连败 2 句即视为「引擎整体不可用」：置位并 break，交给 finally 的统一退避。
+          if (q.failStreak >= 2) {
+            q.errorNotified = true
+            break
+          }
           continue
         }
         // B-3：空音频（0 字节 / 44 字节空 WAV）整句丢弃——不发帧、不占句号、
@@ -722,7 +734,8 @@ export class TtsQueue {
         this.queues.delete(sessionId)
       } else {
         // 失败退避：1s 指数递增至多 8s；成功/无错误即时。
-        const delay = q.errorNotified ? q.backoff : 0
+        // 首档退避至少 1s（此前 backoff 初值 0 会先立即重试一次，等于退避没生效）。
+        const delay = q.errorNotified ? Math.max(1000, q.backoff) : 0
         q.backoff = Math.min(8000, delay + 1000)
         if (delay > 0) {
           // M7②：持句柄 + 触发即自摘，供 close() 全量取消（详见 backoffTimers 声明处）。

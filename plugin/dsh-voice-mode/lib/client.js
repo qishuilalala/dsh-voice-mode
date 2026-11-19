@@ -611,6 +611,10 @@ function createAsrEngine(config, sessionId) {
         if (state !== "wake") setState("loading-model");
         const retry = await new Promise((resolve2) => {
           setTimeout(async () => {
+            if (!active || epoch !== segmentEpoch) {
+              resolve2(new Response(null, { status: 410 }));
+              return;
+            }
             try {
               const r2 = await fetch(asrUrl(false, from2, epoch), {
                 method: "POST",
@@ -1776,6 +1780,7 @@ var zh = {
   presetSelfVllmNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8000\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
   presetKeyNote: "\u9009\u597D\u540E\u5728\u4E0B\u9762\u300CAPI Key\u300D\u91CC\u586B\u5373\u53EF\uFF08\u4E5F\u53EF\u4EE5\u7EE7\u7EED\u7528 profile \u7684 openaiTts.apiKey/apiKeys\uFF09\u3002key \u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\uFF0C\u4E0D\u56DE\u4F20\u6D4F\u89C8\u5668",
   presetVerify: "\u9A8C\u8BC1\u6B64\u9884\u8BBE",
+  presetWriteFailed: "\u5199\u5165\u8BBE\u7F6E\u5931\u8D25\uFF08\u5BBF\u4E3B\u672A\u63A5\u53D7\uFF09\uFF0C\u672A\u505A\u9A8C\u8BC1",
   presetDataMissing: "\u9884\u8BBE\u6570\u636E\u672A\u52A0\u8F7D\uFF08\u5BBF\u4E3B /presets \u4E0D\u53EF\u7528\uFF09\uFF1A\u8BF7\u91CD\u542F\u5BBF\u4E3B\u6216\u5237\u65B0\u9875\u9762\u540E\u91CD\u8BD5",
   presetReload: "\u91CD\u65B0\u52A0\u8F7D\u9884\u8BBE",
   // 2026-11-19：在线 TTS 可在设置卡片直接配置（URL/模型/key），不必改 profile YAML。
@@ -1788,6 +1793,7 @@ var zh = {
   mimoApiKeyLabel: "\u5C0F\u7C73 MiMo \u5BC6\u94A5",
   descMimoApiKey: "\u5C0F\u7C73 MiMo \u7684 key\uFF08\u8D70 api-key \u5934\uFF0C\u4E0D\u662F Bearer\uFF09\u3002\u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\u4FA7\uFF1B\u7559\u7A7A = \u6CBF\u7528 profile \u7684 mimoTts.apiKey",
   secretSaved: "\u5DF2\u4FDD\u5B58",
+  secretSaveFailed: "\u4FDD\u5B58\u5931\u8D25\uFF1A\u5BBF\u4E3B\u672A\u63A5\u53D7\uFF08\u68C0\u67E5\u662F\u5426\u88AB\u7B56\u7565\u62E6\u622A\uFF09",
   secretKeep: "\u5DF2\u4FDD\u5B58\uFF08\u7559\u7A7A\u4FDD\u6301\u4E0D\u53D8\uFF09",
   secretClear: "\u6E05\u9664",
   secretHintBrowser: "\u586B\u5199\u540E\u4F1A\u7ACB\u5373\u53D1\u5230\u672C\u673A\u5BBF\u4E3B\u5E76\u843D\u76D8\uFF080600\uFF09\uFF0C\u4E0D\u4F1A\u5199\u8FDB\u804A\u5929\u6216\u65E5\u5FD7",
@@ -2150,6 +2156,7 @@ var en = {
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
   presetKeyNote: "After picking one, fill the API Key field below (the profile openaiTts.apiKey/apiKeys still work). The key stays on the host and is never sent back to the browser",
   presetVerify: "Verify preset",
+  presetWriteFailed: "Could not save the setting (host rejected it); verification was skipped",
   presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
   presetReload: "Reload presets",
   // 2026-11-19: online TTS is configurable from the settings card (URL/model/key), no profile YAML edit needed.
@@ -2162,6 +2169,7 @@ var en = {
   mimoApiKeyLabel: "MiMo API key",
   descMimoApiKey: "Xiaomi MiMo key (sent as the api-key header, not Bearer). Host-side only; empty = use the profile mimoTts.apiKey",
   secretSaved: "Saved",
+  secretSaveFailed: "Save failed: the host did not accept it (check for policy restrictions)",
   secretKeep: "Saved (leave empty to keep)",
   secretClear: "Clear",
   secretHintBrowser: "Typed values go straight to the local host and are stored with 0600; never written to chat or logs",
@@ -4117,16 +4125,21 @@ function SecretField({
   const [draft, setDraft] = (0, import_react2.useState)("");
   const [busy, setBusy] = (0, import_react2.useState)(false);
   const [note, setNote] = (0, import_react2.useState)(null);
+  const [failed, setFailed] = (0, import_react2.useState)(false);
   const commit = () => {
     const value = draft.trim();
     if (!value || busy) return;
     setBusy(true);
     void Promise.resolve(score.set(field, value)).then((ok) => {
-      if (ok === false) return;
+      if (ok === false) {
+        setFailed(true);
+        return;
+      }
+      setFailed(false);
       setDraft("");
       setNote("saved");
       onChanged();
-    }).catch(() => void 0).finally(() => setBusy(false));
+    }).catch(() => setFailed(true)).finally(() => setBusy(false));
   };
   const clear = () => {
     if (busy) return;
@@ -4185,8 +4198,8 @@ function SecretField({
       {
         role: "status",
         "aria-live": "polite",
-        style: { fontSize: 11, color: note === "cleared" ? t2.term : "var(--dsw-alias-state-success-primary)" },
-        children: note === "saved" ? t("secretSaved") : note === "cleared" ? t("secretCleared") : saved ? t("secretSaved") : t("secretHintBrowser")
+        style: { fontSize: 11, color: failed ? "var(--dsw-alias-state-error-primary)" : note === "cleared" ? t2.term : "var(--dsw-alias-state-success-primary)" },
+        children: failed ? t("secretSaveFailed") : note === "saved" ? t("secretSaved") : note === "cleared" ? t("secretCleared") : saved ? t("secretSaved") : t("secretHintBrowser")
       }
     )
   ] });
@@ -4988,7 +5001,7 @@ async function pollModelsStatusOnce() {
   if (modelsStatusInflight) return;
   modelsStatusInflight = true;
   try {
-    const res = await fetch(location.origin + BASE_PATH + "/models/status");
+    const res = await fetch(location.origin + BASE_PATH + "/models/status", { signal: AbortSignal.timeout(8e3) });
     if (!res.ok) return;
     modelsStatusLast = await res.json();
     for (const fn of [...modelsStatusSubs]) fn(modelsStatusLast);
@@ -5490,7 +5503,12 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
     }
     void (async () => {
       try {
-        await scope.set("openaiPreset", presetId);
+        const wrotePreset = await Promise.resolve(scope.set("openaiPreset", presetId));
+        if (wrotePreset === false) {
+          setPresetVerify({ id: presetId, state: "fail", note: t("presetWriteFailed") });
+          setVerifying(false);
+          return;
+        }
         await scope.set("voice", voice);
       } catch {
       }
@@ -6041,7 +6059,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "94396ae";
+var BUILD_TAG = "233d337";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -8448,14 +8466,28 @@ function MicButton({
     window.addEventListener("input", onInput, true);
     return () => window.removeEventListener("input", onInput, true);
   }, []);
+  const escAtRef = (0, import_react3.useRef)(0);
   (0, import_react3.useEffect)(() => {
     const onKeyDown = (e) => {
       if (e.key !== "Escape") return;
-      if (localRef.current !== "on" || bootNow().mode !== "hold") return;
-      engineRef.current?.endHeld(true);
-      holdCtrlRef.current = false;
-      setHolding(false);
-      bus.setUi({ partial: "" });
+      if (localRef.current !== "on") return;
+      const el = e.target;
+      if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable)) return;
+      e.preventDefault();
+      bus.skipAudio();
+      if (bootNow().mode === "hold") {
+        engineRef.current?.endHeld(true);
+        holdCtrlRef.current = false;
+        setHolding(false);
+        bus.setUi({ partial: "" });
+      }
+      const now = Date.now();
+      if (now - escAtRef.current < 600) {
+        escAtRef.current = 0;
+        void exitModeRef.current("manual");
+        return;
+      }
+      escAtRef.current = now;
     };
     const onVisibility = () => {
       if (document.hidden) {
@@ -8948,7 +8980,9 @@ function VoiceStatusBar({ bus, sessionId }) {
         borderRadius: 10,
         fontSize: 12,
         fontFamily: "system-ui, sans-serif",
-        color: "#3fb950",
+        // A4 审计 Blocker：根节点硬编码成功绿会让错误文案继承绿字（「麦克风不可用」看着像成功）。
+        // 正常态保持品牌绿系；错误态在下方 error 分支用 error token 覆盖前景色。
+        color: "var(--dsw-alias-state-success-primary, #3fb950)",
         background: "rgba(63, 185, 80, 0.08)",
         border: "1px solid rgba(63, 185, 80, 0.25)",
         animation: "dshvm-fadein 0.2s ease"
@@ -9015,7 +9049,14 @@ function VoiceStatusBar({ bus, sessionId }) {
             "span",
             {
               "aria-hidden": "true",
-              style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 },
+              style: {
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                flexGrow: 1,
+                // 错误必须是错误色（此前继承父级成功绿 → 状态骗人，浅色主题对比≈2.3:1）。
+                color: b.ui.error ? "var(--dsw-alias-state-error-primary)" : void 0
+              },
               children: b.ui.error ? b.ui.error : b.ui.sseDown ? t("sseReconnect") : b.ui.notice ? b.ui.notice : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.state === "wake" && b.ui.partial ? `${stateText} \xB7 ${b.ui.partial}` : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText
             }
           ),
@@ -9241,9 +9282,11 @@ function VoiceOverlay({ bus }) {
             onClick: () => bus.skipAudio(),
             "aria-label": t("skipReading"),
             style: {
-              border: "none",
-              background: "rgba(255, 255, 255, 0.14)",
-              color: "#fff",
+              // 2026-11-20 A4 审计 Blocker：原为 #fff 字 + rgba(255,255,255,.14) 底，浅色主题下
+              // 白字白底（≈1:1）→ 浮层唯一可点控件看不见，字幕卡住时无法跳过。改走主题 token。
+              border: "1px solid var(--dsw-alias-border-l2)",
+              background: "var(--dsw-alias-bg-layer-2)",
+              color: "var(--dsw-alias-label-primary)",
               borderRadius: 999,
               padding: "3px 12px",
               fontSize: 11,

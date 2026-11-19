@@ -743,14 +743,11 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     for (const sid of finalized.keys()) {
       if (segments.has(sid) || finalizing.has(sid)) continue
       finalized.delete(sid)
-      resetGen.delete(sid)
+      // 注意：**不删 resetGen**——它是会话代际计数器，删除会让代际回落、单调性丢失，
+      // 旧 epoch 可能与新会话撞号（A1 审计 Important）。生命周期跟随 reset/dispose。
     }
-    // resetGen 自身也可能在 finalized 为空时残留（reset 递增代际后无新段）——
-    // 同样的在途判定（在途定稿的代际计数器绝不可回收）。
-    for (const sid of resetGen.keys()) {
-      if (segments.has(sid) || finalizing.has(sid)) continue
-      resetGen.delete(sid)
-    }
+    // resetGen **不随 sweep 删除**：它是会话代际计数器，删掉会让代际回落到 0、单调性丢失，
+    // 进而可能出现旧 epoch 与新会话撞号（A1 审计 Important）。生命周期跟随 dispose/会话结束。
     // 检测 VAD 清扫：会话 90s 无检测活动即释放（reset/dispose 之外的兜底，
     // 防切换会话/异常退出后旧会话检测 VAD 常驻——对抗审查 Important#4）。
     for (const [sid, at] of detectVadLastUse) {
