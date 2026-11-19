@@ -100,4 +100,23 @@ t('JSON 里的短 key 字段也遮（R6 Minor-4）', () => {
   assert.equal(redactSecrets('{"model":"mimo-v2.5-tts"}'), '{"model":"mimo-v2.5-tts"}')
 })
 
+await t('宿主日志边界守卫：所有打印异常原文的日志必须经 redactSecrets（R7 反馈）', async () => {
+  const { readFileSync } = await import('node:fs')
+  const readSrc = (p) => readFileSync(new URL(p, import.meta.url), 'utf8')
+  const sites = [
+    '../src/tts-queue.ts',
+    '../src/index.ts',
+  ]
+  const offenders = []
+  for (const f of sites) {
+    const src = readSrc(f)
+    for (const line of src.split('\n')) {
+      if (!/console\.(warn|error)/.test(line)) continue
+      if (!/\$\{String\(e\)\}|\$\{errMsg\}|\$\{String\(err\)\}/.test(line)) continue
+      if (line.includes('redactSecrets')) continue
+      offenders.push(f + '：' + line.trim().slice(0, 90))
+    }
+  }
+  assert.deepEqual(offenders, [], '这些日志直接打印异常原文且未脱敏（可能含第三方回显的 key 片段）：' + offenders.join(' | '))
+})
 console.log(`\n${passed} passed`)

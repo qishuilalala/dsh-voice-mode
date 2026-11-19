@@ -1860,7 +1860,7 @@ var TtsQueue = class {
         }
       }
     } catch (e) {
-      console.warn(`[dsh-voice-mode] TTS unavailable: sid=${sessionId} err=${String(e)}`);
+      console.warn(`[dsh-voice-mode] TTS unavailable: sid=${sessionId} err=${redactSecrets(e)}`);
       if (!q.errorNotified) {
         q.errorNotified = true;
         this.onError?.(sessionId);
@@ -3965,11 +3965,11 @@ function apply(ctx, config) {
           writeOverrides(settingsFile, valid);
           console.log(`[dsh-voice-mode] migrated ${Object.keys(valid).length} setting(s) from the legacy settings.yaml to ${settingsFile}`);
         } catch (e) {
-          console.warn(`[dsh-voice-mode] legacy settings migration could not be saved (still in effect for this run): ${String(e)}`);
+          console.warn(`[dsh-voice-mode] legacy settings migration could not be saved (still in effect for this run): ${redactSecrets(e)}`);
         }
       }
     } catch (e) {
-      console.warn(`[dsh-voice-mode] settings overlay failed validation as a whole; falling back to the Config baseline: ${String(e)}`);
+      console.warn(`[dsh-voice-mode] settings overlay failed validation as a whole; falling back to the Config baseline: ${redactSecrets(e)}`);
       vset = voiceSettingsFromConfig(config);
     }
   }
@@ -4520,7 +4520,7 @@ function apply(ctx, config) {
           void asr.retryModel(kind).then((done) => {
             respondJson2(res, 200, { ok: done, kind });
           }).catch((e) => {
-            console.warn(`[dsh-voice-mode] model retry failed: ${String(e)}`);
+            console.warn(`[dsh-voice-mode] model retry failed: ${redactSecrets(e)}`);
             respondJson2(res, 500, { code: "internal", error: "model retry failed" });
           });
         });
@@ -4559,7 +4559,7 @@ function apply(ctx, config) {
             }
             respondJson2(res, 200, { ok: true, engine });
           }).catch((e) => {
-            console.warn(`[dsh-voice-mode] models/download failed: ${String(e)}`);
+            console.warn(`[dsh-voice-mode] models/download failed: ${redactSecrets(e)}`);
             respondJson2(res, 500, { code: "internal", error: "internal error" });
           });
         });
@@ -4595,7 +4595,7 @@ function apply(ctx, config) {
             return;
           }
           void queue.prepare().then(() => respondJson2(res, 200, { ok: true, engine })).catch((e) => {
-            console.warn(`[dsh-voice-mode] model download failed: ${String(e)}`);
+            console.warn(`[dsh-voice-mode] model download failed: ${redactSecrets(e)}`);
             respondJson2(res, 502, { code: "model_download_failed", error: "model download failed" });
           });
         });
@@ -4759,7 +4759,7 @@ function apply(ctx, config) {
           void persistMode.then(() => {
             respondJson2(res, 200, { ok: true, mode });
           }).catch((e) => {
-            console.warn(`[dsh-voice-mode] mode update failed: ${String(e)}`);
+            console.warn(`[dsh-voice-mode] mode update failed: ${redactSecrets(e)}`);
             respondJson2(res, 500, { code: "internal", error: "mode update failed" });
           });
         });

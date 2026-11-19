@@ -680,7 +680,7 @@ export class TtsQueue {
       // synthesize 做了 try/catch + 3 次重试，能逃到这里的只有监听器之外的非预期抛错。
       // 批 A：补 sessionId 上下文（item / attempt 是 while/for 内部 const/let，
       // 外层 catch 不可见——不做捕获重构以保持外科手术式改动）。
-      console.warn(`[dsh-voice-mode] TTS unavailable: sid=${sessionId} err=${String(e)}`)
+      console.warn(`[dsh-voice-mode] TTS unavailable: sid=${sessionId} err=${redactSecrets(e)}`)
       if (!q.errorNotified) {
         q.errorNotified = true
         this.onError?.(sessionId)
