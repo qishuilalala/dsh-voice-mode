@@ -19,6 +19,7 @@ import { t as tr, useLang, activeLocale, type TKey } from './i18n.ts'
 import { errorText } from './error-text.ts'
 import { edgeAllOptions, edgeCommonOptions, hostOptions, kokoroOptions, vitsOptions, voiceLangHint, type EdgeRawVoice } from './voice-labels.ts'
 import { getRuntimeBoot } from './runtime-boot.ts'
+import { REPLACEMENTS_MAX_PAYLOAD_BYTES, replacementsPayloadBytes } from './asr-replacements.ts'
 
 interface ScopeController {
   getSnapshot(): {
@@ -571,37 +572,16 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  /** 批 G 任务 6：本地引擎模型状态（null=轮询中/未就绪；true=本地 ready；false=本地 not ready）。 */
-  const [localReady, setLocalReady] = useState<boolean | null>(null)
-  /** 批 G 任务 6：当前引擎轮询是否正在下载（true 时按钮禁用）。 */
-  const [ttsLoading, setTtsLoading] = useState(false)
-  useEffect(() => {
-    let alive = true
-    const poll = async (): Promise<void> => {
-      try {
-        const res = await fetch(location.origin + BASE_PATH + '/models/status')
-        if (res.ok && alive) {
-          const st = (await res.json()) as ModelsStatusPayload
-          const tts = st.tts
-          // 本地引擎（vits/kokoro）必须有 local 子字段；edge 引擎 localReady 视为 true（云端无须下载）。
-          if (tts.engine === 'edge' || tts.engine === 'openai' || tts.engine === 'mimo') {
-            setLocalReady(true)
-          } else {
-            setLocalReady(!!tts.local?.ready)
-          }
-          setTtsLoading(!!tts.loading)
-        }
-      } catch {
-        // 轮询失败：保持上次状态，不误清 ready。
-      }
-    }
-    void poll()
-    const timer = setInterval(() => void poll(), 3000)
-    return () => {
-      alive = false
-      clearInterval(timer)
-    }
-  }, [])
+  /** 共享轮询器快照（null=尚未拿到；本地引擎看 tts.local.ready，云端引擎视为就绪）。 */
+  const status = useModelsStatus()
+  const stTts = status?.tts
+  const localReady: boolean | null = stTts
+    ? stTts.engine === 'edge' || stTts.engine === 'openai' || stTts.engine === 'mimo'
+      ? true
+      : !!stTts.local?.ready
+    : null
+  /** 当前引擎是否正在下载（true 时试听禁用）。 */
+  const ttsLoading = !!stTts?.loading
   /** 批 G 任务 6：本地引擎 + 模型未就绪 → 试听按钮 disabled。 */
   const disabledByModel = localReady === false
 
@@ -980,36 +960,20 @@ function ReplacementsSection({
   const parsed = normalizeRules(rules)
   const unreadable = parsed === null
   const list = parsed ?? []
-  const [hits, setHits] = useState<number[]>([])
   const [fromText, setFromText] = useState('')
   const [toText, setToText] = useState('')
   const [note, setNote] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
-  useEffect(() => {
-    let alive = true
-    const poll = async (): Promise<void> => {
-      try {
-        const res = await fetch(location.origin + BASE_PATH + '/models/status')
-        if (res.ok && alive) {
-          const st = (await res.json()) as ModelsStatusPayload
-          const h = st.replacements?.hits
-          if (Array.isArray(h)) setHits(h.filter((n): n is number => typeof n === 'number'))
-        }
-      } catch {
-        // 轮询失败保持上次计数
-      }
-    }
-    void poll()
-    const timer = setInterval(() => void poll(), 5000)
-    return () => {
-      alive = false
-      clearInterval(timer)
-    }
-  }, [])
+  // 共享轮询器（单例）：命中计数随卡片其余状态一起刷新，不再自建 5s 定时器。
+  const status = useModelsStatus()
+  const hits = status?.replacements?.hits?.filter((n): n is number => typeof n === 'number') ?? []
+  const [hitsOverride, setHits] = useState<number[] | null>(null)
+  const shownHits = hitsOverride ?? hits
   const commit = async (next: ReplacementRule[]): Promise<boolean> => {
-    // 托管路径 POST 体上限 16KB（index.ts MAX_JSON_BODY）：超限会被 413 拒绝并静默回滚，
-    // 故先在客户端按序列化长度拦截，给出可行动提示而不是假装成功。
-    if (JSON.stringify(next).length > 12000) {
+    // 托管路径 POST 体上限 16KB（index.ts MAX_JSON_BODY，按 Buffer **字节**计）：超限会被 413
+    // 拒绝并回滚，故先在客户端拦截。必须按 UTF-8 字节而不是字符串长度——中文一字 3 字节，
+    // 200 条中文规则 8421 字符但 16421 字节，按字符预检会漏放（二轮核查 B2 实证）。
+    if (replacementsPayloadBytes(next) > REPLACEMENTS_MAX_PAYLOAD_BYTES) {
       setNote(tr('replTooLarge'))
       return false
     }
@@ -1019,7 +983,7 @@ function ReplacementsSection({
       return false
     }
     setNote(null)
-    setHits([]) // 结构变了，旧命中索引会错位；等下一次轮询回填（5s）
+    setHits([]) // 结构变了，旧命中索引会错位：先清空，等共享轮询回填新计数
     return true
   }
   const add = (): void => {
@@ -1045,7 +1009,9 @@ function ReplacementsSection({
     })()
   }
   const exportFile = (): void => {
-    const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' })
+    // 不可解析时导出**原始值**而不是空表：警示文案承诺“先导出备份”，导空表等于备份落空。
+    const payload: unknown = unreadable ? rules : list
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -1105,7 +1071,7 @@ function ReplacementsSection({
               {r.from.join(' / ')} {'→'} {r.to}
             </span>
             <span style={{ color: t.term }}>
-              {tr('replHits')} {hits[i] ?? 0}
+              {tr('replHits')} {shownHits[i] ?? 0}
             </span>
             <button
               type="button"
@@ -1209,6 +1175,54 @@ function DictationPreset({
       </button>
     </span>
   )
+}
+
+/**
+ * 共享的 /models/status 轮询器（性能优化 2026-11-19）。
+ *
+ * 此前卡片里 4 个组件各自 setInterval 拉同一端点（3s/5s 各一套）：开一次设置页
+ * 每秒约 1.3 次重复请求，且四份状态可能不一致（各自更新时机不同）。
+ * 现在改为模块级单例：一处轮询、多订阅者共享同一份快照；无订阅者时自动停表。
+ */
+type ModelsStatusSub = (st: ModelsStatusPayload) => void
+const modelsStatusSubs = new Set<ModelsStatusSub>()
+let modelsStatusTimer: ReturnType<typeof setInterval> | null = null
+let modelsStatusLast: ModelsStatusPayload | null = null
+const MODELS_STATUS_INTERVAL_MS = 3000
+
+async function pollModelsStatusOnce(): Promise<void> {
+  try {
+    const res = await fetch(location.origin + BASE_PATH + '/models/status')
+    if (!res.ok) return
+    modelsStatusLast = (await res.json()) as ModelsStatusPayload
+    // 复制一份再遍历：订阅者在回调里退订不会中断本轮分发。
+    for (const fn of [...modelsStatusSubs]) fn(modelsStatusLast)
+  } catch {
+    // 轮询失败保留上次快照（下一次再试）
+  }
+}
+
+function subscribeModelsStatus(fn: ModelsStatusSub): () => void {
+  modelsStatusSubs.add(fn)
+  if (modelsStatusLast) fn(modelsStatusLast)
+  if (!modelsStatusTimer) {
+    void pollModelsStatusOnce()
+    modelsStatusTimer = setInterval(() => void pollModelsStatusOnce(), MODELS_STATUS_INTERVAL_MS)
+  }
+  return () => {
+    modelsStatusSubs.delete(fn)
+    if (modelsStatusSubs.size === 0 && modelsStatusTimer) {
+      clearInterval(modelsStatusTimer)
+      modelsStatusTimer = null
+    }
+  }
+}
+
+/** 订阅模型状态（首帧可能为 null = 尚未拿到）；组件卸载自动退订。 */
+function useModelsStatus(): ModelsStatusPayload | null {
+  const [st, setSt] = useState<ModelsStatusPayload | null>(modelsStatusLast)
+  useEffect(() => subscribeModelsStatus(setSt), [])
+  return st
 }
 
 function Row({ name, desc, children }: { name: string; desc: string; children: React.ReactNode }): React.ReactElement {
@@ -1345,25 +1359,8 @@ const fmtMB = (b: number): string => (b >= 1048576 ? `${(b / 1048576).toFixed(0)
  * 以及重新下载按钮——切换引擎/点试听时立刻可见，无需滚到页面底部找模型状态。
  */
 function EngineStatusInline(): React.ReactElement {
-  const [st, setSt] = useState<ModelsStatusPayload | null>(null)
+  const st = useModelsStatus()
   const [acting, setActing] = useState<'download' | 'clean' | null>(null)
-  useEffect(() => {
-    let alive = true
-    const poll = async (): Promise<void> => {
-      try {
-        const res = await fetch(location.origin + BASE_PATH + '/models/status')
-        if (res.ok && alive) setSt((await res.json()) as ModelsStatusPayload)
-      } catch {
-        // 轮询失败静默
-      }
-    }
-    void poll()
-    const timer = setInterval(() => void poll(), 3000)
-    return () => {
-      alive = false
-      clearInterval(timer)
-    }
-  }, [])
   const tts = st?.tts
   if (!tts) return <></>
   const engineName =
@@ -1459,27 +1456,10 @@ function EngineStatusInline(): React.ReactElement {
   )
 }
 
-/** 设置面板「语音模型」实时状态：3s 轮询进度/就绪/失败退避 + 重试按钮。 */
+/** 设置面板「语音模型」实时状态：共享 3s 轮询快照 + 重试按钮。 */
 function ModelStatusView(): React.ReactElement {
-  const [st, setSt] = useState<ModelsStatusPayload | null>(null)
+  const st = useModelsStatus()
   const [retrying, setRetrying] = useState<string | null>(null)
-  useEffect(() => {
-    let alive = true
-    const poll = async (): Promise<void> => {
-      try {
-        const res = await fetch(`${location.origin}${BASE_PATH}/models/status`)
-        if (res.ok && alive) setSt((await res.json()) as ModelsStatusPayload)
-      } catch {
-        // 轮询失败静默（下次再试）
-      }
-    }
-    void poll()
-    const timer = setInterval(() => void poll(), 3000)
-    return () => {
-      alive = false
-      clearInterval(timer)
-    }
-  }, [])
   const retry = (kind: string): void => {
     setRetrying(kind)
     void fetch(`${location.origin}${BASE_PATH}/models/retry`, {

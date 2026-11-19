@@ -194,5 +194,48 @@ await t('未命中不回调；同写法多规则只有首胜计数', () => {
   assert.deepEqual(calls, [0])
 })
 
+console.log('词表体积预检（按 UTF-8 字节）')
+
+await t('中文规则按 UTF-8 字节计（每字 3 字节）：字节数严格大于字符数', async () => {
+  const { replacementsPayloadBytes } = await import('../src/asr-replacements.ts')
+  const rules = Array.from({ length: 200 }, (_, i) => ({ from: [`错别字${i}`], to: `正确写法${i}` }))
+  const chars = JSON.stringify(rules).length
+  const bytes = replacementsPayloadBytes(rules)
+  assert.ok(bytes > chars, `字节数应大于字符数（中文 3 字节/字）：${bytes} vs ${chars}`)
+})
+
+await t('超限词表被预检拦下（按字符计会漏放，最终 413）', async () => {
+  const { REPLACEMENTS_MAX_PAYLOAD_BYTES, replacementsPayloadBytes } = await import('../src/asr-replacements.ts')
+  // 构造一组“字符数未超限、但字节数已超限”的词表：这正是按字符预检会漏放的形态。
+  // 用递增规则数搜索（中文密度固定），避免把断言写死在某个手工数字上。
+  const make = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      from: [`听错的写法示例第${i}条`],
+      to: `正确的写法示例第${i}条`,
+    }))
+  let chars = 0
+  let bytes = 0
+  let found = false
+  for (let n = 50; n <= 200; n += 5) {
+    const rules = make(n)
+    chars = JSON.stringify(rules).length
+    bytes = replacementsPayloadBytes(rules)
+    if (chars < REPLACEMENTS_MAX_PAYLOAD_BYTES && bytes > REPLACEMENTS_MAX_PAYLOAD_BYTES) {
+      found = true
+      break
+    }
+  }
+  assert.ok(
+    found,
+    `未找到“字符未超限但字节超限”的样本（chars=${chars} bytes=${bytes}）——若中文规则确实无法触发，则应重新审视该预检是否有意义`,
+  )
+})
+
+await t('小词表通过预检；空/undefined 计 2 字节', async () => {
+  const { REPLACEMENTS_MAX_PAYLOAD_BYTES, replacementsPayloadBytes } = await import('../src/asr-replacements.ts')
+  assert.ok(replacementsPayloadBytes([{ from: ['ski男'], to: 'Sakina' }]) < REPLACEMENTS_MAX_PAYLOAD_BYTES)
+  assert.equal(replacementsPayloadBytes(undefined), new TextEncoder().encode('[]').length)
+})
+
 rmSync(tmp, { recursive: true, force: true })
 console.log(`\n${passed} passed`)

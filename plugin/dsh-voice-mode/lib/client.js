@@ -11,11 +11,11 @@ var __export = (target, all) => {
   for (var name2 in all)
     __defProp(target, name2, { get: all[name2], enumerable: true });
 };
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
+var __copyProps = (to, from2, except, desc) => {
+  if (from2 && typeof from2 === "object" || typeof from2 === "function") {
+    for (let key of __getOwnPropNames(from2))
       if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+        __defProp(to, key, { get: () => from2[key], enumerable: !(desc = __getOwnPropDesc(from2, key)) || desc.enumerable });
   }
   return to;
 };
@@ -562,16 +562,16 @@ function createAsrEngine(config, sessionId) {
     partialFailStreak = 0;
     detectFailStreak = 0;
   };
-  const sliceChunks = (chunks, from) => {
+  const sliceChunks = (chunks, from2) => {
     let total = 0;
     for (const c of chunks) total += c.length;
-    const out = new Float32Array(Math.max(0, total - from));
+    const out = new Float32Array(Math.max(0, total - from2));
     if (out.length === 0) return out;
     let off = 0;
     let acc = 0;
     for (const c of chunks) {
       if (off >= out.length) break;
-      const sub = c.subarray(Math.max(0, from - acc));
+      const sub = c.subarray(Math.max(0, from2 - acc));
       const n = Math.min(sub.length, out.length - off);
       out.set(sub.subarray(0, n), off);
       off += n;
@@ -579,7 +579,7 @@ function createAsrEngine(config, sessionId) {
     }
     return out;
   };
-  const sliceSince = (from) => sliceChunks(segment, from);
+  const sliceSince = (from2) => sliceChunks(segment, from2);
   const deliverIsSpeech = (speech) => {
     gateQueryScope = true;
     try {
@@ -595,13 +595,13 @@ function createAsrEngine(config, sessionId) {
     const total = segment.reduce((n, c) => n + c.length, 0);
     const seconds = total / SAMPLE_RATE2;
     if (seconds < PARTIAL_MIN_S || seconds > PARTIAL_MAX_S) return;
-    const from = uploadedSamples;
-    if (total - from <= 0) return;
-    const samples = sliceSince(from);
+    const from2 = uploadedSamples;
+    if (total - from2 <= 0) return;
+    const samples = sliceSince(from2);
     const epoch = segmentEpoch;
     partialInFlight = true;
     try {
-      let res = await fetch(asrUrl(false, from, epoch), {
+      let res = await fetch(asrUrl(false, from2, epoch), {
         method: "POST",
         headers: { "content-type": "application/octet-stream" },
         body: samples.buffer,
@@ -609,19 +609,19 @@ function createAsrEngine(config, sessionId) {
       });
       if (res.status === 202) {
         if (state !== "wake") setState("loading-model");
-        const retry = await new Promise((resolve) => {
+        const retry = await new Promise((resolve2) => {
           setTimeout(async () => {
             try {
-              const r2 = await fetch(asrUrl(false, from, epoch), {
+              const r2 = await fetch(asrUrl(false, from2, epoch), {
                 method: "POST",
                 headers: { "content-type": "application/octet-stream" },
                 body: samples.buffer,
                 signal: AbortSignal.timeout(5e3)
                 // I1：重试同样要超时（否则重试挂起仍锁死 partialInFlight）
               });
-              resolve(r2);
+              resolve2(r2);
             } catch {
-              resolve(new Response(null, { status: 503 }));
+              resolve2(new Response(null, { status: 503 }));
             }
           }, 5e3);
         });
@@ -655,7 +655,7 @@ function createAsrEngine(config, sessionId) {
       const out = await res.json();
       if (epoch !== segmentEpoch) return;
       if (state === "wake" && wakeEnabled) {
-        uploadedSamples = Math.max(uploadedSamples, from + samples.length);
+        uploadedSamples = Math.max(uploadedSamples, from2 + samples.length);
         partialFailStreak = 0;
         emit(partialListeners, out.text ?? "");
         if (matchWakeWord(out.text ?? "", wakeWord)) {
@@ -668,7 +668,7 @@ function createAsrEngine(config, sessionId) {
       }
       if (out.isSpeech !== void 0) deliverIsSpeech(out.isSpeech);
       if (state === "loading-model") setState("speech");
-      uploadedSamples = Math.max(uploadedSamples, from + samples.length);
+      uploadedSamples = Math.max(uploadedSamples, from2 + samples.length);
       partialFailStreak = 0;
       emit(partialListeners, wakeConsumed ? stripWakePrefix(out.text ?? "", wakeWord) : out.text ?? "");
       if (config.backchannelYield !== false && // 默认 true（I10 豁免）；显式 false 时跳过
@@ -789,8 +789,8 @@ function createAsrEngine(config, sessionId) {
     }
     emitTelemetry("endpoint-fired");
     const myRound = telemetryRound;
-    const from = uploadedSamples;
-    const samples = sliceSince(from);
+    const from2 = uploadedSamples;
+    const samples = sliceSince(from2);
     const recoverySegment = segment;
     const epochSnapshot = segmentEpoch;
     segmentEpoch++;
@@ -831,7 +831,7 @@ function createAsrEngine(config, sessionId) {
           await new Promise((r) => setTimeout(r, 500 * attempt));
         }
         const useFull = attempt > 0;
-        const off = useFull ? 0 : from;
+        const off = useFull ? 0 : from2;
         const body = useFull ? sliceChunks(recoverySegment, 0).buffer : samples.buffer;
         let res;
         try {
@@ -848,10 +848,10 @@ function createAsrEngine(config, sessionId) {
         }
         if (res.status === 202) {
           setState("loading-model");
-          res = await new Promise((resolve) => {
+          res = await new Promise((resolve2) => {
             setTimeout(async () => {
               try {
-                resolve(
+                resolve2(
                   await fetch(asrUrl(true, off, epochSnapshot), {
                     signal: AbortSignal.timeout(25e3),
                     // Issue #15 批 4：对齐 host SenseVoice race 上限 20s（asr-host.ts:598-606）——原 10s 必触发一次空转重试
@@ -861,7 +861,7 @@ function createAsrEngine(config, sessionId) {
                   })
                 );
               } catch {
-                resolve(new Response(null, { status: 503 }));
+                resolve2(new Response(null, { status: 503 }));
               }
             }, 5e3);
           });
@@ -874,8 +874,8 @@ function createAsrEngine(config, sessionId) {
           let expireTimer = null;
           const recovered = await Promise.race([
             config.onSessionExpired(),
-            new Promise((resolve) => {
-              expireTimer = setTimeout(() => resolve(false), 5e3);
+            new Promise((resolve2) => {
+              expireTimer = setTimeout(() => resolve2(false), 5e3);
             })
           ]).finally(() => {
             if (expireTimer) clearTimeout(expireTimer);
@@ -2912,6 +2912,882 @@ function voiceLangHint(engine, voice) {
   return "";
 }
 
+// node_modules/.pnpm/@deepseek-ai+cosmokit@1.9.0/node_modules/@deepseek-ai/cosmokit/lib/index.js
+function isNullable(value) {
+  return value === null || value === void 0;
+}
+function isPlainObject(data) {
+  return data && typeof data === "object" && !Array.isArray(data);
+}
+function filterKeys(object, filter) {
+  return Object.fromEntries(Object.entries(object).filter(([key, value]) => filter(key, value)));
+}
+function mapValues(object, transform) {
+  return Object.fromEntries(Object.entries(object).map(([key, value]) => [key, transform(value, key)]));
+}
+function pick(source, keys, forced) {
+  if (!keys) return { ...source };
+  const result = {};
+  for (const key of keys) if (forced || source[key] !== void 0) result[key] = source[key];
+  return result;
+}
+var write = /* @__PURE__ */ Symbol.for("cosmokit.volatile.write");
+function snapshot(value, ancestors = /* @__PURE__ */ new Set()) {
+  if (typeof value === "function") throw new TypeError("volatile config cannot contain functions");
+  if (value === null || typeof value !== "object") return value;
+  if (ancestors.has(value)) throw new TypeError("volatile config cannot contain cycles");
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) return Object.freeze(value.map((item) => snapshot(item, ancestors)));
+    if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) throw new TypeError("volatile config objects must be plain objects or arrays");
+    return Object.freeze(Object.fromEntries(Object.entries(value).map(([key, item]) => [key, snapshot(item, ancestors)])));
+  } finally {
+    ancestors.delete(value);
+  }
+}
+function createVolatile(value) {
+  let current = snapshot(value);
+  return Object.freeze({
+    get: () => current,
+    [write]: (value2) => {
+      current = value2;
+    }
+  });
+}
+function isVolatile(value) {
+  return typeof value === "object" && value !== null && write in value;
+}
+function is(type, value) {
+  if (arguments.length === 1) return (value2) => is(type, value2);
+  return type in globalThis && value instanceof globalThis[type] || Object.prototype.toString.call(value).slice(8, -1) === type;
+}
+function isArrayBufferLike(value) {
+  return is("ArrayBuffer", value) || is("SharedArrayBuffer", value);
+}
+function isArrayBufferSource(value) {
+  return isArrayBufferLike(value) || ArrayBuffer.isView(value);
+}
+var Binary;
+(function(Binary2) {
+  Binary2.is = isArrayBufferLike;
+  Binary2.isSource = isArrayBufferSource;
+  function fromSource(source) {
+    if (ArrayBuffer.isView(source)) return source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
+    else return source;
+  }
+  Binary2.fromSource = fromSource;
+  function toBase64(source) {
+    source = fromSource(source);
+    if (typeof Buffer !== "undefined") return Buffer.from(source).toString("base64");
+    let binary = "";
+    const bytes = new Uint8Array(source);
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  }
+  Binary2.toBase64 = toBase64;
+  function fromBase64(source) {
+    if (typeof Buffer !== "undefined") return fromSource(Buffer.from(source, "base64"));
+    return Uint8Array.from(atob(source), (c) => c.charCodeAt(0));
+  }
+  Binary2.fromBase64 = fromBase64;
+  function toHex(source) {
+    source = fromSource(source);
+    if (typeof Buffer !== "undefined") return Buffer.from(source).toString("hex");
+    return Array.from(new Uint8Array(source), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  Binary2.toHex = toHex;
+  function fromHex(source) {
+    if (typeof Buffer !== "undefined") return fromSource(Buffer.from(source, "hex"));
+    const hex = source.length % 2 === 0 ? source : source.slice(0, source.length - 1);
+    const buffer = [];
+    for (let i = 0; i < hex.length; i += 2) buffer.push(parseInt(`${hex[i]}${hex[i + 1]}`, 16));
+    return Uint8Array.from(buffer).buffer;
+  }
+  Binary2.fromHex = fromHex;
+})(Binary || (Binary = {}));
+var base64ToArrayBuffer = Binary.fromBase64;
+var arrayBufferToBase64 = Binary.toBase64;
+var hexToArrayBuffer = Binary.fromHex;
+var arrayBufferToHex = Binary.toHex;
+function clone(source, refs = /* @__PURE__ */ new Map()) {
+  if (!source || typeof source !== "object") return source;
+  if (is("Date", source)) return new Date(source.valueOf());
+  if (is("RegExp", source)) return new RegExp(source.source, source.flags);
+  if (isArrayBufferLike(source)) return source.slice(0);
+  if (ArrayBuffer.isView(source)) return source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
+  const cached = refs.get(source);
+  if (cached) return cached;
+  if (Array.isArray(source)) {
+    const result2 = [];
+    refs.set(source, result2);
+    source.forEach((value, index) => {
+      result2[index] = Reflect.apply(clone, null, [value, refs]);
+    });
+    return result2;
+  }
+  const result = Object.create(Object.getPrototypeOf(source));
+  refs.set(source, result);
+  for (const key of Reflect.ownKeys(source)) {
+    const descriptor = { ...Reflect.getOwnPropertyDescriptor(source, key) };
+    if ("value" in descriptor) descriptor.value = Reflect.apply(clone, null, [descriptor.value, refs]);
+    Reflect.defineProperty(result, key, descriptor);
+  }
+  return result;
+}
+function deepEqual(a, b, strict) {
+  const ancestors = /* @__PURE__ */ new Set();
+  function compare(a2, b2) {
+    if (a2 === b2) return true;
+    if (isVolatile(a2) || isVolatile(b2)) return isVolatile(a2) && isVolatile(b2);
+    if (!strict && isNullable(a2) && isNullable(b2)) return true;
+    if (typeof a2 !== typeof b2 || typeof a2 !== "object" || !a2 || !b2) return false;
+    if (ancestors.has(a2)) return false;
+    function check(test, then) {
+      return test(a2) ? test(b2) ? then(a2, b2) : false : test(b2) ? false : void 0;
+    }
+    ancestors.add(a2);
+    try {
+      return check(Array.isArray, (a3, b3) => {
+        if (a3.length !== b3.length) return false;
+        for (let index = 0; index < a3.length; index++) if (!compare(a3[index], b3[index])) return false;
+        return true;
+      }) ?? check(is("Date"), (a3, b3) => a3.valueOf() === b3.valueOf()) ?? check(is("URL"), (a3, b3) => a3.href === b3.href) ?? check(is("RegExp"), (a3, b3) => a3.source === b3.source && a3.flags === b3.flags) ?? check(isArrayBufferLike, (a3, b3) => {
+        if (a3.byteLength !== b3.byteLength) return false;
+        const viewA = new Uint8Array(a3);
+        const viewB = new Uint8Array(b3);
+        for (let i = 0; i < viewA.length; i++) if (viewA[i] !== viewB[i]) return false;
+        return true;
+      }) ?? ((!strict || [a2, b2].every((value) => Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)) && Object.keys({
+        ...a2,
+        ...b2
+      }).every((key) => compare(a2[key], b2[key])));
+    } finally {
+      ancestors.delete(a2);
+    }
+  }
+  return compare(a, b);
+}
+var Time;
+(function(Time2) {
+  Time2.millisecond = 1;
+  Time2.second = 1e3;
+  Time2.minute = Time2.second * 60;
+  Time2.hour = Time2.minute * 60;
+  Time2.day = Time2.hour * 24;
+  Time2.week = Time2.day * 7;
+  let timezoneOffset = (/* @__PURE__ */ new Date()).getTimezoneOffset();
+  function setTimezoneOffset(offset) {
+    timezoneOffset = offset;
+  }
+  Time2.setTimezoneOffset = setTimezoneOffset;
+  function getTimezoneOffset() {
+    return timezoneOffset;
+  }
+  Time2.getTimezoneOffset = getTimezoneOffset;
+  function getDateNumber(date2 = /* @__PURE__ */ new Date(), offset) {
+    if (typeof date2 === "number") date2 = new Date(date2);
+    if (offset === void 0) offset = timezoneOffset;
+    return Math.floor((date2.valueOf() / Time2.minute - offset) / 1440);
+  }
+  Time2.getDateNumber = getDateNumber;
+  function fromDateNumber(value, offset) {
+    const date2 = new Date(value * Time2.day);
+    if (offset === void 0) offset = timezoneOffset;
+    return new Date(+date2 + offset * Time2.minute);
+  }
+  Time2.fromDateNumber = fromDateNumber;
+  const numeric = /\d+(?:\.\d+)?/.source;
+  const timeRegExp = new RegExp(`^${[
+    "w(?:eek(?:s)?)?",
+    "d(?:ay(?:s)?)?",
+    "h(?:our(?:s)?)?",
+    "m(?:in(?:ute)?(?:s)?)?",
+    "s(?:ec(?:ond)?(?:s)?)?"
+  ].map((unit) => `(${numeric}${unit})?`).join("")}$`);
+  function parseTime(source) {
+    const capture = timeRegExp.exec(source);
+    if (!capture) return 0;
+    return (parseFloat(capture[1]) * Time2.week || 0) + (parseFloat(capture[2]) * Time2.day || 0) + (parseFloat(capture[3]) * Time2.hour || 0) + (parseFloat(capture[4]) * Time2.minute || 0) + (parseFloat(capture[5]) * Time2.second || 0);
+  }
+  Time2.parseTime = parseTime;
+  function parseDate(date2) {
+    const parsed = parseTime(date2);
+    if (parsed) date2 = Date.now() + parsed;
+    else if (/^\d{1,2}(:\d{1,2}){1,2}$/.test(date2)) date2 = `${(/* @__PURE__ */ new Date()).toLocaleDateString()}-${date2}`;
+    else if (/^\d{1,2}-\d{1,2}-\d{1,2}(:\d{1,2}){1,2}$/.test(date2)) date2 = `${(/* @__PURE__ */ new Date()).getFullYear()}-${date2}`;
+    return date2 ? new Date(date2) : /* @__PURE__ */ new Date();
+  }
+  Time2.parseDate = parseDate;
+  function format(ms) {
+    const abs = Math.abs(ms);
+    if (abs >= Time2.day - Time2.hour / 2) return Math.round(ms / Time2.day) + "d";
+    else if (abs >= Time2.hour - Time2.minute / 2) return Math.round(ms / Time2.hour) + "h";
+    else if (abs >= Time2.minute - Time2.second / 2) return Math.round(ms / Time2.minute) + "m";
+    else if (abs >= Time2.second) return Math.round(ms / Time2.second) + "s";
+    return ms + "ms";
+  }
+  Time2.format = format;
+  function toDigits(source, length = 2) {
+    return source.toString().padStart(length, "0");
+  }
+  Time2.toDigits = toDigits;
+  function template(template2, time = /* @__PURE__ */ new Date()) {
+    return template2.replace("yyyy", time.getFullYear().toString()).replace("yy", time.getFullYear().toString().slice(2)).replace("MM", toDigits(time.getMonth() + 1)).replace("dd", toDigits(time.getDate())).replace("hh", toDigits(time.getHours())).replace("mm", toDigits(time.getMinutes())).replace("ss", toDigits(time.getSeconds())).replace("SSS", toDigits(time.getMilliseconds(), 3));
+  }
+  Time2.template = template;
+})(Time || (Time = {}));
+
+// node_modules/.pnpm/@deepseek-ai+schemastery@3.19.0/node_modules/@deepseek-ai/schemastery/lib/index.mjs
+var kSchema = /* @__PURE__ */ Symbol.for("schemastery");
+var kValidationError = /* @__PURE__ */ Symbol.for("ValidationError");
+globalThis.__schemastery_index__ ??= 0;
+globalThis.__schemastery_refs__ = void 0;
+var ValidationError = class extends TypeError {
+  options;
+  name = "ValidationError";
+  constructor(message, options) {
+    let prefix = "$";
+    for (const segment of options.path || []) if (typeof segment === "string") prefix += "." + segment;
+    else if (typeof segment === "number") prefix += "[" + segment + "]";
+    else if (typeof segment === "symbol") prefix += `[Symbol(${segment.toString()})]`;
+    if (prefix.startsWith(".")) prefix = prefix.slice(1);
+    super((prefix === "$" ? "" : `${prefix} `) + message);
+    this.options = options;
+  }
+  static is(error) {
+    return !!error?.[kValidationError];
+  }
+};
+Object.defineProperty(ValidationError.prototype, kValidationError, { value: true });
+var Schema = function(options) {
+  const schema = function(data, options2 = {}) {
+    return Schema.resolve(data, schema, options2)[0];
+  };
+  if (options.refs) {
+    const refs = mapValues(options.refs, (options2) => new Schema(options2));
+    const getRef = (uid) => refs[uid];
+    for (const key in refs) {
+      const options2 = refs[key];
+      options2.sKey = getRef(options2.sKey);
+      options2.inner = getRef(options2.inner);
+      options2.list = options2.list && options2.list.map(getRef);
+      options2.dict = options2.dict && mapValues(options2.dict, getRef);
+    }
+    return refs[options.uid];
+  }
+  Object.assign(schema, options);
+  if (typeof schema.callback === "string") try {
+    schema.callback = new Function("return " + schema.callback)();
+  } catch {
+  }
+  Object.defineProperty(schema, "uid", { value: globalThis.__schemastery_index__++ });
+  Object.setPrototypeOf(schema, Schema.prototype);
+  schema.meta ||= {};
+  schema.toString = schema.toString.bind(schema);
+  return schema;
+};
+Schema.prototype = Object.create(Function.prototype);
+Schema.prototype[kSchema] = true;
+Object.defineProperty(Schema.prototype, "~standard", { get() {
+  return {
+    version: 1,
+    vendor: "schemastery",
+    validate: (value) => {
+      try {
+        return { value: Schema.resolve(value, this, {})[0] };
+      } catch (error) {
+        if (ValidationError.is(error)) return { issues: [{
+          message: error.message,
+          path: error.options.path
+        }] };
+        throw error;
+      }
+    }
+  };
+} });
+Schema.ValidationError = ValidationError;
+Schema.prototype.toJSON = function toJSON() {
+  if (globalThis.__schemastery_refs__) {
+    globalThis.__schemastery_refs__[this.uid] ??= JSON.parse(JSON.stringify({ ...this }));
+    return this.uid;
+  }
+  globalThis.__schemastery_refs__ = { [this.uid]: { ...this } };
+  globalThis.__schemastery_refs__[this.uid] = JSON.parse(JSON.stringify({ ...this }));
+  const result = {
+    uid: this.uid,
+    refs: globalThis.__schemastery_refs__
+  };
+  globalThis.__schemastery_refs__ = void 0;
+  return result;
+};
+Schema.prototype.set = function set(key, value) {
+  this.dict[key] = value;
+  return this;
+};
+Schema.prototype.push = function push(value) {
+  this.list.push(value);
+  return this;
+};
+function mergeDesc(original, messages) {
+  const result = typeof original === "string" ? { "": original } : { ...original };
+  for (const locale in messages) {
+    const value = messages[locale];
+    if (value?.$description || value?.$desc) result[locale] = value.$description || value.$desc;
+    else if (typeof value === "string") result[locale] = value;
+  }
+  return result;
+}
+function getInner(value) {
+  return value?.$value ?? value?.$inner;
+}
+function extractKeys(data) {
+  return filterKeys(data ?? {}, (key) => !key.startsWith("$"));
+}
+Schema.prototype.i18n = function i18n(messages) {
+  const schema = Schema(this);
+  const desc = mergeDesc(schema.meta.description, messages);
+  if (Object.keys(desc).length) schema.meta.description = desc;
+  if (schema.dict) schema.dict = mapValues(schema.dict, (inner, key) => {
+    return inner.i18n(mapValues(messages, (data) => getInner(data)?.[key] ?? data?.[key]));
+  });
+  if (schema.list) schema.list = schema.list.map((inner, index) => {
+    return inner.i18n(mapValues(messages, (data = {}) => {
+      if (Array.isArray(getInner(data))) return getInner(data)[index];
+      if (Array.isArray(data)) return data[index];
+      return extractKeys(data);
+    }));
+  });
+  if (schema.inner) schema.inner = schema.inner.i18n(mapValues(messages, (data) => {
+    if (getInner(data)) return getInner(data);
+    return extractKeys(data);
+  }));
+  if (schema.sKey) schema.sKey = schema.sKey.i18n(mapValues(messages, (data) => data?.$key));
+  return schema;
+};
+Schema.prototype.extra = function extra(key, value) {
+  const schema = Schema(this);
+  schema.meta = {
+    ...schema.meta,
+    [key]: value
+  };
+  return schema;
+};
+for (const key of [
+  "required",
+  "disabled",
+  "collapse",
+  "hidden",
+  "loose"
+]) Object.assign(Schema.prototype, { [key](value = true) {
+  const schema = Schema(this);
+  schema.meta = {
+    ...schema.meta,
+    [key]: value
+  };
+  return schema;
+} });
+Schema.prototype.deprecated = function deprecated() {
+  const schema = Schema(this);
+  schema.meta.badges ||= [];
+  schema.meta.badges.push({
+    text: "deprecated",
+    type: "danger"
+  });
+  return schema;
+};
+Schema.prototype.experimental = function experimental() {
+  const schema = Schema(this);
+  schema.meta.badges ||= [];
+  schema.meta.badges.push({
+    text: "experimental",
+    type: "warning"
+  });
+  return schema;
+};
+Schema.prototype.pattern = function pattern(regexp) {
+  const schema = Schema(this);
+  const pattern2 = pick(regexp, ["source", "flags"]);
+  schema.meta = {
+    ...schema.meta,
+    pattern: pattern2
+  };
+  return schema;
+};
+Schema.prototype.simplify = function simplify(value) {
+  if (isVolatile(value)) value = value.get();
+  if (deepEqual(value, this.meta.default, this.type === "dict")) return null;
+  if (isNullable(value)) return value;
+  if (this.type === "object" || this.type === "dict") {
+    const result = {};
+    for (const key in value) {
+      const item = (this.type === "object" ? this.dict[key] : this.inner)?.simplify(value[key]);
+      if (this.type === "dict" || !isNullable(item)) result[key] = item;
+    }
+    if (deepEqual(result, this.meta.default, this.type === "dict")) return null;
+    return result;
+  } else if (this.type === "array" || this.type === "tuple") {
+    const result = [];
+    value.forEach((value2, index) => {
+      const schema = this.type === "array" ? this.inner : this.list[index];
+      const item = schema ? schema.simplify(value2) : value2;
+      result.push(item);
+    });
+    return result;
+  } else if (this.type === "intersect") {
+    const result = {};
+    for (const item of this.list) Object.assign(result, item.simplify(value));
+    return result;
+  } else if (this.type === "union") for (const schema of this.list) try {
+    Schema.resolve(value, schema, {});
+    return schema.simplify(value);
+  } catch {
+  }
+  return value;
+};
+Schema.prototype.toString = function toString(inline) {
+  return formatters[this.type]?.(this, inline) ?? `Schema<${this.type}>`;
+};
+Schema.prototype.role = function role(role, extra2) {
+  const schema = Schema(this);
+  schema.meta = {
+    ...schema.meta,
+    role,
+    extra: extra2
+  };
+  return schema;
+};
+for (const key of [
+  "default",
+  "link",
+  "comment",
+  "description",
+  "max",
+  "min",
+  "step"
+]) Object.assign(Schema.prototype, { [key](value) {
+  const schema = Schema(this);
+  schema.meta = {
+    ...schema.meta,
+    [key]: value
+  };
+  return schema;
+} });
+Schema.prototype.volatile = function volatile() {
+  if (this.meta.volatile) throw new TypeError("volatile schema is already wrapped");
+  return this.extra("volatile", true);
+};
+var resolvers = {};
+var checkedVolatile = /* @__PURE__ */ Symbol("checked-volatile-schema");
+function validateVolatileSchema(schema, path = [], blocked = false, seen = /* @__PURE__ */ new Map()) {
+  const states = seen.get(schema) ?? /* @__PURE__ */ new Set();
+  if (states.has(blocked)) return;
+  states.add(blocked);
+  seen.set(schema, states);
+  if (schema.meta?.volatile && blocked) throw new ValidationError("volatile fields require a fixed object path without an enclosing volatile field", { path });
+  const nested = blocked || !!schema.meta?.volatile;
+  if (schema.dict) for (const [key, child] of Object.entries(schema.dict)) validateVolatileSchema(child, [...path, key], nested, seen);
+  if (schema.sKey) validateVolatileSchema(schema.sKey, [...path, "<key>"], true, seen);
+  if (schema.inner && (schema.type !== "lazy" || schema.inner[kSchema])) validateVolatileSchema(schema.inner, [...path, "*"], true, seen);
+  if (schema.list) for (let index = 0; index < schema.list.length; index++) validateVolatileSchema(schema.list[index], [...path, String(index)], true, seen);
+}
+Schema.extend = function extend(type, resolve2) {
+  resolvers[type] = resolve2;
+};
+Schema.resolve = function resolve(data, schema, options = {}, strict = false) {
+  if (!schema) return [data];
+  if (!options[checkedVolatile]) {
+    validateVolatileSchema(schema, options.path);
+    options = {
+      ...options,
+      [checkedVolatile]: true
+    };
+  }
+  if (schema.meta?.volatile) {
+    const inner = Schema(schema);
+    inner.meta = {
+      ...schema.meta,
+      volatile: false
+    };
+    const [value, adapted] = Schema.resolve(data, inner, options, strict);
+    try {
+      return [createVolatile(value), adapted];
+    } catch (error) {
+      throw new ValidationError(error instanceof Error ? error.message : String(error), options);
+    }
+  }
+  if (options.ignore?.(data, schema)) return [data];
+  if (isNullable(data) && schema.type !== "lazy") {
+    if (schema.meta.required) throw new ValidationError(`missing required value`, options);
+    let current = schema;
+    let fallback = schema.meta.default;
+    while (current?.type === "intersect" && isNullable(fallback)) {
+      current = current.list[0];
+      fallback = current?.meta.default;
+    }
+    if (isNullable(fallback)) return [data];
+    data = clone(fallback);
+  }
+  const callback = resolvers[schema.type];
+  if (!callback) throw new ValidationError(`unsupported type "${schema.type}"`, options);
+  try {
+    return callback(data, schema, options, strict);
+  } catch (error) {
+    if (!schema.meta.loose) throw error;
+    return [schema.meta.default];
+  }
+};
+Schema.from = function from(source) {
+  if (isNullable(source)) return Schema.any();
+  else if ([
+    "string",
+    "number",
+    "boolean"
+  ].includes(typeof source)) return Schema.const(source).required();
+  else if (source[kSchema]) return source;
+  else if (typeof source === "function") switch (source) {
+    case String:
+      return Schema.string().required();
+    case Number:
+      return Schema.number().required();
+    case Boolean:
+      return Schema.boolean().required();
+    case Function:
+      return Schema.function().required();
+    default:
+      return Schema.is(source).required();
+  }
+  else throw new TypeError(`cannot infer schema from ${source}`);
+};
+Schema.lazy = function lazy(builder) {
+  const toJSON2 = () => {
+    if (!schema.inner[kSchema]) {
+      schema.inner = schema.builder();
+      schema.inner.meta = {
+        ...schema.meta,
+        ...schema.inner.meta
+      };
+    }
+    return schema.inner.toJSON();
+  };
+  const schema = new Schema({
+    type: "lazy",
+    builder,
+    inner: { toJSON: toJSON2 }
+  });
+  return schema;
+};
+Schema.natural = function natural() {
+  return Schema.number().step(1).min(0);
+};
+Schema.percent = function percent() {
+  return Schema.number().step(0.01).min(0).max(1).role("slider");
+};
+Schema.date = function date() {
+  return Schema.union([Schema.is(Date), Schema.transform(Schema.string().role("datetime"), (value, options) => {
+    const date2 = new Date(value);
+    if (isNaN(+date2)) throw new ValidationError(`invalid date "${value}"`, options);
+    return date2;
+  }, true)]);
+};
+Schema.regExp = function regExp(flag = "") {
+  return Schema.union([Schema.is(RegExp), Schema.transform(Schema.string().role("regexp", { flag }), (value, options) => {
+    try {
+      return new RegExp(value, flag);
+    } catch (e) {
+      throw new ValidationError(e.message, options);
+    }
+  }, true)]);
+};
+Schema.arrayBuffer = function arrayBuffer(encoding) {
+  return Schema.union([
+    Schema.is(ArrayBuffer),
+    Schema.is(SharedArrayBuffer),
+    Schema.transform(Schema.any(), (value, options) => {
+      if (Binary.isSource(value)) return Binary.fromSource(value);
+      throw new ValidationError(`expected ArrayBufferSource but got ${value}`, options);
+    }, true),
+    ...encoding ? [Schema.transform(Schema.string(), (value, options) => {
+      try {
+        return encoding === "base64" ? Binary.fromBase64(value) : Binary.fromHex(value);
+      } catch (e) {
+        throw new ValidationError(e.message, options);
+      }
+    }, true)] : []
+  ]);
+};
+Schema.extend("lazy", (data, schema, options, strict) => {
+  if (!schema.inner[kSchema]) {
+    schema.inner = schema.builder();
+    schema.inner.meta = {
+      ...schema.meta,
+      ...schema.inner.meta
+    };
+    validateVolatileSchema(schema.inner, options.path, true);
+  }
+  return Schema.resolve(data, schema.inner, options, strict);
+});
+Schema.extend("any", (data) => {
+  return [data];
+});
+Schema.extend("never", (data, _, options) => {
+  throw new ValidationError(`expected nullable but got ${data}`, options);
+});
+Schema.extend("const", (data, { value }, options) => {
+  if (deepEqual(data, value)) return [value];
+  throw new ValidationError(`expected ${value} but got ${data}`, options);
+});
+function checkWithinRange(data, meta, description, options, skipMin = false) {
+  const { max = Infinity, min = -Infinity } = meta;
+  if (data > max) throw new ValidationError(`expected ${description} <= ${max} but got ${data}`, options);
+  if (data < min && !skipMin) throw new ValidationError(`expected ${description} >= ${min} but got ${data}`, options);
+}
+Schema.extend("string", (data, { meta }, options) => {
+  if (typeof data !== "string") throw new ValidationError(`expected string but got ${data}`, options);
+  if (meta.pattern) {
+    const regexp = new RegExp(meta.pattern.source, meta.pattern.flags);
+    if (!regexp.test(data)) throw new ValidationError(`expect string to match regexp ${regexp}`, options);
+  }
+  checkWithinRange(data.length, meta, "string length", options);
+  return [data];
+});
+function decimalShift(data, digits) {
+  const str = data.toString();
+  if (str.includes("e")) return data * Math.pow(10, digits);
+  const index = str.indexOf(".");
+  if (index === -1) return data * Math.pow(10, digits);
+  const frac = str.slice(index + 1);
+  const integer = str.slice(0, index);
+  if (frac.length <= digits) return +(integer + frac.padEnd(digits, "0"));
+  return +(integer + frac.slice(0, digits) + "." + frac.slice(digits));
+}
+function isMultipleOf(data, min, step) {
+  step = Math.abs(step);
+  if (!/^\d+\.\d+$/.test(step.toString())) return (data - min) % step === 0;
+  const index = step.toString().indexOf(".");
+  const digits = step.toString().slice(index + 1).length;
+  return Math.abs(decimalShift(data, digits) - decimalShift(min, digits)) % decimalShift(step, digits) === 0;
+}
+Schema.extend("number", (data, { meta }, options) => {
+  if (typeof data !== "number") throw new ValidationError(`expected number but got ${data}`, options);
+  checkWithinRange(data, meta, "number", options);
+  const { step } = meta;
+  if (step && !isMultipleOf(data, meta.min ?? 0, step)) throw new ValidationError(`expected number multiple of ${step} but got ${data}`, options);
+  return [data];
+});
+Schema.extend("boolean", (data, _, options) => {
+  if (typeof data === "boolean") return [data];
+  throw new ValidationError(`expected boolean but got ${data}`, options);
+});
+Schema.extend("bitset", (data, { bits, meta }, options) => {
+  let value = 0, keys = [];
+  if (typeof data === "number") {
+    value = data;
+    for (const key in bits) if (data & bits[key]) keys.push(key);
+  } else if (Array.isArray(data)) {
+    keys = data;
+    for (const key of keys) {
+      if (typeof key !== "string") throw new ValidationError(`expected string but got ${key}`, options);
+      if (key in bits) value |= bits[key];
+    }
+  } else throw new ValidationError(`expected number or array but got ${data}`, options);
+  if (value === meta.default) return [value];
+  return [value, keys];
+});
+Schema.extend("function", (data, _, options) => {
+  if (typeof data === "function") return [data];
+  throw new ValidationError(`expected function but got ${data}`, options);
+});
+Schema.extend("is", (data, { constructor }, options) => {
+  if (typeof constructor === "function") {
+    if (data instanceof constructor) return [data];
+    throw new ValidationError(`expected ${constructor.name} but got ${data}`, options);
+  } else {
+    if (isNullable(data)) throw new ValidationError(`expected ${constructor} but got ${data}`, options);
+    let prototype = Object.getPrototypeOf(data);
+    while (prototype) {
+      if (prototype.constructor?.name === constructor) return [data];
+      prototype = Object.getPrototypeOf(prototype);
+    }
+    throw new ValidationError(`expected ${constructor} but got ${data}`, options);
+  }
+});
+function property(data, key, schema, options) {
+  try {
+    const [value, adapted] = Schema.resolve(data[key], schema, {
+      ...options,
+      path: [...options.path || [], key]
+    });
+    if (adapted !== void 0) data[key] = adapted;
+    return value;
+  } catch (e) {
+    if (!options?.autofix) throw e;
+    delete data[key];
+    return schema.meta.volatile ? createVolatile(schema.meta.default) : schema.meta.default;
+  }
+}
+Schema.extend("array", (data, { inner, meta }, options) => {
+  if (!Array.isArray(data)) throw new ValidationError(`expected array but got ${data}`, options);
+  checkWithinRange(data.length, meta, "array length", options, !isNullable(inner.meta.default));
+  return [data.map((_, index) => property(data, index, inner, options))];
+});
+Schema.extend("dict", (data, { inner, sKey }, options, strict) => {
+  if (!isPlainObject(data)) throw new ValidationError(`expected object but got ${data}`, options);
+  const result = {};
+  for (const key in data) {
+    let rKey;
+    try {
+      rKey = Schema.resolve(key, sKey, options)[0];
+    } catch (error) {
+      if (strict) continue;
+      throw error;
+    }
+    result[rKey] = property(data, key, inner, options);
+    data[rKey] = data[key];
+    if (key !== rKey) delete data[key];
+  }
+  return [result];
+});
+Schema.extend("tuple", (data, { list }, options, strict) => {
+  if (!Array.isArray(data)) throw new ValidationError(`expected array but got ${data}`, options);
+  const result = list.map((inner, index) => property(data, index, inner, options));
+  if (strict) return [result];
+  result.push(...data.slice(list.length));
+  return [result];
+});
+function merge(result, data) {
+  for (const key in data) {
+    if (key in result) continue;
+    result[key] = data[key];
+  }
+}
+Schema.extend("object", (data, { dict }, options, strict) => {
+  if (!isPlainObject(data)) throw new ValidationError(`expected object but got ${data}`, options);
+  const result = {};
+  for (const key in dict) {
+    const value = property(data, key, dict[key], options);
+    if (!isNullable(value) || key in data) result[key] = value;
+  }
+  if (!strict) merge(result, data);
+  return [result];
+});
+Schema.extend("union", (data, { list, toString: toString2 }, options, strict) => {
+  const messages = [];
+  for (const inner of list) try {
+    return Schema.resolve(data, inner, options, strict);
+  } catch (error) {
+    messages.push(error);
+  }
+  throw new ValidationError(`expected ${toString2()} but got ${JSON.stringify(data)}`, options);
+});
+Schema.extend("intersect", (data, { list, toString: toString2 }, options, strict) => {
+  if (!list.length) return [data];
+  let result;
+  for (const inner of list) {
+    const value = Schema.resolve(data, inner, options, true)[0];
+    if (isNullable(value)) continue;
+    if (isNullable(result)) result = value;
+    else if (typeof result !== typeof value) throw new ValidationError(`expected ${toString2()} but got ${JSON.stringify(data)}`, options);
+    else if (typeof value === "object") merge(result ??= {}, value);
+    else if (result !== value) throw new ValidationError(`expected ${toString2()} but got ${JSON.stringify(data)}`, options);
+  }
+  if (!strict && isPlainObject(data)) merge(result, data);
+  return [result];
+});
+Schema.extend("transform", (data, { inner, callback, preserve }, options) => {
+  const [result, adapted = data] = Schema.resolve(data, inner, options, true);
+  if (preserve) return [callback(result)];
+  else return [callback(result), callback(adapted)];
+});
+var formatters = {};
+function defineMethod(name2, keys, format) {
+  formatters[name2] = format;
+  Object.assign(Schema, { [name2](...args) {
+    const schema = new Schema({ type: name2 });
+    keys.forEach((key, index) => {
+      switch (key) {
+        case "sKey":
+          schema.sKey = args[index] ?? Schema.string();
+          break;
+        case "inner":
+          schema.inner = Schema.from(args[index]);
+          break;
+        case "list":
+          schema.list = args[index].map(Schema.from);
+          break;
+        case "dict":
+          schema.dict = mapValues(args[index], Schema.from);
+          break;
+        case "bits":
+          schema.bits = {};
+          for (const key2 in args[index]) {
+            if (typeof args[index][key2] !== "number") continue;
+            schema.bits[key2] = args[index][key2];
+          }
+          break;
+        case "callback": {
+          const callback = schema.callback = args[index];
+          callback["toJSON"] ||= () => callback.toString();
+          break;
+        }
+        case "constructor": {
+          const constructor = schema.constructor = args[index];
+          if (typeof constructor === "function") constructor["toJSON"] ||= () => constructor["name"];
+          break;
+        }
+        default:
+          schema[key] = args[index];
+      }
+    });
+    if (name2 === "object" || name2 === "dict") schema.meta.default = {};
+    else if (name2 === "array" || name2 === "tuple") schema.meta.default = [];
+    else if (name2 === "bitset") schema.meta.default = 0;
+    return schema;
+  } });
+}
+defineMethod("is", ["constructor"], ({ constructor }) => {
+  if (typeof constructor === "function") return constructor.name;
+  else return constructor;
+});
+defineMethod("any", [], () => "any");
+defineMethod("never", [], () => "never");
+defineMethod("const", ["value"], ({ value }) => typeof value === "string" ? JSON.stringify(value) : value);
+defineMethod("string", [], () => "string");
+defineMethod("number", [], () => "number");
+defineMethod("boolean", [], () => "boolean");
+defineMethod("bitset", ["bits"], () => "bitset");
+defineMethod("function", [], () => "function");
+defineMethod("array", ["inner"], ({ inner }) => `${inner.toString(true)}[]`);
+defineMethod("dict", ["inner", "sKey"], ({ inner, sKey }) => `{ [key: ${sKey.toString()}]: ${inner.toString()} }`);
+defineMethod("tuple", ["list"], ({ list }) => `[${list.map((inner) => inner.toString()).join(", ")}]`);
+defineMethod("object", ["dict"], ({ dict }) => {
+  if (Object.keys(dict).length === 0) return "{}";
+  return `{ ${Object.entries(dict).map(([key, inner]) => {
+    return `${key}${inner.meta.required ? "" : "?"}: ${inner.toString()}`;
+  }).join(", ")} }`;
+});
+defineMethod("union", ["list"], ({ list }, inline) => {
+  const result = list.map(({ toString: format }) => format()).join(" | ");
+  return inline ? `(${result})` : result;
+});
+defineMethod("intersect", ["list"], ({ list }) => {
+  return `${list.map((inner) => inner.toString(true)).join(" & ")}`;
+});
+defineMethod("transform", [
+  "inner",
+  "callback",
+  "preserve"
+], ({ inner }, isInner) => inner.toString(isInner));
+
+// src/asr-replacements.ts
+var AsrReplacementSchema = Schema.object({
+  from: Schema.array(Schema.string()).description('Spellings the recognizer produces, e.g. ["sakeena"]; case-insensitive, whitespace between Latin and CJK text ignored.'),
+  to: Schema.string().description('The spelling you want, e.g. "Sakina".')
+});
+var REPLACEMENTS_MAX_PAYLOAD_BYTES = 12e3;
+function replacementsPayloadBytes(rules) {
+  return new TextEncoder().encode(JSON.stringify(rules ?? [])).length;
+}
+
 // src/settings-form.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
 var t2 = {
@@ -3377,33 +4253,10 @@ function VoicePreviewButton({ voice, rate }) {
   const [busy, setBusy] = (0, import_react2.useState)(false);
   const [note, setNote] = (0, import_react2.useState)(null);
   const audioRef = (0, import_react2.useRef)(null);
-  const [localReady, setLocalReady] = (0, import_react2.useState)(null);
-  const [ttsLoading, setTtsLoading] = (0, import_react2.useState)(false);
-  (0, import_react2.useEffect)(() => {
-    let alive = true;
-    const poll = async () => {
-      try {
-        const res = await fetch(location.origin + BASE_PATH + "/models/status");
-        if (res.ok && alive) {
-          const st = await res.json();
-          const tts = st.tts;
-          if (tts.engine === "edge" || tts.engine === "openai" || tts.engine === "mimo") {
-            setLocalReady(true);
-          } else {
-            setLocalReady(!!tts.local?.ready);
-          }
-          setTtsLoading(!!tts.loading);
-        }
-      } catch {
-      }
-    };
-    void poll();
-    const timer = setInterval(() => void poll(), 3e3);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, []);
+  const status = useModelsStatus();
+  const stTts = status?.tts;
+  const localReady = stTts ? stTts.engine === "edge" || stTts.engine === "openai" || stTts.engine === "mimo" ? true : !!stTts.local?.ready : null;
+  const ttsLoading = !!stTts?.loading;
   const disabledByModel = localReady === false;
   const play = () => {
     if (busy) return;
@@ -3615,7 +4468,7 @@ function SelfTestSection({
     },
     []
   );
-  const verdict = (label, st, extra) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term, display: "inline-flex", gap: 4 }, children: [
+  const verdict = (label, st, extra2) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term, display: "inline-flex", gap: 4 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "span",
@@ -3627,7 +4480,7 @@ function SelfTestSection({
         children: st === "ok" ? t("selftestOk") : st === null ? "\u2013" : st === "autoplay" ? t("selftestAutoplay") : t("selftestFail")
       }
     ),
-    extra ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: extra }) : null
+    extra2 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: extra2 }) : null
   ] });
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
     "span",
@@ -3701,9 +4554,9 @@ function normalizeRules(input) {
     const rec = r;
     if (typeof rec.to !== "string" || !rec.to.trim()) return null;
     if (!Array.isArray(rec.from)) return null;
-    const from = rec.from.filter((s) => typeof s === "string" && !!s.trim()).map((s) => s.trim());
-    if (from.length === 0) return null;
-    out.push({ from, to: rec.to.trim() });
+    const from2 = rec.from.filter((s) => typeof s === "string" && !!s.trim()).map((s) => s.trim());
+    if (from2.length === 0) return null;
+    out.push({ from: from2, to: rec.to.trim() });
   }
   return out;
 }
@@ -3714,33 +4567,16 @@ function ReplacementsSection({
   const parsed = normalizeRules(rules);
   const unreadable = parsed === null;
   const list = parsed ?? [];
-  const [hits, setHits] = (0, import_react2.useState)([]);
   const [fromText, setFromText] = (0, import_react2.useState)("");
   const [toText, setToText] = (0, import_react2.useState)("");
   const [note, setNote] = (0, import_react2.useState)(null);
   const fileRef = (0, import_react2.useRef)(null);
-  (0, import_react2.useEffect)(() => {
-    let alive = true;
-    const poll = async () => {
-      try {
-        const res = await fetch(location.origin + BASE_PATH + "/models/status");
-        if (res.ok && alive) {
-          const st = await res.json();
-          const h = st.replacements?.hits;
-          if (Array.isArray(h)) setHits(h.filter((n) => typeof n === "number"));
-        }
-      } catch {
-      }
-    };
-    void poll();
-    const timer = setInterval(() => void poll(), 5e3);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, []);
+  const status = useModelsStatus();
+  const hits = status?.replacements?.hits?.filter((n) => typeof n === "number") ?? [];
+  const [hitsOverride, setHits] = (0, import_react2.useState)(null);
+  const shownHits = hitsOverride ?? hits;
   const commit = async (next) => {
-    if (JSON.stringify(next).length > 12e3) {
+    if (replacementsPayloadBytes(next) > REPLACEMENTS_MAX_PAYLOAD_BYTES) {
       setNote(t("replTooLarge"));
       return false;
     }
@@ -3758,21 +4594,22 @@ function ReplacementsSection({
       setNote(t("replUnreadable"));
       return;
     }
-    const from = fromText.split(/[,，、]/).map((s) => s.trim()).filter((s) => s.length > 0);
+    const from2 = fromText.split(/[,，、]/).map((s) => s.trim()).filter((s) => s.length > 0);
     const to = toText.trim();
-    if (from.length === 0 || !to || list.length >= 200) {
+    if (from2.length === 0 || !to || list.length >= 200) {
       setNote(t("replInvalid"));
       return;
     }
     void (async () => {
-      if (await commit([...list, { from, to }])) {
+      if (await commit([...list, { from: from2, to }])) {
         setFromText("");
         setToText("");
       }
     })();
   };
   const exportFile = () => {
-    const blob = new Blob([JSON.stringify(list, null, 2)], { type: "application/json" });
+    const payload = unreadable ? rules : list;
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -3828,7 +4665,7 @@ function ReplacementsSection({
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: t2.term }, children: [
         t("replHits"),
         " ",
-        hits[i] ?? 0
+        shownHits[i] ?? 0
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         "button",
@@ -3925,6 +4762,39 @@ function DictationPreset({
     )
   ] });
 }
+var modelsStatusSubs = /* @__PURE__ */ new Set();
+var modelsStatusTimer = null;
+var modelsStatusLast = null;
+var MODELS_STATUS_INTERVAL_MS = 3e3;
+async function pollModelsStatusOnce() {
+  try {
+    const res = await fetch(location.origin + BASE_PATH + "/models/status");
+    if (!res.ok) return;
+    modelsStatusLast = await res.json();
+    for (const fn of [...modelsStatusSubs]) fn(modelsStatusLast);
+  } catch {
+  }
+}
+function subscribeModelsStatus(fn) {
+  modelsStatusSubs.add(fn);
+  if (modelsStatusLast) fn(modelsStatusLast);
+  if (!modelsStatusTimer) {
+    void pollModelsStatusOnce();
+    modelsStatusTimer = setInterval(() => void pollModelsStatusOnce(), MODELS_STATUS_INTERVAL_MS);
+  }
+  return () => {
+    modelsStatusSubs.delete(fn);
+    if (modelsStatusSubs.size === 0 && modelsStatusTimer) {
+      clearInterval(modelsStatusTimer);
+      modelsStatusTimer = null;
+    }
+  };
+}
+function useModelsStatus() {
+  const [st, setSt] = (0, import_react2.useState)(modelsStatusLast);
+  (0, import_react2.useEffect)(() => subscribeModelsStatus(setSt), []);
+  return st;
+}
 function Row({ name: name2, desc, children }) {
   const label = t(`${name2}Label`);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, children: [
@@ -3995,24 +4865,8 @@ function SegGroup({
 }
 var fmtMB = (b) => b >= 1048576 ? `${(b / 1048576).toFixed(0)}MB` : b > 0 ? `${Math.round(b / 1024)}KB` : "\u2013";
 function EngineStatusInline() {
-  const [st, setSt] = (0, import_react2.useState)(null);
+  const st = useModelsStatus();
   const [acting, setActing] = (0, import_react2.useState)(null);
-  (0, import_react2.useEffect)(() => {
-    let alive = true;
-    const poll = async () => {
-      try {
-        const res = await fetch(location.origin + BASE_PATH + "/models/status");
-        if (res.ok && alive) setSt(await res.json());
-      } catch {
-      }
-    };
-    void poll();
-    const timer = setInterval(() => void poll(), 3e3);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, []);
   const tts = st?.tts;
   if (!tts) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, {});
   const engineName = tts.engine === "vits" ? t("engineVits") : tts.engine === "kokoro" ? t("engineKokoro") : tts.engine === "openai" ? t("engineOpenai") : tts.engine === "mimo" ? t("engineMimo") : t("engineEdge");
@@ -4090,24 +4944,8 @@ function EngineStatusInline() {
   ] });
 }
 function ModelStatusView() {
-  const [st, setSt] = (0, import_react2.useState)(null);
+  const st = useModelsStatus();
   const [retrying, setRetrying] = (0, import_react2.useState)(null);
-  (0, import_react2.useEffect)(() => {
-    let alive = true;
-    const poll = async () => {
-      try {
-        const res = await fetch(`${location.origin}${BASE_PATH}/models/status`);
-        if (res.ok && alive) setSt(await res.json());
-      } catch {
-      }
-    };
-    void poll();
-    const timer = setInterval(() => void poll(), 3e3);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, []);
   const retry = (kind) => {
     setRetrying(kind);
     void fetch(`${location.origin}${BASE_PATH}/models/retry`, {
@@ -4639,7 +5477,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "82f469b";
+var BUILD_TAG = "d3a0dad";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -5909,27 +6747,27 @@ function MicMenu({ scope, anchor, onClose }) {
     ...below ? { top: r ? Math.round(r.bottom + 8) : 96 } : { bottom: Math.round(window.innerHeight - r.top + 8) },
     ...adj && (adj.dx !== 0 || adj.dy !== 0) ? { transform: `translate(${adj.dx}px, ${adj.dy}px)` } : null
   };
-  const item = (role, checked, label, onPick) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("button", { type: "button", role, "aria-checked": checked, className: "dshvm-menu-item", onClick: onPick, children: [
+  const item = (role2, checked, label, onPick) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("button", { type: "button", role: role2, "aria-checked": checked, className: "dshvm-menu-item", onClick: onPick, children: [
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: label }),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-menu-check", children: checked ? "\u2713" : "" })
   ] }, label);
-  const set = (field, value) => void scope.set(field, value);
+  const set2 = (field, value) => void scope.set(field, value);
   const mode = v.mode === "hold" || v.mode === "once" ? v.mode : "toggle";
   const read = v.readAloud === "always" || v.readAloud === "off" ? v.readAloud : "voice";
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { ref: menuRef, className: "dshvm-menu", role: "menu", "aria-label": t("stateVoiceMode"), style: pos, children: [
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-label", children: t("modeLabel") }),
     ["toggle", "hold", "once"].map(
-      (m) => item("menuitemradio", mode === m, t(m === "toggle" ? "modeToggle" : m === "hold" ? "modeHold" : "modeOnce"), () => set("mode", m))
+      (m) => item("menuitemradio", mode === m, t(m === "toggle" ? "modeToggle" : m === "hold" ? "modeHold" : "modeOnce"), () => set2("mode", m))
     ),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-sep" }),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-label", children: t("readAloudLabel") }),
     ["voice", "always", "off"].map(
-      (m) => item("menuitemradio", read === m, t(m === "voice" ? "readAloudVoice" : m === "always" ? "readAloudAlways" : "readAloudOff"), () => set("readAloud", m))
+      (m) => item("menuitemradio", read === m, t(m === "voice" ? "readAloudVoice" : m === "always" ? "readAloudAlways" : "readAloudOff"), () => set2("readAloud", m))
     ),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-sep" }),
-    item("menuitemcheckbox", v.showCaptions !== false, t("showCaptionsLabel"), () => set("showCaptions", v.showCaptions === false)),
-    item("menuitemcheckbox", v.showStatusBar !== false, t("showStatusBarLabel"), () => set("showStatusBar", v.showStatusBar === false)),
-    item("menuitemcheckbox", v.autoSend !== false, t("autoSendLabel"), () => set("autoSend", v.autoSend === false))
+    item("menuitemcheckbox", v.showCaptions !== false, t("showCaptionsLabel"), () => set2("showCaptions", v.showCaptions === false)),
+    item("menuitemcheckbox", v.showStatusBar !== false, t("showStatusBarLabel"), () => set2("showStatusBar", v.showStatusBar === false)),
+    item("menuitemcheckbox", v.autoSend !== false, t("autoSendLabel"), () => set2("autoSend", v.autoSend === false))
   ] });
 }
 function MicButton({
@@ -6210,11 +7048,11 @@ function MicButton({
     const runSubmit = (submitText) => {
       submitInFlightRef.current = true;
       if (bootNow().mode === "once") beginOnceWait();
-      const snapshot = submitText.trim() || draftSnapshot;
+      const snapshot2 = submitText.trim() || draftSnapshot;
       let wroteBack = false;
-      if (snapshot !== draftSnapshot && typeof actions?.setDraft === "function") {
+      if (snapshot2 !== draftSnapshot && typeof actions?.setDraft === "function") {
         try {
-          actions.setDraft(snapshot);
+          actions.setDraft(snapshot2);
           wroteBack = true;
         } catch {
         }
@@ -6237,7 +7075,7 @@ function MicButton({
         submitTimerRef.current = setInterval(() => {
           retryCount++;
           const phase = phaseRef.current;
-          if (retryCount > 3 || phase === "submitting" || phase === "adjudicating" || draftRef.current.trim() !== (wroteBack ? snapshot : draftSnapshot)) {
+          if (retryCount > 3 || phase === "submitting" || phase === "adjudicating" || draftRef.current.trim() !== (wroteBack ? snapshot2 : draftSnapshot)) {
             cancelPendingSubmit();
             return;
           }
@@ -6245,10 +7083,10 @@ function MicButton({
         }, 500);
       };
       const sid = sidRef.current;
-      if (sid && shouldSteerSubmit(runningRef.current, snapshot)) {
-        void bus.steerSubmit(sid, snapshot).then((delivered) => {
+      if (sid && shouldSteerSubmit(runningRef.current, snapshot2)) {
+        void bus.steerSubmit(sid, snapshot2).then((delivered) => {
           if (delivered) {
-            if (draftRef.current.trim() === (wroteBack ? snapshot : draftSnapshot)) {
+            if (draftRef.current.trim() === (wroteBack ? snapshot2 : draftSnapshot)) {
               try {
                 actions?.setDraft?.("");
               } catch {

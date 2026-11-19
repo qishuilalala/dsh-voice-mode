@@ -28,6 +28,18 @@ export const AsrReplacementSchema: z<AsrReplacement> = z.object({
 
 export type AsrReplacer = (text: string) => string
 
+/**
+ * 词表覆盖层的体积上限（**UTF-8 字节**，与宿主 MAX_JSON_BODY 16KB 留余量）。
+ * 不能用字符串长度：中文一字 3 字节，200 条中文规则 8421 字符却是 16421 字节，
+ * 按字符预检会漏放，最终被服务端 413 拒绝并回滚（二轮核查 B2 实证）。
+ */
+export const REPLACEMENTS_MAX_PAYLOAD_BYTES = 12000
+
+/** 词表序列化后的 UTF-8 字节数（客户端预检与测试共用同一口径）。 */
+export function replacementsPayloadBytes(rules: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(rules ?? [])).length
+}
+
 const ASCII_WORD = /[A-Za-z0-9]/
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
