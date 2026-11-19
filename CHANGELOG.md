@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 维护
+
+- 覆盖 dsh 0.2.2-rc.5：cordis 映射并入 rc.1–rc.5 → 4.1.0（同档稳定），锚点 9/9、双 typecheck 通过、隔离核心 runtime 冒烟全绿（含客户端侧）。现行集保持 9 版（rc.4→rc.5 轮换）、历史全集扩至 27 版锚点/typecheck + 24 核心冒烟。实证见 `docs/compat-contract.md` §30。
+
 ### 新增
 
 - 配置项 `asrReplacements`：识别后的替换表，把识别器常听错的词（人名、英文词）改成想要的写法，中间结果与定稿都生效。热词只有 transducer 模型支持，而定稿用的 SenseVoice 没有热词入口。

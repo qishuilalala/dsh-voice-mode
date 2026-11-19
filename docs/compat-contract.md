@@ -867,3 +867,19 @@ class AgentDefaultModelConfig extends Service {
 
 - **矩阵扩展**：`verify-dual.sh` 现行集保持 9 版（rc.3→rc.4 轮换：latest/next 跟进）、历史全集 **25 → 26 版** / 冒烟 **22 → 23 核心**（新增 rc.4 端口 3158）；`check-dsh-version.sh --check` 零未覆盖。
 - **兼容声明**：`engines.dsh` 维持 `">=0.1.1-rc.2 <0.3.0-0"` 不变——rc.4 落在范围内；对外「已验证至」更新为 **0.2.2-rc.4**（next 通道）。本轮**不发版**（无产品代码变更；L4 仍未覆盖），矩阵与映射先行落盘。
+
+## 30. 0.2.2-rc.5 复核（2026-11-19，scheduled upstream check 触发）
+
+- **发现途径**：scheduled workflow `dsh upstream version check` 每日比对发现 `next=0.2.2-rc.5` 未覆盖（当时 `latest=0.2.2-rc.1`、`alpha=0.2.2-alpha.3` 均已在矩阵内），按流程开单。
+- **依赖面**（`npm view` 实证）：rc.5 的宿主类型包对等依赖仍是 **`cordis ~4.1.0`**（与 rc.1–rc.4 同档）→ `typecheck-dual.sh` 映射表并入 `0.2.2-rc.1|0.2.2-rc.2|0.2.2-rc.3|0.2.2-rc.4|0.2.2-rc.5 → 4.1.0`。
+- **四层验证结果**：
+
+| 层 | 0.2.2-rc.5 |
+|---|---|
+| L1 锚点（9 个 client.inject 包） | ✅ 9/9 |
+| L2 双 typecheck（host + client） | ✅（cordis 4.1.0） |
+| L3 runtime 冒烟（boot + host 三端点 + mic 双语 + 右键菜单 + console 0 error + 设置卡片 16 断言） | ✅ 全绿（隔离核心 `/tmp/dshcore/dsh-0-2-2-rc-5`，端口 3159） |
+| L4 真 LLM 闭环 | ❌ 未跑（沿既有口径：账户 is_available=false，不归咎版本） |
+
+- **矩阵扩展**：现行集保持 9 版（rc.4→rc.5 轮换：latest/next 跟进）、历史全集 **26 → 27 版** / 冒烟 **23 → 24 核心**（新增 rc.5 端口 3159）；`check-dsh-version.sh --check` 零未覆盖。
+- **兼容声明**：`engines.dsh` 维持 `">=0.1.1-rc.2 <0.3.0-0"` 不变；对外「已验证至」更新为 **0.2.2-rc.5**（next 通道）。本轮**不发版**（无产品代码变更；L4 仍未覆盖），矩阵与映射先行落盘。
