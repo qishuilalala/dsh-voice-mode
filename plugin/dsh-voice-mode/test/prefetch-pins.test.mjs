@@ -123,4 +123,76 @@ t('关键文件两侧都登记（漂移过的 3 个 + VITS/SenseVoice 主模型 
   }
 })
 
+
+t('prefetch 逐文件按 repo 精确比对（解析运行时 *_REPO 与 *_FILES）', () => {
+  // R5 复核：集合式断言抓不到「跨 repo 同名文件互换」（tokens.txt 在 6 处、4 个不同 sha）。
+  // 这里从运行时源码解析出 (repo → file → sha)：每个 `const X_FILES: ModelFileSpec[] = [...]`
+  // 归属它上方最近的 `export const X_REPO = '<repo>'`；KOKORO_SHARED_FILES 同时属于两个 Kokoro repo。
+  const entries = []
+  {
+    let repo = ''
+    for (const line of prefetch.split('\n')) {
+      const rm = /^  '([^']+)': \{$/.exec(line)
+      if (rm) { repo = rm[1]; continue }
+      const fm = /^    '([^']+)': '([0-9a-f]{64})',$/.exec(line)
+      if (fm && repo) entries.push({ repo, file: fm[1], sha: fm[2] })
+    }
+  }
+  assert.ok(entries.length >= 25)
+
+  const repoConstOf = (src, name) => {
+    const m = new RegExp(`export const ${name} = '([^']+)'`).exec(src)
+    assert.ok(m, '找不到 ${name}')
+    return m[1]
+  }
+  const modelRepo = repoConstOf(runtime, 'MODEL_REPO')
+  const vadRepo = repoConstOf(runtime, 'VAD_REPO')
+  const senseRepo = repoConstOf(runtime, 'SENSE_REPO')
+  const kInt8 = repoConstOf(runtime, 'KOKORO_MODEL_DIR_INT8')
+  const kFp32 = repoConstOf(runtime, 'KOKORO_MODEL_DIR_FP32')
+
+  /** 解析 `const NAME: ModelFileSpec[] = [ ... ]` 块里的 file→sha。 */
+  const parseFiles = (name, src) => {
+    const at = src.indexOf('const ' + name + ': ModelFileSpec[]')
+    assert.ok(at >= 0, '找不到清单：' + name)
+    // 注意：类型里的 ModelFileSpec[] 也含 ']'，必须从 '= [' 之后再找数组结尾
+    const eq = src.indexOf('= [', at)
+    assert.ok(eq > 0, '找不到数组起始：' + name)
+    const blockSrc = src.slice(eq, src.indexOf(']', eq))
+    const out = new Map()
+    for (const m of blockSrc.matchAll(/\{ file: '([^']+)',(?:[^}]*?)sha256: '([0-9a-f]{64})'/g)) out.set(m[1], m[2])
+    return out
+  }
+  const expect = new Map()
+  const put = (repo, files) => { if (!expect.has(repo)) expect.set(repo, new Map()); for (const [f, s] of files) expect.get(repo).set(f, s) }
+  // asr-host：三份清单（tokens.txt 各不相同，正是互换检测的关键）
+  const asrSrc = read('../src/asr-host.ts')
+  put(modelRepo, parseFiles('MODEL_FILES', asrSrc))
+  put(vadRepo, parseFiles('VAD_FILES', asrSrc))
+  put(senseRepo, parseFiles('SENSE_FILES', asrSrc))
+  // tts-local：VITS 主清单 + Kokoro 两档（共享文件同时归属两个 repo）
+  const ttsSrc = read('../src/tts-local.ts')
+  const vitsRepo = repoConstOf(ttsSrc, 'TTS_MODEL_REPO')
+  put(vitsRepo, parseFiles('TTS_MODEL_FILES', ttsSrc))
+  const shared = parseFiles('KOKORO_SHARED_FILES', ttsSrc)
+  put(kInt8, shared)
+  put(kFp32, shared)
+  // Kokoro 主模型：kokoroSpec 里的三元分支
+  const int8Main = /: \{ file: 'model\.int8\.onnx', revision: '[^']+', sha256: '([0-9a-f]{64})' \}/.exec(ttsSrc)
+  const fp32Main = /model === 'fp32'[\s\S]{0,80}?file: 'model\.onnx', revision: '[^']+', sha256: '([0-9a-f]{64})'/.exec(ttsSrc)
+  assert.ok(int8Main && fp32Main, '找不到 Kokoro 主模型摘要')
+  expect.get(kInt8).set('model.int8.onnx', int8Main[1])
+  expect.get(kFp32).set('model.onnx', fp32Main[1])
+
+  const mismatched = []
+  for (const { repo, file, sha } of entries) {
+    const per = expect.get(repo)
+    if (!per) { mismatched.push(repo + '：运行时没有该 repo 的清单解析'); continue }
+    const want = per.get(file)
+    if (want === undefined) { mismatched.push(repo + '/' + file + '：运行时清单无此文件'); continue }
+    if (want !== sha) mismatched.push(repo + '/' + file + '：prefetch=' + sha.slice(0, 8) + '… 运行时=' + want.slice(0, 8) + '…')
+  }
+  assert.deepEqual(mismatched, [], '逐文件对应关系不一致（预下载会白下）：' + mismatched.join('；'))
+})
+
 console.log(`\n${passed} passed`)

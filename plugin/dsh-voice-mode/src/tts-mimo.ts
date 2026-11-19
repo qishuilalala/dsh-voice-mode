@@ -19,6 +19,7 @@
  */
 import type { TtsEngine, TtsEngineStatus } from './tts-queue.ts'
 import { stripEmotionTags } from './emotion.ts'
+import { redactBodySnippet } from './redact.ts'
 import { mimoSpeedInstruction } from './prompts.ts'
 
 /** 只接受容器格式：裸 PCM 无法以单个 MIME 交给客户端解码。 */
@@ -214,7 +215,8 @@ export class MimoTtsEngine implements TtsEngine {
     try {
       const res = await this.fetchImpl(this.url, { method: 'POST', headers, body: JSON.stringify(body), signal: ac.signal })
       if (!res.ok) {
-        const detail = (await res.text().catch(() => '')).slice(0, 200)
+        // R5 复核：401 时厂商可能回显 key 片段，而这条消息会进日志 → 先脱敏再拼（ADR-0013）。
+        const detail = redactBodySnippet(await res.text().catch(() => ''))
         throw new MimoTtsError('mimo_http_error', `HTTP ${res.status}${detail ? `: ${detail}` : ''}`)
       }
       const data = extractMimoAudio(await res.json())

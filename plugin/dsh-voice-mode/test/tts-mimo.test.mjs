@@ -480,4 +480,29 @@ await t('status 语义：未冷却且已配置 → ready=true 且无 error；冷
   }
 })
 
+
+await t('401 响应体回显 key 时：错误消息里不得出现 key 原文（R5 安全缺口）', async () => {
+  const leaked = 'sk-live-abcdefghijklmnopqrstuvwxyz0123456789'
+  const { server, origin } = await startServer((r, res) => {
+    res.statusCode = 401
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify({ error: 'invalid key', received: leaked, auth: 'Bearer ' + leaked }))
+  })
+  try {
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k' })
+    const err = await engine.synthesize('你好').then(
+      () => null,
+      (e) => e,
+    )
+    assert.ok(err, '应抛错')
+    const msg = String(err.message)
+    assert.ok(!msg.includes(leaked), '错误消息泄漏了密钥：' + msg)
+    assert.ok(msg.includes('401'), '仍应保留状态码便于排障：' + msg)
+    assert.ok(msg.includes('<redacted>'), '应显式标注已脱敏')
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
 console.log(`\n${passed} passed`)

@@ -143,6 +143,25 @@ t('strings（T6 补强）：死键扫描的匹配器自测', () => {
   assert.equal(hit('tr(' + Q + 'fooBarBaz' + Q + ')', 'fooBar'), false, '前缀相同但键不同不得误判')
   assert.equal(hit('// 注释里写 fooBar', 'fooBar'), false, '纯注释不算引用')
 })
+
+t('settings-form（R5 Important）：字段清单与 fmt 映射**键集合完全一致**（漏配会退回裸 String()）', () => {
+  const mod = read('src/effective-pending.ts')
+  const specKeys = [...mod.matchAll(/\{ key: '([a-zA-Z][a-zA-Z0-9]*)', label:/g)].map((m) => m[1])
+  const sfSrc2 = read('src/settings-form.tsx')
+  const fmtStart = sfSrc2.indexOf('const NEXT_ENTRY_FMT')
+  assert.ok(fmtStart > 0, '找不到 NEXT_ENTRY_FMT')
+  const fmtBlock = sfSrc2.slice(fmtStart, sfSrc2.indexOf('\n}', fmtStart))
+  const fmtKeys = [...fmtBlock.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*): \(v\) =>/gm)].map((m) => m[1])
+  assert.ok(specKeys.length >= 10, '清单键解析异常：' + specKeys.length)
+  assert.deepEqual(
+    [...fmtKeys].sort(),
+    [...specKeys].sort(),
+    '字段清单与 fmt 映射不一致（多配/漏配都会让提示显示内部值或 undefined）：清单=' +
+      specKeys.join(',') +
+      ' / fmt=' +
+      fmtKeys.join(','),
+  )
+})
 t('strings（R1 M-2）：*Label 孪生 base 键零死键（批 C 双轨残留清零）', () => {
   // 孪生 base 键（X 与 X+'Label' 同在词典）只应经 t()/tr() 消费；0 引用 = 死键。
   const zhBlock = stringsSrc.slice(stringsSrc.indexOf('export const zh = {'), stringsSrc.indexOf('} as const'))

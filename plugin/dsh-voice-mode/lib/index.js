@@ -2565,7 +2565,7 @@ var en = {
   preview: "Preview",
   // E1 online presets.
   openaiPresetLabel: "Online preset",
-  descOpenaiPreset: "Online TTS preset: endpoint and model follow the preset (key stays in the profile file openaiTts.apiKey, never passes through the browser); empty = manual config file values. Run the self-test below after switching",
+  descOpenaiPreset: "Online TTS preset: endpoint and model follow the preset (keys live in openaiTts.apiKeys[preset id] or openaiTts.apiKey on the host side, never in the browser file openaiTts.apiKey, never passes through the browser); empty = manual config file values. Run the self-test below after switching",
   presetCustom: "Manual (profile file)",
   presetCosy: "SiliconFlow \xB7 CosyVoice2",
   presetFish: "SiliconFlow \xB7 Fish Speech 1.5",
@@ -2920,6 +2920,29 @@ async function correctText(ctx, text, lang) {
   }
 }
 
+// src/redact.ts
+var PREFIXED = [
+  { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
+  { re: /\b((?:api[-_]?key|x-api-key)\s*[:=]\s*)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" }
+];
+var BARE = [
+  /\bsk[-_][A-Za-z0-9._-]{8,}/g,
+  /\bAIza[A-Za-z0-9._-]{10,}/g,
+  /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
+  // 兜底：超长连续 ASCII 串（base64/hex 风格）。真实密钥远长于 20 字符，正常错误文案不会命中。
+  /\b[A-Za-z0-9+/=_-]{20,}\b/g
+];
+function redactSecrets(text) {
+  let out = typeof text === "string" ? text : String(text ?? "");
+  for (const { re, to } of PREFIXED) out = out.replace(re, to);
+  for (const re of BARE) out = out.replace(re, "<redacted>");
+  return out;
+}
+function redactBodySnippet(body, n = 200) {
+  const raw = typeof body === "string" ? body : String(body ?? "");
+  return redactSecrets(raw.slice(0, n));
+}
+
 // src/voice-resolution.ts
 function clean(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -3034,7 +3057,7 @@ var OpenAiTtsEngine = class {
     try {
       const res = await this.fetchImpl(this.url, { method: "POST", headers, body: JSON.stringify(body), signal: ac.signal });
       if (!res.ok) {
-        const detail = (await res.text().catch(() => "")).slice(0, 200);
+        const detail = redactBodySnippet(await res.text().catch(() => ""));
         throw new OpenAiTtsError("openai_http_error", `HTTP ${res.status}${detail ? `: ${detail}` : ""}`);
       }
       const buf = Buffer.from(await res.arrayBuffer());
@@ -3326,7 +3349,7 @@ var MimoTtsEngine = class {
     try {
       const res = await this.fetchImpl(this.url, { method: "POST", headers, body: JSON.stringify(body), signal: ac.signal });
       if (!res.ok) {
-        const detail = (await res.text().catch(() => "")).slice(0, 200);
+        const detail = redactBodySnippet(await res.text().catch(() => ""));
         throw new MimoTtsError("mimo_http_error", `HTTP ${res.status}${detail ? `: ${detail}` : ""}`);
       }
       const data = extractMimoAudio(await res.json());

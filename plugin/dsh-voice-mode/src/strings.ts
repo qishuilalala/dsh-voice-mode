@@ -72,7 +72,7 @@ export const zh = {
   preview: '试听',
   // E1 在线预设。
   openaiPresetLabel: '在线预设',
-  descOpenaiPreset: '在线 TTS 预设：选中后地址与模型按预设走（key 仍走 profile 文件 openaiTts.apiKey，不经过浏览器）；空 = 手动沿用配置文件。切换后点下方自测验证',
+  descOpenaiPreset: '在线 TTS 预设：选中后地址与模型按预设走（key 走 openaiTts.apiKeys[预设id] 或 openaiTts.apiKey，均在宿主侧，不经过浏览器）；空 = 手动沿用配置文件。切换后点下方自测验证',
   presetCustom: '手动配置（profile 文件）',
   presetCosy: '硅基流动 · CosyVoice2',
   presetFish: '硅基流动 · Fish Speech 1.5',
@@ -427,7 +427,7 @@ export const en: Record<keyof typeof zh, string> = {
   preview: 'Preview',
   // E1 online presets.
   openaiPresetLabel: 'Online preset',
-  descOpenaiPreset: 'Online TTS preset: endpoint and model follow the preset (key stays in the profile file openaiTts.apiKey, never passes through the browser); empty = manual config file values. Run the self-test below after switching',
+  descOpenaiPreset: 'Online TTS preset: endpoint and model follow the preset (keys live in openaiTts.apiKeys[preset id] or openaiTts.apiKey on the host side, never in the browser file openaiTts.apiKey, never passes through the browser); empty = manual config file values. Run the self-test below after switching',
   presetCustom: 'Manual (profile file)',
   presetCosy: 'SiliconFlow · CosyVoice2',
   presetFish: 'SiliconFlow · Fish Speech 1.5',

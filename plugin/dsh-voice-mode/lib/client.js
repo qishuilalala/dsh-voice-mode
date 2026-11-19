@@ -1756,7 +1756,7 @@ var zh = {
   preview: "\u8BD5\u542C",
   // E1 在线预设。
   openaiPresetLabel: "\u5728\u7EBF\u9884\u8BBE",
-  descOpenaiPreset: "\u5728\u7EBF TTS \u9884\u8BBE\uFF1A\u9009\u4E2D\u540E\u5730\u5740\u4E0E\u6A21\u578B\u6309\u9884\u8BBE\u8D70\uFF08key \u4ECD\u8D70 profile \u6587\u4EF6 openaiTts.apiKey\uFF0C\u4E0D\u7ECF\u8FC7\u6D4F\u89C8\u5668\uFF09\uFF1B\u7A7A = \u624B\u52A8\u6CBF\u7528\u914D\u7F6E\u6587\u4EF6\u3002\u5207\u6362\u540E\u70B9\u4E0B\u65B9\u81EA\u6D4B\u9A8C\u8BC1",
+  descOpenaiPreset: "\u5728\u7EBF TTS \u9884\u8BBE\uFF1A\u9009\u4E2D\u540E\u5730\u5740\u4E0E\u6A21\u578B\u6309\u9884\u8BBE\u8D70\uFF08key \u8D70 openaiTts.apiKeys[\u9884\u8BBEid] \u6216 openaiTts.apiKey\uFF0C\u5747\u5728\u5BBF\u4E3B\u4FA7\uFF0C\u4E0D\u7ECF\u8FC7\u6D4F\u89C8\u5668\uFF09\uFF1B\u7A7A = \u624B\u52A8\u6CBF\u7528\u914D\u7F6E\u6587\u4EF6\u3002\u5207\u6362\u540E\u70B9\u4E0B\u65B9\u81EA\u6D4B\u9A8C\u8BC1",
   presetCustom: "\u624B\u52A8\u914D\u7F6E\uFF08profile \u6587\u4EF6\uFF09",
   presetCosy: "\u7845\u57FA\u6D41\u52A8 \xB7 CosyVoice2",
   presetFish: "\u7845\u57FA\u6D41\u52A8 \xB7 Fish Speech 1.5",
@@ -2110,7 +2110,7 @@ var en = {
   preview: "Preview",
   // E1 online presets.
   openaiPresetLabel: "Online preset",
-  descOpenaiPreset: "Online TTS preset: endpoint and model follow the preset (key stays in the profile file openaiTts.apiKey, never passes through the browser); empty = manual config file values. Run the self-test below after switching",
+  descOpenaiPreset: "Online TTS preset: endpoint and model follow the preset (keys live in openaiTts.apiKeys[preset id] or openaiTts.apiKey on the host side, never in the browser file openaiTts.apiKey, never passes through the browser); empty = manual config file values. Run the self-test below after switching",
   presetCustom: "Manual (profile file)",
   presetCosy: "SiliconFlow \xB7 CosyVoice2",
   presetFish: "SiliconFlow \xB7 Fish Speech 1.5",
@@ -4994,10 +4994,11 @@ var NEXT_ENTRY_FMT = {
 };
 function EffectivePending({ effective, value, ready }) {
   const pending = computePendingFields(effective, value, ready === true);
-  if (pending.length === 0 || !effective) return null;
+  if (pending.length === 0) return null;
+  const effMap = effective;
   const items = pending.map((f) => {
     const fmt = NEXT_ENTRY_FMT[f.key];
-    const eff = fmt ? fmt(effective[f.key]) : String(effective[f.key]);
+    const eff = fmt ? fmt(effMap[f.key]) : String(effMap[f.key]);
     return t("effectiveItem").replace("{label}", t(f.label)).replace("{value}", eff);
   }).join(t("effectiveItemSep"));
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { "data-dshvm-settings": "effective-pending", style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary)", padding: "8px 2px 4px", lineHeight: 1.6 }, children: t("effectivePending").replace("{count}", String(pending.length)).replace("{items}", items) });
@@ -5746,7 +5747,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "b43d061";
+var BUILD_TAG = "23be3d8";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

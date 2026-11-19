@@ -31,7 +31,7 @@
 E1 引入在线预设后暴露一个真实陷阱：一个 `openaiTts.apiKey` 无法服务多家服务商（硅基流动 / OpenRouter / OpenAI / 自建各需自己的 key），切换预设不换 key 必然 401，而用户很难把 401 与「忘换 key」联系起来。
 
 决定：新增 `openaiTts.apiKeys`（预设 id → key），优先级 `apiKeys[预设id] > apiKey`。**本 ADR 的信任边界不变**：
-- key 只在宿主侧读取，不进 `/presets`、不进 `/config`、不下发浏览器、不写日志；
+- key 只在宿主侧读取，不进 `/presets`、不进 `/config`、不下发浏览器、**不写日志**（错误详情经 `src/redact.ts` 的 `redactBodySnippet` 脱敏后才进消息/日志——401 时厂商可能回显 key 片段）；
 - 两个字段在 schema 中都标 `secret`（含 `apiKeys` 容器，避免被通用设置页整表展示）；
 - 有守卫测试断言「预设表无 key 字段 / /config 载荷无 apiKey / 字段标 secret」。
 

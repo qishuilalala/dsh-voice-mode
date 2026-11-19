@@ -13,6 +13,7 @@
  */
 import type { TtsEngine, TtsEngineStatus } from './tts-queue.ts'
 import { stripEmotionTags } from './emotion.ts'
+import { redactBodySnippet } from './redact.ts'
 import { resolvePresetVoice } from './voice-resolution.ts'
 
 export type OpenAiResponseFormat = 'mp3' | 'wav'
@@ -157,7 +158,8 @@ export class OpenAiTtsEngine implements TtsEngine {
     try {
       const res = await this.fetchImpl(this.url, { method: 'POST', headers, body: JSON.stringify(body), signal: ac.signal })
       if (!res.ok) {
-        const detail = (await res.text().catch(() => '')).slice(0, 200)
+        // R5 复核：401 时厂商可能回显 key 片段，而这条消息会进日志 → 先脱敏再拼（ADR-0013）。
+        const detail = redactBodySnippet(await res.text().catch(() => ''))
         throw new OpenAiTtsError('openai_http_error', `HTTP ${res.status}${detail ? `: ${detail}` : ''}`)
       }
       const buf = Buffer.from(await res.arrayBuffer())
@@ -234,9 +236,8 @@ export interface OpenAiPreset {
  *   官方推荐 marin/cedar）。
  * - selfhosted-*：本地容器（Kokoro-FastAPI 8880 / vLLM-Omni 8000），端点与音色由用户部署决定。
  *
- * 已知限制（如实登记，不做隐式魔法）：key 只有一个字段 `openaiTts.apiKey`，跨服务商切换预设时
- * 必须同时换 key；UI 的「key 说明」已写明这一点，避免用户把 401 误判成「引擎坏了」。
- * 若要支持多 key，属于新增能力（需评估密钥分散风险，ADR-0013 的信任边界仍要求 key 只在宿主）。
+ * key 解析：`openaiTts.apiKeys[预设 id]` 优先，其次 `openaiTts.apiKey`（见 resolveOpenAiApiKey）。
+ * 这样多家服务商可各配一把 key，切换预设不必再手改；key 只在宿主侧，不进 /presets、/config。
  */
 export const OPENAI_PRESETS: Record<string, OpenAiPreset> = {
   'siliconflow-cosyvoice2': {
@@ -298,6 +299,7 @@ export function resolveOpenAiApiKey(
   return (config.apiKey ?? '').trim()
 }
 
+/** 按预设 id 取预设（空/未知 → null，调用方回落 Config 文件值）。 */
 export function resolveOpenAiEndpoint(preset: string): OpenAiPreset | null {
   return OPENAI_PRESETS[preset] ?? null
 }

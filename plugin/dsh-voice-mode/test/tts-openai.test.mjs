@@ -241,6 +241,27 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   }
 }
 
+
+// 7.5) 401 回显 key：错误消息不得含 key 原文（与 MiMo 同源缺口，锁住两个引擎都接线）
+{
+  const leaked = 'sk-live-abcdefghijklmnopqrstuvwxyz0123456789'
+  const { server, origin } = await startServer((r, res) => {
+    res.statusCode = 401
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify({ error: 'invalid key', received: leaked }))
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: 'v' })
+    const err = await engine.synthesize('x').then(() => null, (e) => e)
+    assert.ok(err, '应抛错')
+    assert.ok(!String(err.message).includes(leaked), '错误消息泄漏了密钥：' + err.message)
+    assert.ok(String(err.message).includes('<redacted>'))
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+}
+
 // 6) 未配置：构造不抛；每句走回退；close 关闭已创建的回退引擎。
 {
   const local = fakeLocal()
@@ -368,7 +389,9 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   assert.ok(idx.includes('respondJson(res, 200, { presets: OPENAI_PRESETS })'), '/presets 响应体形状变了，请复核是否引入密钥')
   const at = idx.indexOf('/config`,')
   assert.ok(at > 0, '找不到 /config 路由')
-  const configPayload = idx.slice(at, at + 2600)
+  // 载荷实际约 5.5k 字符；窗口必须覆盖整段，否则后半段插入 apiKey 抓不到（R5 复核）。
+  const configEnd = idx.indexOf('})', at)
+  const configPayload = idx.slice(at, configEnd > at ? configEnd : at + 8000)
   assert.ok(!/apiKey/.test(configPayload), '/config 载荷疑似包含 apiKey')
 
   // 3) schema 里两个 key 字段都必须标 secret（防被通用设置页展示/回显）

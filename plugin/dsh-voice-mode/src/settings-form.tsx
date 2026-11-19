@@ -1438,11 +1438,13 @@ const NEXT_ENTRY_FMT: Record<string, (v: unknown) => string> = {
 function EffectivePending({ effective, value, ready }: { effective: Record<string, unknown> | null; value: Record<string, unknown>; ready?: boolean }): React.ReactElement | null {
   // 判定逻辑在 effective-pending.ts（可单测：ready 门控 / 运行态缺键 / 严格比较 三分支）。
   const pending = computePendingFields(effective, value, ready === true)
-  if (pending.length === 0 || !effective) return null
+  // effective 为 null 时 pending 必空（上面已返回），故这里只需判长度。
+  if (pending.length === 0) return null
+  const effMap = effective as Record<string, unknown>
   const items = pending
     .map((f) => {
       const fmt = NEXT_ENTRY_FMT[f.key]
-      const eff = fmt ? fmt(effective[f.key]) : String(effective[f.key])
+      const eff = fmt ? fmt(effMap[f.key]) : String(effMap[f.key])
       return tr('effectiveItem').replace('{label}', tr(f.label as TKey)).replace('{value}', eff)
     })
     .join(tr('effectiveItemSep'))

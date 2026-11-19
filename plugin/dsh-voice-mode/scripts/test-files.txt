@@ -50,6 +50,7 @@ test/draft-compose.test.mjs
 test/finalize-ux.test.mjs
 test/llm-correct.test.mjs
 test/autosend-decouple.test.mjs
+test/settings-doc-consistency.test.mjs
 test/settings-effective.test.mjs
 test/silent-path-hints.test.mjs
 test/host-hardening.test.mjs
@@ -88,6 +89,7 @@ test/effective-pending.test.mjs
 test/voice-resolution.test.mjs
 test/doc-current-anchors.test.mjs
 test/prefetch-pins.test.mjs
+test/redact.test.mjs
 test/tts-mimo.test.mjs
 test/tts-openai.test.mjs
 test/asr-replacements.test.mjs
