@@ -6,8 +6,8 @@
 ## 结论摘要
 
 - Blocker：2（均在客户端交互；已修）
-- Important：19（已修 12，待修 7）
-- Minor：21（已修 6）
+- Important：19（已修 19，代码层清零）
+- Minor：21（已修 14）
 - 无 Blocker 的子系统：ASR、TTS、配置/路由（三条链路的并发与密钥边界均成立）
 
 ## 客户端交互（A4）
@@ -18,18 +18,18 @@
 | Blocker | 状态条根节点硬编码成功绿，错误文案继承绿字（「麦克风不可用」显示成成功色） | 已修（错误分支 error-primary） |
 | Important | 11 个开关无 aria 名称，读屏只报「复选框」 | 已修（CheckRow + 源码守卫测试） |
 | Important | 本地模型未就绪时按钮 disabled，原因只在 onClick 里写、永不触发 | 已修（禁用原因就地可见 + aria-describedby） |
-| Important | SecretField / 下载 / 清理 / 重试失败零反馈 | 部分修（SecretField 可见失败；下载/清理待修） |
+| Important | SecretField / 下载 / 清理 / 重试失败零反馈 | 已修（统一 postModelAction + role=status 提示） |
 | Important | Esc 仅 hold 模式生效，toggle/once 无法键盘退出 | 已修（任意模式：Esc 停朗读，600ms 内双击退出） |
 | Important | 快捷键录制态对每个键 preventDefault，Tab 被吞、焦点被困 | 已修（放行 Tab） |
 | Important | 打断只有 3s「…」占位，无「已打断」notice | 已修（interruptedNotice） |
-| Minor | 状态条「退出」只调 bus.exit()，SSE 断时点了仍绿 | 待修 |
-| Minor | pending 态 aria-label「进入中」，实际点击=取消 | 待修 |
-| Minor | micHint nowrap+ellipsis，长错误被截且挤压同排控件 | 待修 |
+| Minor | 状态条「退出」只调 bus.exit()，SSE 断时点了仍绿 | 已修（走 exitMode） |
+| Minor | pending 态 aria-label「进入中」，实际点击=取消 | 已修（名称含「再按一次取消」） |
+| Minor | micHint nowrap+ellipsis，长错误被截且挤压同排控件 | 已修（min(320px,42vw)+两行） |
 | Minor | /models/status 轮询无超时，一次挂起永久停摆 | 已修（8s AbortSignal） |
 | Minor | NumberField 无 aria-invalid/describedby，`#d33` 硬编码 | 待修 |
 | Minor | 固定 id `dshvm-settings-card-body`，两处挂载可能重复 | 已修（useId） |
 | Minor | select 的 aria-label 是当前值；清密钥 busy 文案用 synthesizing | 待修 |
-| Minor | 注入的 <style> 永不摘除，热重载每次再加一份 | 待修 |
+| Minor | 注入的 <style> 永不摘除，热重载每次再加一份 | 已修（标记去重 + 卸载清理） |
 
 ## 配置与宿主路由（A3）
 
@@ -68,4 +68,4 @@
 | Important | 202 的 5s 延迟重试发请求前不判 active/segmentEpoch，退出后仍上行（host 重建幽灵段） | 已修 |
 | Important | models.ts 提前 return 未取消响应体，socket/缓冲滞留 | 已修 |
 | Important | sweep 删除 resetGen → 代际回落 0、单调性丢失 | 已修 |
-| Minor | pcmToSamples 不验 NaN/Inf；SenseVoice 失败静默降级；64s 单包同步解码占事件循环；测试缺口 | 待修 |
+| Minor | pcmToSamples 不验 NaN/Inf；SenseVoice 失败静默降级；64s 单包同步解码占事件循环；测试缺口 | 部分修（PCM 清洗 + 降级提示；解码 yield 与测试缺口待后续） |

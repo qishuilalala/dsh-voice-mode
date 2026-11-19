@@ -95,8 +95,8 @@ Playwright 在运行中的 3018 上量测到的硬问题：
 四个只读代理覆盖 ASR/TTS/配置路由/客户端，逐函数核对 + 注入桩实测。台账见 `docs/review-2026-11-20-four-axis-audit.md`。
 
 - Blocker 2：已全部修（浅色主题「跳过」不可见、错误文案继承成功绿）。
-- Important 19：已修 18；待修 1（下载/清理/重试 POST 的失败提示）。
-- Minor 21：已修 11（redact 漏 gsk_/32-hex、空闲 cancel 误杀引擎、models/status 无超时、scope 并发写覆盖/卸载后 emit、base 仅 7 键、edge 引擎错音色、Edge 无 interrupt、本地模型无断路器、清密钥来源解释、重复 DOM id、/correct 等方法校验）。
+- Important 19：**全部已修**（代码层清零；真机四项门禁仍待设备验证）。
+- Minor 21：已修 14（redact 漏 gsk_/32-hex、空闲 cancel 误杀引擎、models/status 无超时、scope 并发写覆盖/卸载后 emit、base 仅 7 键、edge 引擎错音色、Edge 无 interrupt、本地模型无断路器、清密钥来源解释、重复 DOM id、/correct 等方法校验）。
 - 第二批可靠性：hold 段 3MB 上限 + 413 明确分支、Edge interrupt（单测覆盖）、本地初始化 60s 冷却；表单录制态放行 Tab、预览禁用原因可见、打断提示；POST /settings 写入恒要求回环（allowLan 不再放大到密钥写入）。
 - 已修项均有回归测试；门禁 HOST/CLIENT/BUILD/DRIFT/DOCANCHOR/SUITE 全 0（99 文件）。
 - **未重启 dsh**（用户要求）：host 侧改动随下次重启生效；客户端改动刷新页面即可。
