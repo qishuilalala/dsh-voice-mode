@@ -35,6 +35,22 @@
 | Important | 文档仍称“须切 V2.6” | 更正：TTS 现行 v2.5；V2.6 指 Pro/Flash 推理模型 |
 | Minor | CONTEXT/README 引擎清单缺 mimo | 已补 |
 
+## 二轮核查（同日，独立的只读子代理）
+
+| 核查员 | 范围 | 结论 |
+|---|---|---|
+| B1 | A1/A3 修复真实性 | **通过**：密钥零交叉复用、九字段接线齐全、标签/语速/格式/base64 均已修、5 预设均有 voice 与费用去向、空音色回落生效；仅提示 1 处历史文档残留（已加更正注记） |
+| B2 | A2 修复真实性 | **不通过**：7 项中 5 项已修，2 项未到位 |
+
+B2 指出的两项（已修，commit 6720759）：
+
+1. **备份承诺落空**：不可解析时 exportFile 用 list（空表）导出，而文案说“请先导出备份”。已改为导出原始值 rules。
+2. **体积预检口径错**：客户端按 JSON.stringify().length（UTF-16 码元）预检，服务端 MAX_JSON_BODY 按 Buffer 字节（16KB）。中文一字 3 字节，200 条中文规则字符过关但字节超限，最终 413 并回滚。已改为 replacementsPayloadBytes()（TextEncoder 计 UTF-8 字节）+ 常量 REPLACEMENTS_MAX_PAYLOAD_BYTES，并加 3 项单测锁口径（含“字符未超限但字节超限”的构造样本）。
+
+## 性能优化（同步进行，commit 6720759）
+
+设置卡片原先 4 个组件各自 setInterval 拉 /models/status（3s/5s 各一套）：约 1.3 次/秒重复请求，且四份状态可能不一致。改为模块级单例轮询器（一处轮询、多订阅共享快照、无订阅自动停表），降至 0.33 次/秒。
+
 ## 回归
 
 双端 typecheck、词典覆盖、settings-effective 15 项、tts-mimo 15 项、tts-openai、prefetch-pins、host-security-behavior 60 项、lib 漂移门、全套件 run-tests 全部通过。
