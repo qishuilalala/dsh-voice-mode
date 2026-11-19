@@ -227,6 +227,98 @@ await t('冷却期内不打远程；到期后重试并恢复就绪（now 注入�
   }
 })
 
+await t('429 视同失败：回退本地并进入冷却（额度耗尽是审计重点，不能抛给用户）', async () => {
+  const { server, requests, origin } = await startServer((r, res) => {
+    res.statusCode = 429
+    res.end(JSON.stringify({ error: 'rate limited' }))
+  })
+  try {
+    const local = fakeLocal()
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k', cooldownMs: 5000, fallback: () => local })
+    const buf = await engine.synthesize('你好')
+    assert.ok(buf.length > 0)
+    assert.equal(requests.length, 1)
+    assert.equal(local.calls.length, 1, '429 应回退本地')
+    assert.equal(engine.status().ready, false, '429 后进入冷却 → 非就绪')
+    assert.match(String(engine.status().error ?? ''), /429/, '错误里要带状态码便于排障')
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
+await t('回退本身抛错时：错误向上传播且冷却已置位（不吞异常、不假装成功）', async () => {
+  const { server, origin } = await startServer((r, res) => {
+    res.statusCode = 500
+    res.end('boom')
+  })
+  try {
+    const engine = new MimoTtsEngine({
+      baseUrl: origin,
+      apiKey: 'k',
+      cooldownMs: 5000,
+      fallback: () => ({
+        mime: 'audio/wav',
+        synthesize: async () => {
+          throw new Error('local also broken')
+        },
+        updateVoice() {},
+        interrupt() {},
+        async close() {},
+        status: () => ({ engine: 'vits', ready: false, loading: false }),
+      }),
+    })
+    await assert.rejects(() => engine.synthesize('你好'), /local also broken/)
+    assert.equal(engine.status().ready, false, '即使回退失败，冷却也应置位避免每句先等超时')
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
+await t('空 choices / 缺 audio.data → 明确报错并回退（不产生静音假成功）', async () => {
+  for (const body of [{ choices: [] }, { choices: [{ message: {} }] }, { choices: [{ message: { audio: {} } }] }]) {
+    const { server, origin } = await startServer((r, res) => {
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify(body))
+    })
+    try {
+      const local = fakeLocal()
+      const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k', fallback: () => local })
+      const buf = await engine.synthesize('你好')
+      assert.ok(buf.length > 0, '应回退本地而不是返回空缓冲')
+      assert.equal(local.calls.length, 1)
+      await engine.close()
+    } finally {
+      await closeServer(server)
+    }
+  }
+})
+
+await t('mp3 格式：请求体 audio.format=mp3 且 mime 随格式变', async () => {
+  const { server, requests, origin } = await startServer((r, res) => {
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify(chatOk()))
+  })
+  try {
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k', responseFormat: 'mp3' })
+    await engine.synthesize('你好')
+    assert.equal(requests[0].body.audio.format, 'mp3')
+    assert.equal(engine.mime, 'audio/mpeg')
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
+await t('非法 baseUrl（非 http(s)）→ 未就绪且报 mimo_bad_url，不发请求', async () => {
+  const engine = new MimoTtsEngine({ baseUrl: 'ftp://nope/v1', apiKey: 'k' })
+  assert.equal(engine.status().ready, false)
+  assert.equal(engine.status().errorCode, 'mimo_bad_url')
+  await assert.rejects(() => engine.synthesize('你好'), (e) => e.code === 'mimo_bad_url')
+  await engine.close()
+})
+
 await t('回退沿用 rate 且 mime 跟随回退引擎', async () => {
   const { server, origin } = await startServer((r, res) => {
     res.statusCode = 503
