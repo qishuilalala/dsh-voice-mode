@@ -53,3 +53,18 @@
 ## 锚定真源
 
 数字与结论绑定对应提交、fixture 配置、执行命令和原始结果；只保留当轮证据能够证明的范围。历史测试计数、人工结论与自动化成绩分别陈述，未跑项明确未验收。
+## 启用状态（2026-11-19 已做准备，待重启生效）
+
+| 项 | 状态 |
+|---|---|
+| `~/.dsh/profiles/web/package.json` | `dsh-voice-mode: link:/mnt/dsh-voice-mode/plugin/dsh-voice-mode`（本地构建 0.7.39，含 MiMo/presets/多 key/脱敏） |
+| `~/.dsh/profiles/web/cordis.patch.yml` | 新增 `- id: voice-mode` → `mimoTts.apiKey: !!js process.env.MIMO_API_KEY`（host-only，不静默改 ttsEngine 默认值） |
+| `/root/.env`（600，service 的 EnvironmentFile） | 新增 `MIMO_API_KEY`（唯一明文真源；~/.dsh/.env 的副本已删除，避免两处明文） |
+| web profile 组合校验 | `dsh --profile web --dump-config` 通过，条目 id = voice-mode，配置来自 patch |
+| 运行中服务（PID 1022） | **仍是旧插件 + 无 MIMO_API_KEY**，需重启后生效 |
+
+重启（会断开当前页面，刷新即可回到会话）：`systemctl restart dsh.service`
+
+回滚：`cp /tmp/web-package.json.bak-* ~/.dsh/profiles/web/package.json && cp /tmp/web-cordis.patch.yml.bak-* ~/.dsh/profiles/web/cordis.patch.yml && cd ~/.dsh/profiles/web && pnpm install && systemctl restart dsh.service`
+
+重启后在设置卡片把「朗读引擎」切到 MiMo 即可（默认仍是 edge，符合 I10）。
