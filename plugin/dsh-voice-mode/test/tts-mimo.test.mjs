@@ -44,8 +44,8 @@ function fakeLocal() {
     closed: false,
     mime: 'audio/wav',
     updateVoice() {},
-    async synthesize(text) {
-      calls.push(text)
+    async synthesize(text, options = {}) {
+      calls.push({ text, options })
       return Buffer.from('RIFF-local')
     },
     async close() {
@@ -99,6 +99,10 @@ await t('成功合成：assistant 消息 + audio{voice,format} + api-key 头', a
     assert.equal(requests[0].headers['api-key'], 'k')
     assert.deepEqual(requests[0].body.audio, { voice: 'mimo_default', format: 'wav' })
     assert.equal(requests[0].body.messages.at(-1).content, '你好')
+    // A1 Minor：文本必须在 assistant 角色（放 user 会被当指令、文本不入音频）。
+    assert.equal(requests[0].body.messages.at(-1).role, 'assistant')
+    // A1 Minor：MiMo 用 api-key 头，绝不能同时发 Bearer。
+    assert.equal(requests[0].headers.authorization, undefined)
     await engine.close()
   } finally {
     await closeServer(server)
@@ -142,7 +146,7 @@ await t('5xx 回退本地并冷却：冷却内不再打远程', async () => {
     assert.equal(engine.status().ready, false)
     await engine.synthesize('再来一句')
     assert.equal(requests.length, 1)
-    assert.deepEqual(local.calls, ['你好', '再来一句'])
+    assert.deepEqual(local.calls.map((c) => c.text), ['你好', '再来一句'])
     await engine.close()
   } finally {
     await closeServer(server)
@@ -171,6 +175,139 @@ await t('打断中止在途请求且不计为故障（AbortError、无回退）'
   assert.equal(engine.status().ready, true)
   await engine.close()
   await closeServer(server)
+})
+
+await t('无回退时 5xx 直接抛 mimo_http_error（不静默）', async () => {
+  const { server, origin } = await startServer((r, res) => {
+    res.statusCode = 500
+    res.end('boom')
+  })
+  try {
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k' })
+    await assert.rejects(engine.synthesize('你好'), (e) => e.code === 'mimo_http_error')
+    assert.equal(engine.status().ready, false)
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
+await t('冷却期内不打远程；到期后重试并恢复就绪（now 注入）', async () => {
+  let clock = 1_000_000
+  let n = 0
+  const { server, requests, origin } = await startServer((r, res) => {
+    n += 1
+    if (n === 1) {
+      res.statusCode = 500
+      res.end('boom')
+      return
+    }
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify(chatOk()))
+  })
+  try {
+    const local = fakeLocal()
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k', cooldownMs: 1000, fallback: () => local, now: () => clock })
+    // 第一次：远程 500 → 回退，进入冷却，ready 变 false
+    await engine.synthesize('第一句')
+    assert.equal(requests.length, 1)
+    assert.equal(engine.status().ready, false)
+    // 冷却内：不再打远程，直接回退
+    await engine.synthesize('第二句')
+    assert.equal(requests.length, 1)
+    // 冷却到期：重试远程，成功后 ready 恢复
+    clock += 1500
+    await engine.synthesize('第三句')
+    assert.equal(requests.length, 2)
+    assert.equal(engine.status().ready, true)
+    assert.equal(local.calls.length, 2)
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
+await t('回退沿用 rate 且 mime 跟随回退引擎', async () => {
+  const { server, origin } = await startServer((r, res) => {
+    res.statusCode = 503
+    res.end('down')
+  })
+  try {
+    const local = fakeLocal()
+    local.mime = 'audio/mpeg'
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k', fallback: () => local })
+    const buf = await engine.synthesize('你好', { rate: 1.3 })
+    assert.deepEqual(buf, Buffer.from('RIFF-local'))
+    assert.equal(local.calls[0].options.rate, 1.3)
+    assert.equal(engine.mime, 'audio/mpeg')
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
+await t('close 关闭已创建的本地回退引擎', async () => {
+  const { server, origin } = await startServer((r, res) => {
+    res.statusCode = 500
+    res.end('x')
+  })
+  try {
+    const local = fakeLocal()
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k', fallback: () => local })
+    await engine.synthesize('你好')
+    await engine.close()
+    assert.equal(local.closed, true)
+  } finally {
+    await closeServer(server)
+  }
+})
+
+await t('情感标签被剥离（不把 <laugh> 当正文发给小米）', async () => {
+  const { server, requests, origin } = await startServer((r, res) => {
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify(chatOk()))
+  })
+  try {
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k' })
+    await engine.synthesize('你好<laugh>呀')
+    assert.ok(!requests[0].body.messages.at(-1).content.includes('<laugh>'))
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
+await t('rate≠1 以自然语言风格指令下发（MiMo 无 speed 字段）', async () => {
+  const { server, requests, origin } = await startServer((r, res) => {
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify(chatOk()))
+  })
+  try {
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k' })
+    await engine.synthesize('你好', { rate: 1.4 })
+    const msgs = requests[0].body.messages
+    assert.equal(msgs[0].role, 'user')
+    assert.ok(/语速/.test(msgs[0].content))
+    assert.equal(msgs.at(-1).role, 'assistant')
+    assert.equal(requests[0].body.speed, undefined)
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+})
+
+await t('非法 base64 拒绝（Buffer 静默丢弃会产出不可播音频）', async () => {
+  const { server, origin } = await startServer((r, res) => {
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify(chatOk('@@@not-base64@@@')))
+  })
+  try {
+    const engine = new MimoTtsEngine({ baseUrl: origin, apiKey: 'k' })
+    await assert.rejects(engine.synthesize('你好'), (e) => e.code === 'mimo_bad_audio')
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
 })
 
 console.log(`\n${passed} passed`)

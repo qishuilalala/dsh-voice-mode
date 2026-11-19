@@ -56,6 +56,14 @@ const SAMPLE_BY_LANG: Readonly<Record<string, string>> = {
   ru: 'Здравствуйте, добро пожаловать в голосовой режим.',
 }
 
+/**
+ * MiMo 语速风格指令（模型面固定文案）：MiMo TTS 无 speed 字段，官方推荐用自然语言描述
+ * 语速/情绪/方言等风格（见 mimo.mi.com 语音合成使用指南）。
+ */
+export function mimoSpeedInstruction(rate: number): string {
+  return rate > 1 ? `语速加快到约 ${rate} 倍` : `语速放慢到约 ${rate} 倍`
+}
+
 export function previewSample(engine: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo', voice: string): string {
   if (engine === 'kokoro' || engine === 'openai' || engine === 'mimo') return `${SAMPLE_ZH}${SAMPLE_EN}`
   if (engine === 'vits') return SAMPLE_ZH

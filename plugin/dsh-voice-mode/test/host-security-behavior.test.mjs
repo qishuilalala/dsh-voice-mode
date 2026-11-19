@@ -138,6 +138,7 @@ const promptsStub = stub('prompts.mjs', `
 export function normalizePromptLang() { return 'zh' }
 export function previewSample() { return '你好' }
 export function spokenPrompt() { return '' }
+export function mimoSpeedInstruction(rate) { return rate > 1 ? 'faster' : 'slower' }
 `)
 
 // ---------------------------------------------------------------- bundle src/index.ts

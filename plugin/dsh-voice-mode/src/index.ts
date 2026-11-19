@@ -500,6 +500,8 @@ export interface Config {
   kokoroModel: KokoroModel
   /** ttsEngine=openai 时的远程服务（host-only；key 不下发到客户端）。 */
   openaiTts: OpenAiTtsConfig
+  /** ttsEngine=mimo 时的远程服务（host-only；**独立 key**，不与 openaiTts 共用）。 */
+  mimoTts: MimoTtsConfig
   /** 允许局域网访问 /voice-mode/*（默认仅回环；开启后建议前置认证门）。 */
   allowLan: boolean
   asrReplacements: AsrReplacement[] // 转写后替换表（人名/英文词听错时改写，中间结果与定稿都生效）
@@ -588,12 +590,42 @@ export const OpenAiTtsConfig: z<OpenAiTtsConfig> = z.object({
   fallbackVoice: z.string().default('').description('Voice for the fallback engine (empty = its default).'),
 })
 
+/**
+ * 小米 MiMo TTS 专属配置（A1 审计 Blocker：**绝不复用 openaiTts.apiKey**）。
+ * MiMo 用 `api-key` 头而非 Bearer，且端点属不同厂商——共用一份 key 等于一键切引擎就把
+ * 一家厂商的密钥交给另一家。用户需显式填写自己的 MiMo key。
+ */
+export interface MimoTtsConfig {
+  apiKey: string
+  baseUrl: string
+  model: string
+  voice: string
+  instructions: string
+  responseFormat: 'wav' | 'mp3'
+  timeoutMs: number
+  fallback: 'none' | 'vits' | 'kokoro'
+  fallbackVoice: string
+}
+
+export const MimoTtsConfig: z<MimoTtsConfig> = z.object({
+  apiKey: z.string().role('secret').default('').description('MiMo API key (sent as the api-key header; never reuse another vendor key here).'),
+  baseUrl: z.string().default('https://api.xiaomimimo.com/v1').description('MiMo API base URL; defaults to the official endpoint.'),
+  model: z.string().default('mimo-v2.5-tts').description('Model id: mimo-v2.5-tts / mimo-v2.5-tts-voicedesign / mimo-v2.5-tts-voiceclone.'),
+  voice: z.string().default('mimo_default').description('Preset voice id (the voice setting overrides it).'),
+  instructions: z.string().default('').description('Natural-language style instruction (emotion, dialect, pace).'),
+  responseFormat: z.union([z.const('wav'), z.const('mp3')]).default('wav').description('Container format; raw pcm is not supported because it cannot be labelled with a decodable MIME.'),
+  timeoutMs: z.number().min(1000).max(60000).default(8000).description('Per-sentence timeout; slower counts as unavailable.'),
+  fallback: z.union([z.const('none'), z.const('vits'), z.const('kokoro')]).default('none').description('Local engine used while the server is unreachable or slow.'),
+  fallbackVoice: z.string().default('').description('Voice for the fallback engine (empty = its default).'),
+})
+
 export const Config: z<Config> = z.object({
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default('https://huggingface.co'),
   ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro'), z.const('openai'), z.const('mimo')]).default('edge'),
   openaiTts: OpenAiTtsConfig,
+  mimoTts: MimoTtsConfig,
   kokoroModel: z.union([z.const('int8'), z.const('fp32')]).default('int8'),
   allowLan: z.boolean().default(false),
   asrReplacements: z.array(AsrReplacementSchema).default([]),
@@ -1055,11 +1087,25 @@ export function apply(ctx: Context, config: Config): void {
   const makeEngine = (kind: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo'): TtsEngine => {
     if (kind === 'edge') return new EdgeTtsEngine(config.voice, config.rate)
     if (kind === 'mimo') {
-      const fallbackKind = config.openaiTts.fallback
+      // A1 审计 Blocker：独立 mimoTts 配置（绝不复用 openaiTts.apiKey，避免跨厂商密钥外泄）。
+      const m = config.mimoTts
+      const fb = m.fallback
       return new MimoTtsEngine({
-        // key 与本地回退走 openai 兼容配置同一套 host-only 项（不新增密钥面）。
-        apiKey: config.openaiTts.apiKey || undefined,
-        fallback: fallbackKind === 'none' ? undefined : () => makeEngine(fallbackKind === 'vits' ? 'vits' : 'kokoro'),
+        apiKey: m.apiKey,
+        baseUrl: m.baseUrl,
+        model: m.model,
+        voice: m.voice,
+        instructions: m.instructions,
+        responseFormat: m.responseFormat,
+        timeoutMs: m.timeoutMs,
+        fallback:
+          fb === 'none'
+            ? undefined
+            : () => {
+                const engine = makeEngine(fb === 'vits' ? 'vits' : 'kokoro')
+                if (m.fallbackVoice) engine.updateVoice(m.fallbackVoice)
+                return engine
+              },
       })
     }
     if (kind === 'openai') {
@@ -1071,7 +1117,9 @@ export function apply(ctx: Context, config: Config): void {
         baseUrl: preset?.baseUrl ?? o.baseUrl,
         apiKey: o.apiKey || undefined,
         model: preset?.model ?? o.model,
-        voice: o.voice,
+        // A3：设置里的音色为空时用预设自带音色（否则 SiliconFlow 的 `model:voice` 形态永远用不上，
+        // 用户只切预设不填音色就会 400）。设置值优先，空才回落。
+        voice: vset.voice?.trim() || preset?.voice || o.voice,
         instructions: o.instructions || undefined,
         responseFormat: o.responseFormat,
         timeoutMs: o.timeoutMs,
