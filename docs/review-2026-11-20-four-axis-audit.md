@@ -7,7 +7,7 @@
 
 - Blocker：2（均在客户端交互；已修）
 - Important：19（已修 19，代码层清零）
-- Minor：21（已修 18）
+- Minor：21（已修 20；余 1 项为「状态条退出/SSE 断」已修但真机未验）
 - 无 Blocker 的子系统：ASR、TTS、配置/路由（三条链路的并发与密钥边界均成立）
 
 ## 客户端交互（A4）
@@ -26,9 +26,9 @@
 | Minor | pending 态 aria-label「进入中」，实际点击=取消 | 已修（名称含「再按一次取消」） |
 | Minor | micHint nowrap+ellipsis，长错误被截且挤压同排控件 | 已修（min(320px,42vw)+两行） |
 | Minor | /models/status 轮询无超时，一次挂起永久停摆 | 已修（8s AbortSignal） |
-| Minor | NumberField 无 aria-invalid/describedby，`#d33` 硬编码 | 待修 |
+| Minor | NumberField 无 aria-invalid/describedby，`#d33` 硬编码 | 已修 |
 | Minor | 固定 id `dshvm-settings-card-body`，两处挂载可能重复 | 已修（useId） |
-| Minor | select 的 aria-label 是当前值；清密钥 busy 文案用 synthesizing | 待修 |
+| Minor | select 的 aria-label 是当前值；清密钥 busy 文案用 synthesizing | 已修 |
 | Minor | 注入的 <style> 永不摘除，热重载每次再加一份 | 已修（标记去重 + 卸载清理） |
 
 ## 配置与宿主路由（A3）

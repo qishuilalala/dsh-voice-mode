@@ -426,7 +426,7 @@ function SecretField({
             lineHeight: '16px',
           }}
         >
-          {busy ? tr('synthesizing') : tr('secretClear')}
+          {busy ? tr('secretClearing') : tr('secretClear')}
         </button>
       ) : null}
       <span

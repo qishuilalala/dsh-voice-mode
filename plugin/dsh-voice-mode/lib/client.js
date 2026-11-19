@@ -1823,6 +1823,7 @@ var zh = {
   secretSaveFailed: "\u4FDD\u5B58\u5931\u8D25\uFF1A\u5BBF\u4E3B\u672A\u63A5\u53D7\uFF08\u68C0\u67E5\u662F\u5426\u88AB\u7B56\u7565\u62E6\u622A\uFF09",
   secretKeep: "\u5DF2\u4FDD\u5B58\uFF08\u7559\u7A7A\u4FDD\u6301\u4E0D\u53D8\uFF09",
   secretClear: "\u6E05\u9664",
+  secretClearing: "\u6E05\u9664\u4E2D\u2026",
   secretHintBrowser: "\u586B\u5199\u540E\u4F1A\u7ACB\u5373\u53D1\u5230\u672C\u673A\u5BBF\u4E3B\u5E76\u843D\u76D8\uFF080600\uFF09\uFF0C\u4E0D\u4F1A\u5199\u8FDB\u804A\u5929\u6216\u65E5\u5FD7",
   secretPlaceholderEmpty: "\u7C98\u8D34 key\uFF08\u4FDD\u5B58\u540E\u53EA\u663E\u793A\u300C\u5DF2\u4FDD\u5B58\u300D\uFF09",
   secretCleared: "\u5DF2\u6E05\u9664",
@@ -2206,6 +2207,7 @@ var en = {
   secretSaveFailed: "Save failed: the host did not accept it (check for policy restrictions)",
   secretKeep: "Saved (leave empty to keep)",
   secretClear: "Clear",
+  secretClearing: "Clearing\u2026",
   secretHintBrowser: "Typed values go straight to the local host and are stored with 0600; never written to chat or logs",
   secretPlaceholderEmpty: "Paste the key (after saving only Saved is shown)",
   secretCleared: "Cleared",
@@ -4249,7 +4251,7 @@ function SecretField({
           fontSize: 12,
           lineHeight: "16px"
         },
-        children: busy ? t("synthesizing") : t("secretClear")
+        children: busy ? t("secretClearing") : t("secretClear")
       }
     ) : null,
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -6157,7 +6159,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "10d039e";
+var BUILD_TAG = "6fac87f";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

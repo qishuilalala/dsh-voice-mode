@@ -2742,6 +2742,7 @@ var en = {
   secretSaveFailed: "Save failed: the host did not accept it (check for policy restrictions)",
   secretKeep: "Saved (leave empty to keep)",
   secretClear: "Clear",
+  secretClearing: "Clearing\u2026",
   secretHintBrowser: "Typed values go straight to the local host and are stored with 0600; never written to chat or logs",
   secretPlaceholderEmpty: "Paste the key (after saving only Saved is shown)",
   secretCleared: "Cleared",
