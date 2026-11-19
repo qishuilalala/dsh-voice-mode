@@ -347,7 +347,7 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
 
   // 3) schema 里两个 key 字段都必须标 secret（防被通用设置页展示/回显）
   assert.ok(idx.includes("apiKey: z.string().role('secret')"), 'apiKey 未标 secret 角色')
-  assert.ok(idx.includes("apiKeys: z.dict(z.string().role('secret'))"), 'apiKeys 未标 secret 角色')
+  assert.ok(idx.includes("apiKeys: z.dict(z.string().role('secret')).role('secret')"), 'apiKeys 容器未标 secret 角色（通用设置页可能整表展示）')
   console.log('  ✓ 多 key 安全边界：预设无 key 字段 / 载荷无 key / schema 标 secret')
 }
 console.log('tts-openai: all assertions passed')

@@ -24,3 +24,14 @@
 
 - PR #66（`feat/openai-tts`）body：逐句请求、30s cooldown、打断 abort 不计失败、key 不去浏览器的设计说明与 vLLM-Omni 实测 0.3–0.6s。
 - 审查修复：空串音色回落配置值、未配置 ready=false、URL 拼接幂等（code-review 双轴）。
+
+
+## 补记（2026-11-19）：按预设多 key
+
+E1 引入在线预设后暴露一个真实陷阱：一个 `openaiTts.apiKey` 无法服务多家服务商（硅基流动 / OpenRouter / OpenAI / 自建各需自己的 key），切换预设不换 key 必然 401，而用户很难把 401 与「忘换 key」联系起来。
+
+决定：新增 `openaiTts.apiKeys`（预设 id → key），优先级 `apiKeys[预设id] > apiKey`。**本 ADR 的信任边界不变**：
+- key 只在宿主侧读取，不进 `/presets`、不进 `/config`、不下发浏览器、不写日志；
+- 两个字段在 schema 中都标 `secret`（含 `apiKeys` 容器，避免被通用设置页整表展示）；
+- 有守卫测试断言「预设表无 key 字段 / /config 载荷无 apiKey / 字段标 secret」。
+

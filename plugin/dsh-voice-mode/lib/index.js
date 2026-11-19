@@ -3645,7 +3645,7 @@ var VoiceSettingsSchema = createVoiceSettingsSchema();
 var OpenAiTtsConfig = z2.object({
   baseUrl: z2.string().default("").description("API base URL, e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1 or a self-hosted server."),
   apiKey: z2.string().role("secret").default("").description("Bearer key; leave empty for servers without auth."),
-  apiKeys: z2.dict(z2.string().role("secret")).default({}).description("Per-preset key override keyed by preset id (apiKeys[id] wins over apiKey). Keeps one credential per provider without editing the single key on every switch."),
+  apiKeys: z2.dict(z2.string().role("secret")).role("secret").default({}).description("Per-preset key override keyed by preset id (apiKeys[id] wins over apiKey). Keeps one credential per provider without editing the single key on every switch."),
   model: z2.string().default("").description("Model name sent to the server."),
   voice: z2.string().default("").description("Default voice name on the server (the voice setting overrides it)."),
   instructions: z2.string().default("").description("Optional style instructions for models that accept them."),
