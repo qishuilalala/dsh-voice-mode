@@ -69,6 +69,11 @@ export const zh = {
   previewBtnTitle: '试听当前音色（当前语速）',
   synthesizing: '合成中…',
   preview: '试听',
+  // P1-4 只听写预设。
+  dictationTitle: '只听写',
+  dictationHint: '关闭回复朗读，专注听写；再点一次恢复',
+  dictationEnable: '只听写，不朗读',
+  dictationRestore: '恢复朗读',
   // P1-3 用户纠错词表。
   replTitle: '纠错词表',
   replFromPh: '听错写法，逗号分隔',
@@ -389,6 +394,11 @@ export const en: Record<keyof typeof zh, string> = {
   previewBtnTitle: 'Preview voice (current rate)',
   synthesizing: 'Synthesizing…',
   preview: 'Preview',
+  // P1-4 dictation-only preset.
+  dictationTitle: 'Dictation only',
+  dictationHint: 'Turn off reply read-aloud for focused dictation; click again to restore',
+  dictationEnable: 'Dictate only, no read-aloud',
+  dictationRestore: 'Restore read-aloud',
   // P1-3 correction wordlist.
   replTitle: 'Correction wordlist',
   replFromPh: 'Misheard spellings, comma-separated',

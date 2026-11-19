@@ -1073,6 +1073,51 @@ function ReplacementsSection({
   )
 }
 
+/**
+ * P1-4 只听写预设：一键 readAloud=off（专注听写），再点恢复之前的朗读范围。
+ * 不碰其它设置：字幕/状态条不动（off 本来就不朗读）；恢复目标缺省 voice。
+ */
+function DictationPreset({
+  readAloud,
+  onPick,
+}: {
+  readAloud: unknown
+  onPick: (v: 'voice' | 'always' | 'off') => void
+}): React.ReactElement {
+  const cur = readAloud === 'always' || readAloud === 'off' ? readAloud : 'voice'
+  const lastOn = useRef<'voice' | 'always'>('voice')
+  useEffect(() => {
+    if (cur !== 'off') lastOn.current = cur
+  }, [cur])
+  const off = cur === 'off'
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', padding: '2px 0 10px' }}>
+      <span style={{ fontSize: 12, color: t.label, fontWeight: 600 }}>{tr('dictationTitle')}</span>
+      <span style={{ fontSize: 11, color: t.term }}>{tr('dictationHint')}</span>
+      <button
+        type="button"
+        onClick={() => onPick(off ? lastOn.current : 'off')}
+        style={{
+          font: 'inherit',
+          display: 'inline-flex',
+          alignItems: 'center',
+          alignSelf: 'flex-start',
+          cursor: 'pointer',
+          color: t.label,
+          background: 'var(--dsw-alias-bg-layer-2)',
+          border: `1px solid ${t.border}`,
+          borderRadius: 6,
+          padding: '4px 10px',
+          fontSize: 12,
+          lineHeight: '18px',
+        }}
+      >
+        {off ? tr('dictationRestore') : tr('dictationEnable')}
+      </button>
+    </span>
+  )
+}
+
 function Row({ name, desc, children }: { name: string; desc: string; children: React.ReactNode }): React.ReactElement {
   const label = tr(`${name}Label` as TKey)
   return (
@@ -1639,6 +1684,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                 ]}
               />
             </Row>
+            <DictationPreset readAloud={value.readAloud} onPick={(v) => void scope.set('readAloud', v)} />
             <Row name="showStatusBar" desc={tr('descShowStatusBar')}>
               <input type="checkbox" checked={value.showStatusBar !== false} onChange={(e) => void scope.set('showStatusBar', e.target.checked)} />
             </Row>

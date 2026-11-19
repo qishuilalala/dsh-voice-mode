@@ -1753,6 +1753,11 @@ var zh = {
   previewBtnTitle: "\u8BD5\u542C\u5F53\u524D\u97F3\u8272\uFF08\u5F53\u524D\u8BED\u901F\uFF09",
   synthesizing: "\u5408\u6210\u4E2D\u2026",
   preview: "\u8BD5\u542C",
+  // P1-4 只听写预设。
+  dictationTitle: "\u53EA\u542C\u5199",
+  dictationHint: "\u5173\u95ED\u56DE\u590D\u6717\u8BFB\uFF0C\u4E13\u6CE8\u542C\u5199\uFF1B\u518D\u70B9\u4E00\u6B21\u6062\u590D",
+  dictationEnable: "\u53EA\u542C\u5199\uFF0C\u4E0D\u6717\u8BFB",
+  dictationRestore: "\u6062\u590D\u6717\u8BFB",
   // P1-3 用户纠错词表。
   replTitle: "\u7EA0\u9519\u8BCD\u8868",
   replFromPh: "\u542C\u9519\u5199\u6CD5\uFF0C\u9017\u53F7\u5206\u9694",
@@ -2072,6 +2077,11 @@ var en = {
   previewBtnTitle: "Preview voice (current rate)",
   synthesizing: "Synthesizing\u2026",
   preview: "Preview",
+  // P1-4 dictation-only preset.
+  dictationTitle: "Dictation only",
+  dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
+  dictationEnable: "Dictate only, no read-aloud",
+  dictationRestore: "Restore read-aloud",
   // P1-3 correction wordlist.
   replTitle: "Correction wordlist",
   replFromPh: "Misheard spellings, comma-separated",
@@ -3753,6 +3763,43 @@ function ReplacementsSection({
     note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
   ] });
 }
+function DictationPreset({
+  readAloud,
+  onPick
+}) {
+  const cur = readAloud === "always" || readAloud === "off" ? readAloud : "voice";
+  const lastOn = (0, import_react2.useRef)("voice");
+  (0, import_react2.useEffect)(() => {
+    if (cur !== "off") lastOn.current = cur;
+  }, [cur]);
+  const off = cur === "off";
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start", padding: "2px 0 10px" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.label, fontWeight: 600 }, children: t("dictationTitle") }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("dictationHint") }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        type: "button",
+        onClick: () => onPick(off ? lastOn.current : "off"),
+        style: {
+          font: "inherit",
+          display: "inline-flex",
+          alignItems: "center",
+          alignSelf: "flex-start",
+          cursor: "pointer",
+          color: t2.label,
+          background: "var(--dsw-alias-bg-layer-2)",
+          border: `1px solid ${t2.border}`,
+          borderRadius: 6,
+          padding: "4px 10px",
+          fontSize: 12,
+          lineHeight: "18px"
+        },
+        children: off ? t("dictationRestore") : t("dictationEnable")
+      }
+    )
+  ] });
+}
 function Row({ name: name2, desc, children }) {
   const label = t(`${name2}Label`);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, children: [
@@ -4178,6 +4225,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               ]
             }
           ) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DictationPreset, { readAloud: value.readAloud, onPick: (v) => void scope.set("readAloud", v) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showStatusBar", desc: t("descShowStatusBar"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.showStatusBar !== false, onChange: (e) => void scope.set("showStatusBar", e.target.checked) }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showCaptions", desc: t("descShowCaptions"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.showCaptions !== false, onChange: (e) => void scope.set("showCaptions", e.target.checked) }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoResume), onChange: (e) => void scope.set("autoResume", e.target.checked) }) }),
@@ -4416,7 +4464,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "d2d087e";
+var BUILD_TAG = "22eeff1";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
