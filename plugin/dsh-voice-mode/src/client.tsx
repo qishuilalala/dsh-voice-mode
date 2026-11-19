@@ -2647,7 +2647,7 @@ export function MicButton({
         const sv = (snap && snap.status === 'ready' && snap.value ? snap.value : {}) as Record<string, unknown>
         const eng = typeof sv.ttsEngine === 'string' ? sv.ttsEngine : ''
         const pv = typeof sv.voice === 'string' ? sv.voice.trim() : ''
-        if ((eng === 'edge' || eng === 'openai') && pv) {
+        if ((eng === 'edge' || eng === 'openai' || eng === 'mimo') && pv) {
           const pr = typeof sv.rate === 'number' ? Math.min(2, Math.max(0.5, sv.rate)) : 1.1
           const myProbe = enterEpochRef.current
           const markDown = (): void => {

@@ -51,6 +51,7 @@ import type { HostErrorCode } from './errors.ts'
 import { en } from './strings.ts'
 import { correctText } from './llm-correct.ts'
 import { OpenAiTtsEngine, resolveOpenAiEndpoint } from './tts-openai.ts'
+import { MimoTtsEngine } from './tts-mimo.ts'
 import { normalizePromptLang, previewSample, spokenPrompt, type PromptLang } from './prompts.ts'
 import { pickKnownKeys, readLegacyVoiceSettings, readOverrides, settingsFilePath, unknownKeys, writeOverrides } from './settings-store.ts'
 
@@ -192,7 +193,7 @@ const defaultModelCacheDir = (): string =>
  */
 export interface VoiceSettingsValue {
   /** 朗读引擎：edge 微软云端（默认）/ vits 本地中文 / kokoro 本地中英；设置面板即时切换。 */
-  ttsEngine: 'edge' | 'vits' | 'kokoro' | 'openai'
+  ttsEngine: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo'
   /** Kokoro 模型精度（int8 默认 / fp32 音质更好；仅 kokoro 引擎生效，切换即时重建引擎）。 */
   kokoroModel: KokoroModel
   voice: string
@@ -350,7 +351,7 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs }
   return z.object({
     ttsEngine: z
-      .union([z.const('vits'), z.const('kokoro'), z.const('edge'), z.const('openai')])
+      .union([z.const('vits'), z.const('kokoro'), z.const('edge'), z.const('openai'), z.const('mimo')])
       .default(d.ttsEngine)
       .description(
         DESC.ttsEngine,
@@ -494,7 +495,7 @@ export interface Config {
   /** 模型上游 host；huggingface.co / hf-mirror.com 均可达（§4 已验证）。 */
   modelHost: string
   /** 朗读引擎：edge（微软云端，默认）/ vits（本地中文）/ kokoro（本地中英，回复文本不出本机）。 */
-  ttsEngine: 'edge' | 'vits' | 'kokoro' | 'openai'
+  ttsEngine: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo'
   /** Kokoro 模型精度（int8 默认 / fp32 音质更好）。 */
   kokoroModel: KokoroModel
   /** ttsEngine=openai 时的远程服务（host-only；key 不下发到客户端）。 */
@@ -591,7 +592,7 @@ export const Config: z<Config> = z.object({
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default('https://huggingface.co'),
-  ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro'), z.const('openai')]).default('edge'),
+  ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro'), z.const('openai'), z.const('mimo')]).default('edge'),
   openaiTts: OpenAiTtsConfig,
   kokoroModel: z.union([z.const('int8'), z.const('fp32')]).default('int8'),
   allowLan: z.boolean().default(false),
@@ -1051,8 +1052,16 @@ export function apply(ctx: Context, config: Config): void {
   warmupAsrIfCached()
 
   // --- TTS 引擎工厂（fork：edge 云端 / vits 本地中文 / kokoro 本地中英；设置面板即时切换）。 ---
-  const makeEngine = (kind: 'edge' | 'vits' | 'kokoro' | 'openai'): TtsEngine => {
+  const makeEngine = (kind: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo'): TtsEngine => {
     if (kind === 'edge') return new EdgeTtsEngine(config.voice, config.rate)
+    if (kind === 'mimo') {
+      const fallbackKind = config.openaiTts.fallback
+      return new MimoTtsEngine({
+        // key 与本地回退走 openai 兼容配置同一套 host-only 项（不新增密钥面）。
+        apiKey: config.openaiTts.apiKey || undefined,
+        fallback: fallbackKind === 'none' ? undefined : () => makeEngine(fallbackKind === 'vits' ? 'vits' : 'kokoro'),
+      })
+    }
     if (kind === 'openai') {
       const o = config.openaiTts
       const fallbackKind = o.fallback
@@ -1092,7 +1101,7 @@ export function apply(ctx: Context, config: Config): void {
       broadcast,
     })
   }
-  let engineKind: 'edge' | 'vits' | 'kokoro' | 'openai' = vset.ttsEngine ?? config.ttsEngine
+  let engineKind: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo' = vset.ttsEngine ?? config.ttsEngine
   let activeKokoroModel: KokoroModel = vset.kokoroModel
 
   // --- TTS 队列（§8.4）：逐句合成后经 SSE 广播；epoch 机制支撑打断。 ---
@@ -1180,7 +1189,7 @@ export function apply(ctx: Context, config: Config): void {
   const currentVoice = (): string => vset.voice
   const currentRate = (): number => vset.rate
   const currentInterrupt = (): 0 | 1 | 2 => vset.interruptLevel
-  const currentEngine = (): 'edge' | 'vits' | 'kokoro' | 'openai' => engineKind
+  const currentEngine = (): 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo' => engineKind
 
   /** B2：host 侧让出活跃会话（等价 /toggle off 的清理）。owner tab 失联超时调用。 */
   const yieldActiveSession = (expectedSid?: string | null): void => {

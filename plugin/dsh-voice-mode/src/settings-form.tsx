@@ -120,6 +120,7 @@ const ENGINE_DEFAULT_VOICE: Record<string, string> = {
   edge: 'zh-CN-XiaoxiaoNeural',
   // 空 = 用配置里的 openaiTts.voice（服务端音色名各家不同，没有通用默认）。
   openai: '',
+  mimo: 'mimo_default',
 }
 
 // E1 preset example voices (UX fill only; baseUrl/model source of truth is host tts-openai.ts OPENAI_PRESETS).
@@ -571,7 +572,7 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
           const st = (await res.json()) as ModelsStatusPayload
           const tts = st.tts
           // 本地引擎（vits/kokoro）必须有 local 子字段；edge 引擎 localReady 视为 true（云端无须下载）。
-          if (tts.engine === 'edge' || tts.engine === 'openai') {
+          if (tts.engine === 'edge' || tts.engine === 'openai' || tts.engine === 'mimo') {
             setLocalReady(true)
           } else {
             setLocalReady(!!tts.local?.ready)
@@ -863,7 +864,7 @@ function SelfTestSection({
       </button>
       {verdict(tr('selftestSynth'), synth, synth === 'ok' ? `${synthMs} ${tr('unitMs')}` : undefined)}
       {verdict(tr('selftestPlay'), play)}
-      {synth === 'fail' && (engine === 'edge' || engine === 'openai') && (
+      {synth === 'fail' && (engine === 'edge' || engine === 'openai' || engine === 'mimo') && (
         <button
           type="button"
           onClick={onSwitchLocal}
@@ -1238,7 +1239,7 @@ interface ModelsStatusPayload {
   vad: { repo: string; ready: boolean; size: number; failLatchMs: number }
   sense: { repo: string; ready: boolean; size: number; failLatchMs: number; enabled: boolean }
   tts: {
-    engine: 'edge' | 'vits' | 'kokoro' | 'openai'
+    engine: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo'
     ready: boolean
     loading: boolean
     error?: string
@@ -1286,7 +1287,9 @@ function EngineStatusInline(): React.ReactElement {
         ? tr('engineKokoro')
         : tts.engine === 'openai'
           ? tr('engineOpenai')
-          : tr('engineEdge')
+          : tts.engine === 'mimo'
+            ? tr('engineMimo')
+            : tr('engineEdge')
   const isLocal = !!tts.local
   // 就绪以「本地模型文件是否已下载」为准：切换引擎不动本地文件，
   // 故一次下载后（只要不点「删除」）跨引擎始终保持就绪（用户契约）。
@@ -1297,7 +1300,7 @@ function EngineStatusInline(): React.ReactElement {
     statusText = tr('engineLoading')
     statusColor = t.term
   } else if (tts.error) {
-    statusText = tr(tts.engine === 'openai' ? 'engineRemoteDown' : 'engineError')
+    statusText = tr(tts.engine === 'openai' || tts.engine === 'mimo' ? 'engineRemoteDown' : 'engineError')
     statusColor = 'var(--dsw-alias-state-error-primary)'
   } else if (isLocal && !localReady) {
     statusText = tr('ttsModelsMissing')
@@ -1332,7 +1335,7 @@ function EngineStatusInline(): React.ReactElement {
           background: 'var(--dsw-alias-bg-layer-1)',
         }}
       >
-        {tr(tts.engine === 'edge' ? 'engineBadgeCloud' : tts.engine === 'openai' ? 'engineBadgeRemote' : 'engineBadgeLocal')}
+        {tr(tts.engine === 'edge' ? 'engineBadgeCloud' : tts.engine === 'openai' || tts.engine === 'mimo' ? 'engineBadgeRemote' : 'engineBadgeLocal')}
       </span>
       <span style={{ fontSize: 12, fontWeight: statusText === tr('engineReady') || statusText === tr('engineError') ? 600 : 400, color: statusColor }}>{statusText}</span>
       {tts.loading && tts.progress?.file && (
@@ -1365,7 +1368,7 @@ function EngineStatusInline(): React.ReactElement {
               : tr('ttsDownload')}
         </button>
       )}
-      {tts.error && <span style={{ fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', flexBasis: '100%' }}>{tts.errorCode === 'kokoro_needs_node' ? tr('errKokoroNeedsNode') : tts.engine === 'openai' ? tr('errRemoteTts') : tr('engineError')}</span>}
+      {tts.error && <span style={{ fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', flexBasis: '100%' }}>{tts.errorCode === 'kokoro_needs_node' ? tr('errKokoroNeedsNode') : tts.engine === 'openai' || tts.engine === 'mimo' ? tr('errRemoteTts') : tr('engineError')}</span>}
     </div>
   )
 }
@@ -1498,7 +1501,15 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
   const unavailable = snap?.status === 'unavailable' || snap?.status === 'error'
   // 朗读引擎（设置项，即时生效）：决定音色列表与试听行为。
   const engine =
-    value.ttsEngine === 'edge' ? 'edge' : value.ttsEngine === 'kokoro' ? 'kokoro' : value.ttsEngine === 'openai' ? 'openai' : 'vits'
+    value.ttsEngine === 'edge'
+      ? 'edge'
+      : value.ttsEngine === 'kokoro'
+        ? 'kokoro'
+        : value.ttsEngine === 'openai'
+          ? 'openai'
+          : value.ttsEngine === 'mimo'
+            ? 'mimo'
+            : 'vits'
   // Edge 全量音色：选 Edge 时从 /voices 拉取（几百个），失败回退常用 14 个。存原始数据，标签在渲染时按当前语言生成。
   const [edgeRaw, setEdgeRaw] = useState<EdgeRawVoice[] | null>(null)
   useEffect(() => {
@@ -1525,7 +1536,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
         : edgeCommonOptions()
       : engine === 'kokoro'
         ? kokoroOptions()
-        : engine === 'openai'
+        : engine === 'openai' || engine === 'mimo'
           ? []
           : vitsOptions()
 
@@ -1567,6 +1578,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                   { v: 'kokoro', label: tr('engineKokoro') },
                   { v: 'edge', label: tr('engineEdge') },
                   { v: 'openai', label: tr('engineOpenai') },
+                { v: 'mimo', label: tr('engineMimo') },
                 ]}
                 onSelect={(v) => {
                   // 引擎语义不同：仅在引擎真正切换时重置音色；
@@ -1619,7 +1631,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                 value={value.voice ?? ''}
                 options={voiceOptions}
                 placeholder={ENGINE_DEFAULT_VOICE[engine] ?? 'zh-CN-XiaoxiaoNeural'}
-                showCustom={engine === 'edge' || engine === 'openai'}
+                showCustom={engine === 'edge' || engine === 'openai' || engine === 'mimo'}
                 footer={(v) => <VoicePreviewButton voice={v} rate={Number(value.rate ?? 1.1)} />}
               />
             </Row>

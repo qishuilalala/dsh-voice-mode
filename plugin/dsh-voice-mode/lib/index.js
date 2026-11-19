@@ -2607,11 +2607,12 @@ var en = {
   voiceNext: "Next voice",
   descVoice: "Edge cloud voices (auto-loads all Microsoft voices; common Chinese voices pinned on top; \u25C0\u25B6 or dropdown; custom ShortName allowed)",
   descVoiceLocal: "Local voice (vits, all 5 speakers listed; dropdown or \u25C0\u25B6; no custom needed)",
-  descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft) / OpenAI-compatible server (self-hosted or hosted, text sent to the configured URL)",
+  descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft) / OpenAI-compatible server (self-hosted or hosted, text sent to the configured URL) / Xiaomi MiMo (TTS series free for a limited time, text sent to Xiaomi)",
   engineVits: "Local VITS",
   engineKokoro: "Local Kokoro",
   engineEdge: "Edge cloud",
   engineOpenai: "OpenAI-compatible",
+  engineMimo: "Xiaomi MiMo",
   descVoiceOpenai: "Voice name on the server (empty = openaiTts.voice from the config)",
   engineRemoteDown: "server unavailable",
   errRemoteTts: "The TTS server is unreachable, failing or too slow; the local fallback reads aloud meanwhile if one is configured",
@@ -3070,6 +3071,182 @@ function resolveOpenAiEndpoint(preset) {
   return p ? { baseUrl: p.baseUrl, model: p.model } : null;
 }
 
+// src/tts-mimo.ts
+var MIME2 = {
+  wav: "audio/wav",
+  mp3: "audio/mpeg",
+  pcm: "audio/wav",
+  pcm16: "audio/wav"
+};
+var MimoTtsError = class extends Error {
+  code;
+  constructor(code, message) {
+    super(message);
+    this.name = "MimoTtsError";
+    this.code = code;
+  }
+};
+var MIMO_DEFAULT_BASE_URL = "https://api.xiaomimimo.com/v1";
+var MIMO_DEFAULT_MODEL = "mimo-v2.5-tts";
+var MIMO_DEFAULT_VOICE = "mimo_default";
+function mimoChatUrl(baseUrl) {
+  const url = new URL(baseUrl.trim());
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new MimoTtsError("mimo_bad_url", "baseUrl must be http(s)");
+  }
+  const noSlash = url.pathname.replace(/\/+$/, "");
+  const base = noSlash.endsWith("/chat/completions") ? noSlash.slice(0, -"/chat/completions".length) : noSlash;
+  url.pathname = `${base}/chat/completions`;
+  return url.toString();
+}
+function extractMimoAudio(body) {
+  if (typeof body !== "object" || body === null) return null;
+  const choices = body.choices;
+  if (!Array.isArray(choices) || choices.length === 0) return null;
+  const message = choices[0].message;
+  if (typeof message !== "object" || message === null) return null;
+  const audio = message.audio;
+  if (typeof audio !== "object" || audio === null) return null;
+  return typeof audio.data === "string" && audio.data.length > 0 ? audio.data : null;
+}
+var MimoTtsEngine = class {
+  voice;
+  rate;
+  url;
+  configError;
+  format;
+  timeoutMs;
+  cooldownMs;
+  fetchImpl;
+  now;
+  fallbackEngine = null;
+  inflight = /* @__PURE__ */ new Set();
+  downUntil = 0;
+  lastError;
+  lastMime;
+  options;
+  constructor(options) {
+    this.options = options;
+    let url = null;
+    try {
+      if (!options.apiKey?.trim()) {
+        throw new MimoTtsError("mimo_not_configured", "mimo not configured");
+      }
+      url = mimoChatUrl(options.baseUrl?.trim() || MIMO_DEFAULT_BASE_URL);
+    } catch (e) {
+      this.configError = e instanceof MimoTtsError ? e : new MimoTtsError("mimo_bad_url", "bad baseUrl");
+      url = null;
+    }
+    this.url = url;
+    this.voice = (options.voice ?? "").trim() || MIMO_DEFAULT_VOICE;
+    this.format = options.responseFormat ?? "wav";
+    this.timeoutMs = options.timeoutMs ?? 3e4;
+    this.cooldownMs = options.cooldownMs ?? 3e4;
+    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.now = options.now ?? Date.now;
+    this.lastMime = MIME2[this.format];
+  }
+  get mime() {
+    return this.lastMime;
+  }
+  updateVoice(voice, rate) {
+    this.voice = voice.trim() || this.options.voice?.trim() || MIMO_DEFAULT_VOICE;
+    if (rate !== void 0 && Number.isFinite(rate)) this.rate = rate;
+  }
+  async synthesize(text, options = {}) {
+    const input = text.replace(/\s+/g, " ").trim();
+    if (input === "") return Buffer.alloc(0);
+    if (this.now() >= this.downUntil) {
+      try {
+        const buf = await this.remote(input, options);
+        this.lastError = void 0;
+        this.lastMime = MIME2[this.format];
+        return buf;
+      } catch (e) {
+        if (e.name === "AbortError" && !(e instanceof MimoTtsError)) throw e;
+        const err = e instanceof MimoTtsError ? e : new MimoTtsError("mimo_unreachable", String(e));
+        this.lastError = err;
+        this.downUntil = this.now() + this.cooldownMs;
+        if (!this.options.fallback) throw err;
+        console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${err.message}`);
+      }
+    }
+    return this.viaFallback(text, options);
+  }
+  async remote(input, options) {
+    if (this.url === null) throw this.configError;
+    const instructions = (this.options.instructions ?? "").trim();
+    const messages = [];
+    if (instructions) messages.push({ role: "user", content: instructions });
+    messages.push({ role: "assistant", content: input });
+    const body = {
+      model: (this.options.model ?? "").trim() || MIMO_DEFAULT_MODEL,
+      messages,
+      audio: { voice: options.voice || this.voice, format: this.format },
+      stream: false
+    };
+    const headers = { "content-type": "application/json" };
+    if (this.options.apiKey) headers["api-key"] = this.options.apiKey;
+    const ac = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ac.abort();
+    }, this.timeoutMs);
+    this.inflight.add(ac);
+    try {
+      const res = await this.fetchImpl(this.url, { method: "POST", headers, body: JSON.stringify(body), signal: ac.signal });
+      if (!res.ok) {
+        const detail = (await res.text().catch(() => "")).slice(0, 200);
+        throw new MimoTtsError("mimo_http_error", `HTTP ${res.status}${detail ? `: ${detail}` : ""}`);
+      }
+      const data = extractMimoAudio(await res.json());
+      if (!data) throw new MimoTtsError("mimo_empty_audio", "empty audio");
+      const buf = Buffer.from(data, "base64");
+      if (buf.length === 0) throw new MimoTtsError("mimo_empty_audio", "empty audio");
+      return buf;
+    } catch (e) {
+      if (timedOut) throw new MimoTtsError("mimo_timeout", `no audio within ${this.timeoutMs} ms`);
+      throw e;
+    } finally {
+      clearTimeout(timer);
+      this.inflight.delete(ac);
+    }
+  }
+  async viaFallback(text, options) {
+    if (!this.options.fallback) {
+      throw this.lastError ?? new MimoTtsError("mimo_unreachable", "remote TTS unavailable");
+    }
+    this.fallbackEngine ??= this.options.fallback();
+    const buf = await this.fallbackEngine.synthesize(text, { rate: options.rate ?? this.rate });
+    this.lastMime = this.fallbackEngine.mime;
+    return buf;
+  }
+  interrupt() {
+    for (const ac of this.inflight) ac.abort();
+    this.inflight.clear();
+    this.fallbackEngine?.interrupt?.();
+  }
+  status() {
+    const err = this.lastError ?? this.configError;
+    const fallingBack = this.now() < this.downUntil;
+    return {
+      engine: "mimo",
+      // 冷却期（远程失败后走本地回退）同样视为非就绪，与 openai 引擎同口径。
+      ready: !fallingBack && !this.configError,
+      loading: false,
+      error: err?.message,
+      errorCode: err?.code
+    };
+  }
+  async close() {
+    this.interrupt();
+    const fb = this.fallbackEngine;
+    this.fallbackEngine = null;
+    await fb?.close();
+  }
+};
+
 // src/prompts.ts
 var ZH = "\u3010\u8BED\u97F3\u6A21\u5F0F\u3011\u5F53\u524D\u56DE\u590D\u4F1A\u88AB\u8BED\u97F3\u6717\u8BFB\uFF0C\u8BF7\u59CB\u7EC8\u7528\u7528\u6237\u6240\u7528\u8BED\u8A00\u3001\u4EE5\u53E3\u8BED\u5316\u7684\u77ED\u53E5\u76F4\u63A5\u56DE\u7B54\uFF0C\u50CF\u9762\u5BF9\u9762\u804A\u5929\u4E00\u6837\u81EA\u7136\uFF0C\u907F\u514D\u4E66\u9762\u8BED\u548C\u957F\u96BE\u53E5\u3002\u4E0D\u8981\u4F7F\u7528\u4EFB\u4F55 Markdown \u6216\u6392\u7248\u7B26\u53F7\uFF08\u661F\u53F7\u3001\u4E0B\u5212\u7EBF\u3001\u53CD\u5F15\u53F7\u3001\u4E95\u53F7\u3001\u5217\u8868\u4E0E\u8868\u683C\u6807\u8BB0\u3001\u4EE3\u7801\u5757\u7B49\uFF09\u3002\u9700\u8981\u5206\u70B9\u8BF4\u660E\u65F6\u7528\u300C\u7B2C\u4E00\u3001\u7B2C\u4E8C\u300D\u6216\u8FDE\u8D2F\u7684\u77ED\u53E5\u8868\u8FBE\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EE3\u7801\u7247\u6BB5\u3001\u5B8C\u6574 URL \u6216\u5197\u957F\u5B9A\u4E49\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u6982\u62EC\u542B\u4E49\u5373\u53EF\u3002\u56DE\u7B54\u7B80\u6D01\u76F4\u63A5\uFF0C\u4E0D\u8981\u91CD\u590D\u548C\u5BD2\u6684\u3002\u5982\u679C\u7528\u6237\u5728\u4F60\u6717\u8BFB\u65F6\u63D2\u8BDD\uFF08\u54EA\u6015\u53EA\u662F\u300C\u55EF/\u5BF9\u300D\u8FD9\u6837\u7684\u77ED\u5E94\u7B54\uFF09\uFF0C\u7ACB\u5373\u505C\u6B62\u5F53\u524D\u53E5\uFF0C\u628A\u8BDD\u8F6E\u8BA9\u7ED9\u7528\u6237\uFF1B\u56DE\u7B54\u540E\u7559\u51FA\u505C\u987F\uFF0C\u4E0D\u8981\u8FDE\u95EE\u4E24\u4E2A\u95EE\u9898\uFF1B\u7528\u6237\u6C89\u9ED8\u65F6\u4E0D\u8981\u4E3B\u52A8\u627E\u65B0\u8BDD\u9898\u3002";
 var EN = '[Voice mode] Your reply will be read aloud. Always answer in the language the user is using, in short conversational sentences, directly and naturally, as if talking face to face; avoid written-style phrasing and long, complex sentences. Do not use any Markdown or formatting symbols (asterisks, underscores, backticks, hash signs, list or table markup, code blocks, etc.). When you need to list points, say them as "first, second" or as connected short sentences; unless the user explicitly asks, do not output code snippets, full URLs or lengthy definitions \u2014 summarize the meaning in a sentence or two. Keep answers concise and direct; no repetition or pleasantries. If the user interrupts while you are being read aloud (even with a short acknowledgment like "uh-huh" or "yeah"), stop the current sentence immediately and yield the turn; leave a pause after answering and never ask two questions in a row; when the user is silent, do not bring up a new topic on your own.';
@@ -3093,7 +3270,7 @@ var SAMPLE_BY_LANG = {
   ru: "\u0417\u0434\u0440\u0430\u0432\u0441\u0442\u0432\u0443\u0439\u0442\u0435, \u0434\u043E\u0431\u0440\u043E \u043F\u043E\u0436\u0430\u043B\u043E\u0432\u0430\u0442\u044C \u0432 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u043E\u0439 \u0440\u0435\u0436\u0438\u043C."
 };
 function previewSample(engine, voice) {
-  if (engine === "kokoro" || engine === "openai") return `${SAMPLE_ZH}${SAMPLE_EN}`;
+  if (engine === "kokoro" || engine === "openai" || engine === "mimo") return `${SAMPLE_ZH}${SAMPLE_EN}`;
   if (engine === "vits") return SAMPLE_ZH;
   const m = /^([a-z]{2,3})-/i.exec(voice);
   return m && SAMPLE_BY_LANG[m[1].toLowerCase()] || SAMPLE_EN;
@@ -3300,7 +3477,7 @@ var DESC = {
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
   return z2.object({
-    ttsEngine: z2.union([z2.const("vits"), z2.const("kokoro"), z2.const("edge"), z2.const("openai")]).default(d.ttsEngine).description(
+    ttsEngine: z2.union([z2.const("vits"), z2.const("kokoro"), z2.const("edge"), z2.const("openai"), z2.const("mimo")]).default(d.ttsEngine).description(
       DESC.ttsEngine
     ),
     kokoroModel: z2.union([z2.const("int8"), z2.const("fp32")]).default(d.kokoroModel).description(
@@ -3380,7 +3557,7 @@ var Config = z2.object({
   enabled: z2.boolean().default(true),
   cacheDir: z2.string().default(defaultModelCacheDir()),
   modelHost: z2.string().default("https://huggingface.co"),
-  ttsEngine: z2.union([z2.const("edge"), z2.const("vits"), z2.const("kokoro"), z2.const("openai")]).default("edge"),
+  ttsEngine: z2.union([z2.const("edge"), z2.const("vits"), z2.const("kokoro"), z2.const("openai"), z2.const("mimo")]).default("edge"),
   openaiTts: OpenAiTtsConfig,
   kokoroModel: z2.union([z2.const("int8"), z2.const("fp32")]).default("int8"),
   allowLan: z2.boolean().default(false),
@@ -3699,6 +3876,14 @@ function apply(ctx, config) {
   warmupAsrIfCached();
   const makeEngine = (kind) => {
     if (kind === "edge") return new EdgeTtsEngine(config.voice, config.rate);
+    if (kind === "mimo") {
+      const fallbackKind = config.openaiTts.fallback;
+      return new MimoTtsEngine({
+        // key 与本地回退走 openai 兼容配置同一套 host-only 项（不新增密钥面）。
+        apiKey: config.openaiTts.apiKey || void 0,
+        fallback: fallbackKind === "none" ? void 0 : () => makeEngine(fallbackKind === "vits" ? "vits" : "kokoro")
+      });
+    }
     if (kind === "openai") {
       const o = config.openaiTts;
       const fallbackKind = o.fallback;

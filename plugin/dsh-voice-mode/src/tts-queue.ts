@@ -54,7 +54,7 @@ export interface TtsModelGroup {
 /** 引擎/模型现状（设置面板轮询）。 */
 export interface TtsEngineStatus {
   /** 当前生效引擎。 */
-  engine: 'edge' | 'vits' | 'kokoro' | 'openai'
+  engine: 'edge' | 'vits' | 'kokoro' | 'openai' | 'mimo'
   /** 当前引擎是否就绪（本地：模型校验 + 子进程 init；edge：恒 true）。 */
   ready: boolean
   /** 当前引擎正在初始化/加载。 */
