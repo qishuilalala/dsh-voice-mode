@@ -265,6 +265,22 @@ MiMo **没有 `speed` 字段**：`rate` 不为 1 时会译成自然语言风格�
 - 401 错误体是 JSON（`type: invalid_key`），错误消息经脱敏后才进日志。
 - 预置音色实测可用：`mimo_default`（中国集群落「冰糖」）、`冰糖`、`苏打`、`茉莉`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。
 ### 纠正听错的词（`asrReplacements`）
+### 宿主级端到端验证（2026-11-19，隔离 profile）
+
+在 `/tmp` 下新建独立 `DSH_HOME` + `mt` profile（`dsh plugin --profile mt add <本地插件目录>` 装成本地 link），patch 用 `!!js process.env.MIMO_API_KEY` 引用 `.env` 里的真 key，`--port 3098` 起独立实例（不碰 3018）：
+
+| 验证点 | 结果 |
+|---|---|
+| 组合配置 | `--dump-config` 显示 `id: voice-mode` 段被 patch 覆盖，条目 id 是 `voice-mode`（`dsh-voice-mode` 是 name） |
+| 引擎选择 | `GET /voice-mode/config` → `ttsEngine: mimo`；`GET /voice-mode/models/status` → `tts: {engine: mimo, ready: true}` |
+| 真实合成 | `POST /voice-mode/preview {voice: mimo_default}` → **HTTP 200 / content-type: audio/wav / 199,724 B / WAV 24kHz 单声道 16bit / 4.16s / RMS 3561（有声）** |
+| MIME 修正生效 | `/config` 的 `audioMime: audio/wav`（嗅探结果，而非配置里的 wav 巧合） |
+| 路由无泄漏 | `GET /voice-mode/presets` 只含 baseUrl/model/voice 三字段（ADR-0013 边界，线上实证） |
+
+验证后已 `kill` 实例并删除临时 `DSH_HOME` 与 `mimotest` profile，端口 3098/3099 已释放。
+
+**仍未做（需人）**：把正在跑的 web profile（3018）从 npm 0.7.35 换成本地构建并重启服务——重启会断开当前页面连接，需你决定时机。
+
 
 识别器会把中文里夹的人名、英文词听错（例如「Sakina」听成「ski男」）。常规办法热词在这里用不上：sherpa-onnx 只有 transducer 模型支持热词，流式 zipformer 以汉字为单位、写不出英文词，出定稿的 SenseVoice 又没有热词入口。在有热词能力的模型能覆盖之前，替换表是权宜办法：识别之后改写文本，中间结果和定稿都改，所以字幕、草稿和唤醒词看到的都是改好的文本。
 
