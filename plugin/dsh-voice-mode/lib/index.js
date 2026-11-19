@@ -2581,6 +2581,8 @@ var en = {
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
   presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser. There is one key field only \u2014 when switching to a preset from another provider, update the key too, or the request will 401",
   presetVerify: "Verify preset",
+  presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
+  presetReload: "Reload presets",
   // P1-4 dictation-only preset.
   dictationTitle: "Dictation only",
   dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
@@ -2627,7 +2629,7 @@ var en = {
   engineEdge: "Edge cloud",
   engineOpenai: "OpenAI-compatible",
   engineMimo: "Xiaomi MiMo",
-  descVoiceOpenai: "Voice name on the server (empty = openaiTts.voice from the config)",
+  descVoiceOpenai: "Voice name on the server. When empty: a selected preset contributes its example voice; with no preset, openaiTts.voice from the config is used. A non-empty value always wins (the preset example is then ignored)",
   descVoiceMimo: "MiMo preset voice id (empty = mimoTts.voice from the config, default mimo_default). Presets: mimo_default, Mia, Chloe, Milo, Dean, plus four Chinese-named voices (Bingtang/Moli/Suda/Baihua) \u2014 enter them by their native Chinese names as listed on the MiMo docs",
   engineRemoteDown: "server unavailable",
   errMimoKeyMissing: "MiMo API key is not configured: set mimoTts.apiKey in the profile and restart the host",
@@ -2918,6 +2920,14 @@ async function correctText(ctx, text, lang) {
   }
 }
 
+// src/voice-resolution.ts
+function clean(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function resolvePresetVoice(settingVoice, presetVoice) {
+  return clean(settingVoice) || clean(presetVoice);
+}
+
 // src/tts-openai.ts
 var MIME = { mp3: "audio/mpeg", wav: "audio/wav" };
 var OpenAiTtsError = class extends Error {
@@ -3112,6 +3122,16 @@ var OPENAI_PRESETS = {
 function resolveOpenAiEndpoint(preset) {
   return OPENAI_PRESETS[preset] ?? null;
 }
+function resolveOpenAiSpeech(params) {
+  const { presetId, settingVoice, config } = params;
+  const preset = resolveOpenAiEndpoint(presetId);
+  return {
+    baseUrl: preset?.baseUrl ?? config.baseUrl ?? "",
+    model: preset?.model ?? config.model ?? "",
+    voice: resolvePresetVoice(settingVoice, preset?.voice ?? config.voice),
+    presetId: preset ? presetId : ""
+  };
+}
 
 // src/engine-kind.ts
 var TTS_ENGINE_KINDS = ["vits", "kokoro", "edge", "openai", "mimo"];
@@ -3197,11 +3217,11 @@ function extractMimoAudio(body) {
   return typeof data === "string" && data.length > 0 ? data : null;
 }
 function decodeBase64Audio(data) {
-  const clean = data.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
-  if (clean.length === 0 || clean.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(clean)) {
+  const clean2 = data.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  if (clean2.length === 0 || clean2.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(clean2)) {
     throw new MimoTtsError("mimo_bad_audio", "audio payload is not valid base64");
   }
-  return Buffer.from(clean, "base64");
+  return Buffer.from(clean2, "base64");
 }
 var MimoTtsEngine = class {
   voice;
@@ -3984,14 +4004,16 @@ function apply(ctx, config) {
     if (kind === "openai") {
       const o = config.openaiTts;
       const fallbackKind = o.fallback;
-      const preset = resolveOpenAiEndpoint(vset.openaiPreset ?? "");
+      const resolved = resolveOpenAiSpeech({
+        presetId: vset.openaiPreset ?? "",
+        settingVoice: vset.voice,
+        config: { baseUrl: o.baseUrl, model: o.model, voice: o.voice }
+      });
       return new OpenAiTtsEngine({
-        baseUrl: preset?.baseUrl ?? o.baseUrl,
+        baseUrl: resolved.baseUrl,
         apiKey: o.apiKey || void 0,
-        model: preset?.model ?? o.model,
-        // A3：设置里的音色为空时用预设自带音色（否则 SiliconFlow 的 `model:voice` 形态永远用不上，
-        // 用户只切预设不填音色就会 400）。设置值优先，空才回落。
-        voice: vset.voice?.trim() || preset?.voice || o.voice,
+        model: resolved.model,
+        voice: resolved.voice,
         instructions: o.instructions || void 0,
         responseFormat: o.responseFormat,
         timeoutMs: o.timeoutMs,
@@ -4197,6 +4219,9 @@ function apply(ctx, config) {
           basePath: base,
           rate: currentRate(),
           voice: currentVoice(),
+          // P1-2：入口探针还要判「预设音色」。ttsEngine 本就在下方载荷里；
+          // 此前探针只能读设置卡快照——0.1.7+ 只有首个订阅者才触发加载，未开过设置的用户
+          // 快照恒 loading，探针从未生效（T5 审计 B①）。这里补 openaiPreset 即可闭环。
           senseVoice: vset.senseVoice,
           interruptLevel: currentInterrupt(),
           silenceMs: vset.silenceMs,
@@ -4223,6 +4248,7 @@ function apply(ctx, config) {
           senseITN: vset.senseITN,
           cacheDir: config.cacheDir,
           ttsEngine: currentEngine(),
+          openaiPreset: vset.openaiPreset,
           audioMime: queue.mime,
           allowLan: config.allowLan
         });

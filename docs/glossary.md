@@ -77,7 +77,7 @@ AI 朗读期间的独立上行：AEC 后的麦克风帧送 host 检测 VAD，不
 AI 朗读时用户开口，朗读立即停止且用户的话被听见。本项目的完整动作：本地停播 → TTS 队列 epoch++ → host 取消当前 LLM 回合（`keepInbox: true`）→ 丢弃残留段（`src/client.tsx` `hardBreak`）。
 
 **确认帧（confirm frames）**
-`isSpeech` 连续为真多少拍才判"真的是人在说话"。`interruptLevel` 0/1/2 → 3/2/1 帧（`src/client.tsx:60` `INT_CONFIRM_FRAMES`，:59 为其文档注释；原锚点 `:38` 为 2026-10-21 前快照，已随 R15 各批重写漂移，本轮按冻结后的工作区源码刷新）。**注意：0 是高门槛（最稳最慢），数值越大门槛越低。**
+`isSpeech` 连续为真多少拍才判"真的是人在说话"。`interruptLevel` 0/1/2 → 3/2/1 帧（`src/client.tsx` 的 `INT_CONFIRM_FRAMES`（按符号定位，注释在其上方）；原锚点 `:38` 为 2026-10-21 前快照，已随 R15 各批重写漂移，本轮按冻结后的工作区源码刷新）。**注意：0 是高门槛（最稳最慢），数值越大门槛越低。**
 
 **打断确认延迟（confirmMs）**
 VAD 首次判真 → 触发 `hardBreak` 的耗时。当前实测 ≈525ms（CONTEXT.md）。

@@ -43,7 +43,7 @@
 | `peakDecay` 0.9 | `src/asr.ts:1021`（历史时点快照） | ✅ |
 | `floorAlpha` 0.98 | `src/asr.ts:1022`（历史时点快照） | ✅ |
 | `confirmFrames` 3/2/1 | `src/client.tsx:2601`（历史时点快照） | ✅ |
-| 迟滞连续 2 拍 | `src/client.tsx:57`（`isSpeechFalseRun`）/ :2715-2717-2679（原锚 48-49 / 2593-2595 已漂移） | ✅ |
+| 迟滞连续 2 拍 | `src/client.tsx` 的 `isSpeechFalseRun`/ :2715-2717-2679（原锚 48-49 / 2593-2595 已漂移） | ✅ |
 | `SPEECH_RMS` 0.015 | `src/asr.ts:169`（历史时点快照） | ⏳ 阶段二（分段级联） |
 | `MIN_SPEECH_MS` 250 | `src/asr.ts:174`（历史时点快照） | ⏳ 阶段二 |
 | delay 置信门 0.5 | `src/client.tsx` 的 `est.peak > 0.5` | ⚠️ 仅间接（经 `playingTailUntil` 影响播放态） |

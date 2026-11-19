@@ -960,9 +960,9 @@ function createAsrEngine(config, sessionId) {
     }
     let rms = Math.sqrt(sum / data.length);
     if (nonFinite > 0) {
-      const clean = new Float32Array(data);
-      for (let i = 0; i < clean.length; i++) if (!Number.isFinite(clean[i])) clean[i] = 0;
-      data = clean;
+      const clean2 = new Float32Array(data);
+      for (let i = 0; i < clean2.length; i++) if (!Number.isFinite(clean2[i])) clean2[i] = 0;
+      data = clean2;
       if (!Number.isFinite(rms)) rms = 0;
     }
     const frameValid = nonFinite === 0;
@@ -1772,6 +1772,8 @@ var zh = {
   presetSelfVllmNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8000\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
   presetKeyNote: "key \u586B\u5728 profile \u7684 openaiTts.apiKey\uFF0C\u4E0D\u7ECF\u8FC7\u6D4F\u89C8\u5668\uFF1B\u672C\u63D2\u4EF6\u53EA\u6709\u4E00\u4E2A key \u5B57\u6BB5\u2014\u2014\u6362\u5230\u53E6\u4E00\u5BB6\u670D\u52A1\u5546\u7684\u9884\u8BBE\u65F6\uFF0C\u9700\u540C\u65F6\u628A key \u6362\u6210\u8BE5\u5BB6\u7684\uFF0C\u5426\u5219\u4F1A 401",
   presetVerify: "\u9A8C\u8BC1\u6B64\u9884\u8BBE",
+  presetDataMissing: "\u9884\u8BBE\u6570\u636E\u672A\u52A0\u8F7D\uFF08\u5BBF\u4E3B /presets \u4E0D\u53EF\u7528\uFF09\uFF1A\u8BF7\u91CD\u542F\u5BBF\u4E3B\u6216\u5237\u65B0\u9875\u9762\u540E\u91CD\u8BD5",
+  presetReload: "\u91CD\u65B0\u52A0\u8F7D\u9884\u8BBE",
   // P1-4 只听写预设。
   dictationTitle: "\u53EA\u542C\u5199",
   dictationHint: "\u5173\u95ED\u56DE\u590D\u6717\u8BFB\uFF0C\u4E13\u6CE8\u542C\u5199\uFF1B\u518D\u70B9\u4E00\u6B21\u6062\u590D",
@@ -1819,7 +1821,7 @@ var zh = {
   engineEdge: "Edge \u4E91\u7AEF",
   engineOpenai: "OpenAI \u517C\u5BB9",
   engineMimo: "\u5C0F\u7C73 MiMo",
-  descVoiceOpenai: "\u670D\u52A1\u7AEF\u7684\u97F3\u8272\u540D\uFF08\u7559\u7A7A = \u914D\u7F6E\u91CC\u7684 openaiTts.voice\uFF09",
+  descVoiceOpenai: "\u670D\u52A1\u7AEF\u7684\u97F3\u8272\u540D\u3002\u7559\u7A7A\u65F6\uFF1A\u9009\u4E86\u9884\u8BBE \u2192 \u7528\u8BE5\u9884\u8BBE\u7684\u793A\u4F8B\u97F3\u8272\uFF1B\u672A\u9009\u9884\u8BBE \u2192 \u7528\u914D\u7F6E\u91CC\u7684 openaiTts.voice\u3002\u586B\u4E86\u5C31\u6309\u4F60\u586B\u7684\u7528\uFF08\u9884\u8BBE\u793A\u4F8B\u97F3\u8272\u4E0D\u518D\u751F\u6548\uFF09",
   descVoiceMimo: "MiMo \u9884\u7F6E\u97F3\u8272\u540D\uFF08\u7559\u7A7A = \u914D\u7F6E\u91CC\u7684 mimoTts.voice\uFF0C\u9ED8\u8BA4 mimo_default\uFF09\uFF1B\u9884\u7F6E\uFF1Amimo_default\u3001\u51B0\u7CD6\u3001\u8309\u8389\u3001\u82CF\u6253\u3001\u767D\u6866\u3001Mia\u3001Chloe\u3001Milo\u3001Dean",
   engineRemoteDown: "\u670D\u52A1\u4E0D\u53EF\u7528",
   errMimoKeyMissing: "\u672A\u914D\u7F6E\u5C0F\u7C73 MiMo \u7684 API Key\uFF1A\u8BF7\u5728 profile \u7684 mimoTts.apiKey \u586B\u5199\u540E\u91CD\u542F\u5BBF\u4E3B",
@@ -2124,6 +2126,8 @@ var en = {
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
   presetKeyNote: "Put the key in the profile openaiTts.apiKey; it never passes through the browser. There is one key field only \u2014 when switching to a preset from another provider, update the key too, or the request will 401",
   presetVerify: "Verify preset",
+  presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
+  presetReload: "Reload presets",
   // P1-4 dictation-only preset.
   dictationTitle: "Dictation only",
   dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
@@ -2170,7 +2174,7 @@ var en = {
   engineEdge: "Edge cloud",
   engineOpenai: "OpenAI-compatible",
   engineMimo: "Xiaomi MiMo",
-  descVoiceOpenai: "Voice name on the server (empty = openaiTts.voice from the config)",
+  descVoiceOpenai: "Voice name on the server. When empty: a selected preset contributes its example voice; with no preset, openaiTts.voice from the config is used. A non-empty value always wins (the preset example is then ignored)",
   descVoiceMimo: "MiMo preset voice id (empty = mimoTts.voice from the config, default mimo_default). Presets: mimo_default, Mia, Chloe, Milo, Dean, plus four Chinese-named voices (Bingtang/Moli/Suda/Baihua) \u2014 enter them by their native Chinese names as listed on the MiMo docs",
   engineRemoteDown: "server unavailable",
   errMimoKeyMissing: "MiMo API key is not configured: set mimoTts.apiKey in the profile and restart the host",
@@ -2705,6 +2709,14 @@ function isCloudEngine(value) {
 }
 function isThirdPartyEngine(value) {
   return value === "openai" || value === "mimo";
+}
+
+// src/voice-resolution.ts
+function clean(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function resolvePresetVoice(settingVoice, presetVoice) {
+  return clean(settingVoice) || clean(presetVoice);
 }
 
 // src/runtime-boot.ts
@@ -4589,7 +4601,8 @@ function ReplacementsSection({
   const [note, setNote] = (0, import_react2.useState)(null);
   const fileRef = (0, import_react2.useRef)(null);
   const status = useModelsStatus();
-  const hits = status?.replacements?.hits?.filter((n) => typeof n === "number") ?? [];
+  const rawHits = status?.replacements?.hits?.filter((n) => typeof n === "number") ?? [];
+  const hits = rawHits.length === list.length ? rawHits : [];
   const [busy, setBusy] = (0, import_react2.useState)(false);
   const commit = async (next) => {
     if (busy) return false;
@@ -4837,12 +4850,14 @@ function OpenAiPresetSection({
   score,
   value,
   presets,
+  onReloadPresets,
   onVerify,
   verifyState,
   verifying
 }) {
   const cur = typeof value === "string" ? value : "";
-  const ids = ["", ...Object.keys(presets ?? {})];
+  const known = Object.keys(presets ?? {});
+  const ids = ["", ...known, ...cur && !known.includes(cur) ? [cur] : []];
   const options = ids.map((id) => ({ v: id, label: id ? PRESET_LABEL[id]?.() ?? id : t("presetCustom") }));
   const data = presets?.[cur];
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }, children: [
@@ -4853,6 +4868,19 @@ function OpenAiPresetSection({
       data.model,
       " \xB7 ",
       data.voice
+    ] }) : null,
+    !presets ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 11, color: t2.term }, children: [
+      t("presetDataMissing"),
+      " ",
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          type: "button",
+          onClick: onReloadPresets,
+          style: { font: "inherit", cursor: "pointer", background: "none", border: "none", padding: 0, color: t2.label, textDecoration: "underline" },
+          children: t("presetReload")
+        }
+      )
     ] }) : null,
     PRESET_NOTE[cur] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: PRESET_NOTE[cur]() }) : null,
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetKeyNote") }),
@@ -4900,6 +4928,7 @@ function OpenAiPresetSection({
 }
 function useHostPresets() {
   const [presets, setPresets] = (0, import_react2.useState)(null);
+  const [nonce, setNonce] = (0, import_react2.useState)(0);
   (0, import_react2.useEffect)(() => {
     let alive = true;
     void fetch(location.origin + BASE_PATH + "/presets").then((res) => res.ok ? res.json() : null).then((data) => {
@@ -4908,8 +4937,8 @@ function useHostPresets() {
     return () => {
       alive = false;
     };
-  }, []);
-  return presets;
+  }, [nonce]);
+  return { presets, reload: () => setNonce((n) => n + 1) };
 }
 function Row({ name: name2, desc, children }) {
   const label = t(`${name2}Label`);
@@ -5186,25 +5215,35 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
   );
   const value = snap?.value ?? {};
   const unavailable = snap?.status === "unavailable" || snap?.status === "error";
-  const hostPresets = useHostPresets();
+  const hostPresetState = useHostPresets();
+  const hostPresets = hostPresetState.presets;
   const [presetVerify, setPresetVerify] = (0, import_react2.useState)(null);
   const effectiveVoice = () => {
-    const own = typeof value.voice === "string" ? value.voice.trim() : "";
-    if (own) return own;
     const pid = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
-    return pid && hostPresets?.[pid]?.voice || "";
+    return resolvePresetVoice(value.voice, pid ? hostPresets?.[pid]?.voice : "");
   };
   const [verifying, setVerifying] = (0, import_react2.useState)(false);
   const verifyPreset = (presetId) => {
     if (verifying) return;
     setVerifying(true);
-    const voice = (value.openaiPreset === presetId ? effectiveVoice() : "") || hostPresets?.[presetId]?.voice || "";
+    const presetVoice = hostPresets?.[presetId]?.voice ?? "";
+    const voice = (value.openaiPreset === presetId ? effectiveVoice() : "") || presetVoice;
     if (!voice) {
-      setPresetVerify({ id: presetId, state: "fail", note: t("previewNameFirst") });
+      setPresetVerify({
+        id: presetId,
+        state: "fail",
+        // 预设表没拉到 vs 真的没填音色，必须分开说：否则用户被指去填一个其实有值的框（T5 A②）。
+        note: hostPresets ? t("previewNameFirst") : t("presetDataMissing")
+      });
       setVerifying(false);
       return;
     }
     void (async () => {
+      try {
+        await scope.set("openaiPreset", presetId);
+        await scope.set("voice", voice);
+      } catch {
+      }
       try {
         const res = await fetch(`${BASE_PATH}/preview`, {
           method: "POST",
@@ -5338,6 +5377,7 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               score: scope,
               value: value.openaiPreset,
               presets: hostPresets,
+              onReloadPresets: hostPresetState.reload,
               onVerify: verifyPreset,
               verifyState: presetVerify,
               verifying
@@ -5682,7 +5722,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "6041b4c";
+var BUILD_TAG = "b5b7fbc";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -7091,7 +7131,12 @@ function MicButton({
         // 批 B：5 ASR 字段透传（host /config handler 在 c2120d9 已透传 4 字段，本批补 senseVoice + 客户端白名单对齐）。
         // 类型校验严格 + 默认值兜底，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
         senseITN: c.senseITN === false ? false : true,
-        senseVoice: c.senseVoice === false ? false : true
+        senseVoice: c.senseVoice === false ? false : true,
+        // P1-2：引擎/预设透传（探针用；不改既有行为，缺省 undefined 时探针退回设置快照）。
+        ttsEngine: c.ttsEngine,
+        openaiPreset: typeof c.openaiPreset === "string" ? c.openaiPreset : "",
+        voice: typeof c.voice === "string" ? c.voice : cur.voice,
+        rate: typeof c.rate === "number" ? c.rate : cur.rate
       };
       if (next.shortcut && !parseShortcut(next.shortcut)) bus.setNotice(tk("shortcutInvalid"));
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord });
@@ -7458,9 +7503,11 @@ function MicButton({
       try {
         const snap = scope?.getSnapshot?.();
         const sv = snap && snap.status === "ready" && snap.value ? snap.value : {};
-        const eng = typeof sv.ttsEngine === "string" ? sv.ttsEngine : "";
-        let pv = typeof sv.voice === "string" ? sv.voice.trim() : "";
-        const readAloudOff = sv.readAloud === "off";
+        const eng = typeof cfg.ttsEngine === "string" ? cfg.ttsEngine : typeof sv.ttsEngine === "string" ? sv.ttsEngine : "";
+        let pv = resolvePresetVoice(cfg.voice, null);
+        if (!pv && typeof sv.voice === "string") pv = sv.voice.trim();
+        const presetId = typeof cfg.openaiPreset === "string" && cfg.openaiPreset ? cfg.openaiPreset : typeof sv.openaiPreset === "string" ? sv.openaiPreset : "";
+        const readAloudOff = (typeof cfg.readAloud === "string" ? cfg.readAloud : sv.readAloud) === "off";
         const probeKey = "dshvm:ttsProbeAt";
         const probeTtlMs = 10 * 60 * 1e3;
         let recentProbe = false;
@@ -7470,9 +7517,8 @@ function MicButton({
         } catch {
         }
         if (!readAloudOff && !recentProbe && isCloudEngine(eng)) {
-          if (!pv && eng === "openai") {
-            const pid = typeof sv.openaiPreset === "string" ? sv.openaiPreset : "";
-            if (pid) pv = await fetchPresetVoice(pid) ?? "";
+          if (eng === "openai") {
+            pv = resolvePresetVoice(pv, presetId ? await fetchPresetVoice(presetId) : null);
           }
         }
         if (!readAloudOff && !recentProbe && isCloudEngine(eng) && !pv) {

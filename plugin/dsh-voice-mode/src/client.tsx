@@ -43,7 +43,8 @@ import {
   FOCUS_OWNER_DEFAULT,
   type FocusOwners,
 } from './mic-gesture.ts'
-import { isCloudEngine } from './engine-kind.ts'
+import { isCloudEngine, type TtsEngineKind } from './engine-kind.ts'
+import { resolvePresetVoice } from './voice-resolution.ts'
 import { setRuntimeBoot } from './runtime-boot.ts'
 import { activeLocale, bindLocale, t, useLang, type TKey } from './i18n.ts'
 
@@ -1869,6 +1870,14 @@ interface VoiceBootConfig {
   senseITN: boolean
   /** 批 B：SenseVoice 引擎开关（默认 true = 启用 SenseVoice 模型，否则回退 FunASR）。 */
   senseVoice: boolean
+  /** P1-2：当前朗读引擎（入口探针判「是否云引擎」用；避免依赖设置卡快照，见 T5 审计 B①）。 */
+  ttsEngine?: TtsEngineKind
+  /** E1：当前在线预设 id（探针取预设音色用）。 */
+  openaiPreset?: string
+  /** 当前音色（host 的 currentVoice()；探针用，避免依赖设置卡快照）。 */
+  voice?: string
+  /** 当前语速倍率（探针用）。 */
+  rate?: number
 }
 
 let styleInjected = false
@@ -2203,6 +2212,11 @@ export function MicButton({
         // 类型校验严格 + 默认值兜底，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
         senseITN: c.senseITN === false ? false : true,
         senseVoice: c.senseVoice === false ? false : true,
+        // P1-2：引擎/预设透传（探针用；不改既有行为，缺省 undefined 时探针退回设置快照）。
+        ttsEngine: c.ttsEngine,
+        openaiPreset: typeof c.openaiPreset === 'string' ? c.openaiPreset : '',
+        voice: typeof c.voice === 'string' ? c.voice : cur.voice,
+        rate: typeof c.rate === 'number' ? c.rate : cur.rate,
       }
       // Issue #15 UX：快捷键非法值的客户端提示入口（settings-form 失焦校验之外的
       // 运行态兜底）——parseShortcut 对非法值返回 null（快捷键静默禁用），用户以为
@@ -2677,11 +2691,15 @@ export function MicButton({
       //   这一最常见用法永远探不到，而它正是 model:voice 形态最易 400 的场景。
       // 429/403/快照未就绪/非云引擎/仍无音色 → 静默跳过（fail-open）。
       try {
+        // 引擎/音色以刚拉到的 /config 为准（每次进入都刷新）；仅在旧宿主不带该字段时
+        // 才退回设置卡快照。此前只读快照：未开过设置的用户快照恒 loading → 探针从未生效（T5 B①）。
         const snap = scope?.getSnapshot?.()
         const sv = (snap && snap.status === 'ready' && snap.value ? snap.value : {}) as Record<string, unknown>
-        const eng = typeof sv.ttsEngine === 'string' ? sv.ttsEngine : ''
-        let pv = typeof sv.voice === 'string' ? sv.voice.trim() : ''
-        const readAloudOff = sv.readAloud === 'off'
+        const eng = typeof cfg.ttsEngine === 'string' ? cfg.ttsEngine : typeof sv.ttsEngine === 'string' ? sv.ttsEngine : ''
+        let pv = resolvePresetVoice(cfg.voice, null)
+        if (!pv && typeof sv.voice === 'string') pv = sv.voice.trim()
+        const presetId = typeof cfg.openaiPreset === 'string' && cfg.openaiPreset ? cfg.openaiPreset : typeof sv.openaiPreset === 'string' ? sv.openaiPreset : ''
+        const readAloudOff = (typeof cfg.readAloud === 'string' ? cfg.readAloud : sv.readAloud) === 'off'
         const probeKey = 'dshvm:ttsProbeAt'
         const probeTtlMs = 10 * 60 * 1000
         let recentProbe = false
@@ -2692,9 +2710,8 @@ export function MicButton({
           // 隐私模式禁写：退回每次都探（功能优先于配额）
         }
         if (!readAloudOff && !recentProbe && isCloudEngine(eng)) {
-          if (!pv && eng === 'openai') {
-            const pid = typeof sv.openaiPreset === 'string' ? sv.openaiPreset : ''
-            if (pid) pv = (await fetchPresetVoice(pid)) ?? ''
+          if (eng === 'openai') {
+            pv = resolvePresetVoice(pv, presetId ? await fetchPresetVoice(presetId) : null)
           }
         }
         if (!readAloudOff && !recentProbe && isCloudEngine(eng) && !pv) {

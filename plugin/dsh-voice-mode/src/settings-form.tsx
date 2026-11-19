@@ -20,6 +20,7 @@ import { errorText } from './error-text.ts'
 import { edgeAllOptions, edgeCommonOptions, hostOptions, kokoroOptions, vitsOptions, voiceLangHint, type EdgeRawVoice } from './voice-labels.ts'
 import { getRuntimeBoot } from './runtime-boot.ts'
 import { asTtsEngineKind, isCloudEngine, isThirdPartyEngine, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
+import { resolvePresetVoice } from './voice-resolution.ts'
 import { REPLACEMENTS_MAX_PAYLOAD_BYTES, replacementsPayloadBytes } from './asr-replacements.ts'
 
 interface ScopeController {
@@ -968,7 +969,10 @@ function ReplacementsSection({
   const fileRef = useRef<HTMLInputElement | null>(null)
   // 共享轮询器（单例）：命中计数随卡片其余状态一起刷新，不再自建 5s 定时器。
   const status = useModelsStatus()
-  const hits = status?.replacements?.hits?.filter((n): n is number => typeof n === 'number') ?? []
+  // 只有当服务端计数数组与当前规则数**一一对应**时才展示：删改规则后到下次轮询（≤3s）之间
+  // 数组会短/错位，按索引读会显示到别的规则的次数（T5 C①）。
+  const rawHits = status?.replacements?.hits?.filter((n): n is number => typeof n === 'number') ?? []
+  const hits = rawHits.length === list.length ? rawHits : []
   // 命中计数直接取共享快照：结构变更后**由服务端**清零（applyVset → rebuildReplacer 重置数组），
   // 客户端不再自设覆盖层——旧实现用 `override ?? hits`，一旦写入 [] 就会永久掩盖实时计数
   // （[] 非 nullish，?? 不生效），属于本轮自查抓到的真实缺陷。
@@ -1274,6 +1278,7 @@ function OpenAiPresetSection({
   score,
   value,
   presets,
+  onReloadPresets,
   onVerify,
   verifyState,
   verifying,
@@ -1281,12 +1286,16 @@ function OpenAiPresetSection({
   score: ScopeController
   value: unknown
   presets: Record<string, HostPreset> | null
+  onReloadPresets: () => void
   onVerify: (presetId: string) => void
   verifyState: { id: string; state: 'ok' | 'fail'; note?: string } | null
   verifying: boolean
 }): React.ReactElement {
   const cur = typeof value === 'string' ? value : ''
-  const ids = ['', ...Object.keys(presets ?? {})]
+  // presets 拉取失败时**仍保留当前已选预设**，否则用户会看到「选中项消失」，且误点「手动配置」
+  // 就把预设置空（T5 审计 A②）。未知 id 也补进来，标签回落显示 id 本身。
+  const known = Object.keys(presets ?? {})
+  const ids = ['', ...known, ...(cur && !known.includes(cur) ? [cur] : [])]
   const options = ids.map((id) => ({ v: id, label: id ? (PRESET_LABEL[id]?.() ?? id) : tr('presetCustom') }))
   const data = presets?.[cur]
   return (
@@ -1295,6 +1304,18 @@ function OpenAiPresetSection({
       {data ? (
         <span style={{ fontSize: 11, color: t.term, fontFamily: 'monospace', wordBreak: 'break-all' }}>
           {data.baseUrl} · {data.model} · {data.voice}
+        </span>
+      ) : null}
+      {!presets ? (
+        <span style={{ fontSize: 11, color: t.term }}>
+          {tr('presetDataMissing')}{' '}
+          <button
+            type="button"
+            onClick={onReloadPresets}
+            style={{ font: 'inherit', cursor: 'pointer', background: 'none', border: 'none', padding: 0, color: t.label, textDecoration: 'underline' }}
+          >
+            {tr('presetReload')}
+          </button>
         </span>
       ) : null}
       {PRESET_NOTE[cur] ? <span style={{ fontSize: 11, color: t.term }}>{PRESET_NOTE[cur]()}</span> : null}
@@ -1345,8 +1366,14 @@ function OpenAiPresetSection({
 }
 
 /** 拉取 host 预设表（一次；失败返回 null，UI 退化为仅有「手动配置」）。 */
-function useHostPresets(): Record<string, HostPreset> | null {
+/**
+ * 拉取 host 预设表。返回 { presets, reload }：
+ * - presets=null 表示**尚未拿到或拉取失败**（旧宿主没有 /presets 也走这条）；
+ * - reload 供 UI 提供「重试」（T5 审计 A②：失败时原先没有任何恢复入口）。
+ */
+function useHostPresets(): { presets: Record<string, HostPreset> | null; reload: () => void } {
   const [presets, setPresets] = useState<Record<string, HostPreset> | null>(null)
+  const [nonce, setNonce] = useState(0)
   useEffect(() => {
     let alive = true
     void fetch(location.origin + BASE_PATH + '/presets')
@@ -1358,8 +1385,8 @@ function useHostPresets(): Record<string, HostPreset> | null {
     return () => {
       alive = false
     }
-  }, [])
-  return presets
+  }, [nonce])
+  return { presets, reload: () => setNonce((n) => n + 1) }
 }
 
 function Row({ name, desc, children }: { name: string; desc: string; children: React.ReactNode }): React.ReactElement {
@@ -1756,27 +1783,40 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
   const value = (snap?.value ?? {}) as Record<string, unknown>
   const unavailable = snap?.status === 'unavailable' || snap?.status === 'error'
   // E1 预设：数据来自 host 单一真源；验证按钮就地跑一次合成（保存前探针）。
-  const hostPresets = useHostPresets()
+  const hostPresetState = useHostPresets()
+  const hostPresets = hostPresetState.presets
   const [presetVerify, setPresetVerify] = useState<{ id: string; state: 'ok' | 'fail'; note?: string } | null>(null)
   /** 生效音色：设置值优先，空则回落预设音色（与 host 侧 makeEngine 的口径一致）。 */
   const effectiveVoice = (): string => {
-    const own = typeof value.voice === 'string' ? value.voice.trim() : ''
-    if (own) return own
     const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
-    return (pid && hostPresets?.[pid]?.voice) || ''
+    return resolvePresetVoice(value.voice, pid ? hostPresets?.[pid]?.voice : '')
   }
   // 连点去重：一次验证就是一次整句合成（有成本、占 20/分桶），在途时不重发（R4 复核发现）。
   const [verifying, setVerifying] = useState(false)
   const verifyPreset = (presetId: string): void => {
     if (verifying) return
     setVerifying(true)
-    const voice = (value.openaiPreset === presetId ? effectiveVoice() : '') || hostPresets?.[presetId]?.voice || ''
+    const presetVoice = hostPresets?.[presetId]?.voice ?? ''
+    const voice = (value.openaiPreset === presetId ? effectiveVoice() : '') || presetVoice
     if (!voice) {
-      setPresetVerify({ id: presetId, state: 'fail', note: tr('previewNameFirst') })
+      setPresetVerify({
+        id: presetId,
+        state: 'fail',
+        // 预设表没拉到 vs 真的没填音色，必须分开说：否则用户被指去填一个其实有值的框（T5 A②）。
+        note: hostPresets ? tr('previewNameFirst') : tr('presetDataMissing'),
+      })
       setVerifying(false)
       return
     }
     void (async () => {
+      try {
+        // T5 B②：先确保 host 已切到该预设再合成——否则「点了预设立刻点验证」会用旧端点出结果。
+        // scope.set 是幂等写（同值也安全），失败不阻断验证（下面会按实际结果给提示）。
+        await scope.set('openaiPreset', presetId)
+        await scope.set('voice', voice)
+      } catch {
+        // 写入失败：仍尝试验证，由结果决定提示
+      }
       try {
         const res = await fetch(`${BASE_PATH}/preview`, {
           method: 'POST',
@@ -1948,6 +1988,7 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
                   score={scope}
                   value={value.openaiPreset}
                   presets={hostPresets}
+                  onReloadPresets={hostPresetState.reload}
                   onVerify={verifyPreset}
                   verifyState={presetVerify}
                   verifying={verifying}

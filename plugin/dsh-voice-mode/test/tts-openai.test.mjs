@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { OpenAiTtsEngine, OpenAiTtsError, speechUrl } from '../src/tts-openai.ts'
+import { OpenAiTtsEngine, OpenAiTtsError, OPENAI_PRESETS, resolveOpenAiEndpoint, speechUrl } from '../src/tts-openai.ts'
 
 const MP3 = Buffer.from([0xff, 0xfb, 0x90, 0x44, 0x00, 0x01, 0x02, 0x03])
 
@@ -258,6 +258,46 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   assert.equal(resolveOpenAiEndpoint('unknown-preset'), null)
   assert.ok(String(OPENAI_PRESETS['siliconflow-cosyvoice2'].voice).includes(':'))
   assert.ok(String(OPENAI_PRESETS['siliconflow-fish'].voice).includes(':'))
+}
+
+// ---- 预设组合（T6 审查：全仓此前零覆盖，而这正是「用户点了预设却 400」的高发区）----
+{
+  const { resolveOpenAiSpeech } = await import('../src/tts-openai.ts')
+  const config = { baseUrl: 'http://cfg/v1', model: 'cfg-model', voice: 'cfg-voice' }
+
+  // 1) 命中预设：baseUrl/model 用预设，voice 空时回落预设音色
+  const preset = resolveOpenAiSpeech({ presetId: 'siliconflow-cosyvoice2', settingVoice: '', config })
+  assert.equal(preset.baseUrl, 'https://api.siliconflow.cn/v1')
+  assert.equal(preset.model, 'FunAudioLLM/CosyVoice2-0.5B')
+  assert.equal(preset.voice, 'FunAudioLLM/CosyVoice2-0.5B:alex')
+  assert.equal(preset.presetId, 'siliconflow-cosyvoice2')
+
+  // 2) 填了音色：设置值优先，预设音色不生效
+  assert.equal(resolveOpenAiSpeech({ presetId: 'siliconflow-cosyvoice2', settingVoice: 'my-own', config }).voice, 'my-own')
+
+  // 3) 未知/空预设：全部回落 Config（不能残留上一次预设的端点）
+  for (const id of ['', 'no-such-preset']) {
+    const r = resolveOpenAiSpeech({ presetId: id, settingVoice: '', config })
+    assert.equal(r.baseUrl, 'http://cfg/v1')
+    assert.equal(r.model, 'cfg-model')
+    assert.equal(r.voice, 'cfg-voice')
+    assert.equal(r.presetId, '')
+  }
+
+  // 4) 三方都缺：返回空串（由工厂报 not_configured，不猜默认端点）
+  const empty = resolveOpenAiSpeech({ presetId: '', settingVoice: '', config: {} })
+  assert.equal(empty.baseUrl, '')
+  assert.equal(empty.model, '')
+  assert.equal(empty.voice, '')
+
+  // 5) 每个预置预设都必须自带 baseUrl/model/voice（否则等于「接了没用」）
+  for (const id of Object.keys(OPENAI_PRESETS)) {
+    const r = resolveOpenAiSpeech({ presetId: id, settingVoice: '', config: {} })
+    assert.ok(r.baseUrl.startsWith('http'), `${id} 缺 baseUrl`)
+    assert.ok(r.model.length > 0, `${id} 缺 model`)
+    assert.ok(r.voice.length > 0, `${id} 缺示例音色`)
+  }
+  console.log('  ✓ 预设组合：命中 / 自定义音色优先 / 未知 id 回落 Config / 三方缺失 / 六预设完整性')
 }
 
 console.log('tts-openai: all assertions passed')

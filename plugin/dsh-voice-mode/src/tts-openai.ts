@@ -13,6 +13,7 @@
  */
 import type { TtsEngine, TtsEngineStatus } from './tts-queue.ts'
 import { stripEmotionTags } from './emotion.ts'
+import { resolvePresetVoice } from './voice-resolution.ts'
 
 export type OpenAiResponseFormat = 'mp3' | 'wav'
 
@@ -282,4 +283,38 @@ export const OPENAI_PRESETS: Record<string, OpenAiPreset> = {
  */
 export function resolveOpenAiEndpoint(preset: string): OpenAiPreset | null {
   return OPENAI_PRESETS[preset] ?? null
+}
+
+/** 引擎实际采用的 baseUrl/model/voice（由「预设 + 设置值 + Config」三方合成）。 */
+export interface ResolvedOpenAiSpeech {
+  baseUrl: string
+  model: string
+  voice: string
+  /** 命中的预设 id（空串 = 手动配置）；仅用于日志/排障。 */
+  presetId: string
+}
+
+/**
+ * 合成「OpenAI 兼容引擎」的最终请求参数（**单一真源**，宿主 makeEngine 只消费本函数）。
+ *
+ * 优先级：
+ * - baseUrl/model：命中预设 → 用预设（用户选预设就是要"一键可用"）；未命中/空 → 用 Config。
+ * - voice：设置值 → 预设音色 → Config 音色（口径见 voice-resolution.ts）。
+ *
+ * 单独抽出的原因（T6 审查）：此前这段逻辑内联在宿主工厂里，**全仓零测试覆盖**，
+ * 「未知预设 id 回落 Config」「空音色用预设音色」「切回手动不残留旧预设」这三条只能靠人读代码。
+ */
+export function resolveOpenAiSpeech(params: {
+  presetId: string
+  settingVoice: unknown
+  config: { baseUrl?: string; model?: string; voice?: string }
+}): ResolvedOpenAiSpeech {
+  const { presetId, settingVoice, config } = params
+  const preset = resolveOpenAiEndpoint(presetId)
+  return {
+    baseUrl: preset?.baseUrl ?? config.baseUrl ?? '',
+    model: preset?.model ?? config.model ?? '',
+    voice: resolvePresetVoice(settingVoice, preset?.voice ?? config.voice),
+    presetId: preset ? presetId : '',
+  }
 }

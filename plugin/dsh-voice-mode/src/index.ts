@@ -50,7 +50,7 @@ import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts
 import type { HostErrorCode } from './errors.ts'
 import { en } from './strings.ts'
 import { correctText } from './llm-correct.ts'
-import { OPENAI_PRESETS, OpenAiTtsEngine, resolveOpenAiEndpoint } from './tts-openai.ts'
+import { OPENAI_PRESETS, OpenAiTtsEngine, resolveOpenAiEndpoint, resolveOpenAiSpeech } from './tts-openai.ts'
 import { asTtsEngineKind, isLocalEngine, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
 import { MimoTtsEngine } from './tts-mimo.ts'
 import { normalizePromptLang, previewSample, spokenPrompt, type PromptLang } from './prompts.ts'
@@ -1113,15 +1113,18 @@ export function apply(ctx: Context, config: Config): void {
     if (kind === 'openai') {
       const o = config.openaiTts
       const fallbackKind = o.fallback
-      // E1：已知预设覆盖 baseUrl/model（未知/空预设回落 Config 文件值；key 恒走 Config）。
-      const preset = resolveOpenAiEndpoint(vset.openaiPreset ?? '')
+      // E1：baseUrl/model/voice 三方合成口径统一在 tts-openai.ts 的 resolveOpenAiSpeech
+      //（T6 审查：这段此前内联在此、零测试覆盖）。key 恒走 Config，不进预设。
+      const resolved = resolveOpenAiSpeech({
+        presetId: vset.openaiPreset ?? '',
+        settingVoice: vset.voice,
+        config: { baseUrl: o.baseUrl, model: o.model, voice: o.voice },
+      })
       return new OpenAiTtsEngine({
-        baseUrl: preset?.baseUrl ?? o.baseUrl,
+        baseUrl: resolved.baseUrl,
         apiKey: o.apiKey || undefined,
-        model: preset?.model ?? o.model,
-        // A3：设置里的音色为空时用预设自带音色（否则 SiliconFlow 的 `model:voice` 形态永远用不上，
-        // 用户只切预设不填音色就会 400）。设置值优先，空才回落。
-        voice: vset.voice?.trim() || preset?.voice || o.voice,
+        model: resolved.model,
+        voice: resolved.voice,
         instructions: o.instructions || undefined,
         responseFormat: o.responseFormat,
         timeoutMs: o.timeoutMs,
@@ -1456,6 +1459,9 @@ export function apply(ctx: Context, config: Config): void {
             basePath: base,
             rate: currentRate(),
             voice: currentVoice(),
+            // P1-2：入口探针还要判「预设音色」。ttsEngine 本就在下方载荷里；
+            // 此前探针只能读设置卡快照——0.1.7+ 只有首个订阅者才触发加载，未开过设置的用户
+            // 快照恒 loading，探针从未生效（T5 审计 B①）。这里补 openaiPreset 即可闭环。
             senseVoice: vset.senseVoice,
             interruptLevel: currentInterrupt(),
             silenceMs: vset.silenceMs,
@@ -1482,6 +1488,7 @@ export function apply(ctx: Context, config: Config): void {
             senseITN: vset.senseITN,
             cacheDir: config.cacheDir,
             ttsEngine: currentEngine(),
+            openaiPreset: vset.openaiPreset,
             audioMime: queue.mime,
             allowLan: config.allowLan,
           })

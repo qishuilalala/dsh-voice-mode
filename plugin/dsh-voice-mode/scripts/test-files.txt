@@ -84,6 +84,7 @@ test/llm-correct-similarity.test.mjs
 test/asr-lifecycle-races.test.mjs
 test/smoke-runtime.test.mjs
 test/engine-kind.test.mjs
+test/voice-resolution.test.mjs
 test/doc-current-anchors.test.mjs
 test/prefetch-pins.test.mjs
 test/tts-mimo.test.mjs
