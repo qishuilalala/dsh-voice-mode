@@ -138,6 +138,7 @@ const PRESET_NOTE: Record<string, () => string> = {
   'siliconflow-fish': () => tr('presetFishNote'),
   'openrouter-openai': () => tr('presetOpenrouterNote'),
   'openai-official': () => tr('presetOpenaiOfficialNote'),
+  'groq-playai': () => tr('presetGroqNote'),
   'selfhosted-kokoro': () => tr('presetSelfKokoroNote'),
   'selfhosted-vllm': () => tr('presetSelfVllmNote'),
 }
@@ -235,11 +236,13 @@ function TextField({
   field,
   value,
   placeholder,
+  type = 'text',
 }: {
   score: ScopeController
   field: string
   value: unknown
   placeholder?: string
+  type?: 'text' | 'password'
 }): React.ReactElement {
   const [draft, setDraft] = useState<string>(String(value ?? ''))
   useEffect(() => {
@@ -252,6 +255,8 @@ function TextField({
   return (
     <input
       style={inputStyle}
+      type={type}
+      autoComplete={type === 'password' ? 'new-password' : undefined}
       value={draft}
       placeholder={placeholder}
       onChange={(e) => setDraft(e.target.value)}
@@ -260,6 +265,65 @@ function TextField({
         if (e.key === 'Enter') commit()
       }}
     />
+  )
+}
+
+/**
+ * 密钥输入框（2026-11-19）：GET /settings 永不回传密钥，所以这里只显示「是否已保存」，
+ * 留空 = 保持原值；输入新值 = 覆盖；点「清除」显式清空（POST clearSecrets）。
+ */
+function SecretField({
+  score,
+  field,
+  saved,
+  onCleared,
+}: {
+  score: ScopeController
+  field: string
+  saved: boolean
+  onCleared: () => void
+}): React.ReactElement {
+  const [clearing, setClearing] = useState(false)
+  const clear = (): void => {
+    if (clearing) return
+    setClearing(true)
+    void fetch(location.origin + BASE_PATH + '/settings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ clearSecrets: [field] }),
+    })
+      .then((res) => {
+        if (res.ok) onCleared()
+      })
+      .catch(() => undefined)
+      .finally(() => setClearing(false))
+  }
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <TextField score={score} field={field} value="" type="password" placeholder={saved ? tr('secretKeep') : ''} />
+      {saved ? (
+        <button
+          type="button"
+          onClick={clear}
+          aria-busy={clearing || undefined}
+          style={{
+            font: 'inherit',
+            cursor: clearing ? 'default' : 'pointer',
+            opacity: clearing ? 0.6 : 1,
+            color: t.label,
+            background: 'var(--dsw-alias-bg-layer-2)',
+            border: `1px solid ${t.border}`,
+            borderRadius: 6,
+            padding: '4px 8px',
+            fontSize: 12,
+            lineHeight: '16px',
+          }}
+        >
+          {tr('secretClear')}
+        </button>
+      ) : null}
+      <span style={{ fontSize: 11, color: t.term }}>{saved ? tr('secretSaved') : tr('secretHintBrowser')}</span>
+    </span>
   )
 }
 
@@ -1263,6 +1327,7 @@ const PRESET_LABEL: Record<string, () => string> = {
   'siliconflow-fish': () => tr('presetFish'),
   'openrouter-openai': () => tr('presetOpenrouter'),
   'openai-official': () => tr('presetOpenaiOfficial'),
+  'groq-playai': () => tr('presetGroq'),
   'selfhosted-kokoro': () => tr('presetSelfKokoro'),
   'selfhosted-vllm': () => tr('presetSelfVllm'),
 }
@@ -1296,8 +1361,13 @@ function OpenAiPresetSection({
   // presets 拉取失败时**仍保留当前已选预设**，否则用户会看到「选中项消失」，且误点「手动配置」
   // 就把预设置空（T5 审计 A②）。未知 id 也补进来，标签回落显示 id 本身。
   const known = Object.keys(presets ?? {})
-  const ids = ['', ...known, ...(cur && !known.includes(cur) ? [cur] : [])]
-  const options = ids.map((id) => ({ v: id, label: id ? (PRESET_LABEL[id]?.() ?? id) : tr('presetCustom') }))
+  const CUSTOM = 'custom'
+  // '' = 跟随 profile 配置文件；'custom' = 完全手填（下方 URL/模型/key）；其余为内置预设。
+  const ids = ['', CUSTOM, ...known, ...(cur && cur !== CUSTOM && !known.includes(cur) ? [cur] : [])]
+  const options = ids.map((id) => ({
+    v: id,
+    label: id === CUSTOM ? tr('presetCustomCustom') : id ? (PRESET_LABEL[id]?.() ?? id) : tr('presetCustom'),
+  }))
   const data = presets?.[cur]
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
@@ -1321,6 +1391,7 @@ function OpenAiPresetSection({
       ) : null}
       {PRESET_NOTE[cur] ? <span style={{ fontSize: 11, color: t.term }}>{PRESET_NOTE[cur]()}</span> : null}
       <span style={{ fontSize: 11, color: t.term }}>{tr('presetKeyNote')}</span>
+      {cur === CUSTOM ? <span style={{ fontSize: 11, color: t.term }}>{tr('presetCustomHint')}</span> : null}
       <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
         <button
           type="button"
@@ -1787,6 +1858,24 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
   const value = (snap?.value ?? {}) as Record<string, unknown>
   const unavailable = snap?.status === 'unavailable' || snap?.status === 'error'
   // E1 预设：数据来自 host 单一真源；验证按钮就地跑一次合成（保存前探针）。
+  // 密钥是否已配置（GET /settings 只回 has* 布尔，永不回传密钥本身）。
+  const [secretKeys, setSecretKeys] = useState<{ openaiApiKey: boolean; mimoApiKey: boolean }>({
+    openaiApiKey: false,
+    mimoApiKey: false,
+  })
+  const refreshSecretKeys = (): void => {
+    void fetch(location.origin + BASE_PATH + '/settings')
+      .then((res) => (res.ok ? (res.json() as Promise<{ keys?: { openaiApiKey?: boolean; mimoApiKey?: boolean } }>) : null))
+      .then((data) => {
+        if (data?.keys) {
+          setSecretKeys({
+            openaiApiKey: Boolean(data.keys.openaiApiKey),
+            mimoApiKey: Boolean(data.keys.mimoApiKey),
+          })
+        }
+      })
+      .catch(() => undefined)
+  }
   const hostPresetState = useHostPresets()
   const hostPresets = hostPresetState.presets
   const [presetVerify, setPresetVerify] = useState<{ id: string; state: 'ok' | 'fail'; note?: string } | null>(null)
@@ -1795,6 +1884,10 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
     const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
     return resolvePresetVoice(value.voice, pid ? hostPresets?.[pid]?.voice : '')
   }
+  useEffect(() => {
+    refreshSecretKeys()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value.ttsEngine])
   // 连点去重：一次验证就是一次整句合成（有成本、占 20/分桶），在途时不重发（R4 复核发现）。
   const [verifying, setVerifying] = useState(false)
   const verifyPreset = (presetId: string): void => {
@@ -1987,15 +2080,58 @@ export function VoiceSettingsCard({ scope, defaultOpen = false }: { scope: Scope
               />
             </Row>
             {engine === 'openai' && (
-              <Row name="openaiPreset" desc={tr('descOpenaiPreset')}>
-                <OpenAiPresetSection
+              <>
+                <Row name="openaiPreset" desc={tr('descOpenaiPreset')}>
+                  <OpenAiPresetSection
+                    score={scope}
+                    value={value.openaiPreset}
+                    presets={hostPresets}
+                    onReloadPresets={hostPresetState.reload}
+                    onVerify={verifyPreset}
+                    verifyState={presetVerify}
+                    verifying={verifying}
+                  />
+                </Row>
+                {/* 2026-11-19：URL/模型/key 直接在卡片里填（覆盖预设与 profile；留空 = 沿用）。 */}
+                <Row name="openaiBaseUrl" desc={tr('descOpenaiBaseUrl')}>
+                  <TextField
+                    score={scope}
+                    field="openaiBaseUrl"
+                    value={value.openaiBaseUrl}
+                    placeholder={(() => {
+                      const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
+                      return (pid && hostPresets?.[pid]?.baseUrl) || ''
+                    })()}
+                  />
+                </Row>
+                <Row name="openaiModel" desc={tr('descOpenaiModel')}>
+                  <TextField
+                    score={scope}
+                    field="openaiModel"
+                    value={value.openaiModel}
+                    placeholder={(() => {
+                      const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
+                      return (pid && hostPresets?.[pid]?.model) || ''
+                    })()}
+                  />
+                </Row>
+                <Row name="openaiApiKey" desc={tr('descOpenaiApiKey')}>
+                  <SecretField
+                    score={scope}
+                    field="openaiApiKey"
+                    saved={secretKeys.openaiApiKey}
+                    onCleared={refreshSecretKeys}
+                  />
+                </Row>
+              </>
+            )}
+            {engine === 'mimo' && (
+              <Row name="mimoApiKey" desc={tr('descMimoApiKey')}>
+                <SecretField
                   score={scope}
-                  value={value.openaiPreset}
-                  presets={hostPresets}
-                  onReloadPresets={hostPresetState.reload}
-                  onVerify={verifyPreset}
-                  verifyState={presetVerify}
-                  verifying={verifying}
+                  field="mimoApiKey"
+                  saved={secretKeys.mimoApiKey}
+                  onCleared={refreshSecretKeys}
                 />
               </Row>
             )}

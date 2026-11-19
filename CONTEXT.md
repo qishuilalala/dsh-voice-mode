@@ -69,6 +69,10 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 | showCaptions | true | PR #16：朗读字幕浮层；关则不显示字幕 |
 | senseITN | true | 批 2 P0：SenseVoice 逆文本归一化（数字/日期规范化；默认开） |
 | openaiPreset | ''（手动） | E1 在线 TTS 预设 id（siliconflow-cosyvoice2 / siliconflow-fish / openrouter-openai / openai-official / selfhosted-kokoro / selfhosted-vllm）；选中后 baseUrl/model 按预设、**音色留空时回落预设音色**，key 走 openaiTts.apiKeys[预设id]（推荐，多家各一把）→ 兜底 openaiTts.apiKey；真源 `src/tts-openai.ts` OPENAI_PRESETS，经 `GET /voice-mode/presets` 下发 |
+| openaiBaseUrl | ''（跟随预设/配置文件） | 在线 TTS 端点覆盖：设置卡片可直接填（不必改 profile YAML），优先级 设置 > 预设 > `openaiTts.baseUrl`；留空不覆盖 |
+| openaiModel | '' | 在线 TTS 模型名覆盖，优先级同上；配合「自定义（custom）」预设即可接任意 OpenAI 兼容平台 |
+| openaiApiKey | ''（回落配置文件） | 在线 TTS 的 key：设置卡片填写后存宿主 0600 设置文件，**不回传浏览器**（GET /settings 恒空串 + `keys.*` 布尔）；优先级 设置 > `openaiTts.apiKeys[预设]` > `openaiTts.apiKey`；`POST /settings {clearSecrets:[…]}` 清除 |
+| mimoApiKey | ''（回落配置文件） | 小米 MiMo 的 key（`api-key` 头），UI 填写后存宿主 0600；留空回落 `mimoTts.apiKey`；同样不回传 |
 | asrReplacements | [] | P1-3 用户纠错词表 `[{from:[听错写法],to:想要写法}]`（≤200 条 / ≤12KB UTF-8）：转写后统一改写（中间结果+定稿），命中计数经 /models/status.replacements 暴露；与 PR #68 文本层引擎复用 |
 | captionFontSize | 0 | 批 3 P0：字幕字号档位 0=12px/1=14px/2=18px/3=24px（默认 0 与现状字节等价） |
 | captionMaxWidth | 1 | 批 3 P0：字幕宽度档位 0=50vw/1=70vw/2=90vw；视口 <686px 窄于 480px、≈686px 接近、>686px 宽于 480px |

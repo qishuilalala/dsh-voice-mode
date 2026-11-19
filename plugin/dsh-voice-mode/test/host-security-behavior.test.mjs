@@ -1356,5 +1356,38 @@ await t('/asr 非 POST → 405（跨站 GET 不消耗 ASR 限流桶）', async (
 })
 
 rmSync(tmp, { recursive: true, force: true })
+
+
+// ---------------------------------------------------------------- ⑩ 设置密钥面（2026-11-19 在线配置）
+console.log('⑩ 设置密钥面：GET 永不回传密钥（ADR-0013）')
+
+assert.ok(routes.has('/voice-mode/settings'), '/voice-mode/settings 未注册')
+
+await t('GET /voice-mode/settings：密钥字段恒为空串，只回 has* 布尔', async () => {
+  const res = await awaitRes(get('/voice-mode/settings', makeReq({ method: 'GET', body: undefined })))
+  assert.equal(res.statusCode, 200)
+  const body = JSON.parse(res.body)
+  assert.equal(body.value.openaiApiKey, '', 'openaiApiKey 不得回传')
+  assert.equal(body.value.mimoApiKey, '', 'mimoApiKey 不得回传')
+  assert.equal(typeof body.keys?.openaiApiKey, 'boolean', '缺 keys.openaiApiKey 布尔')
+  assert.equal(typeof body.keys?.mimoApiKey, 'boolean', '缺 keys.mimoApiKey 布尔')
+  assert.ok(!/sk-/.test(res.body), 'GET 响应体出现疑似密钥')
+})
+
+await t('GET 回传在线 TTS 的 URL/模型字段（UI 需要回显，非机密）', async () => {
+  const res = await awaitRes(get('/voice-mode/settings', makeReq({ method: 'GET', body: undefined })))
+  const body = JSON.parse(res.body)
+  assert.ok('openaiBaseUrl' in body.value, '缺 openaiBaseUrl')
+  assert.ok('openaiModel' in body.value, '缺 openaiModel')
+})
+
+await t('路径 A（设置归 dsh 托管）下 POST 被拒 409——写入必须走 dsh 设置存储', async () => {
+  const res = await awaitRes(
+    get('/voice-mode/settings', makeReq({ origin: 'http://127.0.0.1:3080', method: 'POST', url: '/voice-mode/settings', body: JSON.stringify({ openaiBaseUrl: 'https://x/v1' }) })),
+  )
+  assert.equal(res.statusCode, 409)
+  assert.equal(bodyCode(res), 'settings_managed')
+})
+
 console.log(`\nhost-security-behavior：${passed} 项通过`)
 process.exit(0)

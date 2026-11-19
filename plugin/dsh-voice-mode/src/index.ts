@@ -51,7 +51,9 @@ import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts
 import type { HostErrorCode } from './errors.ts'
 import { en } from './strings.ts'
 import { correctText } from './llm-correct.ts'
-import { OPENAI_PRESETS, OpenAiTtsEngine, resolveOpenAiApiKey, resolveOpenAiEndpoint, resolveOpenAiSpeech } from './tts-openai.ts'
+import { OPENAI_PRESETS, OpenAiTtsEngine } from './tts-openai.ts'
+import { resolveOnlineTts } from './online-tts.ts'
+import { applyClearSecrets, hasSecret, publicSettingsView } from './settings-view.ts'
 import { asTtsEngineKind, isLocalEngine, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
 import { MimoTtsEngine } from './tts-mimo.ts'
 import { normalizePromptLang, previewSample, spokenPrompt, type PromptLang } from './prompts.ts'
@@ -260,6 +262,14 @@ export interface VoiceSettingsValue {
   llmCorrect: boolean
   /** E1 在线预设 id（'' = 手动沿用 Config 文件；已知 id 见 tts-openai.ts OPENAI_PRESETS；用户覆盖层专属，无 Config 基线）。 */
   openaiPreset: string
+  /** 在线 TTS 端点覆盖（空 = 用预设/配置文件）。设置卡片可直接填，不必改 profile YAML。 */
+  openaiBaseUrl: string
+  /** 在线 TTS 模型覆盖（空 = 用预设/配置文件）。 */
+  openaiModel: string
+  /** 在线 TTS 的 key（空 = 用配置文件 apiKeys[预设]/apiKey）。仅主机侧持久化，不回传浏览器。 */
+  openaiApiKey: string
+  /** MiMo 的 key（空 = 用配置文件 mimoTts.apiKey）。同样只存主机侧、不回传。 */
+  mimoApiKey: string
   /** 批 G 任务 3：让位窗口时长（ms，500-3000，默认 1500）。
    *  onBackchannel 命中后 TTS 丢帧持续时间；hold 期内用户真要说则原 hardBreak 接管。 */
   yieldMs: number
@@ -304,6 +314,10 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   llmCorrect: false,
   // E1：在线预设默认空 = 手动（沿用 Config 文件值，零行为变化）。
   openaiPreset: '',
+  openaiBaseUrl: '',
+  openaiModel: '',
+  openaiApiKey: '',
+  mimoApiKey: '',
   // P1-3：纠错词表默认空（与 Config 层 asrReplacements 默认 [] 对齐）。
   asrReplacements: [],
   // 批 G 任务 3：让位窗口默认 1500ms（与改造前批 5 行为字节等价；用户可调 500-3000ms）。
@@ -344,6 +358,10 @@ const DESC = {
   bargeInSalvage: en.descBargeInSalvage,
   llmCorrect: en.descLlmCorrect,
   openaiPreset: en.descOpenaiPreset,
+  openaiBaseUrl: en.descOpenaiBaseUrl,
+  openaiModel: en.descOpenaiModel,
+  openaiApiKey: en.descOpenaiApiKey,
+  mimoApiKey: en.descMimoApiKey,
   asrReplacements: en.descAsrReplacements,
   yieldMs: en.descYieldMs,
 } as const
@@ -467,6 +485,12 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .description(
         DESC.openaiPreset,
       ),
+    // 2026-11-19：在线 TTS 的 URL/模型/key 允许在设置卡片里填（不必改 profile YAML）。
+    openaiBaseUrl: z.string().default(d.openaiBaseUrl).description(DESC.openaiBaseUrl),
+    openaiModel: z.string().default(d.openaiModel).description(DESC.openaiModel),
+    // secret：GET /settings 会把它抹成空串，只回 hasOpenaiApiKey 布尔；POST 可写。
+    openaiApiKey: z.string().role('secret').default(d.openaiApiKey).description(DESC.openaiApiKey),
+    mimoApiKey: z.string().role('secret').default(d.mimoApiKey).description(DESC.mimoApiKey),
     // P1-3：用户纠错词表（默认空；非法条目由 zod 整表拒绝，POST 回 400；上限 200 条与设置卡片一致，防超大覆盖层）。
     asrReplacements: z
       .array(AsrReplacementSchema)
@@ -709,6 +733,11 @@ function voiceSettingsFromConfig(config: Config): VoiceSettingsValue {
     asrReplacements,
     // E1：预设无 Config 基线（用户覆盖层专属），默认空 = 手动。
     openaiPreset: '',
+    // 在线 TTS 的 UI 覆盖默认空：未填时按预设/配置文件走（零行为变化）。
+    openaiBaseUrl: '',
+    openaiModel: '',
+    openaiApiKey: '',
+    mimoApiKey: '',
   }
 }
 
@@ -992,7 +1021,13 @@ export function apply(ctx: Context, config: Config): void {
         },
       },
     )
-    vset = settingsScope.get()
+    // 旧宿主/部分实现可能只回已存键：经 schema 归一补齐默认值（否则新增设置键在此路径下 undefined）。
+    try {
+      vset = resolveSettings(settingsScope.get() as unknown as Record<string, unknown>)
+    } catch (e) {
+      console.warn(`[dsh-voice-mode] settings scope returned invalid values; falling back to defaults: ${redactSecrets(e)}`)
+      vset = resolveSettings({})
+    }
     settingsScopeRef = settingsScope
   } else {
     // 路径 B 用户设置：Config 基线 ⊕ 覆盖层文件（settings-store.ts 文件头说明为何不走官方存储）。
@@ -1101,7 +1136,8 @@ export function apply(ctx: Context, config: Config): void {
       const m = config.mimoTts
       const fb = m.fallback
       return new MimoTtsEngine({
-        apiKey: m.apiKey,
+        // 设置卡片里填的 key 优先（留空则回落到配置文件 mimoTts.apiKey）；key 只在宿主侧。
+        apiKey: (vset.mimoApiKey ?? '').trim() || m.apiKey,
         baseUrl: m.baseUrl,
         model: m.model,
         voice: m.voice,
@@ -1123,15 +1159,21 @@ export function apply(ctx: Context, config: Config): void {
       const fallbackKind = o.fallback
       // E1：baseUrl/model/voice 三方合成口径统一在 tts-openai.ts 的 resolveOpenAiSpeech
       //（T6 审查：这段此前内联在此、零测试覆盖）。key 恒走 Config，不进预设。
-      const resolved = resolveOpenAiSpeech({
-        presetId: vset.openaiPreset ?? '',
-        settingVoice: vset.voice,
-        config: { baseUrl: o.baseUrl, model: o.model, voice: o.voice },
-      })
+      // 2026-11-19：设置卡片可直接覆盖 URL/模型/key（设置 > 预设 > 配置文件）。
+      const resolved = resolveOnlineTts(
+        {
+          presetId: vset.openaiPreset ?? '',
+          baseUrl: vset.openaiBaseUrl ?? '',
+          model: vset.openaiModel ?? '',
+          apiKey: vset.openaiApiKey ?? '',
+          voice: vset.voice,
+        },
+        { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys },
+      )
       return new OpenAiTtsEngine({
         baseUrl: resolved.baseUrl,
         // E1 多 key：预设专属 key 优先（换服务商不必再手改单个 key）。key 始终只在宿主侧。
-        apiKey: resolveOpenAiApiKey(vset.openaiPreset ?? '', o) || undefined,
+        apiKey: resolved.apiKey || undefined,
         model: resolved.model,
         voice: resolved.voice,
         instructions: o.instructions || undefined,
@@ -1200,13 +1242,16 @@ export function apply(ctx: Context, config: Config): void {
    * 注意：宿主日志**必须英文**（strings-coverage 的 CJK 红线：用户可见文案才走词典）。
    */
   const checkRemoteConfig = (kind: TtsEngineKind): void => {
-    if (kind === 'mimo' && !config.mimoTts?.apiKey) {
-      console.warn('[dsh-voice-mode] tts engine is mimo but mimoTts.apiKey is not configured: synthesis will fail (falls back to local if configured)')
+    if (kind === 'mimo' && !((vset.mimoApiKey ?? '').trim() || config.mimoTts?.apiKey)) {
+      console.warn('[dsh-voice-mode] tts engine is mimo but no key is configured (settings or mimoTts.apiKey): synthesis will fail (falls back to local if configured)')
     } else if (kind === 'openai') {
       const o = config.openaiTts
-      const preset = resolveOpenAiEndpoint(vset.openaiPreset ?? '')
-      if (!(preset?.baseUrl ?? o.baseUrl) || !(preset?.model ?? o.model)) {
-        console.warn('[dsh-voice-mode] tts engine is openai-compatible but baseUrl/model is missing (and no preset selected): synthesis will fail')
+      const r = resolveOnlineTts(
+        { presetId: vset.openaiPreset ?? '', baseUrl: vset.openaiBaseUrl ?? '', model: vset.openaiModel ?? '', apiKey: vset.openaiApiKey ?? '', voice: vset.voice },
+        { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys },
+      )
+      if (!r.baseUrl || !r.model) {
+        console.warn('[dsh-voice-mode] tts engine is openai-compatible but baseUrl/model is missing: fill them in the settings card or the profile openaiTts block')
       }
     }
   }
@@ -1214,18 +1259,32 @@ export function apply(ctx: Context, config: Config): void {
   // 路径 B（0.1.7+）无 watch：vset 取自 apply 时 config 快照，配置变更经 reload 重跑 apply 生效。
   const applyVset = (next: VoiceSettingsValue): void => {
     const prev = vset
-    vset = next
+    // 归一：宿主热更可能给出局部对象，补齐默认值后再向下游分发。
+    try {
+      vset = resolveSettings(next as unknown as Record<string, unknown>)
+    } catch {
+      vset = next
+    }
     // 显示类设置即时同步到所有标签页（不论从哪个标签页/哪条设置路径改的）。
     broadcast('display', displayOf(next))
     if (next.ttsEngine !== engineKind) {
       engineKind = next.ttsEngine
       checkRemoteConfig(engineKind)
       queue.setEngine(makeEngine(engineKind))
+    } else if (engineKind === 'mimo' && next.mimoApiKey !== prev.mimoApiKey) {
+      checkRemoteConfig('mimo')
+      queue.setEngine(makeEngine('mimo'))
     } else if (engineKind === 'kokoro' && next.kokoroModel !== activeKokoroModel) {
       // Kokoro 精度切换：重建引擎指向另一模型目录（已缓存则即时，否则下次下载）。
       activeKokoroModel = next.kokoroModel
       queue.setEngine(makeEngine('kokoro'))
-    } else if (engineKind === 'openai' && next.openaiPreset !== prev.openaiPreset) {
+    } else if (
+      engineKind === 'openai' &&
+      (next.openaiPreset !== prev.openaiPreset ||
+        next.openaiBaseUrl !== prev.openaiBaseUrl ||
+        next.openaiModel !== prev.openaiModel ||
+        next.openaiApiKey !== prev.openaiApiKey)
+    ) {
       // E1：预设切换重建远端引擎（baseUrl/model 随预设走；key 恒走 Config）。
       checkRemoteConfig('openai')
       queue.setEngine(makeEngine('openai'))
@@ -2061,7 +2120,12 @@ export function apply(ctx: Context, config: Config): void {
         if (denyNonLoopback(req, res)) return
         // GET：当前生效设置全量（设置页读取）。路径 A 宿主设置归 dsh 官方存储，此处只读。
         if (req.method === 'GET') {
-          respondJson(res, 200, { managedBy: settingsScopeRef ? 'dsh' : 'plugin', value: vset })
+          // 密钥字段**永不回传**（ADR-0013）：空串表示「未在此层覆盖」，由 has* 说明是否已配置。
+          const view = publicSettingsView(vset, {
+            openaiApiKey: hasSecret(vset.openaiApiKey, config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {})),
+            mimoApiKey: hasSecret(vset.mimoApiKey, config.mimoTts?.apiKey),
+          })
+          respondJson(res, 200, { managedBy: settingsScopeRef ? 'dsh' : 'plugin', ...view })
           return
         }
         // 同 I2 铁律：错误响应走 respondJson，不留隐式头三段式（第三方 gzip 包装器下断链）。
@@ -2087,14 +2151,24 @@ export function apply(ctx: Context, config: Config): void {
             respondJson(res, 400, { code: 'bad_request', error: 'body must be a JSON object' })
             return
           }
-          const unknown = unknownKeys(patch, SETTING_KEYS)
+          // clearSecrets：显式清除已保存的密钥（GET 不回传密钥，空串无法表达「清除」）。
+          let cleared: Record<string, unknown>
+          try {
+            cleared = applyClearSecrets(patch as Record<string, unknown>, (patch as { clearSecrets?: unknown }).clearSecrets)
+          } catch (e) {
+            respondJson(res, 400, { code: 'bad_request', error: String((e as Error).message).slice(0, 120) })
+            return
+          }
+          const rest = { ...(pickKnownKeys(cleared, SETTING_KEYS) as Record<string, unknown>) }
+          const unknown = unknownKeys(rest, SETTING_KEYS)
           if (unknown.length > 0) {
             respondJson(res, 400, { code: 'bad_request', error: `unknown settings: ${unknown.slice(0, 5).join(', ')}` })
             return
           }
           try {
-            const next = await persistSettings(pickKnownKeys(patch, SETTING_KEYS))
-            respondJson(res, 200, { ok: true, managedBy: 'plugin', value: next })
+            const next = await persistSettings(rest as Partial<VoiceSettingsValue>)
+            const out = { ...next, openaiApiKey: '', mimoApiKey: '' }
+            respondJson(res, 200, { ok: true, managedBy: 'plugin', value: out })
           } catch (e) {
             // schema 校验失败 = 客户端输入问题（400）；其余（落盘等）= 500。不回显内部路径。
             const isValidation = e instanceof Error && e.name === 'ValidationError'

@@ -270,6 +270,13 @@ export const OPENAI_PRESETS: Record<string, OpenAiPreset> = {
     model: 'kokoro',
     voice: 'zf_xiaobei',
   },
+  // Groq 官方 API Reference「Create speech」：POST /openai/v1/audio/speech（base 为
+  // https://api.groq.com/openai/v1），模型 playai-tts，音色列表形如 Fritz-PlayAI。
+  'groq-playai': {
+    baseUrl: 'https://api.groq.com/openai/v1',
+    model: 'playai-tts',
+    voice: 'Fritz-PlayAI',
+  },
   //   vLLM-Omni（ADR-0013 实测过 VoxCPM2 / Qwen3-TTS 部署）。
   'selfhosted-vllm': {
     baseUrl: 'http://127.0.0.1:8000/v1',

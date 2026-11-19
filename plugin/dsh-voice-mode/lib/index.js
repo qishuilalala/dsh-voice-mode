@@ -2596,8 +2596,10 @@ var en = {
   preview: "Preview",
   // E1 online presets.
   openaiPresetLabel: "Online preset",
-  descOpenaiPreset: "Online TTS preset: endpoint and model follow the preset (keys live in openaiTts.apiKeys[preset id] or openaiTts.apiKey on the host side, never in the browser file openaiTts.apiKey, never passes through the browser); empty = manual config file values. Run the self-test below after switching",
+  descOpenaiPreset: "Online TTS preset: endpoint and model follow the preset (keys live in openaiTts.apiKeys[preset id] or openaiTts.apiKey on the host side, never sent to the browser); empty = manual config file values. Run the self-test below after switching",
   presetCustom: "Manual (profile file)",
+  presetCustomCustom: "Custom (fill below)",
+  presetCustomHint: "With this selected, configure any OpenAI-compatible service in the Endpoint / Model / API key fields below",
   presetCosy: "SiliconFlow \xB7 CosyVoice2",
   presetFish: "SiliconFlow \xB7 Fish Speech 1.5",
   presetCosyNote: "About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn",
@@ -2606,6 +2608,8 @@ var en = {
   presetOpenrouterNote: "Billed through the selected model; text goes to openrouter.ai; OpenAI terms require disclosing that the voice is AI-generated",
   presetOpenaiOfficial: "OpenAI official \xB7 gpt-4o-mini-tts",
   presetOpenaiOfficialNote: "Billed at OpenAI list prices; text goes to api.openai.com; OpenAI terms require disclosing that the voice is AI-generated",
+  presetGroq: "Groq \xB7 PlayAI TTS",
+  presetGroqNote: "Billed at Groq prices; text goes to api.groq.com; English voices such as Fritz-PlayAI",
   presetSelfKokoro: "Self-hosted \xB7 Kokoro-FastAPI",
   presetSelfKokoroNote: "Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first",
   presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
@@ -2614,6 +2618,19 @@ var en = {
   presetVerify: "Verify preset",
   presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
   presetReload: "Reload presets",
+  // 2026-11-19: online TTS is configurable from the settings card (URL/model/key), no profile YAML edit needed.
+  openaiBaseUrlLabel: "Endpoint (base URL)",
+  descOpenaiBaseUrl: "OpenAI-compatible endpoint, usually ending in /v1 (the plugin appends /audio/speech). Empty = use the preset or the profile openaiTts.baseUrl",
+  openaiModelLabel: "Model",
+  descOpenaiModel: "TTS model on that endpoint, e.g. gpt-4o-mini-tts or FunAudioLLM/CosyVoice2-0.5B. Empty = use the preset or the profile",
+  openaiApiKeyLabel: "API key",
+  descOpenaiApiKey: "The key stays on the host (0600 settings file); it is never sent back to the browser and never logged. Empty = use the profile openaiTts.apiKeys[preset]/apiKey; a value here overrides it",
+  mimoApiKeyLabel: "MiMo API key",
+  descMimoApiKey: "Xiaomi MiMo key (sent as the api-key header, not Bearer). Host-side only; empty = use the profile mimoTts.apiKey",
+  secretSaved: "Saved",
+  secretKeep: "Saved (leave empty to keep)",
+  secretClear: "Clear",
+  secretHintBrowser: "Typed values go straight to the local host and are stored with 0600; never written to chat or logs",
   // P1-4 dictation-only preset.
   dictationTitle: "Dictation only",
   dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
@@ -2951,14 +2968,6 @@ async function correctText(ctx, text, lang) {
   }
 }
 
-// src/voice-resolution.ts
-function clean(value) {
-  return typeof value === "string" ? value.trim() : "";
-}
-function resolvePresetVoice(settingVoice, presetVoice) {
-  return clean(settingVoice) || clean(presetVoice);
-}
-
 // src/tts-openai.ts
 var MIME = { mp3: "audio/mpeg", wav: "audio/wav" };
 var OpenAiTtsError = class extends Error {
@@ -3143,6 +3152,13 @@ var OPENAI_PRESETS = {
     model: "kokoro",
     voice: "zf_xiaobei"
   },
+  // Groq 官方 API Reference「Create speech」：POST /openai/v1/audio/speech（base 为
+  // https://api.groq.com/openai/v1），模型 playai-tts，音色列表形如 Fritz-PlayAI。
+  "groq-playai": {
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "playai-tts",
+    voice: "Fritz-PlayAI"
+  },
   //   vLLM-Omni（ADR-0013 实测过 VoxCPM2 / Qwen3-TTS 部署）。
   "selfhosted-vllm": {
     baseUrl: "http://127.0.0.1:8000/v1",
@@ -3150,23 +3166,73 @@ var OPENAI_PRESETS = {
     voice: "default"
   }
 };
-function resolveOpenAiApiKey(presetId, config) {
-  const perPreset = presetId ? (config.apiKeys?.[presetId] ?? "").trim() : "";
-  if (perPreset) return perPreset;
-  return (config.apiKey ?? "").trim();
+
+// src/online-tts.ts
+var CUSTOM_PRESET_ID = "custom";
+var trim = (v) => typeof v === "string" ? v.trim() : "";
+function lookupPreset(presetId) {
+  const id = trim(presetId);
+  if (!id || id === CUSTOM_PRESET_ID) return null;
+  return OPENAI_PRESETS[id] ?? null;
 }
-function resolveOpenAiEndpoint(preset) {
-  return OPENAI_PRESETS[preset] ?? null;
-}
-function resolveOpenAiSpeech(params) {
-  const { presetId, settingVoice, config } = params;
-  const preset = resolveOpenAiEndpoint(presetId);
+function resolveOnlineTts(overrides, config) {
+  const preset = lookupPreset(overrides.presetId);
+  const settingBase = trim(overrides.baseUrl);
+  const presetBase = trim(preset?.baseUrl);
+  const configBase = trim(config.baseUrl);
+  const baseUrl = settingBase || presetBase || configBase;
+  const settingModel = trim(overrides.model);
+  const presetModel = trim(preset?.model);
+  const configModel = trim(config.model);
+  const model = settingModel || presetModel || configModel;
+  const settingVoice = trim(overrides.voice);
+  const presetVoice = trim(preset?.voice);
+  const configVoice = trim(config.voice);
+  const voice = settingVoice || presetVoice || configVoice;
+  const settingKey = trim(overrides.apiKey);
+  const presetId = trim(overrides.presetId);
+  const presetKey = presetId ? trim(config.apiKeys?.[presetId]) : "";
+  const configKey = trim(config.apiKey);
+  const apiKey = settingKey || presetKey || configKey;
   return {
-    baseUrl: preset?.baseUrl ?? config.baseUrl ?? "",
-    model: preset?.model ?? config.model ?? "",
-    voice: resolvePresetVoice(settingVoice, preset?.voice ?? config.voice),
-    presetId: preset ? presetId : ""
+    presetId,
+    baseUrl,
+    model,
+    voice,
+    apiKey,
+    from: {
+      baseUrl: settingBase ? "settings" : presetBase ? "preset" : configBase ? "config" : "none",
+      model: settingModel ? "settings" : presetModel ? "preset" : configModel ? "config" : "none",
+      voice: settingVoice ? "settings" : presetVoice ? "preset" : configVoice ? "config" : "none",
+      apiKey: settingKey ? "settings" : presetKey ? "presetKey" : configKey ? "configKey" : "none"
+    }
   };
+}
+
+// src/settings-view.ts
+var SECRET_SETTING_KEYS = ["openaiApiKey", "mimoApiKey"];
+function publicSettingsView(vset, presence) {
+  return {
+    value: { ...vset, openaiApiKey: "", mimoApiKey: "" },
+    keys: { openaiApiKey: Boolean(presence.openaiApiKey), mimoApiKey: Boolean(presence.mimoApiKey) }
+  };
+}
+function applyClearSecrets(patch, clearList) {
+  const { clearSecrets: _ignored, ...rest } = patch;
+  const list = Array.isArray(clearList) ? clearList : [];
+  const out = { ...rest };
+  for (const item of list) {
+    if (typeof item !== "string") continue;
+    if (!SECRET_SETTING_KEYS.includes(item)) {
+      throw new Error(`unknown secret: ${item}`);
+    }
+    out[item] = "";
+  }
+  return out;
+}
+function hasSecret(value, ...fallbacks) {
+  const nonEmpty = (v) => typeof v === "string" && v.trim().length > 0;
+  return nonEmpty(value) || fallbacks.some(nonEmpty);
 }
 
 // src/engine-kind.ts
@@ -3261,11 +3327,11 @@ function extractMimoAudio(body) {
   return typeof data === "string" && data.length > 0 ? data : null;
 }
 function decodeBase64Audio(data) {
-  const clean2 = data.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
-  if (clean2.length === 0 || clean2.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(clean2)) {
+  const clean = data.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  if (clean.length === 0 || clean.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(clean)) {
     throw new MimoTtsError("mimo_bad_audio", "audio payload is not valid base64");
   }
-  return Buffer.from(clean2, "base64");
+  return Buffer.from(clean, "base64");
 }
 var MimoTtsEngine = class {
   voice;
@@ -3575,6 +3641,10 @@ var VOICE_SETTINGS_DEFAULTS = {
   llmCorrect: false,
   // E1：在线预设默认空 = 手动（沿用 Config 文件值，零行为变化）。
   openaiPreset: "",
+  openaiBaseUrl: "",
+  openaiModel: "",
+  openaiApiKey: "",
+  mimoApiKey: "",
   // P1-3：纠错词表默认空（与 Config 层 asrReplacements 默认 [] 对齐）。
   asrReplacements: [],
   // 批 G 任务 3：让位窗口默认 1500ms（与改造前批 5 行为字节等价；用户可调 500-3000ms）。
@@ -3610,6 +3680,10 @@ var DESC = {
   bargeInSalvage: en.descBargeInSalvage,
   llmCorrect: en.descLlmCorrect,
   openaiPreset: en.descOpenaiPreset,
+  openaiBaseUrl: en.descOpenaiBaseUrl,
+  openaiModel: en.descOpenaiModel,
+  openaiApiKey: en.descOpenaiApiKey,
+  mimoApiKey: en.descMimoApiKey,
   asrReplacements: en.descAsrReplacements,
   yieldMs: en.descYieldMs
 };
@@ -3671,6 +3745,12 @@ function createVoiceSettingsSchema(defs) {
     openaiPreset: z2.string().default(d.openaiPreset).description(
       DESC.openaiPreset
     ),
+    // 2026-11-19：在线 TTS 的 URL/模型/key 允许在设置卡片里填（不必改 profile YAML）。
+    openaiBaseUrl: z2.string().default(d.openaiBaseUrl).description(DESC.openaiBaseUrl),
+    openaiModel: z2.string().default(d.openaiModel).description(DESC.openaiModel),
+    // secret：GET /settings 会把它抹成空串，只回 hasOpenaiApiKey 布尔；POST 可写。
+    openaiApiKey: z2.string().role("secret").default(d.openaiApiKey).description(DESC.openaiApiKey),
+    mimoApiKey: z2.string().role("secret").default(d.mimoApiKey).description(DESC.mimoApiKey),
     // P1-3：用户纠错词表（默认空；非法条目由 zod 整表拒绝，POST 回 400；上限 200 条与设置卡片一致，防超大覆盖层）。
     asrReplacements: z2.array(AsrReplacementSchema).max(200).default(d.asrReplacements).description(
       DESC.asrReplacements
@@ -3826,7 +3906,12 @@ function voiceSettingsFromConfig(config) {
     llmCorrect,
     asrReplacements,
     // E1：预设无 Config 基线（用户覆盖层专属），默认空 = 手动。
-    openaiPreset: ""
+    openaiPreset: "",
+    // 在线 TTS 的 UI 覆盖默认空：未填时按预设/配置文件走（零行为变化）。
+    openaiBaseUrl: "",
+    openaiModel: "",
+    openaiApiKey: "",
+    mimoApiKey: ""
   };
 }
 function apply(ctx, config) {
@@ -3943,7 +4028,12 @@ function apply(ctx, config) {
         }
       }
     );
-    vset = settingsScope.get();
+    try {
+      vset = resolveSettings(settingsScope.get());
+    } catch (e) {
+      console.warn(`[dsh-voice-mode] settings scope returned invalid values; falling back to defaults: ${redactSecrets(e)}`);
+      vset = resolveSettings({});
+    }
     settingsScopeRef = settingsScope;
   } else {
     const loaded = readOverrides(settingsFile, SETTING_KEYS);
@@ -4032,7 +4122,8 @@ function apply(ctx, config) {
       const m = config.mimoTts;
       const fb = m.fallback;
       return new MimoTtsEngine({
-        apiKey: m.apiKey,
+        // 设置卡片里填的 key 优先（留空则回落到配置文件 mimoTts.apiKey）；key 只在宿主侧。
+        apiKey: (vset.mimoApiKey ?? "").trim() || m.apiKey,
         baseUrl: m.baseUrl,
         model: m.model,
         voice: m.voice,
@@ -4049,15 +4140,20 @@ function apply(ctx, config) {
     if (kind === "openai") {
       const o = config.openaiTts;
       const fallbackKind = o.fallback;
-      const resolved = resolveOpenAiSpeech({
-        presetId: vset.openaiPreset ?? "",
-        settingVoice: vset.voice,
-        config: { baseUrl: o.baseUrl, model: o.model, voice: o.voice }
-      });
+      const resolved = resolveOnlineTts(
+        {
+          presetId: vset.openaiPreset ?? "",
+          baseUrl: vset.openaiBaseUrl ?? "",
+          model: vset.openaiModel ?? "",
+          apiKey: vset.openaiApiKey ?? "",
+          voice: vset.voice
+        },
+        { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys }
+      );
       return new OpenAiTtsEngine({
         baseUrl: resolved.baseUrl,
         // E1 多 key：预设专属 key 优先（换服务商不必再手改单个 key）。key 始终只在宿主侧。
-        apiKey: resolveOpenAiApiKey(vset.openaiPreset ?? "", o) || void 0,
+        apiKey: resolved.apiKey || void 0,
         model: resolved.model,
         voice: resolved.voice,
         instructions: o.instructions || void 0,
@@ -4106,28 +4202,38 @@ function apply(ctx, config) {
   ctx.effect(() => unsubscribe);
   ctx.effect(() => () => void queue.close());
   const checkRemoteConfig = (kind) => {
-    if (kind === "mimo" && !config.mimoTts?.apiKey) {
-      console.warn("[dsh-voice-mode] tts engine is mimo but mimoTts.apiKey is not configured: synthesis will fail (falls back to local if configured)");
+    if (kind === "mimo" && !((vset.mimoApiKey ?? "").trim() || config.mimoTts?.apiKey)) {
+      console.warn("[dsh-voice-mode] tts engine is mimo but no key is configured (settings or mimoTts.apiKey): synthesis will fail (falls back to local if configured)");
     } else if (kind === "openai") {
       const o = config.openaiTts;
-      const preset = resolveOpenAiEndpoint(vset.openaiPreset ?? "");
-      if (!(preset?.baseUrl ?? o.baseUrl) || !(preset?.model ?? o.model)) {
-        console.warn("[dsh-voice-mode] tts engine is openai-compatible but baseUrl/model is missing (and no preset selected): synthesis will fail");
+      const r = resolveOnlineTts(
+        { presetId: vset.openaiPreset ?? "", baseUrl: vset.openaiBaseUrl ?? "", model: vset.openaiModel ?? "", apiKey: vset.openaiApiKey ?? "", voice: vset.voice },
+        { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys }
+      );
+      if (!r.baseUrl || !r.model) {
+        console.warn("[dsh-voice-mode] tts engine is openai-compatible but baseUrl/model is missing: fill them in the settings card or the profile openaiTts block");
       }
     }
   };
   const applyVset = (next) => {
     const prev = vset;
-    vset = next;
+    try {
+      vset = resolveSettings(next);
+    } catch {
+      vset = next;
+    }
     broadcast("display", displayOf(next));
     if (next.ttsEngine !== engineKind) {
       engineKind = next.ttsEngine;
       checkRemoteConfig(engineKind);
       queue.setEngine(makeEngine(engineKind));
+    } else if (engineKind === "mimo" && next.mimoApiKey !== prev.mimoApiKey) {
+      checkRemoteConfig("mimo");
+      queue.setEngine(makeEngine("mimo"));
     } else if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) {
       activeKokoroModel = next.kokoroModel;
       queue.setEngine(makeEngine("kokoro"));
-    } else if (engineKind === "openai" && next.openaiPreset !== prev.openaiPreset) {
+    } else if (engineKind === "openai" && (next.openaiPreset !== prev.openaiPreset || next.openaiBaseUrl !== prev.openaiBaseUrl || next.openaiModel !== prev.openaiModel || next.openaiApiKey !== prev.openaiApiKey)) {
       checkRemoteConfig("openai");
       queue.setEngine(makeEngine("openai"));
     }
@@ -4700,7 +4806,11 @@ function apply(ctx, config) {
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
         if (req.method === "GET") {
-          respondJson2(res, 200, { managedBy: settingsScopeRef ? "dsh" : "plugin", value: vset });
+          const view = publicSettingsView(vset, {
+            openaiApiKey: hasSecret(vset.openaiApiKey, config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {})),
+            mimoApiKey: hasSecret(vset.mimoApiKey, config.mimoTts?.apiKey)
+          });
+          respondJson2(res, 200, { managedBy: settingsScopeRef ? "dsh" : "plugin", ...view });
           return;
         }
         if (req.method !== "POST") {
@@ -4725,14 +4835,23 @@ function apply(ctx, config) {
             respondJson2(res, 400, { code: "bad_request", error: "body must be a JSON object" });
             return;
           }
-          const unknown = unknownKeys(patch, SETTING_KEYS);
+          let cleared;
+          try {
+            cleared = applyClearSecrets(patch, patch.clearSecrets);
+          } catch (e) {
+            respondJson2(res, 400, { code: "bad_request", error: String(e.message).slice(0, 120) });
+            return;
+          }
+          const rest = { ...pickKnownKeys(cleared, SETTING_KEYS) };
+          const unknown = unknownKeys(rest, SETTING_KEYS);
           if (unknown.length > 0) {
             respondJson2(res, 400, { code: "bad_request", error: `unknown settings: ${unknown.slice(0, 5).join(", ")}` });
             return;
           }
           try {
-            const next = await persistSettings(pickKnownKeys(patch, SETTING_KEYS));
-            respondJson2(res, 200, { ok: true, managedBy: "plugin", value: next });
+            const next = await persistSettings(rest);
+            const out = { ...next, openaiApiKey: "", mimoApiKey: "" };
+            respondJson2(res, 200, { ok: true, managedBy: "plugin", value: out });
           } catch (e) {
             const isValidation = e instanceof Error && e.name === "ValidationError";
             console.warn(`[dsh-voice-mode] settings update failed: ${redactSecrets(e)}`);

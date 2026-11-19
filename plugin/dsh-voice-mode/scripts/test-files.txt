@@ -50,6 +50,8 @@ test/draft-compose.test.mjs
 test/finalize-ux.test.mjs
 test/llm-correct.test.mjs
 test/autosend-decouple.test.mjs
+test/online-tts.test.mjs
+test/settings-view.test.mjs
 test/settings-doc-consistency.test.mjs
 test/settings-effective.test.mjs
 test/silent-path-hints.test.mjs

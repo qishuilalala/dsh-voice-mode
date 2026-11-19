@@ -1758,6 +1758,8 @@ var zh = {
   openaiPresetLabel: "\u5728\u7EBF\u9884\u8BBE",
   descOpenaiPreset: "\u5728\u7EBF TTS \u9884\u8BBE\uFF1A\u9009\u4E2D\u540E\u5730\u5740\u4E0E\u6A21\u578B\u6309\u9884\u8BBE\u8D70\uFF08key \u8D70 openaiTts.apiKeys[\u9884\u8BBEid] \u6216 openaiTts.apiKey\uFF0C\u5747\u5728\u5BBF\u4E3B\u4FA7\uFF0C\u4E0D\u7ECF\u8FC7\u6D4F\u89C8\u5668\uFF09\uFF1B\u7A7A = \u624B\u52A8\u6CBF\u7528\u914D\u7F6E\u6587\u4EF6\u3002\u5207\u6362\u540E\u70B9\u4E0B\u65B9\u81EA\u6D4B\u9A8C\u8BC1",
   presetCustom: "\u624B\u52A8\u914D\u7F6E\uFF08profile \u6587\u4EF6\uFF09",
+  presetCustomCustom: "\u81EA\u5B9A\u4E49\uFF08\u4E0B\u65B9\u624B\u586B\uFF09",
+  presetCustomHint: "\u9009\u5B83\u540E\u7528\u4E0B\u9762\u7684\u300C\u63A5\u53E3\u5730\u5740 / \u6A21\u578B\u540D / API Key\u300D\u4E09\u4E2A\u8F93\u5165\u6846\u76F4\u63A5\u914D\u4EFB\u610F OpenAI \u517C\u5BB9\u670D\u52A1",
   presetCosy: "\u7845\u57FA\u6D41\u52A8 \xB7 CosyVoice2",
   presetFish: "\u7845\u57FA\u6D41\u52A8 \xB7 Fish Speech 1.5",
   presetCosyNote: "\u7EA6 $7.15/\u767E\u4E07 UTF-8 \u5B57\u8282\uFF0C150ms \u7EA7\uFF1B\u6587\u672C\u53D1\u5F80 api.siliconflow.cn",
@@ -1766,6 +1768,8 @@ var zh = {
   presetOpenrouterNote: "\u6309\u6240\u7528\u6A21\u578B\u8BA1\u8D39\uFF1B\u6587\u672C\u53D1\u5F80 openrouter.ai\uFF1B\u5B98\u65B9\u8981\u6C42\u5411\u7EC8\u7AEF\u7528\u6237\u62AB\u9732\u8BE5\u8BED\u97F3\u4E3A AI \u751F\u6210",
   presetOpenaiOfficial: "OpenAI \u5B98\u65B9 \xB7 gpt-4o-mini-tts",
   presetOpenaiOfficialNote: "\u6309 OpenAI \u5B98\u65B9\u4EF7\u683C\u8BA1\u8D39\uFF1B\u6587\u672C\u53D1\u5F80 api.openai.com\uFF1B\u5B98\u65B9\u8981\u6C42\u5411\u7EC8\u7AEF\u7528\u6237\u62AB\u9732\u8BE5\u8BED\u97F3\u4E3A AI \u751F\u6210",
+  presetGroq: "Groq \xB7 PlayAI \u8BED\u97F3",
+  presetGroqNote: "\u6309 Groq \u4EF7\u683C\u8BA1\u8D39\uFF1B\u6587\u672C\u53D1\u5F80 api.groq.com\uFF1B\u82F1\u6587\u97F3\u8272\u7528 Fritz-PlayAI \u7B49",
   presetSelfKokoro: "\u81EA\u5EFA \xB7 Kokoro-FastAPI",
   presetSelfKokoroNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8880\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
   presetSelfVllm: "\u81EA\u5EFA \xB7 vLLM-Omni",
@@ -1774,6 +1778,19 @@ var zh = {
   presetVerify: "\u9A8C\u8BC1\u6B64\u9884\u8BBE",
   presetDataMissing: "\u9884\u8BBE\u6570\u636E\u672A\u52A0\u8F7D\uFF08\u5BBF\u4E3B /presets \u4E0D\u53EF\u7528\uFF09\uFF1A\u8BF7\u91CD\u542F\u5BBF\u4E3B\u6216\u5237\u65B0\u9875\u9762\u540E\u91CD\u8BD5",
   presetReload: "\u91CD\u65B0\u52A0\u8F7D\u9884\u8BBE",
+  // 2026-11-19：在线 TTS 可在设置卡片直接配置（URL/模型/key），不必改 profile YAML。
+  openaiBaseUrlLabel: "\u63A5\u53E3\u5730\u5740\uFF08Base URL\uFF09",
+  descOpenaiBaseUrl: "OpenAI \u517C\u5BB9\u7AEF\u70B9\uFF0C\u901A\u5E38\u4EE5 /v1 \u7ED3\u5C3E\uFF08\u63D2\u4EF6\u81EA\u52A8\u62FC /audio/speech\uFF09\u3002\u7559\u7A7A = \u7528\u9884\u8BBE\u6216 profile \u7684 openaiTts.baseUrl",
+  openaiModelLabel: "\u6A21\u578B\u540D",
+  descOpenaiModel: "\u8BE5\u7AEF\u70B9\u4E0A\u7684 TTS \u6A21\u578B\uFF0C\u4F8B\u5982 gpt-4o-mini-tts\u3001FunAudioLLM/CosyVoice2-0.5B\u3002\u7559\u7A7A = \u7528\u9884\u8BBE\u6216 profile",
+  openaiApiKeyLabel: "\u63A5\u53E3\u5BC6\u94A5\uFF08API Key\uFF09",
+  descOpenaiApiKey: "\u5BC6\u94A5\u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\uFF080600 \u8BBE\u7F6E\u6587\u4EF6\uFF09\uFF0C\u4E0D\u56DE\u4F20\u6D4F\u89C8\u5668\u3001\u4E0D\u8FDB\u65E5\u5FD7\u3002\u7559\u7A7A = \u6CBF\u7528 profile \u91CC\u7684 openaiTts.apiKeys[\u9884\u8BBE]/apiKey\uFF1B\u586B\u4E86\u5219\u8986\u76D6",
+  mimoApiKeyLabel: "\u5C0F\u7C73 MiMo \u5BC6\u94A5",
+  descMimoApiKey: "\u5C0F\u7C73 MiMo \u7684 key\uFF08\u8D70 api-key \u5934\uFF0C\u4E0D\u662F Bearer\uFF09\u3002\u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\u4FA7\uFF1B\u7559\u7A7A = \u6CBF\u7528 profile \u7684 mimoTts.apiKey",
+  secretSaved: "\u5DF2\u4FDD\u5B58",
+  secretKeep: "\u5DF2\u4FDD\u5B58\uFF08\u7559\u7A7A\u4FDD\u6301\u4E0D\u53D8\uFF09",
+  secretClear: "\u6E05\u9664",
+  secretHintBrowser: "\u586B\u5199\u540E\u4F1A\u7ACB\u5373\u53D1\u5230\u672C\u673A\u5BBF\u4E3B\u5E76\u843D\u76D8\uFF080600\uFF09\uFF0C\u4E0D\u4F1A\u5199\u8FDB\u804A\u5929\u6216\u65E5\u5FD7",
   // P1-4 只听写预设。
   dictationTitle: "\u53EA\u542C\u5199",
   dictationHint: "\u5173\u95ED\u56DE\u590D\u6717\u8BFB\uFF0C\u4E13\u6CE8\u542C\u5199\uFF1B\u518D\u70B9\u4E00\u6B21\u6062\u590D",
@@ -2110,8 +2127,10 @@ var en = {
   preview: "Preview",
   // E1 online presets.
   openaiPresetLabel: "Online preset",
-  descOpenaiPreset: "Online TTS preset: endpoint and model follow the preset (keys live in openaiTts.apiKeys[preset id] or openaiTts.apiKey on the host side, never in the browser file openaiTts.apiKey, never passes through the browser); empty = manual config file values. Run the self-test below after switching",
+  descOpenaiPreset: "Online TTS preset: endpoint and model follow the preset (keys live in openaiTts.apiKeys[preset id] or openaiTts.apiKey on the host side, never sent to the browser); empty = manual config file values. Run the self-test below after switching",
   presetCustom: "Manual (profile file)",
+  presetCustomCustom: "Custom (fill below)",
+  presetCustomHint: "With this selected, configure any OpenAI-compatible service in the Endpoint / Model / API key fields below",
   presetCosy: "SiliconFlow \xB7 CosyVoice2",
   presetFish: "SiliconFlow \xB7 Fish Speech 1.5",
   presetCosyNote: "About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn",
@@ -2120,6 +2139,8 @@ var en = {
   presetOpenrouterNote: "Billed through the selected model; text goes to openrouter.ai; OpenAI terms require disclosing that the voice is AI-generated",
   presetOpenaiOfficial: "OpenAI official \xB7 gpt-4o-mini-tts",
   presetOpenaiOfficialNote: "Billed at OpenAI list prices; text goes to api.openai.com; OpenAI terms require disclosing that the voice is AI-generated",
+  presetGroq: "Groq \xB7 PlayAI TTS",
+  presetGroqNote: "Billed at Groq prices; text goes to api.groq.com; English voices such as Fritz-PlayAI",
   presetSelfKokoro: "Self-hosted \xB7 Kokoro-FastAPI",
   presetSelfKokoroNote: "Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first",
   presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
@@ -2128,6 +2149,19 @@ var en = {
   presetVerify: "Verify preset",
   presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
   presetReload: "Reload presets",
+  // 2026-11-19: online TTS is configurable from the settings card (URL/model/key), no profile YAML edit needed.
+  openaiBaseUrlLabel: "Endpoint (base URL)",
+  descOpenaiBaseUrl: "OpenAI-compatible endpoint, usually ending in /v1 (the plugin appends /audio/speech). Empty = use the preset or the profile openaiTts.baseUrl",
+  openaiModelLabel: "Model",
+  descOpenaiModel: "TTS model on that endpoint, e.g. gpt-4o-mini-tts or FunAudioLLM/CosyVoice2-0.5B. Empty = use the preset or the profile",
+  openaiApiKeyLabel: "API key",
+  descOpenaiApiKey: "The key stays on the host (0600 settings file); it is never sent back to the browser and never logged. Empty = use the profile openaiTts.apiKeys[preset]/apiKey; a value here overrides it",
+  mimoApiKeyLabel: "MiMo API key",
+  descMimoApiKey: "Xiaomi MiMo key (sent as the api-key header, not Bearer). Host-side only; empty = use the profile mimoTts.apiKey",
+  secretSaved: "Saved",
+  secretKeep: "Saved (leave empty to keep)",
+  secretClear: "Clear",
+  secretHintBrowser: "Typed values go straight to the local host and are stored with 0600; never written to chat or logs",
   // P1-4 dictation-only preset.
   dictationTitle: "Dictation only",
   dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
@@ -3939,6 +3973,7 @@ var PRESET_NOTE = {
   "siliconflow-fish": () => t("presetFishNote"),
   "openrouter-openai": () => t("presetOpenrouterNote"),
   "openai-official": () => t("presetOpenaiOfficialNote"),
+  "groq-playai": () => t("presetGroqNote"),
   "selfhosted-kokoro": () => t("presetSelfKokoroNote"),
   "selfhosted-vllm": () => t("presetSelfVllmNote")
 };
@@ -4013,7 +4048,8 @@ function TextField({
   score,
   field,
   value,
-  placeholder
+  placeholder,
+  type = "text"
 }) {
   const [draft, setDraft] = (0, import_react2.useState)(String(value ?? ""));
   (0, import_react2.useEffect)(() => {
@@ -4026,6 +4062,8 @@ function TextField({
     "input",
     {
       style: inputStyle,
+      type,
+      autoComplete: type === "password" ? "new-password" : void 0,
       value: draft,
       placeholder,
       onChange: (e) => setDraft(e.target.value),
@@ -4035,6 +4073,50 @@ function TextField({
       }
     }
   );
+}
+function SecretField({
+  score,
+  field,
+  saved,
+  onCleared
+}) {
+  const [clearing, setClearing] = (0, import_react2.useState)(false);
+  const clear = () => {
+    if (clearing) return;
+    setClearing(true);
+    void fetch(location.origin + BASE_PATH + "/settings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ clearSecrets: [field] })
+    }).then((res) => {
+      if (res.ok) onCleared();
+    }).catch(() => void 0).finally(() => setClearing(false));
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score, field, value: "", type: "password", placeholder: saved ? t("secretKeep") : "" }),
+    saved ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        type: "button",
+        onClick: clear,
+        "aria-busy": clearing || void 0,
+        style: {
+          font: "inherit",
+          cursor: clearing ? "default" : "pointer",
+          opacity: clearing ? 0.6 : 1,
+          color: t2.label,
+          background: "var(--dsw-alias-bg-layer-2)",
+          border: `1px solid ${t2.border}`,
+          borderRadius: 6,
+          padding: "4px 8px",
+          fontSize: 12,
+          lineHeight: "16px"
+        },
+        children: t("secretClear")
+      }
+    ) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: saved ? t("secretSaved") : t("secretHintBrowser") })
+  ] });
 }
 function ShortcutField({
   score,
@@ -4867,6 +4949,7 @@ var PRESET_LABEL = {
   "siliconflow-fish": () => t("presetFish"),
   "openrouter-openai": () => t("presetOpenrouter"),
   "openai-official": () => t("presetOpenaiOfficial"),
+  "groq-playai": () => t("presetGroq"),
   "selfhosted-kokoro": () => t("presetSelfKokoro"),
   "selfhosted-vllm": () => t("presetSelfVllm")
 };
@@ -4881,8 +4964,12 @@ function OpenAiPresetSection({
 }) {
   const cur = typeof value === "string" ? value : "";
   const known = Object.keys(presets ?? {});
-  const ids = ["", ...known, ...cur && !known.includes(cur) ? [cur] : []];
-  const options = ids.map((id) => ({ v: id, label: id ? PRESET_LABEL[id]?.() ?? id : t("presetCustom") }));
+  const CUSTOM = "custom";
+  const ids = ["", CUSTOM, ...known, ...cur && cur !== CUSTOM && !known.includes(cur) ? [cur] : []];
+  const options = ids.map((id) => ({
+    v: id,
+    label: id === CUSTOM ? t("presetCustomCustom") : id ? PRESET_LABEL[id]?.() ?? id : t("presetCustom")
+  }));
   const data = presets?.[cur];
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SegGroup, { score, field: "openaiPreset", value: cur, options }),
@@ -4908,6 +4995,7 @@ function OpenAiPresetSection({
     ] }) : null,
     PRESET_NOTE[cur] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: PRESET_NOTE[cur]() }) : null,
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetKeyNote") }),
+    cur === CUSTOM ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetCustomHint") }) : null,
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         "button",
@@ -5240,6 +5328,20 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
   );
   const value = snap?.value ?? {};
   const unavailable = snap?.status === "unavailable" || snap?.status === "error";
+  const [secretKeys, setSecretKeys] = (0, import_react2.useState)({
+    openaiApiKey: false,
+    mimoApiKey: false
+  });
+  const refreshSecretKeys = () => {
+    void fetch(location.origin + BASE_PATH + "/settings").then((res) => res.ok ? res.json() : null).then((data) => {
+      if (data?.keys) {
+        setSecretKeys({
+          openaiApiKey: Boolean(data.keys.openaiApiKey),
+          mimoApiKey: Boolean(data.keys.mimoApiKey)
+        });
+      }
+    }).catch(() => void 0);
+  };
   const hostPresetState = useHostPresets();
   const hostPresets = hostPresetState.presets;
   const [presetVerify, setPresetVerify] = (0, import_react2.useState)(null);
@@ -5247,6 +5349,9 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
     const pid = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
     return resolvePresetVoice(value.voice, pid ? hostPresets?.[pid]?.voice : "");
   };
+  (0, import_react2.useEffect)(() => {
+    refreshSecretKeys();
+  }, [value.ttsEngine]);
   const [verifying, setVerifying] = (0, import_react2.useState)(false);
   const verifyPreset = (presetId) => {
     if (verifying) return;
@@ -5396,16 +5501,60 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               )
             }
           ),
-          engine === "openai" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiPreset", desc: t("descOpenaiPreset"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            OpenAiPresetSection,
+          engine === "openai" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiPreset", desc: t("descOpenaiPreset"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              OpenAiPresetSection,
+              {
+                score: scope,
+                value: value.openaiPreset,
+                presets: hostPresets,
+                onReloadPresets: hostPresetState.reload,
+                onVerify: verifyPreset,
+                verifyState: presetVerify,
+                verifying
+              }
+            ) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiBaseUrl", desc: t("descOpenaiBaseUrl"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              TextField,
+              {
+                score: scope,
+                field: "openaiBaseUrl",
+                value: value.openaiBaseUrl,
+                placeholder: (() => {
+                  const pid = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
+                  return pid && hostPresets?.[pid]?.baseUrl || "";
+                })()
+              }
+            ) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiModel", desc: t("descOpenaiModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              TextField,
+              {
+                score: scope,
+                field: "openaiModel",
+                value: value.openaiModel,
+                placeholder: (() => {
+                  const pid = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
+                  return pid && hostPresets?.[pid]?.model || "";
+                })()
+              }
+            ) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiApiKey", desc: t("descOpenaiApiKey"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              SecretField,
+              {
+                score: scope,
+                field: "openaiApiKey",
+                saved: secretKeys.openaiApiKey,
+                onCleared: refreshSecretKeys
+              }
+            ) })
+          ] }),
+          engine === "mimo" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mimoApiKey", desc: t("descMimoApiKey"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            SecretField,
             {
               score: scope,
-              value: value.openaiPreset,
-              presets: hostPresets,
-              onReloadPresets: hostPresetState.reload,
-              onVerify: verifyPreset,
-              verifyState: presetVerify,
-              verifying
+              field: "mimoApiKey",
+              saved: secretKeys.mimoApiKey,
+              onCleared: refreshSecretKeys
             }
           ) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1.1, min: 0.5, max: 2, step: 0.1 }) })
@@ -5747,7 +5896,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "a03e8c9";
+var BUILD_TAG = "049c843";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
