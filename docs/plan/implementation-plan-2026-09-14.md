@@ -360,7 +360,7 @@ systemctl restart dsh.service && curl -s -o /dev/null -w '%{http_code}' http://1
 
 1. **B2 settings 触发 rebuild**——**禁止新增 `rebuild()` 方法**。改为：asr-host.ts 暴露最小 `markStale()`（仅清缓存键 + 不主动 dispose），让现有 fingerprint-gated lazy 重建（asr-host.ts:267-274 / :396-401）自然生效。
 2. **B3 client fetchConfig**——先字段分类再透传：host-only 字段（cacheDir/allowLan/audioMime/ttsEngine/modelHost）**不要透传**；只透传 client 真消费的 5 ASR 字段 + 补 kokoroModel/spokenFormat（按需）。
-3. **B4 批 4 `<break>` 静音位置**——**选 1**：修 `tts-local.ts:544-553` 把 `chunks.push(silence)` 移到 `chunks.push(samples)` **之后**。选 2 严禁（改 emotion.ts 让 bug 更隐蔽）。
+3. **B4 批 4 `<break>` 静音位置**——**选 1**：修 `tts-local.ts:570-580` 把 `chunks.push(silence)` 移到 `chunks.push(samples)` **之后**。选 2 严禁（改 emotion.ts 让 bug 更隐蔽）。
 4. **B5 长段丢失**——**不要默认改 `silenceMs`**（1500ms 不改，依赖用户自定义）。改 `endpointConfirmMs` 短句 confirm `0 → 200ms` + SenseVoice 预热前置 `enterMode` + timeout `10s → 20s`。
 5. **B1 UI 标签本地化**——避免 FIELD_LABELS + strings.ts 双轨漂移：短期双补 + commit message 警示后续整合。
 

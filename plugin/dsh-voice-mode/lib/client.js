@@ -444,6 +444,7 @@ var PRE_ROLL_MS = 2e3;
 var PARTIAL_INTERVAL_MS = 100;
 var PARTIAL_MIN_S = 0.4;
 var PARTIAL_MAX_S = 30;
+var HOLD_SECOND_MAX_BYTES = 3 * 1024 * 1024;
 var BUFFER_SIZE = 1024;
 function createAsrEngine(config, sessionId) {
   const wakeWord = (config.wakeWord ?? "").trim().toLowerCase().replace(/[\s\u3000]+/g, "");
@@ -493,6 +494,7 @@ function createAsrEngine(config, sessionId) {
   let silenceMs = 0;
   let prePad = [];
   let holdActive = false;
+  let holdTrimmed = false;
   const echo = config.echo;
   let lastPollAt = 0;
   let partialInFlight = false;
@@ -639,6 +641,10 @@ function createAsrEngine(config, sessionId) {
         const recovered = await config.onSessionExpired();
         if (recovered && epoch === segmentEpoch) {
           uploadedSamples = 0;
+          if (holdTrimmed) {
+            holdTrimmed = false;
+            emit(noticeListeners, "holdTrimmedNotice");
+          }
           try {
             res = await fetch(asrUrl(false, 0, epoch), {
               method: "POST",
@@ -870,6 +876,13 @@ function createAsrEngine(config, sessionId) {
             }, 5e3);
           });
         }
+        if (res.status === 413) {
+          console.warn("[dsh-voice-mode] finalize payload too large (413): utterance exceeded the per-request limit");
+          emit(noticeListeners, "utteranceTooLong");
+          restoreState();
+          settle(null);
+          return;
+        }
         if (res.status === 202) {
           if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize model-load timeout (retries exhausted)");
           continue;
@@ -1039,6 +1052,14 @@ function createAsrEngine(config, sessionId) {
       segmentMs += durationMs;
       silenceMs = 0;
       segment.push(data);
+      if (uploadedSamples === 0) {
+        let bytes = segment.reduce((n, c) => n + c.length, 0);
+        while (bytes > HOLD_SECOND_MAX_BYTES && segment.length > 1) {
+          bytes -= segment[0].length;
+          segment.shift();
+          holdTrimmed = true;
+        }
+      }
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
     } else if (config.mode === "hold") {
     } else if (state === "wake") {
@@ -1731,6 +1752,8 @@ var zh = {
   sayWake: "\u8BF4\u300C{wake}\u300D\u5F00\u59CB",
   reading: "\u6717\u8BFB\u4E2D\u2026",
   recognitionFail: "\u8BC6\u522B\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
+  holdTrimmedNotice: "\u6309\u4F4F\u8BF4\u8BDD\u8D85\u8FC7 90 \u79D2\uFF1A\u53EA\u8BC6\u522B\u4E86\u6700\u540E\u4E00\u6BB5\uFF08\u524D\u9762\u7684\u97F3\u9891\u5DF2\u4E22\u5F03\uFF09",
+  utteranceTooLong: "\u8FD9\u6B21\u8BF4\u8BDD\u592A\u957F\uFF08\u8D85\u8FC7\u7EA6 90 \u79D2\uFF09\uFF1A\u5DF2\u8DF3\u8FC7\uFF0C\u8BF7\u5206\u6BB5\u518D\u8BF4\u4E00\u6B21",
   partialFail: "\u5B9E\u65F6\u5B57\u5E55\u6682\u65F6\u4E0D\u53EF\u7528\uFF08\u8BC6\u522B\u901A\u9053\u5F02\u5E38\uFF0C\u91CD\u8BD5\u4E2D\uFF09",
   detectFail: "\u6253\u65AD\u68C0\u6D4B\u6682\u65F6\u4E0D\u53EF\u7528\uFF08\u68C0\u6D4B\u901A\u9053\u5F02\u5E38\uFF0C\u91CD\u8BD5\u4E2D\uFF09",
   sseReconnect: "\u72B6\u6001\u540C\u6B65\u65AD\u8FDE\uFF0C\u91CD\u8FDE\u4E2D\u2026",
@@ -2108,6 +2131,8 @@ var en = {
   sayWake: 'Say "{wake}" to start',
   reading: "Reading aloud\u2026",
   recognitionFail: "Recognition failed, try again",
+  holdTrimmedNotice: "Hold-to-talk exceeded 90 s: only the last part was recognised (earlier audio was dropped)",
+  utteranceTooLong: "That utterance was too long (about 90 s): skipped \u2014 please speak it again in shorter parts",
   partialFail: "Live captions temporarily unavailable (recognition channel error, retrying)",
   detectFail: "Break-in detection temporarily unavailable (detect channel error, retrying)",
   sseReconnect: "State sync disconnected, reconnecting\u2026",
@@ -6076,7 +6101,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "f05578f";
+var BUILD_TAG = "f179256";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

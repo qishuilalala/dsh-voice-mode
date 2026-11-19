@@ -187,6 +187,13 @@ const PARTIAL_INTERVAL_MS = 100
 /** partial 预览下限/上限（流式模型代价低，上限放宽）。 */
 const PARTIAL_MIN_S = 0.4
 const PARTIAL_MAX_S = 30
+/**
+ * A1 审计 Important：hold 按住 + 播放中时，滚段定稿会被自聊守卫丢弃，段可无界增长；
+ * 单包 >4MB（host MAX_ASR_BYTES，约 95s 按压）直接 413，重试改全量必然再 413 → 整句丢失。
+ * 这里给 hold 段一个字节上限（3MB，低于 host 上限留余量）：仅在**尚未上传任何样本**时
+ * 从头部裁剪（保住 host offset 不变量），并一次性提示用户只识别了后半段。
+ */
+const HOLD_SECOND_MAX_BYTES = 3 * 1024 * 1024
 /** ScriptProcessor 缓冲必须为 2 的幂（已知坑）。 */
 const BUFFER_SIZE = 1024
 
@@ -259,6 +266,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let prePad: Float32Array[] = []
   /** hold 模式：按住录制中（绕过 VAD 门控与静音切句，整段按压区间保留）。 */
   let holdActive = false
+  /** hold 段是否因内存上限被裁掉过头部（定稿时提示一次）。 */
+  let holdTrimmed = false
   /** P3-2 回声参考（可选；缺失时原信号透传）。 */
   const echo = config.echo
 
@@ -510,6 +519,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           // I2 修复：re-enter 已 asr.reset 清空 host 流（fed=0），旧增量水位作废——
           // 从 0 全量重发本段（段仍在本地内存），否则 host 只收到尾巴、定稿缺前半句。
           uploadedSamples = 0
+    if (holdTrimmed) {
+      holdTrimmed = false
+      // 提示而非静默：用户按了很久，只识别后半段必须知情（5s 自动清除的 notice）。
+      emit(noticeListeners, 'holdTrimmedNotice')
+    }
           try {
             res = await fetch(asrUrl(false, 0, epoch), {
               method: 'POST',
@@ -848,6 +862,15 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
             }, 5000)
           })
         }
+        // 413：单包超过 host 上限（4MB ≈ 95s）→ 重试改全量只会再 413。停止重试并给可行动提示
+        // （A1 审计 Important：此前整句丢失、只报「识别失败」）。
+        if (res.status === 413) {
+          console.warn('[dsh-voice-mode] finalize payload too large (413): utterance exceeded the per-request limit')
+          emit(noticeListeners, 'utteranceTooLong')
+          restoreState()
+          settle(null)
+          return
+        }
         // 5s 重试后模型仍加载（202 持久）：外层继续重试（有界 3 次），而非 return 静默丢句。
         if (res.status === 202) {
           if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn('[dsh-voice-mode] finalize model-load timeout (retries exhausted)')
@@ -1130,6 +1153,16 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       segmentMs += durationMs
       silenceMs = 0
       segment.push(data)
+      // 播放中不做滚段定稿（自聊守卫会丢弃），但内存必须有上限：
+      // 仅在未上传任何样本时从头部裁剪（否则会破坏 host 的 offset 单调不变量）。
+      if (uploadedSamples === 0) {
+        let bytes = segment.reduce((n, c) => n + c.length, 0)
+        while (bytes > HOLD_SECOND_MAX_BYTES && segment.length > 1) {
+          bytes -= segment[0].length
+          segment.shift()
+          holdTrimmed = true
+        }
+      }
       // M7 明示接受：播放中（isPlaying）的滚段定稿会被 finalizeSegment 入口的自聊守卫
       // （config.isPlaying?.() && !forcePending && !force → return）丢弃，段可超过
       // MAX_SEGMENT_MS 持续增长——**有意接受，不加滚窗**：hold+播放=用户在 AI 朗读中

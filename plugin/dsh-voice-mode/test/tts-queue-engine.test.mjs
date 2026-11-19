@@ -13,7 +13,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { TtsQueue } from '../src/tts-queue.ts'
+import { EdgeTtsEngine, TtsQueue } from '../src/tts-queue.ts'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 
@@ -1272,5 +1272,45 @@ await t('全部用例结束后无残留计时器，进程可自然退出', async
     '用例结束后不得留下合成 RPC 的 120 秒计时器',
   )
 })
+
+
+// Edge 引擎可中止（A2 审计 Minor：此前无 interrupt，停止朗读最长等 60s）
+{
+  let closed = 0
+  const fake = {
+    setMetadata: async () => undefined,
+    toStream: () => ({
+      audioStream: (async function* () {
+        // 模拟「上游安静挂起」：一直不产出，直到连接被 close 打断
+        await new Promise((_, reject) => {
+          const timer = setTimeout(() => reject(new Error('timeout')), 5000)
+          closeHook = () => {
+            clearTimeout(timer)
+            reject(new Error('connection closed'))
+          }
+        })
+      })(),
+    }),
+    close: () => {
+      closed++
+      closeHook?.()
+    },
+  }
+  let closeHook = null
+  const eng = new EdgeTtsEngine('zh-CN-XiaoxiaoNeural', 1, () => fake)
+  const t0 = Date.now()
+  const p = eng.synthesize('你好').then(
+    () => 'resolved',
+    () => 'rejected',
+  )
+  await new Promise((r) => setTimeout(r, 30))
+  eng.interrupt()
+  const out = await p
+  const ms = Date.now() - t0
+  assert.equal(out, 'rejected', 'interrupt 后 synthesize 必须尽快以失败返回（不得等库超时）')
+  assert.ok(ms < 2000, `interrupt 生效过慢（${ms}ms）`)
+  assert.ok(closed >= 1, 'interrupt 必须关闭在途连接')
+  console.log('  ✓ Edge interrupt：立刻中止在途合成（不再等 60s 库超时）')
+}
 
 console.log(`\ntts-queue-engine：${passed} 项通过`)

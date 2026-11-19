@@ -147,7 +147,7 @@
   3. 听「这是悄悄话」段音量
 - **预期**：中间段音量明显低于前后（约 0.5 倍）
 - **失败信号**：三段音量相同（whisper 增益未生效）
-- **回退**：检查 `src/emotion.ts` 的 `whisper` 字段 + `src/tts-local.ts:513-516` 的**内联**增益（`if (seg.whisper) { … samples[j] *= 0.5 }`）——**该实现是内联的，没有 `applyGain` 这个函数**（全仓 0 命中），回查时勿按旧名找函数
+- **回退**：检查 `src/emotion.ts` 的 `whisper` 字段 + `src/tts-local.ts:570-575` 的**内联**增益（`if (seg.whisper) { … samples[j] *= 0.5 }`）——**该实现是内联的，没有 `applyGain` 这个函数**（全仓 0 命中），回查时勿按旧名找函数
 - **时间**：1.5 分钟
 
 ### [ ] 4.3 `<laugh>/<sigh>/<emphasis>` 不被读出

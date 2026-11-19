@@ -1473,9 +1473,30 @@ function isEmptyAudio(buf) {
 var EdgeTtsEngine = class {
   voice;
   rate;
-  constructor(voice = "zh-CN-XiaoxiaoNeural", rate) {
+  /** 在途连接集合：interrupt() 直接 close 掉，让 audioStream 立刻结束（A2 审计 Minor）。 */
+  active = /* @__PURE__ */ new Set();
+  aborted = false;
+  /** 便于单测注入打桩（默认真实 msedge-tts）。 */
+  createTts;
+  constructor(voice = "zh-CN-XiaoxiaoNeural", rate, createTts) {
     this.voice = voice;
     this.rate = rate;
+    this.createTts = createTts ?? (() => new MsEdgeTTS());
+  }
+  /**
+   * 立刻中止在途合成：关闭底层连接 → audioStream 结束 → synthesize 以错误返回。
+   * 此前该引擎没有 interrupt，cancel 只能等库超时（连接 10s / 合成无活动 60s），
+   * 「停止朗读」后最长 60s 仍在合成。
+   */
+  interrupt() {
+    this.aborted = true;
+    for (const t of this.active) {
+      try {
+        void t.close();
+      } catch {
+      }
+    }
+    this.active.clear();
   }
   mime = "audio/mpeg";
   updateVoice(voice, rate) {
@@ -1485,7 +1506,9 @@ var EdgeTtsEngine = class {
   async synthesize(text, options = {}) {
     const spoken = escapeXmlText(stripEmotionTags(text));
     if (spoken.trim() === "") return Buffer.alloc(0);
-    const tts = new MsEdgeTTS();
+    this.aborted = false;
+    const tts = this.createTts();
+    this.active.add(tts);
     try {
       await tts.setMetadata(
         options.voice ?? this.voice,
@@ -1494,11 +1517,15 @@ var EdgeTtsEngine = class {
       );
       const { audioStream } = tts.toStream(spoken, prosodyFromRate(options.rate ?? this.rate));
       const chunks = [];
-      for await (const chunk of audioStream) chunks.push(chunk);
+      for await (const chunk of audioStream) {
+        if (this.aborted) throw new Error("tts interrupted");
+        chunks.push(chunk);
+      }
       const buf = Buffer.concat(chunks);
       if (!isValidMp3(buf)) throw new Error("empty or invalid audio");
       return buf;
     } finally {
+      this.active.delete(tts);
       try {
         await tts.close();
       } catch {
@@ -1842,6 +1869,7 @@ var TtsQueue = class {
             break;
           } catch (e) {
             console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${redactSecrets(e)}`);
+            if (item.epoch !== q.epoch || this.closed) break;
             if (attempt < MAX_SYNTH_ATTEMPTS - 1) {
               await this.retrySleep(400 * (attempt + 1));
             }
@@ -2284,8 +2312,14 @@ function createSherpaLocalEngine(options) {
       p.reject(e);
     }
   };
+  let initFailUntil = 0;
+  let initFailError = null;
+  const initCooldownMs = options.initFailureCooldownMs ?? 6e4;
   const ensureReady = () => {
     if (ready && child) return ready;
+    if (Date.now() < initFailUntil) {
+      return Promise.reject(initFailError ?? new Error("local TTS engine is in failure cooldown"));
+    }
     if (!ready) {
       ready = (async () => {
         starting = true;
@@ -2391,6 +2425,8 @@ function createSherpaLocalEngine(options) {
         },
         (e) => {
           ready = null;
+          initFailUntil = Date.now() + initCooldownMs;
+          initFailError = e instanceof Error ? e : new Error(String(e));
           throw e;
         }
       );
@@ -2435,7 +2471,11 @@ function createSherpaLocalEngine(options) {
       };
     },
     // 设置面板「下载」按钮：无文本也触发模型下载 + 子进程初始化（与首次合成路径一致）。
-    prepare: () => ensureReady(),
+    prepare: () => {
+      initFailUntil = 0;
+      initFailError = null;
+      return ensureReady();
+    },
     async synthesize(text, opts = {}) {
       if (closed) throw new Error("local TTS engine closed");
       await ensureReady();
@@ -2603,6 +2643,8 @@ var en = {
   sayWake: 'Say "{wake}" to start',
   reading: "Reading aloud\u2026",
   recognitionFail: "Recognition failed, try again",
+  holdTrimmedNotice: "Hold-to-talk exceeded 90 s: only the last part was recognised (earlier audio was dropped)",
+  utteranceTooLong: "That utterance was too long (about 90 s): skipped \u2014 please speak it again in shorter parts",
   partialFail: "Live captions temporarily unavailable (recognition channel error, retrying)",
   detectFail: "Break-in detection temporarily unavailable (detect channel error, retrying)",
   sseReconnect: "State sync disconnected, reconnecting\u2026",

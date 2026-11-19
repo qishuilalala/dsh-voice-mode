@@ -19,7 +19,7 @@ dsh-voice-mode 当前的"让位"仅有两个层：
 | 层 | 实现 | 文件:行 |
 |---|---|---|
 | 物理层（声学） | 录音 → VAD → 端点检测 → 硬打断 | `src/asr.ts:172`（历史时点快照） 的 `MAX_SEGMENT_MS` 声明（段长上限，`:972-976` 使用；原写 `:936-945` 是 preRoll 累积区、与该常量无关）+ `src/client.tsx` 的 `hardBreak` 定义（`const hardBreak = async`；原值 1946 与 2026-10-21 前快照的 `:2392` 均已漂移——2026-10-21 R15-J 改按**符号锚**重锚） |
-| 物理层（回声门） | echoPeak/echoFloor + echoGateDb 双讲冻结 | `src/asr.ts:933-998`（echoPeak/Floor 跨区）+ ADR-0006 真机结论：原生 AEC 生效时**从未被执行**，因为 VAD 已先拦截 |
+| 物理层（回声门） | echoPeak/echoFloor + echoGateDb 双讲冻结 | `src/asr.ts:1000-1070`（echoPeak/Floor 跨区）+ ADR-0006 真机结论：原生 AEC 生效时**从未被执行**，因为 VAD 已先拦截 |
 
 **完全缺失的层**：**人格层 / 社会-语用层让位**——LLM 没有"何时该停、停多久、是否该接住用户的'嗯'/'对'/'so'"的指令。
 
@@ -117,7 +117,7 @@ YIELDING (let the user interrupt)
 
 - `src/prompts.ts:31` `spokenPrompt`（2026-10-02 自 `src/index.ts` 的 `VOICE_SPOKEN_PROMPT`（**原名**，原址 `:103-110`）迁入；基础 4 句口语化 + ADR-0008 #2 让位段，Phase 1 已落地，见 :199）
 - `src/index.ts` 的 `system-prompt/assemble` 注入点（`ctx.on('system-prompt/assemble'`；原值 896 与 2026-10-21 前快照的 `:966`/`:966-972` 均已漂移——2026-10-21 R15-J 改按**符号锚**重锚，行号待最终 HEAD 稳定后统一回填）
-- `src/asr.ts:933-998`（echoFloor/echoPeak 跨区 + ADR-0006 真机结论）
+- `src/asr.ts:1000-1070`（echoFloor/echoPeak 跨区 + ADR-0006 真机结论）
 - `src/asr.ts:192`（历史时点快照）（wakeEnabled 唤醒词门：唤醒词非空且非 hold 模式，逻辑可参考）
 - `src/asr-host.ts:627`（finalize 同步路径 `finalizeP`，"不丢句"不变量；原 442-466 区现为 senseTranscribe、原 584 锚点已漂移；2026-10-20 10:30 实测刷新）
 - `src/tts-queue.ts:580`（`cancel()` 硬打断；epoch 守卫；不丢句；原值 379 已漂移 Δ73——该行现为 `this.engine.status?.()`；原 268-307 区现为 updateVoice、原 325 锚点已漂移；2026-10-21 按符号定位刷新）

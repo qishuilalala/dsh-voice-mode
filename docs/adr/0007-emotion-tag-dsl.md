@@ -76,7 +76,7 @@ export interface TtsEngine {
 - [ ] 未知标签按字面文本朗读
 - [ ] 三引擎跑通样例句 `"你好<laugh>今天天气真好"`：Kokoro 笑声 token、VITS emoji+停顿、Edge `<mstts:express-as style="cheerful">`
 - [ ] 现有 `ttsEngine: edge/vits/kokoro` 切换不影响其他字段
-- [ ] **不破坏现有不丢句不变量**：`tts-queue.ts:620-640` 重试（`MAX_SYNTH_ATTEMPTS = 3` :626）+ `:479`/`:584`/`:610`（epoch 自增：prune / cancel / re-enter）/`:631`（泵内守卫 break，另 :659 continue）不动（原写 `413-430`/`:296`/`:382`/`:416`/`:437` 全部已漂移 Δ57~Δ161，且 `:296`/`:382` 在 HEAD 无 epoch 自增语句、系幻影锚点；2026-10-21 按符号定位刷新）
+- [ ] **不破坏现有不丢句不变量**：`tts-queue.ts:650-670` 重试（`MAX_SYNTH_ATTEMPTS = 3` :656）+ `:479`/`:584`/`:610`（epoch 自增：prune / cancel / re-enter）/`:661`（泵内守卫 break，另 :692 continue）不动（原写 `413-430`/`:296`/`:382`/`:416`/`:437` 全部已漂移 Δ57~Δ161，且 `:296`/`:382` 在 HEAD 无 epoch 自增语句、系幻影锚点；2026-10-21 按符号定位刷新）
 
 ## 后果
 

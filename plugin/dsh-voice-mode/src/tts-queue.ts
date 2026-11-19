@@ -152,10 +152,33 @@ function isEmptyAudio(buf: Buffer): boolean {
 export class EdgeTtsEngine implements TtsEngine {
   private voice: string
   private rate?: number
+  /** 在途连接集合：interrupt() 直接 close 掉，让 audioStream 立刻结束（A2 审计 Minor）。 */
+  private active = new Set<{ close: () => void | Promise<void> }>()
+  private aborted = false
+  /** 便于单测注入打桩（默认真实 msedge-tts）。 */
+  private readonly createTts: () => MsEdgeTTS
 
-  constructor(voice = 'zh-CN-XiaoxiaoNeural', rate?: number) {
+  constructor(voice = 'zh-CN-XiaoxiaoNeural', rate?: number, createTts?: () => MsEdgeTTS) {
     this.voice = voice
     this.rate = rate
+    this.createTts = createTts ?? (() => new MsEdgeTTS())
+  }
+
+  /**
+   * 立刻中止在途合成：关闭底层连接 → audioStream 结束 → synthesize 以错误返回。
+   * 此前该引擎没有 interrupt，cancel 只能等库超时（连接 10s / 合成无活动 60s），
+   * 「停止朗读」后最长 60s 仍在合成。
+   */
+  interrupt(): void {
+    this.aborted = true
+    for (const t of this.active) {
+      try {
+        void t.close()
+      } catch {
+        // ignore
+      }
+    }
+    this.active.clear()
   }
 
   readonly mime = 'audio/mpeg'
@@ -173,7 +196,9 @@ export class EdgeTtsEngine implements TtsEngine {
     // 纯标签句（如「<laugh>」）：剥完只剩空白 → 零网络合成（不建连接、不重试）；
     // 0 字节由队列层按空音频整句丢弃（不发帧、不占句号）。
     if (spoken.trim() === '') return Buffer.alloc(0)
-    const tts = new MsEdgeTTS()
+    this.aborted = false
+    const tts = this.createTts()
+    this.active.add(tts)
     try {
       await tts.setMetadata(
         options.voice ?? this.voice,
@@ -182,11 +207,16 @@ export class EdgeTtsEngine implements TtsEngine {
       )
       const { audioStream } = tts.toStream(spoken, prosodyFromRate(options.rate ?? this.rate))
       const chunks: Buffer[] = []
-      for await (const chunk of audioStream) chunks.push(chunk as Buffer)
+      for await (const chunk of audioStream) {
+        // interrupt() 关闭连接后流会结束/抛错；这里再显式判一次，避免把半截音频当成功。
+        if (this.aborted) throw new Error('tts interrupted')
+        chunks.push(chunk as Buffer)
+      }
       const buf = Buffer.concat(chunks)
       if (!isValidMp3(buf)) throw new Error('empty or invalid audio')
       return buf
     } finally {
+      this.active.delete(tts)
       try {
         await tts.close()
       } catch {
@@ -196,7 +226,7 @@ export class EdgeTtsEngine implements TtsEngine {
   }
 
   async close(): Promise<void> {
-    // 无持久连接（每句独立连接），无需清理。
+    // 无持久连接（每句独立连接），无需清理；在途连接由 interrupt() 关闭。
   }
 }
 
@@ -648,6 +678,9 @@ export class TtsQueue {
             break
           } catch (e) {
             console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${redactSecrets(e)}`)
+            // 被打断/关闭后不再重试：epoch 已变（cancel/interrupt 会先 bump epoch）或队列已关，
+            // 继续 sleep+重试只是白等（实测：切焦点时多出 400ms 空转，测试与真机都受影响）。
+            if (item.epoch !== q.epoch || this.closed) break
             if (attempt < MAX_SYNTH_ATTEMPTS - 1) {
               await this.retrySleep(400 * (attempt + 1))
             }
