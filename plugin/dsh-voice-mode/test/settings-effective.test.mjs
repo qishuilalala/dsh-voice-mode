@@ -74,19 +74,25 @@ t('runtime-boot 模块存在且客户端 fetchConfig 刷新镜像', () => {
   assert.ok(/setRuntimeBoot\(next as unknown as Record<string, unknown>\)/.test(cli), 'fetchConfig 成功未刷新镜像')
 })
 
-t('settings-form（审查 M-4）：pending 列表有 ready 门控（加载中 value={} 不全量误报）', () => {
+t('settings-form（审查 M-4 + T6）：pending 判定走可测模块，且 ready 门控在位', () => {
   assert.ok(formSrc.includes("ready={snap?.status === 'ready'}"), '缺 ready 门控——HttpScope 初始空值会把全部字段误判 pending')
-  assert.ok(/if \(!ready \|\| !effective\) return null/.test(formSrc), 'EffectivePending 未用 ready 门控')
+  // 判定逻辑已抽到 effective-pending.ts（真实计算由 test/effective-pending.test.mjs 覆盖 8 项）
+  assert.ok(formSrc.includes('computePendingFields(effective, value, ready === true)'), '未把 ready 传入判定函数')
+  const mod = read('src/effective-pending.ts')
+  assert.ok(/if \(!ready \|\| !effective\) return \[\]/.test(mod), '模块缺 ready/effective 门控')
 })
 
-t('settings-form：NEXT_ENTRY_FIELDS 清单 + EffectivePending 渲染', () => {
-  assert.ok(formSrc.includes('const NEXT_ENTRY_FIELDS'), '缺下次进入字段清单')
+t('settings-form：字段清单在模块、展示映射在 UI、提示块已渲染', () => {
+  const mod = read('src/effective-pending.ts')
+  assert.ok(mod.includes('NEXT_ENTRY_FIELD_SPECS'), '缺下次进入字段清单')
   // 白名单字段必须在清单里（字幕字号/让位窗口/打断抢救/LLM 纠错）
   for (const k of ['captionFontSize', 'yieldMs', 'bargeInSalvage', 'llmCorrect', 'autoSend', 'wakeWord', 'idleTimeoutMinutes', 'shortcut']) {
-    assert.ok(formSrc.includes(`key: '${k}'`), `清单缺 ${k}——该字段的生效反馈不显示`)
+    assert.ok(mod.includes("key: '" + k + "'"), '清单缺 ' + k + '——该字段的生效反馈不显示')
   }
+  assert.ok(formSrc.includes('NEXT_ENTRY_FMT'), 'UI 层缺展示映射（文案要走 tr）')
   assert.ok(formSrc.includes('function EffectivePending'), '缺提示块组件')
-  assert.ok(formSrc.includes('<EffectivePending effective={getRuntimeBoot()} value={value} ready={snap?.status === \'ready\'} />'), '卡片体未渲染提示块')
+  // 用反引号模板避免内嵌单引号把 JS 字符串弄断
+  assert.ok(formSrc.includes(`<EffectivePending effective={getRuntimeBoot()} value={value} ready={snap?.status === 'ready'} />`), '卡片体未渲染提示块')
 })
 
 t('README：设置入口引导 + 四档生效时机', () => {
@@ -105,12 +111,15 @@ t('settings-form（R1 I-1）：NEXT_ENTRY_FIELDS 五项枚举/数字字段全部
     captionFontSize: ['captionSizeS', 'captionSizeM', 'captionSizeL', 'captionSizeXL'],
     captionMaxWidth: ['captionWidth50', 'captionWidth70', 'captionWidth90'],
   }
+  // T6 重构后：字段清单在 effective-pending.ts，fmt 映射在 settings-form.tsx 的 NEXT_ENTRY_FMT。
+  const mod = read('src/effective-pending.ts')
+  const fmtLines = formSrc.split('\n')
   for (const [k, keys] of Object.entries(expect)) {
-    const m = new RegExp(`\\{ key: '${k}'[^\\n]*\\}`).exec(formSrc)
-    assert.ok(m, `清单缺 ${k}`)
-    assert.ok(/fmt:/.test(m[0]), `${k} 缺 fmt——裸 String() 回落会把内部值直出到界面`)
+    assert.ok(mod.includes("key: '" + k + "'"), '清单缺 ' + k)
+    const line = fmtLines.find((l) => l.trimStart().startsWith(k + ':'))
+    assert.ok(line, k + ' 缺 fmt 映射——裸 String() 会把内部值直出界面')
     for (const dk of keys) {
-      assert.ok(m[0].includes(`'${dk}'`), `${k} 的 fmt 未映射词典键 ${dk}`)
+      assert.ok(line.includes("'" + dk + "'"), k + ' 的 fmt 未映射词典键 ' + dk)
     }
   }
   // M-1：单位一律走词典（中文界面不得出现「1500 ms」这类硬编码英文单位）。

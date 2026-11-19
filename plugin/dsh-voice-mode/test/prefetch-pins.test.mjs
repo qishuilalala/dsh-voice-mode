@@ -61,4 +61,66 @@ t('prefetch 的 Kokoro 下载 URL 不再写死 /main（必须用 revision）', (
 })
 
 void here
+t('文件 ↔ 摘要对应关系一致（防止两文件摘要互换后仍绿）', () => {
+  // T6 审查：原测试只比「摘要集合」，两个文件的 sha 对调也照样绿。这里按 (repo, file) 逐条比对。
+  // 注意：repo 名和大文件路径都含 '/'，所以不能用切分字符串取文件名——直接把 file 原样存下来。
+  const parsePrefetch = (src) => {
+    const out = []
+    let repo = ''
+    for (const line of src.split('\n')) {
+      const rm = /^  '([^']+)': \{$/.exec(line)
+      if (rm) { repo = rm[1]; continue }
+      const fm = /^    '([^']+)': '([0-9a-f]{64})',$/.exec(line)
+      if (fm && repo) out.push({ repo, file: fm[1], sha: fm[2] })
+    }
+    return out
+  }
+  const prefetchEntries = parsePrefetch(prefetch)
+  assert.ok(prefetchEntries.length >= 25, 'prefetch 文件项数量异常：' + prefetchEntries.length)
+
+  const runtimePairs = [...runtime.matchAll(/file: '([^']+)',\s*sha256: '([0-9a-f]{64})'/g)]
+  const runtimeByFile = new Map()
+  for (const [, file, sha] of runtimePairs) {
+    if (!runtimeByFile.has(file)) runtimeByFile.set(file, new Set())
+    runtimeByFile.get(file).add(sha)
+  }
+  assert.ok(runtimeByFile.size >= 15, '运行时 file→sha 解析异常：' + runtimeByFile.size)
+
+  // 同名文件跨引擎歧义：'model.onnx' 同时是 VITS 主模型与 Kokoro fp32 主模型（sha 不同）。
+  // 这两个必须按 repo 精确对，否则会拿 VITS 的 sha 去比 Kokoro 的条目（或反之）误红/误绿。
+  const fp32Main = /model === 'fp32'\s*\?\s*\{ file: 'model\.onnx', revision: '[^']+', sha256: '([0-9a-f]{64})'/.exec(runtime)
+  const int8Main = /: \{ file: 'model\.int8\.onnx', revision: '[^']+', sha256: '([0-9a-f]{64})' \}/.exec(runtime)
+  assert.ok(fp32Main, '运行时找不到 Kokoro fp32 主模型摘要')
+  assert.ok(int8Main, '运行时找不到 Kokoro int8 主模型摘要')
+  const REPO_SPECIFIC = new Map([
+    ['csukuangfj/kokoro-multi-lang-v1_1/model.onnx', fp32Main[1]],
+    ['csukuangfj/kokoro-int8-multi-lang-v1_1/model.int8.onnx', int8Main[1]],
+  ])
+
+  const mismatched = []
+  for (const { repo, file, sha } of prefetchEntries) {
+    const exact = REPO_SPECIFIC.get(repo + '/' + file)
+    if (exact !== undefined) {
+      if (exact !== sha) mismatched.push(repo + '/' + file + '：prefetch=' + sha.slice(0, 8) + '… 运行时=' + exact.slice(0, 8) + '…')
+      continue
+    }
+    const known = runtimeByFile.get(file)
+    if (!known) {
+      mismatched.push(repo + '/' + file + '：运行时清单没有该文件的摘要（无法校验 = 预下载可能白下）')
+      continue
+    }
+    if (!known.has(sha)) {
+      mismatched.push(repo + '/' + file + '：prefetch=' + sha.slice(0, 8) + '… 运行时=' + [...known].map((s) => s.slice(0, 8)).join('/') + '…')
+    }
+  }
+  assert.deepEqual(mismatched, [], '同文件摘要不一致（预下载会白下）：' + mismatched.join('；'))
+})
+
+t('关键文件两侧都登记（漂移过的 3 个 + VITS/SenseVoice 主模型 + VAD）', () => {
+  for (const f of ['model.int8.onnx', 'model.onnx', 'lexicon-zh.txt', 'lexicon.txt', 'silero_vad.onnx']) {
+    assert.ok(prefetch.includes(f), 'prefetch 缺 ' + f)
+    assert.ok(runtime.includes(f), '运行时清单缺 ' + f)
+  }
+})
+
 console.log(`\n${passed} passed`)

@@ -21,6 +21,7 @@ import { edgeAllOptions, edgeCommonOptions, hostOptions, kokoroOptions, vitsOpti
 import { getRuntimeBoot } from './runtime-boot.ts'
 import { asTtsEngineKind, isCloudEngine, isThirdPartyEngine, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
 import { resolvePresetVoice } from './voice-resolution.ts'
+import { computePendingFields } from './effective-pending.ts'
 import { REPLACEMENTS_MAX_PAYLOAD_BYTES, replacementsPayloadBytes } from './asr-replacements.ts'
 
 interface ScopeController {
@@ -1408,24 +1409,25 @@ function Row({ name, desc, children }: { name: string; desc: string; children: R
  *  R1 I-1：每个字段都必须有 fmt——裸 String() 回落会把内部值（0/1/2、detect、1）直出到
  *  中文界面（「交互模式（当前生效 toggle）」「字幕字号（当前生效 1）」）。fmt 一律映射到
  *  词典现有键（tr），单位也走词典（M-1：unitMs/unitMin/unitDb），不出现硬编码英文单位。 */
-const NEXT_ENTRY_FIELDS: { key: string; label: string; fmt?: (v: unknown) => string }[] = [
-  { key: 'interruptLevel', label: 'interruptLevelLabel', fmt: (v) => tr(v === 1 ? 'sev1' : v === 2 ? 'sev2' : 'sev0') },
-  { key: 'bargeInMode', label: 'bargeInModeLabel', fmt: (v) => tr(v === 'auto' ? 'bargeInAuto' : v === 'manual' ? 'bargeInManual' : 'bargeInDetect') },
-  { key: 'echoGateDb', label: 'echoGateDbLabel', fmt: (v) => `${v} ${tr('unitDb')}` },
-  { key: 'autoSend', label: 'autoSendLabel', fmt: (v) => (v ? tr('valueOn') : tr('valueOff')) },
-  { key: 'autoResume', label: 'autoResumeLabel', fmt: (v) => (v ? tr('valueOn') : tr('valueOff')) },
-  { key: 'mode', label: 'modeLabel', fmt: (v) => tr(v === 'hold' ? 'modeHold' : v === 'once' ? 'modeOnce' : 'modeToggle') },
-  { key: 'wakeWord', label: 'wakeWordLabel', fmt: (v) => (v ? tr('valueQuoted').replace('{value}', String(v)) : tr('valueOff')) },
-  { key: 'toolBeep', label: 'toolBeepLabel', fmt: (v) => (v ? tr('valueOn') : tr('valueOff')) },
-  { key: 'captionFontSize', label: 'captionFontSizeLabel', fmt: (v) => tr(v === 1 ? 'captionSizeM' : v === 2 ? 'captionSizeL' : v === 3 ? 'captionSizeXL' : 'captionSizeS') },
-  { key: 'captionMaxWidth', label: 'captionMaxWidthLabel', fmt: (v) => tr(v === 0 ? 'captionWidth50' : v === 2 ? 'captionWidth90' : 'captionWidth70') },
-  { key: 'backchannelYield', label: 'backchannelYieldLabel', fmt: (v) => (v ? tr('valueOn') : tr('valueOff')) },
-  { key: 'yieldMs', label: 'yieldMsLabel', fmt: (v) => `${v} ${tr('unitMs')}` },
-  { key: 'bargeInSalvage', label: 'bargeInSalvageLabel', fmt: (v) => (v ? tr('valueOn') : tr('valueOff')) },
-  { key: 'llmCorrect', label: 'llmCorrectLabel', fmt: (v) => (v ? tr('valueOn') : tr('valueOff')) },
-  { key: 'idleTimeoutMinutes', label: 'idleTimeoutMinutesLabel', fmt: (v) => `${v} ${tr('unitMin')}` },
-  { key: 'shortcut', label: 'shortcutLabel', fmt: (v) => (v ? String(v) : tr('valueOff')) },
-]
+/** 字段 → 展示值（文案一律走 tr，故留在 UI 层；字段清单与判定在 effective-pending.ts）。 */
+const NEXT_ENTRY_FMT: Record<string, (v: unknown) => string> = {
+  interruptLevel: (v) => tr(v === 1 ? 'sev1' : v === 2 ? 'sev2' : 'sev0'),
+  bargeInMode: (v) => tr(v === 'auto' ? 'bargeInAuto' : v === 'manual' ? 'bargeInManual' : 'bargeInDetect'),
+  echoGateDb: (v) => `${v} ${tr('unitDb')}`,
+  autoSend: (v) => (v ? tr('valueOn') : tr('valueOff')),
+  autoResume: (v) => (v ? tr('valueOn') : tr('valueOff')),
+  mode: (v) => tr(v === 'hold' ? 'modeHold' : v === 'once' ? 'modeOnce' : 'modeToggle'),
+  wakeWord: (v) => (v ? tr('valueQuoted').replace('{value}', String(v)) : tr('valueOff')),
+  toolBeep: (v) => (v ? tr('valueOn') : tr('valueOff')),
+  captionFontSize: (v) => tr(v === 1 ? 'captionSizeM' : v === 2 ? 'captionSizeL' : v === 3 ? 'captionSizeXL' : 'captionSizeS'),
+  captionMaxWidth: (v) => tr(v === 0 ? 'captionWidth50' : v === 2 ? 'captionWidth90' : 'captionWidth70'),
+  backchannelYield: (v) => (v ? tr('valueOn') : tr('valueOff')),
+  yieldMs: (v) => `${v} ${tr('unitMs')}`,
+  bargeInSalvage: (v) => (v ? tr('valueOn') : tr('valueOff')),
+  llmCorrect: (v) => (v ? tr('valueOn') : tr('valueOff')),
+  idleTimeoutMinutes: (v) => `${v} ${tr('unitMin')}`,
+  shortcut: (v) => (v ? String(v) : tr('valueOff')),
+}
 
 /** 生效提示块：列出「下次进入语音模式才生效」的字段（tier④，NEXT_ENTRY_FIELDS）中
  *  已存值与运行态当前值不一致的项——用户视角＝这几项改了但还没生效。
@@ -1434,13 +1436,13 @@ const NEXT_ENTRY_FIELDS: { key: string; label: string; fmt?: (v: unknown) => str
  *  直读最新值，故展示值可能落后于「刚进入语音模式」那一瞬。宿主设置卡通常随导航卸载，
  *  kept-alive 常驻场景无实证；真要覆盖需 runtime-boot 加订阅（跨文件，留待有证据再动）。 */
 function EffectivePending({ effective, value, ready }: { effective: Record<string, unknown> | null; value: Record<string, unknown>; ready?: boolean }): React.ReactElement | null {
-  // ready 门控（审查 M-4）：HttpScope 初始快照 value={}，未就绪时全部字段都会误判 pending。
-  if (!ready || !effective) return null
-  const pending = NEXT_ENTRY_FIELDS.filter((f) => effective[f.key] !== undefined && effective[f.key] !== value[f.key])
-  if (pending.length === 0) return null
+  // 判定逻辑在 effective-pending.ts（可单测：ready 门控 / 运行态缺键 / 严格比较 三分支）。
+  const pending = computePendingFields(effective, value, ready === true)
+  if (pending.length === 0 || !effective) return null
   const items = pending
     .map((f) => {
-      const eff = f.fmt ? f.fmt(effective[f.key]) : String(effective[f.key])
+      const fmt = NEXT_ENTRY_FMT[f.key]
+      const eff = fmt ? fmt(effective[f.key]) : String(effective[f.key])
       return tr('effectiveItem').replace('{label}', tr(f.label as TKey)).replace('{value}', eff)
     })
     .join(tr('effectiveItemSep'))

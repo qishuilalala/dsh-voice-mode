@@ -2947,6 +2947,30 @@ function voiceLangHint(engine, voice) {
   return "";
 }
 
+// src/effective-pending.ts
+var NEXT_ENTRY_FIELD_SPECS = [
+  { key: "interruptLevel", label: "interruptLevelLabel" },
+  { key: "bargeInMode", label: "bargeInModeLabel" },
+  { key: "echoGateDb", label: "echoGateDbLabel" },
+  { key: "autoSend", label: "autoSendLabel" },
+  { key: "autoResume", label: "autoResumeLabel" },
+  { key: "mode", label: "modeLabel" },
+  { key: "wakeWord", label: "wakeWordLabel" },
+  { key: "toolBeep", label: "toolBeepLabel" },
+  { key: "captionFontSize", label: "captionFontSizeLabel" },
+  { key: "captionMaxWidth", label: "captionMaxWidthLabel" },
+  { key: "backchannelYield", label: "backchannelYieldLabel" },
+  { key: "yieldMs", label: "yieldMsLabel" },
+  { key: "bargeInSalvage", label: "bargeInSalvageLabel" },
+  { key: "llmCorrect", label: "llmCorrectLabel" },
+  { key: "idleTimeoutMinutes", label: "idleTimeoutMinutesLabel" },
+  { key: "shortcut", label: "shortcutLabel" }
+];
+function computePendingFields(effective, value, ready, specs = NEXT_ENTRY_FIELD_SPECS) {
+  if (!ready || !effective) return [];
+  return specs.filter((f) => effective[f.key] !== void 0 && effective[f.key] !== value[f.key]);
+}
+
 // node_modules/.pnpm/@deepseek-ai+cosmokit@1.9.0/node_modules/@deepseek-ai/cosmokit/lib/index.js
 function isNullable(value) {
   return value === null || value === void 0;
@@ -4950,30 +4974,30 @@ function Row({ name: name2, desc, children }) {
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flexShrink: 0, maxWidth: 300 }, children })
   ] });
 }
-var NEXT_ENTRY_FIELDS = [
-  { key: "interruptLevel", label: "interruptLevelLabel", fmt: (v) => t(v === 1 ? "sev1" : v === 2 ? "sev2" : "sev0") },
-  { key: "bargeInMode", label: "bargeInModeLabel", fmt: (v) => t(v === "auto" ? "bargeInAuto" : v === "manual" ? "bargeInManual" : "bargeInDetect") },
-  { key: "echoGateDb", label: "echoGateDbLabel", fmt: (v) => `${v} ${t("unitDb")}` },
-  { key: "autoSend", label: "autoSendLabel", fmt: (v) => v ? t("valueOn") : t("valueOff") },
-  { key: "autoResume", label: "autoResumeLabel", fmt: (v) => v ? t("valueOn") : t("valueOff") },
-  { key: "mode", label: "modeLabel", fmt: (v) => t(v === "hold" ? "modeHold" : v === "once" ? "modeOnce" : "modeToggle") },
-  { key: "wakeWord", label: "wakeWordLabel", fmt: (v) => v ? t("valueQuoted").replace("{value}", String(v)) : t("valueOff") },
-  { key: "toolBeep", label: "toolBeepLabel", fmt: (v) => v ? t("valueOn") : t("valueOff") },
-  { key: "captionFontSize", label: "captionFontSizeLabel", fmt: (v) => t(v === 1 ? "captionSizeM" : v === 2 ? "captionSizeL" : v === 3 ? "captionSizeXL" : "captionSizeS") },
-  { key: "captionMaxWidth", label: "captionMaxWidthLabel", fmt: (v) => t(v === 0 ? "captionWidth50" : v === 2 ? "captionWidth90" : "captionWidth70") },
-  { key: "backchannelYield", label: "backchannelYieldLabel", fmt: (v) => v ? t("valueOn") : t("valueOff") },
-  { key: "yieldMs", label: "yieldMsLabel", fmt: (v) => `${v} ${t("unitMs")}` },
-  { key: "bargeInSalvage", label: "bargeInSalvageLabel", fmt: (v) => v ? t("valueOn") : t("valueOff") },
-  { key: "llmCorrect", label: "llmCorrectLabel", fmt: (v) => v ? t("valueOn") : t("valueOff") },
-  { key: "idleTimeoutMinutes", label: "idleTimeoutMinutesLabel", fmt: (v) => `${v} ${t("unitMin")}` },
-  { key: "shortcut", label: "shortcutLabel", fmt: (v) => v ? String(v) : t("valueOff") }
-];
+var NEXT_ENTRY_FMT = {
+  interruptLevel: (v) => t(v === 1 ? "sev1" : v === 2 ? "sev2" : "sev0"),
+  bargeInMode: (v) => t(v === "auto" ? "bargeInAuto" : v === "manual" ? "bargeInManual" : "bargeInDetect"),
+  echoGateDb: (v) => `${v} ${t("unitDb")}`,
+  autoSend: (v) => v ? t("valueOn") : t("valueOff"),
+  autoResume: (v) => v ? t("valueOn") : t("valueOff"),
+  mode: (v) => t(v === "hold" ? "modeHold" : v === "once" ? "modeOnce" : "modeToggle"),
+  wakeWord: (v) => v ? t("valueQuoted").replace("{value}", String(v)) : t("valueOff"),
+  toolBeep: (v) => v ? t("valueOn") : t("valueOff"),
+  captionFontSize: (v) => t(v === 1 ? "captionSizeM" : v === 2 ? "captionSizeL" : v === 3 ? "captionSizeXL" : "captionSizeS"),
+  captionMaxWidth: (v) => t(v === 0 ? "captionWidth50" : v === 2 ? "captionWidth90" : "captionWidth70"),
+  backchannelYield: (v) => v ? t("valueOn") : t("valueOff"),
+  yieldMs: (v) => `${v} ${t("unitMs")}`,
+  bargeInSalvage: (v) => v ? t("valueOn") : t("valueOff"),
+  llmCorrect: (v) => v ? t("valueOn") : t("valueOff"),
+  idleTimeoutMinutes: (v) => `${v} ${t("unitMin")}`,
+  shortcut: (v) => v ? String(v) : t("valueOff")
+};
 function EffectivePending({ effective, value, ready }) {
-  if (!ready || !effective) return null;
-  const pending = NEXT_ENTRY_FIELDS.filter((f) => effective[f.key] !== void 0 && effective[f.key] !== value[f.key]);
-  if (pending.length === 0) return null;
+  const pending = computePendingFields(effective, value, ready === true);
+  if (pending.length === 0 || !effective) return null;
   const items = pending.map((f) => {
-    const eff = f.fmt ? f.fmt(effective[f.key]) : String(effective[f.key]);
+    const fmt = NEXT_ENTRY_FMT[f.key];
+    const eff = fmt ? fmt(effective[f.key]) : String(effective[f.key]);
     return t("effectiveItem").replace("{label}", t(f.label)).replace("{value}", eff);
   }).join(t("effectiveItemSep"));
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { "data-dshvm-settings": "effective-pending", style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary)", padding: "8px 2px 4px", lineHeight: 1.6 }, children: t("effectivePending").replace("{count}", String(pending.length)).replace("{items}", items) });
@@ -5722,7 +5746,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "b5b7fbc";
+var BUILD_TAG = "7a6b5cf";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

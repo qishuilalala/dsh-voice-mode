@@ -148,7 +148,30 @@ await t('定稿缓存重试同样改写（缓存存原文，重试走出口改�
   assert.equal(cached.text, 'Sakina，今天天气怎么样')
   rt.dispose()
 })
+await t('同 epoch 二次 final 真命中缓存（改识别结果也不变），且缓存原文仍走出口改写', async () => {
+  // T6 审查指出：原用例是「partial→final」，并未真正进入 finalized 缓存分支。
+  // 真命中缓存的判定：final 二次调用时**换掉识别器输出**，若文本不变 = 走了缓存。
+  const rt = makeRuntime(createAsrReplacer([{ from: ['ski男'], to: 'Sakina' }]))
+  globalThis.__heard = 'ski男，今天天气怎么样'
+  await rt.feed('s-cache', pcm(), false, 0, 0)
+  const firstFinal = await rt.feed('s-cache', new Float32Array(0), true, 1600, 0)
+  assert.equal(firstFinal.text, 'Sakina，今天天气怎么样')
+
+  globalThis.__heard = '完全不同的识别结果'
+  const secondFinal = await rt.feed('s-cache', new Float32Array(0), true, 1600, 0)
+  assert.equal(secondFinal.text, 'Sakina，今天天气怎么样', '第二次 final 应命中缓存；若变了说明重新识别了')
+
+  rt.dispose()
+})
+
+await t('替换目标含 $& / $1 时按字面量输出（函数式替换，不做正则展开）', () => {
+  const rep = createAsrReplacer([{ from: ['price'], to: '价格 $& $1 $$' }])
+  assert.equal(rep('price 很高'), '价格 $& $1 $$ 很高')
+})
+
 await t('不配替换表时原样返回', async () => {
+  // 前面的缓存用例会改全局识别输出，这里显式复位（用例间不共享隐式状态）
+  globalThis.__heard = 'ski男，今天天气怎么样'
   const rt = makeRuntime()
   const partial = await rt.feed('s2', pcm(), false, 0, 0)
   assert.equal(partial.text, 'ski男，今天天气怎么样')
