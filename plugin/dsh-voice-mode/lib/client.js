@@ -4862,6 +4862,7 @@ function OpenAiPresetSection({
         {
           type: "button",
           disabled: !cur || verifying,
+          "aria-busy": verifying || void 0,
           onClick: () => onVerify(cur),
           style: {
             font: "inherit",
@@ -4878,7 +4879,7 @@ function OpenAiPresetSection({
             fontSize: 12,
             lineHeight: "18px"
           },
-          children: t("presetVerify")
+          children: verifying ? t("selftestRunning") : t("presetVerify")
         }
       ),
       verifyState && verifyState.id === cur ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -5681,7 +5682,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "3e97138";
+var BUILD_TAG = "7f484f9";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

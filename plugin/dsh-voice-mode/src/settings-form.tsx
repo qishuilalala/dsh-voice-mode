@@ -1303,6 +1303,7 @@ function OpenAiPresetSection({
         <button
           type="button"
           disabled={!cur || verifying}
+          aria-busy={verifying || undefined}
           onClick={() => onVerify(cur)}
           style={{
             font: 'inherit',
@@ -1320,7 +1321,7 @@ function OpenAiPresetSection({
             lineHeight: '18px',
           }}
         >
-          {tr('presetVerify')}
+          {verifying ? tr('selftestRunning') : tr('presetVerify')}
         </button>
         {verifyState && verifyState.id === cur ? (
           <span
