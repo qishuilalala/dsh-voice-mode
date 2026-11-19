@@ -2929,8 +2929,8 @@ var BARE = [
   /\bsk[-_][A-Za-z0-9._-]{8,}/g,
   /\bAIza[A-Za-z0-9._-]{10,}/g,
   /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
-  // 兜底：超长连续 ASCII 串（base64/hex 风格）。真实密钥远长于 20 字符，正常错误文案不会命中。
-  /\b[A-Za-z0-9+/=_-]{20,}\b/g
+  // 兜底：超长连续 ASCII 串。排除纯十六进制（哈希是排障信息，不是密钥）。
+  /\b(?![0-9a-fA-F]{32,}\b)[A-Za-z0-9+/=_-]{20,}\b/g
 ];
 function redactSecrets(text) {
   let out = typeof text === "string" ? text : String(text ?? "");

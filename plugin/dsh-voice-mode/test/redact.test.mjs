@@ -29,11 +29,15 @@ t('常见厂商前缀：sk- / sk_ / AIza / ghp_', () => {
   }
 })
 
-t('超长 base64/hex 风格串兜底脱敏（≥20 连续 ASCII）', () => {
-  const secret = 'AbCdEf0123456789AbCdEf0123456789'
-  assert.ok(!redactSecrets('{"token":"' + secret + '"}').includes(secret))
+t('超长 base64 风格串兜底脱敏（≥20 连续 ASCII，非纯 hex）', () => {
+  const secret = 'AbCdEfGhIjKlMnOpQrStUvWxYz012345'
+  assert.ok(!redactSecrets('{"token":"' + secret + '"}').includes(secret), '未脱敏：' + redactSecrets('{"token":"' + secret + '"}'))
 })
-
+t('纯十六进制哈希（SHA256/MD5）不被遮蔽：模型下载排障需要 expected/got', () => {
+  const sha = 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38'
+  assert.equal(redactSecrets('sha256 mismatch: want ' + sha), 'sha256 mismatch: want ' + sha)
+  assert.equal(redactSecrets('md5 ' + 'abcdef0123456789abcdef0123456789'), 'md5 abcdef0123456789abcdef0123456789')
+})
 t('普通错误文案不受影响（不误伤可读性）', () => {
   const msg = 'HTTP 401: {"error":"invalid api key","code":"invalid_api_key"}'
   const out = redactSecrets(msg)
