@@ -101,6 +101,33 @@
 - settings-effective 中仍有一批「源码含某字符串」式结构断言（如「卡片体渲染了提示块」）；要变成渲染级断言需要引入 React 测试环境，当前仓库无此基建。
 - `docs/current-anchors` 守卫只锁 7 条关键现态锚（全仓 600+ 锚点靠 check-doc-anchors 的符号解析，不逐条钉行号）。
 
+## 第七、八轮：多 key 复核（R5）与脱敏安全复核（R6/R7）
+
+| 核查员 | 范围 | 结论 |
+|---|---|---|
+| R5 | 最近 6 提交（多 key / effective-pending / 测试补强 / 文档） | **不通过**：无 Blocker，4 Important（均属守卫与文档） |
+| R6 | 错误详情脱敏（安全） | **不通过**：1 项真实泄漏 + 1 项误伤 + 3 Minor |
+
+### R5 的实质发现（均已修，commit d7a7014）
+
+1. 多 key 的旧注释与实现矛盾、`resolveOpenAiEndpoint` 的文档注释被挤掉。
+2. settings-effective 只测 5 个枚举字段的 fmt，**没有 specs↔FMT 键集合断言**——新增字段漏配 FMT 会退回裸 `String()` 且全绿。
+3. prefetch 只对 `model.onnx/int8` 做 repo 精确比对，`tokens.txt`（6 处、4 个不同 sha）跨 repo 互换仍绿；`/config` 载荷扫描窗口只覆盖前 2600 字符（实际约 5500）。
+4. ADR-0013「key 不写日志」与实现有缝：错误详情会把 401 响应体片段写进日志，厂商可能回显 key 片段。
+
+### R6 的实质发现（均已修，commit 4399c15）
+
+1. **真实泄漏**：`redactBodySnippet` 先截 200 再脱敏，key 跨窗口边界被切成 <20 字符残段，通用规则漏过——实测起点 181/190/199 时分别漏出 19/9/6 个字符。改为**先脱敏再截断**并多取 128 字符余量。
+2. **误伤**：通用兜底会吃掉模型名（`openai/gpt-4o-mini-tts-…`）、UUID、`node_modules` 路径，而这些正是 400/404 排障所需。改为「大小写+数字混合 + 字符类不含斜杠 + 排除纯十六进制」。
+3. Bearer 用例断言等价（删掉 Bearer 规则仍绿）→ 改用全小写随机值，删除规则即红。
+4. 短 key（<20、无厂商前缀）在 `{"apiKey":"…"}` 形态下不遮 → 新增 JSON 字段规则。
+5. 日志边界无兜底 → `/preview` 失败日志、`tts-queue` 两处、settings update、Edge voices 全部接脱敏。
+
+### 本轮方法论沉淀
+
+- **突变测试是唯一能证明「守卫真的守卫」的手段**：本轮对 prefetch 对应关系、脱敏边界、Bearer 规则、JSON 规则、死键匹配器、文档键表一致性共做了 8 次突变验证，其中 3 次暴露了「断言等价」的假守卫。
+- **安全脱敏要同时防漏和防误伤**：只追求「遮得多」会吃掉排障信息，结论必须用双向用例（该遮的遮、该留的留）来锁。
+
 ## 回归
 
 - 双端 typecheck、词表覆盖、settings-effective（15 项）、引擎种类守卫（5 项）、prefetch 守卫、tts-mimo（15 项）、tts-openai、asr-replacements、i18n-protocol、lib 漂移、文档锚点、全套件：**全绿（显式退出码全 0）**。
