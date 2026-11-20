@@ -59,11 +59,50 @@ function resampleLinear(src, srcRate, dstRate) {
   return out;
 }
 
+// src/redact.ts
+var PREFIXED = [
+  { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
+  { re: /\b(Basic\s+)[A-Za-z0-9+/=-]{8,}/gi, to: "$1<redacted>" },
+  { re: /\b((?:api[-_]?key|x-api-key)\s*[:=]\s*)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
+  // URL 内嵌凭据（https://user:pass@host）与查询参数密钥（?api_key=... / &token=... / &key=...）
+  { re: /(https?:\/\/)([^:@/\s]+:[^@/\s]+)(@)/gi, to: "$1<redacted>$3" },
+  { re: /([?&](?:api[_-]?key|access_token|token|key)=)([^&\s#]+)/gi, to: "$1<redacted>" },
+  // JSON 形态：{"apiKey":"..."} / {"mimoApiKey":"..."} / {"openaiApiKey":"..."} / {"token":"..."}（只遮引号内的值）
+  {
+    re: /("(?:[a-zA-Z0-9_-]*?(?:api[_-]?key|token|secret|password))"\s*:\s*")([^"\\]{6,})(")/gi,
+    to: "$1<redacted>$3"
+  }
+];
+var BARE = [
+  /\bsk[-_][A-Za-z0-9._-]{8,}/g,
+  // 更多厂商前缀（2026-11-20 审计实测：Groq 的 gsk_ 原样漏出，而 Groq 就在本仓预设里）。
+  /\bgsk_[A-Za-z0-9._-]{8,}/g,
+  /\bsk-(?:proj|live|test)-[A-Za-z0-9._-]{8,}/g,
+  /\brk_(?:live|test)_[A-Za-z0-9]{8,}/g,
+  /\bAIza[A-Za-z0-9._-]{10,}/g,
+  /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
+  // 通用兜底：≥20 连续 base64-ish 字符，要求**同时含大写、小写与数字**（真密钥的典型特征），
+  // 且排除纯十六进制（SHA256/MD5 是排障信息）。这样不会吃掉全小写的模型名、
+  // 也不会吃掉被 - / 分隔的 UUID 与路径。
+  // 注意：字符类**不含 '/'**——路径与 provider/model:voice 形态都靠 '/' 分隔，含进来会误伤排障信息。
+  // 豁免仅限 64 位 sha256（模型摘要）；32 位 hex 也可能是 key（审计实测漏遮）。
+  /\b(?![0-9a-fA-F]{64}\b)(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[0-9])[A-Za-z0-9+=_-]{20,}\b/g,
+  // 32 位 hex（md5 形状）也可能是 key：通用规则要求大小写混合，纯小写 hex 会被漏掉。
+  // 64 位 sha256 不在此列（模型摘要要保留排障）。
+  /\b[0-9a-f]{32}\b/gi
+];
+function redactSecrets(text) {
+  let out = typeof text === "string" ? text : String(text ?? "");
+  for (const { re, to } of PREFIXED) out = out.replace(re, to);
+  for (const re of BARE) out = out.replace(re, "<redacted>");
+  return out;
+}
+
 // src/wakeword.ts
 var WAKE_LEAD_CHARS = 3;
 var WAKE_MAX_EDITS = 1;
 function normalizeWake(text) {
-  return String(text ?? "").replace(/[\s\u3000]+/g, "").toLowerCase().replace(/[，。！？!?；;、,.]/g, "").replace(/^(嗯+|哎+|呃+|这个+|那个+|so|um|uh|er|well)[，。！？!?；;、,.\s\u3000]*/, "");
+  return String(text ?? "").toLowerCase().replace(/^[\s\u3000]*(?:so|um|uh|er|well)(?=[\s\u3000，。！？!?；;、,.]|$)/, "").replace(/[\s\u3000]+/g, "").replace(/[，。！？!?；;、,.]/g, "").replace(/^(嗯+|哎+|呃+|这个+|那个+)[，。！？!?；;、,.\s\u3000]*/, "");
 }
 function editDistanceWithin(a, b, max) {
   const la = a.length;
@@ -169,6 +208,14 @@ var Track = class {
     }
     return btoa(bin);
   }
+  /** 复制另一轨前 chunks.length - dropLast 块（中段首次分叉时回填前置帧保对齐）。 */
+  copyPrefixFrom(other, dropLast = 0) {
+    const end = Math.max(0, other.chunks.length - dropLast);
+    for (let i = 0; i < end; i++) {
+      this.chunks.push(other.chunks[i]);
+      this.total += other.chunks[i].length;
+    }
+  }
   clear() {
     this.chunks = [];
     this.total = 0;
@@ -258,7 +305,10 @@ var FixtureRecorder = class {
       this.micTrack.push(micPre);
       this.refTrack.push(ref ?? new Float32Array(micPre.length));
       if (res !== micPre) {
-        if (!this.resDiffers) this.resDiffers = true;
+        if (!this.resDiffers) {
+          this.resDiffers = true;
+          this.resTrack.copyPrefixFrom(this.micTrack, 1);
+        }
         this.resTrack.push(res);
       } else if (this.resDiffers) {
         this.resTrack.push(res);
@@ -327,7 +377,7 @@ var FixtureRecorder = class {
         `[dsh-voice][rec] \u5DF2\u4FDD\u5B58 ${name2}\uFF1A${this.frames.length} \u5E27 / ${(durationMs / 1e3).toFixed(1)}s / \u6807\u6CE8 ${this.marks.length} \u6761 / \u68C0\u6D4B\u5F80\u8FD4 ${this.detects.length} \u6B21`
       );
     } catch (e) {
-      console.warn("[dsh-voice][rec] \u4FDD\u5B58\u5931\u8D25\uFF1A" + String(e));
+      console.warn("[dsh-voice][rec] \u4FDD\u5B58\u5931\u8D25\uFF1A" + redactSecrets(e));
     }
     this.micTrack.clear();
     this.refTrack.clear();
@@ -553,7 +603,7 @@ function createAsrEngine(config, sessionId) {
       const item = pendingFinals.get(nextEmitSeq);
       pendingFinals.delete(nextEmitSeq);
       nextEmitSeq++;
-      if (item) emit(transcriptListeners, item.text, item.meta);
+      if (item && item.discardGen === discardGen && active) emit(transcriptListeners, item.text, item.meta);
     }
   };
   const settleFinal = (seq, item) => {
@@ -609,6 +659,7 @@ function createAsrEngine(config, sessionId) {
         body: samples.buffer,
         signal: AbortSignal.timeout(5e3)
       });
+      if (epoch !== segmentEpoch || !active) return;
       if (res.status === 202) {
         if (state !== "wake") setState("loading-model");
         const retry = await new Promise((resolve2) => {
@@ -638,13 +689,17 @@ function createAsrEngine(config, sessionId) {
         }
       }
       if (res.status === 403 && config.onSessionExpired) {
-        const recovered = await config.onSessionExpired();
-        if (recovered && epoch === segmentEpoch) {
+        let expireTimer = null;
+        const recovered = await Promise.race([
+          config.onSessionExpired(),
+          new Promise((resolve2) => {
+            expireTimer = setTimeout(() => resolve2(false), 5e3);
+          })
+        ]).finally(() => {
+          if (expireTimer) clearTimeout(expireTimer);
+        }).catch(() => false);
+        if (recovered && active && epoch === segmentEpoch) {
           uploadedSamples = 0;
-          if (holdTrimmed) {
-            holdTrimmed = false;
-            emit(noticeListeners, "holdTrimmedNotice");
-          }
           try {
             res = await fetch(asrUrl(false, 0, epoch), {
               method: "POST",
@@ -655,15 +710,19 @@ function createAsrEngine(config, sessionId) {
             });
           } catch {
           }
+          if (res.status === 202) {
+            if (epoch === segmentEpoch && active && state !== "wake") setState("loading-model");
+            return;
+          }
         }
       }
-      if (epoch !== segmentEpoch) return;
+      if (epoch !== segmentEpoch || !active) return;
       if (!res.ok) {
         if (res.status !== 202 && ++partialFailStreak >= 3) emit(noticeListeners, "partialFail");
         return;
       }
       const out = await res.json();
-      if (epoch !== segmentEpoch) return;
+      if (epoch !== segmentEpoch || !active) return;
       if (state === "wake" && wakeEnabled) {
         uploadedSamples = Math.max(uploadedSamples, from2 + samples.length);
         partialFailStreak = 0;
@@ -676,10 +735,11 @@ function createAsrEngine(config, sessionId) {
         }
         return;
       }
-      if (out.isSpeech !== void 0) deliverIsSpeech(out.isSpeech);
-      if (state === "loading-model") setState("speech");
       uploadedSamples = Math.max(uploadedSamples, from2 + samples.length);
       partialFailStreak = 0;
+      if (out.isSpeech !== void 0) deliverIsSpeech(out.isSpeech);
+      if (epoch !== segmentEpoch || !active) return;
+      if (state === "loading-model") setState("speech");
       emit(partialListeners, wakeConsumed ? stripWakePrefix(out.text ?? "", wakeWord) : out.text ?? "");
       if (config.backchannelYield !== false && // 默认 true（I10 豁免）；显式 false 时跳过
       speechActive && (config.isPlaying?.() ?? false) && matchBackchannel(out.text ?? "")) {
@@ -723,20 +783,24 @@ function createAsrEngine(config, sessionId) {
       });
       rttMs = Date.now() - sentAt;
       if (epoch !== segmentEpoch || gen !== detectGeneration) return;
-      if (!res.ok) return;
+      if (!res.ok) {
+        rttMs = -1;
+        if (++detectFailStreak >= 3) emit(noticeListeners, "detectFail");
+        return;
+      }
       const out = await res.json();
       if (epoch !== segmentEpoch || gen !== detectGeneration) return;
       const rawNow = config.isPlayingRaw ? config.isPlayingRaw() : config.isPlaying?.() ?? false;
       if (out.isSpeech === true && preRollSeedWall === null && rawNow && reqBodyStartWall >= rawPlayingSinceWall) {
         preRollSeedWall = reqBodyStartWall - 250;
       }
-      if (out.isSpeech !== void 0) deliverIsSpeech(out.isSpeech);
       detectFailStreak = 0;
       detectSent += samples.length;
       while (detectChunks.length > 0 && detectSent >= detectChunks[0].length) {
         detectSent -= detectChunks[0].length;
         detectChunks.shift();
       }
+      if (out.isSpeech !== void 0) deliverIsSpeech(out.isSpeech);
     } catch {
       if (++detectFailStreak >= 3) emit(noticeListeners, "detectFail");
     } finally {
@@ -781,11 +845,13 @@ function createAsrEngine(config, sessionId) {
     segment = [];
     segmentMs = 0;
     speechMs = 0;
+    speechActive = false;
     silenceMs = 0;
     wakeSilenceMs = 0;
     wakeConsumed = false;
     salvagedSegment = false;
     yieldedSegment = false;
+    holdTrimmed = false;
     prePad = [];
     uploadedSamples = 0;
     void resetHostStream();
@@ -810,7 +876,7 @@ function createAsrEngine(config, sessionId) {
     const settle = (item) => {
       if (settled) return;
       settled = true;
-      settleFinal(mySeq, item);
+      settleFinal(mySeq, item ? { ...item, discardGen: discardSnapshot } : null);
     };
     const meta = { force: forcePending };
     const consumedWake = wakeConsumed;
@@ -819,6 +885,9 @@ function createAsrEngine(config, sessionId) {
     salvagedSegment = false;
     const wasYielded = yieldedSegment;
     yieldedSegment = false;
+    const wasHoldTrimmed = holdTrimmed;
+    holdTrimmed = false;
+    if (wasHoldTrimmed) emit(noticeListeners, "holdTrimmedNotice");
     forcePending = false;
     speechMs = 0;
     uploadedSamples = 0;
@@ -827,6 +896,7 @@ function createAsrEngine(config, sessionId) {
     silenceMs = 0;
     segmentMs = 0;
     prePad = [];
+    utteranceEndAt = null;
     setState("transcribing");
     void (async () => {
       emitTelemetry("submitted");
@@ -834,11 +904,15 @@ function createAsrEngine(config, sessionId) {
       const restoreState = () => setState(active ? speechActive || holdActive ? "speech" : wakeEnabled ? "wake" : "listening" : "idle");
       for (let attempt = 0; attempt < MAX_FINAL_ATTEMPTS; attempt++) {
         if (attempt > 0) {
-          if (discardGen !== discardSnapshot) {
+          if (!active || discardGen !== discardSnapshot) {
             settle(null);
             return;
           }
           await new Promise((r) => setTimeout(r, 500 * attempt));
+          if (!active || discardGen !== discardSnapshot) {
+            settle(null);
+            return;
+          }
         }
         const useFull = attempt > 0;
         const off = useFull ? 0 : from2;
@@ -856,10 +930,18 @@ function createAsrEngine(config, sessionId) {
           if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize fetch failed (retries exhausted)");
           continue;
         }
+        if (!active || discardGen !== discardSnapshot) {
+          settle(null);
+          return;
+        }
         if (res.status === 202) {
-          setState("loading-model");
+          if (state !== "wake") setState("loading-model");
           res = await new Promise((resolve2) => {
             setTimeout(async () => {
+              if (!active || discardGen !== discardSnapshot) {
+                resolve2(new Response(null, { status: 410 }));
+                return;
+              }
               try {
                 resolve2(
                   await fetch(asrUrl(true, off, epochSnapshot), {
@@ -875,11 +957,17 @@ function createAsrEngine(config, sessionId) {
               }
             }, 5e3);
           });
+          if (!active || discardGen !== discardSnapshot) {
+            settle(null);
+            return;
+          }
         }
         if (res.status === 413) {
           console.warn("[dsh-voice-mode] finalize payload too large (413): utterance exceeded the per-request limit");
-          emit(noticeListeners, "utteranceTooLong");
-          restoreState();
+          if (active && discardGen === discardSnapshot) {
+            emit(noticeListeners, "utteranceTooLong");
+            restoreState();
+          }
           settle(null);
           return;
         }
@@ -897,7 +985,7 @@ function createAsrEngine(config, sessionId) {
           ]).finally(() => {
             if (expireTimer) clearTimeout(expireTimer);
           }).catch(() => false);
-          if (recovered && discardGen === discardSnapshot) {
+          if (recovered && active && discardGen === discardSnapshot) {
             try {
               res = await fetch(asrUrl(true, 0, epochSnapshot), {
                 signal: AbortSignal.timeout(25e3),
@@ -908,6 +996,22 @@ function createAsrEngine(config, sessionId) {
               });
             } catch {
             }
+          }
+          if (!active || discardGen !== discardSnapshot) {
+            settle(null);
+            return;
+          }
+          if (res.status === 413) {
+            console.warn("[dsh-voice-mode] finalize payload too large (413): utterance exceeded the per-request limit");
+            emit(noticeListeners, "utteranceTooLong");
+            restoreState();
+            settle(null);
+            return;
+          }
+          if (res.status === 202) {
+            if (state !== "wake") setState("loading-model");
+            if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize model-load timeout (retries exhausted)");
+            continue;
           }
         }
         if (!res.ok) {
@@ -921,7 +1025,7 @@ function createAsrEngine(config, sessionId) {
           if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize response is not JSON (retries exhausted)");
           continue;
         }
-        if (discardGen !== discardSnapshot) {
+        if (!active || discardGen !== discardSnapshot) {
           settle(null);
           return;
         }
@@ -933,7 +1037,7 @@ function createAsrEngine(config, sessionId) {
         if (finalText) {
           if ((wasSalvaged || wasYielded) && matchBackchannel(finalText)) {
             emit(noticeListeners, "backchannelDropped");
-            if (active && wakeEnabled) setState("listening");
+            if (active && wakeEnabled && !speechActive && !holdActive) setState("listening");
             settle(null);
             return;
           }
@@ -946,11 +1050,13 @@ function createAsrEngine(config, sessionId) {
         }
         return;
       }
-      restoreState();
       settle(null);
-      emitError("recognitionFail");
+      if (active && discardGen === discardSnapshot) {
+        restoreState();
+        emitError("recognitionFail");
+      }
     })().catch((err) => {
-      console.warn(`[dsh-voice-mode] finalize unexpected error (seq=${mySeq}, settled as no-emit)`, err);
+      console.warn(`[dsh-voice-mode] finalize unexpected error (seq=${mySeq}, settled as no-emit): ${redactSecrets(err)}`);
       settle(null);
     });
   };
@@ -961,6 +1067,7 @@ function createAsrEngine(config, sessionId) {
     if (!active || inFlush) return;
     if (runtimeBargeInMode === "manual" && !holdActive) return;
     let data = ctxRate !== SAMPLE_RATE2 ? resampleLinear(raw, ctxRate, SAMPLE_RATE2) : raw;
+    if (data.length === 0) return;
     const recMicPre = data;
     let recRef = null;
     if (echo) {
@@ -1052,12 +1159,19 @@ function createAsrEngine(config, sessionId) {
       segmentMs += durationMs;
       silenceMs = 0;
       segment.push(data);
-      if (uploadedSamples === 0) {
-        let bytes = segment.reduce((n, c) => n + c.length, 0);
-        while (bytes > HOLD_SECOND_MAX_BYTES && segment.length > 1) {
-          bytes -= segment[0].length;
-          segment.shift();
-          holdTrimmed = true;
+      let bytes = segment.reduce((n, c) => n + c.byteLength, 0);
+      let trimmed = false;
+      while (bytes > HOLD_SECOND_MAX_BYTES && segment.length > 1) {
+        bytes -= segment[0].byteLength;
+        segment.shift();
+        trimmed = true;
+      }
+      if (trimmed) {
+        holdTrimmed = true;
+        if (uploadedSamples > 0) {
+          uploadedSamples = 0;
+          segmentEpoch++;
+          void resetHostStream();
         }
       }
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
@@ -1157,7 +1271,10 @@ function createAsrEngine(config, sessionId) {
   };
   const abandonStart = async (myStream, myCtx) => {
     try {
-      myStream.getTracks().forEach((t3) => t3.stop());
+      myStream.getTracks().forEach((t3) => {
+        t3.onended = null;
+        t3.stop();
+      });
     } catch {
     }
     if (stream === myStream) stream = null;
@@ -1197,7 +1314,16 @@ function createAsrEngine(config, sessionId) {
       return;
     }
     stream = myStream;
-    const aecOn = stream.getAudioTracks()[0]?.getSettings().echoCancellation === true;
+    const primaryTrack = stream.getAudioTracks()[0];
+    if (primaryTrack) {
+      primaryTrack.onended = () => {
+        if (stream !== myStream || !active) return;
+        active = false;
+        emitError("micUnavailable");
+        void stopRecorder().then(() => setState("idle"));
+      };
+    }
+    const aecOn = primaryTrack?.getSettings().echoCancellation === true;
     if (!aecOn) {
       console.warn("[dsh-voice-mode] native browser echoCancellation is not in effect (speakers may self-interrupt); use headphones or manual barge-in");
     }
@@ -1210,7 +1336,18 @@ function createAsrEngine(config, sessionId) {
     owned.ctx = myCtx;
     audioCtx = myCtx;
     try {
-      await audioCtx.resume?.();
+      const resumeP = audioCtx.resume?.();
+      if (resumeP) {
+        let resumeTimer = null;
+        await Promise.race([
+          resumeP,
+          new Promise((resolve2) => {
+            resumeTimer = setTimeout(resolve2, 3500);
+          })
+        ]).finally(() => {
+          if (resumeTimer) clearTimeout(resumeTimer);
+        });
+      }
     } catch {
     }
     if (stopRequested || mySeq !== startSeq) {
@@ -1266,6 +1403,7 @@ function createAsrEngine(config, sessionId) {
     discardGen++;
     forcePending = false;
     holdActive = false;
+    holdTrimmed = false;
     segment = [];
     speechActive = false;
     silenceMs = 0;
@@ -1297,7 +1435,10 @@ function createAsrEngine(config, sessionId) {
     }
     workletNode = null;
     try {
-      stream?.getTracks().forEach((t3) => t3.stop());
+      stream?.getTracks().forEach((t3) => {
+        t3.onended = null;
+        t3.stop();
+      });
     } catch {
     }
     stream = null;
@@ -1348,6 +1489,7 @@ function createAsrEngine(config, sessionId) {
       detectFailStreak = 0;
       lastPollAt = 0;
       holdActive = false;
+      holdTrimmed = false;
       detectChunks = [];
       detectSent = 0;
       detectGeneration++;
@@ -1392,6 +1534,7 @@ function createAsrEngine(config, sessionId) {
     beginHeld() {
       if (!active || holdActive) return;
       holdActive = true;
+      holdTrimmed = false;
       segmentEpoch++;
       discardGen++;
       wakeConsumed = false;
@@ -1414,7 +1557,9 @@ function createAsrEngine(config, sessionId) {
     },
     discardSegment() {
       segmentEpoch++;
+      const myEpoch = segmentEpoch;
       discardGen++;
+      holdTrimmed = false;
       partialFailStreak = 0;
       detectFailStreak = 0;
       segment = [];
@@ -1464,7 +1609,9 @@ function createAsrEngine(config, sessionId) {
       preRollSeedWall = null;
       if (salvaged && active) setState("speech");
       return resetHostStream().then(() => {
-        if (active && !salvaged) setState(wakeEnabled ? "wake" : "listening");
+        if (active && !salvaged && segmentEpoch === myEpoch && !speechActive && !holdActive) {
+          setState(wakeEnabled ? "wake" : "listening");
+        }
       });
     },
     endHeld(cancel = false) {
@@ -1473,6 +1620,7 @@ function createAsrEngine(config, sessionId) {
       if (cancel) {
         segmentEpoch++;
         discardGen++;
+        holdTrimmed = false;
         segment = [];
         uploadedSamples = 0;
         salvagedSegment = false;
@@ -1595,7 +1743,7 @@ var NlmsAec = class {
       if (this.filled >= this.delay + this.filterLength) {
         let y = 0;
         let norm = 0;
-        let idx = (cursor - this.delay + bufLen) % bufLen;
+        let idx = (cursor - 1 - this.delay + bufLen) % bufLen;
         for (let t3 = 0; t3 < this.filterLength; t3++) {
           const x = xBuf[idx];
           y += this.w[t3] * x;
@@ -1608,7 +1756,7 @@ var NlmsAec = class {
         if (norm > MIN_REF_NORM && !this.frozen) {
           const denom = norm + this.eps;
           const gain = this.mu * eSafe / denom;
-          idx = (cursor - this.delay + bufLen) % bufLen;
+          idx = (cursor - 1 - this.delay + bufLen) % bufLen;
           for (let t3 = 0; t3 < this.filterLength; t3++) {
             this.w[t3] += gain * xBuf[idx];
             idx = (idx - 1 + bufLen) % bufLen;
@@ -1754,7 +1902,7 @@ var zh = {
   sayWake: "\u8BF4\u300C{wake}\u300D\u5F00\u59CB",
   reading: "\u6717\u8BFB\u4E2D\u2026",
   recognitionFail: "\u8BC6\u522B\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
-  holdTrimmedNotice: "\u6309\u4F4F\u8BF4\u8BDD\u8D85\u8FC7 90 \u79D2\uFF1A\u53EA\u8BC6\u522B\u4E86\u6700\u540E\u4E00\u6BB5\uFF08\u524D\u9762\u7684\u97F3\u9891\u5DF2\u4E22\u5F03\uFF09",
+  holdTrimmedNotice: "\u6309\u4F4F\u8BF4\u8BDD\u8D85\u8FC7\u7EA6 48 \u79D2\uFF1A\u53EA\u8BC6\u522B\u4E86\u6700\u540E\u4E00\u6BB5\uFF08\u524D\u9762\u7684\u97F3\u9891\u5DF2\u4E22\u5F03\uFF09",
   utteranceTooLong: "\u8FD9\u6B21\u8BF4\u8BDD\u592A\u957F\uFF08\u8D85\u8FC7\u7EA6 90 \u79D2\uFF09\uFF1A\u5DF2\u8DF3\u8FC7\uFF0C\u8BF7\u5206\u6BB5\u518D\u8BF4\u4E00\u6B21",
   interruptedNotice: "\u5DF2\u6253\u65AD\u6717\u8BFB\uFF0C\u7B49\u4F60\u7EE7\u7EED\u8BF4",
   senseDegradedNotice: "\u5B9A\u7A3F\u6A21\u578B\u52A0\u8F7D\u5931\u8D25\uFF0C\u5DF2\u4E34\u65F6\u964D\u7EA7\u4E3A\u5907\u7528\u8BC6\u522B\uFF08\u51C6\u786E\u7387\u53EF\u80FD\u7565\u964D\uFF09",
@@ -1878,7 +2026,7 @@ var zh = {
   descVoiceOpenai: "\u670D\u52A1\u7AEF\u7684\u97F3\u8272\u540D\u3002\u7559\u7A7A\u65F6\uFF1A\u9009\u4E86\u9884\u8BBE \u2192 \u7528\u8BE5\u9884\u8BBE\u7684\u793A\u4F8B\u97F3\u8272\uFF1B\u672A\u9009\u9884\u8BBE \u2192 \u7528\u914D\u7F6E\u91CC\u7684 openaiTts.voice\u3002\u586B\u4E86\u5C31\u6309\u4F60\u586B\u7684\u7528\uFF08\u9884\u8BBE\u793A\u4F8B\u97F3\u8272\u4E0D\u518D\u751F\u6548\uFF09",
   descVoiceMimo: "MiMo \u9884\u7F6E\u97F3\u8272\u540D\uFF08\u7559\u7A7A = \u914D\u7F6E\u91CC\u7684 mimoTts.voice\uFF0C\u9ED8\u8BA4 mimo_default\uFF09\uFF1B\u9884\u7F6E\uFF1Amimo_default\u3001\u51B0\u7CD6\u3001\u8309\u8389\u3001\u82CF\u6253\u3001\u767D\u6866\u3001Mia\u3001Chloe\u3001Milo\u3001Dean",
   engineRemoteDown: "\u670D\u52A1\u4E0D\u53EF\u7528",
-  errMimoKeyMissing: "\u672A\u914D\u7F6E\u5C0F\u7C73 MiMo \u7684 API Key\uFF1A\u8BF7\u5728 profile \u7684 mimoTts.apiKey \u586B\u5199\u540E\u91CD\u542F\u5BBF\u4E3B",
+  errMimoKeyMissing: "\u672A\u914D\u7F6E\u5C0F\u7C73 MiMo \u7684 API Key\uFF1A\u8BF7\u5728\u672C\u8BBE\u7F6E\u5361\u7247\u586B\u5199\uFF0C\u6216\u5728 profile \u7684 mimoTts.apiKey \u4E2D\u914D\u7F6E",
   engineUnavailableShort: "\u4E0D\u53EF\u7528",
   errOpenaiConfigMissing: "\u8FD8\u6CA1\u914D\u597D\u7AEF\u70B9\uFF1A\u5728\u4E0A\u65B9\u300C\u5728\u7EBF\u9884\u8BBE\u300D\u9009\u4E00\u5BB6\uFF08\u901A\u5E38\u53EA\u9700\u586B key\uFF09\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u586B\u63A5\u53E3\u5730\u5740\u4E0E\u6A21\u578B\u540D",
   errRemoteTts: "\u6717\u8BFB\u670D\u52A1\u8FDE\u4E0D\u4E0A\u3001\u62A5\u9519\u6216\u592A\u6162\uFF1B\u914D\u7F6E\u4E86\u56DE\u9000\u65F6\u8FD9\u671F\u95F4\u7528\u672C\u5730\u5F15\u64CE\u6717\u8BFB",
@@ -2011,7 +2159,7 @@ var zh = {
   ttsDeleting: "\u5220\u9664\u4E2D\u2026",
   ttsDownloadHint: "\u4E0B\u8F7D\u8BE5\u5F15\u64CE\u7684\u672C\u5730\u6A21\u578B\uFF1B\u4E0B\u8F7D\u5B8C\u6210\u540E\u7ACB\u5373\u5C31\u7EEA\uFF0C\u53EF\u8BD5\u542C/\u6717\u8BFB",
   ttsDeleteHint: "\u5220\u9664\u672C\u5730\u6A21\u578B\uFF08\u91CA\u653E\u7A7A\u95F4\uFF1B\u4E0B\u6B21\u4F7F\u7528\u4F1A\u81EA\u52A8\u91CD\u65B0\u4E0B\u8F7D\uFF09",
-  dataFlowHint: "\u6570\u636E\u6D41\u5411\uFF1AASR \u8BC6\u522B\uFF08zipformer2+SenseVoice\uFF09\u59CB\u7EC8\u672C\u5730\uFF1BTTS \u6717\u8BFB\u53D6\u51B3\u4E8E\u5F15\u64CE\uFF08edge=\u5FAE\u8F6F\u4E91\u7AEF\uFF0Cvits/kokoro=\u672C\u5730\uFF09",
+  dataFlowHint: "\u6570\u636E\u6D41\u5411\uFF1AASR \u8BC6\u522B\uFF08zipformer2+SenseVoice\uFF09\u59CB\u7EC8\u672C\u5730\uFF1BTTS \u6717\u8BFB\u53D6\u51B3\u4E8E\u5F15\u64CE\uFF08edge=\u5FAE\u8F6F\u4E91\u7AEF\uFF0Copenai/mimo=\u7B2C\u4E09\u65B9\u4E91\u7AEF\uFF0Cvits/kokoro=\u672C\u5730\uFF09",
   kokoroModelInt8: "int8\uFF08\u9ED8\u8BA4\uFF09",
   kokoroModelFp32: "fp32\uFF08\u97F3\u8D28\u66F4\u597D\uFF09",
   descKokoroModel: "Kokoro \u6A21\u578B\u7CBE\u5EA6\uFF1Aint8 \u4F53\u79EF\u5C0F/\u52A0\u8F7D\u5FEB\uFF08\u7EAF CPU \u670D\u52A1\u5668\u6216\u4F4E\u5E26\u5BBD\u63A8\u8350\uFF0C\u9ED8\u8BA4\uFF09\uFF1Bfp32 \u97F3\u8D28\u66F4\u597D\u4F46\u7EA6 311MB\u3001\u66F4\u6162\uFF08\u6709\u72EC\u7ACB\u663E\u5361\u6216\u5927\u5185\u5B58\u673A\u5668\u63A8\u8350\uFF09\u3002\u4E24\u6863\u5171\u7528\u540C\u4E00\u5957 103 \u97F3\u8272\uFF0C\u5207\u6362\u5373\u65F6\u751F\u6548\u3002",
@@ -2139,7 +2287,7 @@ var en = {
   sayWake: 'Say "{wake}" to start',
   reading: "Reading aloud\u2026",
   recognitionFail: "Recognition failed, try again",
-  holdTrimmedNotice: "Hold-to-talk exceeded 90 s: only the last part was recognised (earlier audio was dropped)",
+  holdTrimmedNotice: "Hold-to-talk exceeded about 48 s: only the last part was recognised (earlier audio was dropped)",
   utteranceTooLong: "That utterance was too long (about 90 s): skipped \u2014 please speak it again in shorter parts",
   interruptedNotice: "Playback interrupted \u2014 go ahead",
   senseDegradedNotice: "Final-pass model failed to load; temporarily using the backup recogniser (accuracy may drop slightly)",
@@ -2171,7 +2319,7 @@ var en = {
   preview: "Preview",
   // E1 online presets.
   openaiPresetLabel: "Online preset",
-  descOpenaiPreset: "Online TTS preset: endpoint and model follow the preset (keys live in openaiTts.apiKeys[preset id] or openaiTts.apiKey on the host side, never sent to the browser); empty = manual config file values. Run the self-test below after switching",
+  descOpenaiPreset: "Pick a preset to auto-fill base URL and model (usually just enter the API key); choose Custom to enter your own URL/model, or Follow config file to use profile openaiTts values. Click Verify preset to test inline",
   presetCustom: "Follow the config file",
   presetCustomCustom: "Custom (fill below)",
   presetCustomHint: "With this selected, configure any OpenAI-compatible service in the Endpoint / Model / API key fields below",
@@ -2261,7 +2409,7 @@ var en = {
   descVoiceOpenai: "Voice name on the server. When empty: a selected preset contributes its example voice; with no preset, openaiTts.voice from the config is used. A non-empty value always wins (the preset example is then ignored)",
   descVoiceMimo: "MiMo preset voice id (empty = mimoTts.voice from the config, default mimo_default). Presets: mimo_default, Mia, Chloe, Milo, Dean, plus four Chinese-named voices (Bingtang/Moli/Suda/Baihua) \u2014 enter them by their native Chinese names as listed on the MiMo docs",
   engineRemoteDown: "server unavailable",
-  errMimoKeyMissing: "MiMo API key is not configured: set mimoTts.apiKey in the profile and restart the host",
+  errMimoKeyMissing: "MiMo API key is not configured: enter it in this settings card or set mimoTts.apiKey in the profile",
   engineUnavailableShort: "Unavailable",
   errOpenaiConfigMissing: "Endpoint is not configured yet: pick a provider under Online preset (usually only the key is needed), or choose Custom and fill the endpoint and model",
   errRemoteTts: "The TTS server is unreachable, failing or too slow; the local fallback reads aloud meanwhile if one is configured",
@@ -2387,7 +2535,7 @@ var en = {
   ttsDownloading: "Downloading\u2026",
   ttsDeleting: "Deleting\u2026",
   ttsDownloadHint: "Download this engine's local model; becomes ready immediately after",
-  dataFlowHint: "Data flow: ASR recognition (zipformer2+SenseVoice) is always local; TTS playback depends on engine (edge=Microsoft cloud, vits/kokoro=local)",
+  dataFlowHint: "Data flow: ASR recognition (zipformer2+SenseVoice) is always local; TTS playback depends on engine (edge=Microsoft cloud, openai/mimo=third-party cloud, vits/kokoro=local)",
   ttsDeleteHint: "Delete local models (frees space; auto re-downloads on next use)",
   kokoroModelInt8: "int8 (default)",
   kokoroModelFp32: "fp32 (better quality)",
@@ -3051,7 +3199,8 @@ var NEXT_ENTRY_FIELD_SPECS = [
   { key: "bargeInSalvage", label: "bargeInSalvageLabel" },
   { key: "llmCorrect", label: "llmCorrectLabel" },
   { key: "idleTimeoutMinutes", label: "idleTimeoutMinutesLabel" },
-  { key: "shortcut", label: "shortcutLabel" }
+  { key: "shortcut", label: "shortcutLabel" },
+  { key: "composerShortcut", label: "composerShortcutLabel" }
 ];
 function computePendingFields(effective, value, ready, specs = NEXT_ENTRY_FIELD_SPECS) {
   if (!ready || !effective) return [];
@@ -4083,39 +4232,54 @@ function NumberField({
 }) {
   const [draft, setDraft] = (0, import_react2.useState)(String(value ?? ""));
   const [hint, setHint2] = (0, import_react2.useState)(null);
+  const [invalid, setInvalid] = (0, import_react2.useState)(false);
+  const selfClampedRef = (0, import_react2.useRef)(null);
   (0, import_react2.useEffect)(() => {
-    setDraft((d) => d === String(value ?? "") ? d : String(value ?? ""));
-    setHint2(null);
+    const nextStr = String(value ?? "");
+    setDraft((d) => d === nextStr ? d : nextStr);
+    if (selfClampedRef.current !== null && selfClampedRef.current === nextStr) {
+      selfClampedRef.current = null;
+    } else {
+      setInvalid(false);
+      setHint2(null);
+    }
   }, [value]);
   const commit = () => {
     const raw = draft.trim();
     if (raw === "") {
+      setInvalid(true);
       setHint2(t("numberInvalid"));
       return;
     }
     if (raw.endsWith(".") || raw.split(".").length > 2) {
+      setInvalid(true);
       setHint2(t("numberInvalid"));
       return;
     }
     const n = Number(raw);
     if (!Number.isFinite(n)) {
+      setInvalid(true);
       setHint2(t("numberInvalid"));
       return;
     }
     if (n < min || n > max) {
       const clamped = Math.min(max, Math.max(min, n));
+      selfClampedRef.current = String(clamped);
+      setInvalid(false);
       setHint2(t("numberClamped").replace("{value}", String(clamped)));
       setDraft(String(clamped));
       void score.set(field, clamped);
       return;
     }
+    selfClampedRef.current = null;
+    setInvalid(false);
     setHint2(null);
     void score.set(field, n);
   };
-  const invalidStyle = hint ? {
+  const invalidStyle = invalid ? {
     ...inputStyle,
     border: "1px solid var(--dsw-alias-state-error-primary)",
-    background: "rgba(221, 51, 51, 0.08)"
+    background: "color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent)"
   } : inputStyle;
   const hintId = `${field}-number-hint`;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", flexDirection: "column", gap: 3, flexShrink: 0 }, children: [
@@ -4124,7 +4288,7 @@ function NumberField({
       {
         style: invalidStyle,
         "aria-label": t(`${field}Label`),
-        "aria-invalid": hint ? true : void 0,
+        "aria-invalid": invalid ? true : void 0,
         "aria-describedby": hint ? hintId : void 0,
         type: "number",
         step,
@@ -4134,6 +4298,7 @@ function NumberField({
         onChange: (e) => {
           setDraft(e.target.value);
           if (hint) setHint2(null);
+          if (invalid) setInvalid(false);
         },
         onBlur: commit,
         onKeyDown: (e) => {
@@ -4141,7 +4306,20 @@ function NumberField({
         }
       }
     ),
-    hint && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { id: hintId, role: "status", "aria-live": "polite", style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 11, lineHeight: "14px" }, children: hint })
+    hint && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "span",
+      {
+        id: hintId,
+        role: "status",
+        "aria-live": "polite",
+        style: {
+          color: invalid ? "var(--dsw-alias-state-error-primary)" : t2.term,
+          fontSize: 11,
+          lineHeight: "14px"
+        },
+        children: hint
+      }
+    )
   ] });
 }
 function TextField({
@@ -4162,6 +4340,7 @@ function TextField({
     "input",
     {
       style: inputStyle,
+      "aria-label": t(`${field}Label`),
       type,
       autoComplete: type === "password" ? "new-password" : void 0,
       value: draft,
@@ -4203,18 +4382,38 @@ function SecretField({
   const clear = () => {
     if (busy) return;
     setBusy(true);
-    void fetch(location.origin + BASE_PATH + "/settings", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ clearSecrets: [field] })
-    }).then((res) => {
-      if (res.ok) {
-        setNote("cleared");
-        onChanged();
-      } else {
+    void (async () => {
+      try {
+        const res = await fetch(location.origin + BASE_PATH + "/settings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ clearSecrets: [field] }),
+          signal: AbortSignal.timeout(8e3)
+        });
+        if (res.ok) {
+          setFailed(false);
+          setNote("cleared");
+          onChanged();
+          return;
+        }
+        if (res.status === 409) {
+          const ok = await Promise.resolve(score.set(field, ""));
+          if (ok === false) {
+            setFailed(true);
+            return;
+          }
+          setFailed(false);
+          setNote("cleared");
+          onChanged();
+          return;
+        }
         setFailed(true);
+      } catch {
+        setFailed(true);
+      } finally {
+        setBusy(false);
       }
-    }).catch(() => setFailed(true)).finally(() => setBusy(false));
+    })();
   };
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -4282,14 +4481,24 @@ function ShortcutField({
     } catch {
     }
   };
+  const saveAndNotify = (nextVal) => {
+    void Promise.resolve(score.set(field, nextVal)).finally(() => notify());
+  };
   const commit = () => {
-    void score.set(field, draft.trim());
-    notify();
+    saveAndNotify(draft.trim());
   };
   (0, import_react2.useEffect)(() => {
     if (!recording) return;
+    const onBlur = () => {
+      setRecording(false);
+      setErr("");
+    };
     const onKey = (e) => {
-      if (e.key === "Tab") return;
+      if (e.key === "Tab") {
+        setRecording(false);
+        setErr("");
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       if (e.key === "Escape") {
@@ -4299,9 +4508,9 @@ function ShortcutField({
       }
       if (e.key === "Backspace" || e.key === "Delete") {
         setDraft("");
-        void score.set(field, "");
-        notify();
+        saveAndNotify("");
         setRecording(false);
+        setErr("");
         return;
       }
       if (e.key === "Control" || e.key === "Alt" || e.key === "Shift" || e.key === "Meta") return;
@@ -4323,13 +4532,16 @@ function ShortcutField({
       }
       const combo = [...mods, k].join("+");
       setDraft(combo);
-      void score.set(field, combo);
-      notify();
+      saveAndNotify(combo);
       setRecording(false);
       setErr("");
     };
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("blur", onBlur);
+    };
   }, [recording, score, field]);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
@@ -4337,6 +4549,7 @@ function ShortcutField({
         "input",
         {
           style: { ...inputStyle, width: 150 },
+          "aria-label": t(`${field}Label`),
           value: draft,
           placeholder: t("shortcutPlaceholder"),
           onChange: (e) => {
@@ -4371,7 +4584,15 @@ function ShortcutField({
         }
       )
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, lineHeight: "14px", color: err ? "var(--dsw-alias-state-error-primary)" : "var(--dsw-alias-label-tertiary)" }, children: recording ? t("shortcutRecording") : err })
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "span",
+      {
+        role: "status",
+        "aria-live": "polite",
+        style: { fontSize: 11, lineHeight: "14px", color: err ? "var(--dsw-alias-state-error-primary)" : "var(--dsw-alias-label-tertiary)" },
+        children: err || (recording ? t("shortcutRecording") : "")
+      }
+    )
   ] });
 }
 function SelectField({
@@ -4384,10 +4605,13 @@ function SelectField({
 }) {
   const cur = String(value ?? "");
   const inOptions = options.some((o) => o.v === cur);
+  const [forceCustom, setForceCustom] = (0, import_react2.useState)(false);
   const [custom, setCustom] = (0, import_react2.useState)(inOptions ? "" : cur);
   (0, import_react2.useEffect)(() => {
-    if (!options.some((o) => o.v === cur)) setCustom(cur);
-  }, [cur, options]);
+    if (inOptions) setForceCustom(false);
+    else setCustom(cur);
+  }, [cur]);
+  const showCustomInput = !inOptions || forceCustom;
   const selectStyle = {
     ...inputStyle,
     appearance: "none",
@@ -4398,16 +4622,22 @@ function SelectField({
     backgroundSize: "12px 12px",
     paddingRight: 32
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: 280, alignItems: "stretch" }, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 420, alignItems: "stretch" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "select",
       {
         style: selectStyle,
-        value: inOptions ? cur : "__custom__",
+        "aria-label": t(`${field}Label`),
+        value: showCustomInput ? "__custom__" : cur,
         onChange: (e) => {
           const v = e.target.value;
-          if (v === "__custom__") void score.set(field, custom);
-          else void score.set(field, v);
+          if (v === "__custom__") {
+            setForceCustom(true);
+            setCustom(inOptions ? "" : custom);
+          } else {
+            setForceCustom(false);
+            void score.set(field, v);
+          }
         },
         children: [
           options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v)),
@@ -4418,10 +4648,11 @@ function SelectField({
         ]
       }
     ),
-    !inOptions && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    showCustomInput && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "input",
       {
         style: inputStyle,
+        "aria-label": t(`${field}Label`),
         value: custom,
         placeholder,
         onChange: (e) => setCustom(e.target.value),
@@ -4431,7 +4662,7 @@ function SelectField({
         }
       }
     ),
-    footer?.(inOptions ? cur : custom)
+    footer?.(showCustomInput ? custom : cur)
   ] });
 }
 var stepBtn = {
@@ -4461,12 +4692,15 @@ function VoiceSelect({
   const cur = String(value ?? "");
   const inOptions = options.some((o) => o.v === cur);
   const idx = options.findIndex((o) => o.v === cur);
+  const [forceCustom, setForceCustom] = (0, import_react2.useState)(false);
   const [custom, setCustom] = (0, import_react2.useState)(inOptions ? "" : cur);
   (0, import_react2.useEffect)(() => {
-    if (!options.some((o) => o.v === cur)) setCustom(cur);
-  }, [cur, options]);
+    if (inOptions) setForceCustom(false);
+    else setCustom(cur);
+  }, [cur]);
   const move = (delta) => {
     if (options.length === 0) return;
+    setForceCustom(false);
     if (inOptions) {
       const n = options.length;
       const next = options[((idx + delta) % n + n) % n];
@@ -4489,8 +4723,9 @@ function VoiceSelect({
     backgroundSize: "12px 12px",
     paddingRight: 32
   };
-  const currentValueLabel = inOptions ? options[idx].label : custom || placeholder || "";
-  const selectValue = inOptions ? cur : showCustom ? "__custom__" : options[0]?.v ?? "";
+  const currentValueLabel = inOptions && !forceCustom ? options[idx].label : custom || placeholder || "";
+  const showCustomInput = showCustom && (!inOptions || forceCustom);
+  const selectValue = showCustomInput ? "__custom__" : inOptions ? cur : options[0]?.v ?? "";
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: "100%", alignItems: "stretch" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", gap: 6, alignItems: "center" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": t("voicePrev"), onClick: () => move(-1), style: stepBtn, children: "\u2039" }),
@@ -4502,8 +4737,13 @@ function VoiceSelect({
           "aria-label": t(`${field}Label`),
           onChange: (e) => {
             const v = e.target.value;
-            if (v === "__custom__") setCustom(inOptions ? "" : custom);
-            else void score.set(field, v);
+            if (v === "__custom__") {
+              setForceCustom(true);
+              setCustom(inOptions ? "" : custom);
+            } else {
+              setForceCustom(false);
+              void score.set(field, v);
+            }
           },
           children: [
             options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v)),
@@ -4516,13 +4756,13 @@ function VoiceSelect({
       ),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": t("voiceNext"), onClick: () => move(1), style: stepBtn, children: "\u203A" })
     ] }),
-    showCustom && !inOptions && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    showCustomInput && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "input",
       {
         style: inputStyle,
         value: custom,
         placeholder,
-        "aria-label": currentValueLabel,
+        "aria-label": currentValueLabel || t(`${field}Label`),
         onChange: (e) => setCustom(e.target.value),
         onBlur: () => void score.set(field, custom),
         onKeyDown: (e) => {
@@ -4530,13 +4770,15 @@ function VoiceSelect({
         }
       }
     ),
-    footer?.(inOptions ? cur : showCustom ? custom : cur)
+    footer?.(showCustomInput ? custom : cur)
   ] });
 }
 function VoicePreviewButton({ voice, rate }) {
   const [busy, setBusy] = (0, import_react2.useState)(false);
   const [note, setNote] = (0, import_react2.useState)(null);
   const audioRef = (0, import_react2.useRef)(null);
+  const abortRef = (0, import_react2.useRef)(null);
+  const mountedRef = (0, import_react2.useRef)(true);
   const status = useModelsStatus();
   const stTts = status?.tts;
   const localReady = stTts ? isCloudEngine(stTts.engine) ? true : !!stTts.local?.ready : null;
@@ -4559,6 +4801,10 @@ function VoicePreviewButton({ voice, rate }) {
     }
     setBusy(true);
     setNote(null);
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const timeoutId = setTimeout(() => ac.abort(new DOMException("timeout", "TimeoutError")), 9e4);
     const audio = new Audio();
     const prev = audioRef.current;
     if (prev) {
@@ -4572,14 +4818,16 @@ function VoicePreviewButton({ voice, rate }) {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ voice: v, rate }),
-          signal: AbortSignal.timeout(9e4)
+          signal: ac.signal
         });
+        if (ac.signal.aborted || !mountedRef.current) return;
         if (!res.ok) {
           let body = null;
           try {
             body = await res.json();
           } catch {
           }
+          if (ac.signal.aborted || !mountedRef.current) return;
           const code = body?.code;
           setNote(
             code === "voice_disabled" || res.status === 403 ? t("previewDisabled") : code === "rate_limited" || res.status === 429 ? t("previewRateLimited") : errorText(body, "previewCheck")
@@ -4587,38 +4835,48 @@ function VoicePreviewButton({ voice, rate }) {
           return;
         }
         const blob = await res.blob();
+        if (ac.signal.aborted || !mountedRef.current) return;
         const url = URL.createObjectURL(blob);
         audio.src = url;
         audio.onended = () => URL.revokeObjectURL(url);
         audio.onerror = () => {
           URL.revokeObjectURL(url);
-          setNote(t("previewPlayFail"));
+          if (mountedRef.current) setNote(t("previewPlayFail"));
         };
         try {
           await audio.play();
         } catch (e) {
           URL.revokeObjectURL(url);
+          if (ac.signal.aborted || !mountedRef.current) return;
           setNote(
             e instanceof DOMException && e.name === "NotAllowedError" ? t("previewAutoplay") : t("previewPlayFail")
           );
         }
       } catch (e) {
-        setNote(e instanceof DOMException && e.name === "TimeoutError" ? t("previewTimeout") : t("previewCheck"));
+        if (!mountedRef.current) return;
+        const isTimeout = e instanceof DOMException && e.name === "TimeoutError" || ac.signal.reason instanceof DOMException && ac.signal.reason.name === "TimeoutError";
+        if (ac.signal.aborted && !isTimeout) return;
+        setNote(isTimeout ? t("previewTimeout") : t("previewCheck"));
       } finally {
-        setBusy(false);
+        clearTimeout(timeoutId);
+        if (abortRef.current === ac) abortRef.current = null;
+        if (mountedRef.current) setBusy(false);
       }
     })();
   };
-  (0, import_react2.useEffect)(
-    () => () => {
+  (0, import_react2.useEffect)(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+      abortRef.current = null;
       const a = audioRef.current;
       if (a) {
         a.pause();
         if (a.src.startsWith("blob:")) URL.revokeObjectURL(a.src);
       }
-    },
-    []
-  );
+    };
+  }, []);
   const btnStyle = {
     font: "inherit",
     display: "inline-flex",
@@ -4668,6 +4926,8 @@ function SelfTestSection({
   const [play, setPlay] = (0, import_react2.useState)(null);
   const [note, setNote] = (0, import_react2.useState)(null);
   const audioRef = (0, import_react2.useRef)(null);
+  const abortRef = (0, import_react2.useRef)(null);
+  const mountedRef = (0, import_react2.useRef)(true);
   const run = () => {
     if (busy) return;
     const v = voice.trim();
@@ -4675,6 +4935,10 @@ function SelfTestSection({
       setNote(t("previewNameFirst"));
       return;
     }
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const timeoutId = setTimeout(() => ac.abort(new DOMException("timeout", "TimeoutError")), 9e4);
     const prev = audioRef.current;
     if (prev) {
       prev.pause();
@@ -4694,14 +4958,16 @@ function SelfTestSection({
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ voice: v, rate }),
-          signal: AbortSignal.timeout(9e4)
+          signal: ac.signal
         });
+        if (ac.signal.aborted || !mountedRef.current) return;
         if (!res.ok) {
           let body = null;
           try {
             body = await res.json();
           } catch {
           }
+          if (ac.signal.aborted || !mountedRef.current) return;
           const code = body?.code;
           if (code === "rate_limited" || res.status === 429) {
             setNote(t("selftestRateLimited"));
@@ -4716,6 +4982,7 @@ function SelfTestSection({
           return;
         }
         const blob = await res.blob();
+        if (ac.signal.aborted || !mountedRef.current) return;
         if (blob.size === 0) {
           setSynth("fail");
           setNote(t("selftestCheck"));
@@ -4727,17 +4994,20 @@ function SelfTestSection({
         audio.src = url;
         audio.onended = () => {
           URL.revokeObjectURL(url);
-          setPlay("ok");
+          if (mountedRef.current) setPlay("ok");
         };
         audio.onerror = () => {
           URL.revokeObjectURL(url);
-          setPlay("fail");
-          setNote(t("previewPlayFail"));
+          if (mountedRef.current) {
+            setPlay("fail");
+            setNote(t("previewPlayFail"));
+          }
         };
         try {
           await audio.play();
         } catch (e) {
           URL.revokeObjectURL(url);
+          if (ac.signal.aborted || !mountedRef.current) return;
           if (e instanceof DOMException && e.name === "NotAllowedError") {
             setPlay("autoplay");
             setNote(t("selftestAutoplay"));
@@ -4747,23 +5017,31 @@ function SelfTestSection({
           }
         }
       } catch (e) {
+        if (!mountedRef.current) return;
+        const isTimeout = e instanceof DOMException && e.name === "TimeoutError" || ac.signal.reason instanceof DOMException && ac.signal.reason.name === "TimeoutError";
+        if (ac.signal.aborted && !isTimeout) return;
         setSynth("fail");
-        setNote(e instanceof DOMException && e.name === "TimeoutError" ? t("selftestTimeout") : t("selftestCheck"));
+        setNote(isTimeout ? t("selftestTimeout") : t("selftestCheck"));
       } finally {
-        setBusy(false);
+        clearTimeout(timeoutId);
+        if (abortRef.current === ac) abortRef.current = null;
+        if (mountedRef.current) setBusy(false);
       }
     })();
   };
-  (0, import_react2.useEffect)(
-    () => () => {
+  (0, import_react2.useEffect)(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+      abortRef.current = null;
       const a = audioRef.current;
       if (a) {
         a.pause();
         if (a.src.startsWith("blob:")) URL.revokeObjectURL(a.src);
       }
-    },
-    []
-  );
+    };
+  }, []);
   const verdict = (label, st, extra2) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term, display: "inline-flex", gap: 4 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -4860,7 +5138,7 @@ function ReplacementsSection({
   rules,
   onChange
 }) {
-  const parsed = normalizeRules(rules);
+  const parsed = rules === void 0 ? [] : normalizeRules(rules);
   const unreadable = parsed === null;
   const list = parsed ?? [];
   const [fromText, setFromText] = (0, import_react2.useState)("");
@@ -4991,7 +5269,7 @@ function ReplacementsSection({
           onChange: (e) => setFromText(e.target.value),
           placeholder: t("replFromPh"),
           "aria-label": t("replFromPh"),
-          style: { fontSize: 12, padding: "4px 8px", maxWidth: 220 }
+          style: { ...inputStyle, width: "auto", fontSize: 12, padding: "4px 8px", maxWidth: 220 }
         }
       ),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -5004,7 +5282,7 @@ function ReplacementsSection({
           },
           placeholder: t("replToPh"),
           "aria-label": t("replToPh"),
-          style: { fontSize: 12, padding: "4px 8px", maxWidth: 140 }
+          style: { ...inputStyle, width: "auto", fontSize: 12, padding: "4px 8px", maxWidth: 140 }
         }
       ),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: add, disabled: busy, style: btnStyle, children: t("replAdd") })
@@ -5070,6 +5348,7 @@ function DictationPreset({
 var modelsStatusSubs = /* @__PURE__ */ new Set();
 var modelsStatusTimer = null;
 var modelsStatusLast = null;
+var modelsStatusRaw = "";
 var modelsStatusInflight = false;
 var MODELS_STATUS_INTERVAL_MS = 3e3;
 async function pollModelsStatusOnce() {
@@ -5078,7 +5357,10 @@ async function pollModelsStatusOnce() {
   try {
     const res = await fetch(location.origin + BASE_PATH + "/models/status", { signal: AbortSignal.timeout(8e3) });
     if (!res.ok) return;
-    modelsStatusLast = await res.json();
+    const text = await res.text();
+    if (text === modelsStatusRaw && modelsStatusLast !== null) return;
+    modelsStatusRaw = text;
+    modelsStatusLast = JSON.parse(text);
     for (const fn of [...modelsStatusSubs]) fn(modelsStatusLast);
   } catch {
   } finally {
@@ -5246,7 +5528,8 @@ var NEXT_ENTRY_FMT = {
   bargeInSalvage: (v) => v ? t("valueOn") : t("valueOff"),
   llmCorrect: (v) => v ? t("valueOn") : t("valueOff"),
   idleTimeoutMinutes: (v) => `${v} ${t("unitMin")}`,
-  shortcut: (v) => v ? String(v) : t("valueOff")
+  shortcut: (v) => v ? String(v) : t("valueOff"),
+  composerShortcut: (v) => v ? String(v) : t("valueOff")
 };
 function EffectivePending({ effective, value, ready }) {
   const pending = computePendingFields(effective, value, ready === true);
@@ -5314,9 +5597,10 @@ function SegGroup({
   options,
   onSelect
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "group", style: setSeg, children: options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "group", "aria-label": t(`${field}Label`), style: setSeg, children: options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
     "button",
     {
+      type: "button",
       style: setSegBtn(value === o.v),
       "aria-pressed": value === o.v,
       onClick: () => {
@@ -5517,18 +5801,18 @@ function ModelStatusView() {
     ] }),
     mkRow(
       t("modelStreamingAsr"),
-      { ready: !!st?.asr.ready, size: st?.asr.files.reduce((a, f) => a + f.size, 0) ?? 0, failLatchMs: st?.asr.failLatchMs ?? 0 },
+      { ready: !!st?.asr?.ready, size: st?.asr?.files?.reduce((a, f) => a + f.size, 0) ?? 0, failLatchMs: st?.asr?.failLatchMs ?? 0 },
       "asr",
       anyDownloading ? st.progress : null
     ),
-    mkRow(t("modelVad"), { ready: !!st?.vad.ready, size: st?.vad.size ?? 0, failLatchMs: st?.vad.failLatchMs ?? 0 }, "vad", anyDownloading ? st.progress : null),
+    mkRow(t("modelVad"), { ready: !!st?.vad?.ready, size: st?.vad?.size ?? 0, failLatchMs: st?.vad?.failLatchMs ?? 0 }, "vad", anyDownloading ? st.progress : null),
     mkRow(
       t("modelSense"),
       {
-        ready: !!st?.sense.ready,
-        size: st?.sense.size ?? 0,
-        failLatchMs: st?.sense.enabled ? st?.sense.failLatchMs ?? 0 : 0,
-        disabledText: st?.sense.enabled ? void 0 : t("modelsDisabled")
+        ready: !!st?.sense?.ready,
+        size: st?.sense?.size ?? 0,
+        failLatchMs: st?.sense?.enabled ? st?.sense?.failLatchMs ?? 0 : 0,
+        disabledText: st?.sense?.enabled ? void 0 : t("modelsDisabled")
       },
       "sense",
       anyDownloading ? st.progress : null
@@ -5605,8 +5889,10 @@ function VoiceSettingsCard({
           setVerifying(false);
           return;
         }
-        await scope.set("voice", voice);
       } catch {
+        setPresetVerify({ id: presetId, state: "fail", note: t("presetWriteFailed") });
+        setVerifying(false);
+        return;
       }
       try {
         const res = await fetch(`${BASE_PATH}/preview`, {
@@ -5643,7 +5929,7 @@ function VoiceSettingsCard({
     if (engine !== "edge") return;
     let alive = true;
     void fetch(location.origin + BASE_PATH + "/voices").then((res) => res.ok ? res.json() : null).then((data) => {
-      if (alive && data?.voices) setEdgeRaw(data.voices);
+      if (alive && Array.isArray(data?.voices) && data.voices.length > 0) setEdgeRaw(data.voices);
     }).catch(() => void 0);
     return () => {
       alive = false;
@@ -5666,7 +5952,7 @@ function VoiceSettingsCard({
           {
             style: { ...setDesc, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" },
             title: t("settingsCardDesc"),
-            children: collapsed ? `${ENGINE_NAME[engine]()} \xB7 ${String(value.voice ?? "") || "\u2014"} \xB7 ${headStatus?.tts?.error ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine) : headStatus?.tts?.loading ? t("engineLoading") : t("engineReady")}` : t("settingsCardDesc")
+            children: collapsed ? `${ENGINE_NAME[engine]()} \xB7 ${String(value.voice ?? "") || "\u2014"} \xB7 ${!headStatus?.tts ? "\u2026" : headStatus.tts.error ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine) : headStatus.tts.loading ? t("engineLoading") : headStatus.tts.local && !headStatus.tts.local.ready ? t("ttsModelsMissing") : t("engineReady")}` : t("settingsCardDesc")
           }
         )
       ] }),
@@ -5865,7 +6151,7 @@ function VoiceSettingsCard({
           ) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "toolBeep", checked: Boolean(value.toolBeep), score: scope }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "autoSend", checked: Boolean(value.autoSend), score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "autoSend", checked: value.autoSend !== false, score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "readAloud", desc: t("descReadAloud"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -5925,12 +6211,15 @@ function VoiceSettingsCard({
               {
                 type: "button",
                 onClick: () => {
-                  void scope.set("shortcut", "Ctrl+Shift+V");
-                  void scope.set("composerShortcut", "Alt+Enter");
-                  try {
-                    window.dispatchEvent(new Event("dshvm-settings-changed"));
-                  } catch {
-                  }
+                  void Promise.all([
+                    Promise.resolve(scope.set("shortcut", "Ctrl+Shift+V")),
+                    Promise.resolve(scope.set("composerShortcut", "Alt+Enter"))
+                  ]).finally(() => {
+                    try {
+                      window.dispatchEvent(new Event("dshvm-settings-changed"));
+                    } catch {
+                    }
+                  });
                 },
                 style: {
                   flexShrink: 0,
@@ -5949,9 +6238,9 @@ function VoiceSettingsCard({
           ] })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRecognition"), children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "senseVoice", checked: Boolean(value.senseVoice), score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "senseVoice", checked: value.senseVoice !== false, score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseITN", desc: t("descSenseITN"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "senseITN", checked: value.senseITN !== false, score: scope }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "spokenFormat", checked: Boolean(value.spokenFormat), score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "spokenFormat", checked: value.spokenFormat !== false, score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 5, min: 1, max: 120, step: 1 }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -5982,6 +6271,7 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
   let writing = 0;
   let writeGen = 0;
   let writeSeq = 0;
+  let writeChain = Promise.resolve();
   let pendingReload = false;
   let disposed = false;
   let retryTimer = null;
@@ -5992,7 +6282,7 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
       try {
         fn();
       } catch (e) {
-        console.warn("[dsh-voice-mode] settings scope subscriber failed: " + String(e));
+        console.warn("[dsh-voice-mode] settings scope subscriber failed: " + redactSecrets(e));
       }
     }
   };
@@ -6018,7 +6308,7 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
       retryDelay = 0;
       if (!disposed && writing === 0 && myGen === writeGen) emit({ status: "ready", value: data.value ?? {} });
     } catch {
-      if (!disposed) emit({ status: "unavailable", value: snap.value });
+      if (!disposed && writing === 0 && myGen === writeGen) emit({ status: "unavailable", value: snap.value });
       scheduleRetry();
     } finally {
       inFlight = false;
@@ -6062,26 +6352,32 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
       const mySeq = ++writeSeq;
       writing++;
       emit({ status: "ready", value: { ...snap.value, [field]: value } });
-      let ok = false;
-      try {
-        const res = await fetchImpl(origin + SETTINGS_URL, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ [field]: value }),
-          signal: AbortSignal.timeout(timeoutMs)
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (!disposed && mySeq === writeSeq) emit({ status: "ready", value: data.value ?? before.value });
-        ok = true;
-      } catch {
-        if (!disposed && mySeq === writeSeq) emit(before);
-      } finally {
-        writing--;
-        writeGen++;
-      }
-      if (!ok) await load();
-      return ok;
+      const runPost = async () => {
+        let ok = false;
+        try {
+          if (disposed) return false;
+          const res = await fetchImpl(origin + SETTINGS_URL, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ [field]: value }),
+            signal: AbortSignal.timeout(timeoutMs)
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          if (!disposed && mySeq === writeSeq) emit({ status: "ready", value: data.value ?? before.value });
+          ok = true;
+        } catch {
+          if (!disposed && mySeq === writeSeq) emit(before);
+        } finally {
+          writing--;
+          writeGen++;
+        }
+        if (!ok && !disposed && writing === 0) await load();
+        return ok;
+      };
+      const p = writeChain.then(runPost, runPost);
+      writeChain = p.then(() => void 0, () => void 0);
+      return p;
     },
     dispose: () => {
       disposed = true;
@@ -6159,7 +6455,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "9621ba6";
+var BUILD_TAG = "91efcc4";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -6264,10 +6560,17 @@ function setLastVoiceSession(id) {
 function apply(ctx) {
   ctx.effect(() => bindLocale(ctx.get?.("locale")), "dsh-voice-mode: locale dictionaries");
   const bus = createVoiceBus(void 0, ctx);
+  ctx.effect(() => () => bus.dispose(), "dsh-voice-mode: voice bus");
   if (typeof document !== "undefined") {
-    const resumeAudio = () => bus.warmAudio();
-    document.addEventListener("pointerdown", resumeAudio, { passive: true });
-    document.addEventListener("keydown", resumeAudio, { passive: true });
+    ctx.effect(() => {
+      const resumeAudio = () => bus.warmAudio();
+      document.addEventListener("pointerdown", resumeAudio, { passive: true });
+      document.addEventListener("keydown", resumeAudio, { passive: true });
+      return () => {
+        document.removeEventListener("pointerdown", resumeAudio);
+        document.removeEventListener("keydown", resumeAudio);
+      };
+    }, "dsh-voice-mode: audio gesture resume");
   }
   const activity = { declared: false, mounted: 0, listeners: /* @__PURE__ */ new Set() };
   const activityChanged = () => activity.listeners.forEach((fn) => fn());
@@ -6402,6 +6705,14 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
   let fallback = false;
   let decodeFailStreak = 0;
   let fallbackBusy = false;
+  let activeFallbackUrl = null;
+  let fallbackGen = 0;
+  const revokeFallbackUrl = () => {
+    if (activeFallbackUrl) {
+      URL.revokeObjectURL(activeFallbackUrl);
+      activeFallbackUrl = null;
+    }
+  };
   let ctx = null;
   let duckGain = null;
   let analyser = null;
@@ -6437,19 +6748,29 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
   const playFallback = () => {
     const frame = pending.shift() ?? null;
     if (!frame) {
+      revokeFallbackUrl();
       fallbackBusy = false;
       setUi({ playing: false, playingCaption: null });
+      onAllPlayed?.();
       return;
     }
     fallbackBusy = true;
-    const url = URL.createObjectURL(new Blob([frame.audio], { type: frame.mime === "audio/wav" ? "audio/wav" : "audio/mpeg" }));
+    const myGen = ++fallbackGen;
+    revokeFallbackUrl();
+    const blobMime = typeof frame.mime === "string" && frame.mime.toLowerCase().startsWith("audio/") ? frame.mime : "audio/mpeg";
+    const url = URL.createObjectURL(new Blob([frame.audio], { type: blobMime }));
+    activeFallbackUrl = url;
     fallbackAudio.src = url;
     const next = () => {
-      URL.revokeObjectURL(url);
+      if (myGen !== fallbackGen) return;
+      revokeFallbackUrl();
       fallbackBusy = false;
       if (!fallback && ctx) {
         if (pending.length > 0) drainPending();
-        else setUi({ playing: false, playingCaption: null });
+        else {
+          setUi({ playing: false, playingCaption: null });
+          onAllPlayed?.();
+        }
       } else playFallback();
     };
     fallbackAudio.onended = next;
@@ -6471,7 +6792,10 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
     };
     setUi({ playing: true, playingCaption: frame.text, ttsNotice: null });
     fixtureRecorder.mark("tts-sentence", frame.text);
-    void fallbackAudio.play().catch(() => playFallback());
+    void fallbackAudio.play().catch((err) => {
+      if (myGen !== fallbackGen || err?.name === "AbortError") return;
+      next();
+    });
   };
   const drainPending = () => {
     if (decoding || fallbackBusy || !ctx || !duckGain || pending.length === 0) return;
@@ -6518,6 +6842,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
         }
       } catch {
         for (const src of activeSrcs) {
+          src.onended = null;
           try {
             src.stop();
           } catch {
@@ -6529,6 +6854,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
         playFallback();
       } finally {
         decoding = false;
+        if (pending.length > 0 && !fallbackBusy && !fallback && ctx) drainPending();
       }
     })();
   };
@@ -6537,7 +6863,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
       warm();
       if (fallback || !ctx) {
         pending.push(frame);
-        if (fallbackAudio.paused) playFallback();
+        if (fallbackAudio.paused && !fallbackBusy) playFallback();
         return;
       }
       pending.push(frame);
@@ -6545,12 +6871,16 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
     },
     skip() {
       pending.length = 0;
+      fallbackGen++;
       fallbackBusy = false;
+      revokeFallbackUrl();
       nextEndAt = 0;
-      fallbackAudio.pause();
       fallbackAudio.onended = null;
       fallbackAudio.onerror = null;
+      fallbackAudio.onplaying = null;
+      fallbackAudio.pause();
       for (const src of activeSrcs) {
+        src.onended = null;
         try {
           src.stop();
         } catch {
@@ -6980,8 +7310,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         const p = JSON.parse(e.data);
         if (!activeSessionId) return;
         if (p.code === "sense_degraded") {
-          ui.notice = t("senseDegradedNotice");
-          notify();
+          busApi.setNotice(t("senseDegradedNotice"));
         }
       } catch {
       }
@@ -7101,9 +7430,12 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       curBytes = 0;
       curChunkCount = 0;
       if (buf.length === 0) return;
-      const isMp3 = buf[0] === 255;
+      const isMp3 = buf[0] === 255 || buf.length >= 3 && buf[0] === 73 && buf[1] === 68 && buf[2] === 51;
       const isWav = buf.length >= 4 && buf[0] === 82 && buf[1] === 73 && buf[2] === 70 && buf[3] === 70;
-      if (!isMp3 && !isWav) return;
+      const isOgg = buf.length >= 4 && buf[0] === 79 && buf[1] === 103 && buf[2] === 103 && buf[3] === 83;
+      const isFlac = buf.length >= 4 && buf[0] === 102 && buf[1] === 76 && buf[2] === 97 && buf[3] === 67;
+      const isAudioMime = typeof frame.mime === "string" && frame.mime.toLowerCase().startsWith("audio/");
+      if (!isMp3 && !isWav && !isOgg && !isFlac && !isAudioMime) return;
       engine.push({
         sessionId: frame.sessionId,
         seq: frame.sentenceId,
@@ -7124,7 +7456,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   const doSkipAudio = (sidArg) => {
     const sid = sidArg ?? activeSessionId ?? focusedSessionId;
     if (sid) {
-      rejectSeqUpTo.set(sid, Math.max(lastFinalSeq.get(sid) ?? -1, curSentenceId ?? -1));
+      const prevLine = rejectSeqUpTo.get(sid) ?? -1;
+      rejectSeqUpTo.set(sid, Math.max(prevLine, lastFinalSeq.get(sid) ?? -1, curSentenceId ?? -1));
     }
     curSentenceId = null;
     curChunks = [];
@@ -7135,7 +7468,7 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     engine.skip();
     playingEndAt = 0;
   };
-  return {
+  const busApi = {
     get activeSessionId() {
       return activeSessionId;
     },
@@ -7302,23 +7635,36 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         signal: AbortSignal.timeout(3e3)
       }).catch(() => {
       });
+    },
+    dispose() {
+      if (noticeTimer) {
+        clearTimeout(noticeTimer);
+        noticeTimer = null;
+      }
+      source?.close();
+      source = null;
+      engine.skip();
+      listeners.clear();
+      audioListeners.clear();
     }
   };
+  return busApi;
 }
-var styleInjected = false;
+var styleRefCount = 0;
+var styleEl = null;
 var VOICE_CSS_ATTR = "data-dshvm-css";
 function useVoiceCss() {
   (0, import_react3.useEffect)(() => {
-    if (styleInjected) return;
-    styleInjected = true;
-    document.head.querySelectorAll?.(`style[${VOICE_CSS_ATTR}]`).forEach?.((n) => n.remove());
-    const el = document.createElement("style");
-    el.setAttribute?.(VOICE_CSS_ATTR, "");
-    el.textContent = `
+    styleRefCount++;
+    if (!styleEl) {
+      document.head.querySelectorAll?.(`style[${VOICE_CSS_ATTR}]`).forEach?.((n) => n.remove());
+      const el = document.createElement("style");
+      el.setAttribute?.(VOICE_CSS_ATTR, "");
+      el.textContent = `
 @keyframes dshvm-fadein { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
 @keyframes dshvm-eq { 0%, 100% { transform: scaleY(0.35) } 50% { transform: scaleY(1) } }
 @keyframes dshvm-spin { to { transform: rotate(360deg) } }
-.dshvm-bar { width: 3px; border-radius: 99px; transition: height 0.08s linear, opacity 0.08s linear }
+.dshvm-bar, .dshvm-bar-bot { width: 3px; border-radius: 99px; transition: height 0.08s linear, opacity 0.08s linear }
 /* \u9EA6\u514B\u98CE\u6309\u94AE\u6240\u5728\u7684\u5BBF\u4E3B\u5BB9\u5668\u4E5F\u7981\u9009\uFF1A\u624B\u6307\u504F\u5927\u65F6\u957F\u6309\u53EF\u80FD\u547D\u4E2D\u6309\u94AE\u5916\u4FA7\u7684\u5BB9\u5668\u7559\u767D\uFF0C
    \u6D4F\u89C8\u5668\u5C31\u8FD1\u9009\u4E2D\u300C\u8BED\u97F3\u300D\u6807\u7B7E\u6587\u5B57\u3002 */
 :has(> [data-dshvm="mic"]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
@@ -7374,15 +7720,21 @@ html.dshvm-holding, html.dshvm-holding * {
 .dshvm-menu-item:hover, .dshvm-menu-item:focus-visible { background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14)); outline: none; }
 .dshvm-menu-check { color: var(--dsw-alias-state-business-primary, #58a6ff); font-size: 11px; }
 .dshvm-menu-sep { height: 1px; margin: 4px 2px; background: var(--dsw-alias-border-l1, rgba(139,148,158,.25)); }
-@media (prefers-reduced-motion: reduce) { .dshvm-spin, .dshvm-menu { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .dshvm-spin, .dshvm-menu, .dshvm-eq-bar { animation: none !important; } }
 `;
-    document.head.appendChild(el);
+      document.head.appendChild(el);
+      styleEl = el;
+    }
     return () => {
-      el.remove();
-      styleInjected = false;
+      styleRefCount = Math.max(0, styleRefCount - 1);
+      if (styleRefCount === 0 && styleEl) {
+        styleEl.remove();
+        styleEl = null;
+      }
     };
   }, []);
 }
+var noopSelectorHook = (_sel) => void 0;
 var IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
 var ONCE_SETTLE_MS = 1200;
 var ONCE_NO_START_MS = 3e4;
@@ -7420,6 +7772,7 @@ function MicMenu({ scope, anchor, onClose }) {
     const onKey = (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         onClose(true);
         return;
       }
@@ -7484,8 +7837,10 @@ function MicButton({
   const [local, setLocal] = (0, import_react3.useState)("off");
   const localRef = (0, import_react3.useRef)("off");
   const sidRef = (0, import_react3.useRef)(sessionId);
+  const prevSidRef = (0, import_react3.useRef)(sessionId);
   const engineRef = (0, import_react3.useRef)(null);
   const micReadyRef = (0, import_react3.useRef)(false);
+  const hostEnteredRef = (0, import_react3.useRef)(false);
   const enterEpochRef = (0, import_react3.useRef)(0);
   const actionsRef = (0, import_react3.useRef)(inputActions);
   const submitTimerRef = (0, import_react3.useRef)(null);
@@ -7542,7 +7897,7 @@ function MicButton({
   const uiKeyRef = (0, import_react3.useRef)("");
   (0, import_react3.useEffect)(
     () => bus.subscribe(({ active, ui: u }) => {
-      const key = `${active}|${u.state}|${u.error ?? ""}|${u.notice ?? ""}|${u.mode}|${u.wakeWord}|${u.ttsNotice ?? ""}|${u.playing}|${u.turn}|${u.sseDown}|${u.idleWarn}|${u.boot?.showStatusBar}`;
+      const key = `${active}|${u.state}|${u.error ?? ""}|${u.notice ?? ""}|${u.mode}|${u.wakeWord}|${u.ttsNotice ?? ""}|${u.playing}|${u.turn}|${u.sseDown}|${u.idleWarn}|${u.isSpeech}|${u.boot?.showStatusBar}`;
       if (key === uiKeyRef.current) return;
       uiKeyRef.current = key;
       bumpUi((t3) => t3 + 1);
@@ -7699,6 +8054,7 @@ function MicButton({
         const engine = engineRef.current;
         engineRef.current = null;
         micReadyRef.current = false;
+        hostEnteredRef.current = false;
         if (engine) void engine.stop();
         bus.resetTelemetry();
         bus.setUi({ state: "idle", partial: "", levels: [], botLevels: [], error: null, model: null, ttsNotice: null, isSpeech: void 0 });
@@ -7888,12 +8244,14 @@ function MicButton({
     bus.setUi({ partial: "", levels: [], isSpeech: void 0, ttsDrained: false });
     checkOnce();
   };
-  const exitMode = async (reason) => {
+  const exitMode = async (reason, overrideSid) => {
     if (localRef.current === "off") return;
+    const sid = overrideSid ?? sidRef.current;
     pendingHoldRef.current = false;
     pendingHoldReleaseRef.current = false;
     clearHoldExit();
     setLocalMode("off");
+    hostEnteredRef.current = false;
     clearOnce();
     clearIdle();
     cancelPendingSubmit();
@@ -7917,7 +8275,6 @@ function MicButton({
     if (engine) await engine.stop();
     bus.resetTelemetry();
     bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null, isSpeech: void 0 });
-    const sid = sidRef.current;
     if (sid) await bus.exit(sid, reason === "typing");
   };
   const cancelPending = () => {
@@ -7930,6 +8287,7 @@ function MicButton({
     isSpeechTrueCount = 0;
     isSpeechFalseRun = 0;
     micReadyRef.current = false;
+    hostEnteredRef.current = false;
     setLocalMode("pending");
     const myEnter = ++enterEpochRef.current;
     try {
@@ -7947,6 +8305,7 @@ function MicButton({
         }
         return;
       }
+      hostEnteredRef.current = true;
       const cfg = await fetchConfig();
       if (enterEpochRef.current !== myEnter) {
         if (localRef.current === "off") void bus.exit(sid);
@@ -7964,18 +8323,18 @@ function MicButton({
         if (!pv && typeof sv.voice === "string") pv = sv.voice.trim();
         const presetId = typeof cfg.openaiPreset === "string" && cfg.openaiPreset ? cfg.openaiPreset : typeof sv.openaiPreset === "string" ? sv.openaiPreset : "";
         const readAloudOff = (typeof cfg.readAloud === "string" ? cfg.readAloud : sv.readAloud) === "off";
-        const probeKey = "dshvm:ttsProbeAt";
         const probeTtlMs = 10 * 60 * 1e3;
+        if (!readAloudOff && isCloudEngine(eng)) {
+          if (eng === "openai") {
+            pv = resolvePresetVoice(pv, presetId ? await fetchPresetVoice(presetId) : null);
+          }
+        }
+        const probeKey = `dshvm:ttsProbeAt:${eng}:${presetId}:${pv}`;
         let recentProbe = false;
         try {
           const at = Number(sessionStorage.getItem(probeKey) ?? "0");
           recentProbe = Number.isFinite(at) && at > 0 && Date.now() - at < probeTtlMs;
         } catch {
-        }
-        if (!readAloudOff && !recentProbe && isCloudEngine(eng)) {
-          if (eng === "openai") {
-            pv = resolvePresetVoice(pv, presetId ? await fetchPresetVoice(presetId) : null);
-          }
         }
         if (!readAloudOff && !recentProbe && isCloudEngine(eng) && !pv) {
           debugLog("tts-probe-skip", { reason: "no-voice", engine: eng });
@@ -7989,7 +8348,8 @@ function MicButton({
             } catch {
             }
           };
-          const pr = typeof sv.rate === "number" ? Math.min(2, Math.max(0.5, sv.rate)) : 1.1;
+          const rawRate = typeof cfg.rate === "number" ? cfg.rate : typeof sv.rate === "number" ? sv.rate : 1.1;
+          const pr = Math.min(2, Math.max(0.5, rawRate));
           const myProbe = enterEpochRef.current;
           const markDown = () => {
             if (enterEpochRef.current !== myProbe || localRef.current === "off") return;
@@ -8025,7 +8385,7 @@ function MicButton({
         sessionId: sid
       });
       const hardBreak = async () => {
-        const resumeOnce = bootNow().mode === "once" && onceRef.current !== null;
+        const resumeOnce = (bootNow().mode === "once" || bootNow().mode === "hold") && onceRef.current !== null;
         if (resumeOnce) {
           clearOnce();
           resetIdle();
@@ -8057,7 +8417,7 @@ function MicButton({
           const eng = engineRef.current;
           void eng?.start().then(() => {
             if (engineRef.current !== eng || localRef.current !== "on" || !mountedRef.current) return;
-            if (manualHoldRef.current || toggleHoldRef.current) eng.beginHeld();
+            if (manualHoldRef.current || toggleHoldRef.current || holdPtrRef.current || holdCtrlRef.current) eng.beginHeld();
           }).catch(() => bus.setUi({ error: t("micUnavailable") }));
         } else if (engineRef.current && !engineRef.current.holding) await engineRef.current.discardSegment();
         await cancelP;
@@ -8230,9 +8590,11 @@ function MicButton({
           if (lastPartialRef.current) {
             const composed = composeDraft(draftRef.current, lastPartialRef.current, "");
             lastPartialRef.current = "";
-            try {
-              actionsRef.current?.setDraft?.(composed);
-            } catch {
+            if (!shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
+              try {
+                actionsRef.current?.setDraft?.(composed);
+              } catch {
+              }
             }
           }
           bus.setUi({ partial: "" });
@@ -8258,8 +8620,8 @@ function MicButton({
         if (typeof partialActions?.setDraft !== "function") return;
         const composed = composeDraft(draftRef.current, lastPartialRef.current, text);
         if (!composed) return;
-        lastPartialRef.current = text.trim();
         if (shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) return;
+        lastPartialRef.current = text.trim();
         try {
           partialActions.setDraft(composed);
         } catch {
@@ -8270,6 +8632,17 @@ function MicButton({
         resetIdle();
         submitInFlightRef.current = false;
         bus.setUi({ partial: "" });
+        const actions = actionsRef.current;
+        const trimmed = text.trim();
+        if (!trimmed) {
+          if (holdReleaseExitRef.current && meta?.force) {
+            clearHoldExit();
+            setTimeout(() => {
+              if (!holdPtrRef.current) void exitModeRef.current("manual");
+            }, 300);
+          }
+          return;
+        }
         if (holdReleaseExitRef.current && meta?.force) {
           clearHoldExit();
           if (bootNow().autoSend === false) {
@@ -8280,9 +8653,6 @@ function MicButton({
             beginOnceWait();
           }
         }
-        const actions = actionsRef.current;
-        const trimmed = text.trim();
-        if (!trimmed) return;
         let nextDraft = composeDraft(draftRef.current, lastPartialRef.current, trimmed);
         lastPartialRef.current = "";
         if (!shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
@@ -8375,18 +8745,24 @@ function MicButton({
   const exitModeRef = (0, import_react3.useRef)(exitMode);
   exitModeRef.current = exitMode;
   (0, import_react3.useEffect)(() => {
-    exitModeExternal = () => {
+    const fn = () => {
       void exitModeRef.current("manual");
     };
+    exitModeExternal = fn;
     return () => {
-      exitModeExternal = null;
+      if (exitModeExternal === fn) exitModeExternal = null;
     };
   }, []);
   (0, import_react3.useEffect)(() => {
     actionsRef.current = inputActions;
   }, [inputActions]);
   (0, import_react3.useEffect)(() => {
+    const prevSid = prevSidRef.current;
+    prevSidRef.current = sessionId;
     sidRef.current = sessionId;
+    if (prevSid && prevSid !== sessionId && localRef.current !== "off") {
+      void exitModeRef.current("manual", prevSid);
+    }
   }, [sessionId]);
   (0, import_react3.useEffect)(() => {
     const onChanged = () => {
@@ -8442,7 +8818,9 @@ function MicButton({
       });
     })();
   }, [sessionId]);
-  const runningSel = useSession ? useSession((s) => s === void 0 ? void 0 : s.running) : void 0;
+  const useSessionHook = useSession ?? noopSelectorHook;
+  const useInputHook = useInput ?? noopSelectorHook;
+  const runningSel = useSessionHook((s) => s === void 0 ? void 0 : s.running);
   const prevRunningRef = (0, import_react3.useRef)(false);
   (0, import_react3.useEffect)(() => {
     runningRef.current = runningSel === true;
@@ -8586,8 +8964,10 @@ function MicButton({
   }, []);
   (0, import_react3.useEffect)(() => {
     const onInput = (e) => {
-      const t3 = e.target;
-      if (!(t3 instanceof HTMLTextAreaElement)) return;
+      const target = e.target;
+      if (!target) return;
+      if (!(target instanceof HTMLTextAreaElement || target.isContentEditable)) return;
+      if (target.closest?.("[data-dshvm-settings]")) return;
       if (localRef.current !== "on") return;
       void exitModeRef.current("typing");
     };
@@ -8648,7 +9028,8 @@ function MicButton({
       if (localRef.current === "pending" || localRef.current === "on") {
         if (bus.activeSessionId === sid) {
           if (localRef.current === "on" || micReadyRef.current) setLocalMode("on");
-        } else if (localRef.current === "pending") {
+        } else if (localRef.current === "pending" && hostEnteredRef.current) {
+          hostEnteredRef.current = false;
           setLocalMode("off");
         }
       }
@@ -8657,11 +9038,11 @@ function MicButton({
   const on = local === "on";
   const busy = bus.ui.state === "transcribing" || bus.ui.state === "loading-model";
   const holdMode = bootNow().mode === "hold";
-  const liveDraft = useInput ? useInput((s) => s?.draft ?? "") : "";
+  const liveDraft = useInputHook((s) => s?.draft ?? "") ?? "";
   const draftRef = (0, import_react3.useRef)("");
   draftRef.current = liveDraft;
-  const liveQuoteCount = useInput ? useInput((s) => s?.quotes?.length ?? 0) : 0;
-  const liveAttachCount = useInput ? useInput((s) => s?.attachmentIds?.length ?? 0) : 0;
+  const liveQuoteCount = useInputHook((s) => s?.quotes?.length ?? 0) ?? 0;
+  const liveAttachCount = useInputHook((s) => s?.attachmentIds?.length ?? 0) ?? 0;
   const quoteRef = (0, import_react3.useRef)(0);
   quoteRef.current = liveQuoteCount;
   const attachRef = (0, import_react3.useRef)(0);
@@ -8669,7 +9050,7 @@ function MicButton({
   const lastPartialRef = (0, import_react3.useRef)("");
   const submitInFlightRef = (0, import_react3.useRef)(false);
   const correctCycleRef = (0, import_react3.useRef)(0);
-  const livePhase = useInput ? useInput((s) => s?.phase ?? "") : "";
+  const livePhase = useInputHook((s) => s?.phase ?? "") ?? "";
   const phaseRef = (0, import_react3.useRef)("");
   phaseRef.current = livePhase;
   const [holding, setHolding] = (0, import_react3.useState)(false);
@@ -8782,12 +9163,19 @@ function MicButton({
       if (localRef.current === "on") {
         setHolding(true);
         const eng = engineRef.current;
-        eng?.beginHeld();
-        if (eng && bootNow().bargeInMode === "manual" && bus.ui.playing) {
+        if (onceRef.current) {
           breakTimerRef.current = setTimeout(() => {
             breakTimerRef.current = null;
-            if (holdPtrRef.current && bus.ui.playing) void breakRef.current?.();
+            if (holdPtrRef.current && onceRef.current) void breakRef.current?.();
           }, 250);
+        } else {
+          eng?.beginHeld();
+          if (eng && bootNow().bargeInMode === "manual" && bus.ui.playing) {
+            breakTimerRef.current = setTimeout(() => {
+              breakTimerRef.current = null;
+              if (holdPtrRef.current && bus.ui.playing) void breakRef.current?.();
+            }, 250);
+          }
         }
       }
     } else if (localRef.current === "on" && (bus.ui.playing && !onceRef.current || bootNow().mode === "once" && onceRef.current)) {
@@ -9223,9 +9611,9 @@ function VoiceStatusBar({ bus, sessionId }) {
                 borderRadius: 8,
                 fontSize: 10,
                 lineHeight: "16px",
-                color: "#ffa657",
-                background: "rgba(255, 166, 87, 0.15)",
-                border: "1px solid rgba(255, 166, 87, 0.35)"
+                color: "var(--dsw-alias-state-warn-primary, #d29922)",
+                background: "color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)"
               },
               children: t("vadDetected")
             }
@@ -9245,9 +9633,9 @@ function VoiceStatusBar({ bus, sessionId }) {
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
-                color: "#ffa657",
-                background: "rgba(255, 166, 87, 0.15)",
-                border: "1px solid rgba(255, 166, 87, 0.35)"
+                color: "var(--dsw-alias-state-warn-primary, #d29922)",
+                background: "color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)"
               },
               children: b.ui.ttsNotice
             }
@@ -9285,9 +9673,9 @@ function VoiceStatusBar({ bus, sessionId }) {
                 borderRadius: 8,
                 fontSize: 10,
                 lineHeight: "16px",
-                color: "#ffa657",
-                background: "rgba(255, 166, 87, 0.15)",
-                border: "1px solid rgba(255, 166, 87, 0.35)"
+                color: "var(--dsw-alias-state-warn-primary, #d29922)",
+                background: "color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)"
               },
               children: b.ui.bargeInDetectFallback ? t("bargeInDetectFallback") : t("aecOff")
             }
@@ -9381,6 +9769,7 @@ function VoiceOverlay({ bus }) {
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { display: "inline-flex", alignItems: "flex-end", gap: 2, height: 12, flexShrink: 0 }, children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "span",
           {
+            className: "dshvm-eq-bar",
             style: {
               width: 3,
               height: "100%",
