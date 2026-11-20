@@ -316,6 +316,10 @@ export interface OpenAiPreset {
   model: string
   /** 客户端「填入示例音色」按钮的取值（SiliconFlow 形如 model:voice）。 */
   voice: string
+  /** 该服务的可选音色全表（2026-11-20 级联重构：先选服务再选音色的数据地基）。
+   *  每项均为可直接填入 voice 字段的完整取值；`voice` 必须为其中之一（默认首选项）。
+   *  厂商改名/下线时列表会旧——UI 永远保留「自定义手输」兜底，旧了也能自己填。 */
+  voices: string[]
 }
 
 /**
@@ -341,49 +345,66 @@ export function presetRequiresKey(presetId: string | null | undefined): boolean 
   return !presetId.startsWith('selfhosted-')
 }
 
+// 硅基 8 系统预设音色（一手：docs.siliconflow.com TTS 指南 §2.1，2026-11-20 核实）：
+// 男声 alex/benjamin/charles/david，女声 anna/bella/claire/diana；请求时须加模型前缀。
+const SILICONFLOW_SYSTEM_VOICES = ['alex', 'benjamin', 'charles', 'david', 'anna', 'bella', 'claire', 'diana']
+// OpenAI TTS 全量音色（一手：OpenAI API Reference create speech；marin/cedar 为 gpt-4o-mini-tts 官方推荐）。
+const OPENAI_API_VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'marin', 'cedar', 'nova', 'onyx', 'sage', 'shimmer']
+
 export const OPENAI_PRESETS: Record<string, OpenAiPreset> = {
   'siliconflow-cosyvoice2': {
     baseUrl: 'https://api.siliconflow.cn/v1',
     model: 'FunAudioLLM/CosyVoice2-0.5B',
     voice: 'FunAudioLLM/CosyVoice2-0.5B:alex',
+    voices: SILICONFLOW_SYSTEM_VOICES.map((v) => `FunAudioLLM/CosyVoice2-0.5B:${v}`),
   },
   'siliconflow-fish': {
     baseUrl: 'https://api.siliconflow.cn/v1',
     model: 'fishaudio/fish-speech-1.5',
     voice: 'fishaudio/fish-speech-1.5:anna',
+    voices: SILICONFLOW_SYSTEM_VOICES.map((v) => `fishaudio/fish-speech-1.5:${v}`),
   },
   // OpenRouter 官方 TTS 文档（2026-05-01 公告）：POST /api/v1/audio/speech，
   // 示例模型 slug 为带日期的 `openai/gpt-4o-mini-tts-2025-12-15`、voice `alloy`、response_format mp3。
+  // OpenRouter 透传 OpenAI 语音名，故沿用 OpenAI 全量音色表。
   'openrouter-openai': {
     baseUrl: 'https://openrouter.ai/api/v1',
     model: 'openai/gpt-4o-mini-tts-2025-12-15',
     voice: 'alloy',
+    voices: [...OPENAI_API_VOICES],
   },
   // OpenAI 官方（docs: /v1/audio/speech，模型 gpt-4o-mini-tts，官方推荐 marin/cedar 音质最佳）。
   'openai-official': {
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini-tts',
     voice: 'marin',
+    voices: [...OPENAI_API_VOICES],
   },
   // 自建示例（本机地址为占位；无鉴权时 key 留空即可）：
   //   Kokoro-FastAPI / LocalAI 的 OpenAI 兼容面，Kokoro 音色名取自本插件本地目录（zf_xiaobei 等）。
+  //   仅收录命名中文音色（与本地 Kokoro 一致）；其余 100+ 数字 sid 音色走「自定义手输」。
   'selfhosted-kokoro': {
     baseUrl: 'http://127.0.0.1:8880/v1',
     model: 'kokoro',
     voice: 'zf_xiaobei',
+    voices: ['zf_xiaobei', 'zf_xiaoni', 'zf_xiaoxiao', 'zf_xiaoyi'],
   },
   // Groq 官方 API Reference「Create speech」：POST /openai/v1/audio/speech（base 为
   // https://api.groq.com/openai/v1），模型 playai-tts，音色列表形如 Fritz-PlayAI。
+  // 注意（2026-11-20 核实）：上游已有仓库把 playai-tts 标记为 decommissioned 并迁移到 Orpheus；
+  // 此处仅保留文档示例音色 + 自定义手输，若 Groq 下线该模型，用户切 Orpheus 端点手填即可。
   'groq-playai': {
     baseUrl: 'https://api.groq.com/openai/v1',
     model: 'playai-tts',
     voice: 'Fritz-PlayAI',
+    voices: ['Fritz-PlayAI'],
   },
-  //   vLLM-Omni（ADR-0013 实测过 VoxCPM2 / Qwen3-TTS 部署）。
+  //   vLLM-Omni（ADR-0013 实测过 VoxCPM2 / Qwen3-TTS 部署）。音色名取决于部署的模型，保留默认 + 手输。
   'selfhosted-vllm': {
     baseUrl: 'http://127.0.0.1:8000/v1',
     model: 'tts-1',
     voice: 'default',
+    voices: ['default'],
   },
 }
 

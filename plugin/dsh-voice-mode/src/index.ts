@@ -54,7 +54,7 @@ import { correctText } from './llm-correct.ts'
 import { OPENAI_PRESETS, OpenAiTtsEngine, presetRequiresKey } from './tts-openai.ts'
 import { resolveOnlineTts } from './online-tts.ts'
 import { engineRebuildReason } from './engine-rebuild.ts'
-import { applyClearSecrets, hasSecret, publicSettingsView } from './settings-view.ts'
+import { applyClearSecrets, buildSettingsGetView } from './settings-view.ts'
 import { asTtsEngineKind, isLocalEngine, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
 import { MimoTtsEngine } from './tts-mimo.ts'
 import { normalizePromptLang, previewSample, spokenPrompt, type PromptLang } from './prompts.ts'
@@ -273,6 +273,8 @@ export interface VoiceSettingsValue {
   openaiModel: string
   /** 在线 TTS 的 key（空 = 用配置文件 apiKeys[预设]/apiKey）。仅主机侧持久化，不回传浏览器。 */
   openaiApiKey: string
+  /** 按预设存的在线 TTS key 表（Q2 Key 跟预设走；键为预设 id，空条目 = 该预设未在面板配 key）。仅主机侧持久化。 */
+  openaiApiKeys: Record<string, string>
   /** MiMo 的 key（空 = 用配置文件 mimoTts.apiKey）。同样只存主机侧、不回传。 */
   mimoApiKey: string
   /** 批 G 任务 3：让位窗口时长（ms，500-3000，默认 1500）。
@@ -322,6 +324,8 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   openaiBaseUrl: '',
   openaiModel: '',
   openaiApiKey: '',
+  // Q2 Key 跟预设走：面板按预设存的 key 表（空对象 = 全未配）。
+  openaiApiKeys: {},
   mimoApiKey: '',
   // P1-3：纠错词表默认空（与 Config 层 asrReplacements 默认 [] 对齐）。
   asrReplacements: [],
@@ -366,6 +370,7 @@ const DESC = {
   openaiBaseUrl: en.descOpenaiBaseUrl,
   openaiModel: en.descOpenaiModel,
   openaiApiKey: en.descOpenaiApiKey,
+  openaiApiKeys: en.descOpenaiApiKeys,
   mimoApiKey: en.descMimoApiKey,
   asrReplacements: en.descAsrReplacements,
   yieldMs: en.descYieldMs,
@@ -495,6 +500,8 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
     openaiModel: z.string().default(d.openaiModel).description(DESC.openaiModel),
     // secret：GET /settings 会把它抹成空串，只回 hasOpenaiApiKey 布尔；POST 可写。
     openaiApiKey: z.string().role('secret').default(d.openaiApiKey).description(DESC.openaiApiKey),
+    // Q2 Key 跟预设走：面板按预设存的 key 表（值须为字符串；非字符串由 zod 拒收回 400）。
+    openaiApiKeys: z.dict(z.string()).default(d.openaiApiKeys ?? {}).description(DESC.openaiApiKeys),
     mimoApiKey: z.string().role('secret').default(d.mimoApiKey).description(DESC.mimoApiKey),
     // P1-3：用户纠错词表（默认空；非法条目由 zod 整表拒绝，POST 回 400；上限 200 条与设置卡片一致，防超大覆盖层）。
     asrReplacements: z
@@ -742,6 +749,7 @@ function voiceSettingsFromConfig(config: Config): VoiceSettingsValue {
     openaiBaseUrl: '',
     openaiModel: '',
     openaiApiKey: '',
+    openaiApiKeys: {},
     mimoApiKey: '',
   }
 }
@@ -1186,6 +1194,7 @@ export function apply(ctx: Context, config: Config): void {
           baseUrl: vset.openaiBaseUrl ?? '',
           model: vset.openaiModel ?? '',
           apiKey: vset.openaiApiKey ?? '',
+          apiKeys: (vset.openaiApiKeys ?? {}) as Record<string, string>,
           voice: vset.voice,
         },
         { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys },
@@ -1274,7 +1283,7 @@ export function apply(ctx: Context, config: Config): void {
     } else if (kind === 'openai') {
       const o = config.openaiTts
       const r = resolveOnlineTts(
-        { presetId: vset.openaiPreset ?? '', baseUrl: vset.openaiBaseUrl ?? '', model: vset.openaiModel ?? '', apiKey: vset.openaiApiKey ?? '', voice: vset.voice },
+        { presetId: vset.openaiPreset ?? '', baseUrl: vset.openaiBaseUrl ?? '', model: vset.openaiModel ?? '', apiKey: vset.openaiApiKey ?? '', apiKeys: (vset.openaiApiKeys ?? {}) as Record<string, string>, voice: vset.voice },
         { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys },
       )
       if (!r.baseUrl || !r.model) {
@@ -2230,17 +2239,8 @@ export function apply(ctx: Context, config: Config): void {
         // GET：当前生效设置全量（设置页读取）。路径 A 宿主设置归 dsh 官方存储，此处只读。
         if (req.method === 'GET') {
           // 密钥字段**永不回传**（ADR-0013）：空串表示「未在此层覆盖」，由 has* 说明是否已配置。
-          const cfgKey = hasSecret(config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {}))
-          const cfgMimo = hasSecret(config.mimoTts?.apiKey)
-          const view = publicSettingsView(
-            vset,
-            {
-              openaiApiKey: hasSecret(vset.openaiApiKey, config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {})),
-              mimoApiKey: hasSecret(vset.mimoApiKey, config.mimoTts?.apiKey),
-            },
-            // 仅配置层是否仍有 key：清掉设置层后前端据此解释「为什么还显示已配置」。
-            { openaiApiKey: cfgKey, mimoApiKey: cfgMimo },
-          )
+          // 组装逻辑收敛在 settings-view.buildSettingsGetView（行数守卫见 settings-store.test.mjs）。
+          const view = buildSettingsGetView(vset, config)
           respondJson(res, 200, { managedBy: settingsScopeRef ? 'dsh' : 'plugin', ...view })
           return
         }
@@ -2295,7 +2295,8 @@ export function apply(ctx: Context, config: Config): void {
           const rest = { ...(pickKnownKeys(cleared, SETTING_KEYS) as Record<string, unknown>) }
           try {
             const next = await persistSettings(rest as Partial<VoiceSettingsValue>)
-            const out = { ...next, openaiApiKey: '', mimoApiKey: '' }
+            // Q2：回显同样抹掉 key 表（GET 同口径；值恒 {}）。
+            const out = { ...next, openaiApiKey: '', mimoApiKey: '', openaiApiKeys: {} as Record<string, string> }
             respondJson(res, 200, { ok: true, managedBy: 'plugin', value: out })
           } catch (e) {
             // schema 校验失败 = 客户端输入问题（400）；其余（落盘等）= 500。不回显内部路径。

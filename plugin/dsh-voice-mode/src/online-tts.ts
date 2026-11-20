@@ -32,6 +32,8 @@ export interface OnlineTtsOverrides {
   model: string
   /** 设置卡片里填的 key（空 = 用配置文件；这是唯一允许浏览器写入的密钥路径）。 */
   apiKey: string
+  /** 设置卡片里按预设存的 key 表（2026-11-20 Q2：Key 跟预设走；条目为空 = 该预设未在面板配 key）。 */
+  apiKeys?: Record<string, string>
   /** 全局音色设置（空 = 用预设/配置文件音色）。 */
   voice: string
 }
@@ -58,7 +60,7 @@ export interface ResolvedOnlineTts {
     baseUrl: OnlineTtsSource
     model: OnlineTtsSource
     voice: OnlineTtsSource
-    apiKey: 'settings' | 'presetKey' | 'configKey' | 'none'
+    apiKey: 'settings' | 'settingsPreset' | 'presetKey' | 'configKey' | 'none'
   }
 }
 
@@ -100,9 +102,13 @@ export function resolveOnlineTts(
 
   const settingKey = trim(overrides.apiKey)
   const presetId = trim(overrides.presetId)
+  // 2026-11-20 Q2（Key 跟预设走）：面板按预设存的 key 优先于全局单 key；
+  // 原型污染防护：仅已知预设 id 才读表（lookupPreset 已排除 __proto__/constructor/custom/未知 id），
+  // 且只认自有字符串值。未知预设的 map 条目永不生效。
+  const settingsPresetKey = preset !== null && presetId && Object.hasOwn(overrides.apiKeys ?? {}, presetId) && typeof overrides.apiKeys?.[presetId] === 'string' ? trim(overrides.apiKeys?.[presetId]) : ''
   const presetKey = presetId ? trim(config.apiKeys?.[presetId]) : ''
   const configKey = trim(config.apiKey)
-  const apiKey = settingKey || presetKey || configKey
+  const apiKey = settingsPresetKey || settingKey || presetKey || configKey
 
   return {
     presetId,
@@ -114,7 +120,7 @@ export function resolveOnlineTts(
       baseUrl: settingBase ? 'settings' : presetBase ? 'preset' : configBase ? 'config' : 'none',
       model: settingModel ? 'settings' : presetModel ? 'preset' : configModel ? 'config' : 'none',
       voice: settingVoice ? 'settings' : presetVoice ? 'preset' : configVoice ? 'config' : 'none',
-      apiKey: settingKey ? 'settings' : presetKey ? 'presetKey' : configKey ? 'configKey' : 'none',
+      apiKey: settingsPresetKey ? 'settingsPreset' : settingKey ? 'settings' : presetKey ? 'presetKey' : configKey ? 'configKey' : 'none',
     },
   }
 }

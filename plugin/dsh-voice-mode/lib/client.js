@@ -1962,6 +1962,9 @@ var zh = {
   presetSelfVllm: "\u81EA\u5EFA \xB7 vLLM-Omni",
   presetSelfVllmNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8000\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
   presetKeyNote: "\u9009\u597D\u540E\u5728\u4E0B\u9762\u300CAPI Key\u300D\u91CC\u586B\u5373\u53EF\uFF08\u4E5F\u53EF\u4EE5\u7EE7\u7EED\u7528 profile \u7684 openaiTts.apiKey/apiKeys\uFF09\u3002key \u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\uFF0C\u4E0D\u56DE\u4F20\u6D4F\u89C8\u5668",
+  presetKeySaved: "\u5DF2\u914D\uFF08\u9762\u677F\uFF09",
+  presetKeyFromConfig: "\u5DF2\u914D\uFF08\u914D\u7F6E\u6587\u4EF6\uFF09",
+  presetKeyMissing: "\u672A\u914D key",
   presetDataMissing: "\u9884\u8BBE\u6570\u636E\u672A\u52A0\u8F7D\uFF08\u5BBF\u4E3B /presets \u4E0D\u53EF\u7528\uFF09\uFF1A\u8BF7\u91CD\u542F\u5BBF\u4E3B\u6216\u5237\u65B0\u9875\u9762\u540E\u91CD\u8BD5",
   presetReload: "\u91CD\u65B0\u52A0\u8F7D\u9884\u8BBE",
   // 2026-11-19：在线 TTS 可在设置卡片直接配置（URL/模型/key），不必改 profile YAML。
@@ -1971,6 +1974,8 @@ var zh = {
   descOpenaiModel: "\u8BE5\u7AEF\u70B9\u4E0A\u7684 TTS \u6A21\u578B\uFF0C\u4F8B\u5982 gpt-4o-mini-tts\u3001FunAudioLLM/CosyVoice2-0.5B\u3002\u7559\u7A7A = \u7528\u9884\u8BBE\u6216 profile",
   openaiApiKeyLabel: "\u63A5\u53E3\u5BC6\u94A5\uFF08API Key\uFF09",
   descOpenaiApiKey: "\u5BC6\u94A5\u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\uFF080600 \u8BBE\u7F6E\u6587\u4EF6\uFF09\uFF0C\u4E0D\u56DE\u4F20\u6D4F\u89C8\u5668\u3001\u4E0D\u8FDB\u65E5\u5FD7\u3002\u7559\u7A7A = \u6CBF\u7528 profile \u91CC\u7684 openaiTts.apiKeys[\u9884\u8BBE]/apiKey\uFF1B\u586B\u4E86\u5219\u8986\u76D6",
+  openaiApiKeysLabel: "\u5404\u9884\u8BBE\u5BC6\u94A5\uFF08\u8DDF\u9884\u8BBE\u8D70\uFF09",
+  descOpenaiApiKeys: "\u7ED9\u6BCF\u4E2A\u5728\u7EBF\u9884\u8BBE\u5355\u72EC\u914D key\uFF1A\u5207\u5230\u54EA\u4E2A\u9884\u8BBE\u5C31\u7528\u54EA\u628A\uFF0C\u4E92\u4E0D\u5E72\u6270\u3002\u7559\u7A7A\u7684\u9884\u8BBE\u56DE\u843D\u5230\u4E0A\u9762\u7684\u5168\u5C40\u5BC6\u94A5\uFF0C\u518D\u56DE\u843D profile\u3002\u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\u4FA7",
   mimoApiKeyLabel: "\u5C0F\u7C73 MiMo \u5BC6\u94A5",
   descMimoApiKey: "\u5C0F\u7C73 MiMo \u7684 key\uFF08\u8D70 api-key \u5934\uFF0C\u4E0D\u662F Bearer\uFF09\u3002\u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\u4FA7\uFF1B\u7559\u7A7A = \u6CBF\u7528 profile \u7684 mimoTts.apiKey",
   secretSaved: "\u5DF2\u4FDD\u5B58",
@@ -2025,7 +2030,7 @@ var zh = {
   engineEdge: "Edge \u4E91\u7AEF",
   engineOpenai: "OpenAI \u517C\u5BB9",
   engineMimo: "\u5C0F\u7C73 MiMo",
-  descVoiceOpenai: "\u670D\u52A1\u7AEF\u7684\u97F3\u8272\u540D\u3002\u7559\u7A7A\u65F6\uFF1A\u9009\u4E86\u9884\u8BBE \u2192 \u7528\u8BE5\u9884\u8BBE\u7684\u793A\u4F8B\u97F3\u8272\uFF1B\u672A\u9009\u9884\u8BBE \u2192 \u7528\u914D\u7F6E\u91CC\u7684 openaiTts.voice\u3002\u586B\u4E86\u5C31\u6309\u4F60\u586B\u7684\u7528\uFF08\u9884\u8BBE\u793A\u4F8B\u97F3\u8272\u4E0D\u518D\u751F\u6548\uFF09",
+  descVoiceOpenai: "\u5148\u9009\u4E0A\u9762\u7684\u5728\u7EBF\u9884\u8BBE\uFF0C\u4E0B\u9762\u5373\u5217\u51FA\u8BE5\u670D\u52A1\u7684\u97F3\u8272\uFF1B\u81EA\u5B9A\u4E49\u7AEF\u70B9\u7559\u7A7A = \u7528\u670D\u52A1\u7AEF\u9ED8\u8BA4\u97F3\u8272\u3002\u624B\u586B\u4F1A\u8986\u76D6\u5217\u8868\u9009\u62E9",
   descVoiceMimo: "MiMo \u9884\u7F6E\u97F3\u8272\u540D\uFF08\u7559\u7A7A = \u914D\u7F6E\u91CC\u7684 mimoTts.voice\uFF0C\u9ED8\u8BA4 mimo_default\uFF09\uFF1B\u9884\u7F6E\uFF1Amimo_default\u3001\u51B0\u7CD6\u3001\u8309\u8389\u3001\u82CF\u6253\u3001\u767D\u6866\u3001Mia\u3001Chloe\u3001Milo\u3001Dean",
   engineRemoteDown: "\u670D\u52A1\u4E0D\u53EF\u7528",
   errMimoKeyMissing: "\u672A\u914D\u7F6E\u5C0F\u7C73 MiMo \u7684 API Key\uFF1A\u8BF7\u5728\u672C\u8BBE\u7F6E\u5361\u7247\u586B\u5199\uFF0C\u6216\u5728 profile \u7684 mimoTts.apiKey \u4E2D\u914D\u7F6E",
@@ -2356,6 +2361,9 @@ var en = {
   presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
   presetKeyNote: "After picking one, fill the API Key field below (the profile openaiTts.apiKey/apiKeys still work). The key stays on the host and is never sent back to the browser",
+  presetKeySaved: "Saved (panel)",
+  presetKeyFromConfig: "Configured (profile)",
+  presetKeyMissing: "No key",
   presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
   presetReload: "Reload presets",
   // 2026-11-19: online TTS is configurable from the settings card (URL/model/key), no profile YAML edit needed.
@@ -2365,6 +2373,8 @@ var en = {
   descOpenaiModel: "TTS model on that endpoint, e.g. gpt-4o-mini-tts or FunAudioLLM/CosyVoice2-0.5B. Empty = use the preset or the profile",
   openaiApiKeyLabel: "API key",
   descOpenaiApiKey: "The key stays on the host (0600 settings file); it is never sent back to the browser and never logged. Empty = use the profile openaiTts.apiKeys[preset]/apiKey; a value here overrides it",
+  openaiApiKeysLabel: "Per-preset keys (follow the preset)",
+  descOpenaiApiKeys: "One key per online preset: whichever preset is selected uses its own key. Empty entries fall back to the global key above, then the profile. Host-side only",
   mimoApiKeyLabel: "MiMo API key",
   descMimoApiKey: "Xiaomi MiMo key (sent as the api-key header, not Bearer). Host-side only; empty = use the profile mimoTts.apiKey",
   secretSaved: "Saved",
@@ -2418,7 +2428,7 @@ var en = {
   engineEdge: "Edge cloud",
   engineOpenai: "OpenAI-compatible",
   engineMimo: "Xiaomi MiMo",
-  descVoiceOpenai: "Voice name on the server. When empty: a selected preset contributes its example voice; with no preset, openaiTts.voice from the config is used. A non-empty value always wins (the preset example is then ignored)",
+  descVoiceOpenai: "Pick the online preset above first, then pick a voice from that service list below; for a custom endpoint, empty means the server default voice. A typed value overrides the list",
   descVoiceMimo: "MiMo preset voice id (empty = mimoTts.voice from the config, default mimo_default). Presets: mimo_default, Mia, Chloe, Milo, Dean, plus four Chinese-named voices (Bingtang/Moli/Suda/Baihua) \u2014 enter them by their native Chinese names as listed on the MiMo docs",
   engineRemoteDown: "server unavailable",
   errMimoKeyMissing: "MiMo API key is not configured: enter it in this settings card or set mimoTts.apiKey in the profile",
@@ -2995,6 +3005,17 @@ var React = __toESM(require("react"), 1);
 var import_react2 = require("react");
 
 // src/voice-catalog.ts
+var MIMO_VOICES = [
+  "mimo_default",
+  "\u51B0\u7CD6",
+  "\u8309\u8389",
+  "\u82CF\u6253",
+  "\u767D\u6866",
+  "Mia",
+  "Chloe",
+  "Milo",
+  "Dean"
+];
 var EDGE_COMMON_VOICES = [
   { v: "zh-CN-XiaoxiaoNeural", zh: "\u6653\u6653", en: "Xiaoxiao", gender: "F", accent: "mandarin" },
   { v: "zh-CN-XiaoyiNeural", zh: "\u6653\u4F0A", en: "Xiaoyi", gender: "F", accent: "mandarin" },
@@ -4113,6 +4134,10 @@ function replacementsPayloadBytes(rules) {
 
 // src/settings-form.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
+function presetVoiceLabel(full) {
+  const i = full.lastIndexOf(":");
+  return i >= 0 ? full.slice(i + 1) || full : full;
+}
 var t2 = {
   bg: "var(--dsw-alias-bg-layer-3)",
   bgOpen: "var(--dsw-alias-bg-layer-2)",
@@ -4489,6 +4514,68 @@ function SecretField({
         "aria-live": "polite",
         style: { fontSize: 11, color: failed ? "var(--dsw-alias-state-error-primary)" : note === "cleared" ? t2.term : "var(--dsw-alias-state-success-primary)" },
         children: failed ? t("secretSaveFailed") : note === "saved" ? t("secretSaved") : note === "cleared" ? t(configOnly ? "secretClearedConfigRemains" : "secretCleared") : saved ? t("secretSaved") : t("secretHintBrowser")
+      }
+    )
+  ] });
+}
+function PresetKeyField({
+  score,
+  presetId,
+  map,
+  saved,
+  fromConfig,
+  onChanged
+}) {
+  const [draft, setDraft] = (0, import_react2.useState)("");
+  const [busy, setBusy] = (0, import_react2.useState)(false);
+  const [note, setNote] = (0, import_react2.useState)(null);
+  const [failed, setFailed] = (0, import_react2.useState)(false);
+  const commit = () => {
+    if (busy) return;
+    const value = draft.trim();
+    setBusy(true);
+    const next = { ...map };
+    if (value) next[presetId] = value;
+    else delete next[presetId];
+    void Promise.resolve(score.set("openaiApiKeys", next)).then((ok) => {
+      if (ok === false) {
+        setFailed(true);
+        return;
+      }
+      setFailed(false);
+      setDraft("");
+      setNote(value ? "saved" : "cleared");
+      onChanged();
+    }).catch(() => setFailed(true)).finally(() => setBusy(false));
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "input",
+      {
+        style: inputStyle,
+        type: "password",
+        autoComplete: "new-password",
+        value: draft,
+        placeholder: saved ? t("secretKeep") : t("secretPlaceholderEmpty"),
+        "aria-label": t("secretHintBrowser"),
+        onChange: (e) => setDraft(e.target.value),
+        onBlur: commit,
+        onKeyDown: (e) => {
+          if (e.key === "Enter") commit();
+        }
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "span",
+      {
+        role: "status",
+        "aria-live": "polite",
+        style: {
+          fontSize: 11,
+          // 缺 key 是警告（warn），不是成功绿——绿只留给「已配」。
+          color: failed ? "var(--dsw-alias-state-error-primary)" : note === "saved" || note === null && saved ? "var(--dsw-alias-state-success-primary)" : note === "cleared" || fromConfig ? t2.term : "var(--dsw-alias-state-warn-primary, #d29922)"
+        },
+        children: failed ? t("secretSaveFailed") : note === "saved" ? t("secretSaved") : note === "cleared" ? t(fromConfig ? "secretClearedConfigRemains" : "secretCleared") : saved ? t("presetKeySaved") : fromConfig ? t("presetKeyFromConfig") : t("presetKeyMissing")
       }
     )
   ] });
@@ -5114,8 +5201,10 @@ function SelfTestSection({
               alignItems: "center",
               gap: 5,
               cursor: busy ? "default" : "pointer",
+              // 2026-11-20 Slice4（自审计实测）：主行动按钮走品牌主色；成功绿只留给「已配/正常」状态文案。
+              // 原 success 绿底白字在浅色下对比约 2.5:1，且把「动作」与「状态」混成一种颜色。
               color: "var(--dsw-alias-bg-base, #fff)",
-              background: "var(--dsw-alias-state-success-primary, #3fb950)",
+              background: "var(--dsw-alias-brand-primary)",
               border: "1px solid transparent",
               borderRadius: 6,
               padding: "4px 12px",
@@ -5413,7 +5502,8 @@ function OpenAiPresetSection({
   score,
   value,
   presets,
-  onReloadPresets
+  onReloadPresets,
+  onSwitch
 }) {
   const cur = typeof value === "string" ? value : "";
   const known = Object.keys(presets ?? {});
@@ -5430,7 +5520,7 @@ function OpenAiPresetSection({
       {
         value: cur,
         "aria-label": t("openaiPresetLabel"),
-        onChange: (e) => void score.set("openaiPreset", e.target.value),
+        onChange: (e) => onSwitch(e.target.value),
         style: { ...inputStyle, maxWidth: 360 },
         children: options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v))
       }
@@ -5865,7 +5955,13 @@ function VoiceSettingsCard({
   );
   const value = snap?.value ?? {};
   const unavailable = snap?.status === "unavailable" || snap?.status === "error";
-  const [secretKeys, setSecretKeys] = (0, import_react2.useState)({ openaiApiKey: false, mimoApiKey: false, fromConfig: { openaiApiKey: false, mimoApiKey: false } });
+  const [secretKeys, setSecretKeys] = (0, import_react2.useState)({ openaiApiKey: false, mimoApiKey: false, openaiApiKeys: {}, fromConfig: { openaiApiKey: false, mimoApiKey: false, openaiApiKeys: {} } });
+  const boolMap = (v) => {
+    if (v === null || typeof v !== "object" || Array.isArray(v)) return {};
+    const out = {};
+    for (const k of Object.keys(v)) out[k] = Boolean(v[k]);
+    return out;
+  };
   const refreshSecretKeys = () => {
     void fetch(location.origin + BASE_PATH + "/settings", { signal: AbortSignal.timeout(8e3) }).then(
       (res) => res.ok ? res.json() : null
@@ -5874,9 +5970,11 @@ function VoiceSettingsCard({
         setSecretKeys({
           openaiApiKey: Boolean(data.keys.openaiApiKey),
           mimoApiKey: Boolean(data.keys.mimoApiKey),
+          openaiApiKeys: boolMap(data.keys.openaiApiKeys),
           fromConfig: {
             openaiApiKey: Boolean(data.keysFromConfig?.openaiApiKey),
-            mimoApiKey: Boolean(data.keysFromConfig?.mimoApiKey)
+            mimoApiKey: Boolean(data.keysFromConfig?.mimoApiKey),
+            openaiApiKeys: boolMap(data.keysFromConfig?.openaiApiKeys)
           }
         });
       }
@@ -5905,7 +6003,15 @@ function VoiceSettingsCard({
       alive = false;
     };
   }, [engine]);
-  const voiceOptions = engine === "edge" ? edgeRaw ? edgeAllOptions(edgeRaw, activeLocale()) : edgeCommonOptions() : engine === "kokoro" ? kokoroOptions() : isThirdPartyEngine(engine) ? [] : vitsOptions();
+  const presetVoiceList = engine === "openai" && typeof value.openaiPreset === "string" && value.openaiPreset ? hostPresets?.[value.openaiPreset]?.voices ?? [] : [];
+  const voiceOptions = engine === "edge" ? edgeRaw ? edgeAllOptions(edgeRaw, activeLocale()) : edgeCommonOptions() : engine === "kokoro" ? kokoroOptions() : engine === "openai" ? presetVoiceList.map((v) => ({ v, label: presetVoiceLabel(v) })) : engine === "mimo" ? [...MIMO_VOICES].map((v) => ({ v, label: v })) : vitsOptions();
+  const switchPreset = (next) => {
+    const list = hostPresets?.[next]?.voices;
+    const cur = String(value.voice ?? "").trim();
+    void Promise.resolve(scope.set("openaiPreset", next)).then(() => {
+      if (Array.isArray(list) && cur !== "" && !list.includes(cur)) void scope.set("voice", "");
+    });
+  };
   if (unavailable) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: t2.term, fontSize: 12, padding: "14px 16px", ...cardStyle }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)" }, children: t("configUnavailable") }),
@@ -6105,7 +6211,7 @@ function VoiceSettingsCard({
                   field: "voice",
                   value: value.voice ?? "",
                   options: voiceOptions,
-                  placeholder: ENGINE_DEFAULT_VOICE[engine] ?? "zh-CN-XiaoxiaoNeural",
+                  placeholder: ENGINE_DEFAULT_VOICE[engine] || (engine === "openai" ? effectiveVoice() : "") || "zh-CN-XiaoxiaoNeural",
                   showCustom: isCloudEngine(engine),
                   footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v || effectiveVoice() || ENGINE_DEFAULT_VOICE[engine] || "", rate: Number(value.rate ?? 1.1) })
                 }
@@ -6121,7 +6227,8 @@ function VoiceSettingsCard({
                 score: scope,
                 value: value.openaiPreset,
                 presets: hostPresets,
-                onReloadPresets: hostPresetState.reload
+                onReloadPresets: hostPresetState.reload,
+                onSwitch: switchPreset
               }
             ) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiBaseUrl", desc: t("descOpenaiBaseUrl"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -6157,7 +6264,18 @@ function VoiceSettingsCard({
                 configOnly: secretKeys.fromConfig.openaiApiKey,
                 onChanged: refreshSecretKeys
               }
-            ) })
+            ) }),
+            typeof value.openaiPreset === "string" && value.openaiPreset && value.openaiPreset !== "custom" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiApiKeys", desc: t("descOpenaiApiKeys"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              PresetKeyField,
+              {
+                score: scope,
+                presetId: value.openaiPreset,
+                map: value.openaiApiKeys !== null && typeof value.openaiApiKeys === "object" && !Array.isArray(value.openaiApiKeys) ? value.openaiApiKeys : {},
+                saved: Boolean(secretKeys.openaiApiKeys[value.openaiPreset]),
+                fromConfig: Boolean(secretKeys.fromConfig.openaiApiKeys[value.openaiPreset]),
+                onChanged: refreshSecretKeys
+              }
+            ) }) : null
           ] }),
           engine === "mimo" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mimoApiKey", desc: t("descMimoApiKey"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SecretField,
@@ -6429,7 +6547,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "4937cc6";
+var BUILD_TAG = "7ff9670";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

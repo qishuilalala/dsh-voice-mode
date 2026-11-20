@@ -292,16 +292,19 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   // E1：预设解析（纯函数；未知/空回 null 调用方回落 Config 文件值）。
   const { OPENAI_PRESETS, resolveOpenAiEndpoint } = await import('../src/tts-openai.ts')
   // 形状含 voice：设置音色为空时用它兜底（A3：否则 model:voice 形态永远用不上）。
-  assert.deepEqual(resolveOpenAiEndpoint('siliconflow-cosyvoice2'), {
+  // 2026-11-20 Q1：预设另带 voices 全表；此处只锁三元组（全表由 preset-voices.test.mjs 锁）。
+  const pickTriple = (p) => ({ baseUrl: p.baseUrl, model: p.model, voice: p.voice })
+  assert.deepEqual(pickTriple(resolveOpenAiEndpoint('siliconflow-cosyvoice2')), {
     baseUrl: 'https://api.siliconflow.cn/v1',
     model: 'FunAudioLLM/CosyVoice2-0.5B',
     voice: 'FunAudioLLM/CosyVoice2-0.5B:alex',
   })
-  assert.deepEqual(resolveOpenAiEndpoint('siliconflow-fish'), {
+  assert.deepEqual(pickTriple(resolveOpenAiEndpoint('siliconflow-fish')), {
     baseUrl: 'https://api.siliconflow.cn/v1',
     model: 'fishaudio/fish-speech-1.5',
     voice: 'fishaudio/fish-speech-1.5:anna',
   })
+  assert.ok(resolveOpenAiEndpoint('siliconflow-cosyvoice2')?.voices?.includes('FunAudioLLM/CosyVoice2-0.5B:alex'))
   // E1 原计划的三类都要在（SiliconFlow / OpenRouter / 自建）。
   const or = resolveOpenAiEndpoint('openrouter-openai')
   assert.ok(or?.baseUrl.includes('openrouter.ai'))

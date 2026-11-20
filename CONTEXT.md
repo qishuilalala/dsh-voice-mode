@@ -71,7 +71,8 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 | openaiPreset | ''（手动） | E1 在线 TTS 预设 id（siliconflow-cosyvoice2 / siliconflow-fish / openrouter-openai / openai-official / groq-playai / selfhosted-kokoro / selfhosted-vllm）；选中后 baseUrl/model 按预设、**音色留空时回落预设音色**，key 走设置卡片 → `openaiTts.apiKeys[预设id]` → `openaiTts.apiKey`；真源 `src/tts-openai.ts` OPENAI_PRESETS，经 `GET /voice-mode/presets` 下发 |
 | openaiBaseUrl | ''（跟随预设/配置文件） | 在线 TTS 端点覆盖：设置卡片可直接填（不必改 profile YAML），优先级 设置 > 预设 > `openaiTts.baseUrl`；留空不覆盖 |
 | openaiModel | '' | 在线 TTS 模型名覆盖，优先级同上；配合「自定义（custom）」预设即可接任意 OpenAI 兼容平台 |
-| openaiApiKey | ''（回落配置文件） | 在线 TTS 的 key：设置卡片填写后存宿主 0600 设置文件，**不回传浏览器**（GET /settings 恒空串 + `keys.*` 布尔）；优先级 设置 > `openaiTts.apiKeys[预设]` > `openaiTts.apiKey`；`POST /settings {clearSecrets:[…]}` 清除 |
+| openaiApiKey | ''（回落配置文件） | 在线 TTS 的 key：设置卡片填写后存宿主 0600 设置文件，**不回传浏览器**（GET /settings 恒空串 + `keys.*` 布尔）；优先级 面板按预设key > 设置全局key > `openaiTts.apiKeys[预设]` > `openaiTts.apiKey`；`POST /settings {clearSecrets:[…]}` 清除 |
+| openaiApiKeys | {}（全未配） | Q2 Key 跟预设走：面板按预设 id 存的 key 表（`{预设id: key}`）；选中哪个预设用哪把，互不干扰；空条目回落全局 key；**只回布尔表、不回传明文**（`keys.openaiApiKeys`） |
 | mimoApiKey | ''（回落配置文件） | 小米 MiMo 的 key（`api-key` 头），UI 填写后存宿主 0600；留空回落 `mimoTts.apiKey`；同样不回传 |
 | asrReplacements | [] | P1-3 用户纠错词表 `[{from:[听错写法],to:想要写法}]`（≤200 条 / ≤12KB UTF-8）：转写后统一改写（中间结果+定稿），命中计数经 /models/status.replacements 暴露；与 PR #68 文本层引擎复用 |
 | captionFontSize | 0 | 批 3 P0：字幕字号档位 0=12px/1=14px/2=18px/3=24px（默认 0 与现状字节等价） |

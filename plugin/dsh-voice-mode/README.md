@@ -146,7 +146,8 @@ dsh plugin --profile web add dsh-voice-mode
 | `openaiPreset` | 空（手动） | 在线 TTS 预设：`siliconflow-cosyvoice2` / `siliconflow-fish` / `openrouter-openai` / `openai-official` / `selfhosted-kokoro` / `selfhosted-vllm`。选中后按预设的 baseUrl/model 走，**音色留空时回落预设音色**；key 用 `openaiTts.apiKey`，或按预设用 `openaiTts.apiKeys[预设 id]` 分别配（**推荐：多家服务商各配一把，切预设不必再手改**）。注意：`apiKeys` 属宿主配置文件，改完需重启宿主;；卡片可点「测试朗读」就地试合成；**即时生效** |
 | `openaiBaseUrl` | 空（跟随预设/配置文件） | 在线 TTS 端点：**设置卡片里直接填**（无需改 profile YAML）；优先级 设置 > 预设 > `openaiTts.baseUrl`；配合「自定义」可接任意 OpenAI 兼容平台；**即时生效** |
 | `openaiModel` | 空 | 在线 TTS 模型名覆盖（同上优先级）；预设没列出的平台选「自定义」后填这里 |
-| `openaiApiKey` | 空（回落配置文件） | 在线 TTS 的 key：卡片里填，存宿主 0600 设置文件，**永不回传浏览器**；优先级 设置 > `openaiTts.apiKeys[预设id]` > `openaiTts.apiKey`；卡片「清除」显式清空；**即时生效** |
+| `openaiApiKey` | 空（回落配置文件） | 在线 TTS 的 key：卡片里填，存宿主 0600 设置文件，**永不回传浏览器**；优先级 面板按预设key > 设置全局key > `openaiTts.apiKeys[预设id]` > `openaiTts.apiKey`；卡片「清除」显式清空；**即时生效** |
+| `openaiApiKeys` | `{}`（全未配） | Q2 Key 跟预设走：面板按预设 id 存的 key 表；选中哪个预设用哪把，切预设不再 401；空条目回落全局 key；**只回布尔表、不回传明文**；**即时生效**（保存刷新即用新 key） |
 | `mimoApiKey` | 空（回落配置文件） | 小米 MiMo 的 key（走 `api-key` 头）：卡片里填，同样只存宿主、不回传；留空回落 `mimoTts.apiKey` |
 | `asrReplacements` | `[]` | 纠错词表 `[{from:[听错写法],to:想要写法}]`（≤200 条 / ≤12KB UTF-8）：转写后统一改写（中间结果+定稿）；卡片显示「本次生效以来」命中次数；与 LLM 纠错串联；**即时生效** |
 | `senseVoice` | `true` | 定稿是否用 SenseVoice 重译（带标点 + 数字归一化，更准；默认开）。**关闭可省 ~228MB 模型**，只走流式识别（更快、精度下降） |

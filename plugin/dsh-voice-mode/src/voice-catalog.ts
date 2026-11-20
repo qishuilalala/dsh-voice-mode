@@ -8,6 +8,20 @@
 
 export type Gender = 'F' | 'M'
 
+/** MiMo TTS 可选音色（2026-11-20 级联重构：与 descVoiceMimo 同源；以 MiMo 文档为准，待真机核对）。
+ *  `mimo_default` 为服务端默认；中文名为原生中文名（MiMo 文档即如此列出）。 */
+export const MIMO_VOICES: ReadonlyArray<string> = [
+  'mimo_default',
+  '冰糖',
+  '茉莉',
+  '苏打',
+  '白桦',
+  'Mia',
+  'Chloe',
+  'Milo',
+  'Dean',
+]
+
 /** 说话人名称（专有名词）的中/英写法：英文为拼音/官方英文名，语言包缺失的语言回落英文。 */
 export interface BiName {
   zh: string

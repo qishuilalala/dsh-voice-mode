@@ -2950,6 +2950,9 @@ var en = {
   presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
   presetKeyNote: "After picking one, fill the API Key field below (the profile openaiTts.apiKey/apiKeys still work). The key stays on the host and is never sent back to the browser",
+  presetKeySaved: "Saved (panel)",
+  presetKeyFromConfig: "Configured (profile)",
+  presetKeyMissing: "No key",
   presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
   presetReload: "Reload presets",
   // 2026-11-19: online TTS is configurable from the settings card (URL/model/key), no profile YAML edit needed.
@@ -2959,6 +2962,8 @@ var en = {
   descOpenaiModel: "TTS model on that endpoint, e.g. gpt-4o-mini-tts or FunAudioLLM/CosyVoice2-0.5B. Empty = use the preset or the profile",
   openaiApiKeyLabel: "API key",
   descOpenaiApiKey: "The key stays on the host (0600 settings file); it is never sent back to the browser and never logged. Empty = use the profile openaiTts.apiKeys[preset]/apiKey; a value here overrides it",
+  openaiApiKeysLabel: "Per-preset keys (follow the preset)",
+  descOpenaiApiKeys: "One key per online preset: whichever preset is selected uses its own key. Empty entries fall back to the global key above, then the profile. Host-side only",
   mimoApiKeyLabel: "MiMo API key",
   descMimoApiKey: "Xiaomi MiMo key (sent as the api-key header, not Bearer). Host-side only; empty = use the profile mimoTts.apiKey",
   secretSaved: "Saved",
@@ -3012,7 +3017,7 @@ var en = {
   engineEdge: "Edge cloud",
   engineOpenai: "OpenAI-compatible",
   engineMimo: "Xiaomi MiMo",
-  descVoiceOpenai: "Voice name on the server. When empty: a selected preset contributes its example voice; with no preset, openaiTts.voice from the config is used. A non-empty value always wins (the preset example is then ignored)",
+  descVoiceOpenai: "Pick the online preset above first, then pick a voice from that service list below; for a custom endpoint, empty means the server default voice. A typed value overrides the list",
   descVoiceMimo: "MiMo preset voice id (empty = mimoTts.voice from the config, default mimo_default). Presets: mimo_default, Mia, Chloe, Milo, Dean, plus four Chinese-named voices (Bingtang/Moli/Suda/Baihua) \u2014 enter them by their native Chinese names as listed on the MiMo docs",
   engineRemoteDown: "server unavailable",
   errMimoKeyMissing: "MiMo API key is not configured: enter it in this settings card or set mimoTts.apiKey in the profile",
@@ -3373,9 +3378,10 @@ function resolveOnlineTts(overrides, config) {
   const voice = settingVoice || presetVoice || configVoice;
   const settingKey = trim(overrides.apiKey);
   const presetId = trim(overrides.presetId);
+  const settingsPresetKey = preset !== null && presetId && Object.hasOwn(overrides.apiKeys ?? {}, presetId) && typeof overrides.apiKeys?.[presetId] === "string" ? trim(overrides.apiKeys?.[presetId]) : "";
   const presetKey = presetId ? trim(config.apiKeys?.[presetId]) : "";
   const configKey = trim(config.apiKey);
-  const apiKey = settingKey || presetKey || configKey;
+  const apiKey = settingsPresetKey || settingKey || presetKey || configKey;
   return {
     presetId,
     baseUrl,
@@ -3386,7 +3392,7 @@ function resolveOnlineTts(overrides, config) {
       baseUrl: settingBase ? "settings" : presetBase ? "preset" : configBase ? "config" : "none",
       model: settingModel ? "settings" : presetModel ? "preset" : configModel ? "config" : "none",
       voice: settingVoice ? "settings" : presetVoice ? "preset" : configVoice ? "config" : "none",
-      apiKey: settingKey ? "settings" : presetKey ? "presetKey" : configKey ? "configKey" : "none"
+      apiKey: settingsPresetKey ? "settingsPreset" : settingKey ? "settings" : presetKey ? "presetKey" : configKey ? "configKey" : "none"
     }
   };
 }
@@ -3630,72 +3636,91 @@ function presetRequiresKey(presetId) {
   if (!Object.prototype.hasOwnProperty.call(OPENAI_PRESETS, presetId)) return false;
   return !presetId.startsWith("selfhosted-");
 }
+var SILICONFLOW_SYSTEM_VOICES = ["alex", "benjamin", "charles", "david", "anna", "bella", "claire", "diana"];
+var OPENAI_API_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "marin", "cedar", "nova", "onyx", "sage", "shimmer"];
 var OPENAI_PRESETS = {
   "siliconflow-cosyvoice2": {
     baseUrl: "https://api.siliconflow.cn/v1",
     model: "FunAudioLLM/CosyVoice2-0.5B",
-    voice: "FunAudioLLM/CosyVoice2-0.5B:alex"
+    voice: "FunAudioLLM/CosyVoice2-0.5B:alex",
+    voices: SILICONFLOW_SYSTEM_VOICES.map((v) => `FunAudioLLM/CosyVoice2-0.5B:${v}`)
   },
   "siliconflow-fish": {
     baseUrl: "https://api.siliconflow.cn/v1",
     model: "fishaudio/fish-speech-1.5",
-    voice: "fishaudio/fish-speech-1.5:anna"
+    voice: "fishaudio/fish-speech-1.5:anna",
+    voices: SILICONFLOW_SYSTEM_VOICES.map((v) => `fishaudio/fish-speech-1.5:${v}`)
   },
   // OpenRouter 官方 TTS 文档（2026-05-01 公告）：POST /api/v1/audio/speech，
   // 示例模型 slug 为带日期的 `openai/gpt-4o-mini-tts-2025-12-15`、voice `alloy`、response_format mp3。
+  // OpenRouter 透传 OpenAI 语音名，故沿用 OpenAI 全量音色表。
   "openrouter-openai": {
     baseUrl: "https://openrouter.ai/api/v1",
     model: "openai/gpt-4o-mini-tts-2025-12-15",
-    voice: "alloy"
+    voice: "alloy",
+    voices: [...OPENAI_API_VOICES]
   },
   // OpenAI 官方（docs: /v1/audio/speech，模型 gpt-4o-mini-tts，官方推荐 marin/cedar 音质最佳）。
   "openai-official": {
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-4o-mini-tts",
-    voice: "marin"
+    voice: "marin",
+    voices: [...OPENAI_API_VOICES]
   },
   // 自建示例（本机地址为占位；无鉴权时 key 留空即可）：
   //   Kokoro-FastAPI / LocalAI 的 OpenAI 兼容面，Kokoro 音色名取自本插件本地目录（zf_xiaobei 等）。
+  //   仅收录命名中文音色（与本地 Kokoro 一致）；其余 100+ 数字 sid 音色走「自定义手输」。
   "selfhosted-kokoro": {
     baseUrl: "http://127.0.0.1:8880/v1",
     model: "kokoro",
-    voice: "zf_xiaobei"
+    voice: "zf_xiaobei",
+    voices: ["zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi"]
   },
   // Groq 官方 API Reference「Create speech」：POST /openai/v1/audio/speech（base 为
   // https://api.groq.com/openai/v1），模型 playai-tts，音色列表形如 Fritz-PlayAI。
+  // 注意（2026-11-20 核实）：上游已有仓库把 playai-tts 标记为 decommissioned 并迁移到 Orpheus；
+  // 此处仅保留文档示例音色 + 自定义手输，若 Groq 下线该模型，用户切 Orpheus 端点手填即可。
   "groq-playai": {
     baseUrl: "https://api.groq.com/openai/v1",
     model: "playai-tts",
-    voice: "Fritz-PlayAI"
+    voice: "Fritz-PlayAI",
+    voices: ["Fritz-PlayAI"]
   },
-  //   vLLM-Omni（ADR-0013 实测过 VoxCPM2 / Qwen3-TTS 部署）。
+  //   vLLM-Omni（ADR-0013 实测过 VoxCPM2 / Qwen3-TTS 部署）。音色名取决于部署的模型，保留默认 + 手输。
   "selfhosted-vllm": {
     baseUrl: "http://127.0.0.1:8000/v1",
     model: "tts-1",
-    voice: "default"
+    voice: "default",
+    voices: ["default"]
   }
 };
 
 // src/engine-rebuild.ts
+function stableApiKeys(m) {
+  if (m === null || typeof m !== "object" || Array.isArray(m)) return "";
+  const keys = Object.keys(m).filter((k) => typeof m[k] === "string").sort();
+  return keys.map((k) => `${k}=${String(m[k])}`).join("&");
+}
 function engineRebuildReason(prev, next, engineKind, activeKokoroModel) {
   if (next.ttsEngine !== engineKind) return "engine-switch";
   if (engineKind === "mimo" && next.mimoApiKey !== prev.mimoApiKey) return "mimo-key";
   if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) return "kokoro-model";
-  if (engineKind === "openai" && (next.openaiPreset !== prev.openaiPreset || next.openaiBaseUrl !== prev.openaiBaseUrl || next.openaiModel !== prev.openaiModel || next.openaiApiKey !== prev.openaiApiKey)) {
+  if (engineKind === "openai" && (next.openaiPreset !== prev.openaiPreset || next.openaiBaseUrl !== prev.openaiBaseUrl || next.openaiModel !== prev.openaiModel || next.openaiApiKey !== prev.openaiApiKey || stableApiKeys(next.openaiApiKeys) !== stableApiKeys(prev.openaiApiKeys))) {
     return "openai-config";
   }
   return null;
 }
 
 // src/settings-view.ts
-var SECRET_SETTING_KEYS = ["openaiApiKey", "mimoApiKey"];
+var SECRET_SETTING_KEYS = ["openaiApiKey", "mimoApiKey", "openaiApiKeys"];
 function publicSettingsView(vset, presence, fromConfig) {
   return {
-    value: { ...vset, openaiApiKey: "", mimoApiKey: "" },
-    keys: { openaiApiKey: Boolean(presence.openaiApiKey), mimoApiKey: Boolean(presence.mimoApiKey) },
+    value: { ...vset, openaiApiKey: "", mimoApiKey: "", openaiApiKeys: {} },
+    keys: { openaiApiKey: Boolean(presence.openaiApiKey), mimoApiKey: Boolean(presence.mimoApiKey), openaiApiKeys: boolMap(presence.openaiApiKeys) },
     keysFromConfig: {
       openaiApiKey: Boolean(fromConfig?.openaiApiKey),
-      mimoApiKey: Boolean(fromConfig?.mimoApiKey)
+      mimoApiKey: Boolean(fromConfig?.mimoApiKey),
+      openaiApiKeys: boolMap(fromConfig?.openaiApiKeys)
     }
   };
 }
@@ -3718,6 +3743,47 @@ function applyClearSecrets(patch, clearList) {
 function hasSecret(value, ...fallbacks) {
   const nonEmpty = (v) => typeof v === "string" && v.trim().length > 0;
   return nonEmpty(value) || fallbacks.some(nonEmpty);
+}
+function boolMap(v) {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return {};
+  const out = {};
+  for (const k of Object.keys(v)) out[k] = Boolean(v[k]);
+  return out;
+}
+function readKeyMap(v) {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return {};
+  return v;
+}
+function buildPresetKeyPresence(settingsMap, configMap) {
+  const s = readKeyMap(settingsMap);
+  const c = readKeyMap(configMap);
+  const ids = /* @__PURE__ */ new Set([...Object.keys(s), ...Object.keys(c)]);
+  const presence = {};
+  const fromConfig = {};
+  for (const id of ids) {
+    if (id === "__proto__" || id === "constructor" || id === "prototype") continue;
+    presence[id] = hasSecret(s[id], c[id]);
+    fromConfig[id] = hasSecret(c[id]);
+  }
+  return { presence, fromConfig };
+}
+function buildSettingsGetView(vset, config) {
+  const cfgKey = hasSecret(config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {}));
+  const cfgMimo = hasSecret(config.mimoTts?.apiKey);
+  const presetKeys = buildPresetKeyPresence(vset.openaiApiKeys, config.openaiTts?.apiKeys);
+  return publicSettingsView(
+    vset,
+    {
+      openaiApiKey: hasSecret(
+        vset.openaiApiKey,
+        config.openaiTts?.apiKey,
+        ...Object.values(config.openaiTts?.apiKeys ?? {})
+      ),
+      mimoApiKey: hasSecret(vset.mimoApiKey, config.mimoTts?.apiKey),
+      openaiApiKeys: presetKeys.presence
+    },
+    { openaiApiKey: cfgKey, mimoApiKey: cfgMimo, openaiApiKeys: presetKeys.fromConfig }
+  );
 }
 
 // src/engine-kind.ts
@@ -4215,6 +4281,8 @@ var VOICE_SETTINGS_DEFAULTS = {
   openaiBaseUrl: "",
   openaiModel: "",
   openaiApiKey: "",
+  // Q2 Key 跟预设走：面板按预设存的 key 表（空对象 = 全未配）。
+  openaiApiKeys: {},
   mimoApiKey: "",
   // P1-3：纠错词表默认空（与 Config 层 asrReplacements 默认 [] 对齐）。
   asrReplacements: [],
@@ -4254,6 +4322,7 @@ var DESC = {
   openaiBaseUrl: en.descOpenaiBaseUrl,
   openaiModel: en.descOpenaiModel,
   openaiApiKey: en.descOpenaiApiKey,
+  openaiApiKeys: en.descOpenaiApiKeys,
   mimoApiKey: en.descMimoApiKey,
   asrReplacements: en.descAsrReplacements,
   yieldMs: en.descYieldMs
@@ -4321,6 +4390,8 @@ function createVoiceSettingsSchema(defs) {
     openaiModel: z2.string().default(d.openaiModel).description(DESC.openaiModel),
     // secret：GET /settings 会把它抹成空串，只回 hasOpenaiApiKey 布尔；POST 可写。
     openaiApiKey: z2.string().role("secret").default(d.openaiApiKey).description(DESC.openaiApiKey),
+    // Q2 Key 跟预设走：面板按预设存的 key 表（值须为字符串；非字符串由 zod 拒收回 400）。
+    openaiApiKeys: z2.dict(z2.string()).default(d.openaiApiKeys ?? {}).description(DESC.openaiApiKeys),
     mimoApiKey: z2.string().role("secret").default(d.mimoApiKey).description(DESC.mimoApiKey),
     // P1-3：用户纠错词表（默认空；非法条目由 zod 整表拒绝，POST 回 400；上限 200 条与设置卡片一致，防超大覆盖层）。
     asrReplacements: z2.array(AsrReplacementSchema).max(200).default(d.asrReplacements).description(
@@ -4482,6 +4553,7 @@ function voiceSettingsFromConfig(config) {
     openaiBaseUrl: "",
     openaiModel: "",
     openaiApiKey: "",
+    openaiApiKeys: {},
     mimoApiKey: ""
   };
 }
@@ -4729,6 +4801,7 @@ function apply(ctx, config) {
           baseUrl: vset.openaiBaseUrl ?? "",
           model: vset.openaiModel ?? "",
           apiKey: vset.openaiApiKey ?? "",
+          apiKeys: vset.openaiApiKeys ?? {},
           voice: vset.voice
         },
         { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys }
@@ -4796,7 +4869,7 @@ function apply(ctx, config) {
     } else if (kind === "openai") {
       const o = config.openaiTts;
       const r = resolveOnlineTts(
-        { presetId: vset.openaiPreset ?? "", baseUrl: vset.openaiBaseUrl ?? "", model: vset.openaiModel ?? "", apiKey: vset.openaiApiKey ?? "", voice: vset.voice },
+        { presetId: vset.openaiPreset ?? "", baseUrl: vset.openaiBaseUrl ?? "", model: vset.openaiModel ?? "", apiKey: vset.openaiApiKey ?? "", apiKeys: vset.openaiApiKeys ?? {}, voice: vset.voice },
         { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys }
       );
       if (!r.baseUrl || !r.model) {
@@ -5474,17 +5547,7 @@ function apply(ctx, config) {
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
         if (req.method === "GET") {
-          const cfgKey = hasSecret(config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {}));
-          const cfgMimo = hasSecret(config.mimoTts?.apiKey);
-          const view = publicSettingsView(
-            vset,
-            {
-              openaiApiKey: hasSecret(vset.openaiApiKey, config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {})),
-              mimoApiKey: hasSecret(vset.mimoApiKey, config.mimoTts?.apiKey)
-            },
-            // 仅配置层是否仍有 key：清掉设置层后前端据此解释「为什么还显示已配置」。
-            { openaiApiKey: cfgKey, mimoApiKey: cfgMimo }
-          );
+          const view = buildSettingsGetView(vset, config);
           respondJson2(res, 200, { managedBy: settingsScopeRef ? "dsh" : "plugin", ...view });
           return;
         }
@@ -5533,7 +5596,7 @@ function apply(ctx, config) {
           const rest = { ...pickKnownKeys(cleared, SETTING_KEYS) };
           try {
             const next = await persistSettings(rest);
-            const out = { ...next, openaiApiKey: "", mimoApiKey: "" };
+            const out = { ...next, openaiApiKey: "", mimoApiKey: "", openaiApiKeys: {} };
             respondJson2(res, 200, { ok: true, managedBy: "plugin", value: out });
           } catch (e) {
             const isValidation = e instanceof Error && e.name === "ValidationError";

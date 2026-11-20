@@ -8,12 +8,14 @@
  */
 
 /** 允许经设置面写入/清除的密钥键（新增密钥字段必须显式登记，避免误把普通字段当年密钥）。 */
-export const SECRET_SETTING_KEYS = ['openaiApiKey', 'mimoApiKey'] as const
+export const SECRET_SETTING_KEYS = ['openaiApiKey', 'mimoApiKey', 'openaiApiKeys'] as const
 export type SecretSettingKey = (typeof SECRET_SETTING_KEYS)[number]
 
 export interface SecretPresence {
   openaiApiKey: boolean
   mimoApiKey: boolean
+  /** 逐预设 key 是否已配（只回布尔，键为预设 id；Q2 Key 跟预设走）。 */
+  openaiApiKeys: Record<string, boolean>
 }
 
 /**
@@ -26,12 +28,14 @@ export function publicSettingsView<T extends object>(
   /** 仅配置文件层是否仍有 key（A3 审计 Minor：清掉设置层后仍显示「已配置」要能解释来源）。 */
   fromConfig?: SecretPresence,
 ): { value: T & Record<SecretSettingKey, string>; keys: SecretPresence; keysFromConfig: SecretPresence } {
+  // openaiApiKeys 只回布尔表（键为预设 id），值恒 {}——key 明文永不下发浏览器。
   return {
-    value: { ...(vset as Record<string, unknown>), openaiApiKey: '', mimoApiKey: '' } as T & Record<SecretSettingKey, string>,
-    keys: { openaiApiKey: Boolean(presence.openaiApiKey), mimoApiKey: Boolean(presence.mimoApiKey) },
+    value: { ...(vset as Record<string, unknown>), openaiApiKey: '', mimoApiKey: '', openaiApiKeys: {} } as T & Record<SecretSettingKey, string>,
+    keys: { openaiApiKey: Boolean(presence.openaiApiKey), mimoApiKey: Boolean(presence.mimoApiKey), openaiApiKeys: boolMap(presence.openaiApiKeys) },
     keysFromConfig: {
       openaiApiKey: Boolean(fromConfig?.openaiApiKey),
       mimoApiKey: Boolean(fromConfig?.mimoApiKey),
+      openaiApiKeys: boolMap(fromConfig?.openaiApiKeys),
     },
   }
 }
@@ -64,4 +68,73 @@ export function applyClearSecrets(
 export function hasSecret(value: unknown, ...fallbacks: unknown[]): boolean {
   const nonEmpty = (v: unknown): boolean => typeof v === 'string' && v.trim().length > 0
   return nonEmpty(value) || fallbacks.some(nonEmpty)
+}
+
+/** 布尔表归一（防旧快照缺字段/数组污染；只认对象自有键）。 */
+function boolMap(v: unknown): Record<string, boolean> {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return {}
+  const out: Record<string, boolean> = {}
+  for (const k of Object.keys(v)) out[k] = Boolean((v as Record<string, boolean>)[k])
+  return out
+}
+
+/** 读字符串表（防原型污染：只认自有字符串值，数组/null/原型键一律视为空表）。 */
+function readKeyMap(v: unknown): Record<string, unknown> {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return {}
+  return v as Record<string, unknown>
+}
+
+/**
+ * 逐预设 key 布尔表（Q2 Key 跟预设走；GET /settings 的 presence 计算单一真源）。
+ * 只回布尔，键为两层 key 表键的并集；明文永不出现在这里。
+ * `__proto__` 等原型键显式跳过（赋值语义会改原型而非建自有键，读回的是 Object.prototype）。
+ */
+export function buildPresetKeyPresence(
+  settingsMap: unknown,
+  configMap: unknown,
+): { presence: Record<string, boolean>; fromConfig: Record<string, boolean> } {
+  const s = readKeyMap(settingsMap)
+  const c = readKeyMap(configMap)
+  const ids = new Set([...Object.keys(s), ...Object.keys(c)])
+  const presence: Record<string, boolean> = {}
+  const fromConfig: Record<string, boolean> = {}
+  for (const id of ids) {
+    if (id === '__proto__' || id === 'constructor' || id === 'prototype') continue
+    presence[id] = hasSecret(s[id], c[id])
+    fromConfig[id] = hasSecret(c[id])
+  }
+  return { presence, fromConfig }
+}
+
+/** 宿主配置文件里的 key 段最小面（只取本模块要读的字段，避免 import index 造成循环）。 */
+export interface KeyFileConfig {
+  openaiTts?: { apiKey?: string; apiKeys?: Record<string, string> }
+  mimoTts?: { apiKey?: string }
+}
+
+/**
+ * GET /voice-mode/settings 的响应体组装（presence 计算 + 脱敏，一处收敛）。
+ * 原先内联在 index.ts 路由 handler 里，行数膨胀会顶破结构守卫的 2200 字符窗口——
+ * 逻辑不变，只是搬家（守卫回归见 settings-store.test.mjs「写入受跨源与大小限制保护」）。
+ */
+export function buildSettingsGetView<T extends object>(
+  vset: T,
+  config: KeyFileConfig,
+): { value: T & Record<SecretSettingKey, string>; keys: SecretPresence; keysFromConfig: SecretPresence } {
+  const cfgKey = hasSecret(config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {}))
+  const cfgMimo = hasSecret(config.mimoTts?.apiKey)
+  const presetKeys = buildPresetKeyPresence((vset as Record<string, unknown>).openaiApiKeys, config.openaiTts?.apiKeys)
+  return publicSettingsView(
+    vset,
+    {
+      openaiApiKey: hasSecret(
+        (vset as Record<string, unknown>).openaiApiKey,
+        config.openaiTts?.apiKey,
+        ...Object.values(config.openaiTts?.apiKeys ?? {}),
+      ),
+      mimoApiKey: hasSecret((vset as Record<string, unknown>).mimoApiKey, config.mimoTts?.apiKey),
+      openaiApiKeys: presetKeys.presence,
+    },
+    { openaiApiKey: cfgKey, mimoApiKey: cfgMimo, openaiApiKeys: presetKeys.fromConfig },
+  )
 }

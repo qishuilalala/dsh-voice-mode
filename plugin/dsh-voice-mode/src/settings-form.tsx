@@ -18,6 +18,13 @@ import { useEffect, useRef, useState } from 'react'
 import { t as tr, useLang, activeLocale, type TKey } from './i18n.ts'
 import { errorText } from './error-text.ts'
 import { edgeAllOptions, edgeCommonOptions, hostOptions, kokoroOptions, vitsOptions, voiceLangHint, type EdgeRawVoice } from './voice-labels.ts'
+import { MIMO_VOICES } from './voice-catalog.ts'
+
+/** 预设音色短标签：硅基 `模型:说话人` 只显示说话人名；OpenAI 原生名原样显示。 */
+function presetVoiceLabel(full: string): string {
+  const i = full.lastIndexOf(':')
+  return i >= 0 ? full.slice(i + 1) || full : full
+}
 import { getRuntimeBoot } from './runtime-boot.ts'
 import { asTtsEngineKind, isCloudEngine, isThirdPartyEngine, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
 import { resolvePresetVoice } from './voice-resolution.ts'
@@ -491,6 +498,95 @@ function SecretField({
               : saved
                 ? tr('secretSaved')
                 : tr('secretHintBrowser')}
+      </span>
+    </span>
+  )
+}
+
+/** 按预设存的 key 输入框（2026-11-20 Q2：Key 跟预设走）。
+ * 父组件传入当前整表 map；GET 永不回传明文，只按 saved 布尔显示。
+ * 非空提交 = 覆盖该预设条目；清空提交 = 删除该条目（回落全局 key/配置文件）。 */
+function PresetKeyField({
+  score,
+  presetId,
+  map,
+  saved,
+  fromConfig,
+  onChanged,
+}: {
+  score: ScopeController
+  presetId: string
+  map: Record<string, string>
+  saved: boolean
+  fromConfig: boolean
+  onChanged: () => void
+}): React.ReactElement {
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<'saved' | 'cleared' | null>(null)
+  const [failed, setFailed] = useState(false)
+  const commit = (): void => {
+    if (busy) return
+    const value = draft.trim()
+    setBusy(true)
+    const next: Record<string, string> = { ...map }
+    if (value) next[presetId] = value
+    else delete next[presetId]
+    void Promise.resolve(score.set('openaiApiKeys', next))
+      .then((ok) => {
+        if (ok === false) {
+          setFailed(true)
+          return
+        }
+        setFailed(false)
+        setDraft('')
+        setNote(value ? 'saved' : 'cleared')
+        onChanged()
+      })
+      .catch(() => setFailed(true))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <input
+        style={inputStyle}
+        type="password"
+        autoComplete="new-password"
+        value={draft}
+        placeholder={saved ? tr('secretKeep') : tr('secretPlaceholderEmpty')}
+        aria-label={tr('secretHintBrowser')}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit()
+        }}
+      />
+      <span
+        role="status"
+        aria-live="polite"
+        style={{
+          fontSize: 11,
+          // 缺 key 是警告（warn），不是成功绿——绿只留给「已配」。
+          color: failed
+            ? 'var(--dsw-alias-state-error-primary)'
+            : note === 'saved' || (note === null && saved)
+              ? 'var(--dsw-alias-state-success-primary)'
+              : note === 'cleared' || fromConfig
+                ? t.term
+                : 'var(--dsw-alias-state-warn-primary, #d29922)',
+        }}
+      >
+        {failed
+          ? tr('secretSaveFailed')
+          : note === 'saved'
+            ? tr('secretSaved')
+            : note === 'cleared'
+              ? tr(fromConfig ? 'secretClearedConfigRemains' : 'secretCleared')
+              : saved
+                ? tr('presetKeySaved')
+                : fromConfig
+                  ? tr('presetKeyFromConfig')
+                  : tr('presetKeyMissing')}
       </span>
     </span>
   )
@@ -1235,8 +1331,10 @@ function SelfTestSection({
           alignItems: 'center',
           gap: 5,
           cursor: busy ? 'default' : 'pointer',
+          // 2026-11-20 Slice4（自审计实测）：主行动按钮走品牌主色；成功绿只留给「已配/正常」状态文案。
+          // 原 success 绿底白字在浅色下对比约 2.5:1，且把「动作」与「状态」混成一种颜色。
           color: 'var(--dsw-alias-bg-base, #fff)',
-          background: 'var(--dsw-alias-state-success-primary, #3fb950)',
+          background: 'var(--dsw-alias-brand-primary)',
           border: '1px solid transparent',
           borderRadius: 6,
           padding: '4px 12px',
@@ -1600,8 +1698,8 @@ const PRESET_LABEL: Record<string, () => string> = {
   'selfhosted-vllm': () => tr('presetSelfVllm'),
 }
 
-/** host 下发的预设数据形状（/presets；非机密）。 */
-interface HostPreset { baseUrl: string; model: string; voice: string }
+/** host 下发的预设数据形状（/presets；非机密，含可选音色表）。 */
+interface HostPreset { baseUrl: string; model: string; voice: string; voices?: string[] }
 
 /**
  * 在线预设区块（E1）：数据来自 host `/presets` 单一真源（此前客户端另抄一份 voice 表，会漂移）。
@@ -1613,11 +1711,14 @@ function OpenAiPresetSection({
   value,
   presets,
   onReloadPresets,
+  onSwitch,
 }: {
   score: ScopeController
   value: unknown
   presets: Record<string, HostPreset> | null
   onReloadPresets: () => void
+  /** 切预设的原子联动入口（父组件据新预设 voices 表决定是否同步清空旧音色）。 */
+  onSwitch: (next: string) => void
 }): React.ReactElement {
   const cur = typeof value === 'string' ? value : ''
   // presets 拉取失败时**仍保留当前已选预设**，否则用户会看到「选中项消失」，且误点「手动配置」
@@ -1637,7 +1738,7 @@ function OpenAiPresetSection({
       <select
         value={cur}
         aria-label={tr('openaiPresetLabel')}
-        onChange={(e) => void score.set('openaiPreset', e.target.value)}
+        onChange={(e) => onSwitch(e.target.value)}
         style={{ ...inputStyle, maxWidth: 360 }}
       >
         {options.map((o) => (
@@ -2241,15 +2342,23 @@ export function VoiceSettingsCard({
   const [secretKeys, setSecretKeys] = useState<{
     openaiApiKey: boolean
     mimoApiKey: boolean
-    fromConfig: { openaiApiKey: boolean; mimoApiKey: boolean }
-}>({ openaiApiKey: false, mimoApiKey: false, fromConfig: { openaiApiKey: false, mimoApiKey: false } })
+    openaiApiKeys: Record<string, boolean>
+    fromConfig: { openaiApiKey: boolean; mimoApiKey: boolean; openaiApiKeys: Record<string, boolean> }
+}>({ openaiApiKey: false, mimoApiKey: false, openaiApiKeys: {}, fromConfig: { openaiApiKey: false, mimoApiKey: false, openaiApiKeys: {} } })
+  /** 只收布尔表：GET 永不回 key 明文；非对象/数组直接丢弃（防旧宿主形状漂移）。 */
+  const boolMap = (v: unknown): Record<string, boolean> => {
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) return {}
+    const out: Record<string, boolean> = {}
+    for (const k of Object.keys(v)) out[k] = Boolean((v as Record<string, boolean>)[k])
+    return out
+  }
   const refreshSecretKeys = (): void => {
     void fetch(location.origin + BASE_PATH + '/settings', { signal: AbortSignal.timeout(8000) })
       .then((res) =>
         res.ok
           ? (res.json() as Promise<{
-              keys?: { openaiApiKey?: boolean; mimoApiKey?: boolean }
-              keysFromConfig?: { openaiApiKey?: boolean; mimoApiKey?: boolean }
+              keys?: { openaiApiKey?: boolean; mimoApiKey?: boolean; openaiApiKeys?: Record<string, boolean> }
+              keysFromConfig?: { openaiApiKey?: boolean; mimoApiKey?: boolean; openaiApiKeys?: Record<string, boolean> }
             }>)
           : null,
       )
@@ -2258,9 +2367,11 @@ export function VoiceSettingsCard({
           setSecretKeys({
             openaiApiKey: Boolean(data.keys.openaiApiKey),
             mimoApiKey: Boolean(data.keys.mimoApiKey),
+            openaiApiKeys: boolMap(data.keys.openaiApiKeys),
             fromConfig: {
               openaiApiKey: Boolean(data.keysFromConfig?.openaiApiKey),
               mimoApiKey: Boolean(data.keysFromConfig?.mimoApiKey),
+              openaiApiKeys: boolMap(data.keysFromConfig?.openaiApiKeys),
             },
           })
         }
@@ -2304,6 +2415,12 @@ export function VoiceSettingsCard({
   // 刷新，src/runtime-boot.ts）。saved（设置 scope）≠ runtimeBoot 的「下次进入」字段在卡片
   // 顶部列出并显示当前生效值——设置生效反馈（问题⑧）。渲染时直读（scope 变化即重渲染；
   // 审查 I-1：不能拉 host /config 自比——那与 saved 同源，稳态永相等）。
+  // 2026-11-20 Q1 级联：先选服务再选音色——openai 取所选预设的 voices 表，mimo 取内置表；
+  // 预设表拉取失败/无 voices（旧宿主）时回落 [] + 自定义手输（与改造前一致，不把路堵死）。
+  const presetVoiceList: string[] =
+    engine === 'openai' && typeof value.openaiPreset === 'string' && value.openaiPreset
+      ? (hostPresets?.[value.openaiPreset]?.voices ?? [])
+      : []
   const voiceOptions =
     engine === 'edge'
       ? edgeRaw
@@ -2311,9 +2428,20 @@ export function VoiceSettingsCard({
         : edgeCommonOptions()
       : engine === 'kokoro'
         ? kokoroOptions()
-        : isThirdPartyEngine(engine)
-          ? []
-          : vitsOptions()
+        : engine === 'openai'
+          ? presetVoiceList.map((v) => ({ v, label: presetVoiceLabel(v) }))
+          : engine === 'mimo'
+            ? [...MIMO_VOICES].map((v) => ({ v, label: v }))
+            : vitsOptions()
+  /** 切预设的原子联动（对抗 #2）：旧音色不在新预设表里时同步清空，否则旧音色带到新端点必 400。
+   *  预设表缺失（/presets 失败/旧宿主无 voices）时不碰 voice——退化为改造前行为。 */
+  const switchPreset = (next: string): void => {
+    const list = hostPresets?.[next]?.voices
+    const cur = String(value.voice ?? '').trim()
+    void Promise.resolve(scope.set('openaiPreset', next)).then(() => {
+      if (Array.isArray(list) && cur !== '' && !list.includes(cur)) void scope.set('voice', '')
+    })
+  }
 
   if (unavailable) {
     return (
@@ -2542,7 +2670,8 @@ export function VoiceSettingsCard({
                     field="voice"
                     value={value.voice ?? ''}
                     options={voiceOptions}
-                    placeholder={ENGINE_DEFAULT_VOICE[engine] ?? 'zh-CN-XiaoxiaoNeural'}
+                    // openai 无通用默认音色：用当前预设示例音色当占位提示，空 voice 即回落它。
+                    placeholder={ENGINE_DEFAULT_VOICE[engine] || (engine === 'openai' ? effectiveVoice() : '') || 'zh-CN-XiaoxiaoNeural'}
                     showCustom={isCloudEngine(engine)}
                     footer={(v) => (
                       <VoicePreviewButton voice={v || effectiveVoice() || ENGINE_DEFAULT_VOICE[engine] || ''} rate={Number(value.rate ?? 1.1)} />
@@ -2561,6 +2690,7 @@ export function VoiceSettingsCard({
                         value={value.openaiPreset}
                         presets={hostPresets}
                         onReloadPresets={hostPresetState.reload}
+                        onSwitch={switchPreset}
                       />
                     </Row>
                     <Row name="openaiBaseUrl" desc={tr('descOpenaiBaseUrl')}>
@@ -2594,6 +2724,18 @@ export function VoiceSettingsCard({
                         onChanged={refreshSecretKeys}
                       />
                     </Row>
+                    {typeof value.openaiPreset === 'string' && value.openaiPreset && value.openaiPreset !== 'custom' ? (
+                      <Row name="openaiApiKeys" desc={tr('descOpenaiApiKeys')}>
+                        <PresetKeyField
+                          score={scope}
+                          presetId={value.openaiPreset}
+                          map={(value.openaiApiKeys !== null && typeof value.openaiApiKeys === 'object' && !Array.isArray(value.openaiApiKeys) ? value.openaiApiKeys : {}) as Record<string, string>}
+                          saved={Boolean(secretKeys.openaiApiKeys[value.openaiPreset])}
+                          fromConfig={Boolean(secretKeys.fromConfig.openaiApiKeys[value.openaiPreset])}
+                          onChanged={refreshSecretKeys}
+                        />
+                      </Row>
+                    ) : null}
                   </>
                 )}
                 {engine === 'mimo' && (

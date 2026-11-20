@@ -108,4 +108,36 @@ t('空配置 + 空设置 → 全空（引擎报 not_configured，不猜默认端
   assert.equal(r.from.apiKey, 'none')
 })
 
+t('Q2：面板按预设存的 key 优先于全局单 key（切预设不再 401）', () => {
+  const r = resolveOnlineTts(
+    { ...emptyOverrides, presetId: 'siliconflow-cosyvoice2', apiKey: 'sk-global', apiKeys: { 'siliconflow-cosyvoice2': 'sk-sf' } },
+    emptyConfig,
+  )
+  assert.equal(r.apiKey, 'sk-sf')
+  assert.equal(r.from.apiKey, 'settingsPreset')
+})
+
+t('Q2：未配该预设 key 时回落全局单 key，再回落配置文件', () => {
+  const r1 = resolveOnlineTts(
+    { ...emptyOverrides, presetId: 'openai-official', apiKey: 'sk-global', apiKeys: {} },
+    emptyConfig,
+  )
+  assert.equal(r1.apiKey, 'sk-global')
+  assert.equal(r1.from.apiKey, 'settings')
+  const r2 = resolveOnlineTts(
+    { ...emptyOverrides, presetId: 'openai-official' },
+    { ...emptyConfig, apiKeys: { 'openai-official': 'sk-file-preset' }, apiKey: 'sk-file' },
+  )
+  assert.equal(r2.apiKey, 'sk-file-preset')
+  assert.equal(r2.from.apiKey, 'presetKey')
+})
+
+t('Q2：原型污染键不得成为 key（__proto__/constructor 不读）', () => {
+  const evil = JSON.parse('{"__proto__": "sk-evil", "openai-official": "sk-ok"}')
+  const r = resolveOnlineTts({ ...emptyOverrides, presetId: 'openai-official', apiKeys: evil }, emptyConfig)
+  assert.equal(r.apiKey, 'sk-ok')
+  const r2 = resolveOnlineTts({ ...emptyOverrides, presetId: '__proto__', apiKeys: evil }, emptyConfig)
+  assert.equal(r2.apiKey, '')
+})
+
 console.log(`\n${passed} passed`)

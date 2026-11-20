@@ -75,3 +75,14 @@
 - 视觉验收（Playwright 实测）：默认朗读段卡片 4607px → **762px**；全展开 46 按钮 → 单段 20 按钮内；复选框恢复原生尺寸；分段支持左右方向键。
 
 **后续可继续（Loop 3 候选）**：触屏快捷菜单（长按/⋯）、状态条窄屏重排与对比度、字幕安全区与回看、切 tab 定稿、manual 作用域、单句重试预算、Excel 式「搜索设置」入口。
+
+## 7. Loop 2+（2026-11-20 夜）：服务→音色→Key 级联 + 颜色诚实化
+
+**决策（用户拍板 Q1–Q3 全做；Slice 5 全量即时生效砍掉——刷新生效可接受）**
+
+- Q1 先选服务再选音色：`OPENAI_PRESETS` 逐家加 `voices` 全表（硅基 8 系统音色一手文档核实；OpenAI/OpenRouter 12 原生音色；Kokoro 4 中文名；Groq 保留示例 + 手输并注记上游 Orpheus 迁移；vLLM 默认 + 手输；MiMo 9 个进 `MIMO_VOICES`）。`/presets` 整体下发自动跟随；UI 按所选预设列短标签；旧宿主无 voices 时退回自定义手输。
+- Q2 Key 跟预设走：vset 新增 `openaiApiKeys: Record<presetId,key>`（0600 落盘）；解析优先级 面板按预设key > 全局key > 配置文件 `apiKeys[预设]` > `apiKey`（`resolveOnlineTts` + 原型污染锁：仅已知预设读表）；`engineRebuildReason` 纳入 map（稳定序列化，键序抖动不重建）；GET/POST 只回布尔表、明文永不下发；切预设原子联动（旧音色不在新表则同步清空，防 400）。
+- 对抗审查 6 条全部落地：过期表靠自定义兜底 + 注释注记核验日期；切换三元同事务（预设写 + 音色条件清 + key 行联动显示）；custom 注明服务端默认；`/presets` null 降级保留（不清空已选）；五组合静默失败全部可感知（缺 key/无 voice/无 endpoint 各有行内提示）；在途切换由 `setEngine` epoch 作废（旧朗读被掐）。
+- Slice 4 颜色（自审计，以实测为准；否决了 agent 未经核实的断言）：「缺 key」由成功绿改警告色（与「假就绪」同类毛病）；「测试朗读」主按钮改品牌主色（动作色与状态色分离）；其余 token/回退值保留（无硬编码色散）。
+- 证据：`preset-voices` 新文件 5 用例；`online-tts` +3（优先级/回落/原型污染）；`engine-rebuild` +1（map/键序/非法）；`settings-view` +2（strip/presence）；`settings-deep-audit` +1（列表/原子切换/逐预设 Key 行/警告色）；Playwright 真机视觉验收（旧 host 下降级路径 + 新级联行渲染）。
+- 运行边界：host 侧改动（voices 表、key 解析、presence）需 dsh 重启才生效（未重启，符合禁令）；客户端刷新即见新面板。未改用户设置、未合并、未发版。

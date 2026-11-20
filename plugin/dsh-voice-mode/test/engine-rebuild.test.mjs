@@ -65,4 +65,13 @@ t('engine-switch 优先于其它原因（同时改多键只报主因）', () => 
   assert.equal(engineRebuildReason(base, next, 'openai', 'int8'), 'engine-switch')
 })
 
+t('Q2：按预设 key 变化触发重建；键序抖动不触发；非法 map 忽略', () => {
+  const withMap = { ...base, openaiApiKeys: { a: 'k1', b: 'k2' } }
+  assert.equal(engineRebuildReason(base, withMap, 'openai', 'int8'), 'openai-config', '新增预设 key 必须重建')
+  assert.equal(engineRebuildReason(withMap, { ...base, openaiApiKeys: { b: 'k2', a: 'k1' } }, 'openai', 'int8'), null, '键序不同但内容相同不得重建')
+  assert.equal(engineRebuildReason(withMap, { ...base, openaiApiKeys: { a: 'k1-changed', b: 'k2' } }, 'openai', 'int8'), 'openai-config', '某预设 key 变更必须重建')
+  assert.equal(engineRebuildReason(base, { ...base, openaiApiKeys: 'not-a-map' }, 'openai', 'int8'), null, '非法 map 不得误触发')
+  assert.equal(engineRebuildReason({ ...base, ttsEngine: 'edge' }, { ...base, ttsEngine: 'edge', openaiApiKeys: { a: 'k1' } }, 'edge', 'int8'), null, '非 openai 引擎下 map 变化不重建')
+})
+
 console.log(`\n${passed} passed`)

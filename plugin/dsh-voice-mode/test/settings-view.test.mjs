@@ -3,7 +3,7 @@
  * 2026-11-19：在线 TTS 支持在 UI 里填 key 后，这三条规则成为安全边界（ADR-0013）的一部分。
  */
 import assert from 'node:assert/strict'
-import { SECRET_SETTING_KEYS, applyClearSecrets, hasSecret, publicSettingsView } from '../src/settings-view.ts'
+import { SECRET_SETTING_KEYS, applyClearSecrets, buildPresetKeyPresence, hasSecret, publicSettingsView } from '../src/settings-view.ts'
 
 let passed = 0
 const t = (name, fn) => {
@@ -58,7 +58,30 @@ t('applyClearSecrets：非数组/非字符串元素被忽略（不抛也不误�
 })
 
 t('SECRET_SETTING_KEYS 是显式清单（新增密钥字段必须登记）', () => {
-  assert.deepEqual([...SECRET_SETTING_KEYS].sort(), ['mimoApiKey', 'openaiApiKey'])
+  assert.deepEqual([...SECRET_SETTING_KEYS].sort(), ['mimoApiKey', 'openaiApiKey', 'openaiApiKeys'])
+})
+
+t('Q2：openaiApiKeys 值恒 {} 且只回逐预设布尔（明文永不下发）', () => {
+  const view = publicSettingsView(
+    { openaiApiKeys: { 'siliconflow-cosyvoice2': 'sk-sf', other: '' } },
+    { openaiApiKey: true, mimoApiKey: false, openaiApiKeys: { 'siliconflow-cosyvoice2': true, other: false } },
+    { openaiApiKey: false, mimoApiKey: false, openaiApiKeys: {} },
+  )
+  assert.deepEqual(view.value.openaiApiKeys, {}, '值必须是空对象')
+  assert.equal(view.keys.openaiApiKeys['siliconflow-cosyvoice2'], true)
+  assert.equal(view.keys.openaiApiKeys.other, false)
+  assert.ok(!JSON.stringify(view).includes('sk-sf'), '响应体里出现了按预设存的 key')
+})
+
+t('Q2：buildPresetKeyPresence 只回布尔并集，数组/原型键不生效', () => {
+  const r = buildPresetKeyPresence({ a: 'sk-a', empty: '' }, { b: 'sk-b', a: '' })
+  assert.deepEqual(r.presence, { a: true, empty: false, b: true })
+  assert.deepEqual(r.fromConfig, { a: false, empty: false, b: true })
+  assert.deepEqual(buildPresetKeyPresence(['x'], null), { presence: {}, fromConfig: {} })
+  const evil = JSON.parse('{"__proto__": "sk-evil"}')
+  const r2 = buildPresetKeyPresence(evil, {})
+  assert.equal(Object.hasOwn(r2.presence, '__proto__'), false, '原型键不得成为自有键')
+  assert.ok(!JSON.stringify(r2).includes('sk-evil'), '原型污染值不得泄漏进响应体')
 })
 
 

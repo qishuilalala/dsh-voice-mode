@@ -16,7 +16,16 @@ export interface EngineSettingsShape {
   openaiBaseUrl: string
   openaiModel: string
   openaiApiKey: string
+  /** 面板按预设存的 key 表（Q2）；比较时按排序键稳定序列化，键序不同不算变更。 */
+  openaiApiKeys: Record<string, string>
   mimoApiKey: string
+}
+
+/** 稳定序列化 key 表：键排序后拼接，防 JSON 键序抖动误触发重建。非字符串值一律忽略。 */
+function stableApiKeys(m: unknown): string {
+  if (m === null || typeof m !== 'object' || Array.isArray(m)) return ''
+  const keys = Object.keys(m as Record<string, unknown>).filter((k) => typeof (m as Record<string, unknown>)[k] === 'string').sort()
+  return keys.map((k) => `${k}=${String((m as Record<string, string>)[k])}`).join('&')
 }
 
 export type EngineRebuildReason = 'engine-switch' | 'mimo-key' | 'kokoro-model' | 'openai-config' | null
@@ -43,7 +52,8 @@ export function engineRebuildReason(
     (next.openaiPreset !== prev.openaiPreset ||
       next.openaiBaseUrl !== prev.openaiBaseUrl ||
       next.openaiModel !== prev.openaiModel ||
-      next.openaiApiKey !== prev.openaiApiKey)
+      next.openaiApiKey !== prev.openaiApiKey ||
+      stableApiKeys(next.openaiApiKeys) !== stableApiKeys(prev.openaiApiKeys))
   ) {
     return 'openai-config'
   }

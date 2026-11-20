@@ -701,6 +701,77 @@ try {
       env.restore()
     }
   })
+
+  // 6b. Q1+Q2 级联（2026-11-20）：预设带 voices 表时音色下拉列出该服务音色；
+  // 切预设时旧音色不在新表则同步清空（防 400），在则保留；逐预设 Key 行按预设 id 渲染。
+  await test('Q1Q2: 服务→音色→Key 级联：列表/原子切换/逐预设 Key 行', async () => {
+    const env = installBrowserEnv({
+      fetchImpl: async (url) => {
+        if (String(url).includes('/models/status')) {
+          return new Response(JSON.stringify({ tts: { engine: 'openai' } }), { status: 200 })
+        }
+        if (String(url).includes('/presets')) {
+          return new Response(
+            JSON.stringify({
+              presets: {
+                'siliconflow-cosyvoice2': { baseUrl: 'https://api.sf.test/v1', model: 'm1', voice: 'm1:alex', voices: ['m1:alex', 'm1:anna'] },
+                'openai-official': { baseUrl: 'https://api.oa.test/v1', model: 'm2', voice: 'alloy', voices: ['alloy', 'marin'] },
+              },
+            }),
+            { status: 200 },
+          )
+        }
+        if (String(url).includes('/settings')) {
+          return new Response(
+            JSON.stringify({ keys: { openaiApiKey: false, mimoApiKey: false, openaiApiKeys: { 'siliconflow-cosyvoice2': true } } }),
+            { status: 200 },
+          )
+        }
+        return new Response(JSON.stringify({}), { status: 200 })
+      },
+    })
+    try {
+      const { VoiceSettingsCard } = await loadFreshForm()
+      const scope = makeScope({ ttsEngine: 'openai', openaiPreset: 'siliconflow-cosyvoice2', voice: 'm1:alex', openaiApiKeys: {} })
+      const root = reactMod.createRoot(() => reactMod.createElement(VoiceSettingsCard, { scope, defaultOpen: true }))
+      await flush()
+      await flush()
+
+      // 音色下拉应列出所选预设的 voices（短标签），而非只有「自定义…」。
+      const voiceSelect = findAll(root.tree, (n) => n.type === 'select' && n.props['aria-label'] === STRINGS.zh.voiceLabel)[0]
+      assert.ok(voiceSelect, '应找到音色下拉')
+      const voiceOpts = voiceSelect.children.map((o) => o.children.join(''))
+      assert.ok(voiceOpts.includes('alex') && voiceOpts.includes('anna'), '应列出硅基 2 音色短标签：' + voiceOpts.join(','))
+
+      // 逐预设 Key 行：当前预设已配（面板布尔）→ 显示已配。
+      const keyRow = findAll(root.tree, (n) => n.type === 'input' && n.props.type === 'password' && n.props.placeholder === '')[0]
+      assert.ok(textOf(root.tree).includes(STRINGS.zh.openaiApiKeysLabel), '应渲染逐预设 Key 行')
+
+      // 切到另一预设：旧音色 m1:alex 不在新表 → 同步清空；预设本身写入。
+      const presetSelect = findAll(root.tree, (n) => n.type === 'select' && n.props['aria-label'] === STRINGS.zh.openaiPresetLabel)[0]
+      presetSelect.props.onChange({ target: { value: 'openai-official' } })
+      await flush()
+      await flush()
+      assert.ok(scope.calls.some(([k]) => k === 'openaiPreset'), '切预设应写入 openaiPreset')
+      assert.ok(
+        scope.calls.some(([k, v]) => k === 'voice' && v === ''),
+        '旧音色不在新预设表时必须同步清空（否则必 400）',
+      )
+
+      // 切到的预设无 key（mock 只给 siliconflow 配了）：状态行必须是警告色，不得是成功绿。
+      // 注：必须限定 role=status，外层 wrapper span 的后代文本恰好也是同一串（input 本身无文本）。
+      const missingSpans = findAll(root.tree, (n) => n.type === 'span' && n.props.role === 'status' && textOf(n) === STRINGS.zh.presetKeyMissing)
+      assert.ok(missingSpans.length > 0, '无 key 预设应显示「未配 key」')
+      assert.ok(
+        String(missingSpans[0].props.style?.color || '').includes('warn'),
+        '缺 key 不得用成功绿（与「假就绪」同类毛病）：' + missingSpans[0].props.style?.color,
+      )
+
+      root.unmount()
+    } finally {
+      env.restore()
+    }
+  })
   // 7. I19e：SecretField clear 带 signal、409 回退 score.set 并清旧 failed
   await test('I19e: SecretField clear 带超时 signal，409 回退 score.set 并清除旧 failed 状态', async () => {
     let settingsStatus = 500
