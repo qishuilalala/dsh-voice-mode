@@ -1962,8 +1962,6 @@ var zh = {
   presetSelfVllm: "\u81EA\u5EFA \xB7 vLLM-Omni",
   presetSelfVllmNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8000\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
   presetKeyNote: "\u9009\u597D\u540E\u5728\u4E0B\u9762\u300CAPI Key\u300D\u91CC\u586B\u5373\u53EF\uFF08\u4E5F\u53EF\u4EE5\u7EE7\u7EED\u7528 profile \u7684 openaiTts.apiKey/apiKeys\uFF09\u3002key \u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\uFF0C\u4E0D\u56DE\u4F20\u6D4F\u89C8\u5668",
-  presetVerify: "\u9A8C\u8BC1\u6B64\u9884\u8BBE",
-  presetWriteFailed: "\u5199\u5165\u8BBE\u7F6E\u5931\u8D25\uFF08\u5BBF\u4E3B\u672A\u63A5\u53D7\uFF09\uFF0C\u672A\u505A\u9A8C\u8BC1",
   presetDataMissing: "\u9884\u8BBE\u6570\u636E\u672A\u52A0\u8F7D\uFF08\u5BBF\u4E3B /presets \u4E0D\u53EF\u7528\uFF09\uFF1A\u8BF7\u91CD\u542F\u5BBF\u4E3B\u6216\u5237\u65B0\u9875\u9762\u540E\u91CD\u8BD5",
   presetReload: "\u91CD\u65B0\u52A0\u8F7D\u9884\u8BBE",
   // 2026-11-19：在线 TTS 可在设置卡片直接配置（URL/模型/key），不必改 profile YAML。
@@ -1985,10 +1983,6 @@ var zh = {
   secretCleared: "\u5DF2\u6E05\u9664",
   secretClearedConfigRemains: "\u5DF2\u6E05\u9664\u8BBE\u7F6E\u91CC\u7684 key\uFF1B\u914D\u7F6E\u6587\u4EF6\uFF08openaiTts/mimoTts\uFF09\u91CC\u4ECD\u914D\u7740 key\uFF0C\u5B9E\u9645\u4ECD\u4F1A\u4F7F\u7528\u5B83",
   // P1-4 只听写预设。
-  dictationTitle: "\u53EA\u542C\u5199",
-  dictationHint: "\u5173\u95ED\u56DE\u590D\u6717\u8BFB\uFF0C\u4E13\u6CE8\u542C\u5199\uFF1B\u518D\u70B9\u4E00\u6B21\u6062\u590D",
-  dictationEnable: "\u53EA\u542C\u5199\uFF0C\u4E0D\u6717\u8BFB",
-  dictationRestore: "\u6062\u590D\u6717\u8BFB",
   // P1-3 用户纠错词表。
   replTitle: "\u7EA0\u9519\u8BCD\u8868",
   replFromPh: "\u542C\u9519\u5199\u6CD5\uFF0C\u9017\u53F7\u5206\u9694",
@@ -2005,9 +1999,9 @@ var zh = {
   replSaveFail: "\u4FDD\u5B58\u5931\u8D25\uFF08\u672A\u5199\u5165\uFF09\uFF0C\u89C4\u5219\u672A\u6539\u52A8\uFF1B\u8BF7\u68C0\u67E5\u63D2\u4EF6\u662F\u5426\u5DF2\u7981\u7528\u6216\u8BBE\u7F6E\u5B58\u50A8\u4E0D\u53EF\u5199",
   replTooLarge: "\u8BCD\u8868\u8FC7\u5927\uFF08\u8D85\u8FC7\u7EA6 12KB\uFF09\uFF1A\u8BF7\u51CF\u5C11\u89C4\u5219\u6570\u91CF\u6216\u7F29\u77ED\u5199\u6CD5",
   // P1-1 一键自测：合成✓/播放✓分离显示。
-  selftestTitle: "\u4E00\u952E\u81EA\u6D4B",
-  selftestHint: "\u5206\u522B\u9A8C\u8BC1\u201C\u80FD\u5408\u6210\u201D\u4E0E\u201C\u80FD\u51FA\u58F0\u201D\uFF0C\u5B9A\u4F4D\u65E0\u58F0\u662F\u5F15\u64CE\u95EE\u9898\u8FD8\u662F\u64AD\u653E\u95EE\u9898",
-  selftestRun: "\u5F00\u59CB\u81EA\u6D4B",
+  selftestTitle: "\u6D4B\u8BD5\u6717\u8BFB",
+  selftestHint: "\u5408\u6210 + \u64AD\u653E\u4E00\u6B21\u5B8C\u6210\uFF1A\u6210\u529F\u4F1A\u76F4\u63A5\u51FA\u58F0\uFF0C\u5931\u8D25\u4F1A\u6307\u51FA\u662F\u5F15\u64CE\u3001Key \u8FD8\u662F\u7F51\u7EDC\u95EE\u9898",
+  selftestRun: "\u6D4B\u8BD5\u6717\u8BFB",
   selftestRunning: "\u81EA\u6D4B\u4E2D\u2026",
   selftestSynth: "\u5408\u6210",
   selftestPlay: "\u64AD\u653E",
@@ -2038,10 +2032,20 @@ var zh = {
   engineUnavailableShort: "\u4E0D\u53EF\u7528",
   errOpenaiConfigMissing: "\u8FD8\u6CA1\u914D\u597D\u7AEF\u70B9\uFF1A\u5728\u4E0B\u65B9\u300C\u5728\u7EBF\u9884\u8BBE\u300D\u9009\u4E00\u5BB6\uFF08\u901A\u5E38\u53EA\u9700\u586B key\uFF09\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u586B\u63A5\u53E3\u5730\u5740\u4E0E\u6A21\u578B\u540D",
   engineMissingKey: "\u7F3A API Key",
+  rowInfo: "\u8BF4\u660E",
+  voiceDefaultOption: "\u9ED8\u8BA4\uFF08{name}\uFF09",
+  voiceCurrentOption: "\u5F53\u524D\u503C\uFF08{name}\uFF09",
+  segInput: "\u8BED\u97F3\u8F93\u5165",
+  segReadAloud: "\u6717\u8BFB",
+  segDisplay: "\u663E\u793A\u4E0E\u4EA4\u4E92",
+  segAdvanced: "\u9AD8\u7EA7",
+  segListLabel: "\u8BBE\u7F6E\u5206\u6BB5",
+  segOpenAiServer: "\u5728\u7EBF\u670D\u52A1",
+  segTuning: "\u8C03\u97F3\u4E0E\u6392\u969C",
+  segReplacements: "\u7EA0\u9519\u8BCD\u8868",
   errApiKeyMissingHint: "\u6717\u8BFB\u670D\u52A1\u9700\u8981 API Key\uFF1A\u5728\u4E0B\u65B9\u300CAPI Key\u300D\u586B\u5165\u540E\u70B9\u300C\u9A8C\u8BC1\u6B64\u9884\u8BBE\u300D\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE",
   ttsKeyMissingNotice: "\u5728\u7EBF\u6717\u8BFB\u7F3A\u5C11 API Key\uFF1A\u8BC6\u522B\u4E0E\u5B57\u5E55\u53EF\u7528\uFF0C\u6717\u8BFB\u4F1A\u5931\u8D25\uFF1B\u8BF7\u5230\u300C\u8BBE\u7F6E \u2192 \u8BED\u97F3\u6A21\u5F0F\u300D\u586B Key\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE\uFF08Edge/\u672C\u5730 VITS/Kokoro\uFF09",
   ttsProbeAuthFail: "\u6717\u8BFB\u88AB\u670D\u52A1\u7AEF\u62D2\u7EDD\uFF08\u591A\u4E3A API Key \u7F3A\u5931\u6216\u65E0\u6548\uFF09\uFF1A\u8BF7\u5230\u300C\u8BBE\u7F6E \u2192 \u8BED\u97F3\u6A21\u5F0F\u300D\u586B\u5199\u6216\u66F4\u65B0 Key\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE",
-  verifyAuthFail: "\u9A8C\u8BC1\u5931\u8D25\uFF1A\u670D\u52A1\u7AEF\u62D2\u7EDD\u9274\u6743\uFF08401/403\uFF09\uFF0C\u8BF7\u68C0\u67E5\u5E76\u66F4\u65B0 API Key",
   previewAuth: "\u670D\u52A1\u7AEF\u62D2\u7EDD\u9274\u6743\uFF1AAPI Key \u7F3A\u5931\u6216\u65E0\u6548",
   errRemoteTts: "\u6717\u8BFB\u670D\u52A1\u8FDE\u4E0D\u4E0A\u3001\u62A5\u9519\u6216\u592A\u6162\uFF1B\u914D\u7F6E\u4E86\u56DE\u9000\u65F6\u8FD9\u671F\u95F4\u7528\u672C\u5730\u5F15\u64CE\u6717\u8BFB",
   descVoiceKokoro: "Kokoro \u4E2D\u82F1\u97F3\u8272\uFF08103 \u4E2A\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B48-51 \u4E2D\u6587\u540D\uFF0C\u5176\u4F59\u6309\u7F16\u53F7+\u5B9E\u6D4B\u6027\u522B\u6807\u6CE8\uFF0C\u4E2D\u82F1\u6DF7\u8BFB\u5747\u53EF\uFF09",
@@ -2126,7 +2130,7 @@ var zh = {
   descShowStatusBar: "\u5728\u8F93\u5165\u6846\u4E0A\u65B9\u663E\u793A\u8BED\u97F3\u72B6\u6001\u6761\uFF08\u6CE2\u5F62\u3001\u8BC6\u522B\u6587\u5B57\u3001\u8BA1\u65F6\u3001\u63D0\u793A\u3001\u9000\u51FA\uFF09\uFF1B\u5173\u95ED\u540E\u72B6\u6001\u53EA\u5728\u9EA6\u514B\u98CE\u6309\u94AE\u4E0A\u663E\u793A",
   descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF09\uFF1A\u8BF4\u51FA\u8BCD\u5934\u624D\u8FDB\u5165\u8BC6\u522B\uFF0C\u907F\u514D\u8BEF\u89E6\u3002\u53EF\u4E0E\u547D\u4EE4\u8FDE\u8BF4\uFF08\u300C\u4F60\u597D\u5C0FD\uFF0C\u5E2E\u6211\u67E5\u5929\u6C14\u300D\u2014\u2014\u8BCD\u5934\u4F1A\u81EA\u52A8\u5265\u6389\u3001\u4E0D\u8FDB\u6D88\u606F\uFF09\uFF1B\u6BCF\u53E5\u65AD\u53E5\u6216\u6253\u65AD\u540E\u9700\u91CD\u8BF4\uFF1B\u4EC5 toggle \u6A21\u5F0F\u751F\u6548\uFF08hold / \u624B\u52A8\u6253\u65AD\u4E0B\u4E0D\u751F\u6548\uFF1Bdetect \u81EA\u52A8\u63A2\u6D4B\u672A\u751F\u6548\u3001\u56DE\u843D manual \u65F6\u540C\u6837\u4E0D\u751F\u6548\u2014\u2014Safari \u7B49\u65E0\u539F\u751F\u56DE\u58F0\u6D88\u9664\u7684\u673A\u5668\u4F1A\u9ED8\u8BA4\u843D\u5230\u8FD9\u4E00\u6863\uFF09\uFF1B\u6717\u8BFB\u671F\u8BF4\u5524\u9192\u8BCD\u4E0D\u89E6\u53D1\uFF08\u6253\u65AD\u4ECD\u6309 VAD \u5F00\u53E3\u5373\u6253\u65AD\uFF09\u3002\u5339\u914D\u5E26\u5BB9\u9519\uFF08\u540C\u97F3\u5B57 / \u524D\u5BFC\u8BED\u6C14\u8BCD\uFF09\uFF0C\u5EFA\u8BAE 3-4 \u5B57\uFF1B\u975E\u4E13\u7528 KWS \u5F15\u64CE\uFF0C\u5608\u6742\u73AF\u5883\u53EF\u80FD\u5EF6\u8FDF\u6216\u8BEF\u6FC0\u6D3B",
   wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
-  settingsCardDesc: "\u672C\u5730\u6D41\u5F0F\u8BC6\u522B + \u9010\u53E5\u6717\u8BFB\uFF0C\u5F00\u53E3\u5373\u53EF\u6253\u65AD\u3002\u5C55\u5F00\u4E0B\u9762\u5404\u9879\u6309\u9700\u8C03\u6574\uFF1A\u5F15\u64CE\u4E0E\u58F0\u97F3\u3001\u4EA4\u4E92\u3001\u8BC6\u522B\u3001\u5B57\u5E55\u3001\u6A21\u578B\u3002",
+  settingsCardDesc: "\u672C\u5730\u8BC6\u522B + \u9010\u53E5\u6717\u8BFB\uFF0C\u5F00\u53E3\u5373\u53EF\u6253\u65AD\u3002\u8BBE\u7F6E\u5206\u56DB\u6BB5\uFF1A\u8BED\u97F3\u8F93\u5165\u3001\u6717\u8BFB\u3001\u663E\u793A\u4E0E\u4EA4\u4E92\u3001\u9AD8\u7EA7\uFF1B\u6539\u5B8C\u5373\u65F6\u751F\u6548\u3002",
   settingsEffectiveNote: "\u751F\u6548\u65F6\u673A\u5206\u56DB\u6863\uFF1A\u2460 \u5373\u65F6\u2014\u2014\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / Kokoro \u6A21\u578B\u7CBE\u5EA6\uFF08\u5DF2\u7F13\u5B58\u5219\u5373\u65F6\uFF0C\u5426\u5219\u4E0B\u6B21\u4E0B\u8F7D\uFF09/ \u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u5BF9\u540E\u7EED\u56DE\u590D\u751F\u6548\uFF09/ \u6717\u8BFB\u56DE\u590D / \u72B6\u6001\u6761 / \u5B57\u5E55\u6D6E\u5C42 / \u6A21\u578B\u955C\u50CF\uFF08\u4E0B\u6B21\u4E0B\u8F7D\u5C1D\u8BD5\u5373\u751F\u6548\uFF09\uFF1B\u2461 \u4E0B\u6B21\u8BC6\u522B\u65F6\u2014\u2014\u5B9A\u7A3F\u91CD\u8BD1\uFF08SenseVoice\uFF09/ \u9006\u6587\u672C\u5F52\u4E00\u5316\uFF1B\u2462 \u4E0B\u4E00\u6BB5\u8BDD\u2014\u2014\u9759\u97F3\u5224\u5B9A\u65F6\u957F\uFF08\u65AD\u53E5\u7AEF\u70B9\uFF1B\u53D1\u9001\u7B49\u5F85\u56FA\u5B9A 1.2 \u79D2\u4E0D\u53D7\u5F71\u54CD\uFF09\uFF1B\u2463 \u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u2014\u2014\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3 / \u6253\u65AD\u8BED\u97F3\u62A2\u6551 / LLM \u7EA0\u9519 / \u7A7A\u95F2\u65F6\u957F\u3002\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u624D\u751F\u6548\u7684\u9879\u4F1A\u5217\u5728\u5361\u7247\u9876\u90E8\uFF08\u542B\u5F53\u524D\u751F\u6548\u503C\uFF09\u3002",
   effectivePending: "\u6709 {count} \u9879\u4FEE\u6539\u5C06\u5728\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\uFF1A{items}",
   valueOn: "\u5F00",
@@ -2352,8 +2356,6 @@ var en = {
   presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
   presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
   presetKeyNote: "After picking one, fill the API Key field below (the profile openaiTts.apiKey/apiKeys still work). The key stays on the host and is never sent back to the browser",
-  presetVerify: "Verify preset",
-  presetWriteFailed: "Could not save the setting (host rejected it); verification was skipped",
   presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
   presetReload: "Reload presets",
   // 2026-11-19: online TTS is configurable from the settings card (URL/model/key), no profile YAML edit needed.
@@ -2375,10 +2377,6 @@ var en = {
   secretCleared: "Cleared",
   secretClearedConfigRemains: "Removed the key from settings; the config file (openaiTts/mimoTts) still has one and will keep using it",
   // P1-4 dictation-only preset.
-  dictationTitle: "Dictation only",
-  dictationHint: "Turn off reply read-aloud for focused dictation; click again to restore",
-  dictationEnable: "Dictate only, no read-aloud",
-  dictationRestore: "Restore read-aloud",
   // P1-3 correction wordlist.
   replTitle: "Correction wordlist",
   replFromPh: "Misheard spellings, comma-separated",
@@ -2395,9 +2393,9 @@ var en = {
   replSaveFail: "Save failed (nothing was written); rules unchanged. Check whether the plugin is disabled or the settings store is read-only",
   replTooLarge: "Wordlist is too large (over ~12KB): reduce the number of rules or shorten the spellings",
   // P1-1 self-test: separate synthesis / playback verdicts.
-  selftestTitle: "Self-test",
-  selftestHint: "Verifies synthesis and playback separately to tell engine failures from playback failures",
-  selftestRun: "Run self-test",
+  selftestTitle: "Test read-aloud",
+  selftestHint: "Synthesize and play once: it speaks on success, and points to the engine, key or network on failure",
+  selftestRun: "Test read-aloud",
   selftestRunning: "Testing\u2026",
   selftestSynth: "Synthesis",
   selftestPlay: "Playback",
@@ -2427,10 +2425,20 @@ var en = {
   engineUnavailableShort: "Unavailable",
   errOpenaiConfigMissing: "Endpoint is not configured yet: pick a provider under Online preset (usually only the key is needed), or choose Custom and fill the endpoint and model",
   engineMissingKey: "API key missing",
+  rowInfo: "Details",
+  voiceDefaultOption: "Default ({name})",
+  voiceCurrentOption: "Current ({name})",
+  segInput: "Voice input",
+  segReadAloud: "Read aloud",
+  segDisplay: "Display & interaction",
+  segAdvanced: "Advanced",
+  segListLabel: "Settings sections",
+  segOpenAiServer: "Online service",
+  segTuning: "Tuning & troubleshooting",
+  segReplacements: "Corrections",
   errApiKeyMissingHint: "Read-aloud requires an API key: fill it under API Key below, then click Verify preset; or switch to a local engine",
   ttsKeyMissingNotice: "Online read-aloud has no API key: recognition and captions work, but speech will fail. Fill the key under Settings \u2192 Voice mode, or switch to a local engine (Edge / local VITS / Kokoro)",
   ttsProbeAuthFail: "The service rejected read-aloud (usually a missing or invalid API key): fill or update the key under Settings \u2192 Voice mode, or switch to a local engine",
-  verifyAuthFail: "Verification failed: the server rejected authentication (401/403). Check and update the API key",
   previewAuth: "The server rejected authentication: API key missing or invalid",
   errRemoteTts: "The TTS server is unreachable, failing or too slow; the local fallback reads aloud meanwhile if one is configured",
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
@@ -2514,7 +2522,7 @@ var en = {
   descShowStatusBar: "Show the voice status bar above the composer (waveform, transcript, timer, notices, exit); when off, state shows only on the mic button",
   descWakeWord: 'Wake word (default off; e.g. "Hey D"): recognition starts only after you say it, to avoid accidental triggers. You may say it together with your command ("Hey D, check the weather" \u2014 the wake word is stripped and never sent); it must be repeated after each utterance split or barge-in; toggle mode only (inactive in hold / manual barge-in \u2014 and equally inactive when the detect probe fails and falls back to manual, the default on machines without native echo cancellation such as Safari); saying it while the agent is reading does not trigger (barge-in stays VAD-based). Fault-tolerant matching (homophones / leading fillers); 3-4 characters recommended; not a dedicated KWS engine \u2014 noisy environments may delay or falsely trigger',
   wakePlaceholder: "e.g. Hey D",
-  settingsCardDesc: "Streaming local recognition plus sentence-by-sentence read-aloud; speak to interrupt. Expand a group below to tune engines and voices, interaction, recognition, captions or models.",
+  settingsCardDesc: "Local recognition plus sentence-by-sentence read-aloud; speak to interrupt. Four sections: voice input, read aloud, display & interaction, advanced. Changes apply instantly.",
   settingsEffectiveNote: "When settings apply, in four tiers: \u2460 immediately \u2014 engine / voice / rate / Kokoro model precision (immediate when cached, else next download) / spoken format (applies to later replies) / read replies / status bar / caption overlay / model mirror (next download attempt); \u2461 next recognition \u2014 finalization re-transcription (SenseVoice) / ITN; \u2462 next utterance \u2014 silence threshold (endpoint; the send wait stays a fixed 1.2s); \u2463 next time you enter voice mode \u2014 interrupt sensitivity / barge-in mode / echo gate / shortcut / auto-send / auto-resume / interaction mode / wake word / tool beep / caption font / caption width / backchannel yielding / yield window / barge-in salvage / LLM correction / idle timeout. Items that take effect next time you enter voice mode are listed at the top of this card with their current effective values.",
   effectivePending: "{count} change(s) will apply next time you enter voice mode: {items}",
   valueOn: "On",
@@ -4219,7 +4227,8 @@ function CheckRow({
       type: "checkbox",
       "aria-label": t(`${field}Label`),
       checked,
-      onChange: (e) => void score.set(field, e.target.checked)
+      onChange: (e) => void score.set(field, e.target.checked),
+      style: { width: 16, height: 16, flex: "0 0 auto", alignSelf: "flex-start", justifySelf: "start", margin: 0, accentColor: "var(--dsw-alias-state-success-primary, #3fb950)" }
     }
   );
 }
@@ -4715,8 +4724,10 @@ function VoiceSelect({
   showCustom = true
 }) {
   const cur = String(value ?? "");
-  const inOptions = options.some((o) => o.v === cur);
-  const idx = options.findIndex((o) => o.v === cur);
+  const baseOpts = placeholder && showCustom && !options.some((o) => o.v === "") ? [{ v: "", label: t("voiceDefaultOption").replace("{name}", placeholder) }, ...options] : options;
+  const withDefault = showCustom && cur.trim() !== "" && !baseOpts.some((o) => o.v === cur) ? [{ v: cur, label: t("voiceCurrentOption").replace("{name}", cur) }, ...baseOpts] : baseOpts;
+  const inOptions = withDefault.some((o) => o.v === cur);
+  const idx = withDefault.findIndex((o) => o.v === cur);
   const [forceCustom, setForceCustom] = (0, import_react2.useState)(false);
   const [custom, setCustom] = (0, import_react2.useState)(inOptions ? "" : cur);
   (0, import_react2.useEffect)(() => {
@@ -4729,14 +4740,14 @@ function VoiceSelect({
     void score.set(field, next);
   };
   const move = (delta) => {
-    if (options.length === 0) return;
+    if (withDefault.length === 0) return;
     setForceCustom(false);
     if (inOptions) {
-      const n = options.length;
-      const next = options[((idx + delta) % n + n) % n];
+      const n = withDefault.length;
+      const next = withDefault[((idx + delta) % n + n) % n];
       void score.set(field, next.v);
     } else {
-      void score.set(field, options[0].v);
+      void score.set(field, withDefault[0].v);
     }
   };
   const selectStyle = {
@@ -4753,9 +4764,9 @@ function VoiceSelect({
     backgroundSize: "12px 12px",
     paddingRight: 32
   };
-  const currentValueLabel = inOptions && !forceCustom ? options[idx].label : custom || placeholder || "";
+  const currentValueLabel = inOptions && !forceCustom ? withDefault[idx].label : custom || placeholder || "";
   const showCustomInput = showCustom && (!inOptions || forceCustom);
-  const selectValue = showCustomInput ? "__custom__" : inOptions ? cur : options[0]?.v ?? "";
+  const selectValue = showCustomInput ? "__custom__" : inOptions ? cur : withDefault[0]?.v ?? "";
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: "100%", alignItems: "stretch" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", gap: 6, alignItems: "center" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": t("voicePrev"), onClick: () => move(-1), style: stepBtn, children: "\u2039" }),
@@ -4776,7 +4787,7 @@ function VoiceSelect({
             }
           },
           children: [
-            options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v)),
+            withDefault.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v)),
             showCustom && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", { value: "__custom__", children: [
               t("custom"),
               "\u2026"
@@ -5072,29 +5083,25 @@ function SelfTestSection({
       }
     };
   }, []);
-  const verdict = (label, st, extra2) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term, display: "inline-flex", gap: 4 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "span",
-      {
-        style: {
-          fontWeight: 600,
-          color: st === "ok" ? "var(--dsw-alias-state-success-primary)" : st === null ? t2.term : "var(--dsw-alias-state-error-primary)"
-        },
-        children: st === "ok" ? t("selftestOk") : st === null ? "\u2013" : st === "autoplay" ? t("selftestAutoplay") : t("selftestFail")
-      }
-    ),
-    extra2 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: extra2 }) : null
-  ] });
+  const chip = (st) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "span",
+    {
+      style: {
+        fontSize: 11,
+        fontWeight: 600,
+        color: st === "ok" ? "var(--dsw-alias-state-success-primary)" : st === null ? t2.term : "var(--dsw-alias-state-error-primary)"
+      },
+      children: st === "ok" ? t("selftestOk") : st === null ? "\u2013" : st === "autoplay" ? t("selftestAutoplay") : t("selftestFail")
+    }
+  );
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
     "span",
     {
       role: "group",
       "aria-label": t("selftestTitle"),
-      style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start", padding: "2px 0 10px" },
+      title: t("selftestHint"),
+      style: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "2px 0 6px" },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.label, fontWeight: 600 }, children: t("selftestTitle") }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("selftestHint") }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {
@@ -5106,46 +5113,60 @@ function SelfTestSection({
               display: "inline-flex",
               alignItems: "center",
               gap: 5,
-              alignSelf: "flex-start",
               cursor: busy ? "default" : "pointer",
-              color: t2.label,
-              background: "var(--dsw-alias-bg-layer-2)",
-              border: `1px solid ${t2.border}`,
+              color: "var(--dsw-alias-bg-base, #fff)",
+              background: "var(--dsw-alias-state-success-primary, #3fb950)",
+              border: "1px solid transparent",
               borderRadius: 6,
-              padding: "4px 10px",
+              padding: "4px 12px",
               fontSize: 12,
+              fontWeight: 600,
               lineHeight: "18px"
             },
             children: busy ? t("selftestRunning") : t("selftestRun")
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { role: "status", "aria-live": "polite", style: { display: "flex", flexDirection: "column", gap: 2 }, children: [
-          verdict(t("selftestSynth"), synth, synth === "ok" ? `${synthMs} ${t("unitMs")}` : void 0),
-          verdict(t("selftestPlay"), play)
-        ] }),
-        synth === "fail" && isCloudEngine(engine) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        synth !== null || play !== null ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "span",
+          {
+            role: "status",
+            "aria-live": "polite",
+            style: { display: "inline-flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 11, color: t2.term },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                t("selftestSynth"),
+                " ",
+                chip(synth),
+                synth === "ok" ? ` ${synthMs} ${t("unitMs")}` : ""
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                t("selftestPlay"),
+                " ",
+                chip(play)
+              ] })
+            ]
+          }
+        ) : null,
+        synth === "fail" && isCloudEngine(engine) ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {
             type: "button",
             onClick: onSwitchLocal,
             style: {
               font: "inherit",
-              display: "inline-flex",
-              alignItems: "center",
-              alignSelf: "flex-start",
               cursor: "pointer",
               color: t2.label,
-              background: "var(--dsw-alias-bg-layer-2)",
+              background: "transparent",
               border: `1px solid ${t2.border}`,
               borderRadius: 6,
-              padding: "4px 10px",
-              fontSize: 12,
+              padding: "3px 10px",
+              fontSize: 11,
               lineHeight: "18px"
             },
             children: t("switchToLocalTts")
           }
-        ),
-        note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
+        ) : null,
+        note ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "status", style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px", flexBasis: "100%" }, children: note }) : null
       ]
     }
   );
@@ -5337,44 +5358,6 @@ function ReplacementsSection({
     note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
   ] });
 }
-function DictationPreset({
-  readAloud,
-  onPick
-}) {
-  const cur = readAloud === "always" || readAloud === "off" ? readAloud : "voice";
-  const lastOn = (0, import_react2.useRef)("voice");
-  (0, import_react2.useEffect)(() => {
-    if (cur !== "off") lastOn.current = cur;
-  }, [cur]);
-  const off = cur === "off";
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start", padding: "2px 0 10px" }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.label, fontWeight: 600 }, children: t("dictationTitle") }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("dictationHint") }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "button",
-      {
-        type: "button",
-        "aria-pressed": off,
-        onClick: () => onPick(off ? lastOn.current : "off"),
-        style: {
-          font: "inherit",
-          display: "inline-flex",
-          alignItems: "center",
-          alignSelf: "flex-start",
-          cursor: "pointer",
-          color: t2.label,
-          background: "var(--dsw-alias-bg-layer-2)",
-          border: `1px solid ${t2.border}`,
-          borderRadius: 6,
-          padding: "4px 10px",
-          fontSize: 12,
-          lineHeight: "18px"
-        },
-        children: off ? t("dictationRestore") : t("dictationEnable")
-      }
-    )
-  ] });
-}
 var modelsStatusSubs = /* @__PURE__ */ new Set();
 var modelsStatusTimer = null;
 var modelsStatusLast = null;
@@ -5430,10 +5413,7 @@ function OpenAiPresetSection({
   score,
   value,
   presets,
-  onReloadPresets,
-  onVerify,
-  verifyState,
-  verifying
+  onReloadPresets
 }) {
   const cur = typeof value === "string" ? value : "";
   const known = Object.keys(presets ?? {});
@@ -5477,47 +5457,7 @@ function OpenAiPresetSection({
     ] }) : null,
     PRESET_NOTE[cur] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: PRESET_NOTE[cur]() }) : null,
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetKeyNote") }),
-    cur === CUSTOM ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetCustomHint") }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        "button",
-        {
-          type: "button",
-          disabled: verifying,
-          "aria-busy": verifying || void 0,
-          onClick: () => onVerify(cur),
-          style: {
-            font: "inherit",
-            display: "inline-flex",
-            alignItems: "center",
-            alignSelf: "flex-start",
-            cursor: cur ? "pointer" : "default",
-            opacity: 1,
-            color: t2.label,
-            background: "var(--dsw-alias-bg-layer-2)",
-            border: `1px solid ${t2.border}`,
-            borderRadius: 6,
-            padding: "4px 10px",
-            fontSize: 12,
-            lineHeight: "18px"
-          },
-          children: verifying ? t("selftestRunning") : t("presetVerify")
-        }
-      ),
-      verifyState && verifyState.id === cur ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        "span",
-        {
-          role: "status",
-          "aria-live": "polite",
-          style: {
-            fontSize: 12,
-            fontWeight: 600,
-            color: verifyState.state === "ok" ? "var(--dsw-alias-state-success-primary)" : "var(--dsw-alias-state-error-primary)"
-          },
-          children: verifyState.state === "ok" ? t("selftestOk") : verifyState.note ?? t("selftestCheck")
-        }
-      ) : null
-    ] })
+    cur === CUSTOM ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetCustomHint") }) : null
   ] });
 }
 function useHostPresets() {
@@ -5536,10 +5476,39 @@ function useHostPresets() {
 }
 function Row({ name: name2, desc, children }) {
   const label = t(`${name2}Label`);
+  const [showDesc, setShowDesc] = (0, import_react2.useState)(false);
+  const descId = `dshvm-desc-${name2}`;
+  const hasDesc = desc.length > 0;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, "data-dshvm-row": name2, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setLabel, children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: setLabel, children: [
+      label,
+      hasDesc ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          type: "button",
+          "aria-label": t("rowInfo"),
+          "aria-expanded": showDesc,
+          "aria-controls": descId,
+          onClick: () => setShowDesc((v) => !v),
+          style: {
+            appearance: "none",
+            border: 0,
+            background: "transparent",
+            cursor: "pointer",
+            font: "inherit",
+            fontSize: 11,
+            lineHeight: "16px",
+            padding: "1px 5px",
+            marginLeft: 4,
+            borderRadius: 4,
+            color: showDesc ? "var(--dsw-alias-label-secondary)" : "var(--dsw-alias-label-tertiary)"
+          },
+          children: "?"
+        }
+      ) : null
+    ] }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }, children }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...setHint, gridColumn: "1 / -1", minWidth: 0 }, children: desc })
+    showDesc && hasDesc ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { id: descId, style: { ...setHint, gridColumn: "1 / -1", minWidth: 0 }, children: desc }) : null
   ] });
 }
 var NEXT_ENTRY_FMT = {
@@ -5572,53 +5541,79 @@ function EffectivePending({ effective, value, ready }) {
   }).join(t("effectiveItemSep"));
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { "data-dshvm-settings": "effective-pending", style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary)", padding: "8px 2px 4px", lineHeight: 1.6 }, children: t("effectivePending").replace("{count}", String(pending.length)).replace("{items}", items) });
 }
-function Section({
-  title,
-  defaultOpen = false,
-  children
-}) {
-  const [open, setOpen] = (0, import_react2.useState)(defaultOpen);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { minWidth: 0, borderTop: `1px solid ${t2.border}` }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-      "button",
-      {
-        type: "button",
-        "aria-expanded": open,
-        onClick: () => setOpen((v) => !v),
-        style: {
-          appearance: "none",
-          width: "100%",
-          font: "inherit",
-          textAlign: "left",
-          cursor: "pointer",
-          background: "transparent",
-          border: 0,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "12px 0 10px",
-          color: "var(--dsw-alias-label-secondary)"
-        },
-        children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "span",
-            {
-              "aria-hidden": "true",
-              style: {
-                display: "inline-flex",
-                transition: "transform .16s",
-                transform: open ? "rotate(90deg)" : "rotate(0deg)",
-                color: t2.term
-              },
-              children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 12, height: 12, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M6 4l4 4-4 4z" }) })
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: 600, letterSpacing: ".02em" }, children: title })
-        ]
-      }
-    ),
-    open ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { minWidth: 0, paddingBottom: 6 }, children }) : null
-  ] });
+function SegmentTabs({ active, onChange }) {
+  const tabs = [
+    { k: "input", label: t("segInput") },
+    { k: "read", label: t("segReadAloud") },
+    { k: "display", label: t("segDisplay") },
+    { k: "advanced", label: t("segAdvanced") }
+  ];
+  const move = (delta) => {
+    const i = tabs.findIndex((tb) => tb.k === active);
+    const next = tabs[((i + delta) % tabs.length + tabs.length) % tabs.length];
+    onChange(next.k);
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "div",
+    {
+      role: "tablist",
+      "aria-label": t("segListLabel"),
+      onKeyDown: (e) => {
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          move(1);
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          move(-1);
+        }
+      },
+      style: { display: "flex", flexWrap: "wrap", gap: 4, padding: "10px 0 12px", borderBottom: `1px solid ${t2.border}` },
+      children: tabs.map((tb) => {
+        const on = tb.k === active;
+        return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            type: "button",
+            role: "tab",
+            "aria-selected": on,
+            "data-dshvm-tab": tb.k,
+            onClick: () => onChange(tb.k),
+            style: {
+              appearance: "none",
+              font: "inherit",
+              fontSize: 12,
+              cursor: "pointer",
+              padding: "6px 12px",
+              borderRadius: 999,
+              border: `1px solid ${on ? "transparent" : t2.border}`,
+              background: on ? "var(--dsw-alias-bg-layer-2)" : "transparent",
+              color: on ? "var(--dsw-alias-label-primary)" : "var(--dsw-alias-label-secondary)",
+              fontWeight: on ? 600 : 400
+            },
+            children: tb.label
+          },
+          tb.k
+        );
+      })
+    }
+  );
+}
+function GroupTitle({ children, first }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "div",
+    {
+      style: {
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: ".04em",
+        color: "var(--dsw-alias-label-tertiary)",
+        padding: first ? "4px 0 2px" : "14px 0 2px",
+        borderTop: first ? "none" : `1px solid ${t2.border}`,
+        marginTop: first ? 6 : 10
+      },
+      children
+    }
+  );
 }
 function SegGroup({
   score,
@@ -5889,7 +5884,7 @@ function VoiceSettingsCard({
   };
   const hostPresetState = useHostPresets();
   const hostPresets = hostPresetState.presets;
-  const [presetVerify, setPresetVerify] = (0, import_react2.useState)(null);
+  const [tab, setTab] = (0, import_react2.useState)("read");
   const headStatus = useModelsStatus();
   const effectiveVoice = () => {
     const pid = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
@@ -5898,64 +5893,6 @@ function VoiceSettingsCard({
   (0, import_react2.useEffect)(() => {
     refreshSecretKeys();
   }, [value.ttsEngine]);
-  const [verifying, setVerifying] = (0, import_react2.useState)(false);
-  const verifyPreset = (presetId) => {
-    if (verifying) return;
-    setVerifying(true);
-    const presetVoice = hostPresets?.[presetId]?.voice ?? "";
-    const voice = (value.openaiPreset === presetId ? effectiveVoice() : "") || presetVoice;
-    if (!voice) {
-      setPresetVerify({
-        id: presetId,
-        state: "fail",
-        // 预设表没拉到 vs 真的没填音色，必须分开说：否则用户被指去填一个其实有值的框（T5 A②）。
-        note: hostPresets ? t("previewNameFirst") : t("presetDataMissing")
-      });
-      setVerifying(false);
-      return;
-    }
-    void (async () => {
-      try {
-        const wrotePreset = await Promise.resolve(scope.set("openaiPreset", presetId));
-        if (wrotePreset === false) {
-          setPresetVerify({ id: presetId, state: "fail", note: t("presetWriteFailed") });
-          setVerifying(false);
-          return;
-        }
-      } catch {
-        setPresetVerify({ id: presetId, state: "fail", note: t("presetWriteFailed") });
-        setVerifying(false);
-        return;
-      }
-      try {
-        const res = await fetch(`${BASE_PATH}/preview`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ voice, rate: Number(value.rate ?? 1.1) }),
-          signal: AbortSignal.timeout(3e4)
-        });
-        if (res.ok) {
-          setPresetVerify({ id: presetId, state: "ok" });
-          return;
-        }
-        let body = null;
-        try {
-          body = await res.json();
-        } catch {
-        }
-        const code = body?.code;
-        setPresetVerify({
-          id: presetId,
-          state: "fail",
-          note: code === "preview_auth" ? t("verifyAuthFail") : code === "rate_limited" || res.status === 429 ? t("selftestRateLimited") : code === "voice_disabled" || res.status === 403 ? t("selftestDisabled") : errorText(body, "selftestCheck")
-        });
-      } catch {
-        setPresetVerify({ id: presetId, state: "fail", note: t("selftestCheck") });
-      } finally {
-        setVerifying(false);
-      }
-    })();
-  };
   const engine = asTtsEngineKind(value.ttsEngine);
   const [edgeRaw, setEdgeRaw] = (0, import_react2.useState)(null);
   (0, import_react2.useEffect)(() => {
@@ -5994,7 +5931,103 @@ function VoiceSettingsCard({
     !collapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { id: cardBodyId, style: setBody, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EffectivePending, { effective: getRuntimeBoot(), value, ready: snap?.status === "ready" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRead"), defaultOpen: true, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SegmentTabs, { active: tab, onChange: setTab }),
+        tab === "input" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { role: "tabpanel", "aria-label": t("segInput"), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { first: true, children: t("secInteraction") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: t("descMode"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            SegGroup,
+            {
+              score: scope,
+              field: "mode",
+              value: value.mode,
+              options: [
+                { v: "toggle", label: t("modeToggle") },
+                { v: "hold", label: t("modeHold") },
+                { v: "once", label: t("modeOnce") }
+              ]
+            }
+          ) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "autoSend", checked: value.autoSend !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("secInterrupt") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: t("descInterrupt"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            SegGroup,
+            {
+              score: scope,
+              field: "interruptLevel",
+              value: value.interruptLevel,
+              options: [
+                { v: 0, label: t("sev0") },
+                { v: 1, label: t("sev1") },
+                { v: 2, label: t("sev2") }
+              ]
+            }
+          ) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "bargeInMode", desc: t("descBargeIn"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            SegGroup,
+            {
+              score: scope,
+              field: "bargeInMode",
+              value: value.bargeInMode,
+              options: [
+                { v: "detect", label: t("bargeInDetect") },
+                { v: "auto", label: t("bargeInAuto") },
+                { v: "manual", label: t("bargeInManual") }
+              ]
+            }
+          ) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("secShortcut") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "shortcut", desc: t("descShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShortcutField, { score: scope, field: "shortcut", value: value.shortcut ?? "" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "composerShortcut", desc: t("descComposerShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShortcutField, { score: scope, field: "composerShortcut", value: value.composerShortcut ?? "Alt+Enter" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "flex-start", gap: 10, padding: "2px 0 6px" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, fontSize: 11, lineHeight: "17px", color: "var(--dsw-alias-label-tertiary)" }, children: t("shortcutNote") }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                type: "button",
+                onClick: () => {
+                  void Promise.all([
+                    Promise.resolve(scope.set("shortcut", "Ctrl+Shift+V")),
+                    Promise.resolve(scope.set("composerShortcut", "Alt+Enter"))
+                  ]).finally(() => {
+                    try {
+                      window.dispatchEvent(new Event("dshvm-settings-changed"));
+                    } catch {
+                    }
+                  });
+                },
+                style: {
+                  flexShrink: 0,
+                  height: 26,
+                  padding: "0 10px",
+                  borderRadius: 6,
+                  border: "1px solid var(--dsw-alias-border-l3)",
+                  background: "transparent",
+                  color: "var(--dsw-alias-label-secondary)",
+                  fontSize: 12,
+                  cursor: "pointer"
+                },
+                children: t("shortcutReset")
+              }
+            )
+          ] })
+        ] }) : null,
+        tab === "read" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { role: "tabpanel", "aria-label": t("segReadAloud"), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "readAloud", desc: t("descReadAloud"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            SegGroup,
+            {
+              score: scope,
+              field: "readAloud",
+              value: value.readAloud ?? "voice",
+              options: [
+                { v: "voice", label: t("readAloudVoice") },
+                { v: "always", label: t("readAloudAlways") },
+                { v: "off", label: t("readAloudOff") }
+              ]
+            }
+          ) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("secRead") }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "ttsEngine", desc: t("descTtsEngine"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -6074,22 +6107,21 @@ function VoiceSettingsCard({
                   options: voiceOptions,
                   placeholder: ENGINE_DEFAULT_VOICE[engine] ?? "zh-CN-XiaoxiaoNeural",
                   showCustom: isCloudEngine(engine),
-                  footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v || (engine === "openai" ? effectiveVoice() : ""), rate: Number(value.rate ?? 1.1) })
+                  footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v || effectiveVoice() || ENGINE_DEFAULT_VOICE[engine] || "", rate: Number(value.rate ?? 1.1) })
                 }
               )
             }
           ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1.1, min: 0.5, max: 2, step: 0.1 }) }),
           engine === "openai" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("segOpenAiServer") }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiPreset", desc: t("descOpenaiPreset"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               OpenAiPresetSection,
               {
                 score: scope,
                 value: value.openaiPreset,
                 presets: hostPresets,
-                onReloadPresets: hostPresetState.reload,
-                onVerify: verifyPreset,
-                verifyState: presetVerify,
-                verifying
+                onReloadPresets: hostPresetState.reload
               }
             ) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiBaseUrl", desc: t("descOpenaiBaseUrl"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -6136,72 +6168,10 @@ function VoiceSettingsCard({
               configOnly: secretKeys.fromConfig.mimoApiKey,
               onChanged: refreshSecretKeys
             }
-          ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1.1, min: 0.5, max: 2, step: 0.1 }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secInterrupt"), defaultOpen: true, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: t("descInterrupt"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            SegGroup,
-            {
-              score: scope,
-              field: "interruptLevel",
-              value: value.interruptLevel,
-              options: [
-                { v: 0, label: t("sev0") },
-                { v: 1, label: t("sev1") },
-                { v: 2, label: t("sev2") }
-              ]
-            }
-          ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "bargeInMode", desc: t("descBargeIn"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            SegGroup,
-            {
-              score: scope,
-              field: "bargeInMode",
-              value: value.bargeInMode,
-              options: [
-                { v: "detect", label: t("bargeInDetect") },
-                { v: "auto", label: t("bargeInAuto") },
-                { v: "manual", label: t("bargeInManual") }
-              ]
-            }
-          ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "echoGateDb", desc: t("descEchoGate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "echoGateDb", value: value.echoGateDb ?? 6, min: 3, max: 12, step: 1 }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secInteraction"), children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: t("descMode"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            SegGroup,
-            {
-              score: scope,
-              field: "mode",
-              value: value.mode,
-              options: [
-                { v: "toggle", label: t("modeToggle") },
-                { v: "hold", label: t("modeHold") },
-                { v: "once", label: t("modeOnce") }
-              ]
-            }
-          ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "toolBeep", checked: Boolean(value.toolBeep), score: scope }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "autoSend", checked: value.autoSend !== false, score: scope }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "readAloud", desc: t("descReadAloud"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            SegGroup,
-            {
-              score: scope,
-              field: "readAloud",
-              value: value.readAloud ?? "voice",
-              options: [
-                { v: "voice", label: t("readAloudVoice") },
-                { v: "always", label: t("readAloudAlways") },
-                { v: "off", label: t("readAloudOff") }
-              ]
-            }
-          ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DictationPreset, { readAloud: value.readAloud, onPick: (v) => void scope.set("readAloud", v) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showStatusBar", desc: t("descShowStatusBar"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "showStatusBar", checked: value.showStatusBar !== false, score: scope }) }),
+          ) })
+        ] }) : null,
+        tab === "display" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { role: "tabpanel", "aria-label": t("segDisplay"), children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showCaptions", desc: t("descShowCaptions"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "showCaptions", checked: value.showCaptions !== false, score: scope }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "autoResume", checked: Boolean(value.autoResume), score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "captionFontSize", desc: t("descCaptionFontSize"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -6229,64 +6199,35 @@ function VoiceSettingsCard({
               ]
             }
           ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "backchannelYield", desc: t("descBackchannelYield"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "backchannelYield", checked: value.backchannelYield !== false, score: scope }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "bargeInSalvage", desc: t("descBargeInSalvage"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "bargeInSalvage", checked: value.bargeInSalvage !== false, score: scope }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "llmCorrect", desc: t("descLlmCorrect"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "llmCorrect", checked: value.llmCorrect === true, score: scope }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "yieldMs", desc: t("descYieldMs"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "yieldMs", value: value.yieldMs ?? 1500, min: 500, max: 3e3, step: 100 }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secShortcut"), children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "shortcut", desc: t("descShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShortcutField, { score: scope, field: "shortcut", value: value.shortcut ?? "" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "composerShortcut", desc: t("descComposerShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShortcutField, { score: scope, field: "composerShortcut", value: value.composerShortcut ?? "Alt+Enter" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "flex-start", gap: 10, padding: "2px 0 6px" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, fontSize: 11, lineHeight: "17px", color: "var(--dsw-alias-label-tertiary)" }, children: t("shortcutNote") }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "button",
-              {
-                type: "button",
-                onClick: () => {
-                  void Promise.all([
-                    Promise.resolve(scope.set("shortcut", "Ctrl+Shift+V")),
-                    Promise.resolve(scope.set("composerShortcut", "Alt+Enter"))
-                  ]).finally(() => {
-                    try {
-                      window.dispatchEvent(new Event("dshvm-settings-changed"));
-                    } catch {
-                    }
-                  });
-                },
-                style: {
-                  flexShrink: 0,
-                  height: 26,
-                  padding: "0 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--dsw-alias-border-l3)",
-                  background: "transparent",
-                  color: "var(--dsw-alias-label-secondary)",
-                  fontSize: 12,
-                  cursor: "pointer"
-                },
-                children: t("shortcutReset")
-              }
-            )
-          ] })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRecognition"), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showStatusBar", desc: t("descShowStatusBar"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "showStatusBar", checked: value.showStatusBar !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "autoResume", checked: Boolean(value.autoResume), score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "toolBeep", checked: Boolean(value.toolBeep), score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 5, min: 1, max: 120, step: 1 }) })
+        ] }) : null,
+        tab === "advanced" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { role: "tabpanel", "aria-label": t("segAdvanced"), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { first: true, children: t("secRecognition") }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "senseVoice", checked: value.senseVoice !== false, score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseITN", desc: t("descSenseITN"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "senseITN", checked: value.senseITN !== false, score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "spokenFormat", checked: value.spokenFormat !== false, score: scope }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 5, min: 1, max: 120, step: 1 }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "llmCorrect", desc: t("descLlmCorrect"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "llmCorrect", checked: value.llmCorrect === true, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("segTuning") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "echoGateDb", desc: t("descEchoGate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "echoGateDb", value: value.echoGateDb ?? 6, min: 3, max: 12, step: 1 }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "backchannelYield", desc: t("descBackchannelYield"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "backchannelYield", checked: value.backchannelYield !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "bargeInSalvage", desc: t("descBargeInSalvage"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "bargeInSalvage", checked: value.bargeInSalvage !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "yieldMs", desc: t("descYieldMs"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "yieldMs", value: value.yieldMs ?? 1500, min: 500, max: 3e3, step: 100 }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("segReplacements") }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             ReplacementsSection,
             {
               rules: value.asrReplacements,
               onChange: (next) => scope.set("asrReplacements", next)
             }
-          )
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Section, { title: t("secModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: hostOptions(), placeholder: "https://..." }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("settingsEffectiveNote") }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ModelStatusView, {})
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("secModel") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: hostOptions(), placeholder: "https://..." }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("settingsEffectiveNote") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ModelStatusView, {})
+        ] }) : null
       ] })
     ] })
   ] });
@@ -6488,7 +6429,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "6188887";
+var BUILD_TAG = "702caf5";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

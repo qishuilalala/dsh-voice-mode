@@ -281,6 +281,12 @@ function findAll(tree, pred) {
   walk(tree, (n) => { if (pred(n)) out.push(n) })
   return out
 }
+function activateTab(root, label) {
+  const tab = findAll(root.tree, (n) => n.type === 'button' && n.props.role === 'tab' && textOf(n) === label)[0]
+  assert.ok(tab, '应找到分段 ' + label)
+  tab.props.onClick()
+}
+
 function textOf(node) {
   if (node === null || node === undefined) return ''
   if (typeof node === 'string' || typeof node === 'number') return String(node)
@@ -484,9 +490,8 @@ try {
       assert.equal(getVoiceCustomInput()?.props.value, 'zh-CN-MyDraftVoice', '父组件重渲染携带新 options 数组时手输音色草稿不得丢失')
 
       // 展开「模型与存储」节，测试 SelectField（modelHost）
-      const modelSecBtn = findAll(root.tree, (n) => n.type === 'button' && textOf(n).includes(STRINGS.zh.secModel))[0]
-      assert.ok(modelSecBtn, '应找到模型与存储折叠按钮')
-      modelSecBtn.props.onClick()
+      activateTab(root, STRINGS.zh.segAdvanced)
+      await flush()
       const getHostSelect = () => findAll(root.tree, (n) => n.type === 'select' && n.props['aria-label'] === STRINGS.zh.modelHostLabel)[0]
       assert.ok(getHostSelect(), '展开后应找到镜像源下拉')
       getHostSelect().props.onChange({ target: { value: '__custom__' } })
@@ -511,10 +516,9 @@ try {
       const scope = makeScope({ silenceMs: 1500 })
       const root = reactMod.createRoot(() => reactMod.createElement(VoiceSettingsCard, { scope, defaultOpen: true }))
       await flush()
-      // 展开「识别与输入」节
-      const recBtn = findAll(root.tree, (n) => n.type === 'button' && textOf(n).includes(STRINGS.zh.secRecognition))[0]
-      assert.ok(recBtn, '应找到识别与输入节按钮')
-      recBtn.props.onClick()
+      // 2026-11-20 面板重构：静音断句在「语音输入」分段
+      activateTab(root, STRINGS.zh.segInput)
+      await flush()
 
       const getSilInput = () => findAll(root.tree, (n) => n.type === 'input' && n.props['aria-label'] === STRINGS.zh.silenceMsLabel)[0]
       assert.ok(getSilInput(), '应找到静音断句输入框')
@@ -558,9 +562,9 @@ try {
       })
       const root = reactMod.createRoot(() => reactMod.createElement(VoiceSettingsCard, { scope, defaultOpen: true }))
       await flush()
-      const scSecBtn = findAll(root.tree, (n) => n.type === 'button' && textOf(n).includes(STRINGS.zh.secShortcut))[0]
-      assert.ok(scSecBtn, '应找到快捷键折叠节')
-      scSecBtn.props.onClick()
+      // 2026-11-20 面板重构：快捷键在「语音输入」分段
+      activateTab(root, STRINGS.zh.segInput)
+      await flush()
 
       const getRecordBtn = () => findAll(root.tree, (n) => n.type === 'button' && (textOf(n) === STRINGS.zh.shortcutRecord || textOf(n) === STRINGS.zh.shortcutCancel))[0]
       getRecordBtn().props.onClick()
@@ -649,66 +653,54 @@ try {
     }
   })
 
-  // 6. I19d：verifyPreset 不写脏 voice，写预设抛错时判 fail 且不发 /preview
-  await test('I19d: verifyPreset 不写脏 voice；scope.set 抛错直接判 fail 不发 /preview', async () => {
-    const previewBodies = []
+  // 6. I19d（2026-11-20 面板重构）：独立「验证此预设」按钮已并入统一「测试朗读」；
+  //    选预设只写 openaiPreset，不得覆写用户 voice。
+  await test('I19d: 预设无独立验证按钮；选预设只写 openaiPreset 不污染 voice', async () => {
     const env = installBrowserEnv({
-      fetchImpl: async (url, init) => {
+      fetchImpl: async (url) => {
         if (String(url).includes('/models/status')) {
+          return new Response(JSON.stringify({ tts: { engine: 'openai' } }), { status: 200 })
+        }
+        if (String(url).includes('/presets')) {
           return new Response(
-            JSON.stringify({
-              tts: {
-                engine: 'openai',
-                openaiPresets: {
-                  siliconflow: { label: 'SiliconFlow', baseUrl: 'https://api.sf.test/v1', model: 'm1', voice: 'sf-voice', hasKey: true },
-                  openai: { label: 'OpenAI', baseUrl: 'https://api.oa.test/v1', model: 'm2', voice: 'alloy', hasKey: true },
-                },
-              },
-            }),
+            JSON.stringify({ presets: { siliconflow: { baseUrl: 'https://api.sf.test/v1', model: 'm1', voice: 'sf-voice' } } }),
             { status: 200 },
           )
         }
-        if (String(url).includes('/preview')) {
-          previewBodies.push(JSON.parse(String(init?.body || '{}')))
-          return new Response(new Uint8Array([0xff, 0xfb]), { status: 200 })
+        if (String(url).includes('/settings')) {
+          return new Response(JSON.stringify({ keys: {} }), { status: 200 })
         }
         return new Response(JSON.stringify({}), { status: 200 })
       },
     })
     try {
       const { VoiceSettingsCard } = await loadFreshForm()
-      let shouldThrow = false
-      const scope = makeScope({ ttsEngine: 'openai', openaiPreset: 'siliconflow', voice: 'my-user-voice' }, (field, val, commit) => {
-        if (shouldThrow) throw new Error('write failed')
-        commit(field, val)
-        return true
-      })
+      const scope = makeScope({ ttsEngine: 'openai', openaiPreset: 'siliconflow', voice: 'my-user-voice' })
       const root = reactMod.createRoot(() => reactMod.createElement(VoiceSettingsCard, { scope, defaultOpen: true }))
       await flush()
 
-      const getVerifyBtn = () => findAll(root.tree, (n) => n.type === 'button' && textOf(n) === STRINGS.zh.presetVerify)[0]
-      assert.ok(getVerifyBtn(), '应找到验证预设按钮')
+      assert.equal(
+        findAll(root.tree, (n) => n.type === 'button' && textOf(n) === STRINGS.zh.presetVerify).length,
+        0,
+        '预设行不得再有独立「验证此预设」按钮（已并入统一测试朗读）',
+      )
+      assert.ok(
+        findAll(root.tree, (n) => n.type === 'button' && textOf(n).includes(STRINGS.zh.selftestRun)).length > 0,
+        '应存在统一的「测试朗读」主行动',
+      )
 
-      // 场景 1：正常验证 → 不得写 voice，仅写 openaiPreset，并带 voice 发 /preview
-      getVerifyBtn().props.onClick()
+      const presetSelect = findAll(root.tree, (n) => n.type === 'select' && n.props['aria-label'] === STRINGS.zh.openaiPresetLabel)[0]
+      assert.ok(presetSelect, '应找到预设下拉')
+      presetSelect.props.onChange({ target: { value: '__custom__' } })
       await flush()
-      assert.equal(scope.calls.some(([k]) => k === 'voice'), false, 'verifyPreset 不得覆写用户的 voice 设置')
-      assert.equal(scope.calls.some(([k]) => k === 'openaiPreset'), true)
-      assert.equal(previewBodies.length, 1)
-
-      // 场景 2：scope.set 抛错 → 不得再发 /preview，展示 presetWriteFailed
-      shouldThrow = true
-      getVerifyBtn().props.onClick()
-      await flush()
-      assert.equal(previewBodies.length, 1, 'scope.set 抛错后绝不得继续发 /preview')
-      assert.ok(textOf(root.tree).includes(STRINGS.zh.presetWriteFailed), '应显示 presetWriteFailed 提示')
+      assert.equal(scope.calls.some(([k]) => k === 'voice'), false, '选预设不得覆写用户 voice')
+      assert.equal(scope.calls.some(([k]) => k === 'openaiPreset'), true, '选预设应写入 openaiPreset')
 
       root.unmount()
     } finally {
       env.restore()
     }
   })
-
   // 7. I19e：SecretField clear 带 signal、409 回退 score.set 并清旧 failed
   await test('I19e: SecretField clear 带超时 signal，409 回退 score.set 并清除旧 failed 状态', async () => {
     let settingsStatus = 500
@@ -797,20 +789,25 @@ try {
       assert.ok(summaryMissing.includes(`· ${STRINGS.zh.ttsModelsMissing}`), '本地引擎缺模型时折叠摘要必须提示缺模型')
       assert.equal(summaryMissing.includes(`· ${STRINGS.zh.engineReady}`), false, '本地缺模型时状态段不得为「就绪」')
 
-      // 展开卡片与「交互方式」「识别与输入」节
-      const headerBtn = findAll(root.tree, (n) => n.type === 'button' && n.props['aria-expanded'] === false)[0]
+      // 展开卡片，再切到「语音输入」「高级」两个分段（2026-11-20 面板重构：分段替代折叠节）
+      const headerBtn = findAll(root.tree, (n) => n.type === 'button' && textOf(n).includes(STRINGS.zh.stateVoiceMode) && n.props['aria-expanded'] === false)[0]
+      assert.ok(headerBtn, '应找到卡片折叠头')
       headerBtn.props.onClick()
-      const intBtn = findAll(root.tree, (n) => n.type === 'button' && textOf(n).includes(STRINGS.zh.secInteraction))[0]
-      intBtn.props.onClick()
-      const recBtn = findAll(root.tree, (n) => n.type === 'button' && textOf(n).includes(STRINGS.zh.secRecognition))[0]
-      recBtn.props.onClick()
+      await flush()
+      activateTab(root, STRINGS.zh.segInput)
+      await flush()
 
-      // autoSend / senseVoice / spokenFormat 在 undefined 时必须默认勾选
-      for (const labelKey of ['autoSendLabel', 'senseVoiceLabel', 'spokenFormatLabel']) {
+      // autoSend 在「语音输入」段；senseVoice/spokenFormat 在「高级」段（默认 true 必须勾选）
+      const checkDefaultTrue = (labelKey) => {
         const cb = findAll(root.tree, (n) => n.type === 'input' && n.props.type === 'checkbox' && n.props['aria-label'] === STRINGS.zh[labelKey])[0]
-        assert.ok(cb, `应找到 ${labelKey} 复选框`)
-        assert.equal(cb.props.checked, true, `${labelKey} 在 value 为 undefined 时必须默认勾选`)
+        assert.ok(cb, '应找到 ' + labelKey + ' 复选框')
+        assert.equal(cb.props.checked, true, labelKey + ' 在 value 为 undefined 时必须默认勾选')
       }
+      checkDefaultTrue('autoSendLabel')
+      activateTab(root, STRINGS.zh.segAdvanced)
+      await flush()
+      checkDefaultTrue('senseVoiceLabel')
+      checkDefaultTrue('spokenFormatLabel')
 
       // asrReplacements === undefined 不得误报损坏且添加按钮可用
       assert.equal(textOf(root.tree).includes(STRINGS.zh.replUnreadable), false, 'undefined 纠错表不得误报为损坏')
@@ -818,6 +815,9 @@ try {
       assert.ok(addBtn && !addBtn.props.disabled, 'undefined 纠错表下添加按钮必须可用')
 
       // 所有 SegGroup role="group" 必须带 aria-label，内部按钮必须为 type="button"
+      // 2026-11-20 面板重构：SegGroup 位于「朗读」段（条件渲染，需切回该段）
+      activateTab(root, STRINGS.zh.segReadAloud)
+      await flush()
       const segGroups = findAll(root.tree, (n) => n.props?.role === 'group')
       assert.ok(segGroups.length >= 2, '应渲染多个 SegGroup')
       for (const g of segGroups) {

@@ -167,6 +167,9 @@ function CheckRow({
       aria-label={tr(`${field}Label` as TKey)}
       checked={checked}
       onChange={(e) => void score.set(field, e.target.checked)}
+      // 2026-11-20 视觉重构：宿主对 input 的通用样式会把复选框拉成整行输入框（实测），
+      // 这里显式收成 16px 原生复选框，且靠左不再撑满。
+      style={{ width: 16, height: 16, flex: '0 0 auto', alignSelf: 'flex-start', justifySelf: 'start', margin: 0, accentColor: 'var(--dsw-alias-state-success-primary, #3fb950)' }}
     />
   )
 }
@@ -754,8 +757,20 @@ function VoiceSelect({
   showCustom?: boolean
 }): React.ReactElement {
   const cur = String(value ?? '')
-  const inOptions = options.some((o) => o.v === cur)
-  const idx = options.findIndex((o) => o.v === cur)
+  // 2026-11-20 视觉重构：空值语义是「用引擎默认音色」，此前被误显示为「自定义…」并弹出空输入框。
+  // 下拉补一个「默认（xxx）」选项（value=''），只有用户主动选「自定义…」才进入手输态。
+  const baseOpts =
+    placeholder && showCustom && !options.some((o) => o.v === '')
+      ? [{ v: '', label: tr('voiceDefaultOption').replace('{name}', placeholder) }, ...options]
+      : options
+  // 非空但不在列表（如 MiMo/自定义端点的音色名）：把当前值显式列为一项，
+  // 避免下拉显示「自定义…」而输入框里其实有值（看起来像没保存）。
+  const withDefault =
+    showCustom && cur.trim() !== '' && !baseOpts.some((o) => o.v === cur)
+      ? [{ v: cur, label: tr('voiceCurrentOption').replace('{name}', cur) }, ...baseOpts]
+      : baseOpts
+  const inOptions = withDefault.some((o) => o.v === cur)
+  const idx = withDefault.findIndex((o) => o.v === cur)
   // B10：① 移除不稳定 options 依赖，3s 轮询不再冲掉手输音色草稿；② forceCustom 让已选预设音色也能切到「自定义…」输入。
   const [forceCustom, setForceCustom] = useState(false)
   const [custom, setCustom] = useState<string>(inOptions ? '' : cur)
@@ -771,15 +786,15 @@ function VoiceSelect({
     void score.set(field, next)
   }
   const move = (delta: number): void => {
-    if (options.length === 0) return
+    if (withDefault.length === 0) return
     setForceCustom(false)
     if (inOptions) {
-      const n = options.length
-      const next = options[(((idx + delta) % n) + n) % n]
+      const n = withDefault.length
+      const next = withDefault[(((idx + delta) % n) + n) % n]
       void score.set(field, next.v)
     } else {
       // 自定义值不在列表：从列表第一项开始切换
-      void score.set(field, options[0].v)
+      void score.set(field, withDefault[0].v)
     }
   }
   const selectStyle: React.CSSProperties = {
@@ -797,10 +812,10 @@ function VoiceSelect({
     paddingRight: 32,
   }
   // 当前值 label：仅用于「自定义音色」输入框的提示（下拉可访问名改用字段名，见下）。
-  const currentValueLabel = inOptions && !forceCustom ? options[idx].label : custom || placeholder || ''
+  const currentValueLabel = inOptions && !forceCustom ? withDefault[idx].label : custom || placeholder || ''
   // 非自定义引擎（全量列出）：值不在列表视为异常，下拉回退到第一项；自定义引擎才出现手输框。
   const showCustomInput = showCustom && (!inOptions || forceCustom)
-  const selectValue = showCustomInput ? '__custom__' : inOptions ? cur : options[0]?.v ?? ''
+  const selectValue = showCustomInput ? '__custom__' : inOptions ? cur : withDefault[0]?.v ?? ''
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', maxWidth: '100%', alignItems: 'stretch' }}>
       <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -824,7 +839,7 @@ function VoiceSelect({
             }
           }}
         >
-          {options.map((o) => (
+          {withDefault.map((o) => (
             <option key={o.v} value={o.v}>
               {o.label}
             </option>
@@ -1184,34 +1199,32 @@ function SelfTestSection({
     }
   }, [])
 
-  const verdict = (label: string, st: 'ok' | 'fail' | 'autoplay' | null, extra?: string): React.ReactElement => (
-    <span style={{ fontSize: 12, color: t.term, display: 'inline-flex', gap: 4 }}>
-      <span>{label}</span>
-      <span
-        style={{
-          fontWeight: 600,
-          color:
-            st === 'ok'
-              ? 'var(--dsw-alias-state-success-primary)'
-              : st === null
-                ? t.term
-                : 'var(--dsw-alias-state-error-primary)',
-        }}
-      >
-        {st === 'ok' ? tr('selftestOk') : st === null ? '–' : st === 'autoplay' ? tr('selftestAutoplay') : tr('selftestFail')}
-      </span>
-      {extra ? <span>{extra}</span> : null}
+  const chip = (st: 'ok' | 'fail' | 'autoplay' | null): React.ReactElement => (
+    <span
+      style={{
+        fontSize: 11,
+        fontWeight: 600,
+        color:
+          st === 'ok'
+            ? 'var(--dsw-alias-state-success-primary)'
+            : st === null
+              ? t.term
+              : 'var(--dsw-alias-state-error-primary)',
+      }}
+    >
+      {st === 'ok' ? tr('selftestOk') : st === null ? '–' : st === 'autoplay' ? tr('selftestAutoplay') : tr('selftestFail')}
     </span>
   )
 
+  // 2026-11-20 视觉重构：去掉标题+长说明+两行占位，改「一个主按钮 + 就地结果」；
+  // 说明收进 title/问号，结果只在测试后出现（不再常驻 – –）。
   return (
     <span
       role="group"
       aria-label={tr('selftestTitle')}
-      style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', padding: '2px 0 10px' }}
+      title={tr('selftestHint')}
+      style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '2px 0 6px' }}
     >
-      <span style={{ fontSize: 12, color: t.label, fontWeight: 600 }}>{tr('selftestTitle')}</span>
-      <span style={{ fontSize: 11, color: t.term }}>{tr('selftestHint')}</span>
       <button
         type="button"
         onClick={run}
@@ -1221,49 +1234,58 @@ function SelfTestSection({
           display: 'inline-flex',
           alignItems: 'center',
           gap: 5,
-          alignSelf: 'flex-start',
           cursor: busy ? 'default' : 'pointer',
-          color: t.label,
-          background: 'var(--dsw-alias-bg-layer-2)',
-          border: `1px solid ${t.border}`,
+          color: 'var(--dsw-alias-bg-base, #fff)',
+          background: 'var(--dsw-alias-state-success-primary, #3fb950)',
+          border: '1px solid transparent',
           borderRadius: 6,
-          padding: '4px 10px',
+          padding: '4px 12px',
           fontSize: 12,
+          fontWeight: 600,
           lineHeight: '18px',
         }}
       >
         {busy ? tr('selftestRunning') : tr('selftestRun')}
       </button>
-      {/* A2 a11y：结果变化用 polite live region 播报，读屏用户无需轮询界面。 */}
-      <span role="status" aria-live="polite" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {verdict(tr('selftestSynth'), synth, synth === 'ok' ? `${synthMs} ${tr('unitMs')}` : undefined)}
-        {verdict(tr('selftestPlay'), play)}
-      </span>
-      {synth === 'fail' && isCloudEngine(engine) && (
+      {synth !== null || play !== null ? (
+        <span
+          role="status"
+          aria-live="polite"
+          style={{ display: 'inline-flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 11, color: t.term }}
+        >
+          <span>
+            {tr('selftestSynth')} {chip(synth)}
+            {synth === 'ok' ? ` ${synthMs} ${tr('unitMs')}` : ''}
+          </span>
+          <span>
+            {tr('selftestPlay')} {chip(play)}
+          </span>
+        </span>
+      ) : null}
+      {synth === 'fail' && isCloudEngine(engine) ? (
         <button
           type="button"
           onClick={onSwitchLocal}
           style={{
             font: 'inherit',
-            display: 'inline-flex',
-            alignItems: 'center',
-            alignSelf: 'flex-start',
             cursor: 'pointer',
             color: t.label,
-            background: 'var(--dsw-alias-bg-layer-2)',
+            background: 'transparent',
             border: `1px solid ${t.border}`,
             borderRadius: 6,
-            padding: '4px 10px',
-            fontSize: 12,
+            padding: '3px 10px',
+            fontSize: 11,
             lineHeight: '18px',
           }}
         >
           {tr('switchToLocalTts')}
         </button>
-      )}
-      {note && (
-        <span style={{ color: 'var(--dsw-alias-state-error-primary)', fontSize: 12, lineHeight: '18px' }}>{note}</span>
-      )}
+      ) : null}
+      {note ? (
+        <span role="status" style={{ color: 'var(--dsw-alias-state-error-primary)', fontSize: 12, lineHeight: '18px', flexBasis: '100%' }}>
+          {note}
+        </span>
+      ) : null}
     </span>
   )
 }
@@ -1508,48 +1530,6 @@ function ReplacementsSection({
  * P1-4 只听写预设：一键 readAloud=off（专注听写），再点恢复之前的朗读范围。
  * 不碰其它设置：字幕/状态条不动（off 本来就不朗读）；恢复目标缺省 voice。
  */
-function DictationPreset({
-  readAloud,
-  onPick,
-}: {
-  readAloud: unknown
-  onPick: (v: 'voice' | 'always' | 'off') => void
-}): React.ReactElement {
-  const cur = readAloud === 'always' || readAloud === 'off' ? readAloud : 'voice'
-  const lastOn = useRef<'voice' | 'always'>('voice')
-  useEffect(() => {
-    if (cur !== 'off') lastOn.current = cur
-  }, [cur])
-  const off = cur === 'off'
-  return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', padding: '2px 0 10px' }}>
-      <span style={{ fontSize: 12, color: t.label, fontWeight: 600 }}>{tr('dictationTitle')}</span>
-      <span style={{ fontSize: 11, color: t.term }}>{tr('dictationHint')}</span>
-      <button
-        type="button"
-        aria-pressed={off}
-        onClick={() => onPick(off ? lastOn.current : 'off')}
-        style={{
-          font: 'inherit',
-          display: 'inline-flex',
-          alignItems: 'center',
-          alignSelf: 'flex-start',
-          cursor: 'pointer',
-          color: t.label,
-          background: 'var(--dsw-alias-bg-layer-2)',
-          border: `1px solid ${t.border}`,
-          borderRadius: 6,
-          padding: '4px 10px',
-          fontSize: 12,
-          lineHeight: '18px',
-        }}
-      >
-        {off ? tr('dictationRestore') : tr('dictationEnable')}
-      </button>
-    </span>
-  )
-}
-
 /**
  * 共享的 /models/status 轮询器（性能优化 2026-11-19）。
  *
@@ -1633,17 +1613,11 @@ function OpenAiPresetSection({
   value,
   presets,
   onReloadPresets,
-  onVerify,
-  verifyState,
-  verifying,
 }: {
   score: ScopeController
   value: unknown
   presets: Record<string, HostPreset> | null
   onReloadPresets: () => void
-  onVerify: (presetId: string) => void
-  verifyState: { id: string; state: 'ok' | 'fail'; note?: string } | null
-  verifying: boolean
 }): React.ReactElement {
   const cur = typeof value === 'string' ? value : ''
   // presets 拉取失败时**仍保留当前已选预设**，否则用户会看到「选中项消失」，且误点「手动配置」
@@ -1692,47 +1666,6 @@ function OpenAiPresetSection({
       {PRESET_NOTE[cur] ? <span style={{ fontSize: 11, color: t.term }}>{PRESET_NOTE[cur]()}</span> : null}
       <span style={{ fontSize: 11, color: t.term }}>{tr('presetKeyNote')}</span>
       {cur === CUSTOM ? <span style={{ fontSize: 11, color: t.term }}>{tr('presetCustomHint')}</span> : null}
-      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-        <button
-          type="button"
-          disabled={verifying}
-          aria-busy={verifying || undefined}
-          onClick={() => onVerify(cur)}
-          style={{
-            font: 'inherit',
-            display: 'inline-flex',
-            alignItems: 'center',
-            alignSelf: 'flex-start',
-            cursor: cur ? 'pointer' : 'default',
-            opacity: 1,
-            color: t.label,
-            background: 'var(--dsw-alias-bg-layer-2)',
-            border: `1px solid ${t.border}`,
-            borderRadius: 6,
-            padding: '4px 10px',
-            fontSize: 12,
-            lineHeight: '18px',
-          }}
-        >
-          {verifying ? tr('selftestRunning') : tr('presetVerify')}
-        </button>
-        {verifyState && verifyState.id === cur ? (
-          <span
-            role="status"
-            aria-live="polite"
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color:
-                verifyState.state === 'ok'
-                  ? 'var(--dsw-alias-state-success-primary)'
-                  : 'var(--dsw-alias-state-error-primary)',
-            }}
-          >
-            {verifyState.state === 'ok' ? tr('selftestOk') : (verifyState.note ?? tr('selftestCheck'))}
-          </span>
-        ) : null}
-      </span>
     </span>
   )
 }
@@ -1763,13 +1696,44 @@ function useHostPresets(): { presets: Record<string, HostPreset> | null; reload:
 
 function Row({ name, desc, children }: { name: string; desc: string; children: React.ReactNode }): React.ReactElement {
   const label = tr(`${name}Label` as TKey)
-  // 2026-11-20 重做：左列 = 标题 + 说明（说明不再与控件抢行宽），右列 = 控件（minWidth:0 可收缩）。
+  // 2026-11-20 重构：说明默认收起——46 个控件各带一条长说明会把面板撑成 4.6k px；
+  // 只保留「叫什么 + 控件 + 当前状态」，解释按需用问号展开（一次只看一条，不挤压控件）。
+  const [showDesc, setShowDesc] = useState(false)
+  const descId = `dshvm-desc-${name}`
+  const hasDesc = desc.length > 0
   return (
     <div style={setRow} data-dshvm-row={name}>
-      <span style={setLabel}>{label}</span>
+      <span style={setLabel}>
+        {label}
+        {hasDesc ? (
+          <button
+            type="button"
+            aria-label={tr('rowInfo')}
+            aria-expanded={showDesc}
+            aria-controls={descId}
+            onClick={() => setShowDesc((v) => !v)}
+            style={{
+              appearance: 'none',
+              border: 0,
+              background: 'transparent',
+              cursor: 'pointer',
+              font: 'inherit',
+              fontSize: 11,
+              lineHeight: '16px',
+              padding: '1px 5px',
+              marginLeft: 4,
+              borderRadius: 4,
+              color: showDesc ? 'var(--dsw-alias-label-secondary)' : 'var(--dsw-alias-label-tertiary)',
+            }}
+          >
+            ?
+          </button>
+        ) : null}
+      </span>
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>{children}</div>
-      {/* 说明独占整行：放左列会把行撑到 6 行高（实测），放右列会挤压控件。 */}
-      <span style={{ ...setHint, gridColumn: '1 / -1', minWidth: 0 }}>{desc}</span>
+      {showDesc && hasDesc ? (
+        <span id={descId} style={{ ...setHint, gridColumn: '1 / -1', minWidth: 0 }}>{desc}</span>
+      ) : null}
     </div>
   )
 }
@@ -1827,55 +1791,83 @@ function EffectivePending({ effective, value, ready }: { effective: Record<strin
   )
 }
 
-/** 设置分组：小标题 + 上分隔线，把罗列字段梳理成块。 */
-function Section({
-  title,
-  defaultOpen = false,
-  children,
-}: {
-  title: string
-  defaultOpen?: boolean
-  children: React.ReactNode
-}): React.ReactElement {
-  // 2026-11-20：分节可折叠。旧实现一次全铺开 = 3559px 高的单列，找任何一项都要长滚动。
-  const [open, setOpen] = useState(defaultOpen)
+/** 设置面板顶部分段（2026-11-20 重构）：4 段替代 7 个折叠节，先扫一遍就知道去哪。 */
+type SettingsSegment = 'input' | 'read' | 'display' | 'advanced'
+
+function SegmentTabs({ active, onChange }: { active: SettingsSegment; onChange: (k: SettingsSegment) => void }): React.ReactElement {
+  const tabs: Array<{ k: SettingsSegment; label: string }> = [
+    { k: 'input', label: tr('segInput') },
+    { k: 'read', label: tr('segReadAloud') },
+    { k: 'display', label: tr('segDisplay') },
+    { k: 'advanced', label: tr('segAdvanced') },
+  ]
+  const move = (delta: number): void => {
+    const i = tabs.findIndex((tb) => tb.k === active)
+    const next = tabs[(((i + delta) % tabs.length) + tabs.length) % tabs.length]
+    onChange(next.k)
+  }
   return (
-    <div style={{ minWidth: 0, borderTop: `1px solid ${t.border}` }}>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          appearance: 'none',
-          width: '100%',
-          font: 'inherit',
-          textAlign: 'left',
-          cursor: 'pointer',
-          background: 'transparent',
-          border: 0,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '12px 0 10px',
-          color: 'var(--dsw-alias-label-secondary)',
-        }}
-      >
-        <span
-          aria-hidden="true"
-          style={{
-            display: 'inline-flex',
-            transition: 'transform .16s',
-            transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
-            color: t.term,
-          }}
-        >
-          <svg viewBox="0 0 16 16" width={12} height={12}>
-            <path fill="currentColor" d="M6 4l4 4-4 4z" />
-          </svg>
-        </span>
-        <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '.02em' }}>{title}</span>
-      </button>
-      {open ? <div style={{ minWidth: 0, paddingBottom: 6 }}>{children}</div> : null}
+    <div
+      role="tablist"
+      aria-label={tr('segListLabel')}
+      onKeyDown={(e) => {
+        // WAI-ARIA tabs：左右方向键在分段间移动（键盘用户不必逐个 Tab）。
+        if (e.key === 'ArrowRight') {
+          e.preventDefault()
+          move(1)
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault()
+          move(-1)
+        }
+      }}
+      style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '10px 0 12px', borderBottom: `1px solid ${t.border}` }}
+    >
+      {tabs.map((tb) => {
+        const on = tb.k === active
+        return (
+          <button
+            key={tb.k}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            data-dshvm-tab={tb.k}
+            onClick={() => onChange(tb.k)}
+            style={{
+              appearance: 'none',
+              font: 'inherit',
+              fontSize: 12,
+              cursor: 'pointer',
+              padding: '6px 12px',
+              borderRadius: 999,
+              border: `1px solid ${on ? 'transparent' : t.border}`,
+              background: on ? 'var(--dsw-alias-bg-layer-2)' : 'transparent',
+              color: on ? 'var(--dsw-alias-label-primary)' : 'var(--dsw-alias-label-secondary)',
+              fontWeight: on ? 600 : 400,
+            }}
+          >
+            {tb.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** 段内分组小标题：只做视觉分层，不再提供折叠（折叠堆正是上一版难用的根因）。 */
+function GroupTitle({ children, first }: { children: React.ReactNode; first?: boolean }): React.ReactElement {
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: '.04em',
+        color: 'var(--dsw-alias-label-tertiary)',
+        padding: first ? '4px 0 2px' : '14px 0 2px',
+        borderTop: first ? 'none' : `1px solid ${t.border}`,
+        marginTop: first ? 6 : 10,
+      }}
+    >
+      {children}
     </div>
   )
 }
@@ -2277,7 +2269,8 @@ export function VoiceSettingsCard({
   }
   const hostPresetState = useHostPresets()
   const hostPresets = hostPresetState.presets
-  const [presetVerify, setPresetVerify] = useState<{ id: string; state: 'ok' | 'fail'; note?: string } | null>(null)
+  /** 2026-11-20 重构：顶部分段状态（默认停在「朗读」——打开设置最常见目的是让它出声）。 */
+  const [tab, setTab] = useState<SettingsSegment>('read')
   // 折叠态摘要用：一次轮询拿到引擎就绪/错误（与 EngineStatusInline 同源）。
   const headStatus = useModelsStatus()
   /** 生效音色：设置值优先，空则回落预设音色（与 host 侧 makeEngine 的口径一致）。 */
@@ -2289,76 +2282,6 @@ export function VoiceSettingsCard({
     refreshSecretKeys()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value.ttsEngine])
-  // 连点去重：一次验证就是一次整句合成（有成本、占 20/分桶），在途时不重发（R4 复核发现）。
-  const [verifying, setVerifying] = useState(false)
-  const verifyPreset = (presetId: string): void => {
-    if (verifying) return
-    setVerifying(true)
-    const presetVoice = hostPresets?.[presetId]?.voice ?? ''
-    const voice = (value.openaiPreset === presetId ? effectiveVoice() : '') || presetVoice
-    if (!voice) {
-      setPresetVerify({
-        id: presetId,
-        state: 'fail',
-        // 预设表没拉到 vs 真的没填音色，必须分开说：否则用户被指去填一个其实有值的框（T5 A②）。
-        note: hostPresets ? tr('previewNameFirst') : tr('presetDataMissing'),
-      })
-      setVerifying(false)
-      return
-    }
-    void (async () => {
-      try {
-        // T5 B② + I19：先确保 host 已切到该预设再合成——写失败/抛错必须直接判 fail 并不再发 /preview；
-        // 且不再写脏用户原有的 voice 设置（/preview 已在 body 显式传 voice）。
-        const wrotePreset = await Promise.resolve(scope.set('openaiPreset', presetId))
-        if (wrotePreset === false) {
-          setPresetVerify({ id: presetId, state: 'fail', note: tr('presetWriteFailed') })
-          setVerifying(false)
-          return
-        }
-      } catch {
-        setPresetVerify({ id: presetId, state: 'fail', note: tr('presetWriteFailed') })
-        setVerifying(false)
-        return
-      }
-      try {
-        const res = await fetch(`${BASE_PATH}/preview`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ voice, rate: Number(value.rate ?? 1.1) }),
-          signal: AbortSignal.timeout(30000),
-        })
-        if (res.ok) {
-          setPresetVerify({ id: presetId, state: 'ok' })
-          return
-        }
-        // 失败分支在下方统一 setPresetVerify；verifying 由 finally 释放
-        let body: unknown = null
-        try {
-          body = await res.json()
-        } catch {
-          // 非 JSON 错误体走通用文案
-        }
-        const code = (body as { code?: unknown } | null)?.code
-        setPresetVerify({
-          id: presetId,
-          state: 'fail',
-          note:
-            code === 'preview_auth'
-              ? tr('verifyAuthFail')
-              : code === 'rate_limited' || res.status === 429
-              ? tr('selftestRateLimited')
-              : code === 'voice_disabled' || res.status === 403
-                ? tr('selftestDisabled')
-                : errorText(body, 'selftestCheck'),
-        })
-      } catch {
-        setPresetVerify({ id: presetId, state: 'fail', note: tr('selftestCheck') })
-      } finally {
-        setVerifying(false)
-      }
-    })()
-  }
   // 朗读引擎（设置项，即时生效）：决定音色列表与试听行为。
   // 引擎种类来自单一真源（engine-kind.ts）；未知值按 vits 处理（与 host 侧 asTtsEngineKind 一致）。
   const engine = asTtsEngineKind(value.ttsEngine)
@@ -2440,335 +2363,339 @@ export function VoiceSettingsCard({
         <div id={cardBodyId} style={setBody}>
           <EffectivePending effective={getRuntimeBoot()} value={value} ready={snap?.status === 'ready'} />
           <div style={{ marginTop: 4 }}>
-            <Section title={tr('secRead')} defaultOpen>
-            <Row name="ttsEngine" desc={tr('descTtsEngine')}>
-              <SegGroup
-                score={scope}
-                field="ttsEngine"
-                value={engine}
-                options={TTS_ENGINE_KINDS.map((k) => ({ v: k, label: ENGINE_NAME[k]() }))}
-                onSelect={(v) => {
-                  // 引擎语义不同：仅在引擎真正切换时重置音色；
-                  // 点击已选中的引擎不再误重置（曾导致"选了霸总却变女声"）。
-                  if (v !== engine) {
-                    void scope.set('voice', ENGINE_DEFAULT_VOICE[String(v)] ?? 'zh-CN-XiaoxiaoNeural')
-                  }
-                }}
-              />
-            </Row>
-            {/* 状态与自测合成一个面板：引擎/就绪/错误/一键自测（旧实现在引擎行下方散落三块）。 */}
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-                margin: '4px 0 12px',
-                padding: '10px 12px',
-                border: `1px solid ${t.border}`,
-                borderRadius: 8,
-                background: 'var(--dsw-alias-bg-layer-2)',
-                minWidth: 0,
-              }}
-            >
-              <EngineStatusInline
-                onSwitchLocal={() => {
-                  void scope.set('ttsEngine', 'kokoro')
-                  void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
-                }}
-              />
-              <SelfTestSection
-                voice={effectiveVoice()}
-                rate={Number(value.rate ?? 1.1)}
-                engine={engine}
-                onSwitchLocal={() => {
-                  void scope.set('ttsEngine', 'kokoro')
-                  void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
-                }}
-              />
-            </div>
-            {engine === 'kokoro' && (
-              <Row name="kokoroModel" desc={tr('descKokoroModel')}>
-                <SegGroup
-                  score={scope}
-                  field="kokoroModel"
-                  value={value.kokoroModel}
-                  options={[
-                    { v: 'int8', label: tr('kokoroModelInt8') },
-                    { v: 'fp32', label: tr('kokoroModelFp32') },
-                  ]}
-                />
-              </Row>
-            )}
-            <Row
-              name="voice"
-              desc={
-                (engine === 'edge'
-                  ? tr('descVoice')
-                  : engine === 'kokoro'
-                    ? tr('descVoiceKokoro')
-                    : engine === 'openai'
-                      ? tr('descVoiceOpenai')
-                      : engine === 'mimo'
-                        ? tr('descVoiceMimo')
-                        : tr('descVoiceLocal')) +
-                voiceLangHint(engine, String(value.voice ?? ''))
-              }
-            >
-              <VoiceSelect
-                score={scope}
-                field="voice"
-                value={value.voice ?? ''}
-                options={voiceOptions}
-                placeholder={ENGINE_DEFAULT_VOICE[engine] ?? 'zh-CN-XiaoxiaoNeural'}
-                showCustom={isCloudEngine(engine)}
-                // 2026-11-20 UX：voice 为空但已选预设时，试听必须回退到预设音色（否则「请先填写音色名」把首验卡死）。
-                footer={(v) => (
-                  <VoicePreviewButton voice={v || (engine === 'openai' ? effectiveVoice() : '')} rate={Number(value.rate ?? 1.1)} />
+            <SegmentTabs active={tab} onChange={setTab} />
+            {tab === 'input' ? (
+              <div role="tabpanel" aria-label={tr('segInput')}>
+                <GroupTitle first>{tr('secInteraction')}</GroupTitle>
+                <Row name="mode" desc={tr('descMode')}>
+                  <SegGroup
+                    score={scope}
+                    field="mode"
+                    value={value.mode}
+                    options={[
+                      { v: 'toggle', label: tr('modeToggle') },
+                      { v: 'hold', label: tr('modeHold') },
+                      { v: 'once', label: tr('modeOnce') },
+                    ]}
+                  />
+                </Row>
+                <Row name="wakeWord" desc={tr('descWakeWord')}>
+                  <TextField score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder={tr('wakePlaceholder')} />
+                </Row>
+                <Row name="autoSend" desc={tr('descAutoSend')}>
+                  <CheckRow field="autoSend" checked={value.autoSend !== false} score={scope} />
+                </Row>
+                <GroupTitle>{tr('secInterrupt')}</GroupTitle>
+                <Row name="interruptLevel" desc={tr('descInterrupt')}>
+                  <SegGroup
+                    score={scope}
+                    field="interruptLevel"
+                    value={value.interruptLevel}
+                    options={[
+                      { v: 0, label: tr('sev0') },
+                      { v: 1, label: tr('sev1') },
+                      { v: 2, label: tr('sev2') },
+                    ]}
+                  />
+                </Row>
+                <Row name="bargeInMode" desc={tr('descBargeIn')}>
+                  <SegGroup
+                    score={scope}
+                    field="bargeInMode"
+                    value={value.bargeInMode}
+                    options={[
+                      { v: 'detect', label: tr('bargeInDetect') },
+                      { v: 'auto', label: tr('bargeInAuto') },
+                      { v: 'manual', label: tr('bargeInManual') },
+                    ]}
+                  />
+                </Row>
+                <Row name="silenceMs" desc={tr('descSilence')}>
+                  <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 1500} min={500} max={30000} step={100} />
+                </Row>
+                <GroupTitle>{tr('secShortcut')}</GroupTitle>
+                <Row name="shortcut" desc={tr('descShortcut')}>
+                  <ShortcutField score={scope} field="shortcut" value={value.shortcut ?? ''} />
+                </Row>
+                <Row name="composerShortcut" desc={tr('descComposerShortcut')}>
+                  <ShortcutField score={scope} field="composerShortcut" value={value.composerShortcut ?? 'Alt+Enter'} />
+                </Row>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '2px 0 6px' }}>
+                  <div style={{ flex: 1, fontSize: 11, lineHeight: '17px', color: 'var(--dsw-alias-label-tertiary)' }}>{tr('shortcutNote')}</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void Promise.all([
+                        Promise.resolve(scope.set('shortcut', 'Ctrl+Shift+V')),
+                        Promise.resolve(scope.set('composerShortcut', 'Alt+Enter')),
+                      ]).finally(() => {
+                        try {
+                          window.dispatchEvent(new Event('dshvm-settings-changed'))
+                        } catch {}
+                      })
+                    }}
+                    style={{
+                      flexShrink: 0,
+                      height: 26,
+                      padding: '0 10px',
+                      borderRadius: 6,
+                      border: '1px solid var(--dsw-alias-border-l3)',
+                      background: 'transparent',
+                      color: 'var(--dsw-alias-label-secondary)',
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {tr('shortcutReset')}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {tab === 'read' ? (
+              <div role="tabpanel" aria-label={tr('segReadAloud')}>
+                <Row name="readAloud" desc={tr('descReadAloud')}>
+                  <SegGroup
+                    score={scope}
+                    field="readAloud"
+                    value={value.readAloud ?? 'voice'}
+                    options={[
+                      { v: 'voice', label: tr('readAloudVoice') },
+                      { v: 'always', label: tr('readAloudAlways') },
+                      { v: 'off', label: tr('readAloudOff') },
+                    ]}
+                  />
+                </Row>
+                <GroupTitle>{tr('secRead')}</GroupTitle>
+                <Row name="ttsEngine" desc={tr('descTtsEngine')}>
+                  <SegGroup
+                    score={scope}
+                    field="ttsEngine"
+                    value={engine}
+                    options={TTS_ENGINE_KINDS.map((k) => ({ v: k, label: ENGINE_NAME[k]() }))}
+                    onSelect={(v) => {
+                      if (v !== engine) {
+                        void scope.set('voice', ENGINE_DEFAULT_VOICE[String(v)] ?? 'zh-CN-XiaoxiaoNeural')
+                      }
+                    }}
+                  />
+                </Row>
+                {/* 状态与「测试朗读」合成一个面板：一个主行动，失败直说原因/下一步（旧版三套测试按钮并存）。 */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    margin: '4px 0 12px',
+                    padding: '10px 12px',
+                    border: `1px solid ${t.border}`,
+                    borderRadius: 8,
+                    background: 'var(--dsw-alias-bg-layer-2)',
+                    minWidth: 0,
+                  }}
+                >
+                  <EngineStatusInline
+                    onSwitchLocal={() => {
+                      void scope.set('ttsEngine', 'kokoro')
+                      void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
+                    }}
+                  />
+                  <SelfTestSection
+                    voice={effectiveVoice()}
+                    rate={Number(value.rate ?? 1.1)}
+                    engine={engine}
+                    onSwitchLocal={() => {
+                      void scope.set('ttsEngine', 'kokoro')
+                      void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
+                    }}
+                  />
+                </div>
+                {engine === 'kokoro' && (
+                  <Row name="kokoroModel" desc={tr('descKokoroModel')}>
+                    <SegGroup
+                      score={scope}
+                      field="kokoroModel"
+                      value={value.kokoroModel}
+                      options={[
+                        { v: 'int8', label: tr('kokoroModelInt8') },
+                        { v: 'fp32', label: tr('kokoroModelFp32') },
+                      ]}
+                    />
+                  </Row>
                 )}
-              />
-            </Row>
-            {engine === 'openai' && (
-              <>
-                <Row name="openaiPreset" desc={tr('descOpenaiPreset')}>
-                  <OpenAiPresetSection
+                <Row
+                  name="voice"
+                  desc={
+                    (engine === 'edge'
+                      ? tr('descVoice')
+                      : engine === 'kokoro'
+                        ? tr('descVoiceKokoro')
+                        : engine === 'openai'
+                          ? tr('descVoiceOpenai')
+                          : engine === 'mimo'
+                            ? tr('descVoiceMimo')
+                            : tr('descVoiceLocal')) +
+                    voiceLangHint(engine, String(value.voice ?? ''))
+                  }
+                >
+                  <VoiceSelect
                     score={scope}
-                    value={value.openaiPreset}
-                    presets={hostPresets}
-                    onReloadPresets={hostPresetState.reload}
-                    onVerify={verifyPreset}
-                    verifyState={presetVerify}
-                    verifying={verifying}
+                    field="voice"
+                    value={value.voice ?? ''}
+                    options={voiceOptions}
+                    placeholder={ENGINE_DEFAULT_VOICE[engine] ?? 'zh-CN-XiaoxiaoNeural'}
+                    showCustom={isCloudEngine(engine)}
+                    footer={(v) => (
+                      <VoicePreviewButton voice={v || effectiveVoice() || ENGINE_DEFAULT_VOICE[engine] || ''} rate={Number(value.rate ?? 1.1)} />
+                    )}
                   />
                 </Row>
-                {/* 2026-11-19：URL/模型/key 直接在卡片里填（覆盖预设与 profile；留空 = 沿用）。 */}
-                <Row name="openaiBaseUrl" desc={tr('descOpenaiBaseUrl')}>
-                  <TextField
+                <Row name="rate" desc={tr('descRate')}>
+                  <NumberField score={scope} field="rate" value={value.rate ?? 1.1} min={0.5} max={2} step={0.1} />
+                </Row>
+                {engine === 'openai' && (
+                  <>
+                    <GroupTitle>{tr('segOpenAiServer')}</GroupTitle>
+                    <Row name="openaiPreset" desc={tr('descOpenaiPreset')}>
+                      <OpenAiPresetSection
+                        score={scope}
+                        value={value.openaiPreset}
+                        presets={hostPresets}
+                        onReloadPresets={hostPresetState.reload}
+                      />
+                    </Row>
+                    <Row name="openaiBaseUrl" desc={tr('descOpenaiBaseUrl')}>
+                      <TextField
+                        score={scope}
+                        field="openaiBaseUrl"
+                        value={value.openaiBaseUrl}
+                        placeholder={(() => {
+                          const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
+                          return (pid && hostPresets?.[pid]?.baseUrl) || ''
+                        })()}
+                      />
+                    </Row>
+                    <Row name="openaiModel" desc={tr('descOpenaiModel')}>
+                      <TextField
+                        score={scope}
+                        field="openaiModel"
+                        value={value.openaiModel}
+                        placeholder={(() => {
+                          const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
+                          return (pid && hostPresets?.[pid]?.model) || ''
+                        })()}
+                      />
+                    </Row>
+                    <Row name="openaiApiKey" desc={tr('descOpenaiApiKey')}>
+                      <SecretField
+                        score={scope}
+                        field="openaiApiKey"
+                        saved={secretKeys.openaiApiKey}
+                        configOnly={secretKeys.fromConfig.openaiApiKey}
+                        onChanged={refreshSecretKeys}
+                      />
+                    </Row>
+                  </>
+                )}
+                {engine === 'mimo' && (
+                  <Row name="mimoApiKey" desc={tr('descMimoApiKey')}>
+                    <SecretField
+                      score={scope}
+                      field="mimoApiKey"
+                      saved={secretKeys.mimoApiKey}
+                      configOnly={secretKeys.fromConfig.mimoApiKey}
+                      onChanged={refreshSecretKeys}
+                    />
+                  </Row>
+                )}
+              </div>
+            ) : null}
+            {tab === 'display' ? (
+              <div role="tabpanel" aria-label={tr('segDisplay')}>
+                <Row name="showCaptions" desc={tr('descShowCaptions')}>
+                  <CheckRow field="showCaptions" checked={value.showCaptions !== false} score={scope} />
+                </Row>
+                <Row name="captionFontSize" desc={tr('descCaptionFontSize')}>
+                  <SegGroup
                     score={scope}
-                    field="openaiBaseUrl"
-                    value={value.openaiBaseUrl}
-                    placeholder={(() => {
-                      const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
-                      return (pid && hostPresets?.[pid]?.baseUrl) || ''
-                    })()}
+                    field="captionFontSize"
+                    value={value.captionFontSize ?? 0}
+                    options={[
+                      { v: 0, label: tr('captionSizeS') },
+                      { v: 1, label: tr('captionSizeM') },
+                      { v: 2, label: tr('captionSizeL') },
+                      { v: 3, label: tr('captionSizeXL') },
+                    ]}
                   />
                 </Row>
-                <Row name="openaiModel" desc={tr('descOpenaiModel')}>
-                  <TextField
+                <Row name="captionMaxWidth" desc={tr('descCaptionMaxWidth')}>
+                  <SegGroup
                     score={scope}
-                    field="openaiModel"
-                    value={value.openaiModel}
-                    placeholder={(() => {
-                      const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
-                      return (pid && hostPresets?.[pid]?.model) || ''
-                    })()}
+                    field="captionMaxWidth"
+                    value={value.captionMaxWidth ?? 1}
+                    options={[
+                      { v: 0, label: tr('captionWidth50') },
+                      { v: 1, label: tr('captionWidth70') },
+                      { v: 2, label: tr('captionWidth90') },
+                    ]}
                   />
                 </Row>
-                <Row name="openaiApiKey" desc={tr('descOpenaiApiKey')}>
-                  <SecretField
-                    score={scope}
-                    field="openaiApiKey"
-                    saved={secretKeys.openaiApiKey}
-                    configOnly={secretKeys.fromConfig.openaiApiKey}
-                    onChanged={refreshSecretKeys}
-                  />
+                <Row name="showStatusBar" desc={tr('descShowStatusBar')}>
+                  <CheckRow field="showStatusBar" checked={value.showStatusBar !== false} score={scope} />
                 </Row>
-              </>
-            )}
-            {engine === 'mimo' && (
-              <Row name="mimoApiKey" desc={tr('descMimoApiKey')}>
-                <SecretField
-                  score={scope}
-                  field="mimoApiKey"
-                  saved={secretKeys.mimoApiKey}
-                  configOnly={secretKeys.fromConfig.mimoApiKey}
-                  onChanged={refreshSecretKeys}
+                <Row name="autoResume" desc={tr('descAutoResume')}>
+                  <CheckRow field="autoResume" checked={Boolean(value.autoResume)} score={scope} />
+                </Row>
+                <Row name="toolBeep" desc={tr('descToolBeep')}>
+                  <CheckRow field="toolBeep" checked={Boolean(value.toolBeep)} score={scope} />
+                </Row>
+                <Row name="idleTimeoutMinutes" desc={tr('descIdle')}>
+                  <NumberField score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 5} min={1} max={120} step={1} />
+                </Row>
+              </div>
+            ) : null}
+            {tab === 'advanced' ? (
+              <div role="tabpanel" aria-label={tr('segAdvanced')}>
+                <GroupTitle first>{tr('secRecognition')}</GroupTitle>
+                <Row name="senseVoice" desc={tr('descSenseVoice')}>
+                  <CheckRow field="senseVoice" checked={value.senseVoice !== false} score={scope} />
+                </Row>
+                <Row name="senseITN" desc={tr('descSenseITN')}>
+                  <CheckRow field="senseITN" checked={value.senseITN !== false} score={scope} />
+                </Row>
+                <Row name="spokenFormat" desc={tr('descSpokenFormat')}>
+                  <CheckRow field="spokenFormat" checked={value.spokenFormat !== false} score={scope} />
+                </Row>
+                <Row name="llmCorrect" desc={tr('descLlmCorrect')}>
+                  <CheckRow field="llmCorrect" checked={value.llmCorrect === true} score={scope} />
+                </Row>
+                <GroupTitle>{tr('segTuning')}</GroupTitle>
+                <Row name="echoGateDb" desc={tr('descEchoGate')}>
+                  <NumberField score={scope} field="echoGateDb" value={value.echoGateDb ?? 6} min={3} max={12} step={1} />
+                </Row>
+                <Row name="backchannelYield" desc={tr('descBackchannelYield')}>
+                  <CheckRow field="backchannelYield" checked={value.backchannelYield !== false} score={scope} />
+                </Row>
+                <Row name="bargeInSalvage" desc={tr('descBargeInSalvage')}>
+                  <CheckRow field="bargeInSalvage" checked={value.bargeInSalvage !== false} score={scope} />
+                </Row>
+                <Row name="yieldMs" desc={tr('descYieldMs')}>
+                  <NumberField score={scope} field="yieldMs" value={value.yieldMs ?? 1500} min={500} max={3000} step={100} />
+                </Row>
+                <GroupTitle>{tr('segReplacements')}</GroupTitle>
+                <ReplacementsSection
+                  rules={value.asrReplacements}
+                  onChange={(next) => scope.set('asrReplacements', next)}
                 />
-              </Row>
-            )}
-            <Row name="rate" desc={tr('descRate')}>
-              <NumberField score={scope} field="rate" value={value.rate ?? 1.1} min={0.5} max={2} step={0.1} />
-            </Row>
-            </Section>
-            <Section title={tr('secInterrupt')} defaultOpen>
-            <Row name="interruptLevel" desc={tr('descInterrupt')}>
-              <SegGroup
-                score={scope}
-                field="interruptLevel"
-                value={value.interruptLevel}
-                options={[
-                  { v: 0, label: tr('sev0') },
-                  { v: 1, label: tr('sev1') },
-                  { v: 2, label: tr('sev2') },
-                ]}
-              />
-            </Row>
-            <Row name="bargeInMode" desc={tr('descBargeIn')}>
-              <SegGroup
-                score={scope}
-                field="bargeInMode"
-                value={value.bargeInMode}
-                options={[
-                  { v: 'detect', label: tr('bargeInDetect') },
-                  { v: 'auto', label: tr('bargeInAuto') },
-                  { v: 'manual', label: tr('bargeInManual') },
-                ]}
-              />
-            </Row>
-            <Row name="echoGateDb" desc={tr('descEchoGate')}>
-              <NumberField score={scope} field="echoGateDb" value={value.echoGateDb ?? 6} min={3} max={12} step={1} />
-            </Row>
-            </Section>
-            <Section title={tr('secInteraction')}>
-            <Row name="mode" desc={tr('descMode')}>
-              <SegGroup
-                score={scope}
-                field="mode"
-                value={value.mode}
-                options={[
-                  { v: 'toggle', label: tr('modeToggle') },
-                  { v: 'hold', label: tr('modeHold') },
-                  { v: 'once', label: tr('modeOnce') },
-                ]}
-              />
-            </Row>
-            <Row name="wakeWord" desc={tr('descWakeWord')}>
-              <TextField score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder={tr('wakePlaceholder')} />
-            </Row>
-            <Row name="toolBeep" desc={tr('descToolBeep')}>
-              <CheckRow field="toolBeep" checked={Boolean(value.toolBeep)} score={scope} />
-            </Row>
-            <Row name="autoSend" desc={tr('descAutoSend')}>
-              <CheckRow field="autoSend" checked={value.autoSend !== false} score={scope} />
-            </Row>
-            <Row name="readAloud" desc={tr('descReadAloud')}>
-              <SegGroup
-                score={scope}
-                field="readAloud"
-                value={value.readAloud ?? 'voice'}
-                options={[
-                  { v: 'voice', label: tr('readAloudVoice') },
-                  { v: 'always', label: tr('readAloudAlways') },
-                  { v: 'off', label: tr('readAloudOff') },
-                ]}
-              />
-            </Row>
-            <DictationPreset readAloud={value.readAloud} onPick={(v) => void scope.set('readAloud', v)} />
-            <Row name="showStatusBar" desc={tr('descShowStatusBar')}>
-              <CheckRow field="showStatusBar" checked={value.showStatusBar !== false} score={scope} />
-            </Row>
-            <Row name="showCaptions" desc={tr('descShowCaptions')}>
-              <CheckRow field="showCaptions" checked={value.showCaptions !== false} score={scope} />
-            </Row>
-            <Row name="autoResume" desc={tr('descAutoResume')}>
-              <CheckRow field="autoResume" checked={Boolean(value.autoResume)} score={scope} />
-            </Row>
-            <Row name="captionFontSize" desc={tr('descCaptionFontSize')}>
-              <SegGroup
-                score={scope}
-                field="captionFontSize"
-                value={value.captionFontSize ?? 0}
-                options={[
-                  { v: 0, label: tr('captionSizeS') },
-                  { v: 1, label: tr('captionSizeM') },
-                  { v: 2, label: tr('captionSizeL') },
-                  { v: 3, label: tr('captionSizeXL') },
-                ]}
-              />
-            </Row>
-            <Row name="captionMaxWidth" desc={tr('descCaptionMaxWidth')}>
-              <SegGroup
-                score={scope}
-                field="captionMaxWidth"
-                value={value.captionMaxWidth ?? 1}
-                options={[
-                  { v: 0, label: tr('captionWidth50') },
-                  { v: 1, label: tr('captionWidth70') },
-                  { v: 2, label: tr('captionWidth90') },
-                ]}
-              />
-            </Row>
-            <Row name="backchannelYield" desc={tr('descBackchannelYield')}>
-              <CheckRow field="backchannelYield" checked={value.backchannelYield !== false} score={scope} />
-            </Row>
-            {/* Issue #15 批 1 / ADR-0012：打断语音抢救（显式 Row，非数据驱动）。 */}
-            <Row name="bargeInSalvage" desc={tr('descBargeInSalvage')}>
-              <CheckRow field="bargeInSalvage" checked={value.bargeInSalvage !== false} score={scope} />
-            </Row>
-            <Row name="llmCorrect" desc={tr('descLlmCorrect')}>
-              <CheckRow field="llmCorrect" checked={value.llmCorrect === true} score={scope} />
-            </Row>
-            <Row name="yieldMs" desc={tr('descYieldMs')}>
-              <NumberField score={scope} field="yieldMs" value={value.yieldMs ?? 1500} min={500} max={3000} step={100} />
-            </Row>
-            </Section>
-            <Section title={tr('secShortcut')}>
-            <Row name="shortcut" desc={tr('descShortcut')}>
-              <ShortcutField score={scope} field="shortcut" value={value.shortcut ?? ''} />
-            </Row>
-            <Row name="composerShortcut" desc={tr('descComposerShortcut')}>
-              <ShortcutField score={scope} field="composerShortcut" value={value.composerShortcut ?? 'Alt+Enter'} />
-            </Row>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '2px 0 6px' }}>
-              <div style={{ flex: 1, fontSize: 11, lineHeight: '17px', color: 'var(--dsw-alias-label-tertiary)' }}>{tr('shortcutNote')}</div>
-              <button
-                type="button"
-                onClick={() => {
-                  // 与配置默认值一致（文档写的就是它）；两项写完后再通知客户端重拉配置。
-                  void Promise.all([
-                    Promise.resolve(scope.set('shortcut', 'Ctrl+Shift+V')),
-                    Promise.resolve(scope.set('composerShortcut', 'Alt+Enter')),
-                  ]).finally(() => {
-                    try {
-                      window.dispatchEvent(new Event('dshvm-settings-changed'))
-                    } catch {}
-                  })
-                }}
-                style={{
-                  flexShrink: 0,
-                  height: 26,
-                  padding: '0 10px',
-                  borderRadius: 6,
-                  border: '1px solid var(--dsw-alias-border-l3)',
-                  background: 'transparent',
-                  color: 'var(--dsw-alias-label-secondary)',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                }}
-              >
-                {tr('shortcutReset')}
-              </button>
-            </div>
-            </Section>
-            <Section title={tr('secRecognition')}>
-            <Row name="senseVoice" desc={tr('descSenseVoice')}>
-              <CheckRow field="senseVoice" checked={value.senseVoice !== false} score={scope} />
-            </Row>
-            <Row name="senseITN" desc={tr('descSenseITN')}>
-              <CheckRow field="senseITN" checked={value.senseITN !== false} score={scope} />
-            </Row>
-            <Row name="spokenFormat" desc={tr('descSpokenFormat')}>
-              <CheckRow field="spokenFormat" checked={value.spokenFormat !== false} score={scope} />
-            </Row>
-            <Row name="silenceMs" desc={tr('descSilence')}>
-              <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 1500} min={500} max={30000} step={100} />
-            </Row>
-            <Row name="idleTimeoutMinutes" desc={tr('descIdle')}>
-              <NumberField score={scope} field="idleTimeoutMinutes" value={value.idleTimeoutMinutes ?? 5} min={1} max={120} step={1} />
-            </Row>
-            <ReplacementsSection
-              rules={value.asrReplacements}
-              onChange={(next) => scope.set('asrReplacements', next)}
-            />
-            </Section>
-            <Section title={tr('secModel')}>
-            <Row name="modelHost" desc={tr('descModelHost')}>
-              <SelectField score={scope} field="modelHost" value={value.modelHost ?? ''} options={hostOptions()} placeholder="https://..." />
-            </Row>
-            </Section>
-            <div style={{ fontSize: 12, color: t.term, lineHeight: '18px', padding: '4px 0 8px' }}>
-              {tr('settingsEffectiveNote')}
-            </div>
-            <ModelStatusView />
+                <GroupTitle>{tr('secModel')}</GroupTitle>
+                <Row name="modelHost" desc={tr('descModelHost')}>
+                  <SelectField score={scope} field="modelHost" value={value.modelHost ?? ''} options={hostOptions()} placeholder="https://..." />
+                </Row>
+                <div style={{ fontSize: 12, color: t.term, lineHeight: '18px', padding: '4px 0 8px' }}>
+                  {tr('settingsEffectiveNote')}
+                </div>
+                <ModelStatusView />
+              </div>
+            ) : null}
           </div>
         </div>
       )}
