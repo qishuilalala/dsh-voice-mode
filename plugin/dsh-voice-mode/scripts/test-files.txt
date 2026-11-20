@@ -103,3 +103,4 @@ test/asr-deep-audit.test.mjs
 test/asr-host-deep-audit.test.mjs
 test/tts-deep-audit.test.mjs
 test/host-deep-audit.test.mjs
+test/client-deep-audit.test.mjs

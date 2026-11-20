@@ -330,6 +330,8 @@ interface VoiceBus {
   runStarted(sessionId: string): void
   /** isPlaying 尾音截止墙钟：playing 或回声尾音宽限期内均视为「AI 正在朗读」。 */
   playingTailUntil(): number
+  /** I18：插件卸载/热重载时释放 SSE 连接与定时器。 */
+  dispose(): void
 }
 
 /**
@@ -472,14 +474,20 @@ export function apply(ctx: any): void {
   // 国际化：把 zh/en 词典注册进官方 locale 服务（切换语言即时生效、可被语言包扩展）；服务不可用则回退本地实现。
   ctx.effect(() => bindLocale(ctx.get?.('locale')), 'dsh-voice-mode: locale dictionaries')
   const bus = createVoiceBus(undefined, ctx)
+  ctx.effect(() => () => bus.dispose(), 'dsh-voice-mode: voice bus')
 
   // C3 加固：浏览器挂起 AudioContext 后，只有用户交互能可靠恢复播放（Safari/Chrome 的
-  // 自动播放策略）。挂一次性手势监听——用户回到标签页点一下/按一下键即恢复朗读，
-  // 避免「回到页面后 AI 回复无声、UI 却显示朗读中」。
+  // 自动播放策略）。挂在 ctx.effect 内以便热重载/卸载时对称摘除（I18）。
   if (typeof document !== 'undefined') {
-    const resumeAudio = (): void => bus.warmAudio()
-    document.addEventListener('pointerdown', resumeAudio, { passive: true })
-    document.addEventListener('keydown', resumeAudio, { passive: true })
+    ctx.effect(() => {
+      const resumeAudio = (): void => bus.warmAudio()
+      document.addEventListener('pointerdown', resumeAudio, { passive: true })
+      document.addEventListener('keydown', resumeAudio, { passive: true })
+      return () => {
+        document.removeEventListener('pointerdown', resumeAudio)
+        document.removeEventListener('keydown', resumeAudio)
+      }
+    }, 'dsh-voice-mode: audio gesture resume')
   }
 
   // 麦克风按钮：dsh ≥0.1.7 挂 conversation.input.activity（模型选择器之后、发送键之前，与发送键同排）；
@@ -666,6 +674,15 @@ function createAudioEngine(
   let decodeFailStreak = 0
   /** I-4：一次性降级的 <audio> 正在播本句——期间 drainPending 不得并发起 Web Audio（防双声）。 */
   let fallbackBusy = false
+  /** I16：记录当前降级 ObjectURL 与代际号，确保 skip()/onerror/play 失败无泄漏且 AbortError 不重入。 */
+  let activeFallbackUrl: string | null = null
+  let fallbackGen = 0
+  const revokeFallbackUrl = (): void => {
+    if (activeFallbackUrl) {
+      URL.revokeObjectURL(activeFallbackUrl)
+      activeFallbackUrl = null
+    }
+  }
   let ctx: AudioContext | null = null
   let duckGain: GainNode | null = null
   let analyser: AnalyserNode | null = null
@@ -708,20 +725,34 @@ function createAudioEngine(
   const playFallback = (): void => {
     const frame = pending.shift() ?? null
     if (!frame) {
+      revokeFallbackUrl()
       fallbackBusy = false
       setUi({ playing: false, playingCaption: null })
+      onAllPlayed?.()
       return
     }
     fallbackBusy = true
-    const url = URL.createObjectURL(new Blob([frame.audio], { type: frame.mime === 'audio/wav' ? 'audio/wav' : 'audio/mpeg' }))
+    const myGen = ++fallbackGen
+    revokeFallbackUrl()
+    // B7：沿用宿主校验通过的 audio/* MIME（WAV / MP3 / Ogg / FLAC / AAC），未知回退 audio/mpeg。
+    const blobMime =
+      typeof frame.mime === 'string' && frame.mime.toLowerCase().startsWith('audio/')
+        ? frame.mime
+        : 'audio/mpeg'
+    const url = URL.createObjectURL(new Blob([frame.audio], { type: blobMime }))
+    activeFallbackUrl = url
     fallbackAudio.src = url
-    // I-4：非粘滞降级只负责这一句——播完回到 Web Audio 解码路径。
+    // I-4 + I16：非粘滞降级只负责这一句——播完释放 URL 并回调 onAllPlayed，有待播帧则回到 Web Audio 路径。
     const next = (): void => {
-      URL.revokeObjectURL(url)
+      if (myGen !== fallbackGen) return
+      revokeFallbackUrl()
       fallbackBusy = false
       if (!fallback && ctx) {
         if (pending.length > 0) drainPending()
-        else setUi({ playing: false, playingCaption: null })
+        else {
+          setUi({ playing: false, playingCaption: null })
+          onAllPlayed?.()
+        }
       } else playFallback()
     }
     fallbackAudio.onended = next
@@ -749,7 +780,11 @@ function createAudioEngine(
     }
     setUi({ playing: true, playingCaption: frame.text, ttsNotice: null })
     fixtureRecorder.mark('tts-sentence', frame.text)
-    void fallbackAudio.play().catch(() => playFallback())
+    void fallbackAudio.play().catch((err) => {
+      // I16：skip() 触发的 AbortError 或过期代际不得重入 playFallback；真失败走 next() 释放 URL 再继续。
+      if (myGen !== fallbackGen || (err as { name?: string })?.name === 'AbortError') return
+      next()
+    })
   }
 
   /** 解码串行队列：保持句序，decode 完成即无缝调度（音频线程精度）。 */
@@ -812,8 +847,9 @@ function createAudioEngine(
           fixtureRecorder.mark('tts-sentence', frame.text)
         }
       } catch {
-        // 解码失败：停掉 Web Audio 在途源（避免与 <audio> 混播），整段降级（保句序）。
+        // 解码失败：先摘除 onended 再停掉 Web Audio 在途源（防迟到 onended 误清 UI/captionQueue），整段降级（保句序）。
         for (const src of activeSrcs) {
+          src.onended = null
           try {
             src.stop()
           } catch {
@@ -827,6 +863,8 @@ function createAudioEngine(
         playFallback()
       } finally {
         decoding = false
+        // I16：decode 期间若发生 skip()+push(f2) 使循环提前 return，退出后立刻续拉待播新帧避免滞留。
+        if (pending.length > 0 && !fallbackBusy && !fallback && ctx) drainPending()
       }
     })()
   }
@@ -840,7 +878,7 @@ function createAudioEngine(
       if (fallback || !ctx) {
         pending.push(frame)
         // 已在播则等 onended/onerror 链续播（与原引擎 paused 守卫同语义）。
-        if (fallbackAudio.paused) playFallback()
+        if (fallbackAudio.paused && !fallbackBusy) playFallback()
         return
       }
       pending.push(frame)
@@ -848,12 +886,16 @@ function createAudioEngine(
     },
     skip() {
       pending.length = 0
+      fallbackGen++
       fallbackBusy = false
+      revokeFallbackUrl()
       nextEndAt = 0 // P1-2/I1：打断后清调度基准，下句从 now 起播（防空窗）
-      fallbackAudio.pause()
       fallbackAudio.onended = null
       fallbackAudio.onerror = null
+      fallbackAudio.onplaying = null
+      fallbackAudio.pause()
       for (const src of activeSrcs) {
+        src.onended = null
         try {
           src.stop()
         } catch {
@@ -1417,8 +1459,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         const p = JSON.parse(e.data) as { code?: string }
         if (!activeSessionId) return
         if (p.code === 'sense_degraded') {
-          ui.notice = t('senseDegradedNotice')
-          notify()
+          busApi.setNotice(t('senseDegradedNotice'))
         }
       } catch {
         // ignore malformed frame
@@ -1588,11 +1629,16 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       curChunks = []
       curBytes = 0
       curChunkCount = 0
-      // 合法性：MP3 帧以同步字 0xff 开头、WAV 以 RIFF 开头；空/无效整句丢弃。
+      // B7：合法容器校验——支持 MPEG 帧同步(0xFF)、ID3v2 MP3(ID3)、WAV(RIFF)、Ogg(OggS)、FLAC(fLaC)
+      // 以及宿主已校验通过的 audio/* MIME；空或非音频整句丢弃。
       if (buf.length === 0) return
-      const isMp3 = buf[0] === 0xff
+      const isMp3 =
+        buf[0] === 0xff || (buf.length >= 3 && buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33)
       const isWav = buf.length >= 4 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
-      if (!isMp3 && !isWav) return
+      const isOgg = buf.length >= 4 && buf[0] === 0x4f && buf[1] === 0x67 && buf[2] === 0x67 && buf[3] === 0x53
+      const isFlac = buf.length >= 4 && buf[0] === 0x66 && buf[1] === 0x4c && buf[2] === 0x61 && buf[3] === 0x43
+      const isAudioMime = typeof frame.mime === 'string' && frame.mime.toLowerCase().startsWith('audio/')
+      if (!isMp3 && !isWav && !isOgg && !isFlac && !isAudioMime) return
       engine.push({
         sessionId: frame.sessionId,
         seq: frame.sentenceId,
@@ -1616,7 +1662,9 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   const doSkipAudio = (sidArg?: string | null): void => {
     const sid = sidArg ?? activeSessionId ?? focusedSessionId
     if (sid) {
-      rejectSeqUpTo.set(sid, Math.max(lastFinalSeq.get(sid) ?? -1, curSentenceId ?? -1))
+      // I17：单调抬升拒绝线，不得把 STOP_READING_LINE 向下覆写导致停止朗读后剩余句恢复播报。
+      const prevLine = rejectSeqUpTo.get(sid) ?? -1
+      rejectSeqUpTo.set(sid, Math.max(prevLine, lastFinalSeq.get(sid) ?? -1, curSentenceId ?? -1))
     }
     // P1-1：打断/让出时丢弃未完成句的拼帧缓冲（避免残留帧悬挂）。
     curSentenceId = null
@@ -1632,7 +1680,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     playingEndAt = 0
   }
 
-  return {
+  const busApi: VoiceBus = {
     get activeSessionId() {
       return activeSessionId
     },
@@ -1837,7 +1885,19 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         signal: AbortSignal.timeout(3000),
       }).catch(() => {})
     },
+    dispose() {
+      if (noticeTimer) {
+        clearTimeout(noticeTimer)
+        noticeTimer = null
+      }
+      source?.close()
+      source = null
+      engine.skip()
+      listeners.clear()
+      audioListeners.clear()
+    },
   }
+  return busApi
 }
 
 interface MicProps extends VoiceSlotActions {
@@ -1901,25 +1961,25 @@ interface VoiceBootConfig {
   rate?: number
 }
 
-let styleInjected = false
-/** 注入样式节点的稳定标记：热重载换模块作用域后 styleInjected 归 false，必须按标记去重。 */
+let styleRefCount = 0
+let styleEl: HTMLStyleElement | null = null
+/** 注入样式节点的稳定标记：热重载换模块作用域后 styleRefCount 归 0，必须按标记去重。 */
 const VOICE_CSS_ATTR = 'data-dshvm-css'
 
 function useVoiceCss(): void {
   useEffect(() => {
-    if (styleInjected) return
-    styleInjected = true
-    // A4 审计 Minor：此前每次热重载都再 append 一份 <style>，永不摘除。
-    // 现在先按标记移除上一代（同一时刻只保留一份），并登记卸载清理。
-    // 测试台架的 document 桩没有 querySelectorAll：能力探测后再去重（生产环境必有）。
-    document.head.querySelectorAll?.(`style[${VOICE_CSS_ATTR}]`).forEach?.((n) => n.remove())
-    const el = document.createElement('style')
-    el.setAttribute?.(VOICE_CSS_ATTR, '')
-    el.textContent = `
+    // B9：引用计数而非布尔——ActivityMic/RightMic 交叠卸载时，先挂者不得删掉存活按钮的样式节点。
+    styleRefCount++
+    if (!styleEl) {
+      // 测试台架的 document 桩没有 querySelectorAll：能力探测后再去重（生产环境必有）。
+      document.head.querySelectorAll?.(`style[${VOICE_CSS_ATTR}]`).forEach?.((n) => n.remove())
+      const el = document.createElement('style')
+      el.setAttribute?.(VOICE_CSS_ATTR, '')
+      el.textContent = `
 @keyframes dshvm-fadein { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
 @keyframes dshvm-eq { 0%, 100% { transform: scaleY(0.35) } 50% { transform: scaleY(1) } }
 @keyframes dshvm-spin { to { transform: rotate(360deg) } }
-.dshvm-bar { width: 3px; border-radius: 99px; transition: height 0.08s linear, opacity 0.08s linear }
+.dshvm-bar, .dshvm-bar-bot { width: 3px; border-radius: 99px; transition: height 0.08s linear, opacity 0.08s linear }
 /* 麦克风按钮所在的宿主容器也禁选：手指偏大时长按可能命中按钮外侧的容器留白，
    浏览器就近选中「语音」标签文字。 */
 :has(> [data-dshvm="mic"]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
@@ -1975,16 +2035,23 @@ html.dshvm-holding, html.dshvm-holding * {
 .dshvm-menu-item:hover, .dshvm-menu-item:focus-visible { background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14)); outline: none; }
 .dshvm-menu-check { color: var(--dsw-alias-state-business-primary, #58a6ff); font-size: 11px; }
 .dshvm-menu-sep { height: 1px; margin: 4px 2px; background: var(--dsw-alias-border-l1, rgba(139,148,158,.25)); }
-@media (prefers-reduced-motion: reduce) { .dshvm-spin, .dshvm-menu { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .dshvm-spin, .dshvm-menu, .dshvm-eq-bar { animation: none !important; } }
 `
-    document.head.appendChild(el)
-    // 卸载（插件 dispose）时摘除；热重载的下一次注入也会先按标记清理旧节点。
+      document.head.appendChild(el)
+      styleEl = el
+    }
     return () => {
-      el.remove()
-      styleInjected = false
+      styleRefCount = Math.max(0, styleRefCount - 1)
+      if (styleRefCount === 0 && styleEl) {
+        styleEl.remove()
+        styleEl = null
+      }
     }
   }, [])
 }
+
+/** I18：无条件调用宿主 selector hook 的兜底空函数，消除组件体内的条件 hook 调用形态。 */
+const noopSelectorHook = <T,>(_sel: (s: any) => T): T | undefined => undefined
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '')
 const ONCE_SETTLE_MS = 1200
@@ -2030,6 +2097,7 @@ function MicMenu({ scope, anchor, onClose }: { scope: MenuScope; anchor: HTMLEle
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         e.preventDefault()
+        e.stopPropagation()
         onClose(true)
         return
       }
@@ -2101,10 +2169,14 @@ export function MicButton({
   const [local, setLocal] = useState<'off' | 'pending' | 'on'>('off')
   const localRef = useRef<'off' | 'pending' | 'on'>('off')
   const sidRef = useRef<string | undefined>(sessionId)
+  /** B8：记录上一次渲染绑定的 sessionId，跨会话切换时先以旧 sid 完整退出。 */
+  const prevSidRef = useRef<string | undefined>(sessionId)
   const engineRef = useRef<AsrEngine | null>(null)
   /** M11：麦克风真正采音中标记（engine.start() 成功才置真）——按钮 pending→on
    *  的晋升门：权限框/getUserMedia 在途时 host 可能已确认活跃，但无麦。 */
   const micReadyRef = useRef(false)
+  /** I17：host 已确认本轮 enter 成功标记——未确认前其它 notify() 不得把 pending 提前翻回 off。 */
+  const hostEnteredRef = useRef(false)
   /** I-7：进入纪元——每次 enterMode / cancelPending 递增，在途的 enterMode 据此判断自己是否已被取消。 */
   const enterEpochRef = useRef(0)
   const actionsRef = useRef(inputActions)
@@ -2193,7 +2265,7 @@ export function MicButton({
       bus.subscribe(({ active, ui: u }) => {
         // 按钮文案/常驻提示面依赖：active（提示面让位门）+ state/error/notice/mode/wakeWord/ttsNotice。
         // model 下载进度不在此列（按钮不渲染它；状态条有独立全量订阅）。
-        const key = `${active}|${u.state}|${u.error ?? ''}|${u.notice ?? ''}|${u.mode}|${u.wakeWord}|${u.ttsNotice ?? ''}|${u.playing}|${u.turn}|${u.sseDown}|${u.idleWarn}|${u.boot?.showStatusBar}`
+        const key = `${active}|${u.state}|${u.error ?? ''}|${u.notice ?? ''}|${u.mode}|${u.wakeWord}|${u.ttsNotice ?? ''}|${u.playing}|${u.turn}|${u.sseDown}|${u.idleWarn}|${u.isSpeech}|${u.boot?.showStatusBar}`
         if (key === uiKeyRef.current) return
         uiKeyRef.current = key
         bumpUi((t) => t + 1)
@@ -2381,6 +2453,7 @@ export function MicButton({
         const engine = engineRef.current
         engineRef.current = null
         micReadyRef.current = false // M11：抢占退出同步废采音标记（下次进入重新起算）
+        hostEnteredRef.current = false
         // Fix：先置 null 防重入，再异步 stop（stop 内部会阻止 handleAudio）
         if (engine) void engine.stop()
         bus.resetTelemetry() // P1-5：与 exitMode 同口径清埋点
@@ -2636,12 +2709,15 @@ export function MicButton({
     checkOnce()
   }
 
-  const exitMode = async (reason: 'manual' | 'idle' | 'typing'): Promise<void> => {
+  const exitMode = async (reason: 'manual' | 'idle' | 'typing', overrideSid?: string): Promise<void> => {
     if (localRef.current === 'off') return
+    // B8：入口即捕获要退出的会话 ID（切会话时传 prevSid），避免 await engine.stop() 期间 sidRef 已变成新会话。
+    const sid = overrideSid ?? sidRef.current
     pendingHoldRef.current = false
     pendingHoldReleaseRef.current = false
     clearHoldExit()
     setLocalMode('off')
+    hostEnteredRef.current = false
     clearOnce()
     clearIdle()
     cancelPendingSubmit()
@@ -2666,7 +2742,6 @@ export function MicButton({
     bus.resetTelemetry() // P1-5：退出清空埋点链
     // Minor#3：清 VAD 徽标（manual 模式冻结不复位会跨会话残留）。
     bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null, isSpeech: undefined })
-    const sid = sidRef.current
     // I2：打字退出（Q13 双通道不混入）只停 ASR/让出 host——keepAudio 跳过
     // doSkipAudio，不掐断 AI 朗读（用户只是想打字，没让 AI 闭嘴）。
     if (sid) await bus.exit(sid, reason === 'typing') // Fix：等待 host 退出完成，防 ASR 请求 403
@@ -2686,6 +2761,7 @@ export function MicButton({
     isSpeechTrueCount = 0
     isSpeechFalseRun = 0 // M5：同重置迟滞「假」运行计数（模块级，跨会话不重置会误衰减确认速度）
     micReadyRef.current = false // M11：进入即废采音标记（start 成功才置真）
+    hostEnteredRef.current = false
     setLocalMode('pending')
     const myEnter = ++enterEpochRef.current // I-7：pending 可被再次点击取消（cancelPending 递增此纪元）
     try {
@@ -2706,6 +2782,7 @@ export function MicButton({
         }
         return
       }
+      hostEnteredRef.current = true
       // 每次进入重新拉取 host 引导参数（静音/打断档位/自动发送/空闲超时/模式）
       const cfg = await fetchConfig()
       if (enterEpochRef.current !== myEnter) {
@@ -2733,19 +2810,20 @@ export function MicButton({
         if (!pv && typeof sv.voice === 'string') pv = sv.voice.trim()
         const presetId = typeof cfg.openaiPreset === 'string' && cfg.openaiPreset ? cfg.openaiPreset : typeof sv.openaiPreset === 'string' ? sv.openaiPreset : ''
         const readAloudOff = (typeof cfg.readAloud === 'string' ? cfg.readAloud : sv.readAloud) === 'off'
-        const probeKey = 'dshvm:ttsProbeAt'
         const probeTtlMs = 10 * 60 * 1000
+        if (!readAloudOff && isCloudEngine(eng)) {
+          if (eng === 'openai') {
+            pv = resolvePresetVoice(pv, presetId ? await fetchPresetVoice(presetId) : null)
+          }
+        }
+        // UX：探针节流键包含引擎/预设/音色，切换引擎或换音色后立刻重探，不被旧引擎 10min 冷却压制。
+        const probeKey = `dshvm:ttsProbeAt:${eng}:${presetId}:${pv}`
         let recentProbe = false
         try {
           const at = Number(sessionStorage.getItem(probeKey) ?? '0')
           recentProbe = Number.isFinite(at) && at > 0 && Date.now() - at < probeTtlMs
         } catch {
           // 隐私模式禁写：退回每次都探（功能优先于配额）
-        }
-        if (!readAloudOff && !recentProbe && isCloudEngine(eng)) {
-          if (eng === 'openai') {
-            pv = resolvePresetVoice(pv, presetId ? await fetchPresetVoice(presetId) : null)
-          }
         }
         if (!readAloudOff && !recentProbe && isCloudEngine(eng) && !pv) {
           debugLog('tts-probe-skip', { reason: 'no-voice', engine: eng })
@@ -2762,7 +2840,8 @@ export function MicButton({
               // 忽略存储失败
             }
           }
-          const pr = typeof sv.rate === 'number' ? Math.min(2, Math.max(0.5, sv.rate)) : 1.1
+          const rawRate = typeof cfg.rate === 'number' ? cfg.rate : typeof sv.rate === 'number' ? sv.rate : 1.1
+          const pr = Math.min(2, Math.max(0.5, rawRate))
           const myProbe = enterEpochRef.current
           const markDown = (): void => {
             if (enterEpochRef.current !== myProbe || localRef.current === 'off') return
@@ -2812,9 +2891,9 @@ export function MicButton({
       // 2) 有 running 回合则 session.cancel({keepInbox:true})（取消生成、保新消息）
       // 3) 半截标注由「转录区新消息续入」自然呈现（Q8 标注见 §8.5 收尾）
       const hardBreak = async (): Promise<void> => {
-        // 用户打断表示还要继续说：撤销这一轮的自然收尾及全部兜底计时。
+        // 用户打断表示还要继续说：撤销这一轮的自然收尾及全部兜底计时（once 与 hold 等回复期间均支持）。
         // 必须早于 skipAudio 的同步通知；迟到/重复 tts-idle 不能重建 once 等待。
-        const resumeOnce = bootNow().mode === 'once' && onceRef.current !== null
+        const resumeOnce = (bootNow().mode === 'once' || bootNow().mode === 'hold') && onceRef.current !== null
         if (resumeOnce) { clearOnce(); resetIdle() }
         // 立即停播 + 恢复音量：不等待慢操作（discardSegment 最多 5s、cancel 最多 3s）。
         bus.skipAudio()
@@ -2852,11 +2931,11 @@ export function MicButton({
         // hold 按压中（含 toggle 模式按住 Ctrl）不丢弃：本段是用户明确要说的内容，
         // 打断只停 AI——否则按住说的前半句会被吃掉。
         if (resumeOnce) {
-          // once 等回复时已关麦；恢复当前引擎，松手/退出发生在启动期间时不重新接管按压。
+          // once/hold 等回复时已关麦；恢复当前引擎，松手/退出发生在启动期间时不重新接管按压。
           const eng = engineRef.current
           void eng?.start().then(() => {
             if (engineRef.current !== eng || localRef.current !== 'on' || !mountedRef.current) return
-            if (manualHoldRef.current || toggleHoldRef.current) eng.beginHeld()
+            if (manualHoldRef.current || toggleHoldRef.current || holdPtrRef.current || holdCtrlRef.current) eng.beginHeld()
           }).catch(() => bus.setUi({ error: t('micUnavailable') }))
         } else if (engineRef.current && !engineRef.current.holding) await engineRef.current.discardSegment()
         await cancelP
@@ -3078,10 +3157,12 @@ export function MicButton({
           if (lastPartialRef.current) {
             const composed = composeDraft(draftRef.current, lastPartialRef.current, '')
             lastPartialRef.current = ''
-            try {
-              actionsRef.current?.setDraft?.(composed)
-            } catch {
-              // 写草稿失败不阻断——提示仍走 setNotice
+            if (!shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
+              try {
+                actionsRef.current?.setDraft?.(composed)
+              } catch {
+                // 写草稿失败不阻断——提示仍走 setNotice
+              }
             }
           }
           bus.setUi({ partial: '' })
@@ -3129,10 +3210,10 @@ export function MicButton({
         if (typeof partialActions?.setDraft !== 'function') return
         const composed = composeDraft(draftRef.current, lastPartialRef.current, text)
         if (!composed) return
-        lastPartialRef.current = text.trim()
-        // Issue #65：引用/附件非空时跳过回填——宿主 setDraft(纯文本) 会洗掉
-        // Lexical 的引用卡片与图片附件（退化为「> 纯文本」+破图）。状态条仍预览。
+        // Issue #65 + I17：引用/附件非空时跳过回填，且必须在写 lastPartialRef 之前早退，
+        // 避免从未写入草稿的 partial 被记录为 tail 误剥真实草稿末尾。
         if (shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) return
+        lastPartialRef.current = text.trim()
         try {
           partialActions.setDraft(composed)
         } catch {
@@ -3148,6 +3229,19 @@ export function MicButton({
         resetIdle()
         submitInFlightRef.current = false // Issue #15 批 3（审查 I-2）：新段=新提交周期
         bus.setUi({ partial: '' }) // 定稿即清实时字幕（防旧 partial 遮蔽思考/朗读状态条）
+        const actions = actionsRef.current
+        const trimmed = text.trim()
+        // I17：空定稿不得进入 beginOnceWait（不会提交新回合，否则干等 30s noStart 兜底）；
+        // hold 松手产生的空定稿直接清标记并短延迟退出。
+        if (!trimmed) {
+          if (holdReleaseExitRef.current && meta?.force) {
+            clearHoldExit()
+            setTimeout(() => {
+              if (!holdPtrRef.current) void exitModeRef.current('manual')
+            }, 300)
+          }
+          return
+        }
         if (holdReleaseExitRef.current && meta?.force) {
           // hold 松手那一段（force；按住途中的 30s 滚段不算）：会发送 → 进 once 等待，回复结束再退
           // （不朗读也一样——立刻退会取消纠错 RTT 内的在途提交）；不发送（自动发送关）→ 没有回复可等，直接退。
@@ -3160,9 +3254,6 @@ export function MicButton({
             beginOnceWait()
           }
         }
-        const actions = actionsRef.current
-        const trimmed = text.trim()
-        if (!trimmed) return
         // Issue #15 批 3：定稿**替换** partial 尾（不是追加——追加会把刚写进草稿的
         // partial 重复计入，主会话预审定位的 double-append 风险）。草稿被提交清空时
         // 尾不匹配 → composeDraft 自愈从定稿新起。
@@ -3283,11 +3374,13 @@ export function MicButton({
   const exitModeRef = useRef(exitMode)
   exitModeRef.current = exitMode
   useEffect(() => {
-    exitModeExternal = () => {
+    const fn = (): void => {
       void exitModeRef.current('manual')
     }
+    exitModeExternal = fn
     return () => {
-      exitModeExternal = null
+      // B9：仅当仍是本实例登记的句柄才清空，交叠卸载不得清除存活按钮的退出逃生口。
+      if (exitModeExternal === fn) exitModeExternal = null
     }
   }, [])
 
@@ -3295,7 +3388,14 @@ export function MicButton({
     actionsRef.current = inputActions
   }, [inputActions])
   useEffect(() => {
+    const prevSid = prevSidRef.current
+    prevSidRef.current = sessionId
     sidRef.current = sessionId
+    // B8：跨会话持久的 MicButton 切换会话时，若旧会话处于语音模式，立即以 prevSid 完整退出
+    // （调用 bus.exit(prevSid) 停 host+麦），避免 host 残留旧活跃会话导致切回分裂态。
+    if (prevSid && prevSid !== sessionId && localRef.current !== 'off') {
+      void exitModeRef.current('manual', prevSid)
+    }
   }, [sessionId])
   // 设置卡片改完立即重拉配置（快捷键 / 交互模式等），不必刷新页面。
   useEffect(() => {
@@ -3364,10 +3464,10 @@ export function MicButton({
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
-  // 宿主 selector hook 必须组件顶层调用（不能在 effect 内——React #321）。
-  const runningSel = useSession
-    ? useSession((s: any) => (s === undefined ? undefined : s.running))
-    : undefined
+  // 宿主 selector hook 必须组件顶层无条件调用（不能在 effect 或条件分支内——React #310/#321）。
+  const useSessionHook = useSession ?? noopSelectorHook
+  const useInputHook = useInput ?? noopSelectorHook
+  const runningSel = useSessionHook((s: any) => (s === undefined ? undefined : s.running))
   const prevRunningRef = useRef(false)
   useEffect(() => {
     runningRef.current = runningSel === true
@@ -3553,11 +3653,14 @@ export function MicButton({
     }
   }, [])
 
-  // 打字退出（Q13）：受控 textarea 的程序化 setDraft 不派发原生 input 事件。
+  // 打字退出（Q13）：受控 textarea / Lexical contenteditable 的程序化 setDraft 不派发原生 input 事件。
   useEffect(() => {
     const onInput = (e: Event): void => {
-      const t = e.target as HTMLElement | null
-      if (!(t instanceof HTMLTextAreaElement)) return
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      if (!(target instanceof HTMLTextAreaElement || target.isContentEditable)) return
+      // I18：排除设置卡片内部的可编辑元素，避免在设置页编辑词表/输入框误退语音模式。
+      if (target.closest?.('[data-dshvm-settings]')) return
       if (localRef.current !== 'on') return
       void exitModeRef.current('typing')
     }
@@ -3634,7 +3737,9 @@ export function MicButton({
           // getUserMedia 权限框在途）——不得置 on：按钮绿=采音中，实际无麦（用户
           // 以为在说话）。仅 start() 成功（micReadyRef）或已在 on 才晋升。
           if (localRef.current === 'on' || micReadyRef.current) setLocalMode('on')
-        } else if (localRef.current === 'pending') {
+        } else if (localRef.current === 'pending' && hostEnteredRef.current) {
+          // I17：仅在 host 已确认进入之后又被抢占/清零时才退回 off；bus.enter 尚未落定前的无关 notify 不误翻。
+          hostEnteredRef.current = false
           setLocalMode('off')
         }
       }
@@ -3647,15 +3752,15 @@ export function MicButton({
   // 当前草稿：官方 InputActions 无 getDraft（仅 setDraft/submit），草稿与机器
   // phase 的事实源为 useInput 标准 prop；值变化即重渲染，draftRef/phaseRef 在
   // 事件回调里读最新值（phase 用于提交重试门控：避免把「提交在途」当失败重发）。
-  const liveDraft = useInput ? useInput((s: any) => (s?.draft as string) ?? '') : ''
+  const liveDraft = useInputHook((s: any) => (s?.draft as string) ?? '') ?? ''
   const draftRef = useRef('')
   draftRef.current = liveDraft
   // Issue #65：宿主引用/附件是非文本态（quotes/attachmentIds 独立于 draft 字符串；
   // setDraft(纯文本) 会把 Lexical 的引用卡片/图片附件洗成纯文本+破图）。
   // 识别回填（onPartial/onSegment）前若引用/附件非空则跳过 setDraft——状态条保留
   // 预览，不丢字；提交路径（用户意图）不受影响，引用随提交发送。
-  const liveQuoteCount = useInput ? useInput((s: any) => (s?.quotes as unknown[] | undefined)?.length ?? 0) : 0
-  const liveAttachCount = useInput ? useInput((s: any) => (s?.attachmentIds as unknown[] | undefined)?.length ?? 0) : 0
+  const liveQuoteCount = useInputHook((s: any) => (s?.quotes as unknown[] | undefined)?.length ?? 0) ?? 0
+  const liveAttachCount = useInputHook((s: any) => (s?.attachmentIds as unknown[] | undefined)?.length ?? 0) ?? 0
   const quoteRef = useRef(0)
   quoteRef.current = liveQuoteCount
   const attachRef = useRef(0)
@@ -3671,7 +3776,7 @@ export function MicButton({
   // 失配即弃）。替代原单布尔 correctInFlightRef——旧布尔会被旧周期 then 无条件
   // 清 false，误清新周期标记导致新文本静默漏发。
   const correctCycleRef = useRef(0)
-  const livePhase = useInput ? useInput((s: any) => (s?.phase as string) ?? '') : ''
+  const livePhase = useInputHook((s: any) => (s?.phase as string) ?? '') ?? ''
   const phaseRef = useRef('')
   phaseRef.current = livePhase
   /** 按住说话中（录音态视觉反馈）。 */
@@ -3842,13 +3947,21 @@ export function MicButton({
       if (localRef.current === 'on') {
         setHolding(true)
         const eng = engineRef.current
-        eng?.beginHeld() // 立即接管收音（按住的前 250ms 语音不丢）
-        if (eng && bootNow().bargeInMode === 'manual' && bus.ui.playing) {
-          // 手动打断（外放）：按住 ≥250ms 才停 AI（短按 = tap-to-exit，不得取消回复）。
+        if (onceRef.current) {
+          // I17：hold 等回复期间用户再次长按 → 延迟 250ms 打断并重启麦克风接管收音（短按仍走 tap-to-exit）。
           breakTimerRef.current = setTimeout(() => {
             breakTimerRef.current = null
-            if (holdPtrRef.current && bus.ui.playing) void breakRef.current?.()
+            if (holdPtrRef.current && onceRef.current) void breakRef.current?.()
           }, 250)
+        } else {
+          eng?.beginHeld() // 立即接管收音（按住的前 250ms 语音不丢）
+          if (eng && bootNow().bargeInMode === 'manual' && bus.ui.playing) {
+            // 手动打断（外放）：按住 ≥250ms 才停 AI（短按 = tap-to-exit，不得取消回复）。
+            breakTimerRef.current = setTimeout(() => {
+              breakTimerRef.current = null
+              if (holdPtrRef.current && bus.ui.playing) void breakRef.current?.()
+            }, 250)
+          }
         }
       }
     } else if (localRef.current === 'on' && ((bus.ui.playing && !onceRef.current) || (bootNow().mode === 'once' && onceRef.current))) {
@@ -4465,9 +4578,9 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
               borderRadius: 8,
               fontSize: 10,
               lineHeight: '16px',
-              color: '#ffa657',
-              background: 'rgba(255, 166, 87, 0.15)',
-              border: '1px solid rgba(255, 166, 87, 0.35)',
+              color: 'var(--dsw-alias-state-warn-primary, #d29922)',
+              background: 'color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)',
             }}
           >
             {t('vadDetected')}
@@ -4491,9 +4604,9 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              color: '#ffa657',
-              background: 'rgba(255, 166, 87, 0.15)',
-              border: '1px solid rgba(255, 166, 87, 0.35)',
+              color: 'var(--dsw-alias-state-warn-primary, #d29922)',
+              background: 'color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)',
             }}
           >
             {b.ui.ttsNotice}
@@ -4528,9 +4641,9 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
               borderRadius: 8,
               fontSize: 10,
               lineHeight: '16px',
-              color: '#ffa657',
-              background: 'rgba(255, 166, 87, 0.15)',
-              border: '1px solid rgba(255, 166, 87, 0.35)',
+              color: 'var(--dsw-alias-state-warn-primary, #d29922)',
+              background: 'color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)',
             }}
           >
             {b.ui.bargeInDetectFallback ? t('bargeInDetectFallback') : t('aecOff')}
@@ -4633,6 +4746,7 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
         {[0, 1, 2].map((i) => (
           <span
             key={i}
+            className="dshvm-eq-bar"
             style={{
               width: 3,
               height: '100%',
