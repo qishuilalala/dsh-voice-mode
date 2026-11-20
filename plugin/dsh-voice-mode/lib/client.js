@@ -604,12 +604,13 @@ function createAsrEngine(config, sessionId) {
       const item = pendingFinals.get(nextEmitSeq);
       pendingFinals.delete(nextEmitSeq);
       nextEmitSeq++;
-      if (item && item.discardGen === discardGen && active) emit(transcriptListeners, item.text, item.meta);
+      if (item && item.discardGen === discardGen && (active || draining)) emit(transcriptListeners, item.text, item.meta);
     }
   };
   const settleFinal = (seq, item) => {
     pendingFinals.set(seq, item);
     flushOrderedFinals();
+    wakeDrainWaiters();
   };
   const resetFailStreaks = () => {
     partialFailStreak = 0;
@@ -857,7 +858,7 @@ function createAsrEngine(config, sessionId) {
     uploadedSamples = 0;
     void resetHostStream();
   };
-  const finalizeSegment = (force = false) => {
+  const finalizeSegment = (force = false, flushed = false) => {
     if (segment.length === 0) return;
     if (config.isPlaying?.() && !forcePending && !force) return;
     if (utteranceEndAt === null) {
@@ -879,7 +880,8 @@ function createAsrEngine(config, sessionId) {
       settled = true;
       settleFinal(mySeq, item ? { ...item, discardGen: discardSnapshot } : null);
     };
-    const meta = { force: forcePending };
+    const canSettle = () => (active || draining) && discardGen === discardSnapshot;
+    const meta = flushed ? { force: forcePending, flushed: true } : { force: forcePending };
     const consumedWake = wakeConsumed;
     wakeConsumed = false;
     const wasSalvaged = salvagedSegment;
@@ -908,12 +910,12 @@ function createAsrEngine(config, sessionId) {
       const restoreState = () => setState(active ? speechActive || holdActive ? "speech" : wakeEnabled ? "wake" : "listening" : "idle");
       for (let attempt = 0; attempt < MAX_FINAL_ATTEMPTS; attempt++) {
         if (attempt > 0) {
-          if (!active || discardGen !== discardSnapshot) {
+          if (!canSettle()) {
             settle(null);
             return;
           }
           await new Promise((r) => setTimeout(r, 500 * attempt));
-          if (!active || discardGen !== discardSnapshot) {
+          if (!canSettle()) {
             settle(null);
             return;
           }
@@ -934,7 +936,7 @@ function createAsrEngine(config, sessionId) {
           if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize fetch failed (retries exhausted)");
           continue;
         }
-        if (!active || discardGen !== discardSnapshot) {
+        if (!canSettle()) {
           settle(null);
           return;
         }
@@ -942,7 +944,7 @@ function createAsrEngine(config, sessionId) {
           if (state !== "wake") setState("loading-model");
           res = await new Promise((resolve2) => {
             setTimeout(async () => {
-              if (!active || discardGen !== discardSnapshot) {
+              if (!canSettle()) {
                 resolve2(new Response(null, { status: 410 }));
                 return;
               }
@@ -961,14 +963,14 @@ function createAsrEngine(config, sessionId) {
               }
             }, 5e3);
           });
-          if (!active || discardGen !== discardSnapshot) {
+          if (!canSettle()) {
             settle(null);
             return;
           }
         }
         if (res.status === 413) {
           console.warn("[dsh-voice-mode] finalize payload too large (413): utterance exceeded the per-request limit");
-          if (active && discardGen === discardSnapshot) {
+          if (canSettle()) {
             emit(noticeListeners, "utteranceTooLong");
             restoreState();
           }
@@ -989,7 +991,7 @@ function createAsrEngine(config, sessionId) {
           ]).finally(() => {
             if (expireTimer) clearTimeout(expireTimer);
           }).catch(() => false);
-          if (recovered && active && discardGen === discardSnapshot) {
+          if (recovered && canSettle()) {
             try {
               res = await fetch(asrUrl(true, 0, epochSnapshot), {
                 signal: AbortSignal.timeout(25e3),
@@ -1001,7 +1003,7 @@ function createAsrEngine(config, sessionId) {
             } catch {
             }
           }
-          if (!active || discardGen !== discardSnapshot) {
+          if (!canSettle()) {
             settle(null);
             return;
           }
@@ -1029,7 +1031,7 @@ function createAsrEngine(config, sessionId) {
           if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize response is not JSON (retries exhausted)");
           continue;
         }
-        if (!active || discardGen !== discardSnapshot) {
+        if (!canSettle()) {
           settle(null);
           return;
         }
@@ -1459,6 +1461,14 @@ function createAsrEngine(config, sessionId) {
     }
     inFlush = false;
   };
+  let draining = false;
+  let drainWaiters = [];
+  const wakeDrainWaiters = () => {
+    if (drainWaiters.length === 0) return;
+    const list = drainWaiters;
+    drainWaiters = [];
+    for (const fn of list) fn();
+  };
   return {
     get state() {
       return state;
@@ -1487,6 +1497,8 @@ function createAsrEngine(config, sessionId) {
     },
     async start() {
       if (active) return;
+      draining = false;
+      wakeDrainWaiters();
       stopRequested = false;
       startSeq++;
       const myStartSeq = startSeq;
@@ -1520,6 +1532,8 @@ function createAsrEngine(config, sessionId) {
     },
     async stop() {
       stopRequested = true;
+      draining = false;
+      wakeDrainWaiters();
       startSeq++;
       const myStopSeq = startSeq;
       const wasActive = active;
@@ -1530,6 +1544,85 @@ function createAsrEngine(config, sessionId) {
       }
       await stopRecorder();
       if (startSeq === myStopSeq) setState("idle");
+    },
+    async flushAndStop(timeoutMs = 3e3) {
+      stopRequested = true;
+      inFlush = true;
+      const myFlushCtx = audioCtx;
+      try {
+        processor?.disconnect();
+      } catch {
+      }
+      processor = null;
+      try {
+        workletNode?.disconnect();
+      } catch {
+      }
+      workletNode = null;
+      try {
+        stream?.getTracks().forEach((t3) => {
+          t3.onended = null;
+          t3.stop();
+        });
+      } catch {
+      }
+      stream = null;
+      void myFlushCtx?.close().catch(() => {
+      });
+      if (audioCtx === myFlushCtx) {
+        audioCtx = null;
+        ctxRate = SAMPLE_RATE2;
+      }
+      const wasActive = active;
+      if (wasActive) {
+        if (holdActive) {
+          holdActive = false;
+          if (segment.length > 0 && segmentMs >= MIN_SPEECH_MS) {
+            lastPollAt = 0;
+            finalizeSegment(true, true);
+          }
+        } else if (speechActive && state !== "wake" && speechMs >= MIN_SPEECH_MS && !config.isPlaying?.()) {
+          lastPollAt = 0;
+          finalizeSegment(false, true);
+        }
+      }
+      const targetSeq = finalizeSeq;
+      const hasPendingFinal = wasActive && nextEmitSeq <= targetSeq;
+      startSeq++;
+      const myStopSeq = startSeq;
+      active = false;
+      if (!wasActive && !hasPendingFinal) {
+        inFlush = false;
+        setState("idle");
+        return false;
+      }
+      if (hasPendingFinal && timeoutMs > 0) {
+        draining = true;
+        setState("transcribing");
+        await new Promise((resolve2) => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve2();
+          };
+          const check = () => {
+            if (nextEmitSeq > targetSeq || !draining || startSeq !== myStopSeq) finish();
+            else drainWaiters.push(check);
+          };
+          const timer = setTimeout(finish, timeoutMs);
+          timer?.unref?.();
+          drainWaiters.push(check);
+          check();
+        });
+        draining = false;
+      }
+      if (startSeq === myStopSeq) {
+        await stopRecorder();
+        if (startSeq === myStopSeq) setState("idle");
+      }
+      return hasPendingFinal;
     },
     forceSend() {
       if (speechActive && speechMs >= MIN_SPEECH_MS) {
@@ -2119,6 +2212,8 @@ var zh = {
   captionHistoryOpen: "\u56DE\u770B ({count})",
   captionHistoryHide: "\u6536\u8D77",
   captionDismiss: "\u5173\u95ED\u5B57\u5E55",
+  tabSwitchFlushedNotice: "\u5207\u9875\u524D\u8BED\u97F3\u5DF2\u5B9A\u7A3F\u586B\u5165\u8349\u7A3F",
+  sessionSwitchFlushedNotice: "\u4E0A\u4E00\u4F1A\u8BDD\u8BED\u97F3\u5DF2\u6682\u5B58\uFF0C\u5207\u56DE\u540E\u81EA\u52A8\u586B\u5165\u8349\u7A3F",
   descBackchannelYield: "\u6717\u8BFB\u671F\u7528\u6237\u8BF4\u300C\u55EF/\u5BF9\u300D\u7B49\u77ED\u5E94\u7B54\u65F6\u81EA\u52A8\u8BA9\u4F4D\uFF08\u8DF3\u8FC7\u5F53\u524D TTS \u53E5 + \u77ED\u6682\u4E22\u5E27 1.5s\uFF1B\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF1B\u5173 = \u4E0D\u8BA9\u4F4D\uFF0C\u884C\u4E3A\u7B49\u540C\u6539\u9020\u524D\uFF09\u3002\u4EC5\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u53EF\u89E6\u53D1\uFF1A\u300C\u6301\u7EED\u8046\u542C\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u4E0D\u8BC6\u522B\u8BED\u97F3\uFF0C\u5F00\u53E3\u8BF4\u8BDD\u6309\u6253\u65AD\u5904\u7406",
   // Issue #15 批 1 / ADR-0012：打断语音抢救。
   descBargeInSalvage: "AI \u6717\u8BFB\u65F6\u4F60\u5F00\u53E3\u6253\u65AD\uFF1A\u81EA\u52A8\u4FDD\u7559\u4ECE\u5F00\u53E3\u5230\u6253\u65AD\u751F\u6548\u4E4B\u95F4\u4F60\u8BF4\u7684\u8BDD\uFF0C\u5E76\u5165\u8BC6\u522B\u7EE7\u7EED\u53D1\u9001\uFF08\u4FEE\u300C\u6253\u65AD\u5403\u53E5\u300D\uFF1B\u5173 = \u4E22\u5F03\u6253\u65AD\u524D\u8BED\u97F3\u2014\u2014\u4EC5\u5916\u653E\u4E14\u65E0\u56DE\u58F0\u6D88\u9664\u7684\u73AF\u5883\u5EFA\u8BAE\u5173\uFF09",
@@ -2522,6 +2617,8 @@ var en = {
   captionHistoryOpen: "History ({count})",
   captionHistoryHide: "Collapse",
   captionDismiss: "Close captions",
+  tabSwitchFlushedNotice: "Speech before tab switch was finalized into draft",
+  sessionSwitchFlushedNotice: "Speech from previous session saved; restores to draft on return",
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",
@@ -6875,6 +6972,26 @@ var isSpeechTrueCount = 0;
 var interruptFirstAt = 0;
 var isSpeechFalseRun = 0;
 var lastReenterAt = 0;
+var MAX_STASHED_DRAFTS = 16;
+var stashedSessionDrafts = /* @__PURE__ */ new Map();
+function stashSessionDraft(sessionId, text) {
+  const clean2 = text.trim();
+  if (!sessionId || !clean2) return;
+  const prev = stashedSessionDrafts.get(sessionId) ?? "";
+  stashedSessionDrafts.delete(sessionId);
+  stashedSessionDrafts.set(sessionId, composeDraft(prev, "", clean2));
+  while (stashedSessionDrafts.size > MAX_STASHED_DRAFTS) {
+    const oldest = stashedSessionDrafts.keys().next().value;
+    if (oldest === void 0) break;
+    stashedSessionDrafts.delete(oldest);
+  }
+}
+function takeStashedSessionDraft(sessionId) {
+  const saved = stashedSessionDrafts.get(sessionId);
+  if (saved === void 0) return null;
+  stashedSessionDrafts.delete(sessionId);
+  return saved;
+}
 var INT_CONFIRM_FRAMES = { 0: 3, 1: 2, 2: 1 };
 var presetVoiceCache = null;
 async function fetchPresetVoice(presetId) {
@@ -6919,7 +7036,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "1bd58f8";
+var BUILD_TAG = "3f6a43b";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = (() => {
   try {
@@ -8491,6 +8608,7 @@ function MicButton({
   const manualHoldRef = (0, import_react3.useRef)(false);
   const breakRef = (0, import_react3.useRef)(null);
   const pausedForHiddenRef = (0, import_react3.useRef)(false);
+  const hiddenFlushRef = (0, import_react3.useRef)(null);
   const focusOwnerRef = (0, import_react3.useRef)(null);
   if (focusOwnerRef.current === null) focusOwnerRef.current = `mic-${++focusOwnerSeq}`;
   const focusOwner = focusOwnerRef.current;
@@ -8910,7 +9028,14 @@ function MicButton({
     const engine = engineRef.current;
     engineRef.current = null;
     micReadyRef.current = false;
-    if (engine) await engine.stop();
+    const isSessionSwitch = Boolean(overrideSid && overrideSid !== sidRef.current);
+    if (engine) {
+      if (isSessionSwitch && typeof engine.flushAndStop === "function") {
+        await engine.flushAndStop(2500);
+      } else {
+        await engine.stop();
+      }
+    }
     bus.resetTelemetry();
     bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null, isSpeech: void 0 });
     if (sid) await bus.exit(sid, reason === "typing");
@@ -9292,6 +9417,11 @@ function MicButton({
           }
           return;
         }
+        if (!mountedRef.current || sidRef.current !== sid) {
+          stashSessionDraft(sid, trimmed);
+          bus.setNotice(t("sessionSwitchFlushedNotice"));
+          return;
+        }
         if (holdReleaseExitRef.current && meta?.force) {
           clearHoldExit();
           if (bootNow().autoSend === false) {
@@ -9313,6 +9443,11 @@ function MicButton({
             } catch {
             }
           }
+        }
+        if (meta?.flushed || typeof document !== "undefined" && document.hidden) {
+          cancelAutoSend();
+          bus.setNotice(t("tabSwitchFlushedNotice"));
+          return;
         }
         if (meta?.force) {
           cancelAutoSend();
@@ -9410,7 +9545,17 @@ function MicButton({
     prevSidRef.current = sessionId;
     sidRef.current = sessionId;
     if (prevSid && prevSid !== sessionId && localRef.current !== "off") {
+      lastPartialRef.current = "";
       void exitModeRef.current("manual", prevSid);
+    }
+    if (sessionId) {
+      const stashed = takeStashedSessionDraft(sessionId);
+      if (stashed && !shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
+        try {
+          actionsRef.current?.setDraft?.(composeDraft(draftRef.current, "", stashed));
+        } catch {
+        }
+      }
     }
   }, [sessionId]);
   (0, import_react3.useEffect)(() => {
@@ -9515,14 +9660,24 @@ function MicButton({
       }
       const sid = sidRef.current;
       if ((localRef.current === "on" || localRef.current === "pending") && sid) {
-        void engineRef.current?.stop();
-        void fetch(`${location.origin}${BASE_PATH2}/toggle`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sessionId: sid, on: false, tabId: TAB_ID }),
-          keepalive: true
-        }).catch(() => {
-        });
+        const wasOn = localRef.current === "on";
+        const eng = engineRef.current;
+        engineRef.current = null;
+        const sendToggleOff = () => {
+          void fetch(`${location.origin}${BASE_PATH2}/toggle`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ sessionId: sid, on: false, tabId: TAB_ID }),
+            keepalive: true
+          }).catch(() => {
+          });
+        };
+        if (wasOn && eng && typeof eng.flushAndStop === "function") {
+          void eng.flushAndStop(2500).finally(sendToggleOff);
+        } else {
+          void eng?.stop();
+          sendToggleOff();
+        }
       }
     };
   }, []);
@@ -9649,19 +9804,41 @@ function MicButton({
     const onVisibility = () => {
       if (document.hidden) {
         if (localRef.current === "on" && engineRef.current && !onceRef.current) {
-          if (bootNow().mode === "hold") {
-            engineRef.current?.endHeld(true);
-            holdCtrlRef.current = false;
-            setHolding(false);
-          }
+          holdCtrlRef.current = false;
+          setHolding(false);
+          cancelAutoSend();
           pausedForHiddenRef.current = true;
-          void engineRef.current.stop();
+          const eng = engineRef.current;
+          const flushSid = sidRef.current;
+          const p = typeof eng.flushAndStop === "function" ? eng.flushAndStop(3e3) : eng.stop().then(() => false);
+          hiddenFlushRef.current = p;
+          void p.then((flushed) => {
+            if (!flushed && lastPartialRef.current && sidRef.current === flushSid) {
+              const cleaned = composeDraft(draftRef.current, lastPartialRef.current, "");
+              lastPartialRef.current = "";
+              if (!shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
+                try {
+                  actionsRef.current?.setDraft?.(cleaned);
+                } catch {
+                }
+              }
+            }
+            if (pausedForHiddenRef.current) bus.setUi({ partial: "", levels: [] });
+          }).finally(() => {
+            if (hiddenFlushRef.current === p) hiddenFlushRef.current = null;
+          });
         }
       } else if (pausedForHiddenRef.current && localRef.current === "on") {
-        pausedForHiddenRef.current = false;
-        void engineRef.current?.start().catch(() => {
-          void exitModeRef.current("manual");
-        });
+        const waitFlush = hiddenFlushRef.current;
+        const resumeMic = () => {
+          if (typeof document !== "undefined" && document.hidden || !pausedForHiddenRef.current || localRef.current !== "on") return;
+          pausedForHiddenRef.current = false;
+          void engineRef.current?.start().catch(() => {
+            void exitModeRef.current("manual");
+          });
+        };
+        if (waitFlush) void waitFlush.finally(resumeMic);
+        else resumeMic();
       }
     };
     window.addEventListener("keydown", onKeyDown);

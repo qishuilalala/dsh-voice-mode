@@ -3105,6 +3105,8 @@ var en = {
   captionHistoryOpen: "History ({count})",
   captionHistoryHide: "Collapse",
   captionDismiss: "Close captions",
+  tabSwitchFlushedNotice: "Speech before tab switch was finalized into draft",
+  sessionSwitchFlushedNotice: "Speech from previous session saved; restores to draft on return",
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",

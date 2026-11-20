@@ -126,14 +126,14 @@ export interface AsrConfig {
 }
 
 export interface SegmentMeta {
-  /** true = 由强制发送触发（按住 Ctrl / hold 松手；autoSend=false 时仍提交）。 */
-  force?: boolean
+  /** true = 强制发送触发；flushed = 切标签页/切会话被动收口触发（只落草稿或暂存，不自动发送）。 */
+  force?: boolean; flushed?: boolean
 }
 
 export interface AsrEngine {
   readonly state: AsrState
   start(): Promise<void>
-  stop(): Promise<void>
+  stop(): Promise<void>; flushAndStop(timeoutMs?: number): Promise<boolean>
   /** 按住 Ctrl 强制立即发送当前段（Q5 兜底）。 */
   forceSend(): void
   /** hold 模式：按下开始录制（绕过 VAD 门控，忽略静音切句）。 */
@@ -392,14 +392,14 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       const item = pendingFinals.get(nextEmitSeq)
       pendingFinals.delete(nextEmitSeq)
       nextEmitSeq++
-      if (item && item.discardGen === discardGen && active) emit(transcriptListeners, item.text, item.meta)
+      if (item && item.discardGen === discardGen && (active || draining)) emit(transcriptListeners, item.text, item.meta)
     }
   }
 
   /** 落定一个定稿序号：有文本入缓冲待按序发；null = 不发（仅推进保序游标）。 */
   const settleFinal = (seq: number, item: { text: string; meta?: SegmentMeta; discardGen: number } | null): void => {
     pendingFinals.set(seq, item)
-    flushOrderedFinals()
+    flushOrderedFinals(); wakeDrainWaiters()
   }
 
   /**
@@ -778,10 +778,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     void resetHostStream()
   }
 
-  /** 定稿当前段：POST final=1（含 0.5s 尾垫由 host 补齐协议侧不需要）。
-   *  force=true：绕过播放门（仅用于「播放前开着的真人声段在播放开始后收口」——
-   *  段内全是播放前语音，无回声风险；见 handleAudio 播放门分支）。 */
-  const finalizeSegment = (force = false): void => {
+  /** 定稿当前段：POST final=1（force=true 绕过播放门；flushed=true 为切页/切会话被动收口）。
+   *  段内全是播放前语音，无回声风险；见 handleAudio 播放门分支。 */
+  const finalizeSegment = (force = false, flushed = false): void => {
     if (segment.length === 0) return
     // 根治自聊：AI 朗读中的 finalize（由 VAD/上限/强制非 hold 触发）一律丢弃，
     // 防「TTS→回声→入段→autoSend」路径下的绕后发送。hold 松手（forcePending）明确
@@ -818,7 +817,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       settled = true
       settleFinal(mySeq, item ? { ...item, discardGen: discardSnapshot } : null)
     }
-    const meta: SegmentMeta = { force: forcePending }
+    const canSettle = (): boolean => (active || draining) && discardGen === discardSnapshot
+    const meta: SegmentMeta = flushed ? { force: forcePending, flushed: true } : { force: forcePending }
     // 本段若消费过唤醒词（连说「你好小李+命令」），定稿时剥掉文本头部唤醒词再进草稿。
     const consumedWake = wakeConsumed
     wakeConsumed = false
@@ -858,12 +858,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       for (let attempt = 0; attempt < MAX_FINAL_ATTEMPTS; attempt++) {
         if (attempt > 0) {
           // 段已弃（弃段令牌推进）→ 停止重试；仅「后来者的定稿」推进段纪元**不算**弃段。
-          if (!active || discardGen !== discardSnapshot) {
+          if (!canSettle()) {
             settle(null)
             return
           }
           await new Promise((r) => setTimeout(r, 500 * attempt))
-          if (!active || discardGen !== discardSnapshot) {
+          if (!canSettle()) {
             settle(null)
             return
           }
@@ -886,7 +886,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn('[dsh-voice-mode] finalize fetch failed (retries exhausted)')
           continue
         }
-        if (!active || discardGen !== discardSnapshot) {
+        if (!canSettle()) {
           settle(null)
           return
         }
@@ -894,7 +894,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           if (state !== 'wake') setState('loading-model')
           res = await new Promise<Response>((resolve) => {
             setTimeout(async () => {
-              if (!active || discardGen !== discardSnapshot) {
+              if (!canSettle()) {
                 resolve(new Response(null, { status: 410 }))
                 return
               }
@@ -911,7 +911,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
               }
             }, 5000)
           })
-          if (!active || discardGen !== discardSnapshot) {
+          if (!canSettle()) {
             settle(null)
             return
           }
@@ -920,7 +920,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         // （A1 审计 Important：此前整句丢失、只报「识别失败」）。
         if (res.status === 413) {
           console.warn('[dsh-voice-mode] finalize payload too large (413): utterance exceeded the per-request limit')
-          if (active && discardGen === discardSnapshot) {
+          if (canSettle()) {
             emit(noticeListeners, 'utteranceTooLong')
             restoreState()
           }
@@ -951,7 +951,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
               if (expireTimer) clearTimeout(expireTimer)
             })
             .catch(() => false)
-          if (recovered && active && discardGen === discardSnapshot) {
+          if (recovered && canSettle()) {
             // I2 修复：re-enter 已 asr.reset 清空 host 流，从 0 全量重发（恢复段引用），
             // 否则 host 只收到尾巴、定稿缺前半句（确定性丢首段）。
             try {
@@ -964,7 +964,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
               // 重试失败：静默（本循环下一轮重试）
             }
           }
-          if (!active || discardGen !== discardSnapshot) {
+          if (!canSettle()) {
             settle(null)
             return
           }
@@ -999,7 +999,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         // 短噪声弃段 / stop / start / beginHeld / discardSegment / endHeld 取消）时作废；
         // **后来者的定稿不算弃段**——历史 bug：拿「后来者推进的段纪元」判作废，
         // 慢定稿被静默丢弃（文本永久丢失）、且并发定稿语序颠倒。
-        if (!active || discardGen !== discardSnapshot) {
+        if (!canSettle()) {
           settle(null)
           return
         }
@@ -1643,6 +1643,16 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     inFlush = false
   }
 
+  /** 切页/切会话收口等待窗：硬件麦已同步关停（active=false），仅允许在途定稿完成落定与发射。 */
+  let draining = false
+  let drainWaiters: Array<() => void> = []
+  const wakeDrainWaiters = (): void => {
+    if (drainWaiters.length === 0) return
+    const list = drainWaiters
+    drainWaiters = []
+    for (const fn of list) fn()
+  }
+
   return {
     get state() {
       return state
@@ -1675,6 +1685,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     },
     async start() {
       if (active) return
+      draining = false
+      wakeDrainWaiters()
       stopRequested = false // Fix8：新一次启动清除取消标记
       startSeq++ // 防双路开麦：推进启动序号（startRecorder 入口捕获 mySeq，返回时按差序放弃旧启动）
       // Important-2（R2）：捕获本次启动的世代——startRecorder 抛错时，若期间已发生过
@@ -1721,6 +1733,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     async stop() {
       // Fix8：即使 active=false（授权挂起中被抢占）也要标记取消，让授权返回后释放。
       stopRequested = true
+      draining = false
+      wakeDrainWaiters()
       // I2：递增启动序号作废在途启动。此前 wasActive=false 时早返不递增——stop()
       // 落入 startRecorder 的 resume/addModule 异步窗口会被吞（那些窗口无抢占复检），
       // 麦道常开 + 幽灵上行。startRecorder 现已在每个 await 后复检
@@ -1742,6 +1756,89 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       await stopRecorder()
       // 收尾期间发生过新 start（startSeq 已推进）→ 新会话自管状态，不踩。
       if (startSeq === myStopSeq) setState('idle')
+    },
+    async flushAndStop(timeoutMs = 3000) {
+      // 隐私不变量：首帧同步断开音频图并关闭麦克风音轨，绝不在后台多录一帧。
+      stopRequested = true
+      inFlush = true
+      const myFlushCtx = audioCtx
+      try {
+        processor?.disconnect()
+      } catch {
+        // ignore
+      }
+      processor = null
+      try {
+        workletNode?.disconnect()
+      } catch {
+        // ignore
+      }
+      workletNode = null
+      try {
+        stream?.getTracks().forEach((t) => {
+          t.onended = null
+          t.stop()
+        })
+      } catch {
+        // ignore
+      }
+      stream = null
+      void myFlushCtx?.close().catch(() => {})
+      if (audioCtx === myFlushCtx) {
+        audioCtx = null
+        ctxRate = SAMPLE_RATE
+      }
+
+      const wasActive = active
+      if (wasActive) {
+        if (holdActive) {
+          holdActive = false
+          if (segment.length > 0 && segmentMs >= MIN_SPEECH_MS) {
+            lastPollAt = 0
+            finalizeSegment(true, true)
+          }
+        } else if (speechActive && state !== 'wake' && speechMs >= MIN_SPEECH_MS && !config.isPlaying?.()) {
+          lastPollAt = 0
+          finalizeSegment(false, true)
+        }
+      }
+      const targetSeq = finalizeSeq
+      const hasPendingFinal = wasActive && nextEmitSeq <= targetSeq
+      startSeq++
+      const myStopSeq = startSeq
+      active = false
+      if (!wasActive && !hasPendingFinal) {
+        inFlush = false
+        setState('idle')
+        return false
+      }
+      if (hasPendingFinal && timeoutMs > 0) {
+        draining = true
+        setState('transcribing')
+        await new Promise<void>((resolve) => {
+          let done = false
+          const finish = (): void => {
+            if (done) return
+            done = true
+            clearTimeout(timer)
+            resolve()
+          }
+          const check = (): void => {
+            if (nextEmitSeq > targetSeq || !draining || startSeq !== myStopSeq) finish()
+            else drainWaiters.push(check)
+          }
+          const timer = setTimeout(finish, timeoutMs)
+          ;(timer as unknown as { unref?: () => void })?.unref?.()
+          drainWaiters.push(check)
+          check()
+        })
+        draining = false
+      }
+      if (startSeq === myStopSeq) {
+        await stopRecorder()
+        if (startSeq === myStopSeq) setState('idle')
+      }
+      return hasPendingFinal
     },
     forceSend() {
       // 至少 250ms 语音才强制发送（≥250ms 防误触，Q5）；标记 force 供 autoSend=false 兜底。

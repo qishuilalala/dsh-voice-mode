@@ -61,6 +61,27 @@ let interruptFirstAt = 0
 let isSpeechFalseRun = 0
 /** 403 重入冷却时刻（对抗审查 I3：无退避会与对端互踢振荡，打爆 /toggle）。 */
 let lastReenterAt = 0
+/** 跨会话切换收口时暂存的定稿草稿（防旧会话 A 的迟到定稿写进新会话 B 的输入框；切回 A 时回填）。 */
+const MAX_STASHED_DRAFTS = 16
+const stashedSessionDrafts = new Map<string, string>()
+function stashSessionDraft(sessionId: string, text: string): void {
+  const clean = text.trim()
+  if (!sessionId || !clean) return
+  const prev = stashedSessionDrafts.get(sessionId) ?? ''
+  stashedSessionDrafts.delete(sessionId)
+  stashedSessionDrafts.set(sessionId, composeDraft(prev, '', clean))
+  while (stashedSessionDrafts.size > MAX_STASHED_DRAFTS) {
+    const oldest = stashedSessionDrafts.keys().next().value
+    if (oldest === undefined) break
+    stashedSessionDrafts.delete(oldest)
+  }
+}
+function takeStashedSessionDraft(sessionId: string): string | null {
+  const saved = stashedSessionDrafts.get(sessionId)
+  if (saved === undefined) return null
+  stashedSessionDrafts.delete(sessionId)
+  return saved
+}
 /** 打断灵敏度三档 → isSpeech 连续确认帧数（墙钟节拍 100ms/拍 + 上行往返 → 确认阶段约 0.3/0.2/0.1s；语义对齐旧能量持续时长档位）。 */
 const INT_CONFIRM_FRAMES: Record<0 | 1 | 2, number> = { 0: 3, 1: 2, 2: 1 }
 
@@ -2378,6 +2399,8 @@ export function MicButton({
   const breakRef = useRef<(() => Promise<void>) | null>(null)
   /** M2：隐藏 tab 时已暂停收音（可见时恢复）；隐私——避免后台持续录音。 */
   const pausedForHiddenRef = useRef(false)
+  /** 切标签页触发的在途定稿收口 Promise（快速切回时先等其落定再重启麦克风，防 start 推进 discardGen 冲掉定稿）。 */
+  const hiddenFlushRef = useRef<Promise<unknown> | null>(null)
   /** 焦点归属 token：本实例唯一（ref 惰性初始化，渲染期只生成一次）。
    *  焦点上报带上它 → 卸载时只释放自己的持有，另一个实例仍持有的焦点不被清掉。 */
   const focusOwnerRef = useRef<string | null>(null)
@@ -2915,7 +2938,14 @@ export function MicButton({
     const engine = engineRef.current
     engineRef.current = null
     micReadyRef.current = false // M11：退出同步废采音标记
-    if (engine) await engine.stop() // Fix：等待 stop 完成，确保 handleAudio 停止
+    const isSessionSwitch = Boolean(overrideSid && overrideSid !== sidRef.current)
+    if (engine) {
+      if (isSessionSwitch && typeof engine.flushAndStop === 'function') {
+        await engine.flushAndStop(2500)
+      } else {
+        await engine.stop() // Fix：等待 stop 完成，确保 handleAudio 停止
+      }
+    }
     bus.resetTelemetry() // P1-5：退出清空埋点链
     // Minor#3：清 VAD 徽标（manual 模式冻结不复位会跨会话残留）。
     bus.setUi({ state: 'idle', partial: '', levels: [], error: null, model: null, ttsNotice: null, isSpeech: undefined })
@@ -3433,6 +3463,12 @@ export function MicButton({
           }
           return
         }
+        // 跨会话切换或卸载后迟到的收口定稿：绝不写进新会话输入框或触发提交，改为按原 sid 暂存。
+        if (!mountedRef.current || sidRef.current !== sid) {
+          stashSessionDraft(sid, trimmed)
+          bus.setNotice(t('sessionSwitchFlushedNotice'))
+          return
+        }
         if (holdReleaseExitRef.current && meta?.force) {
           // hold 松手那一段（force；按住途中的 30s 滚段不算）：会发送 → 进 once 等待，回复结束再退
           // （不朗读也一样——立刻退会取消纠错 RTT 内的在途提交）；不发送（自动发送关）→ 没有回复可等，直接退。
@@ -3462,6 +3498,12 @@ export function MicButton({
               // 提交失败：文字已留在草稿（Q16）
             }
           }
+        }
+        // 切标签页被动收口或当前页面处于后台：文字已稳妥进草稿并给出提示，绝不在后台自动发送半截句子。
+        if (meta?.flushed || (typeof document !== 'undefined' && document.hidden)) {
+          cancelAutoSend()
+          bus.setNotice(t('tabSwitchFlushedNotice'))
+          return
         }
         // 强制发送（按住 Ctrl / hold 松手）恒立即提交，绕过播放门与 autoSend 开关。
         if (meta?.force) {
@@ -3585,7 +3627,18 @@ export function MicButton({
     // B8：跨会话持久的 MicButton 切换会话时，若旧会话处于语音模式，立即以 prevSid 完整退出
     // （调用 bus.exit(prevSid) 停 host+麦），避免 host 残留旧活跃会话导致切回分裂态。
     if (prevSid && prevSid !== sessionId && localRef.current !== 'off') {
+      lastPartialRef.current = ''
       void exitModeRef.current('manual', prevSid)
+    }
+    if (sessionId) {
+      const stashed = takeStashedSessionDraft(sessionId)
+      if (stashed && !shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
+        try {
+          actionsRef.current?.setDraft?.(composeDraft(draftRef.current, '', stashed))
+        } catch {
+          // ignore
+        }
+      }
     }
   }, [sessionId])
   // 设置卡片改完立即重拉配置（快捷键 / 交互模式等），不必刷新页面。
@@ -3715,15 +3768,25 @@ export function MicButton({
       // 过渡态（pending）也需清理：enterMode 期间卸载时 host 可能已 arm 本会话，
       // 不发 toggle-off 会残留录音/占用（隐私级）。engine 可能尚未创建，用可选链。
       if ((localRef.current === 'on' || localRef.current === 'pending') && sid) {
-        void engineRef.current?.stop()
-        void fetch(`${location.origin}${BASE_PATH}/toggle`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ sessionId: sid, on: false, tabId: TAB_ID }),
-          keepalive: true,
-        }).catch(() => {
-          // best-effort
-        })
+        const wasOn = localRef.current === 'on'
+        const eng = engineRef.current
+        engineRef.current = null
+        const sendToggleOff = (): void => {
+          void fetch(`${location.origin}${BASE_PATH}/toggle`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sessionId: sid, on: false, tabId: TAB_ID }),
+            keepalive: true,
+          }).catch(() => {
+            // best-effort
+          })
+        }
+        if (wasOn && eng && typeof eng.flushAndStop === 'function') {
+          void eng.flushAndStop(2500).finally(sendToggleOff)
+        } else {
+          void eng?.stop()
+          sendToggleOff()
+        }
       }
     }
   }, [])
@@ -3890,24 +3953,52 @@ export function MicButton({
     const onVisibility = (): void => {
       if (document.hidden) {
         if (localRef.current === 'on' && engineRef.current && !onceRef.current) {
-          // M2：隐藏 tab 暂停收音（隐私），可见时恢复。toggle 与 hold 都关麦——hold 之前只
-          // endHeld 不 stop，麦克风后台常开（隐私缺口）。
-          if (bootNow().mode === 'hold') {
-            engineRef.current?.endHeld(true)
-            holdCtrlRef.current = false
-            setHolding(false)
-          }
+          // M2 + Loop3 #4：隐藏 tab 立即同步关闭硬件麦克风（隐私），若有未说完的语音段或在途定稿
+          // 则先完成一次有界定稿回填草稿再清场，避免切页查资料丢整句；可见时等待收口落定后恢复。
+          holdCtrlRef.current = false
+          setHolding(false)
+          cancelAutoSend()
           pausedForHiddenRef.current = true
-          void engineRef.current.stop()
+          const eng = engineRef.current
+          const flushSid = sidRef.current
+          const p =
+            typeof eng.flushAndStop === 'function'
+              ? eng.flushAndStop(3000)
+              : eng.stop().then(() => false)
+          hiddenFlushRef.current = p
+          void p
+            .then((flushed) => {
+              if (!flushed && lastPartialRef.current && sidRef.current === flushSid) {
+                const cleaned = composeDraft(draftRef.current, lastPartialRef.current, '')
+                lastPartialRef.current = ''
+                if (!shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
+                  try {
+                    actionsRef.current?.setDraft?.(cleaned)
+                  } catch {
+                    // ignore
+                  }
+                }
+              }
+              if (pausedForHiddenRef.current) bus.setUi({ partial: '', levels: [] })
+            })
+            .finally(() => {
+              if (hiddenFlushRef.current === p) hiddenFlushRef.current = null
+            })
         }
       } else if (pausedForHiddenRef.current && localRef.current === 'on') {
-        pausedForHiddenRef.current = false
-        void engineRef.current?.start().catch(() => {
-          // I3：无手势恢复失败（Safari/iOS）→ 完整退出语音模式（停 ASR + 让出 host）。
-          // 仅 setLocalMode('off') 不够：bus/host 侧仍活跃 → 「按钮 off + 状态条在 +
-          // AI 还在读」的分裂态（local 与 bus.active 漂移）。
-          void exitModeRef.current('manual')
-        })
+        const waitFlush = hiddenFlushRef.current
+        const resumeMic = (): void => {
+          if ((typeof document !== 'undefined' && document.hidden) || !pausedForHiddenRef.current || localRef.current !== 'on') return
+          pausedForHiddenRef.current = false
+          void engineRef.current?.start().catch(() => {
+            // I3：无手势恢复失败（Safari/iOS）→ 完整退出语音模式（停 ASR + 让出 host）。
+            // 仅 setLocalMode('off') 不够：bus/host 侧仍活跃 → 「按钮 off + 状态条在 +
+            // AI 还在读」的分裂态（local 与 bus.active 漂移）。
+            void exitModeRef.current('manual')
+          })
+        }
+        if (waitFlush) void waitFlush.finally(resumeMic)
+        else resumeMic()
       }
     }
     window.addEventListener('keydown', onKeyDown)

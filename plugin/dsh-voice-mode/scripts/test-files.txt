@@ -107,3 +107,4 @@ test/client-deep-audit.test.mjs
 test/settings-deep-audit.test.mjs
 test/preset-voices.test.mjs
 test/touch-mic-menu.test.mjs
+test/tab-switch-finalize.test.mjs
