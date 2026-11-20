@@ -10,7 +10,7 @@
  * 文件位于 dsh home（profile.home，缺省 $DSH_HOME 或 ~/.dsh），不在插件包目录内，
  * 重装/升级插件不丢设置。只存「用户显式改过的键」，未改的键始终跟随 Config 基线。
  */
-import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -62,17 +62,26 @@ export function readOverrides(file: string, keys: readonly string[]): { values: 
   }
 }
 
-/** 原子写（临时文件 + rename，避免写一半被读到）；权限 0600；目录不存在则创建。 */
+/** 原子写（临时文件 + rename，避免写一半被读到）；权限 0600；目录不存在则创建；异常时清理 .tmp。 */
 export function writeOverrides(file: string, values: Record<string, unknown>): void {
   mkdirSync(dirname(file), { recursive: true })
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
-  writeFileSync(tmp, JSON.stringify(values, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 })
   try {
-    chmodSync(tmp, 0o600)
-  } catch {
-    // Windows 等不支持 chmod 的平台：忽略
+    writeFileSync(tmp, JSON.stringify(values, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 })
+    try {
+      chmodSync(tmp, 0o600)
+    } catch {
+      // Windows 等不支持 chmod 的平台：忽略
+    }
+    renameSync(tmp, file)
+  } catch (e) {
+    try {
+      unlinkSync(tmp)
+    } catch {
+      // 临时文件可能未创建或已移除
+    }
+    throw e
   }
-  renameSync(tmp, file)
 }
 
 /**

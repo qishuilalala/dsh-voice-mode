@@ -33,6 +33,7 @@ export const NEXT_ENTRY_FIELD_SPECS: readonly PendingField[] = [
   { key: 'llmCorrect', label: 'llmCorrectLabel' },
   { key: 'idleTimeoutMinutes', label: 'idleTimeoutMinutesLabel' },
   { key: 'shortcut', label: 'shortcutLabel' },
+  { key: 'composerShortcut', label: 'composerShortcutLabel' },
 ]
 
 /**

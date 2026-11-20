@@ -27,6 +27,10 @@ export function isLoopbackRequest(req: IncomingMessage): boolean {
  * 因此只比较 host（忽略 scheme），并优先取 X-Forwarded-Host（反代改写 Host 的场景）。
  */
 export function sameOriginRequest(req: IncomingMessage): boolean {
+  // I13：跨站 GET/EventSource 可能不带 Origin，但现代浏览器会附带 Sec-Fetch-Site: cross-site，必须拒绝；
+  // 无 Origin 且非 cross-site（非浏览器回环客户端或同源 GET）继续由回环层兜底放行。
+  const sfs = req.headers['sec-fetch-site']
+  if (typeof sfs === 'string' && sfs.toLowerCase() === 'cross-site') return false
   const origin = req.headers.origin
   if (!origin) return true
   try {
@@ -58,6 +62,8 @@ export class RateLimiter {
     const cutoff = now - windowMs
     let bucket = this.buckets.get(key)
     if (!bucket) {
+      // I13：触顶先按当前窗口惰性回收过期键，避免已过期的高基数旧键把限流器永久锁死。
+      if (this.buckets.size >= this.maxKeys) this.prune(now, windowMs)
       if (this.buckets.size >= this.maxKeys) return false
       bucket = []
       this.buckets.set(key, bucket)

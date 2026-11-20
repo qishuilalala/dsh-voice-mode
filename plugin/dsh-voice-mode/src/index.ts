@@ -1039,7 +1039,7 @@ export function apply(ctx: Context, config: Config): void {
   } else {
     // 路径 B 用户设置：Config 基线 ⊕ 覆盖层文件（settings-store.ts 文件头说明为何不走官方存储）。
     const loaded = readOverrides(settingsFile, SETTING_KEYS)
-    if (loaded.warn) console.warn(`[dsh-voice-mode] ignoring settings overlay ${settingsFile}: ${loaded.warn}`)
+    if (loaded.warn) console.warn(`[dsh-voice-mode] ignoring settings overlay ${settingsFile}: ${redactSecrets(loaded.warn)}`)
     // 首次运行（覆盖层文件尚不存在）：从 dsh ≤0.1.6 留下的 settings.yaml(.imported) 的 voice-mode 段迁移一次，
     // 落盘后即以覆盖层为准（要恢复默认请把文件内容改成 {}，勿删除，否则会再次迁移）。
     let migrated = false
@@ -1117,8 +1117,14 @@ export function apply(ctx: Context, config: Config): void {
     bargeInMode: () => vset.bargeInMode,
     replaceText: (text: string, isFinal?: boolean) => replacerBox.fn(text, isFinal !== false),
   })
-  // 卸载/热重载时释放 ASR runtime（清段 + 定时器，防悬挂）。
-  ctx.effect(() => () => asr.dispose())
+  // 卸载/热重载时释放 ASR runtime（清段 + 定时器，防悬挂）并作废在途 /toggle 预热（I14）。
+  let pluginDisposed = false
+  let toggleGen = 0
+  ctx.effect(() => () => {
+    pluginDisposed = true
+    toggleGen++
+    asr.dispose()
+  })
   // 预热 ASR 模型（后台非阻塞）：把「首次开语音 ~5s 模型加载」前移到 host 启动。
   // I1（Issue #15 审查 Important）：早年实现只写「仅本地模型已缓存才预热」，代码却
   // 无条件 `void asr.warmup()`——warmup 内部走 ensureModels()，缺文件即触发全量下载，
@@ -1748,7 +1754,7 @@ export function apply(ctx: Context, config: Config): void {
           } catch {
             // ignore malformed body
           }
-          if (!sessionId) {
+          if (typeof sessionId !== 'string' || !sessionId || sessionId.length > 128) {
             respondJson(res, 400, { code: 'bad_request', error: 'sessionId required' })
             return
           }
@@ -1772,6 +1778,7 @@ export function apply(ctx: Context, config: Config): void {
             respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
             return
           }
+          const myToggleGen = ++toggleGen
           if (on === true) {
             // 总开关关闭时拒绝进入（enabled=false 的诚实语义：整功能关停）。
             if (!config.enabled) {
@@ -1787,6 +1794,11 @@ export function apply(ctx: Context, config: Config): void {
             // 228MB SenseVoice worker 已就绪，避免冷启动撞 finalize 时 20s race timeout
             // 降级 zipformer 流式 token flush 不完整（B5 辅因候选 3）。失败/超时静默 fallback。
             await asr.warmupSense()
+            // I14：预热期间若发生更新的 /toggle（例如用户立即取消或切换他会话）或插件卸载，不再复活旧请求。
+            if (pluginDisposed || myToggleGen !== toggleGen) {
+              respondJson(res, 200, { active: activeVoiceSession, stale: true })
+              return
+            }
             // B1：进入即清该会话可能残留的 host ASR 段（上次中途退出的旧 stream/旧文本），
             // 防重入后新句丢失/幽灵提交。
             asr.reset(sessionId)
@@ -1914,7 +1926,21 @@ export function apply(ctx: Context, config: Config): void {
       path: `${base}/models/clean`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
+        if (req.method !== 'POST') {
+          res.setHeader('allow', 'POST')
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'POST required' })
+          return
+        }
         if (denyCrossOrigin(req, res)) return
+        // I14：删除本地模型缓存属于磁盘破坏性操作，allowLan=true 时仍恒要求回环并限流。
+        if (!isLoopbackRequest(req)) {
+          respondJson(res, 403, { code: 'forbidden', error: 'model cache writes are loopback-only' })
+          return
+        }
+        if (!limiter.hit(`models-clean:${clientKey(req)}`, 6, 60000)) {
+          respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
+          return
+        }
         if (!config.enabled) {
           respondJson(res, 403, { code: 'voice_disabled', error: 'voice mode disabled' })
           return
@@ -1953,7 +1979,7 @@ export function apply(ctx: Context, config: Config): void {
               respondJson(res, 200, { ok: true, engine })
             })
             .catch((e) => {
-              console.warn(`[dsh-voice-mode] models/download failed: ${redactSecrets(e)}`)
+              console.warn(`[dsh-voice-mode] models/clean failed: ${redactSecrets(e)}`)
               respondJson(res, 500, { code: 'internal', error: 'internal error' })
             })
         })
@@ -1967,7 +1993,21 @@ export function apply(ctx: Context, config: Config): void {
       path: `${base}/models/download`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
+        if (req.method !== 'POST') {
+          res.setHeader('allow', 'POST')
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'POST required' })
+          return
+        }
         if (denyCrossOrigin(req, res)) return
+        // I14：触发大体积模型落盘同样恒要求回环并限流。
+        if (!isLoopbackRequest(req)) {
+          respondJson(res, 403, { code: 'forbidden', error: 'model cache writes are loopback-only' })
+          return
+        }
+        if (!limiter.hit(`models-download:${clientKey(req)}`, 6, 60000)) {
+          respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
+          return
+        }
         if (!config.enabled) {
           respondJson(res, 403, { code: 'voice_disabled', error: 'voice mode disabled' })
           return
@@ -2014,6 +2054,10 @@ export function apply(ctx: Context, config: Config): void {
         }
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
+        if (!limiter.hit(`voices:${clientKey(req)}`, 10, 60000)) {
+          respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
+          return
+        }
         // Edge 全量音色（设置面板选 Edge 时拉取；网络失败由 client 回退常用清单）。
         try {
           const voices = await listEdgeVoices()
@@ -2065,11 +2109,13 @@ export function apply(ctx: Context, config: Config): void {
           respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
           return
         }
-        // P2-4：回合状态机 —— partial 到达 = listening；final=1 = finalizing。
+        // P2-4：回合状态机 —— partial 到达 = listening；final=1 = finalizing（I14：跳过 vadOnly/reset 探测与复位包）。
         if (sid && sid === activeVoiceSession) {
           try {
             const url = new URL(req.url ?? '/', 'http://localhost')
-            setTurn(sid, url.searchParams.get('final') === '1' ? 'finalizing' : 'listening')
+            if (url.searchParams.get('vadOnly') !== '1' && url.searchParams.get('reset') !== '1') {
+              setTurn(sid, url.searchParams.get('final') === '1' ? 'finalizing' : 'listening')
+            }
           } catch {
             // 忽略畸形 URL
           }
@@ -2236,12 +2282,22 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/mode`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
-        if (req.method !== 'POST' && req.method !== 'GET') {
-          respondJson(res, 405, { code: 'method_not_allowed', error: 'method not allowed' })
+        if (denyNonLoopback(req, res)) return
+        if (req.method !== 'POST') {
+          res.setHeader('allow', 'POST')
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'POST required' })
           return
         }
-        if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
+        // I14：/mode 同样持久化写用户设置，与 /settings 写同口径：恒要求回环并限流。
+        if (!isLoopbackRequest(req)) {
+          respondJson(res, 403, { code: 'forbidden', error: 'settings writes are loopback-only' })
+          return
+        }
+        if (!limiter.hit(`mode:${clientKey(req)}`, 30, 60000)) {
+          respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
+          return
+        }
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let mode: 'toggle' | 'hold' | 'once' | undefined
           try {
@@ -2332,6 +2388,11 @@ export function apply(ctx: Context, config: Config): void {
         // 因此是浏览器侧唯一「免预检就能建立长连接」的端点——缺校验时任意站点可用
         // <event-source src> 把本机 SSE 连接占到上限，把真正的客户端挤出去。
         if (denyCrossOrigin(req, res)) return
+        if (req.method && req.method !== 'GET') {
+          res.setHeader('allow', 'GET')
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'GET required' })
+          return
+        }
         // B2：从查询串取 tabId（owner 探活归属）。
         let tabId: string | null = null
         try {
@@ -2377,7 +2438,15 @@ export function apply(ctx: Context, config: Config): void {
             res.destroy() // close 事件走 cleanup 摘除；客户端 EventSource 自动重连
           }
         }
+        let heartbeat: ReturnType<typeof setInterval> | null = null
         const end = (): void => {
+          // I14：被同 tab 顶替或插件卸载时立即清理心跳定时器，但不触发焦点/owner 断开逻辑
+          // （顶替时新连接尚未写入 latestConnByTab，不能让旧连接误清焦点）。
+          if (heartbeat) {
+            clearInterval(heartbeat)
+            heartbeat = null
+          }
+          sseClients.delete(client)
           try {
             res.end()
           } catch {
@@ -2396,7 +2465,7 @@ export function apply(ctx: Context, config: Config): void {
         send('mode', { active: activeVoiceSession, ownerTabId: activeTabId })
         send('focus', { sessionId: focusedSessionId, tabId: focusedTabId })
         send('display', displayOf(vset))
-        const heartbeat = setInterval(() => {
+        heartbeat = setInterval(() => {
           try {
             res.write(': hb\n')
           } catch {
@@ -2408,7 +2477,10 @@ export function apply(ctx: Context, config: Config): void {
         const cleanup = (): void => {
           if (cleaned) return
           cleaned = true
-          clearInterval(heartbeat)
+          if (heartbeat) {
+            clearInterval(heartbeat)
+            heartbeat = null
+          }
           sseClients.delete(client)
           // M5：仅「该 tab 的最新连接」断开才武装让出——重连时旧连接的迟到 close
           // 若也武装，会在新连接已取消计时之后再次武装，8s 后误让出健康 owner。

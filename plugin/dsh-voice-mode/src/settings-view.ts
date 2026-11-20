@@ -45,7 +45,10 @@ export function applyClearSecrets(
   clearList: unknown,
 ): Record<string, unknown> {
   const { clearSecrets: _ignored, ...rest } = patch
-  const list = Array.isArray(clearList) ? clearList : []
+  if (clearList !== undefined && !Array.isArray(clearList)) {
+    throw new Error('clearSecrets must be an array')
+  }
+  const list = clearList ?? []
   const out: Record<string, unknown> = { ...rest }
   for (const item of list) {
     if (typeof item !== 'string') continue

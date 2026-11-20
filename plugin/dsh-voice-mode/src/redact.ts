@@ -14,13 +14,17 @@
  * 注意：这**不替代**「不要把 key 放进响应体」这条约束——它只是最后一道兜底。
  */
 
-/** 带前缀的规则：保留「Bearer 」「api-key: 」等前缀，只遮值。 */
+/** 带前缀的规则：保留「Bearer 」「Basic 」「api-key: 」等前缀，只遮值。 */
 const PREFIXED: Array<{ re: RegExp; to: string }> = [
   { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: '$1<redacted>' },
+  { re: /\b(Basic\s+)[A-Za-z0-9+/=-]{8,}/gi, to: '$1<redacted>' },
   { re: /\b((?:api[-_]?key|x-api-key)\s*[:=]\s*)[A-Za-z0-9._~+/=-]{8,}/gi, to: '$1<redacted>' },
-  // JSON 形态：{"apiKey":"..."} / {"token":"..."}（长度门槛降到 6，短 key 也能遮；只遮引号内的值）
+  // URL 内嵌凭据（https://user:pass@host）与查询参数密钥（?api_key=... / &token=... / &key=...）
+  { re: /(https?:\/\/)([^:@/\s]+:[^@/\s]+)(@)/gi, to: '$1<redacted>$3' },
+  { re: /([?&](?:api[_-]?key|access_token|token|key)=)([^&\s#]+)/gi, to: '$1<redacted>' },
+  // JSON 形态：{"apiKey":"..."} / {"mimoApiKey":"..."} / {"openaiApiKey":"..."} / {"token":"..."}（只遮引号内的值）
   {
-    re: /("(?:api[_-]?key|token|secret|password|x-api-key)"\s*:\s*")([^"\\]{6,})(")/gi,
+    re: /("(?:[a-zA-Z0-9_-]*?(?:api[_-]?key|token|secret|password))"\s*:\s*")([^"\\]{6,})(")/gi,
     to: '$1<redacted>$3',
   },
 ]
