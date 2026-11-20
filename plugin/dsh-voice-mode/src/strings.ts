@@ -257,6 +257,10 @@ export const zh = {
   sessionSwitchFlushedNotice: '上一会话语音已暂存，切回后自动填入草稿',
   ttsRetryingNotice: '朗读重试中（{attempt}/{max}）…',
   tabPreemptedNotice: '语音模式已被另一标签页接管',
+  firstUseToggle: '直接开口说话，停顿自动填入并发送；AI 朗读时开口或长按麦克风即可打断',
+  firstUseHold: '按住麦克风或 Ctrl 说话，松手发送；按住向上滑动可取消本句',
+  firstUseOnce: '直接说出一句，停顿自动发送，AI 朗读完自动退出语音模式',
+  firstUseWake: '先说唤醒词「{wake}」开启识别（也可连着指令一起说）',
   descBackchannelYield: '朗读期用户说「嗯/对」等短应答时自动让位（跳过当前 TTS 句 + 短暂丢帧 1.5s；真要说则原 hardBreak 接管；关 = 不让位，行为等同改造前）。仅「按住说话」模式播放期可触发：「持续聆听」模式播放期不识别语音，开口说话按打断处理',
   // Issue #15 批 1 / ADR-0012：打断语音抢救。
   descBargeInSalvage: 'AI 朗读时你开口打断：自动保留从开口到打断生效之间你说的话，并入识别继续发送（修「打断吃句」；关 = 丢弃打断前语音——仅外放且无回声消除的环境建议关）',
@@ -665,6 +669,10 @@ export const en: Record<keyof typeof zh, string> = {
   sessionSwitchFlushedNotice: 'Speech from previous session saved; restores to draft on return',
   ttsRetryingNotice: 'Retrying read-aloud ({attempt}/{max})…',
   tabPreemptedNotice: 'Voice mode was taken over by another tab',
+  firstUseToggle: 'Speak directly — pauses commit and send; speak or hold the mic to interrupt replies',
+  firstUseHold: 'Hold the mic button or Ctrl to speak, release to send, or slide up to cancel',
+  firstUseOnce: 'Speak one request — it sends after a pause and exits once the reply finishes reading',
+  firstUseWake: 'Say the wake word "{wake}" to start speaking (or say it together with your request)',
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: 'When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)',

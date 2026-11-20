@@ -3119,6 +3119,10 @@ var en = {
   sessionSwitchFlushedNotice: "Speech from previous session saved; restores to draft on return",
   ttsRetryingNotice: "Retrying read-aloud ({attempt}/{max})\u2026",
   tabPreemptedNotice: "Voice mode was taken over by another tab",
+  firstUseToggle: "Speak directly \u2014 pauses commit and send; speak or hold the mic to interrupt replies",
+  firstUseHold: "Hold the mic button or Ctrl to speak, release to send, or slide up to cancel",
+  firstUseOnce: "Speak one request \u2014 it sends after a pause and exits once the reply finishes reading",
+  firstUseWake: 'Say the wake word "{wake}" to start speaking (or say it together with your request)',
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",

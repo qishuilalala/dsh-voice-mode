@@ -482,6 +482,8 @@ function parseShortcut(s: string): { ctrl: boolean; shift: boolean; alt: boolean
 
 /** 自动恢复引导只在每个浏览器提示一次（localStorage 记忆）。 */
 const AUTO_RESUME_HINT_KEY = 'dshvm-autoresume-hint-seen'
+/** 首次进入语音模式的操作引导（每个浏览器仅首次无告警进入时提示一次）。 */
+const FIRST_USE_HINT_KEY = 'dshvm-first-use-hint-seen'
 
 /** I5：上次语音会话记忆（localStorage 持久，autoResume 切回时自动恢复）。 */
 function getLastVoiceSession(): string | null {
@@ -1814,6 +1816,7 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
           notify()
         }
       }, 5000)
+      ;(noticeTimer as unknown as { unref?: () => void })?.unref?.()
     },
     setUi,
     dismissCaption() {
@@ -3030,6 +3033,8 @@ export function MicButton({
       // 朗读可用性前置：云引擎明确缺 Key 时，进模式即给常驻可行动提示（识别/字幕仍可用）。
       if (cfg.readAloud !== 'off' && cfg.ttsNeedsKey === true && cfg.ttsKeyPresent === false) {
         bus.setUi({ notice: t('ttsKeyMissingNotice') })
+      } else if (bus.ui.notice === t('ttsKeyMissingNotice')) {
+        bus.setUi({ notice: null })
       }
       const silenceMs = cfg.silenceMs
       const interruptLevel = cfg.interruptLevel
@@ -3580,6 +3585,18 @@ export function MicButton({
       micReadyRef.current = true
       setLocalMode('on')
       resetIdle()
+      if (!bus.ui.error && !bus.ui.notice && takeOnceHint(FIRST_USE_HINT_KEY)) {
+        const wake = cfg.wakeWord.trim()
+        const guide =
+          cfg.mode === 'hold'
+            ? t('firstUseHold')
+            : wake
+              ? t('firstUseWake', { wake })
+              : cfg.mode === 'once'
+                ? t('firstUseOnce')
+                : t('firstUseToggle')
+        bus.setNotice(guide)
+      }
       if (pendingHoldRef.current) {
         pendingHoldRef.current = false
         if (holdPtrRef.current) {
