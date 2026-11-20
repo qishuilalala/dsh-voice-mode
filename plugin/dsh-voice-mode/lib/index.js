@@ -1817,12 +1817,11 @@ var TtsQueue = class {
   engine;
   /** TTS 全体不可达通知（每会话去重，成功后复位）。 */
   onError;
-  /** 单句合成重试耗尽被跳过通知（每句一次；此前是静默丢句——真机「回复偶尔不朗读」根因之一）。 */
+  /** 单句合成重试耗尽被跳过通知；onRetry 为单句重试进度通知，synthBudgetMs 为单句重试总预算。 */
   onSkip;
-  /** 某会话队列跑空（无在途、无积压）：「说完就关」据此判定朗读真正结束——客户端只能看到
-   *  句间的播放空档，分不清「后面还有句子在合成」与「已全部读完」。
-   *
-   *  R15（Issue #15 Important-2）：本回调的口径取决于 awaitTurnEnd，见下方 openTurns。 */
+  onRetry;
+  synthBudgetMs;
+  /** 某会话队列跑空（无在途、无积压）：「说完就关」据此判定朗读真正结束；口径见 openTurns。 */
   onIdle;
   /**
    * R15（Issue #15 Important-2）：回合闸门——「队列排空」≠「回合结束」。
@@ -1894,6 +1893,8 @@ var TtsQueue = class {
     this.engine = options.engine;
     this.onError = options.onError;
     this.onSkip = options.onSkip;
+    this.onRetry = options.onRetry;
+    this.synthBudgetMs = options.synthBudgetMs ?? 6e3;
     this.onIdle = options.onIdle;
     this.awaitTurnEnd = options.awaitTurnEnd === true;
   }
@@ -1909,8 +1910,8 @@ var TtsQueue = class {
   noteTurnEnd(sessionId) {
     if (this.closed) return;
     this.openTurns.delete(sessionId);
-    if (!this.awaitTurnEnd) return;
-    if (!this.isIdle(sessionId)) return;
+    if (this.isIdle(sessionId)) this.queues.delete(sessionId);
+    if (!this.awaitTurnEnd || !this.isIdle(sessionId)) return;
     try {
       this.onIdle?.(sessionId);
     } catch {
@@ -1947,6 +1948,7 @@ var TtsQueue = class {
    */
   abandonTurn(sessionId) {
     this.openTurns.delete(sessionId);
+    if (this.isIdle(sessionId)) this.queues.delete(sessionId);
   }
   /** 当前引擎音频 MIME（/preview 的 Content-Type 也用它）。 */
   get mime() {
@@ -2085,6 +2087,7 @@ var TtsQueue = class {
         if (this.closed) break;
         const item = q.pending.shift();
         const MAX_SYNTH_ATTEMPTS = 3;
+        const startedAt = Date.now();
         let buf = null;
         let frameMime = null;
         for (let attempt = 0; attempt < MAX_SYNTH_ATTEMPTS; attempt++) {
@@ -2103,8 +2106,15 @@ var TtsQueue = class {
           } catch (e) {
             console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${redactSecrets(e)}`);
             if (item.epoch !== q.epoch || this.closed) break;
-            if (attempt < MAX_SYNTH_ATTEMPTS - 1) {
-              await this.retrySleep(400 * (attempt + 1));
+            const sleepMs = 400 * (attempt + 1);
+            if (attempt < MAX_SYNTH_ATTEMPTS - 1 && Date.now() - startedAt + sleepMs < this.synthBudgetMs) {
+              try {
+                this.onRetry?.(sessionId, attempt + 2, MAX_SYNTH_ATTEMPTS);
+              } catch {
+              }
+              await this.retrySleep(sleepMs);
+            } else {
+              break;
             }
           }
         }
@@ -2172,7 +2182,7 @@ var TtsQueue = class {
           } catch {
           }
         }
-        this.queues.delete(sessionId);
+        if (!this.openTurns.has(sessionId)) this.queues.delete(sessionId);
       } else {
         const delay = q.errorNotified ? Math.max(1e3, q.backoff) : 0;
         q.backoff = Math.min(8e3, delay + 1e3);
@@ -3107,6 +3117,7 @@ var en = {
   captionDismiss: "Close captions",
   tabSwitchFlushedNotice: "Speech before tab switch was finalized into draft",
   sessionSwitchFlushedNotice: "Speech from previous session saved; restores to draft on return",
+  ttsRetryingNotice: "Retrying read-aloud ({attempt}/{max})\u2026",
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",
@@ -3983,7 +3994,7 @@ var MimoTtsEngine = class {
     this.url = url;
     this.voice = (options.voice ?? "").trim() || MIMO_DEFAULT_VOICE;
     this.format = options.responseFormat ?? "wav";
-    this.timeoutMs = options.timeoutMs ?? 3e4;
+    this.timeoutMs = options.timeoutMs ?? 8e3;
     this.cooldownMs = options.cooldownMs ?? 3e4;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.now = options.now ?? Date.now;
@@ -4871,6 +4882,7 @@ function apply(ctx, config) {
     // 单句重试耗尽被跳过：显式下行（客户端提示 + 诊断），不再静默丢句。
     // streak = 连续被跳过的句数：客户端据此区分偶发抖动与「云端整体不可用」（如服务端拒绝握手）。
     onSkip: (sessionId, text, streak) => broadcast("tts-skip", { sessionId, text: text.slice(0, 80), streak }),
+    onRetry: (sessionId, attempt, maxAttempts) => broadcast("tts-retry", { sessionId, attempt, maxAttempts }),
     onIdle: (sessionId) => broadcast("tts-idle", { sessionId, turn: turnOfSession.get(sessionId)?.turn }),
     // R15（Issue #15 Important-2 host 侧接线）：onIdle 降级为「候选空闲」——「队列排空」不等于
     // 「回合结束」。带工具调用的回合会在工具执行期间把队列排空一次，据此发 tts-idle 会让

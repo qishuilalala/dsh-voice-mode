@@ -1490,14 +1490,24 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         // ignore malformed frame
       }
     })
+    let ttsRetryActive = false
     source.addEventListener('tts-idle', (e: MessageEvent<string>) => {
       try {
         const ev = JSON.parse(e.data) as { sessionId?: string; turn?: number }
         // 有权威回合号时拒绝旧回合的迟到通知；无编号保持旧宿主兼容。
         if (ev.sessionId && ev.turn !== undefined && ev.turn < (currentTurn.get(ev.sessionId) ?? ev.turn)) return
-        if (ev.sessionId === activeSessionId && !ui.ttsDrained) {
-          ui.ttsDrained = true
-          notify()
+        if (ev.sessionId === activeSessionId) {
+          let changed = false
+          if (ttsRetryActive) {
+            ttsRetryActive = false
+            ui.ttsNotice = null
+            changed = true
+          }
+          if (!ui.ttsDrained) {
+            ui.ttsDrained = true
+            changed = true
+          }
+          if (changed) notify()
         }
       } catch {
         // ignore malformed frame
@@ -1556,12 +1566,25 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         // ignore malformed frame
       }
     })
+    // 单句合成重试进度（host tts-retry）：状态条即时提示「朗读重试中（2/3）…」，不再无声显示「思考中…」。
+    source.addEventListener('tts-retry', (e: MessageEvent<string>) => {
+      try {
+        const p = JSON.parse(e.data) as { sessionId?: string; attempt?: number; maxAttempts?: number }
+        if (p.sessionId !== activeSessionId) return
+        ttsRetryActive = true
+        ui.ttsNotice = t('ttsRetryingNotice', { attempt: p.attempt ?? 2, max: p.maxAttempts ?? 3 })
+        notify()
+      } catch {
+        // ignore malformed frame
+      }
+    })
     // 单句重试耗尽被跳过（host tts-skip）：显式提示，不再静默丢句（真机「回复偶尔
     // 不朗读」根因之一）。ttsNotice 由下一次成功播音清除（play 路径 setUi ttsNotice:null）。
     source.addEventListener('tts-skip', (e: MessageEvent<string>) => {
       try {
         const p = JSON.parse(e.data) as { sessionId?: string; text?: string; streak?: number }
         if (p.sessionId !== activeSessionId) return
+        ttsRetryActive = false
         // 连续 ≥2 句失败：不是偶发抖动而是朗读服务整体不可用——给可行动的提示（切本地引擎），
         // 并在首次越线时弹一次 toast（状态条的 ttsNotice 优先级最低，回复期间常被「思考中」遮蔽）。
         const down = (p.streak ?? 1) >= 2
@@ -4741,7 +4764,7 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
             : b.ui.playing // Fix：TTS 播放時顯示「朗讀中…」，防用戶誤以為系統無響應
               ? t('reading')
               : b.ui.turn === 'agent-speaking'
-                ? t('thinking')
+                ? b.ui.ttsNotice || t('thinking')
                 : b.ui.mode === 'hold'
                   ? t('barHold')
                   : t('barListening')

@@ -194,7 +194,7 @@ export class MimoTtsEngine implements TtsEngine {
     this.url = url
     this.voice = (options.voice ?? '').trim() || MIMO_DEFAULT_VOICE
     this.format = options.responseFormat ?? 'wav'
-    this.timeoutMs = options.timeoutMs ?? 30000
+    this.timeoutMs = options.timeoutMs ?? 8000
     this.cooldownMs = options.cooldownMs ?? 30000
     this.fetchImpl = options.fetchImpl ?? fetch
     this.now = options.now ?? Date.now

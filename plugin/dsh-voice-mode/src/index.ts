@@ -1243,6 +1243,7 @@ export function apply(ctx: Context, config: Config): void {
     // 单句重试耗尽被跳过：显式下行（客户端提示 + 诊断），不再静默丢句。
     // streak = 连续被跳过的句数：客户端据此区分偶发抖动与「云端整体不可用」（如服务端拒绝握手）。
     onSkip: (sessionId, text, streak) => broadcast('tts-skip', { sessionId, text: text.slice(0, 80), streak }),
+    onRetry: (sessionId, attempt, maxAttempts) => broadcast('tts-retry', { sessionId, attempt, maxAttempts }),
     onIdle: (sessionId) => broadcast('tts-idle', { sessionId, turn: turnOfSession.get(sessionId)?.turn }),
     // R15（Issue #15 Important-2 host 侧接线）：onIdle 降级为「候选空闲」——「队列排空」不等于
     // 「回合结束」。带工具调用的回合会在工具执行期间把队列排空一次，据此发 tts-idle 会让

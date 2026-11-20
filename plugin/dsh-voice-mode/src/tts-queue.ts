@@ -341,12 +341,11 @@ export class TtsQueue {
   private engine: TtsEngine
   /** TTS 全体不可达通知（每会话去重，成功后复位）。 */
   private readonly onError?: (sessionId: string) => void
-  /** 单句合成重试耗尽被跳过通知（每句一次；此前是静默丢句——真机「回复偶尔不朗读」根因之一）。 */
+  /** 单句合成重试耗尽被跳过通知；onRetry 为单句重试进度通知，synthBudgetMs 为单句重试总预算。 */
   private readonly onSkip?: (sessionId: string, text: string, streak: number) => void
-  /** 某会话队列跑空（无在途、无积压）：「说完就关」据此判定朗读真正结束——客户端只能看到
-   *  句间的播放空档，分不清「后面还有句子在合成」与「已全部读完」。
-   *
-   *  R15（Issue #15 Important-2）：本回调的口径取决于 awaitTurnEnd，见下方 openTurns。 */
+  private readonly onRetry?: (sessionId: string, attempt: number, maxAttempts: number) => void
+  private readonly synthBudgetMs: number
+  /** 某会话队列跑空（无在途、无积压）：「说完就关」据此判定朗读真正结束；口径见 openTurns。 */
   private readonly onIdle?: (sessionId: string) => void
   /**
    * R15（Issue #15 Important-2）：回合闸门——「队列排空」≠「回合结束」。
@@ -426,16 +425,14 @@ export class TtsQueue {
     engine: TtsEngine
     onError?: (sessionId: string) => void
     onSkip?: (sessionId: string, text: string, streak: number) => void
+    onRetry?: (sessionId: string, attempt: number, maxAttempts: number) => void
     onIdle?: (sessionId: string) => void
-    /**
-     * R15（Issue #15 Important-2）：置 true 后 onIdle 只在 host 确认回合结束
-     * （noteTurnEnd）后发出——修「回合间空档误发致 mode:once 提前退出」。缺省 false。
-     */
-    awaitTurnEnd?: boolean
+    /** R15：置 true 后 onIdle 只在 host 确认回合结束（noteTurnEnd）后发出；synthBudgetMs 限制单句总重试耗时。 */
+    awaitTurnEnd?: boolean; synthBudgetMs?: number
   }) {
     this.engine = options.engine
     this.onError = options.onError
-    this.onSkip = options.onSkip
+    this.onSkip = options.onSkip; this.onRetry = options.onRetry; this.synthBudgetMs = options.synthBudgetMs ?? 6000
     this.onIdle = options.onIdle
     this.awaitTurnEnd = options.awaitTurnEnd === true
   }
@@ -452,8 +449,8 @@ export class TtsQueue {
   noteTurnEnd(sessionId: string): void {
     if (this.closed) return // I-1 同构：close 后不得再对外发信号
     this.openTurns.delete(sessionId)
-    if (!this.awaitTurnEnd) return
-    if (!this.isIdle(sessionId)) return // 仍有在途/积压：排空时由 pump finally 发
+    if (this.isIdle(sessionId)) this.queues.delete(sessionId)
+    if (!this.awaitTurnEnd || !this.isIdle(sessionId)) return // 仍有在途/积压：排空时由 pump finally 发
     try {
       this.onIdle?.(sessionId)
     } catch {
@@ -496,7 +493,7 @@ export class TtsQueue {
     // 对外信号，而 close() 已在最早期同步 openTurns.clear()，故 close 之后再调用它对
     // 集合的操作恒为无操作——守卫无可观测后果。noteTurnEnd 的同守卫则确有后果（它会
     // 发 onIdle）。本仓只保留能用复现证据论证的判序，故不加。
-    this.openTurns.delete(sessionId)
+    this.openTurns.delete(sessionId); if (this.isIdle(sessionId)) this.queues.delete(sessionId)
   }
 
   /** 当前引擎音频 MIME（/preview 的 Content-Type 也用它）。 */
@@ -679,6 +676,7 @@ export class TtsQueue {
         // 单句合成有界重试：Edge 云端 WebSocket 偶发 ETIMEDOUT（实测日志），
         // 失败即静默丢句会表现为「长话没规律跳过几句」——重试 3 次、退避后仍失败才跳过。
         const MAX_SYNTH_ATTEMPTS = 3
+        const startedAt = Date.now()
         let buf: Buffer | null = null
         // 远程引擎按真实字节嗅探出的 MIME：必须与本句字节一同传递，不能读引擎级「最近一次」。
         let frameMime: string | null = null
@@ -706,8 +704,16 @@ export class TtsQueue {
             // 被打断/关闭后不再重试：epoch 已变（cancel/interrupt 会先 bump epoch）或队列已关，
             // 继续 sleep+重试只是白等（实测：切焦点时多出 400ms 空转，测试与真机都受影响）。
             if (item.epoch !== q.epoch || this.closed) break
-            if (attempt < MAX_SYNTH_ATTEMPTS - 1) {
-              await this.retrySleep(400 * (attempt + 1))
+            const sleepMs = 400 * (attempt + 1)
+            if (attempt < MAX_SYNTH_ATTEMPTS - 1 && Date.now() - startedAt + sleepMs < this.synthBudgetMs) {
+              try {
+                this.onRetry?.(sessionId, attempt + 2, MAX_SYNTH_ATTEMPTS)
+              } catch {
+                // listener errors must not kill pump
+              }
+              await this.retrySleep(sleepMs)
+            } else {
+              break
             }
           }
         }
@@ -821,7 +827,8 @@ export class TtsQueue {
         // 路径保留整张表的增长不值得——故不设例外。**语义变化**：极端情况下同一会话
         // 的第二次 onError 现在会再通知一次（客户端 toast 逐次弹，而非整会话一次）；
         // 这是「每次发生都值得告知」的合理方向，代价为零可观测性的正常路径。
-        this.queues.delete(sessionId)
+        // 回合仍在进行（openTurns）时保留队列以跨流式句子累积 failStreak，回合结束时由 noteTurnEnd/abandonTurn 回收。
+        if (!this.openTurns.has(sessionId)) this.queues.delete(sessionId)
       } else {
         // 失败退避：1s 指数递增至多 8s；成功/无错误即时。
         // 首档退避至少 1s（此前 backoff 初值 0 会先立即重试一次，等于退避没生效）。
