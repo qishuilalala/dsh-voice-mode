@@ -250,6 +250,9 @@ export const zh = {
   captionWidth90: '宽',
   // 跳过按钮：只跳当前 TTS 句（非整段朗读）——UX 审查歧义修正。
   skipReading: '跳过本句',
+  captionHistoryOpen: '回看 ({count})',
+  captionHistoryHide: '收起',
+  captionDismiss: '关闭字幕',
   descBackchannelYield: '朗读期用户说「嗯/对」等短应答时自动让位（跳过当前 TTS 句 + 短暂丢帧 1.5s；真要说则原 hardBreak 接管；关 = 不让位，行为等同改造前）。仅「按住说话」模式播放期可触发：「持续聆听」模式播放期不识别语音，开口说话按打断处理',
   // Issue #15 批 1 / ADR-0012：打断语音抢救。
   descBargeInSalvage: 'AI 朗读时你开口打断：自动保留从开口到打断生效之间你说的话，并入识别继续发送（修「打断吃句」；关 = 丢弃打断前语音——仅外放且无回声消除的环境建议关）',
@@ -651,6 +654,9 @@ export const en: Record<keyof typeof zh, string> = {
   captionWidth70: 'Medium',
   captionWidth90: 'Wide',
   skipReading: 'Skip this sentence',
+  captionHistoryOpen: 'History ({count})',
+  captionHistoryHide: 'Collapse',
+  captionDismiss: 'Close captions',
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: 'When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)',

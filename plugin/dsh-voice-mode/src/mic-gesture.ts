@@ -625,6 +625,18 @@ export function canTouchLongPressMenu(input: {
   return true
 }
 
+export const CAPTION_HISTORY_MAX = 8
+export const CAPTION_LINGER_MS = 3500
+
+/** 追加最近朗读字幕历史（去重相邻重复句，保留最近 max 条供浮层回看）。 */
+export function pushCaptionHistory(history: readonly string[], text: string, max = CAPTION_HISTORY_MAX): string[] {
+  const clean = text.trim()
+  if (!clean) return [...history]
+  if (history.length > 0 && history[history.length - 1] === clean) return [...history]
+  const next = [...history, clean]
+  return next.length > max ? next.slice(next.length - max) : next
+}
+
 /** 识别回填写草稿门控（Issue #65，纯判定，无 DOM 依赖）。
  *
  *  宿主引用/附件是非文本态（quotes/attachmentIds 独立于 draft 字符串）；

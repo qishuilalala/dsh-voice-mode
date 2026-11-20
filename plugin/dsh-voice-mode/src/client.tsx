@@ -21,7 +21,7 @@ import {
   applyTurnEvent,
   auxClickPending,
   cancelPayload,
-  clampMenuRect, canTouchLongPressMenu, TOUCH_MENU_HOLD_MS,
+  clampMenuRect, canTouchLongPressMenu, TOUCH_MENU_HOLD_MS, pushCaptionHistory, CAPTION_LINGER_MS,
   createScopeBridge,
   decayConfirmCount,
   eqPaintMode,
@@ -107,6 +107,10 @@ interface VoiceUiState {
   error: string | null
   /** 正在朗读的句子字幕（播放引擎写入）。 */
   playingCaption: string | null
+  /** 最近朗读过的句子历史（同会话保留最近 8 句供浮层展开回看）。 */
+  captionHistory: string[]
+  /** 末句自然播完后的短暂驻留标记（避免短句一闪而过看清前就消失）。 */
+  captionLinger?: boolean
   playing: boolean
   /** 模型下载进度（host asr-progress 事件写入）。 */
   model: { file: string; percent: number } | null
@@ -296,6 +300,9 @@ interface VoiceBus {
   setBackchannelHold(untilMs: number): void
   /** 清播放队列 + 停当前句（本地 skip，打断第一层）。 */
   skipAudio(): void
+  /** 收起播后驻留字幕（或钉住回看抽屉期间暂停自动消隐）。 */
+  dismissCaption(): void
+  holdCaptionLinger(pinned: boolean): void
   /** P3-2：回声消除源（参考窗口 + NLMS），供 ASR 引擎注入。 */
   echoForAsr(): EchoRefSource
   /** 原生 AEC 生效时旁路自研 NLMS（原生 AEC3 已消净，自研 delay=0 错位反而制造尖峰）。 */
@@ -1013,6 +1020,16 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   /** Issue #15 批 7：notice 的 5s 自动清除计时器（bus 级 setNotice 用；autoResume 引导
    *  提示仍用组件级自持计时器——两条路径的清除互不冲撞（双向 === hint 守卫，审查 M2 推证）。 */
   let noticeTimer: ReturnType<typeof setTimeout> | null = null
+  let captionLingerTimer: ReturnType<typeof setTimeout> | null = null
+  let captionPinned = false
+  let skippingAudio = false
+  let captionSessionId: string | null = null
+  const clearCaptionLinger = (): void => {
+    if (captionLingerTimer) {
+      clearTimeout(captionLingerTimer)
+      captionLingerTimer = null
+    }
+  }
   const ui: VoiceUiState = {
     state: 'idle',
     partial: '',
@@ -1020,6 +1037,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     botLevels: [],
     error: null,
     playingCaption: null,
+    captionHistory: [],
+    captionLinger: false,
     playing: false,
     model: null,
     ttsNotice: null,
@@ -1214,8 +1233,43 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
   // 恒 false → ECHO_TAIL_MS 400ms 回声尾音宽限（isPlaying 门）从未生效，
   // 句播完瞬间的残响漏入 ASR。提取为命名函数后两方同源，降沿只此一处记录。
   const setUi = (patch: Partial<VoiceUiState>): void => {
-    // 记录 playing 降沿（true→false），供 isPlaying 回声尾音宽限判定。
-    if (patch.playing === false && ui.playing === true) playingEndAt = Date.now()
+    // 会话切换时清空上一会话的字幕回看历史，避免跨会话串台。
+    const curSid = activeSessionId ?? focusedSessionId
+    if (curSid && captionSessionId && curSid !== captionSessionId) {
+      ui.captionHistory = []
+      ui.captionLinger = false
+      clearCaptionLinger()
+    }
+    if (curSid) captionSessionId = curSid
+    if (typeof patch.playingCaption === 'string' && patch.playingCaption.trim()) {
+      ui.captionHistory = pushCaptionHistory(ui.captionHistory, patch.playingCaption)
+    }
+    if (patch.playing === true) {
+      clearCaptionLinger()
+      ui.captionLinger = false
+    }
+    // 记录 playing 降沿（true→false），供 isPlaying 回声尾音宽限判定；自然播完保留短暂字幕驻留。
+    if (patch.playing === false && ui.playing === true) {
+      playingEndAt = Date.now()
+      if (!skippingAudio && ui.captionHistory.length > 0) {
+        ui.captionLinger = true
+        patch = { ...patch, playingCaption: ui.playingCaption ?? ui.captionHistory[ui.captionHistory.length - 1] ?? null }
+        clearCaptionLinger()
+        if (!captionPinned) {
+          captionLingerTimer = setTimeout(() => {
+            captionLingerTimer = null
+            if (!ui.playing && !captionPinned) {
+              ui.captionLinger = false
+              ui.playingCaption = null
+              notify()
+            }
+          }, CAPTION_LINGER_MS)
+          ;(captionLingerTimer as unknown as { unref?: () => void })?.unref?.()
+        }
+      } else {
+        ui.captionLinger = false
+      }
+    }
     Object.assign(ui, patch)
     notify()
   }
@@ -1675,7 +1729,15 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
     refActive = false
     refChunks.length = 0
     refTotal = 0
-    engine.skip()
+    clearCaptionLinger()
+    captionPinned = false
+    ui.captionLinger = false
+    skippingAudio = true
+    try {
+      engine.skip()
+    } finally {
+      skippingAudio = false
+    }
     // skip 是硬停（stop/pause 立即静音），无自然播完的残响——清除 ECHO_TAIL 宽限起点，
     // 否则 skip 后 400ms 内开口的 VAD 入段会被 isPlaying 误拦（丢首 400ms 语音）。
     playingEndAt = 0
@@ -1708,6 +1770,32 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       }, 5000)
     },
     setUi,
+    dismissCaption() {
+      clearCaptionLinger()
+      captionPinned = false
+      if (ui.captionLinger || (!ui.playing && ui.playingCaption !== null)) {
+        ui.captionLinger = false
+        ui.playingCaption = null
+        notify()
+      }
+    },
+    holdCaptionLinger(pinned: boolean) {
+      captionPinned = pinned
+      if (pinned) {
+        clearCaptionLinger()
+      } else if (!ui.playing && ui.captionLinger) {
+        clearCaptionLinger()
+        captionLingerTimer = setTimeout(() => {
+          captionLingerTimer = null
+          if (!ui.playing && !captionPinned) {
+            ui.captionLinger = false
+            ui.playingCaption = null
+            notify()
+          }
+        }, CAPTION_LINGER_MS)
+        ;(captionLingerTimer as unknown as { unref?: () => void })?.unref?.()
+      }
+    },
     /** isPlaying 尾音截止墙钟：playing 或尾音宽限期内均视为「AI 正在朗读」。 */
     playingTailUntil() {
       // 对抗审查 Minor#5：尾音窗随估计 bulk delay 扩展（回声到达麦克风比本地停播
@@ -1891,9 +1979,17 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         clearTimeout(noticeTimer)
         noticeTimer = null
       }
+      clearCaptionLinger()
+      captionPinned = false
+      ui.captionLinger = false
       source?.close()
       source = null
-      engine.skip()
+      skippingAudio = true
+      try {
+        engine.skip()
+      } finally {
+        skippingAudio = false
+      }
       listeners.clear()
       audioListeners.clear()
     },
@@ -1994,8 +2090,23 @@ html.dshvm-holding, html.dshvm-holding * {
   user-select: none !important;
   -webkit-touch-callout: none !important;
 }
-/* 批 3：字幕中文长词/URL 换行（外层 maxHeight:30vh + overflow:hidden 控制高度不溢出）。 */
+/* 批 3：字幕中文长词/URL 换行 + 安全区与矮屏动态视口适配。 */
 .dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }
+.dshvm-caption-overlay {
+  right: max(16px, calc(env(safe-area-inset-right, 0px) + 12px)) !important;
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+}
+@supports (height: 100dvh) {
+  .dshvm-caption-overlay { max-height: 30dvh !important; }
+}
+@media (max-width: 520px) {
+  .dshvm-caption-overlay {
+    left: max(12px, env(safe-area-inset-left, 0px)) !important;
+    right: max(12px, env(safe-area-inset-right, 0px)) !important;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+    max-width: calc(100vw - 24px) !important;
+  }
+}
 /* 麦克风按钮（PR #16 by dyguests）：状态全在按钮上——颜色区分模式，竖条跟随电平，
    等待转圈、收尾对勾、右上橙点=检测到说话、左上红点=出错。颜色走 dsw 变量，旧宿主无变量时用兜底色。 */
 .dshvm-mic {
@@ -4844,44 +4955,62 @@ interface OverlayProps extends VoiceSlotActions {
 export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
   useLang() // 语言切换时重渲染
   const [b, setB] = useState(() => ({ active: bus.activeSessionId, ui: bus.ui }))
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
     return bus.subscribe(setB)
   }, [bus])
 
-  // 播放引擎只推当前语音会话的帧（模式隔离）；有朗读才显示浮层。
-  if (!b.ui.playing || b.ui.boot?.showCaptions === false) return <></>
+  const visible = (b.ui.playing || b.ui.captionLinger === true) && b.ui.boot?.showCaptions !== false
+  useEffect(() => {
+    if (!visible && expanded) {
+      setExpanded(false)
+      bus.holdCaptionLinger(false)
+    }
+  }, [visible, expanded, bus])
+
+  if (!visible) return <></>
+
+  const history = b.ui.captionHistory ?? []
+  const pastItems = history.length > 1 ? history.slice(0, -1) : []
+  const currentText = b.ui.playingCaption ?? history[history.length - 1] ?? t('reading')
+  const pillBtnStyle: React.CSSProperties = {
+    border: '1px solid var(--dsw-alias-border-l2)',
+    background: 'var(--dsw-alias-bg-layer-2)',
+    color: 'var(--dsw-alias-label-primary)',
+    borderRadius: 999,
+    padding: '3px 10px',
+    fontSize: 11,
+    cursor: 'pointer',
+    flexShrink: 0,
+    pointerEvents: 'auto',
+  }
 
   return (
     <div
-      role="status"
-      aria-live="polite"
+      data-dshvm="caption-overlay"
+      className="dshvm-caption-overlay"
       style={{
         position: 'fixed',
         right: 16,
-        bottom: 96, // 上移，避免盖住底部输入框/麦克风按钮
+        bottom: 96,
         zIndex: 9999,
         display: 'flex',
-        alignItems: 'center',
-        gap: 10,
+        flexDirection: 'column',
+        gap: 6,
         padding: '8px 14px',
-        borderRadius: 999,
+        borderRadius: 16,
         // 批 3：4 档字号（0/1/2/3 → 12/14/18/24 px）。默认 0=12px 与现状字节等价。
         fontSize: [12, 14, 18, 24][b.ui.boot?.captionFontSize ?? 0],
         fontFamily: 'system-ui, sans-serif',
-        // 批 G 任务 5：浮层默认 'auto'——触屏需要命中内部「跳过」按钮；外层无 cursor:
-        // default 由按钮自身 cursor:pointer 表达，文本区不显 pointer。
-        // touchAction: 'manipulation' 阻止双击放大与连续点击 300ms 延迟（保留手势语义）。
         pointerEvents: 'auto',
         touchAction: 'manipulation',
         cursor: 'default',
-        // 批 H 任务 2：背景与文字走 dsw-alias 主题变量（与 settings-form.tsx:32 / :35 一致），
-        // 浅色主题下不再硬编码深色，a11y 与可读性同步提升。
         background: 'var(--dsw-alias-bg-layer-3)',
         backdropFilter: 'blur(14px)',
         WebkitBackdropFilter: 'blur(14px)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        boxShadow: '0 8px 28px rgba(0, 0, 0, 0.4)',
+        border: '1px solid var(--dsw-alias-border-l2, rgba(139, 148, 158, 0.28))',
+        boxShadow: '0 8px 24px rgba(15, 17, 21, 0.18)',
         color: 'var(--dsw-alias-label-primary)',
         // 批 3：3 档宽度（0/1/2 → 50vw/70vw/90vw）。默认 1=70vw。
         maxWidth: ['50vw', '70vw', '90vw'][b.ui.boot?.captionMaxWidth ?? 1],
@@ -4891,59 +5020,100 @@ export function VoiceOverlay({ bus }: OverlayProps): React.ReactElement {
         animation: 'dshvm-fadein 0.25s ease',
       }}
     >
-      <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 12, flexShrink: 0 }}>
-        {[0, 1, 2].map((i) => (
-          <span
-            key={i}
-            className="dshvm-eq-bar"
-            style={{
-              width: 3,
-              height: '100%',
-              borderRadius: 99,
-              background: '#2ea043',
-              transformOrigin: 'bottom',
-              animation: `dshvm-eq 0.85s ease-in-out ${i * 0.18}s infinite`,
+      {expanded && pastItems.length > 0 && (
+        <div
+          data-dshvm="caption-history"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            maxHeight: '14vh',
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
+            paddingBottom: 6,
+            borderBottom: '1px solid var(--dsw-alias-border-l1, rgba(139, 148, 158, 0.2))',
+            fontSize: '0.92em',
+            color: 'var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))',
+          }}
+        >
+          {pastItems.map((line, idx) => (
+            <div key={idx} style={{ overflowWrap: 'anywhere', wordBreak: 'break-word', lineHeight: 1.45 }}>
+              {line}
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, overflowY: 'auto', overscrollBehavior: 'contain' }}>
+        {b.ui.playing && (
+          <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 12, flexShrink: 0 }}>
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="dshvm-eq-bar"
+                style={{
+                  width: 3,
+                  height: '100%',
+                  borderRadius: 99,
+                  background: '#2ea043',
+                  transformOrigin: 'bottom',
+                  animation: `dshvm-eq 0.85s ease-in-out ${i * 0.18}s infinite`,
+                }}
+              />
+            ))}
+          </span>
+        )}
+        {/* 仅字幕正文作为 live 区，避免每播一句都让读屏顺带重复念「跳过本句/回看」按钮文案。 */}
+        <span
+          role="status"
+          aria-live="polite"
+          key={currentText}
+          className="dshvm-caption"
+          style={{
+            whiteSpace: 'normal',
+            overflowWrap: 'anywhere',
+            wordBreak: 'break-word',
+            flex: 1,
+            minWidth: 0,
+            lineHeight: 1.45,
+          }}
+        >
+          {currentText}
+        </span>
+        {pastItems.length > 0 && (
+          <button
+            type="button"
+            data-dshvm="caption-history-toggle"
+            aria-expanded={expanded}
+            onClick={() => {
+              const next = !expanded
+              setExpanded(next)
+              bus.holdCaptionLinger(next)
             }}
-          />
-        ))}
-      </span>
-      <span
-        key={b.ui.playingCaption ?? 'idle'}
-        className="dshvm-caption"
-        style={{
-          // 批 3：换行（中文长 URL 等场景）。注：whiteSpace:normal + overflowWrap:anywhere 与 ellipsis 互斥（nowrap 才需要 ellipsis），
-          //   接受换行后 ellipsis 失效——计划 §5.2 已显式声明。
-          whiteSpace: 'normal',
-          overflowWrap: 'anywhere',
-          wordBreak: 'break-word',
-          flex: 1,
-          minWidth: 0,
-        }}
-      >
-        {b.ui.playingCaption ?? t('reading')}
-      </span>
-      <button
-        onClick={() => bus.skipAudio()}
-        aria-label={t('skipReading')}
-        style={{
-          // 2026-11-20 A4 审计 Blocker：原为 #fff 字 + rgba(255,255,255,.14) 底，浅色主题下
-          // 白字白底（≈1:1）→ 浮层唯一可点控件看不见，字幕卡住时无法跳过。改走主题 token。
-          border: '1px solid var(--dsw-alias-border-l2)',
-          background: 'var(--dsw-alias-bg-layer-2)',
-          color: 'var(--dsw-alias-label-primary)',
-          borderRadius: 999,
-          padding: '3px 12px',
-          fontSize: 11,
-          cursor: 'pointer',
-          flexShrink: 0,
-          pointerEvents: 'auto', // 仅此按钮可点
-        }}
-      >
-        {/* Issue #15 UX：「跳过」二字有歧义（跳整段朗读 vs 跳当前句）。可见文案与
-            aria-label 统一用消歧键 skipReading（跳过本句）；原 skip 键随之闲置，
-            由 i18n teammate 决定去留。 */}
-        {t('skipReading')}
-      </button>
+            style={{ ...pillBtnStyle, color: 'var(--dsw-alias-label-secondary)' }}
+          >
+            {expanded ? t('captionHistoryHide') : t('captionHistoryOpen', { count: pastItems.length })}
+          </button>
+        )}
+        {b.ui.playing ? (
+          <button
+            type="button"
+            onClick={() => bus.skipAudio()}
+            aria-label={t('skipReading')}
+            style={pillBtnStyle}
+          >
+            {t('skipReading')}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => bus.dismissCaption()}
+            aria-label={t('captionDismiss')}
+            style={pillBtnStyle}
+          >
+            {t('captionDismiss')}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

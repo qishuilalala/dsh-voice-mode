@@ -2116,6 +2116,9 @@ var zh = {
   captionWidth90: "\u5BBD",
   // 跳过按钮：只跳当前 TTS 句（非整段朗读）——UX 审查歧义修正。
   skipReading: "\u8DF3\u8FC7\u672C\u53E5",
+  captionHistoryOpen: "\u56DE\u770B ({count})",
+  captionHistoryHide: "\u6536\u8D77",
+  captionDismiss: "\u5173\u95ED\u5B57\u5E55",
   descBackchannelYield: "\u6717\u8BFB\u671F\u7528\u6237\u8BF4\u300C\u55EF/\u5BF9\u300D\u7B49\u77ED\u5E94\u7B54\u65F6\u81EA\u52A8\u8BA9\u4F4D\uFF08\u8DF3\u8FC7\u5F53\u524D TTS \u53E5 + \u77ED\u6682\u4E22\u5E27 1.5s\uFF1B\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF1B\u5173 = \u4E0D\u8BA9\u4F4D\uFF0C\u884C\u4E3A\u7B49\u540C\u6539\u9020\u524D\uFF09\u3002\u4EC5\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u53EF\u89E6\u53D1\uFF1A\u300C\u6301\u7EED\u8046\u542C\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u4E0D\u8BC6\u522B\u8BED\u97F3\uFF0C\u5F00\u53E3\u8BF4\u8BDD\u6309\u6253\u65AD\u5904\u7406",
   // Issue #15 批 1 / ADR-0012：打断语音抢救。
   descBargeInSalvage: "AI \u6717\u8BFB\u65F6\u4F60\u5F00\u53E3\u6253\u65AD\uFF1A\u81EA\u52A8\u4FDD\u7559\u4ECE\u5F00\u53E3\u5230\u6253\u65AD\u751F\u6548\u4E4B\u95F4\u4F60\u8BF4\u7684\u8BDD\uFF0C\u5E76\u5165\u8BC6\u522B\u7EE7\u7EED\u53D1\u9001\uFF08\u4FEE\u300C\u6253\u65AD\u5403\u53E5\u300D\uFF1B\u5173 = \u4E22\u5F03\u6253\u65AD\u524D\u8BED\u97F3\u2014\u2014\u4EC5\u5916\u653E\u4E14\u65E0\u56DE\u58F0\u6D88\u9664\u7684\u73AF\u5883\u5EFA\u8BAE\u5173\uFF09",
@@ -2516,6 +2519,9 @@ var en = {
   captionWidth70: "Medium",
   captionWidth90: "Wide",
   skipReading: "Skip this sentence",
+  captionHistoryOpen: "History ({count})",
+  captionHistoryHide: "Collapse",
+  captionDismiss: "Close captions",
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",
@@ -2982,6 +2988,15 @@ function canTouchLongPressMenu(input) {
   if (!input.hasScope || input.local !== "off") return false;
   if (input.mode === "hold" || input.playing || input.readingOutside) return false;
   return true;
+}
+var CAPTION_HISTORY_MAX = 8;
+var CAPTION_LINGER_MS = 3500;
+function pushCaptionHistory(history, text, max = CAPTION_HISTORY_MAX) {
+  const clean2 = text.trim();
+  if (!clean2) return [...history];
+  if (history.length > 0 && history[history.length - 1] === clean2) return [...history];
+  const next = [...history, clean2];
+  return next.length > max ? next.slice(next.length - max) : next;
 }
 function shouldSkipDraftWriteback(quoteCount, attachCount) {
   return quoteCount > 0 || attachCount > 0;
@@ -6904,7 +6919,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "98a1f51";
+var BUILD_TAG = "1bd58f8";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = (() => {
   try {
@@ -7433,6 +7448,16 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     senseVoice: true
   };
   let noticeTimer = null;
+  let captionLingerTimer = null;
+  let captionPinned = false;
+  let skippingAudio = false;
+  let captionSessionId = null;
+  const clearCaptionLinger = () => {
+    if (captionLingerTimer) {
+      clearTimeout(captionLingerTimer);
+      captionLingerTimer = null;
+    }
+  };
   const ui = {
     state: "idle",
     partial: "",
@@ -7440,6 +7465,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     botLevels: [],
     error: null,
     playingCaption: null,
+    captionHistory: [],
+    captionLinger: false,
     playing: false,
     model: null,
     ttsNotice: null,
@@ -7588,7 +7615,41 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     setFrozen: (frozen) => aec.setFrozen(frozen)
   };
   const setUi = (patch) => {
-    if (patch.playing === false && ui.playing === true) playingEndAt = Date.now();
+    const curSid = activeSessionId ?? focusedSessionId;
+    if (curSid && captionSessionId && curSid !== captionSessionId) {
+      ui.captionHistory = [];
+      ui.captionLinger = false;
+      clearCaptionLinger();
+    }
+    if (curSid) captionSessionId = curSid;
+    if (typeof patch.playingCaption === "string" && patch.playingCaption.trim()) {
+      ui.captionHistory = pushCaptionHistory(ui.captionHistory, patch.playingCaption);
+    }
+    if (patch.playing === true) {
+      clearCaptionLinger();
+      ui.captionLinger = false;
+    }
+    if (patch.playing === false && ui.playing === true) {
+      playingEndAt = Date.now();
+      if (!skippingAudio && ui.captionHistory.length > 0) {
+        ui.captionLinger = true;
+        patch = { ...patch, playingCaption: ui.playingCaption ?? ui.captionHistory[ui.captionHistory.length - 1] ?? null };
+        clearCaptionLinger();
+        if (!captionPinned) {
+          captionLingerTimer = setTimeout(() => {
+            captionLingerTimer = null;
+            if (!ui.playing && !captionPinned) {
+              ui.captionLinger = false;
+              ui.playingCaption = null;
+              notify();
+            }
+          }, CAPTION_LINGER_MS);
+          captionLingerTimer?.unref?.();
+        }
+      } else {
+        ui.captionLinger = false;
+      }
+    }
     Object.assign(ui, patch);
     notify();
   };
@@ -7920,7 +7981,15 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     refActive = false;
     refChunks.length = 0;
     refTotal = 0;
-    engine.skip();
+    clearCaptionLinger();
+    captionPinned = false;
+    ui.captionLinger = false;
+    skippingAudio = true;
+    try {
+      engine.skip();
+    } finally {
+      skippingAudio = false;
+    }
     playingEndAt = 0;
   };
   const busApi = {
@@ -7948,6 +8017,32 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       }, 5e3);
     },
     setUi,
+    dismissCaption() {
+      clearCaptionLinger();
+      captionPinned = false;
+      if (ui.captionLinger || !ui.playing && ui.playingCaption !== null) {
+        ui.captionLinger = false;
+        ui.playingCaption = null;
+        notify();
+      }
+    },
+    holdCaptionLinger(pinned) {
+      captionPinned = pinned;
+      if (pinned) {
+        clearCaptionLinger();
+      } else if (!ui.playing && ui.captionLinger) {
+        clearCaptionLinger();
+        captionLingerTimer = setTimeout(() => {
+          captionLingerTimer = null;
+          if (!ui.playing && !captionPinned) {
+            ui.captionLinger = false;
+            ui.playingCaption = null;
+            notify();
+          }
+        }, CAPTION_LINGER_MS);
+        captionLingerTimer?.unref?.();
+      }
+    },
     /** isPlaying 尾音截止墙钟：playing 或尾音宽限期内均视为「AI 正在朗读」。 */
     playingTailUntil() {
       return playingEndAt + ECHO_TAIL_MS + refDelaySamples / SAMPLE_RATE_16K * 1e3;
@@ -8099,9 +8194,17 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         clearTimeout(noticeTimer);
         noticeTimer = null;
       }
+      clearCaptionLinger();
+      captionPinned = false;
+      ui.captionLinger = false;
       source?.close();
       source = null;
-      engine.skip();
+      skippingAudio = true;
+      try {
+        engine.skip();
+      } finally {
+        skippingAudio = false;
+      }
       listeners.clear();
       audioListeners.clear();
     }
@@ -8133,8 +8236,23 @@ html.dshvm-holding, html.dshvm-holding * {
   user-select: none !important;
   -webkit-touch-callout: none !important;
 }
-/* \u6279 3\uFF1A\u5B57\u5E55\u4E2D\u6587\u957F\u8BCD/URL \u6362\u884C\uFF08\u5916\u5C42 maxHeight:30vh + overflow:hidden \u63A7\u5236\u9AD8\u5EA6\u4E0D\u6EA2\u51FA\uFF09\u3002 */
+/* \u6279 3\uFF1A\u5B57\u5E55\u4E2D\u6587\u957F\u8BCD/URL \u6362\u884C + \u5B89\u5168\u533A\u4E0E\u77EE\u5C4F\u52A8\u6001\u89C6\u53E3\u9002\u914D\u3002 */
 .dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }
+.dshvm-caption-overlay {
+  right: max(16px, calc(env(safe-area-inset-right, 0px) + 12px)) !important;
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+}
+@supports (height: 100dvh) {
+  .dshvm-caption-overlay { max-height: 30dvh !important; }
+}
+@media (max-width: 520px) {
+  .dshvm-caption-overlay {
+    left: max(12px, env(safe-area-inset-left, 0px)) !important;
+    right: max(12px, env(safe-area-inset-right, 0px)) !important;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+    max-width: calc(100vw - 24px) !important;
+  }
+}
 /* \u9EA6\u514B\u98CE\u6309\u94AE\uFF08PR #16 by dyguests\uFF09\uFF1A\u72B6\u6001\u5168\u5728\u6309\u94AE\u4E0A\u2014\u2014\u989C\u8272\u533A\u5206\u6A21\u5F0F\uFF0C\u7AD6\u6761\u8DDF\u968F\u7535\u5E73\uFF0C
    \u7B49\u5F85\u8F6C\u5708\u3001\u6536\u5C3E\u5BF9\u52FE\u3001\u53F3\u4E0A\u6A59\u70B9=\u68C0\u6D4B\u5230\u8BF4\u8BDD\u3001\u5DE6\u4E0A\u7EA2\u70B9=\u51FA\u9519\u3002\u989C\u8272\u8D70 dsw \u53D8\u91CF\uFF0C\u65E7\u5BBF\u4E3B\u65E0\u53D8\u91CF\u65F6\u7528\u515C\u5E95\u8272\u3002 */
 .dshvm-mic {
@@ -10336,42 +10454,58 @@ function VoiceStatusBar({ bus, sessionId }) {
 function VoiceOverlay({ bus }) {
   useLang();
   const [b, setB] = (0, import_react3.useState)(() => ({ active: bus.activeSessionId, ui: bus.ui }));
+  const [expanded, setExpanded] = (0, import_react3.useState)(false);
   (0, import_react3.useEffect)(() => {
     return bus.subscribe(setB);
   }, [bus]);
-  if (!b.ui.playing || b.ui.boot?.showCaptions === false) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
+  const visible = (b.ui.playing || b.ui.captionLinger === true) && b.ui.boot?.showCaptions !== false;
+  (0, import_react3.useEffect)(() => {
+    if (!visible && expanded) {
+      setExpanded(false);
+      bus.holdCaptionLinger(false);
+    }
+  }, [visible, expanded, bus]);
+  if (!visible) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
+  const history = b.ui.captionHistory ?? [];
+  const pastItems = history.length > 1 ? history.slice(0, -1) : [];
+  const currentText = b.ui.playingCaption ?? history[history.length - 1] ?? t("reading");
+  const pillBtnStyle = {
+    border: "1px solid var(--dsw-alias-border-l2)",
+    background: "var(--dsw-alias-bg-layer-2)",
+    color: "var(--dsw-alias-label-primary)",
+    borderRadius: 999,
+    padding: "3px 10px",
+    fontSize: 11,
+    cursor: "pointer",
+    flexShrink: 0,
+    pointerEvents: "auto"
+  };
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",
     {
-      role: "status",
-      "aria-live": "polite",
+      "data-dshvm": "caption-overlay",
+      className: "dshvm-caption-overlay",
       style: {
         position: "fixed",
         right: 16,
         bottom: 96,
-        // 上移，避免盖住底部输入框/麦克风按钮
         zIndex: 9999,
         display: "flex",
-        alignItems: "center",
-        gap: 10,
+        flexDirection: "column",
+        gap: 6,
         padding: "8px 14px",
-        borderRadius: 999,
+        borderRadius: 16,
         // 批 3：4 档字号（0/1/2/3 → 12/14/18/24 px）。默认 0=12px 与现状字节等价。
         fontSize: [12, 14, 18, 24][b.ui.boot?.captionFontSize ?? 0],
         fontFamily: "system-ui, sans-serif",
-        // 批 G 任务 5：浮层默认 'auto'——触屏需要命中内部「跳过」按钮；外层无 cursor:
-        // default 由按钮自身 cursor:pointer 表达，文本区不显 pointer。
-        // touchAction: 'manipulation' 阻止双击放大与连续点击 300ms 延迟（保留手势语义）。
         pointerEvents: "auto",
         touchAction: "manipulation",
         cursor: "default",
-        // 批 H 任务 2：背景与文字走 dsw-alias 主题变量（与 settings-form.tsx:32 / :35 一致），
-        // 浅色主题下不再硬编码深色，a11y 与可读性同步提升。
         background: "var(--dsw-alias-bg-layer-3)",
         backdropFilter: "blur(14px)",
         WebkitBackdropFilter: "blur(14px)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
-        boxShadow: "0 8px 28px rgba(0, 0, 0, 0.4)",
+        border: "1px solid var(--dsw-alias-border-l2, rgba(139, 148, 158, 0.28))",
+        boxShadow: "0 8px 24px rgba(15, 17, 21, 0.18)",
         color: "var(--dsw-alias-label-primary)",
         // 批 3：3 档宽度（0/1/2 → 50vw/70vw/90vw）。默认 1=70vw。
         maxWidth: ["50vw", "70vw", "90vw"][b.ui.boot?.captionMaxWidth ?? 1],
@@ -10381,60 +10515,94 @@ function VoiceOverlay({ bus }) {
         animation: "dshvm-fadein 0.25s ease"
       },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { display: "inline-flex", alignItems: "flex-end", gap: 2, height: 12, flexShrink: 0 }, children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "span",
+        expanded && pastItems.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "div",
           {
-            className: "dshvm-eq-bar",
+            "data-dshvm": "caption-history",
             style: {
-              width: 3,
-              height: "100%",
-              borderRadius: 99,
-              background: "#2ea043",
-              transformOrigin: "bottom",
-              animation: `dshvm-eq 0.85s ease-in-out ${i * 0.18}s infinite`
-            }
-          },
-          i
-        )) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "span",
-          {
-            className: "dshvm-caption",
-            style: {
-              // 批 3：换行（中文长 URL 等场景）。注：whiteSpace:normal + overflowWrap:anywhere 与 ellipsis 互斥（nowrap 才需要 ellipsis），
-              //   接受换行后 ellipsis 失效——计划 §5.2 已显式声明。
-              whiteSpace: "normal",
-              overflowWrap: "anywhere",
-              wordBreak: "break-word",
-              flex: 1,
-              minWidth: 0
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              maxHeight: "14vh",
+              overflowY: "auto",
+              overscrollBehavior: "contain",
+              paddingBottom: 6,
+              borderBottom: "1px solid var(--dsw-alias-border-l1, rgba(139, 148, 158, 0.2))",
+              fontSize: "0.92em",
+              color: "var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))"
             },
-            children: b.ui.playingCaption ?? t("reading")
-          },
-          b.ui.playingCaption ?? "idle"
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "button",
-          {
-            onClick: () => bus.skipAudio(),
-            "aria-label": t("skipReading"),
-            style: {
-              // 2026-11-20 A4 审计 Blocker：原为 #fff 字 + rgba(255,255,255,.14) 底，浅色主题下
-              // 白字白底（≈1:1）→ 浮层唯一可点控件看不见，字幕卡住时无法跳过。改走主题 token。
-              border: "1px solid var(--dsw-alias-border-l2)",
-              background: "var(--dsw-alias-bg-layer-2)",
-              color: "var(--dsw-alias-label-primary)",
-              borderRadius: 999,
-              padding: "3px 12px",
-              fontSize: 11,
-              cursor: "pointer",
-              flexShrink: 0,
-              pointerEvents: "auto"
-              // 仅此按钮可点
-            },
-            children: t("skipReading")
+            children: pastItems.map((line, idx) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.45 }, children: line }, idx))
           }
-        )
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, minWidth: 0, overflowY: "auto", overscrollBehavior: "contain" }, children: [
+          b.ui.playing && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { "aria-hidden": "true", style: { display: "inline-flex", alignItems: "flex-end", gap: 2, height: 12, flexShrink: 0 }, children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "span",
+            {
+              className: "dshvm-eq-bar",
+              style: {
+                width: 3,
+                height: "100%",
+                borderRadius: 99,
+                background: "#2ea043",
+                transformOrigin: "bottom",
+                animation: `dshvm-eq 0.85s ease-in-out ${i * 0.18}s infinite`
+              }
+            },
+            i
+          )) }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "span",
+            {
+              role: "status",
+              "aria-live": "polite",
+              className: "dshvm-caption",
+              style: {
+                whiteSpace: "normal",
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
+                flex: 1,
+                minWidth: 0,
+                lineHeight: 1.45
+              },
+              children: currentText
+            },
+            currentText
+          ),
+          pastItems.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "button",
+            {
+              type: "button",
+              "data-dshvm": "caption-history-toggle",
+              "aria-expanded": expanded,
+              onClick: () => {
+                const next = !expanded;
+                setExpanded(next);
+                bus.holdCaptionLinger(next);
+              },
+              style: { ...pillBtnStyle, color: "var(--dsw-alias-label-secondary)" },
+              children: expanded ? t("captionHistoryHide") : t("captionHistoryOpen", { count: pastItems.length })
+            }
+          ),
+          b.ui.playing ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "button",
+            {
+              type: "button",
+              onClick: () => bus.skipAudio(),
+              "aria-label": t("skipReading"),
+              style: pillBtnStyle,
+              children: t("skipReading")
+            }
+          ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "button",
+            {
+              type: "button",
+              onClick: () => bus.dismissCaption(),
+              "aria-label": t("captionDismiss"),
+              style: pillBtnStyle,
+              children: t("captionDismiss")
+            }
+          )
+        ] })
       ]
     }
   );
