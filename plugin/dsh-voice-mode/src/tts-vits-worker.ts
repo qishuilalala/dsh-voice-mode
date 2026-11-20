@@ -108,7 +108,8 @@ process.on('message', (msg: Record<string, unknown>) => {
       const text = sanitizeForTts(
         String(msg.text ?? '')
           .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu, ' ')
-          .replace(/(\d)[.．]\s*/g, '$1、'),
+          // I12：仅把列表编号 "1. xxx" 改为顿号，避免破坏小数/版本号/IP（如 3.14、0.7.39、127.0.0.1）。
+          .replace(/(\d)[.．](?!\d)\s*/g, '$1、'),
       )
       if (!text.trim()) {
         // 清洗后为空（纯 emoji/符号段）：回 0.2s 静音，避免引擎报

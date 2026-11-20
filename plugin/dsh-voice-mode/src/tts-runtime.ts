@@ -78,6 +78,7 @@ export function resolveNativeRuntime(opts: {
     }
     result = execPath ? { execPath, env: childEnv } : null
   }
-  if (useCache) cached = result
+  // 仅缓存有效运行时；找不到 Node 时不永久负缓存，用户后续安装 Node 后无需重启宿主即可恢复。
+  if (useCache && result !== null) cached = result
   return result
 }

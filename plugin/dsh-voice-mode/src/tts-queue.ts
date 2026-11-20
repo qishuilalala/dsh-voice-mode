@@ -152,9 +152,8 @@ function isEmptyAudio(buf: Buffer): boolean {
 export class EdgeTtsEngine implements TtsEngine {
   private voice: string
   private rate?: number
-  /** 在途连接集合：interrupt() 直接 close 掉，让 audioStream 立刻结束（A2 审计 Minor）。 */
-  private active = new Set<{ close: () => void | Promise<void> }>()
-  private aborted = false
+  /** 在途连接→每调用独立中止态：并发试听与朗读不互相清零 aborted，interrupt/close 即时生效（I9）。 */
+  private active = new Map<{ close: () => void | Promise<void> }, { aborted: boolean }>()
   /** 便于单测注入打桩（默认真实 msedge-tts）。 */
   private readonly createTts: () => MsEdgeTTS
 
@@ -165,13 +164,13 @@ export class EdgeTtsEngine implements TtsEngine {
   }
 
   /**
-   * 立刻中止在途合成：关闭底层连接 → audioStream 结束 → synthesize 以错误返回。
+   * 立刻中止在途合成：关闭底层连接并置位每调用中止标志 → audioStream 结束 → synthesize 必以错误返回。
    * 此前该引擎没有 interrupt，cancel 只能等库超时（连接 10s / 合成无活动 60s），
    * 「停止朗读」后最长 60s 仍在合成。
    */
   interrupt(): void {
-    this.aborted = true
-    for (const t of this.active) {
+    for (const [t, state] of this.active) {
+      state.aborted = true
       try {
         void t.close()
       } catch {
@@ -196,22 +195,24 @@ export class EdgeTtsEngine implements TtsEngine {
     // 纯标签句（如「<laugh>」）：剥完只剩空白 → 零网络合成（不建连接、不重试）；
     // 0 字节由队列层按空音频整句丢弃（不发帧、不占句号）。
     if (spoken.trim() === '') return Buffer.alloc(0)
-    this.aborted = false
     const tts = this.createTts()
-    this.active.add(tts)
+    const state = { aborted: false }
+    this.active.set(tts, state)
     try {
       await tts.setMetadata(
         options.voice ?? this.voice,
         OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3,
         TTS_METADATA,
       )
+      if (state.aborted) throw new Error('tts interrupted')
       const { audioStream } = tts.toStream(spoken, prosodyFromRate(options.rate ?? this.rate))
       const chunks: Buffer[] = []
       for await (const chunk of audioStream) {
-        // interrupt() 关闭连接后流会结束/抛错；这里再显式判一次，避免把半截音频当成功。
-        if (this.aborted) throw new Error('tts interrupted')
+        if (state.aborted) throw new Error('tts interrupted')
         chunks.push(chunk as Buffer)
       }
+      // I9：interrupt() 正常关流时循环直接结束而不进循环体，须在循环外复检，禁止把截断音频当成功返回。
+      if (state.aborted) throw new Error('tts interrupted')
       const buf = Buffer.concat(chunks)
       if (!isValidMp3(buf)) throw new Error('empty or invalid audio')
       return buf
@@ -226,7 +227,8 @@ export class EdgeTtsEngine implements TtsEngine {
   }
 
   async close(): Promise<void> {
-    // 无持久连接（每句独立连接），无需清理；在途连接由 interrupt() 关闭。
+    // I9：关闭引擎时立刻中止所有在途 Edge 连接，避免卸载/切换后连接滞留至超时。
+    this.interrupt()
   }
 }
 
@@ -286,6 +288,8 @@ interface QueuedSentence {
 interface SessionQueue {
   pending: QueuedSentence[]
   busy: boolean
+  /** I8：退避冷却中的重启计时器（非 undefined 表示处于退避窗，新 enqueue 不得绕过立即起泵）。 */
+  backoffTimer?: ReturnType<typeof setTimeout>
   /** cancel() 时提升；携带旧 epoch 的句子被丢弃。 */
   epoch: number
   /** TTS 不可达已通知过（去重，直到下一帧成功才复位）。 */
@@ -384,9 +388,17 @@ export class TtsQueue {
    * 残留一个 ref'd Timeout 拖住事件循环 ≤800ms（同型反模式家族第 5 处，
    * 前三处：asr-host senseP、listEdgeVoices、warmupSense；第四处 backoffTimers）。
    */
-  private readonly retryTimers = new Set<ReturnType<typeof setTimeout>>()
+  private readonly retryTimers = new Set<{ timer: ReturnType<typeof setTimeout>; resolve: () => void }>()
 
-  /** R13：可取消的重试 sleep——句柄入集供 close() 取消；落定即自摘。 */
+  private clearBackoff(q: SessionQueue): void {
+    if (q.backoffTimer !== undefined) {
+      clearTimeout(q.backoffTimer)
+      this.backoffTimers.delete(q.backoffTimer)
+      q.backoffTimer = undefined
+    }
+  }
+
+  /** R13 + I8：可取消的重试 sleep——句柄入集供 close() 取消并立刻 resolve，防止 pump 永久挂死。 */
   private retrySleep(ms: number): Promise<void> {
     // R14（探针 A 竞态）：close 后不得再入集。pump 挂在 await synthesize 时 close，
     // 在途合成被 engine.close() 的 kill→rejectAll 打回，catch 在 close 的 clear
@@ -395,11 +407,14 @@ export class TtsQueue {
     // 让上层重试循环顶部的 closed 判序立即 break（也不白等一轮 sleep）。
     if (this.closed) return Promise.resolve()
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.retryTimers.delete(timer)
-        resolve()
-      }, ms)
-      this.retryTimers.add(timer)
+      const entry = {
+        timer: setTimeout(() => {
+          this.retryTimers.delete(entry)
+          resolve()
+        }, ms),
+        resolve,
+      }
+      this.retryTimers.add(entry)
     })
   }
 
@@ -506,8 +521,12 @@ export class TtsQueue {
     const old = this.engine
     this.engine = engine
     for (const q of this.queues.values()) {
+      this.clearBackoff(q) // I8：切到新引擎立刻取消旧引擎的退避计时器并复位失败态
       q.epoch++ // 作废在途句：孤儿泵在下一句检查时 break，不再广播旧引擎帧
       q.pending.length = 0 // 弃掉积压（旧引擎的音色/语速已不适用）
+      q.failStreak = 0
+      q.errorNotified = false
+      q.backoff = 0
     }
     void old.close().catch(() => {})
   }
@@ -611,6 +630,7 @@ export class TtsQueue {
     const q = this.queues.get(sessionId)
     const wasBusy = Boolean(q?.busy)
     if (q) {
+      this.clearBackoff(q)
       q.epoch++
       q.pending.length = 0
     }
@@ -637,6 +657,7 @@ export class TtsQueue {
       // rejectSeqUpTo；seq 上移为全局发号器后该顾虑已消失，但**常规回收仍不该走它**：
       // prune 连 errorNotified 一起去重载体也丢掉，且不判「是否仍有在途泵」。日常回收
       // 由 pump finally 的排空退休承担，此方法保留为显式清理口，行为不变。
+      this.clearBackoff(q)
       q.epoch++
       q.pending.length = 0
     }
@@ -645,7 +666,7 @@ export class TtsQueue {
   }
 
   private async pump(sessionId: string, q: SessionQueue): Promise<void> {
-    if (this.closed || q.busy) return // I-1：关闭后不起泵
+    if (this.closed || q.busy || q.backoffTimer !== undefined) return // I-1 + I8：关闭/在途/退避窗内不起泵
     q.busy = true
     try {
       while (q.pending.length > 0) {
@@ -803,11 +824,13 @@ export class TtsQueue {
         const delay = q.errorNotified ? Math.max(1000, q.backoff) : 0
         q.backoff = Math.min(8000, delay + 1000)
         if (delay > 0) {
-          // M7②：持句柄 + 触发即自摘，供 close() 全量取消（详见 backoffTimers 声明处）。
+          // M7② + I8：持句柄绑定到 q.backoffTimer，退避窗内新 enqueue 不会绕过立即起泵；触发即自摘。
           const timer = setTimeout(() => {
             this.backoffTimers.delete(timer)
+            if (q.backoffTimer === timer) q.backoffTimer = undefined
             void this.pump(sessionId, q)
           }, delay)
+          q.backoffTimer = timer
           this.backoffTimers.add(timer)
         } else void this.pump(sessionId, q)
       }
@@ -830,11 +853,14 @@ export class TtsQueue {
     this.openTurns.clear() // R15：回合标记一并清空（close 后不得再有回合结束信号）
     // M7②：先取消所有待触发的退避重启，再关引擎——否则计时器会在 close 后触发 pump，
     // 让本地引擎 ensureReady() 重新 fork 出一个孤儿子进程（热重载泄漏）。
+    for (const q of this.queues.values()) q.backoffTimer = undefined
     for (const timer of this.backoffTimers) clearTimeout(timer)
     this.backoffTimers.clear()
-    // R13：一并取消重试 sleep 计时器——否则 close 落进 400/800ms 窗口时残留 ref'd
-    // timer 拖住事件循环（且睡醒后会走上面补的 closed 判序而 break，timer 本身仍走完）。
-    for (const timer of this.retryTimers) clearTimeout(timer)
+    // R13 + I8：取消重试 sleep 计时器并立即 resolve，让挂起的 pump 立即退出、释放 q.busy 与闭包。
+    for (const entry of this.retryTimers) {
+      clearTimeout(entry.timer)
+      entry.resolve()
+    }
     this.retryTimers.clear()
     await this.engine.close()
   }

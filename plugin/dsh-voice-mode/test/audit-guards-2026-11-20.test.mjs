@@ -51,10 +51,10 @@ const queue = src('tts-queue.ts')
 t('Edge 引擎 interrupt 关闭在途连接并让 synthesize 尽快失败', () => {
   const i = queue.indexOf('export class EdgeTtsEngine')
   assert.ok(i > 0, '找不到 EdgeTtsEngine')
-  const block = queue.slice(i, i + 2600)
+  const block = queue.slice(i, i + 2800)
   assert.ok(block.includes('interrupt(): void'), 'Edge 引擎缺 interrupt')
   assert.ok(block.includes('this.active'), '缺在途连接集合')
-  assert.ok(block.includes('if (this.aborted) throw new Error'), '流循环未判中止')
+  assert.ok(block.includes('if (state.aborted) throw new Error'), '流循环及退出后未判中止')
 })
 
 

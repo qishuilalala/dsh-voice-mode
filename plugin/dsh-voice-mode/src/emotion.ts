@@ -45,6 +45,10 @@ export function stripEmotionTags(raw: string): string {
   return raw.replace(STRIP_RE, ' ')
 }
 
+/** I11：单次 <break> 上限 5s、整句累计 <break> 上限 10s，防止异常大数值触发 Float32Array OOM。 */
+const MAX_BREAK_MS = 5000
+const MAX_TOTAL_BREAK_MS = 10000
+
 /**
  * 将含标签文本解析为段序列（每段带 whisper 状态）。
  * 单标签（laugh/sigh/emphasis/break）：消费但不产生段落，break 的毫秒数作为前一段的 preBreakMs。
@@ -56,10 +60,23 @@ export function parseEmotionTags(raw: string): EmotionSegment[] {
   let buf = ''
   let whisper = false
   let pendingBreakMs = 0
+  let totalBreakMs = 0
+  let sawInlineTag = false
+
+  const appendText = (chunk: string): void => {
+    if (chunk.length === 0) return
+    // 剥离单标签时若两侧均为 ASCII 字母/数字则补空格防粘连（"a<laugh>b" → "a b"），中文不插多余空格。
+    if (sawInlineTag && /[A-Za-z0-9]$/.test(buf) && /^[A-Za-z0-9]/.test(chunk)) {
+      buf += ' '
+    }
+    sawInlineTag = false
+    buf += chunk
+  }
 
   const flush = (): void => {
     const t = buf.trim()
     buf = ''
+    sawInlineTag = false
     if (t.length === 0) return
     const seg: EmotionSegment = { text: t, whisper }
     // preBreakMs 由调用方在 flush 之后、push 之前注入（保留到「下一段」语义）。
@@ -71,12 +88,16 @@ export function parseEmotionTags(raw: string): EmotionSegment[] {
   let lastEnd = 0
   for (const m of raw.matchAll(TAG_RE)) {
     const idx = m.index ?? 0
-    buf += raw.slice(lastEnd, idx)
+    appendText(raw.slice(lastEnd, idx))
     lastEnd = idx + m[0].length
     const tag = (m[1] ?? '').toLowerCase().trim()
     if (tag.startsWith('break')) {
-      const ms = Number(m.groups?.ms ?? 0)
-      if (!Number.isFinite(ms) || ms <= 0) continue
+      const rawMs = Number(m.groups?.ms ?? 0)
+      if (!Number.isFinite(rawMs) || rawMs <= 0) continue
+      const remaining = Math.max(0, MAX_TOTAL_BREAK_MS - totalBreakMs)
+      const ms = Math.min(rawMs, MAX_BREAK_MS, remaining)
+      if (ms <= 0) continue
+      totalBreakMs += ms
       // break 是结构分隔符：先 flush 已累积文本（≥1 个非空字符）。
       // 语义：break ms 累加到「它之前的最后一段」的 preBreakMs（不论 buf 是否空）。
       if (buf.trim().length > 0) {
@@ -98,14 +119,11 @@ export function parseEmotionTags(raw: string): EmotionSegment[] {
       flush()
       whisper = false
     } else {
-      // laugh / sigh / emphasis：单标签，剥离不读出；不产生段
-      // —— 但若之前累积了文本，应 flush 成段（标签相当于"段尾标点"前的边界）
-      // 这里选择不在标签处强行切段，因为它们语义上不是分隔；flush 留给后续真实文本到达时
-      // 但若标签出现在文本末尾，需要把累积的文本刷出
-      // ——我们不在这里 flush，留给文本继续累积时由下一次 flush 触发；末尾累积在循环结束后统一 flush
+      // laugh / sigh / emphasis：单标签，剥离不读出；不产生段，记录边界防英文词粘连。
+      sawInlineTag = true
     }
   }
-  buf += raw.slice(lastEnd)
+  appendText(raw.slice(lastEnd))
   flush()
   // 收尾：若仍有 pendingBreakMs（break 在最末无后续段文本），累加到「最后一段」
   if (pendingBreakMs > 0) {

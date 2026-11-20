@@ -13,8 +13,25 @@ export function sniffAudioMime(buf: Buffer, fallback: string): string {
   ) {
     return 'audio/wav'
   }
-  // ID3 标签或 MPEG 帧同步（0xFF 0xEx）
+  // Ogg / Opus 容器（OggS）与 FLAC 容器（fLaC）
+  if (buf.length >= 4 && buf.subarray(0, 4).toString('latin1') === 'OggS') return 'audio/ogg'
+  if (buf.length >= 4 && buf.subarray(0, 4).toString('latin1') === 'fLaC') return 'audio/flac'
+  // ID3v2 标签（MP3）
   if (buf.length >= 3 && buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) return 'audio/mpeg'
-  if (buf.length >= 2 && buf[0] === 0xff && (buf[1]! & 0xe0) === 0xe0) return 'audio/mpeg'
+  // ADTS AAC 同步字（0xFF 0xF0/0xF1/0xF8/0xF9，layer 位为 00）
+  if (buf.length >= 7 && buf[0] === 0xff && (buf[1]! & 0xf6) === 0xf0) return 'audio/aac'
+  // MPEG Audio 帧同步（Layer II/III）：排除保留版本(0x08)、保留/ADTS层(0x00)、
+  // Layer I/UTF-16LE BOM(0xFF 0xFE，layer=0x06) 及非法码率/采样率位（0xF0 / 0x0C）。
+  if (
+    buf.length >= 3 &&
+    buf[0] === 0xff &&
+    (buf[1]! & 0xe0) === 0xe0 &&
+    (buf[1]! & 0x18) !== 0x08 &&
+    ((buf[1]! & 0x06) === 0x02 || (buf[1]! & 0x06) === 0x04) &&
+    (buf[2]! & 0xf0) !== 0xf0 &&
+    (buf[2]! & 0x0c) !== 0x0c
+  ) {
+    return 'audio/mpeg'
+  }
   return fallback
 }

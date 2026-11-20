@@ -5,12 +5,12 @@
  * 背景：旧模型是「预设只能选，key 只能改 profile YAML」，用户要接一家新平台必须去编辑
  * 宿主配置文件——既不直观也不可用（用户原话：一个 OpenAI 兼容「都不能直接配置路径」）。
  *
- * 新模型（四层，后者优先）：
+ * 新模型（四层，前者优先：设置 > 预设 > 配置文件 > 空串）：
  *   设置卡片（浏览器里填，随设置持久化到主机侧 0600 文件）
  *     ↓ 覆盖
- *   profile YAML 的 openaiTts.*
+ *   内置预设 OPENAI_PRESETS[id]（未选预设或选「自定义」时跳过）
  *     ↓ 覆盖
- *   内置预设 OPENAI_PRESETS[id]（未选预设时跳过）
+ *   profile YAML 的 openaiTts.*
  *     ↓
  *   空串（引擎报 not_configured，不猜）
  *
@@ -64,11 +64,11 @@ export interface ResolvedOnlineTts {
 
 const trim = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
 
-/** 取预设：空串 / 'custom' / 未知 id 一律 null（调用方回落设置与配置文件）。 */
+/** 取预设：空串 / 'custom' / 未知 id / 原型键一律 null（调用方回落设置与配置文件）。 */
 export function lookupPreset(presetId: string): OpenAiPreset | null {
   const id = trim(presetId)
   if (!id || id === CUSTOM_PRESET_ID) return null
-  return OPENAI_PRESETS[id] ?? null
+  return Object.hasOwn(OPENAI_PRESETS, id) ? OPENAI_PRESETS[id]! : null
 }
 
 /**

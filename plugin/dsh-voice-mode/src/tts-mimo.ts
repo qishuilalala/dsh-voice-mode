@@ -52,6 +52,50 @@ const MIME: Record<MimoResponseFormat, string> = {
   wav: 'audio/wav',
   mp3: 'audio/mpeg',
 }
+/** I11：MiMo JSON 响应体上限（24 MiB，对应约 16 MiB base64 音频）与错误体截断上限（8 KiB）。 */
+const MAX_JSON_BYTES = 24 * 1024 * 1024
+const MAX_ERROR_BYTES = 8 * 1024
+
+async function readMimoBytes(res: Response, maxBytes: number, truncate: boolean): Promise<Buffer> {
+  const lenHeader = Number(res.headers.get('content-length') ?? 0)
+  if (!truncate && Number.isFinite(lenHeader) && lenHeader > maxBytes) {
+    await res.body?.cancel().catch(() => undefined)
+    throw new MimoTtsError('mimo_too_large', `response exceeds ${maxBytes} bytes`)
+  }
+  if (res.body && typeof res.body.getReader === 'function') {
+    const reader = res.body.getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (!value || value.byteLength === 0) continue
+        if (total + value.byteLength > maxBytes) {
+          if (truncate) {
+            const take = maxBytes - total
+            if (take > 0) chunks.push(value.subarray(0, take))
+            await reader.cancel().catch(() => undefined)
+            break
+          }
+          await reader.cancel().catch(() => undefined)
+          throw new MimoTtsError('mimo_too_large', `response exceeds ${maxBytes} bytes`)
+        }
+        chunks.push(value)
+        total += value.byteLength
+      }
+    } finally {
+      reader.releaseLock()
+    }
+    return Buffer.concat(chunks)
+  }
+  const buf = Buffer.from(await res.arrayBuffer())
+  if (buf.length > maxBytes) {
+    if (truncate) return buf.subarray(0, maxBytes)
+    throw new MimoTtsError('mimo_too_large', `response exceeds ${maxBytes} bytes`)
+  }
+  return buf
+}
 
 import { sniffAudioMime } from './audio-format.ts'
 export { sniffAudioMime } from './audio-format.ts'
@@ -69,11 +113,14 @@ export const MIMO_DEFAULT_BASE_URL = 'https://api.xiaomimimo.com/v1'
 export const MIMO_DEFAULT_MODEL = 'mimo-v2.5-tts'
 export const MIMO_DEFAULT_VOICE = 'mimo_default'
 
-/** `{baseUrl}/chat/completions`，容忍末尾斜杠与已带后缀；只接受 http(s)。 */
+/** `{baseUrl}/chat/completions`，容忍末尾斜杠与已带后缀；只接受无凭据的 http(s)。 */
 export function mimoChatUrl(baseUrl: string): string {
   const url = new URL(baseUrl.trim())
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new MimoTtsError('mimo_bad_url', 'baseUrl must be http(s)')
+  }
+  if (url.username || url.password) {
+    throw new MimoTtsError('mimo_bad_url', 'baseUrl must not include credentials')
   }
   const suffix = '/chat/completions'
   const noSlash = url.pathname.replace(/\/+$/, '')
@@ -97,12 +144,16 @@ export function extractMimoAudio(body: unknown): string | null {
 
 /**
  * base64 严格校验：非法字符会让 Buffer 静默丢弃前缀，产出不可播音频（→ 播放端“有声音但听不懂”）。
- * 同时容忍 **URL-safe 变体**（`-`/`_`）：不同网关会把 `+`/`/` 换成这两种，若不归一化会被误判成
- * 坏载荷而白白回退本地（自查 2026-11-19）。
+ * 同时容忍 **URL-safe 变体**（`-`/`_`）及合法的无填充（unpadded）形式，避免合法网关载荷被误判。
  */
 function decodeBase64Audio(data: string): Buffer {
-  const clean = data.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/')
-  if (clean.length === 0 || clean.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(clean)) {
+  const raw = data.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/')
+  if (raw.length === 0 || raw.length % 4 === 1) {
+    throw new MimoTtsError('mimo_bad_audio', 'audio payload is not valid base64')
+  }
+  const padLen = raw.length % 4 === 0 ? 0 : 4 - (raw.length % 4)
+  const clean = padLen > 0 ? raw + '='.repeat(padLen) : raw
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(clean)) {
     throw new MimoTtsError('mimo_bad_audio', 'audio payload is not valid base64')
   }
   return Buffer.from(clean, 'base64')
@@ -120,6 +171,7 @@ export class MimoTtsEngine implements TtsEngine {
   private readonly now: () => number
   private fallbackEngine: TtsEngine | null = null
   private inflight = new Set<AbortController>()
+  private closed = false
   private downUntil = 0
   private lastError?: MimoTtsError
   private lastMime: string
@@ -159,22 +211,18 @@ export class MimoTtsEngine implements TtsEngine {
     if (rate !== undefined && Number.isFinite(rate)) this.rate = rate
   }
 
-  /** 合成并**随结果返回** MIME（同 openai 引擎：引擎级 lastMime 在并发下会串味）。 */
+  /** 合成并**随结果返回**本句专属 MIME（B6：不从共享 this.lastMime 事后回读，并发异构容器不串味）。 */
   async synthesizeWithMime(text: string, options: { voice?: string; rate?: number } = {}): Promise<{ buf: Buffer; mime: string }> {
-    const buf = await this.synthesize(text, options)
-    return { buf, mime: this.mime }
-  }
-
-  async synthesize(text: string, options: { voice?: string; rate?: number } = {}): Promise<Buffer> {
+    if (this.closed) throw new MimoTtsError('mimo_closed', 'remote TTS engine closed')
     const input = stripEmotionTags(text).replace(/\s+/g, ' ').trim()
-    if (input === '') return Buffer.alloc(0)
+    if (input === '') return { buf: Buffer.alloc(0), mime: this.lastMime }
     if (this.now() >= this.downUntil) {
       try {
-        const buf = await this.remote(input, options)
+        const res = await this.remote(input, options)
         this.lastError = undefined
-        // 注意：不要在这里用配置值覆盖 —— remote() 已按真实字节嗅探过容器格式。
-        return buf
+        return res
       } catch (e) {
+        if (this.closed) throw new MimoTtsError('mimo_closed', 'remote TTS engine closed')
         if ((e as Error).name === 'AbortError' && !(e instanceof MimoTtsError)) throw e
         const err = e instanceof MimoTtsError ? e : new MimoTtsError('mimo_unreachable', String(e))
         this.lastError = err
@@ -183,7 +231,12 @@ export class MimoTtsEngine implements TtsEngine {
         console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${redactSecrets(err)}`)
       }
     }
+    if (this.closed) throw new MimoTtsError('mimo_closed', 'remote TTS engine closed')
     return this.viaFallback(text, options)
+  }
+
+  async synthesize(text: string, options: { voice?: string; rate?: number } = {}): Promise<Buffer> {
+    return (await this.synthesizeWithMime(text, options)).buf
   }
 
   /** 自然语言风格指令：配置的 instructions + 语速（MiMo 无 speed 字段，语速走风格控制）。 */
@@ -198,7 +251,7 @@ export class MimoTtsEngine implements TtsEngine {
     return parts.join('; ')
   }
 
-  private async remote(input: string, options: { voice?: string; rate?: number }): Promise<Buffer> {
+  private async remote(input: string, options: { voice?: string; rate?: number }): Promise<{ buf: Buffer; mime: string }> {
     if (this.url === null) throw this.configError!
     const messages: Array<{ role: string; content: string }> = []
     const instruction = this.styleInstruction(options.rate ?? this.rate)
@@ -222,13 +275,28 @@ export class MimoTtsEngine implements TtsEngine {
     }, this.timeoutMs)
     this.inflight.add(ac)
     try {
-      const res = await this.fetchImpl(this.url, { method: 'POST', headers, body: JSON.stringify(body), signal: ac.signal })
+      // B5：禁止自动跟随重定向，避免 307/308 把 api-key 头与朗读正文转发给第三方域。
+      const res = await this.fetchImpl(this.url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: ac.signal,
+        redirect: 'error',
+      })
       if (!res.ok) {
-        // R5 复核：401 时厂商可能回显 key 片段，而这条消息会进日志 → 先脱敏再拼（ADR-0013）。
-        const detail = redactBodySnippet(await res.text().catch(() => ''))
+        // R5 复核：401 时厂商可能回显 key 片段，而这条消息会进日志 → 限流读取并先脱敏再拼（ADR-0013）。
+        const rawErr = await readMimoBytes(res, MAX_ERROR_BYTES, true).then((b) => b.toString('utf8'), () => '')
+        const detail = redactBodySnippet(rawErr)
         throw new MimoTtsError('mimo_http_error', `HTTP ${res.status}${detail ? `: ${detail}` : ''}`)
       }
-      const data = extractMimoAudio(await res.json())
+      const rawJson = (await readMimoBytes(res, MAX_JSON_BYTES, false)).toString('utf8')
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(rawJson)
+      } catch {
+        throw new MimoTtsError('mimo_bad_payload', 'non-JSON response from MiMo TTS')
+      }
+      const data = extractMimoAudio(parsed)
       if (!data) throw new MimoTtsError('mimo_empty_audio', 'empty audio')
       const buf = decodeBase64Audio(data)
       if (buf.length === 0) throw new MimoTtsError('mimo_empty_audio', 'empty audio')
@@ -236,10 +304,12 @@ export class MimoTtsEngine implements TtsEngine {
       // 200 不等于音频：网关可能回 HTML/JSON。魔数未知且 content-type 非音频 → 判失败（A2 审计）。
       const ctype = (res.headers.get('content-type') ?? '').toLowerCase()
       const sniffed = sniffAudioMime(buf, '')
-      if (sniffed) this.lastMime = sniffed
-      else if (ctype.startsWith('audio/')) this.lastMime = ctype.split(';')[0].trim()
-      else throw new MimoTtsError("mimo_bad_payload", `non-audio response (content-type: ${ctype || "none"})`)
-      return buf
+      let mime: string
+      if (sniffed) mime = sniffed
+      else if (ctype.startsWith('audio/')) mime = ctype.split(';')[0].trim()
+      else throw new MimoTtsError('mimo_bad_payload', `non-audio response (content-type: ${ctype || 'none'})`)
+      this.lastMime = mime
+      return { buf, mime }
     } catch (e) {
       if (timedOut) throw new MimoTtsError('mimo_timeout', `no audio within ${this.timeoutMs} ms`)
       throw e
@@ -249,15 +319,20 @@ export class MimoTtsEngine implements TtsEngine {
     }
   }
 
-  private async viaFallback(text: string, options: { voice?: string; rate?: number }): Promise<Buffer> {
+  private async viaFallback(text: string, options: { voice?: string; rate?: number }): Promise<{ buf: Buffer; mime: string }> {
+    if (this.closed) throw new MimoTtsError('mimo_closed', 'remote TTS engine closed')
     if (!this.options.fallback) {
       throw this.lastError ?? new MimoTtsError('mimo_unreachable', 'remote TTS unavailable')
     }
     this.fallbackEngine ??= this.options.fallback()
     // 回退引擎用自己的音色（远程音色名对本地引擎无意义），只沿用语速。
-    const buf = await this.fallbackEngine.synthesize(text, { rate: options.rate ?? this.rate })
-    this.lastMime = this.fallbackEngine.mime
-    return buf
+    const fb = this.fallbackEngine
+    const rateOpt = { rate: options.rate ?? this.rate }
+    const res = fb.synthesizeWithMime
+      ? await fb.synthesizeWithMime(text, rateOpt)
+      : { buf: await fb.synthesize(text, rateOpt), mime: fb.mime }
+    this.lastMime = res.mime
+    return res
   }
 
   interrupt(): void {
@@ -280,6 +355,7 @@ export class MimoTtsEngine implements TtsEngine {
   }
 
   async close(): Promise<void> {
+    this.closed = true
     this.interrupt()
     const fb = this.fallbackEngine
     this.fallbackEngine = null

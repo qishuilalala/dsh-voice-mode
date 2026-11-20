@@ -101,3 +101,4 @@ test/audit-guards-2026-11-20.test.mjs
 test/hook-order.test.mjs
 test/asr-deep-audit.test.mjs
 test/asr-host-deep-audit.test.mjs
+test/tts-deep-audit.test.mjs

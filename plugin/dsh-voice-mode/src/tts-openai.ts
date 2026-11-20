@@ -43,6 +43,50 @@ export interface OpenAiTtsOptions {
 }
 
 const MIME: Record<OpenAiResponseFormat, string> = { mp3: 'audio/mpeg', wav: 'audio/wav' }
+/** I11：单句音频响应体上限（16 MiB）与错误页截断上限（8 KiB），防恶意/异常上游 OOM。 */
+const MAX_AUDIO_BYTES = 16 * 1024 * 1024
+const MAX_ERROR_BYTES = 8 * 1024
+
+async function readResponseBytes(res: Response, maxBytes: number, truncate: boolean): Promise<Buffer> {
+  const lenHeader = Number(res.headers.get('content-length') ?? 0)
+  if (!truncate && Number.isFinite(lenHeader) && lenHeader > maxBytes) {
+    await res.body?.cancel().catch(() => undefined)
+    throw new OpenAiTtsError('openai_too_large', `audio response exceeds ${maxBytes} bytes`)
+  }
+  if (res.body && typeof res.body.getReader === 'function') {
+    const reader = res.body.getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (!value || value.byteLength === 0) continue
+        if (total + value.byteLength > maxBytes) {
+          if (truncate) {
+            const take = maxBytes - total
+            if (take > 0) chunks.push(value.subarray(0, take))
+            await reader.cancel().catch(() => undefined)
+            break
+          }
+          await reader.cancel().catch(() => undefined)
+          throw new OpenAiTtsError('openai_too_large', `audio response exceeds ${maxBytes} bytes`)
+        }
+        chunks.push(value)
+        total += value.byteLength
+      }
+    } finally {
+      reader.releaseLock()
+    }
+    return Buffer.concat(chunks)
+  }
+  const buf = Buffer.from(await res.arrayBuffer())
+  if (buf.length > maxBytes) {
+    if (truncate) return buf.subarray(0, maxBytes)
+    throw new OpenAiTtsError('openai_too_large', `audio response exceeds ${maxBytes} bytes`)
+  }
+  return buf
+}
 
 export class OpenAiTtsError extends Error {
   readonly code: string
@@ -53,11 +97,14 @@ export class OpenAiTtsError extends Error {
   }
 }
 
-/** `{baseUrl}/audio/speech`，容忍末尾斜杠与已带后缀；只接受 http(s)。 */
+/** `{baseUrl}/audio/speech`，容忍末尾斜杠与已带后缀；只接受无凭据的 http(s)。 */
 export function speechUrl(baseUrl: string): string {
   const url = new URL(baseUrl.trim())
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new OpenAiTtsError('openai_bad_url', 'baseUrl must be http(s)')
+  }
+  if (url.username || url.password) {
+    throw new OpenAiTtsError('openai_bad_url', 'baseUrl must not include credentials')
   }
   const noSlash = url.pathname.replace(/\/+$/, '')
   const base = noSlash.endsWith('/audio/speech') ? noSlash.slice(0, -'/audio/speech'.length) : noSlash
@@ -77,6 +124,7 @@ export class OpenAiTtsEngine implements TtsEngine {
   private readonly now: () => number
   private fallbackEngine: TtsEngine | null = null
   private inflight = new Set<AbortController>()
+  private closed = false
   private downUntil = 0
   private lastError?: OpenAiTtsError
   private lastMime: string
@@ -104,27 +152,33 @@ export class OpenAiTtsEngine implements TtsEngine {
     this.lastMime = MIME[this.format]
   }
 
-  /** 最近一次成功合成所用格式（远程或回退引擎的 MIME 可能不同；队列在 synthesize 之后读取）。 */
+  /** 最近一次成功合成所用格式（远程或回退引擎的 MIME 可能不同；并发请用 synthesizeWithMime）。 */
   get mime(): string {
     return this.lastMime
   }
 
   updateVoice(voice: string, rate?: number): void {
-    // 空串 = 回落到配置值（设置面板清空音色时，须用回配置而非残留旧音色）。
-    this.voice = voice || this.options.voice
+    // 空串/纯空白 = 回落到配置值（设置面板清空音色时，须用回配置而非残留旧音色）。
+    this.voice = voice.trim() || this.options.voice
     if (rate !== undefined && Number.isFinite(rate)) this.rate = rate
   }
 
   async synthesize(text: string, options: { voice?: string; rate?: number } = {}): Promise<Buffer> {
+    return (await this.synthesizeWithMime(text, options)).buf
+  }
+
+  /** 合成并**随结果返回**本句专属 MIME（B6：不从共享 this.lastMime 事后回读，并发异构容器不串味）。 */
+  async synthesizeWithMime(text: string, options: { voice?: string; rate?: number } = {}): Promise<{ buf: Buffer; mime: string }> {
+    if (this.closed) throw new OpenAiTtsError('openai_closed', 'remote TTS engine closed')
     const input = stripEmotionTags(text).replace(/\s+/g, ' ').trim()
-    if (input === '') return Buffer.alloc(0)
+    if (input === '') return { buf: Buffer.alloc(0), mime: this.lastMime }
     if (this.now() >= this.downUntil) {
       try {
-        const buf = await this.remote(input, options)
+        const res = await this.remote(input, options)
         this.lastError = undefined
-        // 注意：不要在这里用配置值覆盖 —— remote() 已按真实字节嗅探容器格式。
-        return buf
+        return res
       } catch (e) {
+        if (this.closed) throw new OpenAiTtsError('openai_closed', 'remote TTS engine closed')
         if ((e as Error).name === 'AbortError' && !(e instanceof OpenAiTtsError)) throw e
         const err = e instanceof OpenAiTtsError ? e : new OpenAiTtsError('openai_unreachable', String(e))
         this.lastError = err
@@ -133,16 +187,11 @@ export class OpenAiTtsEngine implements TtsEngine {
         console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${redactSecrets(err)}`)
       }
     }
+    if (this.closed) throw new OpenAiTtsError('openai_closed', 'remote TTS engine closed')
     return this.viaFallback(text, options)
   }
 
-  /** 合成并**随结果返回** MIME（A2 审计 Important：引擎级 lastMime 在并发下会串味）。 */
-  async synthesizeWithMime(text: string, options: { voice?: string; rate?: number } = {}): Promise<{ buf: Buffer; mime: string }> {
-    const buf = await this.synthesize(text, options)
-    return { buf, mime: this.mime }
-  }
-
-  private async remote(input: string, options: { voice?: string; rate?: number }): Promise<Buffer> {
+  private async remote(input: string, options: { voice?: string; rate?: number }): Promise<{ buf: Buffer; mime: string }> {
     if (this.url === null) throw this.configError!
     const body: Record<string, unknown> = {
       model: this.options.model,
@@ -167,27 +216,37 @@ export class OpenAiTtsEngine implements TtsEngine {
     }, this.timeoutMs)
     this.inflight.add(ac)
     try {
-      const res = await this.fetchImpl(this.url, { method: 'POST', headers, body: JSON.stringify(body), signal: ac.signal })
+      // B5：禁止自动跟随重定向，避免 307/308 把 Authorization 头与朗读正文转发给第三方域。
+      const res = await this.fetchImpl(this.url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: ac.signal,
+        redirect: 'error',
+      })
       if (!res.ok) {
-        // R5 复核：401 时厂商可能回显 key 片段，而这条消息会进日志 → 先脱敏再拼（ADR-0013）。
-        const detail = redactBodySnippet(await res.text().catch(() => ''))
+        // R5 复核：401 时厂商可能回显 key 片段，而这条消息会进日志 → 限流读取并先脱敏再拼（ADR-0013）。
+        const rawErr = await readResponseBytes(res, MAX_ERROR_BYTES, true).then((b) => b.toString('utf8'), () => '')
+        const detail = redactBodySnippet(rawErr)
         throw new OpenAiTtsError('openai_http_error', `HTTP ${res.status}${detail ? `: ${detail}` : ''}`)
       }
       const ctype = (res.headers.get('content-type') ?? '').toLowerCase()
-      const buf = Buffer.from(await res.arrayBuffer())
+      const buf = await readResponseBytes(res, MAX_AUDIO_BYTES, false)
       if (buf.length === 0) throw new OpenAiTtsError('openai_empty_audio', 'empty audio')
       // 以真实字节为准：自建/代理常忽略 response_format（MiMo 实测过 mp3 请求返回 WAV）。
       // 且 200 不等于音频：反代/网关可能回登录页 HTML——魔数未知且 content-type 非音频时必须判失败，
       // 否则会被 sniff 兜底标成 audio/mpeg 照发，客户端解码出无声（A2 审计 Important）。
       const sniffed = sniffAudioMime(buf, '')
+      let mime: string
       if (sniffed) {
-        this.lastMime = sniffed
+        mime = sniffed
       } else if (ctype.startsWith('audio/')) {
-        this.lastMime = ctype.split(';')[0].trim()
+        mime = ctype.split(';')[0].trim()
       } else {
         throw new OpenAiTtsError('openai_bad_payload', `non-audio response (content-type: ${ctype || 'none'})`)
       }
-      return buf
+      this.lastMime = mime
+      return { buf, mime }
     } catch (e) {
       if (timedOut) throw new OpenAiTtsError('openai_timeout', `no audio within ${this.timeoutMs} ms`)
       throw e
@@ -197,15 +256,20 @@ export class OpenAiTtsEngine implements TtsEngine {
     }
   }
 
-  private async viaFallback(text: string, options: { voice?: string; rate?: number }): Promise<Buffer> {
+  private async viaFallback(text: string, options: { voice?: string; rate?: number }): Promise<{ buf: Buffer; mime: string }> {
+    if (this.closed) throw new OpenAiTtsError('openai_closed', 'remote TTS engine closed')
     if (!this.options.fallback) {
       throw this.lastError ?? new OpenAiTtsError('openai_unreachable', 'remote TTS unavailable')
     }
     this.fallbackEngine ??= this.options.fallback()
     // 回退引擎用它自己的音色（远程音色名对本地引擎无意义），只沿用语速。
-    const buf = await this.fallbackEngine.synthesize(text, { rate: options.rate ?? this.rate })
-    this.lastMime = this.fallbackEngine.mime
-    return buf
+    const fb = this.fallbackEngine
+    const rateOpt = { rate: options.rate ?? this.rate }
+    const res = fb.synthesizeWithMime
+      ? await fb.synthesizeWithMime(text, rateOpt)
+      : { buf: await fb.synthesize(text, rateOpt), mime: fb.mime }
+    this.lastMime = res.mime
+    return res
   }
 
   interrupt(): void {
@@ -228,6 +292,7 @@ export class OpenAiTtsEngine implements TtsEngine {
   }
 
   async close(): Promise<void> {
+    this.closed = true
     this.interrupt()
     const fb = this.fallbackEngine
     this.fallbackEngine = null
@@ -332,9 +397,9 @@ export function resolveOpenAiApiKey(
   ).apiKey
 }
 
-/** 按预设 id 取预设（空/未知 → null，调用方回落 Config 文件值）。 */
+/** 按预设 id 取预设（空/未知/原型键 → null，调用方回落 Config 文件值）。 */
 export function resolveOpenAiEndpoint(preset: string): OpenAiPreset | null {
-  return OPENAI_PRESETS[preset] ?? null
+  return Object.hasOwn(OPENAI_PRESETS, preset) ? OPENAI_PRESETS[preset]! : null
 }
 
 /** 引擎实际采用的 baseUrl/model/voice（由「预设 + 设置值 + Config」三方合成）。 */

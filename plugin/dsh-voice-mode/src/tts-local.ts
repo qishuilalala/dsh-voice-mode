@@ -248,9 +248,12 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
   /** I-10：ensureReady 的 IIFE 是否在途。在途时 respawn/interrupt 不得清 ready，
    *  否则冷启动窗内并发的下一次 ensureReady 会再起一个 IIFE → 双 init、旧引擎不 free。 */
   let starting = false
+  /** I10：标记本轮冷启动是否被主动打断，避免用户 barge-in 误触发 60s 初始化失败断路器。 */
+  let initInterrupted = false
 
   /** 杀掉子进程（下一句合成时自动重启）。 */
   const respawnChild = async (): Promise<void> => {
+    if (starting) initInterrupted = true
     if (child) {
       child.kill()
       child = null
@@ -312,12 +315,15 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
 
   const ensureReady = (): Promise<void> => {
     if (ready && child) return ready
+    // I10：若上轮初始化已结束（!starting）但 child 已被清空，清掉陈旧 ready 句柄，避免永久返回已 resolve 的空壳。
+    if (ready && !child && !starting) ready = null
     if (Date.now() < initFailUntil) {
       return Promise.reject(initFailError ?? new Error('local TTS engine is in failure cooldown'))
     }
     if (!ready) {
       ready = (async () => {
         starting = true
+        initInterrupted = false
         engineLoading = true
         engineError = undefined
         engineErrorCode = undefined
@@ -459,9 +465,11 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
         },
         (e) => {
           ready = null // 失败：弃句柄，冷却结束后再重走下载/init
-          // 断路器：初始化失败（模型缺失/下载失败/init 失败）在冷却期内不再重跑。
-          initFailUntil = Date.now() + initCooldownMs
-          initFailError = e instanceof Error ? e : new Error(String(e))
+          // 断路器：真实初始化失败进入冷却；主动打断（interrupt）或关闭（close）不计为故障。
+          if (!initInterrupted && !closed) {
+            initFailUntil = Date.now() + initCooldownMs
+            initFailError = e instanceof Error ? e : new Error(String(e))
+          }
           throw e
         },
       )
