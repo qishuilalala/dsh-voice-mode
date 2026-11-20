@@ -1081,7 +1081,7 @@ export function apply(ctx: Context, config: Config): void {
   let replacementHits: number[] = []
   let replacementRuleCount = 0
   /** 可热更换的 replacer 盒：feed 出口经 options.replaceText 每次调用读取，重建即生效，无需重建 asr runtime。 */
-  const replacerBox: { fn: (text: string) => string } = { fn: (text: string) => text }
+  const replacerBox: { fn: (text: string, countHit?: boolean) => string } = { fn: (text: string) => text }
   const rebuildReplacer = (rules: readonly AsrReplacement[]): void => {
     replacementRuleCount = rules.length
     replacementHits = new Array<number>(rules.length).fill(0)
@@ -1115,7 +1115,7 @@ export function apply(ctx: Context, config: Config): void {
     // 待机态 push-to-talk 属产品决策（要改的是客户端手势开放条件），PM 已登记待用户拍板，
     // 此处不加功能；host 侧只保证「manual 时非按压帧不入流」这一既有语义不被悄悄扩大。
     bargeInMode: () => vset.bargeInMode,
-    replaceText: (text: string) => replacerBox.fn(text),
+    replaceText: (text: string, isFinal?: boolean) => replacerBox.fn(text, isFinal !== false),
   })
   // 卸载/热重载时释放 ASR runtime（清段 + 定时器，防悬挂）。
   ctx.effect(() => () => asr.dispose())

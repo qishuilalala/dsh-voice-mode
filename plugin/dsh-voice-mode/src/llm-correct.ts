@@ -12,6 +12,8 @@
  * 无 sessionId 直放行——已实证 index.ts:836-840）。
  */
 
+import { redactSecrets } from './redact.ts'
+
 /** ctx 的最小面（本模块只用 get('llm')/get('agentDefaultModel')；其余不依赖）。
  *  **必须走 ctx.get 可选查找，不能属性访问**：cordis 对未 inject 的服务属性访问抛错
  *  （ReflectService get trap「cannot get property without inject」，审查 B1 用兄弟插件
@@ -160,18 +162,30 @@ export async function correctText(
     const sel = (ctx?.get?.('agentDefaultModel') as DefaultModelLike | undefined)?.currentSelection?.()
     if (!llm || typeof llm.stream !== 'function') return text
     if (!sel?.provider || !sel?.model) return text
-    const stream = llm.stream({
-      provider: sel.provider,
-      model: sel.model,
-      system: correctionSystem(lang),
-      // host 侧自弃 10s（早于客户端 12s，审查 M3）：超时后流抛错→catch→回退原文，
-      // 客户端不必等自己的 AbortSignal.timeout 才拿到响应（省 token 与等待）。
-      signal: AbortSignal.timeout(10000),
-      messages: [{ role: 'user', content: [{ type: 'text', text: trimmed }] }],
-    })
+    const ac = new AbortController()
+    const timer = setTimeout(() => ac.abort(new Error('llm correction timeout')), 10000)
+    const maxAllowed = Math.max(trimmed.length * 3, trimmed.length + 24)
     let out = ''
-    for await (const chunk of stream) {
-      if (chunk && chunk.type === 'text-delta' && typeof chunk.text === 'string') out += chunk.text
+    try {
+      const stream = llm.stream({
+        provider: sel.provider,
+        model: sel.model,
+        system: correctionSystem(lang),
+        // host 侧自弃 10s（早于客户端 12s，审查 M3）：超时或输出失控超长均立即 abort。
+        signal: ac.signal,
+        messages: [{ role: 'user', content: [{ type: 'text', text: trimmed }] }],
+      })
+      for await (const chunk of stream) {
+        if (chunk && chunk.type === 'text-delta' && typeof chunk.text === 'string') {
+          out += chunk.text
+          if (out.length > maxAllowed + 32) {
+            ac.abort(new Error('llm correction output exceeded max length'))
+            return text
+          }
+        }
+      }
+    } finally {
+      clearTimeout(timer)
     }
     const corrected = out.trim()
     // R1 I-3：模型输出护栏——零护栏时弱模型加前言/复述/作答，用户消息被静默替换。
@@ -224,7 +238,8 @@ export async function correctText(
       if (CORRECTION_PREAMBLE_RE.test(noFiller)) return text
     }
     return corrected || text
-  } catch {
+  } catch (e) {
+    console.warn(`[dsh-voice-mode] llm correction failed: ${redactSecrets(e)}`)
     return text
   }
 }

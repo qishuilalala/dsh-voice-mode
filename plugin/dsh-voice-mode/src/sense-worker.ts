@@ -93,7 +93,11 @@ export function createSenseWorkerClient(worker: WorkerLike): SenseWorkerClient {
     if (!p) return
     pending.delete(msg.id)
     if (!msg.ok) {
-      p.resolve(null)
+      if (p.op === 'create') {
+        p.reject(new Error(msg.error ?? 'sense worker create failed'))
+      } else {
+        p.resolve(null)
+      }
       return
     }
     // create 回执 = 布尔（recognizer 就绪）；decode 回执 = 文本。

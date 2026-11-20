@@ -26,7 +26,7 @@ export const AsrReplacementSchema: z<AsrReplacement> = z.object({
   to: z.string().description('The spelling you want, e.g. "Sakina".'),
 })
 
-export type AsrReplacer = (text: string) => string
+export type AsrReplacer = (text: string, countHit?: boolean) => string
 
 /**
  * 词表覆盖层的体积上限（**UTF-8 字节**，与宿主 MAX_JSON_BODY 16KB 留余量）。
@@ -100,13 +100,13 @@ export function createAsrReplacer(
   entries.sort((a, b) => b.length - a.length)
   const targets = new Map<string, { to: string; ruleIndex: number }>()
   for (const e of entries) if (!targets.has(e.key)) targets.set(e.key, { to: e.to, ruleIndex: e.ruleIndex })
-  const regex = new RegExp(entries.map((e) => `(${e.pattern})`).join('|'), 'giu')
-  return (text) => {
+  const regex = new RegExp(entries.map((e) => `(?:${e.pattern})`).join('|'), 'giu')
+  return (text, countHit = true) => {
     if (!text) return text
     return text.replace(regex, (match) => {
       const hit = targets.get(match.replace(/\s+/g, '').toLowerCase())
       if (!hit) return match
-      if (onHit) onHit(hit.ruleIndex)
+      if (onHit && countHit) onHit(hit.ruleIndex)
       return hit.to
     })
   }

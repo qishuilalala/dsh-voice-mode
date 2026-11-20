@@ -34,7 +34,7 @@ export const spokenPrompt = (lang: PromptLang): string => (lang === 'en' ? EN : 
 /** 把客户端上报的界面语言归并为 PromptLang：以 zh 开头 → zh；其它非空 → en；缺失/非法 → zh（旧客户端兼容）。 */
 export function normalizePromptLang(raw: unknown): PromptLang {
   if (typeof raw !== 'string' || raw === '' || raw.length > 32) return 'zh'
-  return /^zh\b/i.test(raw) ? 'zh' : 'en'
+  return /^zh(?:[-_]|$)/i.test(raw) ? 'zh' : 'en'
 }
 
 /**

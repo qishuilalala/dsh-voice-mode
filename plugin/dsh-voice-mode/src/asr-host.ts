@@ -91,7 +91,8 @@ export interface AsrRuntimeOptions {
    *  manual = 用户按住 mic/Ctrl 才视为在说话。批 7O：detect 取值仅透传，
    *  host 侧闸门仍只判 === 'manual'（detect 的运行时降级由客户端第一级探测决定）。 */
   bargeInMode: () => 'auto' | 'manual' | 'detect'
-  /** 转写文本出口改写（中间结果与定稿）；缺省不改。 */ replaceText?: (text: string) => string
+  /** 转写文本出口改写（中间结果与定稿；isFinal=false 时不累加命中计数防膨胀）；缺省不改。 */
+  replaceText?: (text: string, isFinal?: boolean) => string
 }
 
 export interface AsrRuntime {
@@ -161,7 +162,15 @@ const yieldToLoop = (): Promise<void> => new Promise((resolve) => setImmediate(r
 export function pcmToSamples(buf: Buffer): Float32Array | null {
   // 0 长度留给增量定稿（final=1 空包）由调用方构造空样本；此处仍拒非法对齐。
   if (buf.length % 4 !== 0) return null
-  const out = new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4)
+  // 独立对齐拷贝：避免 buf.byteOffset % 4 !== 0 抛 RangeError、避免原地修改调用方 Buffer 或 pin 8KB slab。
+  const len = buf.length / 4
+  const out = new Float32Array(len)
+  if (buf.byteOffset % 4 === 0) {
+    out.set(new Float32Array(buf.buffer, buf.byteOffset, len))
+  } else {
+    const aligned = Buffer.from(buf)
+    out.set(new Float32Array(aligned.buffer, aligned.byteOffset, len))
+  }
   // A1 审计 Minor：只验对齐不验内容。NaN/Inf 会污染 VAD 门限与解码器状态
   //（客户端已清洗，但宿主不能假设调用方可信——本机任何进程都能 POST /asr）。
   let bad = 0
@@ -240,6 +249,43 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     allSamples: Float32Array[]
     /** 最近一次 feed 时刻（host 侧超时回收判定）。 */
     lastActivity: number
+    /** WASM 句柄释放标记（幂等守卫：防 decode 让出/并发 reset/dispose 触发 double-free 或 UAF）。 */
+    freed: boolean
+  }
+  const freeSegment = (s: Segment): void => {
+    if (s.freed) return
+    s.freed = true
+    try {
+      s.vad?.free?.()
+    } catch {
+      // ignore
+    }
+    try {
+      s.stream.free()
+    } catch {
+      // ignore
+    }
+  }
+  /** 后台模型下载取消控制器：dispose 时中止在途下载（防热重载后台残留）。 */
+  const dlAbort = new AbortController()
+  /** 按 (sessionId, epoch) 串行化 feedRaw：防止 decode yieldToLoop / ensureSessionVad 让出期间
+   *  同段并发 partial/final 交错读写或释放同一 WASM stream。 */
+  const segChains = new Map<string, Promise<void>>()
+  const withSegLock = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    const prev = segChains.get(key) ?? Promise.resolve()
+    let release!: () => void
+    const next = new Promise<void>((r) => {
+      release = r
+    })
+    const tail = prev.then(() => next)
+    segChains.set(key, tail)
+    await prev
+    try {
+      return await fn()
+    } finally {
+      release()
+      if (segChains.get(key) === tail) segChains.delete(key)
+    }
   }
   /** 进行中的段：sessionId -> epoch -> 段对象。改嵌套 Map（弃 sessionId#epoch 字符串拼接）：
    *  epoch 单调 + 按 sessionId 分组，天然消除「# 分隔符」与「前缀清理跨会话误清」两类边界。 */
@@ -281,7 +327,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         // 逐文件 ensure：已存在则校验 SHA256（篡改/损坏自愈重下），缺失则懒下载。
         // 不能只查存在性就跳过——否则损坏模型绕过校验被 recognizer 加载后崩溃。
         for (const f of MODEL_FILES) {
-          if (!(await ensureModelFile({ repo: MODEL_REPO, repoDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast }))) {
+          if (!(await ensureModelFile({ repo: MODEL_REPO, repoDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast, signal: dlAbort.signal }))) {
             asrFailAt = Date.now() + 60000
             broadcast('asr-error', { file: f.file })
             return false
@@ -334,7 +380,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     if (!vadLoading) {
       vadLoading = (async () => {
         for (const f of VAD_FILES) {
-          if (!(await ensureModelFile({ repo: VAD_REPO, repoDir: vadDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast }))) {
+          if (!(await ensureModelFile({ repo: VAD_REPO, repoDir: vadDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast, signal: dlAbort.signal }))) {
             vadFailAt = Date.now() + 60000
             return null
           }
@@ -366,10 +412,12 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       bufferSizeInSeconds: 30,
     })
   /** 为会话惰性创建 Silero VAD（每段一次；模型缺失返回 null = 客户端静音兜底）。 */
-  const ensureSessionVad = async (seg: { stream: SherpaStream; fed: number; vad: SherpaVad | null }): Promise<SherpaVad | null> => {
+  const ensureSessionVad = async (seg: Segment): Promise<SherpaVad | null> => {
+    if (seg.freed || recognizerDisposed) return null
     if (seg.vad) return seg.vad
     const vadPath = await ensureVadModel()
-    if (!vadPath) return null
+    if (!vadPath || seg.freed || recognizerDisposed) return null
+    if (seg.vad) return seg.vad
     // 端点 VAD 的静音阈值跟随设置（秒）：默认 1500ms，给思考停顿留空间；
     // 检测 VAD（打断）仍用短阈值 0.35 + 默认 0.5s，与断句解耦。
     seg.vad = newVad(vadPath, 0.5, silenceMs() / 1000)
@@ -381,10 +429,13 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   /** 检测 VAD 最近使用时刻（90s 清扫依据；reset/dispose 之外的生命周期兜底）。 */
   const detectVadLastUse = new Map<string, number>()
   const ensureDetectVad = async (sessionId: string): Promise<SherpaVad | null> => {
+    if (recognizerDisposed) return null
     const existing = detectVads.get(sessionId)
     if (existing) return existing
     const vadPath = await ensureVadModel()
-    if (!vadPath) return null
+    if (!vadPath || recognizerDisposed) return null
+    const existingAfter = detectVads.get(sessionId)
+    if (existingAfter) return existingAfter
     // 检测 VAD 更灵敏（0.35 vs 端点 0.5）：打断要抓轻声/正常音量的人声前沿，
     // 0.5 会让 VAD 闪烁（真→假→真），confirmMs 飙到 1~2.7s。端点 VAD 仍 0.5（断句保守）。
     const vad = newVad(vadPath, 0.35)
@@ -397,13 +448,15 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   let senseLoading: Promise<string | null> | null = null
   /** I1：SenseVoice 下载失败退避（失败后 60s 内不再尝试，防每句定稿卡 228MB 下载）。 */
   let senseFailAt = 0
+  /** B4：SenseVoice worker 创建失败退避（60s），防每拍 partial（~200ms）无限 fork 崩溃风暴。 */
+  let senseWorkerFailAt = 0
   const ensureSenseModel = async (): Promise<string | null> => {
     if (senseModelReady) return join(senseDir, SENSE_FILES[0].file)
     if (Date.now() < senseFailAt) return null
     if (!senseLoading) {
       senseLoading = (async () => {
         for (const f of SENSE_FILES) {
-          if (!(await ensureModelFile({ repo: SENSE_REPO, repoDir: senseDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast }))) {
+          if (!(await ensureModelFile({ repo: SENSE_REPO, repoDir: senseDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast, signal: dlAbort.signal }))) {
             senseFailAt = Date.now() + 60000
             return null
           }
@@ -423,22 +476,10 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   let senseWorkerSyncing: Promise<SenseWorkerClient | null> | null = null
   /** 批 2：上次建 worker 用的 language+ITN 指纹；变化触发 terminate+重建。 */
   let senseWorkerLangKey = ''
-  /**
-   * M7①（Issue #15 R11）：dispose 后禁止懒重建。
-   *
-   * 漏洞：dispose() 只把 senseWorker/senseWorkerSyncing 置 null 并 terminate **当时已存在**
-   * 的 worker；而在途的 senseWorkerSyncing 初始化（下方 async IIFE）完成后仍会执行
-   * `senseWorker = client`——把一个 dispose 完全不知道的 Worker 赋值回来。后果：
-   *  · 该 Worker 线程永不 terminate（热重载每代泄漏一个常驻线程 + 其 WASM 模型内存）；
-   *  · senseWorkerSyncing 也残留一个指向已泄漏 worker 的已解析 promise（其 .finally 的
-   *    `if (!senseWorker)` 因 senseWorker 已被复活而跳过），后续 getSenseWorker 直接
-   *    返回这个陈旧 promise，重建路径被永久污染。
-   * 修法：dispose 置位本标志；初始化**完成前**判序——已 dispose 则 terminate 刚建好的
-   * worker 并返回 null，绝不赋值（与 finalizing 代际判定同模式的「完成前判序」思路）。
-   */
   let senseDisposed = false
   const getSenseWorker = async (): Promise<SenseWorkerClient | null> => {
     if (!senseVoice()) return null // P4：开关关闭 → 只用流式 zipformer
+    if (senseDisposed) return null
     // 批 7O：语言已固定 'auto'（批 7M 砍 recognitionLanguage），指纹仅剩 ITN 一维——
     // buildSenseLangKey 内联为 `auto\0{itn}`（asr-sense-key.ts 半死模块收缩）。
     const langKey = `auto\u0000${senseITN() ? '1' : '0'}`
@@ -448,14 +489,16 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       senseWorker = null
       senseWorkerSyncing = null
     }
-    senseWorkerLangKey = langKey
     if (senseWorker) return senseWorker
-    if (senseWorkerSyncing) return senseWorkerSyncing
-    senseWorkerSyncing = (async () => {
+    if (Date.now() < senseWorkerFailAt) return null
+    if (senseWorkerSyncing && langKey === senseWorkerLangKey) return senseWorkerSyncing
+    const myLangKey = langKey
+    senseWorkerLangKey = myLangKey
+    const syncP = (async () => {
       // M7①：dispose 已到达则根本不要起初始化（含其后的模型 ensure 与 fork）。
       if (senseDisposed) return null
       const sensePath = await ensureSenseModel()
-      if (!sensePath) return null
+      if (!sensePath || senseDisposed || senseWorkerLangKey !== myLangKey) return null
       try {
         // worker 文件与 lib/index.js 同级：相对 bundle 所在目录解析，转绝对路径（Node 拒绝 file:// 字符串）。
         const workerPath = fileURLToPath(new URL('./sense-worker.mjs', import.meta.url))
@@ -464,31 +507,33 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
             sherpaModule: 'sherpa-onnx',
             modelDir: senseDir,
             language: 'auto',
-            useITN: senseITN() ? 1 : 0,
+            useITN: myLangKey.endsWith('1') ? 1 : 0,
           },
         })
         const client = createSenseWorkerClient(w)
         // 崩溃/退出自动重建：清引用后下次 getSenseWorker 懒重建（防永久降级 zipformer）。
         client.onDeath(() => {
-          senseWorker = null
-          senseWorkerSyncing = null // 清同步位：否则下次 getSenseWorker 命中旧的已解析 promise，永久降级 zipformer
-          senseWorkerLangKey = '' // 清 lang 指纹：下次重建用最新设置
+          if (senseWorker === client) {
+            senseWorker = null
+            senseWorkerSyncing = null // 清同步位：否则下次 getSenseWorker 命中旧的已解析 promise，永久降级 zipformer
+            senseWorkerLangKey = '' // 清 lang 指纹：下次重建用最新设置
+          }
         })
         // 建 recognizer（worker 内 create；主线程只等回执，不阻塞事件循环）。
         if (!(await client.request('create'))) {
           await client.terminate()
-          return null
+          throw new Error('sense worker create returned false')
         }
-        // M7①：create 期间 dispose 可能已到达（await 让出事件循环）。此时若仍赋值，
-        // 这个 dispose 不知道的 Worker 就会泄漏（详见 senseDisposed 声明处注释）。
-        if (senseDisposed) {
+        // M7① / B4：create 期间 dispose 或配置变更可能已到达。此时绝不赋值、直接销毁。
+        if (senseDisposed || senseWorkerLangKey !== myLangKey) {
           await client.terminate()
           return null
         }
         senseWorker = client
         return client
       } catch (e) {
-        console.warn('[dsh-voice-mode] SenseVoice worker init failed: ' + String(e))
+        senseWorkerFailAt = Date.now() + 60000
+        console.warn('[dsh-voice-mode] SenseVoice worker init failed: ' + redactSecrets(e))
         // A1 审计 Minor：静默降级到 FunASR 时用户无感知（质量变了但无解释）。
         // 走 SSE 下行提示（瞬态、不阻断识别）。
         broadcast?.('asr-notice', { code: 'sense_degraded' })
@@ -496,10 +541,10 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       }
     })().finally(() => {
       // 未产出时清空同步位，令下次调用可重建（否则恒 null）。
-      // M7①：disposed 时也清——否则残留一个指向已泄漏/已终止 worker 的已解析 promise。
-      if (!senseWorker || senseDisposed) senseWorkerSyncing = null
+      if (senseWorkerSyncing === syncP && (!senseWorker || senseDisposed)) senseWorkerSyncing = null
     })
-    return senseWorkerSyncing
+    senseWorkerSyncing = syncP
+    return syncP
   }
   /** P4-1：整段 PCM → worker 内 SenseVoice 离线定稿（失败返回 null，上层降级 zipformer）。 */
   const senseTranscribe = async (allSamples: Float32Array[]): Promise<string | null> => {
@@ -539,202 +584,196 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     }
     const rec = await getRecognizer()
     if (!rec) return { text: '', loading: true }
+    if (recognizerDisposed) return { text: '' }
     // 预热 SenseVoice recognizer：说话早期即并行创建（228MB 加载 2-5s 阻塞事件循环，
     // 若拖到 final 同步等待会阻塞宿主响应 → 浏览器链路上游超时兜底 502）。
-    // 预热失败静默（final 时如仍未就绪则走 Promise.race 10s 降级 zipformer）。
+    // 预热失败静默（final 时如仍未就绪则走 Promise.race 20s 降级 zipformer）。
     // 修复：仅在 senseVoice 开启时预热/下载——关闭时不得下载 228MB 大模型
     // （否则与设置语义「关闭可省模型只走流式识别」矛盾，且冲破总体积预算）。
     if (!final && senseVoice()) {
       // 预热 worker（模型下载 + worker 内 create）：阻塞在 worker 线程，主线程只等回执。
       void getSenseWorker().catch(() => {})
     }
-    // 幂等守卫：该 epoch 已定稿（客户端对瞬时失败的 final 重试 / 定稿后迟到 partial）→
-    // 返回缓存文本、不重建流。根治「同会话新 epoch 抢先按前缀清旧段 → 旧段 final 丢句」
-    // 竞态：不再清其它世代段，各段只等自己的 final=1（或 reset/sweep）回收。
-    let finMap = finalized.get(sessionId)
-    const myGen = resetGen.get(sessionId) ?? 0 // 定稿代际快照：会话 reset 时递增
-    const cached = finMap?.get(epoch)
-    if (cached !== undefined) return { text: cached }
-    let sessSegs = segments.get(sessionId)
-    if (!sessSegs) {
-      sessSegs = new Map<number, Segment>()
-      segments.set(sessionId, sessSegs)
-    }
-    let seg = sessSegs.get(epoch)
-    if (!seg) {
-      if (samples.length === 0 && final) return { text: '' }
-      seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: '', allSamples: [], lastActivity: Date.now() }
-      sessSegs.set(epoch, seg)
-    }
-    seg.lastActivity = Date.now()
-    // P1-4 增量上行：samples 为从 offset 开始的段内切片；只喂尚未喂过的部分
-    // （兼容旧客户端 offset=0 全量上传；若 final 且无新数据，仅补尾垫）。
-    let endpoint = false
-    let text = ''
-    // 打断根治阶段一：Silero VAD 帧级检测结果（仅非 final 时有意义，VAD 缺失时为 undefined）。
-    let isSpeech: boolean | undefined
-    if (offset + samples.length > seg.fed) {
-      const skip = Math.max(seg.fed - offset, 0)
-      const inc = samples.subarray(skip)
-      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc)
-      seg.fed = offset + samples.length
-      // P4-1：累积本段全量（SenseVoice 定稿重译输入）；有界防御——异常客户端绕过
-      // 前端 30s 段上限时，超 60s 不再累积（防无界内存；zipformer 流不受影响）。
-      if (seg.fed <= rec.config.featConfig.sampleRate * 60) seg.allSamples.push(inc) 
-      {
-        let n = 0
-        while (rec.isReady(seg.stream)) {
-          rec.decode(seg.stream)
-          // 分块让出：大包（全量重发/长段）不再整段霸占事件循环。
-          if (++n % DECODE_YIELD_EVERY === 0) await yieldToLoop()
-        }
+    return withSegLock(`${sessionId}\u0000${epoch}`, async () => {
+      if (recognizerDisposed) return { text: '' }
+      // 幂等守卫：该 epoch 已定稿（客户端对瞬时失败的 final 重试 / 定稿后迟到 partial）→
+      // 返回缓存文本、不重建流。
+      const finMap = finalized.get(sessionId)
+      const myGen = resetGen.get(sessionId) ?? 0 // 定稿代际快照：会话 reset 时递增
+      const cached = finMap?.get(epoch)
+      if (cached !== undefined) return { text: cached }
+      // 并发 final 守卫前置：同 epoch 已在定稿时立刻复用（避免再重建段或重复解码）。
+      const existingInflight = finalizing.get(sessionId)?.get(epoch)
+      if (final && existingInflight) return { text: await existingInflight }
+      let sessSegs = segments.get(sessionId)
+      if (!sessSegs) {
+        sessSegs = new Map<number, Segment>()
+        segments.set(sessionId, sessSegs)
       }
-      // 取 ASR 结果（确认窗口的无新实词判据用）。
-      text = rec.getResult(seg.stream).text
-      seg.lastText = text
-      // P2-1/P2-2：同一增量喂 Silero VAD；完整说话段（静音 ≥ 0.5s）完成 → 端点判定。
-      // P2-2/P2-3 语义确认窗口：默认立即端点（断句快）；列举连词结尾升档多等
-      // （可能续说）；长句给缓冲；待确认期间「又开口（RMS 续说）」取消端点、
-      // 「无新实词（文本未变化）≥400ms」提前判完。VAD 缺失时客户端静音计时兜底。
-      if (!final) {
-        const vad = await ensureSessionVad(seg)
-        if (vad) {
-          // 1) 确认窗口内的次批增量：先判续说/提前判完/超时。
-          if (seg.pendingEndpoint) {
-            const now = Date.now()
-            const rms = rmsOf(inc)
-            if (rms > VAD_CONTINUE_RMS) {
-              seg.pendingEndpoint = null // 又开口/续说：取消端点
-            } else if (now - seg.pendingEndpoint.at >= CONFIRM_MIN_MS && text === seg.pendingEndpoint.textAtPending) {
-              // 无新实词且 ≥CONFIRM_MIN_MS（200ms）：提前判完（P2-2 拖尾语气词）
-              seg.pendingEndpoint = null
-              endpoint = true
-            } else if (now - seg.pendingEndpoint.at >= seg.pendingEndpoint.confirmMs) {
-              seg.pendingEndpoint = null
-              endpoint = true
-            }
-          }
-          // 2) 喂 VAD，检测新完整段。
-          vad.acceptWaveform(inc)
-          // 打断根治：isDetected() 为帧级实时「当前是否正在检测到语音」，
-          // 随 partial 响应下行，客户端据此驱动打断（已取代 RMS 能量快路径）。
-          isSpeech = vad.isDetected()
-          if (!vad.isEmpty()) {
-            // 取最后一段的语音时长（确认窗口伸缩依据）。
-            let spokenMs = 0
-            while (!vad.isEmpty()) {
-              const sp = vad.front()
-              spokenMs = (sp.samples.length / 16000) * 1000
-              vad.pop()
-            }
-            const confirmMs = endpointConfirmMs(seg.lastText, spokenMs)
-            if (confirmMs <= 0) {
-              endpoint = true
-            } else {
-              seg.pendingEndpoint = { at: Date.now(), confirmMs, textAtPending: seg.lastText }
-            }
+      let seg = sessSegs.get(epoch)
+      if (!seg) {
+        if (samples.length === 0 && final) return { text: '' }
+        seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: '', allSamples: [], lastActivity: Date.now(), freed: false }
+        sessSegs.set(epoch, seg)
+      }
+      seg.lastActivity = Date.now()
+      // P1-4 增量上行：samples 为从 offset 开始的段内切片；只喂尚未喂过的部分
+      // （兼容旧客户端 offset=0 全量上传；若 final 且无新数据，仅补尾垫）。
+      let endpoint = false
+      let text = ''
+      // 打断根治阶段一：Silero VAD 帧级检测结果（仅非 final 时有意义，VAD 缺失时为 undefined）。
+      let isSpeech: boolean | undefined
+      if (offset + samples.length > seg.fed) {
+        const skip = Math.max(seg.fed - offset, 0)
+        const inc = samples.subarray(skip)
+        if (seg.freed || recognizerDisposed) return { text: '' }
+        seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc)
+        seg.fed = offset + samples.length
+        // P4-1：累积本段全量（SenseVoice 定稿重译输入）；有界防御——异常客户端绕过
+        // 前端 30s 段上限时，超 60s 不再累积（防无界内存；zipformer 流不受影响）。
+        if (seg.fed <= rec.config.featConfig.sampleRate * 60) seg.allSamples.push(inc)
+        {
+          let n = 0
+          while (!seg.freed && !recognizerDisposed && rec.isReady(seg.stream)) {
+            rec.decode(seg.stream)
+            // 分块让出：大包（全量重发/长段）不再整段霸占事件循环；恢复后必复检 freed/disposed。
+            if (++n % DECODE_YIELD_EVERY === 0) await yieldToLoop()
           }
         }
-      }
-    }
-    if (!final) return { text, endpoint, isSpeech }
-    // 并发 final 守卫：同 epoch 已在定稿（首发 final 的 senseP 窗口内）→ 等待并复用其
-    // 结果。否则客户端对「响应丢失但请求已达 host」的 final 重试，会在首发删段后、缓存前
-    // 重建空段 → 丢句（段清理竞态的并发面）。
-    const inflightMap = finalizing.get(sessionId)
-    const inflightP = inflightMap?.get(epoch)
-    if (inflightP) return { text: await inflightP }
-    // 同步摘除本段（先于 free）：否则 senseP 窗口内 reset()/dispose() 会遍历 segments
-    // 对已 free 的 stream/vad 二次释放（WASM double-free Blocker）。此处到登记均为同步块，
-    // 无其它 JS 交错，故「摘段后、登记前」的并发 final 不可能插入（会命中上方 inflight 守卫）。
-    sessSegs.delete(epoch)
-    if (sessSegs.size === 0) segments.delete(sessionId)
-    // 定稿工作封装为 promise 并登记，供并发 final 复用（free 已安全——段已摘除）。
-    const finalizeP = (async (): Promise<string> => {
-      // P4-1：SenseVoice 整段重译与 zipformer 定稿并行（端点等待期后起跑；
-      // 带标点 + ITN 覆盖定稿文本；模型缺失/失败自然降级 zipformer）。
-      const all = seg.allSamples
-      // I1：SenseVoice 重译带超时（20s），超时即降级 zipformer 定稿（不阻塞 finalize）。
-      // 批 E：10s → 20s——228MB SenseVoice 模型冷启动 + 离线解码长段 30s PCM，慢 CPU
-      // 撞 10s 容易降级 zipformer 流式 token flush 不完整（B5 辅因候选 3）。
-      // M2（Issue #15 审查 Minor）：超时 timer 必须 clear——Promise.race 只决定谁先
-      // settle，输掉的那条链上的 setTimeout 仍会走完（resolve(null) 后无人关心），
-      // 于是每次定稿都留下一个 20s 的悬挂 timer：短会话几次定稿尚可忽略，长会话
-      // （连续对话数百次定稿）会累积数百个 timer 常驻事件循环，拖慢 host 且让
-      // 进程无法自然退出。故持有句柄 + race 落定即 clear；超时后晚到的 decode 结果
-      // 不再被任何 await 消费（best-effort 丢弃，zipformer 定稿已采用）。
-      let senseTimer: ReturnType<typeof setTimeout> | null = null
-      const senseP = all.length > 0
-        ? Promise.race([
-            senseTranscribe(all),
-            new Promise<null>((resolve) => {
-              senseTimer = setTimeout(() => resolve(null), 20000)
-            }),
-          ]).finally(() => {
-            if (senseTimer) clearTimeout(senseTimer)
-          })
-        : Promise.resolve(null)
-      // 定稿：尾垫 0.5s 静音让尾部字 flush 出来。
-      const pad = new Float32Array(rec.config.featConfig.sampleRate / 2)
-      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad)
-      {
-        let n = 0
-        while (rec.isReady(seg.stream)) {
-          rec.decode(seg.stream)
-          if (++n % DECODE_YIELD_EVERY === 0) await yieldToLoop()
+        if (seg.freed || recognizerDisposed) return { text: '' }
+        // 取 ASR 结果（确认窗口的无新实词判据用）。
+        text = rec.getResult(seg.stream).text
+        seg.lastText = text
+        // P2-1/P2-2：同一增量喂 Silero VAD；完整说话段（静音 ≥ 0.5s）完成 → 端点判定。
+        // P2-2/P2-3 语义确认窗口：短句保底 CONFIRM_MIN_MS（200ms）；长句 350ms；列举连词结尾升档 800ms。
+        // 待确认期间「又开口（RMS 续说）」取消端点；达到 confirmMs 才判完成（不再用 CONFIRM_MIN_MS 短路升档窗口）。
+        if (!final) {
+          const vad = await ensureSessionVad(seg)
+          if (seg.freed || recognizerDisposed) return { text: '' }
+          if (vad) {
+            // 1) 确认窗口内的次批增量：先判续说/到点。
+            if (seg.pendingEndpoint) {
+              const now = Date.now()
+              const rms = rmsOf(inc)
+              if (rms > VAD_CONTINUE_RMS) {
+                seg.pendingEndpoint = null // 又开口/续说：取消端点
+              } else if (now - seg.pendingEndpoint.at >= seg.pendingEndpoint.confirmMs) {
+                seg.pendingEndpoint = null
+                endpoint = true
+              }
+            }
+            // 2) 喂 VAD，检测新完整段。
+            vad.acceptWaveform(inc)
+            // 打断根治：isDetected() 为帧级实时「当前是否正在检测到语音」，
+            // 随 partial 响应下行，客户端据此驱动打断（已取代 RMS 能量快路径）。
+            isSpeech = vad.isDetected()
+            if (!vad.isEmpty()) {
+              // 取最后一段的语音时长（确认窗口伸缩依据）。
+              let spokenMs = 0
+              while (!vad.isEmpty()) {
+                const sp = vad.front()
+                spokenMs = (sp.samples.length / 16000) * 1000
+                vad.pop()
+              }
+              const confirmMs = endpointConfirmMs(seg.lastText, spokenMs)
+              if (confirmMs <= 0) {
+                endpoint = true
+              } else {
+                seg.pendingEndpoint = { at: Date.now(), confirmMs, textAtPending: seg.lastText }
+              }
+            }
+          }
         }
       }
-      const settled = rec.getResult(seg.stream).text
-      try {
-        seg.vad?.free?.()
-      } catch {
-        // ignore
-      }
-      seg.stream.free()
-      const sense = await senseP
-      // 空串掩蔽修复：SenseVoice 返回空/空白视同未产出，回退 zipformer 定稿。
-      return (sense && sense.trim() ? sense : settled) || ''
-    })().then((finalText) => {
-      // 会话代际守卫：定稿期间若会话被 reset（重入/打断），不缓存——否则重入后 epoch 归零
-      // 会撞上旧会话的陈旧缓存条目 → 返回错误文本。reset 已清 finalizing/segments，此分支
-      // 什么都不做（不得再动 finalizing，否则可能删到重入后新会话同 epoch 的登记）。
-      if ((resetGen.get(sessionId) ?? 0) !== myGen) return finalText
-      // 缓存：必须此处重取 session 级 finMap（不能用 feed 顶部捕获的局部 finMap）——并发不同
-      // epoch 定稿时各 feed 的局部 finMap 均为 null，各自新建会互相覆盖丢失缓存。
-      let fm = finalized.get(sessionId)
-      if (!fm) {
-        fm = new Map<number, string>()
-        finalized.set(sessionId, fm)
-      }
-      fm.set(epoch, finalText)
-      if (fm.size > 32) {
-        // A1 审计 Important：FIFO 驱逐可能删掉**仍在重试中**的 epoch（客户端 403 恢复后会重发
-        // 同一 final），导致重试拿不到缓存文本而重跑 SenseVoice（甚至重复定稿）。
-        // 跳过仍在 finalizing 的 epoch，取最老的可驱逐项。
-        const busy = finalizing.get(sessionId)
-        for (const [k] of fm) {
-          if (busy?.has(k)) continue
-          fm.delete(k)
-          break
+      if (!final) return { text, endpoint, isSpeech }
+      if (seg.freed || recognizerDisposed) return { text: '' }
+      // 并发 final 守卫：同 epoch 已在定稿 → 等待并复用其结果。
+      const inflightMap = finalizing.get(sessionId)
+      const inflightP = inflightMap?.get(epoch)
+      if (inflightP) return { text: await inflightP }
+      // 同步摘除本段（先于 free）：否则 senseP 窗口内 reset()/dispose() 会遍历 segments
+      // 对已 free 的 stream/vad 二次释放（WASM double-free Blocker）。
+      sessSegs.delete(epoch)
+      if (sessSegs.size === 0) segments.delete(sessionId)
+      // B4：20s 超时驱逐卡死的 SenseVoice worker，防止后续全部定稿永久头阻塞超时。
+      const evictWedgedSenseWorker = (): void => {
+        const wedged = senseWorker
+        if (wedged) {
+          senseWorker = null
+          senseWorkerSyncing = null
+          void wedged.terminate().catch(() => undefined)
         }
       }
-      const ff = finalizing.get(sessionId)
-      ff?.delete(epoch)
-      if (ff && ff.size === 0) finalizing.delete(sessionId)
-      return finalText
-    }).catch((e) => {
-      // 定稿异常：只清 finalizing 登记（段已在入口同步摘除），返回空不阻塞上层。
-      const ff = finalizing.get(sessionId)
-      ff?.delete(epoch)
-      if (ff && ff.size === 0) finalizing.delete(sessionId)
-      console.warn('[dsh-voice-mode] finalize failed: ' + String(e))
-      return ''
+      // 定稿工作封装为 promise 并登记，供并发 final 复用。
+      const finalizeP = (async (): Promise<string> => {
+        const all = seg.allSamples
+        let senseTimer: ReturnType<typeof setTimeout> | null = null
+        const senseP = all.length > 0
+          ? Promise.race([
+              senseTranscribe(all),
+              new Promise<null>((resolve) => {
+                senseTimer = setTimeout(() => { evictWedgedSenseWorker(); resolve(null) }, 20000)
+              }),
+            ]).finally(() => {
+              if (senseTimer) clearTimeout(senseTimer)
+            })
+          : Promise.resolve(null)
+        let settled = seg.lastText
+        try {
+          if (!seg.freed && !recognizerDisposed) {
+            // 定稿：尾垫 0.5s 静音让尾部字 flush 出来。
+            const pad = new Float32Array(rec.config.featConfig.sampleRate / 2)
+            seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad)
+            let n = 0
+            while (!seg.freed && !recognizerDisposed && rec.isReady(seg.stream)) {
+              rec.decode(seg.stream)
+              if (++n % DECODE_YIELD_EVERY === 0) await yieldToLoop()
+            }
+            if (!seg.freed && !recognizerDisposed) {
+              settled = rec.getResult(seg.stream).text
+            }
+          }
+        } finally {
+          freeSegment(seg)
+        }
+        const sense = await senseP
+        // 空串掩蔽修复：SenseVoice 返回空/空白视同未产出，回退 zipformer 定稿。
+        return (sense && sense.trim() ? sense : settled) || ''
+      })().then((finalText) => {
+        if ((resetGen.get(sessionId) ?? 0) !== myGen) return finalText
+        let fm = finalized.get(sessionId)
+        if (!fm) {
+          fm = new Map<number, string>()
+          finalized.set(sessionId, fm)
+        }
+        fm.set(epoch, finalText)
+        if (fm.size > 32) {
+          const busy = finalizing.get(sessionId)
+          for (const [k] of fm) {
+            if (busy?.has(k)) continue
+            fm.delete(k)
+            break
+          }
+        }
+        const ff = finalizing.get(sessionId)
+        ff?.delete(epoch)
+        if (ff && ff.size === 0) finalizing.delete(sessionId)
+        return finalText
+      }).catch((e) => {
+        // I7 修复：与 .then 同口径校验代际——旧定稿在 reset+新会话 epoch=0 后抛错不得删新登记。
+        if ((resetGen.get(sessionId) ?? 0) !== myGen) return ''
+        const ff = finalizing.get(sessionId)
+        ff?.delete(epoch)
+        if (ff && ff.size === 0) finalizing.delete(sessionId)
+        console.warn('[dsh-voice-mode] finalize failed: ' + redactSecrets(e))
+        return ''
+      })
+      if (!inflightMap) {
+        finalizing.set(sessionId, new Map<number, Promise<string>>())
+      }
+      finalizing.get(sessionId)!.set(epoch, finalizeP)
+      return { text: await finalizeP }
     })
-    if (!inflightMap) {
-      finalizing.set(sessionId, new Map<number, Promise<string>>())
-    }
-    finalizing.get(sessionId)!.set(epoch, finalizeP)
-    return { text: await finalizeP }
   }
 
   // host 侧超时回收：无活动超 90s 的段（页面崩溃/断电/kill 后悬挂）清理，每 30s 扫一次。
@@ -743,16 +782,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     for (const [sid, sessSegs] of segments) {
       for (const [epoch, s] of sessSegs) {
         if (now - s.lastActivity > SEGMENT_IDLE_MS) {
-          try {
-            s.vad?.free?.()
-          } catch {
-            // ignore
-          }
-          try {
-            s.stream.free()
-          } catch {
-            // ignore
-          }
+          freeSegment(s)
           sessSegs.delete(epoch)
         }
       }
@@ -803,10 +833,12 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
   }
   const sweepTimer = setInterval(sweep, 30000)
 
-  // 替换在文本出口统一套用：定稿缓存存原文，重试同一 final 时同样被改写。
+  // 替换在文本出口统一套用：定稿缓存存原文，重试同一 final 时同样被改写；
+  // 仅 final=true 累加命中计数，防 partial 高频刷屏把 onHit 膨胀 10–15 倍。
   const feed: AsrRuntime['feed'] = async (...args) => {
     const out = await feedRaw(...args)
-    return options.replaceText && out.text ? { ...out, text: options.replaceText(out.text) } : out
+    const isFinal = Boolean(args[2])
+    return options.replaceText && out.text ? { ...out, text: options.replaceText(out.text, isFinal) } : out
   }
 
   return {
@@ -829,16 +861,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       const sessSegs = segments.get(sessionId)
       if (sessSegs) {
         for (const [, s] of sessSegs) {
-          try {
-            s.vad?.free?.()
-          } catch {
-            // ignore
-          }
-          try {
-            s.stream.free()
-          } catch {
-            // ignore
-          }
+          freeSegment(s)
         }
         segments.delete(sessionId)
       }
@@ -859,6 +882,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     },
     dispose: () => {
       clearInterval(sweepTimer)
+      dlAbort.abort(new Error('asr runtime disposed'))
       // M7①：先置位再清理——令在途的 getSenseWorker 初始化在完成前判序退出
       // （否则它会把一个 dispose 不知道的 Worker 赋值回 senseWorker，线程泄漏）。
       senseDisposed = true
@@ -873,16 +897,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       if (w) void w.terminate()
       for (const [, sessSegs] of segments) {
         for (const [, s] of sessSegs) {
-          try {
-            s.vad?.free?.()
-          } catch {
-            // ignore
-          }
-          try {
-            s.stream.free()
-          } catch {
-            // ignore
-          }
+          freeSegment(s)
         }
       }
       segments.clear()
@@ -938,6 +953,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
     // （getSenseWorker:396-401）下次自然触发重建。
     markStale: () => {
       senseWorkerLangKey = ''
+      senseWorkerFailAt = 0
     },
     modelStatus: () => {
       // 同步快照（大小 stat 用已缓存信息：asr 文件逐个 stat 是异步——模型状态为诊断用途，损失精度可接受：
@@ -973,6 +989,14 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
           return 0
         }
       })()
+      const senseAllExist = SENSE_FILES.every((f) => {
+        try {
+          const st = statSync(join(senseDir, f.file))
+          return st.isFile() && st.size > 0
+        } catch {
+          return false
+        }
+      })
       return {
         // ready 语义 = 文件可用（exists），而非进程内是否已实例化——
         // 重启后文件齐全却显示「未下载」会误导用户（体验修复）。
@@ -990,9 +1014,9 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
         },
         sense: {
           repo: SENSE_REPO,
-          ready: senseSize > 0,
+          ready: senseAllExist,
           size: senseSize,
-          failLatchMs: Math.max(0, senseFailAt - Date.now()),
+          failLatchMs: Math.max(0, Math.max(senseFailAt, senseWorkerFailAt) - Date.now()),
           enabled: senseVoice(),
         },
         progress: lastProgress,
@@ -1006,6 +1030,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       if (kind === 'sense') {
         if (!senseVoice()) return false // 关闭时不下载 228MB（与设置语义一致）
         senseFailAt = 0
+        senseWorkerFailAt = 0
         return !!(await ensureSenseModel())
       }
       // asr：已就绪则无需动作；未就绪则触发下载（模型下载失败时点重试补下）。
@@ -1019,6 +1044,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
 /** JSON 响应：writeHead 显式写头（gzip 包装器只拦截 writeHead 路径；
  *  statusCode+setHeader+end 的隐式头会产出「gzip 头 + 明文 body」断链）。 */
 const respondJson = (res: ServerResponse, status: number, payload: unknown): void => {
+  if (res.writableEnded || res.destroyed) return
   res.writeHead(status, { 'content-type': 'application/json' })
   res.end(JSON.stringify(payload))
 }
@@ -1033,20 +1059,31 @@ export function handleAsrRequest(
   const chunks: Buffer[] = []
   let received = 0
   let tooLarge = false
+  req.on('error', () => {
+    if (!res.writableEnded && !res.destroyed) res.destroy()
+  })
   req.on('data', (c: Buffer) => {
     if (tooLarge) return
     received += c.length
     if (received > MAX_ASR_BYTES) {
       tooLarge = true
+      req.pause?.()
       respondJson(res, 413, { code: 'payload_too_large', error: 'pcm payload too large' })
+      req.resume?.()
       return
     }
     chunks.push(c)
   })
   req.on('end', () => {
     if (tooLarge) return
-    // 校验会话归属：仅活跃语音会话可识别（防滥用/串流）。
-    const url = new URL(req.url ?? '/', 'http://localhost')
+    // 校验会话归属：仅活跃语音会话可识别（防滥用/串流）；畸形 URL 返 400 不崩宿主。
+    let url: URL
+    try {
+      url = new URL(req.url ?? '/', 'http://localhost')
+    } catch {
+      respondJson(res, 400, { code: 'bad_request', error: 'invalid url' })
+      return
+    }
     const sessionId = url.searchParams.get('sessionId') ?? ''
     const final = url.searchParams.get('final') === '1'
     const reset = url.searchParams.get('reset') === '1'
