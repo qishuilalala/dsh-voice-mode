@@ -2220,6 +2220,7 @@ var zh = {
   tabSwitchFlushedNotice: "\u5207\u9875\u524D\u8BED\u97F3\u5DF2\u5B9A\u7A3F\u586B\u5165\u8349\u7A3F",
   sessionSwitchFlushedNotice: "\u4E0A\u4E00\u4F1A\u8BDD\u8BED\u97F3\u5DF2\u6682\u5B58\uFF0C\u5207\u56DE\u540E\u81EA\u52A8\u586B\u5165\u8349\u7A3F",
   ttsRetryingNotice: "\u6717\u8BFB\u91CD\u8BD5\u4E2D\uFF08{attempt}/{max}\uFF09\u2026",
+  tabPreemptedNotice: "\u8BED\u97F3\u6A21\u5F0F\u5DF2\u88AB\u53E6\u4E00\u6807\u7B7E\u9875\u63A5\u7BA1",
   descBackchannelYield: "\u6717\u8BFB\u671F\u7528\u6237\u8BF4\u300C\u55EF/\u5BF9\u300D\u7B49\u77ED\u5E94\u7B54\u65F6\u81EA\u52A8\u8BA9\u4F4D\uFF08\u8DF3\u8FC7\u5F53\u524D TTS \u53E5 + \u77ED\u6682\u4E22\u5E27 1.5s\uFF1B\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF1B\u5173 = \u4E0D\u8BA9\u4F4D\uFF0C\u884C\u4E3A\u7B49\u540C\u6539\u9020\u524D\uFF09\u3002\u4EC5\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u53EF\u89E6\u53D1\uFF1A\u300C\u6301\u7EED\u8046\u542C\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u4E0D\u8BC6\u522B\u8BED\u97F3\uFF0C\u5F00\u53E3\u8BF4\u8BDD\u6309\u6253\u65AD\u5904\u7406",
   // Issue #15 批 1 / ADR-0012：打断语音抢救。
   descBargeInSalvage: "AI \u6717\u8BFB\u65F6\u4F60\u5F00\u53E3\u6253\u65AD\uFF1A\u81EA\u52A8\u4FDD\u7559\u4ECE\u5F00\u53E3\u5230\u6253\u65AD\u751F\u6548\u4E4B\u95F4\u4F60\u8BF4\u7684\u8BDD\uFF0C\u5E76\u5165\u8BC6\u522B\u7EE7\u7EED\u53D1\u9001\uFF08\u4FEE\u300C\u6253\u65AD\u5403\u53E5\u300D\uFF1B\u5173 = \u4E22\u5F03\u6253\u65AD\u524D\u8BED\u97F3\u2014\u2014\u4EC5\u5916\u653E\u4E14\u65E0\u56DE\u58F0\u6D88\u9664\u7684\u73AF\u5883\u5EFA\u8BAE\u5173\uFF09",
@@ -2626,6 +2627,7 @@ var en = {
   tabSwitchFlushedNotice: "Speech before tab switch was finalized into draft",
   sessionSwitchFlushedNotice: "Speech from previous session saved; restores to draft on return",
   ttsRetryingNotice: "Retrying read-aloud ({attempt}/{max})\u2026",
+  tabPreemptedNotice: "Voice mode was taken over by another tab",
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",
@@ -7043,7 +7045,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "4ac4754";
+var BUILD_TAG = "d2fc1d3";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = (() => {
   try {
@@ -7870,7 +7872,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
           if (ui.turn !== "idle") ui.turn = "idle";
           doSkipAudio(prev);
           resetTelemetry();
-          notify();
+          if (active !== null) busApi.setNotice(t("tabPreemptedNotice"));
+          else notify();
         }
       } catch {
       }
@@ -8191,6 +8194,11 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     /** isPlaying 尾音截止墙钟：playing 或尾音宽限期内均视为「AI 正在朗读」。 */
     playingTailUntil() {
       return playingEndAt + ECHO_TAIL_MS + refDelaySamples / SAMPLE_RATE_16K * 1e3;
+    },
+    isPreemptedByOther(sessionId) {
+      if (voiceActive !== null && voiceActive !== sessionId) return true;
+      if (voiceOwnerTab !== null && voiceOwnerTab !== TAB_ID) return true;
+      return false;
     },
     async enter(sessionId) {
       engine.resetFallback();
@@ -9323,6 +9331,7 @@ function MicButton({
           },
           onSessionExpired: async () => {
             if (localRef.current !== "on") return false;
+            if (bus.isPreemptedByOther?.(sid)) return false;
             if (Date.now() - lastReenterAt < 2e3) return false;
             lastReenterAt = Date.now();
             bus.setUi({ error: t("sessionExpired") });

@@ -362,3 +362,71 @@ test('B8b: 旧会话退出应答迟到（A 的 off 在途）不得抹掉新会�
     delete globalThis.__micEngine
   }
 })
+
+test('Loop 3 #7: 多标签页接管时旧标签页提示「已被另一标签页接管」且 403 回调不反抢乒乓', async () => {
+  const r = micRenderer()
+  let capturedOpts = null
+  const captureAsrStub = `export function createAsrEngine(options) {
+    captured(options);
+    const e={active:false,holding:false,state:'idle',starts:0,stops:0,
+      async start(){this.active=true;this.starts++;this.state='listening'},
+      async stop(){this.active=false;this.stops++;this.holding=false},
+      beginHeld(){if(this.active)this.holding=true},endHeld(){this.holding=false},async discardSegment(){},forceSend(){},
+      onTelemetry(){},onLevel(){},onError(){},onNotice(){},onState(fn){this.stateFn=fn},onPartial(fn){this.partialFn=fn},onSegment(fn){this.segmentFn=fn},
+      echoLevels(){return {floorRms:0,residualRms:0,peakRms:0}},
+    };globalThis.__micEngine=e;return e
+  }`
+  globalThis.captured = (o) => {
+    capturedOpts = o
+  }
+  const c = await voiceClient({ react: reactStub, 'asr.ts': captureAsrStub })
+  const config = { ...c.bus.ui.boot, mode: 'toggle', readAloud: 'voice', autoResume: false, autoSend: true, llmCorrect: false }
+  const baseFetch = globalThis.fetch
+  let enterCount = 0
+  globalThis.fetch = async (url, init) => {
+    const u = String(url)
+    if (u.endsWith('/config')) return { ok: true, json: async () => config }
+    if (u.endsWith('/toggle')) {
+      const body = init?.body ? JSON.parse(init.body) : {}
+      if (body.on === true) enterCount++
+      return { ok: true, status: 200, json: async () => ({ active: body.on ? body.sessionId : null, ownerTabId: 'tab' }) }
+    }
+    return { ok: true, status: 200, json: async () => ({}) }
+  }
+  try {
+    await r.mount(() =>
+      c.MicButton({
+        bus: c.bus,
+        sessionId: 's1',
+        useSession: (fn) => fn({ running: false }),
+        useInput: (fn) => fn({ draft: '', phase: 'idle' }),
+        inputActions: { setDraft() {}, submit() {} },
+      }),
+    )
+    r.button().props.onClick({ detail: 1 })
+    await r.flush()
+    assert.equal(c.bus.activeSessionId, 's1')
+    assert.equal(enterCount, 1)
+
+    // 另一标签页（ownerTabId='tab-other'）接管同一会话 s1 → 旧标签页自动让出并给出明确提示，且不触发反抢
+    c.emit('mode', { active: 's1', ownerTabId: 'tab-other' })
+    await r.flush()
+    assert.equal(c.bus.activeSessionId, null, '被另一标签页接管后本页应释放 owner')
+    assert.equal(globalThis.__micEngine.active, false, '被接管后本页麦克风必须停掉')
+    assert.ok(
+      c.bus.ui.notice === '语音模式已被另一标签页接管' || c.bus.ui.notice === 'Voice mode was taken over by another tab',
+      `被另一标签页接管时应提示用户原因（实际：${c.bus.ui.notice}）`,
+    )
+    assert.equal(c.bus.isPreemptedByOther('s1'), true)
+    const recovered = await capturedOpts.onSessionExpired()
+    assert.equal(recovered, false, '已被他页接管时 403 恢复不得反抢')
+    assert.equal(enterCount, 1, '不得再向 /toggle 发送重入请求制造乒乓互抢')
+  } finally {
+    globalThis.fetch = baseFetch
+    delete globalThis.captured
+    delete globalThis.__micEngine
+    c.bus.dispose()
+    r.close()
+    c.close()
+  }
+})

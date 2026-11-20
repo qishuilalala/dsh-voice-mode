@@ -310,6 +310,7 @@ interface VoiceBus {
   subscribe(fn: (b: { active: string | null; ui: VoiceUiState }) => void): () => void
   setUi(patch: Partial<VoiceUiState>): void
   enter(sessionId: string): Promise<{ ok: boolean; error?: string; preempted?: boolean }>
+  isPreemptedByOther?(sessionId: string): boolean
   /** 退出语音模式。keepAudio=true（打字退出，I2）时不停播——AI 朗读继续，
    *  只停 ASR/让出 host（用户只是想打字，没让 AI 闭嘴）。 */
   exit(sessionId: string, keepAudio?: boolean): Promise<void>
@@ -1426,7 +1427,8 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
           doSkipAudio(prev)
           // P1-5：跨会话让出/抢占时清空未完成的埋点链。
           resetTelemetry()
-          notify()
+          if (active !== null) busApi.setNotice(t('tabPreemptedNotice'))
+          else notify()
         }
       } catch {
         // ignore malformed frame
@@ -1845,6 +1847,11 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
       // 对抗审查 Minor#5：尾音窗随估计 bulk delay 扩展（回声到达麦克风比本地停播
       // 晚 D 样本；固定 400ms 在 250ms 延迟路径下不足，残响会漏进 ASR/检测通道）。
       return playingEndAt + ECHO_TAIL_MS + (refDelaySamples / SAMPLE_RATE_16K) * 1000
+    },
+    isPreemptedByOther(sessionId: string) {
+      if (voiceActive !== null && voiceActive !== sessionId) return true
+      if (voiceOwnerTab !== null && voiceOwnerTab !== TAB_ID) return true
+      return false
     },
     async enter(sessionId) {
       engine.resetFallback() // I-4
@@ -3312,6 +3319,7 @@ export function MicButton({
             // I4：仅当本 tab 仍处语音模式（local=on）才反抢；已被让出/退出时跟随 mode 广播
             // 静默退出，防多 tab 下 403→重入→403 乒乓抖振（TTS 反复被掐）。
             if (localRef.current !== 'on') return false
+            if (bus.isPreemptedByOther?.(sid)) return false
             // I3：2s 重入冷却——无退避时两个 local=on 的 tab 每拍 403 都反抢，
             // 互踢振荡直到某一方 mode 广播先落地；冷却把反抢频率压到 0.5Hz。
             if (Date.now() - lastReenterAt < 2000) return false
