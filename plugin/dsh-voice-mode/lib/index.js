@@ -3025,6 +3025,7 @@ var en = {
   engineUnavailableShort: "Unavailable",
   errOpenaiConfigMissing: "Endpoint is not configured yet: pick a provider under Online preset (usually only the key is needed), or choose Custom and fill the endpoint and model",
   engineMissingKey: "API key missing",
+  errApiKeyMissingHint: "Read-aloud requires an API key: fill it under API Key below, then click Verify preset; or switch to a local engine",
   ttsKeyMissingNotice: "Online read-aloud has no API key: recognition and captions work, but speech will fail. Fill the key under Settings \u2192 Voice mode, or switch to a local engine (Edge / local VITS / Kokoro)",
   ttsProbeAuthFail: "The service rejected read-aloud (usually a missing or invalid API key): fill or update the key under Settings \u2192 Voice mode, or switch to a local engine",
   verifyAuthFail: "Verification failed: the server rejected authentication (401/403). Check and update the API key",

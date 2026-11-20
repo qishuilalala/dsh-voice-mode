@@ -1986,14 +1986,14 @@ function EngineStatusInline({ onSwitchLocal }: { onSwitchLocal?: () => void }): 
   if (tts.loading) {
     statusText = tr('engineLoading')
     statusColor = t.term
+  } else if (tts.keyRequired && tts.keyPresent === false) {
+    // 2026-11-20 UX：缺 Key 是根因，必须排在「服务不可用/连不上」之前——否则 401 被报成网络或引擎坏。
+    statusText = tr('engineMissingKey')
+    statusColor = 'var(--dsw-alias-state-warn-primary, #d29922)'
   } else if (tts.error) {
     // Spec 审查 #9：未配 key 与“云端挂了”必须可区分，否则用户不会想到去填 key。
     statusText = engineDownText(tts.errorCode, tts.engine)
     statusColor = 'var(--dsw-alias-state-error-primary)'
-  } else if (tts.keyRequired && tts.keyPresent === false) {
-    // 2026-11-20 UX：配置齐全但缺 Key 时不得显示「就绪」——否则用户进语音后无声且不知原因。
-    statusText = tr('engineMissingKey')
-    statusColor = 'var(--dsw-alias-state-warn-primary, #d29922)'
   } else if (isLocal && !localReady) {
     statusText = tr('ttsModelsMissing')
     statusColor = 'var(--dsw-alias-state-error-primary)'
@@ -2036,7 +2036,9 @@ function EngineStatusInline({ onSwitchLocal }: { onSwitchLocal?: () => void }): 
       </span>
       {/* 2026-11-20：错误原因只在下方错误行出现一次。此前这里已用 engineDownText 输出完整原因，
           下面 tts.error 区块又重复一遍，界面上出现两条一模一样的红字。 */}
-      <span style={{ fontSize: 12, fontWeight: 600, color: statusColor }}>{tts.error ? tr('engineUnavailableShort') : statusText}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: statusColor }}>
+        {tts.keyRequired && tts.keyPresent === false ? tr('engineMissingKey') : tts.error ? tr('engineUnavailableShort') : statusText}
+      </span>
       {tts.loading && tts.progress?.file && (
         <span style={{ fontSize: 12, color: t.term }}>{tts.progress.file} {tts.progress.percent}%</span>
       )}
@@ -2075,7 +2077,9 @@ function EngineStatusInline({ onSwitchLocal }: { onSwitchLocal?: () => void }): 
       {tts.error && (
         <>
           <span style={{ fontSize: 11, color: 'var(--dsw-alias-state-error-primary)', flexBasis: '100%' }}>
-            {tts.errorCode === 'kokoro_needs_node'
+            {tts.keyRequired && tts.keyPresent === false
+              ? tr('errApiKeyMissingHint')
+              : tts.errorCode === 'kokoro_needs_node'
               ? tr('errKokoroNeedsNode')
               : tts.errorCode === 'mimo_not_configured'
                 ? tr('errMimoKeyMissing')
@@ -2409,15 +2413,15 @@ export function VoiceSettingsCard({
             title={tr('settingsCardDesc')}
           >
             {collapsed
-              ? `${ENGINE_NAME[engine]()} · ${String(value.voice ?? '') || '—'} · ${
+              ? `${ENGINE_NAME[engine]()} · ${(String(value.voice ?? '').trim() || (engine === 'openai' ? effectiveVoice() : '')).trim() || '—'} · ${
                   !headStatus?.tts
                     ? '…'
-                    : headStatus.tts.error
-                      ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine)
-                      : headStatus.tts.loading
-                        ? tr('engineLoading')
-                        : headStatus.tts.keyRequired && headStatus.tts.keyPresent === false
-                          ? tr('engineMissingKey')
+                    : headStatus.tts.loading
+                      ? tr('engineLoading')
+                      : headStatus.tts.keyRequired && headStatus.tts.keyPresent === false
+                        ? tr('engineMissingKey')
+                        : headStatus.tts.error
+                          ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine)
                           : headStatus.tts.local && !headStatus.tts.local.ready
                             ? tr('ttsModelsMissing')
                             : tr('engineReady')

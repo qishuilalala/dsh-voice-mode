@@ -844,7 +844,7 @@ try {
       fetchImpl: (url) => {
         if (String(url).includes('/models/status')) {
           return Promise.resolve(new Response(JSON.stringify({
-            tts: { engine: 'openai', ready: true, loading: false, keyRequired: true, keyPresent: false },
+            tts: { engine: 'openai', ready: true, loading: false, keyRequired: true, keyPresent: false, error: 'HTTP 401: Token is invalid.', errorCode: 'openai_http_error' },
           }), { status: 200 }))
         }
         return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))

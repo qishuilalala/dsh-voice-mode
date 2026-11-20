@@ -2036,8 +2036,9 @@ var zh = {
   engineRemoteDown: "\u670D\u52A1\u4E0D\u53EF\u7528",
   errMimoKeyMissing: "\u672A\u914D\u7F6E\u5C0F\u7C73 MiMo \u7684 API Key\uFF1A\u8BF7\u5728\u672C\u8BBE\u7F6E\u5361\u7247\u586B\u5199\uFF0C\u6216\u5728 profile \u7684 mimoTts.apiKey \u4E2D\u914D\u7F6E",
   engineUnavailableShort: "\u4E0D\u53EF\u7528",
-  errOpenaiConfigMissing: "\u8FD8\u6CA1\u914D\u597D\u7AEF\u70B9\uFF1A\u5728\u4E0A\u65B9\u300C\u5728\u7EBF\u9884\u8BBE\u300D\u9009\u4E00\u5BB6\uFF08\u901A\u5E38\u53EA\u9700\u586B key\uFF09\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u586B\u63A5\u53E3\u5730\u5740\u4E0E\u6A21\u578B\u540D",
+  errOpenaiConfigMissing: "\u8FD8\u6CA1\u914D\u597D\u7AEF\u70B9\uFF1A\u5728\u4E0B\u65B9\u300C\u5728\u7EBF\u9884\u8BBE\u300D\u9009\u4E00\u5BB6\uFF08\u901A\u5E38\u53EA\u9700\u586B key\uFF09\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u586B\u63A5\u53E3\u5730\u5740\u4E0E\u6A21\u578B\u540D",
   engineMissingKey: "\u7F3A API Key",
+  errApiKeyMissingHint: "\u6717\u8BFB\u670D\u52A1\u9700\u8981 API Key\uFF1A\u5728\u4E0B\u65B9\u300CAPI Key\u300D\u586B\u5165\u540E\u70B9\u300C\u9A8C\u8BC1\u6B64\u9884\u8BBE\u300D\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE",
   ttsKeyMissingNotice: "\u5728\u7EBF\u6717\u8BFB\u7F3A\u5C11 API Key\uFF1A\u8BC6\u522B\u4E0E\u5B57\u5E55\u53EF\u7528\uFF0C\u6717\u8BFB\u4F1A\u5931\u8D25\uFF1B\u8BF7\u5230\u300C\u8BBE\u7F6E \u2192 \u8BED\u97F3\u6A21\u5F0F\u300D\u586B Key\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE\uFF08Edge/\u672C\u5730 VITS/Kokoro\uFF09",
   ttsProbeAuthFail: "\u6717\u8BFB\u88AB\u670D\u52A1\u7AEF\u62D2\u7EDD\uFF08\u591A\u4E3A API Key \u7F3A\u5931\u6216\u65E0\u6548\uFF09\uFF1A\u8BF7\u5230\u300C\u8BBE\u7F6E \u2192 \u8BED\u97F3\u6A21\u5F0F\u300D\u586B\u5199\u6216\u66F4\u65B0 Key\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE",
   verifyAuthFail: "\u9A8C\u8BC1\u5931\u8D25\uFF1A\u670D\u52A1\u7AEF\u62D2\u7EDD\u9274\u6743\uFF08401/403\uFF09\uFF0C\u8BF7\u68C0\u67E5\u5E76\u66F4\u65B0 API Key",
@@ -2426,6 +2427,7 @@ var en = {
   engineUnavailableShort: "Unavailable",
   errOpenaiConfigMissing: "Endpoint is not configured yet: pick a provider under Online preset (usually only the key is needed), or choose Custom and fill the endpoint and model",
   engineMissingKey: "API key missing",
+  errApiKeyMissingHint: "Read-aloud requires an API key: fill it under API Key below, then click Verify preset; or switch to a local engine",
   ttsKeyMissingNotice: "Online read-aloud has no API key: recognition and captions work, but speech will fail. Fill the key under Settings \u2192 Voice mode, or switch to a local engine (Edge / local VITS / Kokoro)",
   ttsProbeAuthFail: "The service rejected read-aloud (usually a missing or invalid API key): fill or update the key under Settings \u2192 Voice mode, or switch to a local engine",
   verifyAuthFail: "Verification failed: the server rejected authentication (401/403). Check and update the API key",
@@ -5673,12 +5675,12 @@ function EngineStatusInline({ onSwitchLocal }) {
   if (tts.loading) {
     statusText = t("engineLoading");
     statusColor = t2.term;
-  } else if (tts.error) {
-    statusText = engineDownText(tts.errorCode, tts.engine);
-    statusColor = "var(--dsw-alias-state-error-primary)";
   } else if (tts.keyRequired && tts.keyPresent === false) {
     statusText = t("engineMissingKey");
     statusColor = "var(--dsw-alias-state-warn-primary, #d29922)";
+  } else if (tts.error) {
+    statusText = engineDownText(tts.errorCode, tts.engine);
+    statusColor = "var(--dsw-alias-state-error-primary)";
   } else if (isLocal && !localReady) {
     statusText = t("ttsModelsMissing");
     statusColor = "var(--dsw-alias-state-error-primary)";
@@ -5715,7 +5717,7 @@ function EngineStatusInline({ onSwitchLocal }) {
         children: engineBadge(tts.engine)
       }
     ),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: 600, color: statusColor }, children: tts.error ? t("engineUnavailableShort") : statusText }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: 600, color: statusColor }, children: tts.keyRequired && tts.keyPresent === false ? t("engineMissingKey") : tts.error ? t("engineUnavailableShort") : statusText }),
     tts.loading && tts.progress?.file && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
       tts.progress.file,
       " ",
@@ -5745,7 +5747,7 @@ function EngineStatusInline({ onSwitchLocal }) {
     ),
     actError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "status", "aria-live": "polite", style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: actError }) : null,
     tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: tts.errorCode === "kokoro_needs_node" ? t("errKokoroNeedsNode") : tts.errorCode === "mimo_not_configured" ? t("errMimoKeyMissing") : tts.errorCode === "openai_not_configured" ? t("errOpenaiConfigMissing") : isThirdPartyEngine(tts.engine) ? t("errRemoteTts") : t("engineError") }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: tts.keyRequired && tts.keyPresent === false ? t("errApiKeyMissingHint") : tts.errorCode === "kokoro_needs_node" ? t("errKokoroNeedsNode") : tts.errorCode === "mimo_not_configured" ? t("errMimoKeyMissing") : tts.errorCode === "openai_not_configured" ? t("errOpenaiConfigMissing") : isThirdPartyEngine(tts.engine) ? t("errRemoteTts") : t("engineError") }),
       !isLocal && onSwitchLocal ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         "button",
         {
@@ -5983,7 +5985,7 @@ function VoiceSettingsCard({
           {
             style: { ...setDesc, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" },
             title: t("settingsCardDesc"),
-            children: collapsed ? `${ENGINE_NAME[engine]()} \xB7 ${String(value.voice ?? "") || "\u2014"} \xB7 ${!headStatus?.tts ? "\u2026" : headStatus.tts.error ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine) : headStatus.tts.loading ? t("engineLoading") : headStatus.tts.keyRequired && headStatus.tts.keyPresent === false ? t("engineMissingKey") : headStatus.tts.local && !headStatus.tts.local.ready ? t("ttsModelsMissing") : t("engineReady")}` : t("settingsCardDesc")
+            children: collapsed ? `${ENGINE_NAME[engine]()} \xB7 ${(String(value.voice ?? "").trim() || (engine === "openai" ? effectiveVoice() : "")).trim() || "\u2014"} \xB7 ${!headStatus?.tts ? "\u2026" : headStatus.tts.loading ? t("engineLoading") : headStatus.tts.keyRequired && headStatus.tts.keyPresent === false ? t("engineMissingKey") : headStatus.tts.error ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine) : headStatus.tts.local && !headStatus.tts.local.ready ? t("ttsModelsMissing") : t("engineReady")}` : t("settingsCardDesc")
           }
         )
       ] }),
@@ -6486,7 +6488,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "a231e6a";
+var BUILD_TAG = "06e14e6";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
