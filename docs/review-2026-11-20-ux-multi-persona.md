@@ -86,3 +86,35 @@
 - Slice 4 颜色（自审计，以实测为准；否决了 agent 未经核实的断言）：「缺 key」由成功绿改警告色（与「假就绪」同类毛病）；「测试朗读」主按钮改品牌主色（动作色与状态色分离）；其余 token/回退值保留（无硬编码色散）。
 - 证据：`preset-voices` 新文件 5 用例；`online-tts` +3（优先级/回落/原型污染）；`engine-rebuild` +1（map/键序/非法）；`settings-view` +2（strip/presence）；`settings-deep-audit` +1（列表/原子切换/逐预设 Key 行/警告色）；Playwright 真机视觉验收（旧 host 下降级路径 + 新级联行渲染）。
 - 运行边界：host 侧改动（voices 表、key 解析、presence）需 dsh 重启才生效（未重启，符合禁令）；客户端刷新即见新面板。未改用户设置、未合并、未发版。
+
+## 8. Loop 3（2026-11-21）：HEAD 全量缺陷清零 + 设置面板因果体验重塑 + 八项体验深挖全落地
+
+### 8.1 HEAD 全流程代码审计确认并修复的真实缺陷
+
+1. **逐预设密钥落盘覆盖与清空 400**：`src/index.ts` 的 `persistSettings` 原先直接整对象覆盖 `openaiApiKeys`，保存预设 B 的密钥会把磁盘上已保存的预设 A 密钥抹掉；`src/settings-view.ts` 的 `applyClearSecrets` 对 `openaiApiKeys` 写 `''` 触发 Zod `z.dict(z.string())` 400；`src/settings-form.tsx` 的 `PresetKeyField` 空草稿失焦即提交空串误删密钥。现新增 `mergePresetApiKeys` 按预设键合并落盘（空串删除单键），`applyClearSecrets` 写 `{}`，`PresetKeyField` 空失焦改为无操作并补显式「清除」按钮。
+2. **未知预设死输入框与自建预设假缺 Key 警告**：未知预设 id 在 `resolveOnlineTts` 不读逐预设表，面板不再渲染无效输入框；自建预设（`selfhosted-*`）无需 API Key，不再显示琥珀色缺 Key 警告。
+3. **密钥重建指纹碰撞**：`src/engine-rebuild.ts` 的 `stableApiKeys` 改用 `JSON.stringify` 排序二元组，消除密钥含 `=`/`&` 时的拼接碰撞。
+4. **全局密钥布尔污染**：`src/settings-view.ts` 的 `buildSettingsGetView` 不再将 `config.openaiTts.apiKeys` 混入全局 `keys.openaiApiKey`，避免未配全局备用 Key 时误显示已配。
+5. **切换引擎/预设串行写竞态**：`src/settings-form.tsx` 的 `SegGroup`、`switchPreset`、`switchToLocalKokoro` 在首写返回 `false` 时中止级联清空 `voice`。
+6. **OpenAI 自定义端点空音色占位与清空残留**：自定义端点空 `voice` 展示「服务端默认音色」而非 Edge 音色名，试听/自测放行空 `voice`；`src/index.ts` 的 `makeEngine` 以空 `voice` 初始化基线，使后续 `updateVoice('')` 能回退到预设或服务端默认音色。
+7. **多标签页焦点停播串扰与断连泄漏**：`src/index.ts` 的 `stopFocusReading` 增加 `sessionId === activeVoiceSession` 守卫（其他标签页切换焦点不再掐断活跃语音会话朗读），且焦点标签页 SSE 断开时立即停止 `readAloud=always` 合成。
+8. **原型链污染与受限存储兜底**：`src/strings.ts`（`translateLocal`）与 `src/i18n.ts`（`interpolate`）改用 `Object.hasOwn`；`src/client.tsx` 顶层 `localStorage` 读取补 `try/catch` 守卫。
+
+### 8.2 设置面板视觉与交互重构
+
+- **因果流重排（「朗读」分段）**：按「朗读回复 → 朗读引擎 → 在线预设与专属密钥（自定义接口地址与全局备用密钥默认收进可折叠高级抽屉） → 朗读音色 → 朗读语速 → 状态与测试朗读卡片」重排，首屏一气呵成。
+- **现代控件体系**：复选框升级为胶囊拨杆开关（`CheckRow`），顶部分段与行内单选组升级为内凹轨道悬浮胶囊（`SegmentTabs` / `SegGroup`），下拉框统一自定义矢量箭头与触屏 `16px` 防缩放字号，说明按钮升级为圆形徽标加左边框提示卡，快捷键、纠错词表与模型状态全面卡片化。
+
+### 8.3 Loop 3 八项候选逐题闭环
+
+| 题号 | 改动要点 | 核心落点与单测 |
+| --- | --- | --- |
+| 1. 触屏快捷菜单 | `pointer: coarse` 旁侧常驻 `⋯` 按钮 + 待机 450ms 长按呼出 `MicMenu`（`canTouchLongPressMenu`），补齐 `visualViewport` 钳制与 `100dvh` 滚动 | src/mic-gesture.ts、src/client.tsx；touch-mic-menu 新用例 |
+| 2. 状态条窄屏与对比度 | 正文改用 `--dsw-alias-label-primary` 消除浅色主题低对比度，窄屏两行折行 + 角标独立次行 | src/client.tsx；statusbar-aria 新断言 |
+| 3. 字幕安全区与回看 | `env(safe-area-inset-*)` + `30dvh` + 窄屏通栏，播毕 3.5s 驻留与最近 8 句展开回看（`pushCaptionHistory`），live 区仅包字幕正文 | src/mic-gesture.ts、src/client.tsx；caption-a11y 新用例 |
+| 4. 切 tab/切会话先定稿 | `AsrEngine` 新增 `flushAndStop`：首帧同步停硬件麦克风，有界等待有效语音段定稿进草稿（后台不自动发送；切会话暂存原会话草稿、切回自动回填，绝不串写新会话） | src/asr.ts、src/client.tsx；tab-switch-finalize 新用例 |
+| 5. `manual` 作用域收窄 | `runtimeBargeInMode === 'manual'` 仅在 `playingNow` 朗读期丢弃非按压帧，释放 Safari/外放用户空闲直接说话与唤醒词 | src/asr.ts、src/strings.ts；barge-in-manual 新用例 |
+| 6. 单句重试预算与提示 | `TtsQueue` 增加单句重试墙钟预算 `synthBudgetMs`（慢超时立即止损）与 `onRetry` → `tts-retry` 状态条进度提示；流式回合保留 `failStreak`；MiMo 默认超时对齐 `8000ms` | src/tts-queue.ts、src/tts-mimo.ts、src/index.ts、src/client.tsx；tts-playback 新用例 |
+| 7. 多标签页互抢提示 | 被他页接管时提示「语音模式已被另一标签页接管」，`isPreemptedByOther` 阻断 403 恢复反抢乒乓 | src/client.tsx；client-deep-audit 新用例 |
+| 8. 首次使用引导 | 首次无告警进入语音模式经 `takeOnceHint` 按交互模式/唤醒词给出一次性操作引导，并修复配好 Key 后旧缺 Key 提示残留 | src/client.tsx、src/strings.ts；once-hint 新用例 |
+

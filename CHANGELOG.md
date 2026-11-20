@@ -7,6 +7,23 @@
 
 ## [Unreleased]
 
+### 修复与体验打磨（2026-11-21，HEAD 全量复审缺陷清零 + 设置面板因果重塑 + Loop 3 八项全落地）
+
+- **HEAD 全流程缺陷修复（逐预设密钥与级联闭环）**：
+  - 修复逐预设密钥落盘覆盖与清空 400：`src/settings-view.ts` 新增 `mergePresetApiKeys` 接入 `src/index.ts`（`persistSettings`），保存预设 B 密钥不再抹掉预设 A 已存密钥；`applyClearSecrets` 对 `openaiApiKeys` 写 `{}` 而非空串，消除 Zod 字典校验 400；`PresetKeyField` 空草稿失焦改为无操作并提供显式「清除」按钮。
+  - 修复全局与逐预设密钥状态串扰、特殊字符重建碰撞与级联竞态：`buildSettingsGetView` 不再把 `config.openaiTts.apiKeys` 混入全局 `keys.openaiApiKey`；`engine-rebuild.ts` 的 `stableApiKeys` 改用 `JSON.stringify` 二元组消除 `=`/`&` 撞车；`SegGroup` 与 `switchPreset` 在首写返回 `false` 时中止后续 `voice` 清空；未知预设 id 不渲染无效密钥框，自建预设不误报缺 key；OpenAI 自定义端点空 `voice` 展示「服务端默认音色」并放行自测/试听，清空自定义音色后正确回退预设/服务端默认音色。
+  - 修复焦点朗读隔离与原型键安全：非语音标签页切换 `/focus` 不再误停活跃语音模式 TTS，焦点标签页 SSE 断开时自动停止 `readAloud=always` 合成；`translateLocal` 与 `interpolate` 改用 `Object.hasOwn` 防原型链污染；客户端顶层 `localStorage` 访问补齐受限环境守卫。
+- **设置面板视觉与交互升级**：`src/settings-form.tsx`「朗读」分段调整为符合直觉的因果顺序（朗读回复 → 朗读引擎 → 在线预设与专属密钥〔高级端点与备用密钥默认折叠〕 → 朗读音色 → 语速 → 状态与测试朗读卡片）；复选行升级为现代胶囊拨杆开关，分段导航与单选组升级为内凹轨道胶囊，下拉框统一矢量箭头与触屏 `16px` 字号防缩放，快捷键、纠错词表与模型状态升级为卡片化布局。
+- **Loop 3 八项体验改进逐项落地**：
+  1. **触屏快捷菜单**：`MicButton` 新增 `pointer: coarse` 旁侧 `⋯` 按钮与待机 450ms 触屏长按呼出 `MicMenu`（`canTouchLongPressMenu`），菜单补齐 `visualViewport` 钳制与 `100dvh` 滚动。
+  2. **状态条窄屏重排与对比度**：`VoiceStatusBar` 正文改用高对比度 `--dsw-alias-label-primary`（解决浅色主题绿字低对比度），窄屏 `<=520px` 支持两行折行并将角标分栏至次行。
+  3. **字幕安全区与回看**：`VoiceOverlay` 适配 `env(safe-area-inset-*)`、`30dvh` 与窄屏通栏，播毕保留 3.5s 余韵驻留（`pushCaptionHistory` 支持展开回看最近 8 句），并将 `role="status"` 收窄至字幕正文节点。
+  4. **切标签页/切会话先定稿**：`AsrEngine` 新增 `flushAndStop`，首帧同步关停硬件麦克风，有界等待未完语音段定稿回填草稿（后台不自动误发；跨会话切换按原会话暂存草稿，切回自动回填，绝不串写新会话输入框）。
+  5. **`manual` 作用域收窄至朗读期**：`runtimeBargeInMode === 'manual'`（含 `detect` 无原生回声消除自动回落）仅在 AI 朗读播放期丢弃非按压帧，空闲期无需按住即可直接说话与触发唤醒词。
+  6. **单句重试预算与进度提示**：`TtsQueue` 新增单句重试墙钟预算 `synthBudgetMs`（慢超时立即止损，避免 `3×8s` 静默干等）与 `onRetry` → `tts-retry` 状态条进度提示，流式回合内跨排空空档保留 `failStreak` 连败计数，`MimoTtsEngine` 默认超时对齐 schema `8000ms`。
+  7. **多标签页互抢提示**：被另一标签页接管语音模式时，原标签页提示「语音模式已被另一标签页接管」，且 `isPreemptedByOther` 阻止 403 恢复反向抢回制造乒乓抖振。
+  8. **首次使用引导**：首次无告警进入语音模式时，经 `takeOnceHint` 按交互模式/唤醒词给出一次性操作引导，并修复配好密钥后重入时旧缺 Key 提示残留问题。
+
 ### 重构（2026-11-20，设置面板第二轮：服务→音色→Key 级联 + 颜色收敛）
 
 - **先选服务再选音色**：OpenAI 兼容段的音色下拉不再是恒空 `[]`——7 家预设各带已核实音色表（硅基 8 系统音色一手文档；OpenAI/OpenRouter 12 原生音色；Kokoro 4 中文名；Groq 保留示例 + 手输；vLLM 默认 + 手输；MiMo 9 个），切服务即列出该服务音色；自定义端点保留手输。

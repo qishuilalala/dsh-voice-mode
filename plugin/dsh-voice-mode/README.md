@@ -126,7 +126,7 @@ dsh plugin --profile web add dsh-voice-mode
 | `voice` | 按引擎 | 音色：VITS 五说话人；Kokoro 103 个（下拉+◀▶，62 深沉/68 浑厚/75 清亮/76 磁性置顶）；Edge 进入时自动加载全量 322 个。行内「试听」可即时预览 |
 | `rate` | `1.1` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
 | `interruptLevel` | `0` | 发声打断灵敏度（服务端 VAD 帧级检测 + 回声门控）：0 高门槛（3 帧）/ 1 中（2 帧）/ 2 低（1 帧） |
-| `bargeInMode` | `detect` | 打断方式：`detect` 自动探测本机原生回声消除状态（默认；未生效时切为长按打断）/ `auto` 强制开口即打断（耳机、安静环境推荐）/ `manual` 长按打断（外放推荐）。批 7O 默认，I10 豁免（ADR-0006） |
+| `bargeInMode` | `detect` | 打断方式：`detect` 自动探测本机原生回声消除状态（默认；未生效时朗读期切为长按打断）/ `auto` 强制开口即打断（耳机、安静环境推荐）/ `manual` 手动打断（外放推荐：空闲时可直接说话或说唤醒词，AI 朗读中按住麦克风/Ctrl 打断）。批 7O 默认，I10 豁免（ADR-0006） |
 | `echoGateDb` | `6` | 无原生 AEC 时的回声门兜底阈值；原生 AEC 有效时不参与。仅在兜底路径中，增大更保守、减小更易触发；先确认设备与打断模式 |
 | `silenceMs` | `1500` | 说完整一句的静音停顿毫秒数 |
 | `idleTimeoutMinutes` | `5` | 无活动自动退出语音模式的分钟数（朗读计为活动） |
@@ -139,7 +139,7 @@ dsh plugin --profile web add dsh-voice-mode
 | `showCaptions` | `true` | 朗读时的字幕浮层 |
 | `shortcut` | `Ctrl+Shift+V` | 进入 / 退出语音模式的快捷键（修饰键 Ctrl/Shift/Alt/Meta + 一个字母 / 数字 / Enter / Space / Tab）；设置页「快捷键」分组里可点「录制」直接按组合键录入（`Esc` 取消、`Backspace` 清空，缺修饰键或方向键 / F 键等不支持的键会提示）；**留空 = 禁用快捷键**，改用麦克风按钮；**即时生效** |
 | `composerShortcut` | `Alt+Enter` | 光标在输入框里时切换语音模式的快捷键（Mac 上即 Option+Enter），不插入换行；格式与录制方式同 `shortcut`；**留空 = 禁用**；设置卡片自己的输入框不拦截；`Cmd/Ctrl+Enter` 不占用；**即时生效**。「恢复默认」把两项快捷键恢复为 `Ctrl+Shift+V` 与 `Alt+Enter` |
-| `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭。**可与命令连说**，词头自动剥掉不进消息；匹配带容错（编辑距离 ≤1 + 前 3 字符前导窗口，吸收同音字/语气词）；**建议 3-4 字**——单字词无容错、2 字词的容错会连带吸收所有同首字的 2 字词（如「小莫」也会唤醒「小张」），介意误唤醒用 3 字以上；每句断句或打断后回待机需重说；**仅 toggle 模式生效**（hold / 手动打断下不生效）；朗读期说唤醒词不触发 |
+| `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭。**可与命令连说**，词头自动剥掉不进消息；匹配带容错（编辑距离 ≤1 + 前 3 字符前导窗口，吸收同音字/语气词）；**建议 3-4 字**——单字词无容错、2 字词的容错会连带吸收所有同首字的 2 字词（如「小莫」也会唤醒「小张」），介意误唤醒用 3 字以上；每句断句或打断后回待机需重说；**按住说话 hold 模式下不生效**（`manual` 手动打断与 `detect` 回落 `manual` 时空闲期照常生效）；朗读期说唤醒词不触发 |
 | `toolBeep` | `false` | 工具调用提示音（默认关）：开启后 AI 调用工具时「滴」一声；关闭则全程静默 |
 | `spokenFormat` | `true` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效** |
 | `senseITN` | `true` | SenseVoice 逆文本归一化（数字/日期/货币规范化；默认开） |
@@ -265,7 +265,7 @@ dsh plugin --profile web add dsh-voice-mode
       voice: mimo_default
       instructions: ''               # 可选：自然语言风格说明（如「温和一些」）
       responseFormat: wav            # wav | mp3
-      timeoutMs: 30000
+      timeoutMs: 8000                # 单句超时（默认 8000ms）
       fallback: kokoro               # none | vits | kokoro：失败或超时后 30 秒内用本地引擎
       fallbackVoice: zf_xiaobei
 ```
