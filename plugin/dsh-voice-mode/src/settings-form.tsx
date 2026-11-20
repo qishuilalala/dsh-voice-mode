@@ -90,11 +90,11 @@ const setChevron: React.CSSProperties = { color: t.term, flex: 'none', transitio
 const setBody: React.CSSProperties = { borderTop: `1px solid ${t.border}`, padding: '4px 18px 16px', display: 'flex', flexDirection: 'column', minWidth: 0 }
 const setRow: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'minmax(132px, 196px) minmax(0, 1fr)',
-  columnGap: 18,
+  gridTemplateColumns: 'minmax(116px, 160px) minmax(0, 1fr)',
+  columnGap: 14,
   rowGap: 6,
   alignItems: 'center',
-  padding: '11px 0',
+  padding: '10px 0',
   borderTop: '1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 65%, transparent)',
   minWidth: 0,
 }
@@ -103,10 +103,10 @@ const setHint: React.CSSProperties = {
   color: 'var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))',
   fontSize: 12,
   lineHeight: '18px',
-  padding: '7px 10px',
-  borderRadius: 8,
-  background: 'var(--dsw-alias-bg-layer-2)',
-  borderLeft: '2px solid var(--dsw-alias-brand-primary)',
+  padding: '7px 11px',
+  borderRadius: '0 8px 8px 0',
+  background: 'color-mix(in srgb, var(--dsw-alias-label-tertiary) 9%, transparent)',
+  borderLeft: '2.5px solid #2563eb',
   marginTop: 2,
 }
 const setSeg: React.CSSProperties = {
@@ -180,10 +180,11 @@ const focusVisibleCss = `
   background: var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08));
   border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, transparent);
 }
-@container (max-width: 580px) {
+@container (max-width: 420px) {
   [data-dshvm-row] { grid-template-columns: minmax(0, 1fr) !important; align-items: start !important; row-gap: 6px !important; }
+  [data-dshvm-row]:has(.dshvm-switch) { grid-template-columns: minmax(0, 1fr) auto !important; align-items: center !important; }
 }
-@container (max-width: 440px) {
+@container (max-width: 400px) {
   [data-dshvm-settings="card"] .dshvm-tab-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 [data-dshvm-settings="card"] input:not([type="checkbox"]):hover,
@@ -193,7 +194,7 @@ const focusVisibleCss = `
 [data-dshvm-settings="card"] input:not([type="checkbox"]):focus-visible,
 [data-dshvm-settings="card"] select:focus-visible,
 [data-dshvm-settings="card"] button:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline: 2px solid #2563eb;
   outline-offset: 1px;
 }
 [data-dshvm-settings="card"] .dshvm-switch {
@@ -229,8 +230,8 @@ const focusVisibleCss = `
   transition: background .16s ease, border-color .16s ease;
 }
 [data-dshvm-settings="card"] .dshvm-switch[data-checked="1"] .dshvm-switch-track {
-  background: var(--dsw-alias-brand-primary);
-  border-color: var(--dsw-alias-brand-primary);
+  background: #2563eb;
+  border-color: #2563eb;
 }
 [data-dshvm-settings="card"] .dshvm-switch-thumb {
   position: absolute;
@@ -247,7 +248,7 @@ const focusVisibleCss = `
   transform: translateX(16px);
 }
 [data-dshvm-settings="card"] .dshvm-switch:has(.dshvm-switch-input:focus-visible) .dshvm-switch-track {
-  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline: 2px solid #2563eb;
   outline-offset: 2px;
 }
 @media (pointer: coarse) {
@@ -1049,7 +1050,7 @@ function VoiceSelect({
   const cur = String(value ?? '')
   // 空值语义是「用引擎/预设/服务端默认音色」；提供显式默认项避免误弹空手输框。
   const defaultOptLabel = placeholder
-    ? tr('voiceDefaultOption').replace('{name}', placeholder)
+    ? tr('voiceDefaultOption').replace('{name}', presetVoiceLabel(placeholder))
     : emptyDefaultLabel ?? ''
   const baseOpts =
     defaultOptLabel && showCustom && !options.some((o) => o.v === '')
@@ -2062,8 +2063,8 @@ function Row({ name, desc, children }: { name: string; desc: string; children: R
             onClick={() => setShowDesc((v) => !v)}
             style={{
               appearance: 'none',
-              border: `1px solid ${showDesc ? 'var(--dsw-alias-brand-primary)' : 'color-mix(in srgb, var(--dsw-alias-border-l2) 85%, transparent)'}`,
-              background: showDesc ? 'color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent)' : 'transparent',
+              border: `1px solid ${showDesc ? '#2563eb' : 'color-mix(in srgb, var(--dsw-alias-border-l2) 85%, transparent)'}`,
+              background: showDesc ? 'rgba(37, 99, 235, 0.12)' : 'transparent',
               cursor: 'pointer',
               font: 'inherit',
               fontSize: 10.5,
@@ -2076,7 +2077,7 @@ function Row({ name, desc, children }: { name: string; desc: string; children: R
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: showDesc ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-label-tertiary)',
+              color: showDesc ? '#2563eb' : 'var(--dsw-alias-label-tertiary)',
               flexShrink: 0,
             }}
           >
