@@ -279,6 +279,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let partialInFlight = false
   /** reset 门（issue #10 问题 3）：host 清场与 partial 上行的顺序约束（见 resetHostStream）。 */
   let resetGate: Promise<void> = Promise.resolve()
+  /** 裁头导致 host 流被重置、final 前必须先等 reset 落定（2026-11-20 复核）。 */
+  let hostResetPending = false
   /** 段纪元：finalize/stop 后迟到的 partial 丢弃。 */
   let segmentEpoch = 0
   /**
@@ -829,7 +831,6 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // B1 修复：hold 段因 3MB 上限裁过头时，在定稿入口消费标记并给出 5s 瞬态提示（原错贴在 403 分支）。
     const wasHoldTrimmed = holdTrimmed
     holdTrimmed = false
-    if (wasHoldTrimmed) emit(noticeListeners, 'holdTrimmedNotice')
     forcePending = false
     speechMs = 0 // P1-3：新段重新起算纯语音时长
     uploadedSamples = 0
@@ -841,6 +842,14 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     utteranceEndAt = null
     setState('transcribing')
     void (async () => {
+      // B1 序修复：hold 裁头时会 void resetHostStream() 并把 uploadedSamples 归零；
+      // 浏览器的 reset 与 final 若并发无序，host 仍按旧 fed 计算 skip，会丢掉整段头部
+      //（表现为定稿只剩尾巴/错位）。**仅裁头这条路径**需要等 reset 落定（resetGate 串行门）；
+      // 普通定稿不得被无关 reset（如 discardSegment 慢清场）拖住——那会推迟整句转写。
+      if (hostResetPending) {
+        hostResetPending = false
+        await resetGate
+      }
       emitTelemetry('submitted') // P1-5：定稿上传发起
       // 有界重试：host 已幂等（重复 final 返回缓存文本），瞬时失败（网络异常/5xx/非 JSON）
       // 重试最多 3 次；期间段被弃（世代变化）即停止。根治「单次瞬时失败丢整句」。
@@ -1037,6 +1046,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
             return
           }
           // 保序发射：并发定稿（A 慢、B 快）时按定稿序号排队，先说的先发（语序不乱）。
+          // B1 补充：裁头提示只在真的产出文本时发——413/弃段/空文本时发提示会误导
+          //（用户被告知「只识别最后一段」，却根本没收到文本）。
+          if (wasHoldTrimmed) emit(noticeListeners, 'holdTrimmedNotice')
           settle({ text: finalText, meta })
         } else {
           // 空文本：不得 emit，但必须落定该序号——否则保序游标被卡，后续定稿永不发射。
@@ -1059,7 +1071,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       }
     })().catch((err) => {
       // 兜底：意外异常不得让该序号永久悬空——否则后续定稿被保序游标永久卡住（静默丢句）。
-      console.warn(`[dsh-voice-mode] finalize unexpected error (seq=${mySeq}, settled as no-emit): ${redactSecrets(err)}`)
+      // 保留 stack 才能定位意外异常；redactSecrets 对该字符串同样脱敏（不落明文 key）。
+      const detail = err instanceof Error ? (err.stack ?? err.message) : String(err)
+      console.warn(`[dsh-voice-mode] finalize unexpected error (seq=${mySeq}, settled as no-emit): ${redactSecrets(detail)}`)
       settle(null)
     })
   }
@@ -1234,6 +1248,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         if (uploadedSamples > 0) {
           uploadedSamples = 0
           segmentEpoch++
+          hostResetPending = true
           void resetHostStream()
         }
       }

@@ -241,6 +241,11 @@ export class OpenAiTtsEngine implements TtsEngine {
       if (sniffed) {
         mime = sniffed
       } else if (ctype.startsWith('audio/')) {
+        // 反代/网关可能用 audio/* 声称成功却回 HTML/JSON（200 不等于音频）：正文像文本即拒。
+        const head = buf.subarray(0, 64).toString('utf8').trimStart()
+        if (head.startsWith('<') || head.startsWith('{') || head.startsWith('[')) {
+          throw new OpenAiTtsError('openai_bad_payload', 'audio content-type but textual body')
+        }
         mime = ctype.split(';')[0].trim()
       } else {
         throw new OpenAiTtsError('openai_bad_payload', `non-audio response (content-type: ${ctype || 'none'})`)

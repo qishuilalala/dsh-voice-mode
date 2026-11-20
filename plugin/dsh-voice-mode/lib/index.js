@@ -1622,7 +1622,10 @@ function parseEmotionTags(raw) {
       if (!Number.isFinite(rawMs) || rawMs <= 0) continue;
       const remaining = Math.max(0, MAX_TOTAL_BREAK_MS - totalBreakMs);
       const ms = Math.min(rawMs, MAX_BREAK_MS, remaining);
-      if (ms <= 0) continue;
+      if (ms <= 0) {
+        if (buf.trim().length > 0) flush();
+        continue;
+      }
       totalBreakMs += ms;
       if (buf.trim().length > 0) {
         flush();
@@ -2508,8 +2511,8 @@ function createSherpaLocalEngine(options) {
   const dlAbort = new AbortController();
   let starting = false;
   let initInterrupted = false;
-  const respawnChild = async () => {
-    if (starting) initInterrupted = true;
+  const respawnChild = async (userInterrupt = false) => {
+    if (starting && userInterrupt) initInterrupted = true;
     if (child) {
       child.kill();
       child = null;
@@ -2786,7 +2789,7 @@ function createSherpaLocalEngine(options) {
       ready = null;
     },
     interrupt() {
-      void respawnChild();
+      void respawnChild(true);
     }
   };
 }
@@ -2820,6 +2823,8 @@ function sameOriginRequest(req) {
 }
 var RateLimiter = class {
   buckets = /* @__PURE__ */ new Map();
+  /** 每个 key 的窗口（回收到期键时按桶自身窗口判断；修复短窗请求误清长窗桶，2026-11-20 复核）。 */
+  windows = /* @__PURE__ */ new Map();
   maxKeys;
   constructor(maxKeys = 1e4) {
     this.maxKeys = maxKeys;
@@ -2830,22 +2835,27 @@ var RateLimiter = class {
     const cutoff = now - windowMs;
     let bucket = this.buckets.get(key);
     if (!bucket) {
-      if (this.buckets.size >= this.maxKeys) this.prune(now, windowMs);
+      if (this.buckets.size >= this.maxKeys) this.prune(now);
       if (this.buckets.size >= this.maxKeys) return false;
       bucket = [];
       this.buckets.set(key, bucket);
     }
+    const prevWindow = this.windows.get(key) ?? 0;
+    if (windowMs > prevWindow) this.windows.set(key, windowMs);
     while (bucket.length > 0 && bucket[0] <= cutoff) bucket.shift();
     if (bucket.length >= maxHits) return false;
     bucket.push(now);
     return true;
   }
-  /** 定期清理（由调用方在低频路径触发即可）。 */
-  prune(now = Date.now(), windowMs) {
-    const cutoff = now - windowMs;
+  /** 定期清理（由调用方在低频路径触发即可）：每个桶按自身窗口判断是否全过期。 */
+  prune(now = Date.now(), fallbackWindowMs = 6e4) {
     for (const [key, bucket] of this.buckets) {
+      const cutoff = now - (this.windows.get(key) ?? fallbackWindowMs);
       while (bucket.length > 0 && bucket[0] <= cutoff) bucket.shift();
-      if (bucket.length === 0) this.buckets.delete(key);
+      if (bucket.length === 0) {
+        this.buckets.delete(key);
+        this.windows.delete(key);
+      }
     }
   }
 };
@@ -2890,7 +2900,7 @@ var en = {
   reading: "Reading aloud\u2026",
   recognitionFail: "Recognition failed, try again",
   holdTrimmedNotice: "Hold-to-talk exceeded about 48 s: only the last part was recognised (earlier audio was dropped)",
-  utteranceTooLong: "That utterance was too long (about 90 s): skipped \u2014 please speak it again in shorter parts",
+  utteranceTooLong: "That utterance was too long (over the per-utterance limit, about a minute): skipped \u2014 please speak it again in shorter parts",
   interruptedNotice: "Playback interrupted \u2014 go ahead",
   senseDegradedNotice: "Final-pass model failed to load; temporarily using the backup recogniser (accuracy may drop slightly)",
   partialFail: "Live captions temporarily unavailable (recognition channel error, retrying)",
@@ -3548,6 +3558,10 @@ var OpenAiTtsEngine = class {
       if (sniffed) {
         mime = sniffed;
       } else if (ctype.startsWith("audio/")) {
+        const head = buf.subarray(0, 64).toString("utf8").trimStart();
+        if (head.startsWith("<") || head.startsWith("{") || head.startsWith("[")) {
+          throw new OpenAiTtsError("openai_bad_payload", "audio content-type but textual body");
+        }
         mime = ctype.split(";")[0].trim();
       } else {
         throw new OpenAiTtsError("openai_bad_payload", `non-audio response (content-type: ${ctype || "none"})`);
@@ -4118,8 +4132,8 @@ var NS_VOICE_MODE = "voice-mode";
 var MUTED_STREAMS_WITHOUT_TURN = 4;
 var BASE_PATH = "/voice-mode";
 var PREVIEW_NETWORK_PATTERN = /fetch failed|ECONN|ENOTFOUND|getaddrinfo|ETIMEDOUT|EAI_AGAIN|network|unreachable|socket hang up|aborted|WebSocket error/i;
-var PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa|local Kokoro/i;
-var PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat/i;
+var PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa|local Kokoro|closed|init cooldown/i;
+var PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat|exceeds \d+ bytes|bad_payload|bad_audio|invalid base64|textual body/i;
 function classifyPreviewError(msg) {
   if (PREVIEW_TEXT_PATTERN.test(msg)) return "text";
   if (PREVIEW_NETWORK_PATTERN.test(msg)) return "network";
@@ -4650,6 +4664,7 @@ function apply(ctx, config) {
   });
   let pluginDisposed = false;
   let toggleGen = 0;
+  const enteringToggles = /* @__PURE__ */ new Set();
   ctx.effect(() => () => {
     pluginDisposed = true;
     toggleGen++;
@@ -5105,7 +5120,6 @@ function apply(ctx, config) {
             respondJson2(res, 429, { code: "rate_limited", error: "rate limited" });
             return;
           }
-          const myToggleGen = ++toggleGen;
           if (on === true) {
             if (!config.enabled) {
               respondJson2(res, 403, { code: "voice_disabled", error: "voice mode disabled" });
@@ -5115,8 +5129,12 @@ function apply(ctx, config) {
               respondJson2(res, 403, { code: "unknown_session", error: "unknown session" });
               return;
             }
+            const myToggleGen = ++toggleGen;
+            enteringToggles.add(sessionId);
             await asr.warmupSense();
-            if (pluginDisposed || myToggleGen !== toggleGen) {
+            const enterStale = pluginDisposed || myToggleGen !== toggleGen;
+            enteringToggles.delete(sessionId);
+            if (enterStale) {
               respondJson2(res, 200, { active: activeVoiceSession, stale: true });
               return;
             }
@@ -5137,6 +5155,7 @@ function apply(ctx, config) {
             }
             broadcast("mode", { active: activeVoiceSession, ownerTabId: activeTabId });
           } else {
+            if (activeVoiceSession === sessionId || enteringToggles.has(sessionId)) toggleGen++;
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null;
               activeTabId = null;
@@ -5182,6 +5201,14 @@ function apply(ctx, config) {
           return;
         }
         if (denyCrossOrigin(req, res)) return;
+        if (!isLoopbackRequest(req)) {
+          respondJson2(res, 403, { code: "forbidden", error: "model cache writes are loopback-only" });
+          return;
+        }
+        if (!limiter.hit(`models-retry:${clientKey(req)}`, 6, 6e4)) {
+          respondJson2(res, 429, { code: "rate_limited", error: "rate limited" });
+          return;
+        }
         if (!config.enabled) {
           respondJson2(res, 403, { code: "voice_disabled", error: "voice mode disabled" });
           return;

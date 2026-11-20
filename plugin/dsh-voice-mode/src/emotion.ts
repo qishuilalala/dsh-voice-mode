@@ -96,7 +96,11 @@ export function parseEmotionTags(raw: string): EmotionSegment[] {
       if (!Number.isFinite(rawMs) || rawMs <= 0) continue
       const remaining = Math.max(0, MAX_TOTAL_BREAK_MS - totalBreakMs)
       const ms = Math.min(rawMs, MAX_BREAK_MS, remaining)
-      if (ms <= 0) continue
+      if (ms <= 0) {
+        // 预算耗尽也必须保住 break 的分段语义：flush 当前段，避免 A<break>B<break>C 粘连。
+        if (buf.trim().length > 0) flush()
+        continue
+      }
       totalBreakMs += ms
       // break 是结构分隔符：先 flush 已累积文本（≥1 个非空字符）。
       // 语义：break ms 累加到「它之前的最后一段」的 preBreakMs（不论 buf 是否空）。

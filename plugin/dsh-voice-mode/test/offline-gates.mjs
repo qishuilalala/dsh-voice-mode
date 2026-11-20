@@ -166,6 +166,7 @@ async function main() {
         ...results.map((r) => '| ' + r.name + ' | ' + (r.ok ? '✅' : '❌') + ' | ' + r.detail + ' |'),
         '',
         '模型缓存：' + cacheDir + '；源文本：「' + SOURCE_TEXT + '」。',
+        '生成环境：node ' + process.version + ' / ' + process.platform + '-' + process.arch + ' / HOME=' + (process.env.HOME || '?') + '。',
         '',
         '> 说明：这是真机四项门禁的离线替身，覆盖「能识别/能打断/字幕出得来/延迟在预算内」；',
         '> 真机仍需人工确认回声消除与实际听感（设备相关，无法离线判定）。',

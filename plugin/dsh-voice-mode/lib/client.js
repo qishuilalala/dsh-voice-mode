@@ -549,6 +549,7 @@ function createAsrEngine(config, sessionId) {
   let lastPollAt = 0;
   let partialInFlight = false;
   let resetGate = Promise.resolve();
+  let hostResetPending = false;
   let segmentEpoch = 0;
   let discardGen = 0;
   let finalizeSeq = 0;
@@ -887,7 +888,6 @@ function createAsrEngine(config, sessionId) {
     yieldedSegment = false;
     const wasHoldTrimmed = holdTrimmed;
     holdTrimmed = false;
-    if (wasHoldTrimmed) emit(noticeListeners, "holdTrimmedNotice");
     forcePending = false;
     speechMs = 0;
     uploadedSamples = 0;
@@ -899,6 +899,10 @@ function createAsrEngine(config, sessionId) {
     utteranceEndAt = null;
     setState("transcribing");
     void (async () => {
+      if (hostResetPending) {
+        hostResetPending = false;
+        await resetGate;
+      }
       emitTelemetry("submitted");
       const MAX_FINAL_ATTEMPTS = 3;
       const restoreState = () => setState(active ? speechActive || holdActive ? "speech" : wakeEnabled ? "wake" : "listening" : "idle");
@@ -1041,6 +1045,7 @@ function createAsrEngine(config, sessionId) {
             settle(null);
             return;
           }
+          if (wasHoldTrimmed) emit(noticeListeners, "holdTrimmedNotice");
           settle({ text: finalText, meta });
         } else {
           settle(null);
@@ -1056,7 +1061,8 @@ function createAsrEngine(config, sessionId) {
         emitError("recognitionFail");
       }
     })().catch((err) => {
-      console.warn(`[dsh-voice-mode] finalize unexpected error (seq=${mySeq}, settled as no-emit): ${redactSecrets(err)}`);
+      const detail = err instanceof Error ? err.stack ?? err.message : String(err);
+      console.warn(`[dsh-voice-mode] finalize unexpected error (seq=${mySeq}, settled as no-emit): ${redactSecrets(detail)}`);
       settle(null);
     });
   };
@@ -1171,6 +1177,7 @@ function createAsrEngine(config, sessionId) {
         if (uploadedSamples > 0) {
           uploadedSamples = 0;
           segmentEpoch++;
+          hostResetPending = true;
           void resetHostStream();
         }
       }
@@ -1903,7 +1910,7 @@ var zh = {
   reading: "\u6717\u8BFB\u4E2D\u2026",
   recognitionFail: "\u8BC6\u522B\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
   holdTrimmedNotice: "\u6309\u4F4F\u8BF4\u8BDD\u8D85\u8FC7\u7EA6 48 \u79D2\uFF1A\u53EA\u8BC6\u522B\u4E86\u6700\u540E\u4E00\u6BB5\uFF08\u524D\u9762\u7684\u97F3\u9891\u5DF2\u4E22\u5F03\uFF09",
-  utteranceTooLong: "\u8FD9\u6B21\u8BF4\u8BDD\u592A\u957F\uFF08\u8D85\u8FC7\u7EA6 90 \u79D2\uFF09\uFF1A\u5DF2\u8DF3\u8FC7\uFF0C\u8BF7\u5206\u6BB5\u518D\u8BF4\u4E00\u6B21",
+  utteranceTooLong: "\u8FD9\u6B21\u8BF4\u8BDD\u592A\u957F\uFF08\u8D85\u8FC7\u5355\u6B21\u4E0A\u9650\uFF0C\u7EA6 1 \u5206\u949F\uFF09\uFF1A\u5DF2\u8DF3\u8FC7\uFF0C\u8BF7\u5206\u6BB5\u518D\u8BF4\u4E00\u6B21",
   interruptedNotice: "\u5DF2\u6253\u65AD\u6717\u8BFB\uFF0C\u7B49\u4F60\u7EE7\u7EED\u8BF4",
   senseDegradedNotice: "\u5B9A\u7A3F\u6A21\u578B\u52A0\u8F7D\u5931\u8D25\uFF0C\u5DF2\u4E34\u65F6\u964D\u7EA7\u4E3A\u5907\u7528\u8BC6\u522B\uFF08\u51C6\u786E\u7387\u53EF\u80FD\u7565\u964D\uFF09",
   partialFail: "\u5B9E\u65F6\u5B57\u5E55\u6682\u65F6\u4E0D\u53EF\u7528\uFF08\u8BC6\u522B\u901A\u9053\u5F02\u5E38\uFF0C\u91CD\u8BD5\u4E2D\uFF09",
@@ -2288,7 +2295,7 @@ var en = {
   reading: "Reading aloud\u2026",
   recognitionFail: "Recognition failed, try again",
   holdTrimmedNotice: "Hold-to-talk exceeded about 48 s: only the last part was recognised (earlier audio was dropped)",
-  utteranceTooLong: "That utterance was too long (about 90 s): skipped \u2014 please speak it again in shorter parts",
+  utteranceTooLong: "That utterance was too long (over the per-utterance limit, about a minute): skipped \u2014 please speak it again in shorter parts",
   interruptedNotice: "Playback interrupted \u2014 go ahead",
   senseDegradedNotice: "Final-pass model failed to load; temporarily using the backup recogniser (accuracy may drop slightly)",
   partialFail: "Live captions temporarily unavailable (recognition channel error, retrying)",
@@ -4611,6 +4618,11 @@ function SelectField({
     if (inOptions) setForceCustom(false);
     else setCustom(cur);
   }, [cur]);
+  const commitCustom = () => {
+    const next = custom.trim();
+    if (next.length === 0 || next === cur) return;
+    void score.set(field, next);
+  };
   const showCustomInput = !inOptions || forceCustom;
   const selectStyle = {
     ...inputStyle,
@@ -4633,7 +4645,7 @@ function SelectField({
           const v = e.target.value;
           if (v === "__custom__") {
             setForceCustom(true);
-            setCustom(inOptions ? "" : custom);
+            setCustom(inOptions ? cur : custom);
           } else {
             setForceCustom(false);
             void score.set(field, v);
@@ -4656,9 +4668,9 @@ function SelectField({
         value: custom,
         placeholder,
         onChange: (e) => setCustom(e.target.value),
-        onBlur: () => void score.set(field, custom),
+        onBlur: () => commitCustom(),
         onKeyDown: (e) => {
-          if (e.key === "Enter") void score.set(field, custom);
+          if (e.key === "Enter") commitCustom();
         }
       }
     ),
@@ -4698,6 +4710,11 @@ function VoiceSelect({
     if (inOptions) setForceCustom(false);
     else setCustom(cur);
   }, [cur]);
+  const commitCustom = () => {
+    const next = custom.trim();
+    if (next.length === 0 || next === cur) return;
+    void score.set(field, next);
+  };
   const move = (delta) => {
     if (options.length === 0) return;
     setForceCustom(false);
@@ -4739,7 +4756,7 @@ function VoiceSelect({
             const v = e.target.value;
             if (v === "__custom__") {
               setForceCustom(true);
-              setCustom(inOptions ? "" : custom);
+              setCustom(inOptions ? cur : custom);
             } else {
               setForceCustom(false);
               void score.set(field, v);
@@ -4764,9 +4781,9 @@ function VoiceSelect({
         placeholder,
         "aria-label": currentValueLabel || t(`${field}Label`),
         onChange: (e) => setCustom(e.target.value),
-        onBlur: () => void score.set(field, custom),
+        onBlur: () => commitCustom(),
         onKeyDown: (e) => {
-          if (e.key === "Enter") void score.set(field, custom);
+          if (e.key === "Enter") commitCustom();
         }
       }
     ),
@@ -6455,7 +6472,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "127dbdb";
+var BUILD_TAG = "a5a194f";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -7545,8 +7562,10 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
           // I-7
         });
         await res.json();
-        activeSessionId = null;
-        notify();
+        if (activeSessionId === sessionId) {
+          activeSessionId = null;
+          notify();
+        }
       } catch {
       }
     },

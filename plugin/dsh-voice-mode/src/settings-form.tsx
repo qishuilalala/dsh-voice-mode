@@ -653,6 +653,12 @@ function SelectField({
     else setCustom(cur)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur])
+  /** 仅提交非空且真正变化的自定义值：防「点开自定义…→点走」把已选值清空（2026-11-20 复核）。 */
+  const commitCustom = (): void => {
+    const next = custom.trim()
+    if (next.length === 0 || next === cur) return
+    void score.set(field, next)
+  }
   const showCustomInput = !inOptions || forceCustom
   const selectStyle: React.CSSProperties = {
     ...inputStyle,
@@ -674,7 +680,8 @@ function SelectField({
           const v = e.target.value
           if (v === '__custom__') {
             setForceCustom(true)
-            setCustom(inOptions ? '' : custom)
+            // 初值用当前值：仅点开「自定义…」再点走时不得把已选值清空（2026-11-20 复核）。
+            setCustom(inOptions ? cur : custom)
           } else {
             setForceCustom(false)
             void score.set(field, v)
@@ -695,9 +702,9 @@ function SelectField({
           value={custom}
           placeholder={placeholder}
           onChange={(e) => setCustom(e.target.value)}
-          onBlur={() => void score.set(field, custom)}
+          onBlur={() => commitCustom()}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') void score.set(field, custom)
+            if (e.key === 'Enter') commitCustom()
           }}
         />
       )}
@@ -757,6 +764,12 @@ function VoiceSelect({
     else setCustom(cur)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur])
+  /** 仅提交非空且真正变化的自定义值：防「点开自定义…→点走」把已选值清空（2026-11-20 复核）。 */
+  const commitCustom = (): void => {
+    const next = custom.trim()
+    if (next.length === 0 || next === cur) return
+    void score.set(field, next)
+  }
   const move = (delta: number): void => {
     if (options.length === 0) return
     setForceCustom(false)
@@ -803,7 +816,8 @@ function VoiceSelect({
             const v = e.target.value
             if (v === '__custom__') {
               setForceCustom(true)
-              setCustom(inOptions ? '' : custom)
+              // 初值用当前值：仅点开再点走不得清空已选音色（2026-11-20 复核）。
+              setCustom(inOptions ? cur : custom)
             } else {
               setForceCustom(false)
               void score.set(field, v)
@@ -828,9 +842,9 @@ function VoiceSelect({
           placeholder={placeholder}
           aria-label={currentValueLabel || tr(`${field}Label` as TKey)}
           onChange={(e) => setCustom(e.target.value)}
-          onBlur={() => void score.set(field, custom)}
+          onBlur={() => commitCustom()}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') void score.set(field, custom)
+            if (e.key === 'Enter') commitCustom()
           }}
         />
       )}

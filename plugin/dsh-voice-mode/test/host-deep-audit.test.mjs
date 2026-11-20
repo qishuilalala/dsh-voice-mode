@@ -31,6 +31,13 @@ test('I13: sameOriginRequest 拒绝无 Origin 的 Sec-Fetch-Site: cross-site；R
   assert.equal(lim.hit('k3', 1, 20), false, '窗口未过期时达到 maxKeys 应拒收新键')
   await new Promise((r) => setTimeout(r, 35))
   assert.equal(lim.hit('k3', 1, 20), true, '旧键过期后应惰性回收，不得永久锁死限流器')
+
+  // 跨窗口回收：短窗请求触发的惰性 prune 不得清掉未过期的长窗桶（否则限流被绕过）。
+  const lim2 = new RateLimiter(2)
+  assert.equal(lim2.hit('longA', 1, 60000), true)
+  assert.equal(lim2.hit('longB', 1, 60000), true)
+  await new Promise((r) => setTimeout(r, 80))
+  assert.equal(lim2.hit('shortNew', 1, 50), false, '长窗桶未过期时不得为新键腾位（短窗 prune 越权清桶）')
 })
 
 test('I15: redactSecrets 遮蔽前缀 JSON 密钥、Basic 头与 URL 凭据/查询参数', () => {
@@ -262,6 +269,20 @@ test('I14: 宿主路由行为验证（/toggle 预热竞态与超长 sid、/asr v
     assert.equal(enterR.json.active, null, '已被 on=false 取消的慢 warmupSense 不得复活 activeVoiceSession')
     assert.equal(enterR.json.stale, true)
     globalThis.__audit_warmup = null
+
+    // 1b) 无关会话的 no-op off 不得推进代际、不得误杀在途 enter（2026-11-20 复核）
+    let rel2 = null
+    globalThis.__audit_warmup = () => new Promise((r) => (rel2 = r))
+    const enter2P = callRoute('/voice-mode/toggle', { body: JSON.stringify({ sessionId: 's2', on: true }) })
+    while (!rel2) await new Promise((r) => setTimeout(r, 5))
+    const ghostOff = await callRoute('/voice-mode/toggle', { body: JSON.stringify({ sessionId: 'ghost', on: false }) })
+    assert.equal(ghostOff.statusCode, 200)
+    rel2()
+    const enter2R = await enter2P
+    assert.equal(enter2R.json.active, 's2', '无关 no-op off 不得误杀合法 enter')
+    assert.notEqual(enter2R.json.stale, true)
+    globalThis.__audit_warmup = null
+    await callRoute('/voice-mode/toggle', { body: JSON.stringify({ sessionId: 's2', on: false }) })
 
     // 超长 sessionId（>128）在限流前直接 400
     const longSidR = await callRoute('/voice-mode/toggle', { body: JSON.stringify({ sessionId: 'x'.repeat(200), on: true }) })

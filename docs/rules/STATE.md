@@ -8,6 +8,12 @@
 - **未发版 / 未合并**：PR [#72](https://github.com/qishuilalala/dsh-voice-mode/pull/72)（分支 `plan/p1-tts-2026-11-18`）保持 **OPEN**，版本仍 `0.7.39`，无新 tag，待维护者决定合并与发版。
 - **未验收**：0.7.38/0.7.39 及 PR #72 改动已有自动化、离线真模型闭环与隔离运行态 UI 冒烟证据；真实麦克风四项门禁、切会话停朗读/打断续说听验与 L4 真 LLM 闭环仍待维护者真机验收。
 
+## 本机运行态（部署与生效边界）
+
+- **部署形态**：生产 dsh 0.2.1-rc.5（`/usr/local/bin/dsh`），web profile 以 `link:` 指向本仓库 `plugin/dsh-voice-mode/lib/`；改源码后必须 `node build.mjs` 重建 lib（drift 门禁校验）。
+- **生效边界**：客户端改动刷新页面即生效；**host 侧**（index.js / asr-host 等）需重启 `dsh.service` 才生效。本分支开发与两轮审计期间均未重启生产服务，故 PR #72 的 host 改动尚未进入运行进程（以维护者重启为准）。
+- **回滚锚点**：已发布版本 v0.7.39（tag 存在）；回滚 = checkout 该 tag 后重启 `dsh.service`。本轮无新 tag、未发版。
+
 ## 当前任务与唯一下一步
 
 - **唯一下一步**：维护者复核全量深度审计报告（[review-2026-11-20-deep-audit.md](../review-2026-11-20-deep-audit.md)）并做真机四项门禁验收（[四项必过](../qa/must-verify-manually.md)），验收后再决定 PR #72 合入与发版。
@@ -41,6 +47,7 @@
 | 入口 | 用途与证据边界 |
 | --- | --- |
 | [2026-11-20 全量深度审计台账](../review-2026-11-20-deep-audit.md) | 本轮 47 文件逐行覆盖表、B1–B11/I1–I20 修复与回归证据、门禁与实测输出 |
+| [Lead 独立复核](../review-2026-11-20-peer-audit-review.md) | 对对方 9 个提交的独立复跑（门禁/CI/离线/守卫变异/UI 只读冒烟）与 3 处台账更正 |
 | [目标完成度对照表](../review-2026-11-20-objective-completion.md) | P1/TTS/治理逐项代码位置与可复跑测试文件映射 |
 | [离线门禁替跑结果](../qa/offline-gates.md) | 真实本地 VITS → ASR 闭环延迟、打断与 Levenshtein 准确率实测 |
 | [兼容契约](../compat-contract.md) | 各目标 dsh 版本的实证与缺口（已覆盖至 0.2.2-rc.5） |

@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+### 修复（2026-11-20，Lead 对深度审计交付的独立复核跟进）
+
+- **ASR**：hold 裁头触发的 `resetHostStream()` 与 final 上行并发无序，host 会按旧 fed 跳过整段头部（final 现先等 `resetGate`）；裁头提示只在真的产出文本时发；意外异常日志保留脱敏后的 stack；`utteranceTooLong` 文案对齐真实单次上限。
+- **TTS**：init 超时触发的子进程重建被误记为「用户打断」，跳过 60 秒断路器 → 卡死时每句 3×120 秒重试（现仅 `interrupt()` 豁免）；`<break>` 预算耗尽仍按段边界 flush；远程 200 + `audio/*` 但正文是 HTML/JSON 判非音频；试听错误归类补 `too_large`/`bad_payload`/`closed`。
+- **宿主**：`/toggle` 代际只在真正改变状态时推进（无关会话的 no-op off 不再误杀在途 `warmupSense` 的合法进入）；限流器满载惰性回收按各桶自身窗口（短窗请求不再清掉长窗配额）；`/models/retry` 与 clean/download 同口径收紧为回环 + 6 次/分。
+- **客户端/设置**：切会话时旧会话退出应答迟到不再抹掉新会话 `activeSessionId`；设置卡片「自定义…」预填当前值，未改动即失焦不再把已选音色/镜像源清空。
+- **测试与治理**：B1/asr 裁头、init 断路器、toggle 代际、限流跨窗口、队列级 MIME、退出迟到各补行为级回归（变异验证均能变红）；`hook-order`/`draft-compose` 改 AST/函数体锁；文档锚点增加「未闭合围栏即 ERROR」；CI 增 lib 漂移门禁；离线门禁证据本机重跑并注明生成环境；STATE 补部署形态/重启生效点/回滚锚点；对方台账 3 处事实更正（stash 声明、LOC 口径、compat 默认版本列表）。
+
 ### 修复（2026-11-20，全量 47 文件逐行深度对抗审计，B1–B11 / I1–I20）
 
 - **ASR 采集与宿主稳定性**：修复 hold 3MB 上限按样本数误算为 12MB 且朗读期误发 partial / 误贴 403 提示的问题；`pendingFinals` 记录 `discardGen` 防 stop/discard 后旧句泄漏；补齐 202 重试与 `resetHostStream` 代际守卫及 `audioCtx.resume` 超时/设备断连清理；修复 `asr-host.ts` 解码让出期间并发 `reset`/`dispose`/双 `final` 导致的 WASM UAF/Double-Free；修复 SenseVoice worker 创建失败无退避风暴与 20s 孤儿进程泄漏；修复端点确认窗口被 200ms 短路及 `models.ts` 子路径 `%2F` 编码与 `drain`/体取消泄漏。

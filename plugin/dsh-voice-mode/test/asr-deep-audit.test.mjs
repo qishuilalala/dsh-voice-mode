@@ -132,7 +132,13 @@ test('B1: 朗读中 hold 超 3MB 按 byteLength 裁剪，重置 host 流并在�
   const finals = reqs.filter((r) => r.final === '1')
   assert.equal(finals.length, 1, '应发出 1 次定稿')
   assert.ok(finals[0].bodyLen <= 3 * 1024 * 1024, `定稿载荷必须 <=3MB，实得 ${finals[0].bodyLen}`)
-  assert.ok(reqs.some((r) => r.reset === '1'), '已上传后再裁头必须同步 reset host 流保 offset 单调')
+  // B1 深挖（2026-11-20 复核）：裁头后 uploadedSamples 必须归零，final 才能以 offset=0 全量重发；
+  // 只断言「reset 存在 + 长度 ≤3MB」锁不住坏实现（只发尾巴 → host 静默截断）。
+  assert.equal(finals[0].offset, 0, `裁头后 final 必须以 offset=0 全量重发，实得 ${finals[0].offset}`)
+  assert.ok(finals[0].bodyLen >= 2.9 * 1024 * 1024, `裁头后 final 应携带裁后全量段（≈3MB），实得 ${finals[0].bodyLen}`)
+  const resetIdx = reqs.findIndex((r) => r.reset === '1')
+  const finalIdx = reqs.findIndex((r) => r.final === '1')
+  assert.ok(resetIdx >= 0 && resetIdx < finalIdx, 'reset 必须先于 final 上行（否则 host 用旧 fed 跳过整段头部）')
   assert.ok(notices.includes('holdTrimmedNotice'), '定稿应发出 holdTrimmedNotice')
   assert.deepEqual(transcripts, ['长按测试'])
   await eng.stop()
@@ -336,8 +342,10 @@ test('I4/Minor: track.onended 报警落 idle、空帧不污回声地板、detect
   assert.equal(eng.state, 'idle')
 })
 
-test('Minor: NlmsAec delay=0 零延迟收敛 + normalizeWake 词边界 + fixtureRecorder resTrack 对齐', () => {
-  // 1) NlmsAec delay=0：mic[n] = 0.5 * ref[n] 应能快速收敛（修复前 cursor 未减 1 读最旧样本，完全不收敛）
+test('Minor: NlmsAec delay=0 也能收敛 + normalizeWake 词边界 + fixtureRecorder resTrack 对齐', () => {
+  // 1) NlmsAec delay=0：mic[n] = 0.5 * ref[n] 应收敛 ≥20dB。
+  // 复核更正（2026-11-20）：原注释称「修复前完全不收敛」不成立——旧实现 delay=0 时
+  // 环形窗等长，同样能收敛；本断言是当前行为的冒烟锁，不是历史回归鉴别器。
   const N = 8000
   const ref = new Float32Array(N)
   const mic = new Float32Array(N)

@@ -328,3 +328,37 @@ test('I17/I18: asr-notice 5s 自清、stopReading 不被 skipAudio 降级、pend
     delete globalThis.__micEngine
   }
 })
+
+test('B8b: 旧会话退出应答迟到（A 的 off 在途）不得抹掉新会话 B 的 activeSessionId', async () => {
+  micRenderer()
+  const c = await voiceClient({ react: reactStub, 'asr.ts': asrStub })
+  const config = { ...c.bus.ui.boot, mode: 'toggle', readAloud: 'voice', autoResume: false, autoSend: true, llmCorrect: false }
+  const baseFetch = globalThis.fetch
+  const held = deferred()
+  globalThis.fetch = async (url, init) => {
+    const u = String(url)
+    if (u.endsWith('/config')) return { ok: true, json: async () => config }
+    if (u.endsWith('/toggle')) {
+      const body = init?.body ? JSON.parse(init.body) : {}
+      if (body.sessionId === 'A' && body.on === false) await held.promise
+      const active = body.on ? body.sessionId : null
+      return { ok: true, status: 200, json: async () => ({ active }) }
+    }
+    return { ok: true, status: 200, json: async () => ({}) }
+  }
+  try {
+    await c.bus.enter('A')
+    assert.equal(c.bus.activeSessionId, 'A')
+    const exitP = c.bus.exit('A') // off 应答被 held 挂住
+    await tick()
+    await c.bus.enter('B')
+    assert.equal(c.bus.activeSessionId, 'B', '进入 B 后 activeSessionId 应为 B')
+    held.resolve()
+    await exitP
+    assert.equal(c.bus.activeSessionId, 'B', 'A 的退出应答迟到不得抹掉 B（否则客户端 off、host 残留 B 活跃）')
+  } finally {
+    globalThis.fetch = baseFetch
+    c.bus.dispose()
+    delete globalThis.__micEngine
+  }
+})

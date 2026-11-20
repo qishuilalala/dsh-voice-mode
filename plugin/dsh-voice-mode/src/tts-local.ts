@@ -252,8 +252,10 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
   let initInterrupted = false
 
   /** 杀掉子进程（下一句合成时自动重启）。 */
-  const respawnChild = async (): Promise<void> => {
-    if (starting) initInterrupted = true
+  const respawnChild = async (userInterrupt = false): Promise<void> => {
+    // 只有「用户主动打断」才豁免断路器；call 超时/空闲回收触发的重建属于真实故障，
+    // 必须走 initFailUntil 冷却，否则 init 卡死会变成每句 3×120s 的重试风暴（2026-11-20 复核）。
+    if (starting && userInterrupt) initInterrupted = true
     if (child) {
       child.kill()
       child = null
@@ -632,7 +634,7 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
       // 打断时立刻杀子进程：在途合成句已被作废，杀掉立即释放满核 CPU
       // （否则会饿死主进程的 ASR 解码——打断后定稿等待分钟级的实测根因）。
       // 下一句合成自动重建（约 1 秒模型加载）。
-      void respawnChild()
+      void respawnChild(true)
     },
   }
 }

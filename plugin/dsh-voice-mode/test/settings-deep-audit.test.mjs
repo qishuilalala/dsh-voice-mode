@@ -471,6 +471,12 @@ try {
         findAll(root.tree, (n) => n.type === 'input' && n.props.placeholder === 'zh-CN-XiaoxiaoNeural')[0]
       const vInput = getVoiceCustomInput()
       assert.ok(vInput, '选择「自定义…」后必须显示手输音色框')
+      // 2026-11-20 复核：仅点开「自定义…」再点走时不得把已选音色清空——预填当前值且未改动不写。
+      assert.equal(vInput.props.value, 'zh-CN-XiaoxiaoNeural', '打开自定义应预填当前值')
+      const voiceCallsBefore = scope.calls.length
+      vInput.props.onBlur()
+      await flush()
+      assert.equal(scope.calls.length, voiceCallsBefore, '未改动即失焦不得写入（否则已选音色被清空）')
       vInput.props.onChange({ target: { value: 'zh-CN-MyDraftVoice' } })
 
       // 触发父组件重渲染（生成全新 voiceOptions 数组引用），手输草稿不得被清空

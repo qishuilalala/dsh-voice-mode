@@ -536,6 +536,15 @@ for (const md of mdFiles) {
       else drifts.push(rec)
     }
   })
+  // 未闭合围栏会让「其后的全部行」被静默跳过、门禁假绿：显式报 ERROR。
+  if (activeFence) {
+    errors.push({
+      doc: relMd,
+      line: mdLines.length,
+      ref: 'unclosed code fence',
+      why: '代码围栏未闭合：本文件围栏之后的锚点会被静默跳过，必须先补齐闭合围栏',
+    })
+  }
 }
 
 const summary = {

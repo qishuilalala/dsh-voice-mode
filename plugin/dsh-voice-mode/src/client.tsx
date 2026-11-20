@@ -1785,8 +1785,11 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
         await res.json()
         // B1 修复：退出后本 tab 不再是 owner；全局 active 可能是别的 tab 的会话，
         // 不能收养（否则本 tab 会重复播放别人会话的音频）。
-        activeSessionId = null
-        notify()
+        // 归属守卫：退出应答可能迟到（切会话 A→B 时 A 的 off 仍在途），不得抹掉新会话。
+        if (activeSessionId === sessionId) {
+          activeSessionId = null
+          notify()
+        }
       } catch {
         // SSE 广播最终会纠正
       }

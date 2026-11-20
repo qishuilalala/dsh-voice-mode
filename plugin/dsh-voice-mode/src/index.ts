@@ -127,8 +127,8 @@ const BASE_PATH = '/voice-mode'
 type PreviewErrorCategory = 'network' | 'engine' | 'text' | 'unknown'
 
 const PREVIEW_NETWORK_PATTERN = /fetch failed|ECONN|ENOTFOUND|getaddrinfo|ETIMEDOUT|EAI_AGAIN|network|unreachable|socket hang up|aborted|WebSocket error/i
-const PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa|local Kokoro/i
-const PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat/i
+const PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa|local Kokoro|closed|init cooldown/i
+const PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat|exceeds \d+ bytes|bad_payload|bad_audio|invalid base64|textual body/i
 
 function classifyPreviewError(msg: string): PreviewErrorCategory {
   if (PREVIEW_TEXT_PATTERN.test(msg)) return 'text'
@@ -1120,6 +1120,8 @@ export function apply(ctx: Context, config: Config): void {
   // 卸载/热重载时释放 ASR runtime（清段 + 定时器，防悬挂）并作废在途 /toggle 预热（I14）。
   let pluginDisposed = false
   let toggleGen = 0
+  /** 正在 warmupSense 的进入请求（用于「同会话取消」与「无关 no-op 不得误杀」的区分）。 */
+  const enteringToggles = new Set<string>()
   ctx.effect(() => () => {
     pluginDisposed = true
     toggleGen++
@@ -1778,7 +1780,6 @@ export function apply(ctx: Context, config: Config): void {
             respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
             return
           }
-          const myToggleGen = ++toggleGen
           if (on === true) {
             // 总开关关闭时拒绝进入（enabled=false 的诚实语义：整功能关停）。
             if (!config.enabled) {
@@ -1790,12 +1791,18 @@ export function apply(ctx: Context, config: Config): void {
               respondJson(res, 403, { code: 'unknown_session', error: 'unknown session' })
               return
             }
+            // 代际只对「会真正改变状态」的请求推进：no-op off / 403 / disabled 不得误杀
+            // 正在 warmupSense 的合法 enter（2026-11-20 复核：off 'nope' 曾让 enter 返回 stale）。
+            const myToggleGen = ++toggleGen
+            enteringToggles.add(sessionId)
             // 批 E：SenseVoice 预热前置 enterMode（5s 上限）——让用户进 voice mode 时
             // 228MB SenseVoice worker 已就绪，避免冷启动撞 finalize 时 20s race timeout
             // 降级 zipformer 流式 token flush 不完整（B5 辅因候选 3）。失败/超时静默 fallback。
             await asr.warmupSense()
             // I14：预热期间若发生更新的 /toggle（例如用户立即取消或切换他会话）或插件卸载，不再复活旧请求。
-            if (pluginDisposed || myToggleGen !== toggleGen) {
+            const enterStale = pluginDisposed || myToggleGen !== toggleGen
+            enteringToggles.delete(sessionId)
+            if (enterStale) {
               respondJson(res, 200, { active: activeVoiceSession, stale: true })
               return
             }
@@ -1827,6 +1834,9 @@ export function apply(ctx: Context, config: Config): void {
             }
             broadcast('mode', { active: activeVoiceSession, ownerTabId: activeTabId })
           } else {
+            // 只有「真的会改变状态」的 off 才推进代际：同一会话的活跃/在途进入都可被取消；
+            // 对无关会话的 no-op off 不得误杀别人的在途 enter。
+            if (activeVoiceSession === sessionId || enteringToggles.has(sessionId)) toggleGen++
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null
               activeTabId = null
@@ -1882,6 +1892,15 @@ export function apply(ctx: Context, config: Config): void {
           return
         }
         if (denyCrossOrigin(req, res)) return
+        // I14 同口径：手动重试会触发约 388MB 模型下载/落盘，allowLan=true 时仍恒要求回环并限流。
+        if (!isLoopbackRequest(req)) {
+          respondJson(res, 403, { code: 'forbidden', error: 'model cache writes are loopback-only' })
+          return
+        }
+        if (!limiter.hit(`models-retry:${clientKey(req)}`, 6, 60000)) {
+          respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
+          return
+        }
         // 镜像切换/下载失败后手动重试（设置面板按钮）。禁用态不得触发 ~388MB 下载。
         if (!config.enabled) {
           respondJson(res, 403, { code: 'voice_disabled', error: 'voice mode disabled' })

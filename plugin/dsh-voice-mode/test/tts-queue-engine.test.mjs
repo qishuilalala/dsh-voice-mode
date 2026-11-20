@@ -1443,4 +1443,35 @@ await t('close 撞在途：关闭后不再广播、引擎被关闭（A2 审计�
   assert.ok(eng.closed >= 1, 'close 必须关闭引擎')
 })
 
+await t('I16/B6 队列级：跨会话并发合成按各自返回 MIME 出帧，不读共享 engine.mime', async () => {
+  // 旧实现：await 合成后读 this.engine.mime（共享「最近一次」值）→ 并发异构容器串味。
+  // 新实现：帧 MIME 来自本次 synthesizeWithMime 的返回值；把实现改回共享值本用例必须变红。
+  let releaseA, releaseB
+  const gateA = new Promise((r) => (releaseA = r))
+  const gateB = new Promise((r) => (releaseB = r))
+  const engine = {
+    tag: 'mix',
+    mime: 'audio/wav',
+    updateVoice() {},
+    async synthesizeWithMime(text) {
+      if (text === 'A') { await gateA; return { buf: Buffer.from('RIFF-A'), mime: 'audio/mpeg' } }
+      await gateB; return { buf: Buffer.from('OggS-B'), mime: 'audio/ogg' }
+    },
+    async close() {},
+  }
+  const q = new TtsQueue({ engine })
+  const frames = []
+  q.subscribe((f) => frames.push(f))
+  q.enqueue('s1', 'A')
+  q.enqueue('s2', 'B')
+  releaseB()
+  releaseA()
+  await waitFor(() => frames.filter((f) => f.final).length >= 2, '两会话各出 final 帧')
+  const bySid = {}
+  for (const f of frames) if (f.final) bySid[f.sessionId] = f.mime
+  assert.equal(bySid.s1, 'audio/mpeg', 's1 帧必须用自己那次合成返回的 MIME')
+  assert.equal(bySid.s2, 'audio/ogg', 's2 帧必须用自己那次合成返回的 MIME（不得串成共享 engine.mime）')
+  await q.close()
+})
+
 console.log(`\ntts-queue-engine：${passed} 项通过`)
