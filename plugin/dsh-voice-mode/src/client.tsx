@@ -21,7 +21,7 @@ import {
   applyTurnEvent,
   auxClickPending,
   cancelPayload,
-  clampMenuRect,
+  clampMenuRect, canTouchLongPressMenu, TOUCH_MENU_HOLD_MS,
   createScopeBridge,
   decayConfirmCount,
   eqPaintMode,
@@ -1986,7 +1986,7 @@ function useVoiceCss(): void {
 .dshvm-bar, .dshvm-bar-bot { width: 3px; border-radius: 99px; transition: height 0.08s linear, opacity 0.08s linear }
 /* 麦克风按钮所在的宿主容器也禁选：手指偏大时长按可能命中按钮外侧的容器留白，
    浏览器就近选中「语音」标签文字。 */
-:has(> [data-dshvm="mic"]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
+:has(> [data-dshvm="mic"]), :has(> [data-dshvm="mic-group"]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
 /* 按住说话期间整页禁选（!important 压过宿主样式）：安卓/桌面在长按或按住微拖时
    会从按钮附近开始选区，出现蓝色高亮和选择手柄，导致「按住说话」不可用。 */
 html.dshvm-holding, html.dshvm-holding * {
@@ -2028,15 +2028,31 @@ html.dshvm-holding, html.dshvm-holding * {
 .dshvm-mic-timer { position: absolute; left: 50%; top: calc(100% + 2px); transform: translateX(-50%); padding: 0 3px; border-radius: 4px;
   background: var(--dsw-specific-input-major, transparent); font-size: 9.5px; line-height: 12px; color: var(--dsw-alias-label-tertiary, #8b949e);
   font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+.dshvm-mic-group { display: inline-flex; align-items: center; gap: 2px; position: relative; flex: none; }
+.dshvm-mic-more {
+  display: none; width: 26px; height: 34px; padding: 0; border: none; border-radius: 999px;
+  background: transparent; color: var(--dsw-alias-label-tertiary, #8b949e); cursor: pointer;
+  place-items: center; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.dshvm-mic-more:hover, .dshvm-mic-more[aria-expanded="true"] {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.dshvm-mic-more:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary, #58a6ff); outline-offset: -2px; }
+@media (pointer: coarse), (hover: none) { .dshvm-mic-more { display: inline-grid; } }
 .dshvm-spin { animation: dshvm-spin 0.9s linear infinite; }
 .dshvm-menu { display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 10px;
+  max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box;
   background: var(--dsw-alias-bg-layer-3, #fff); border: 1px solid var(--dsw-alias-border-l2, rgba(139,148,158,.35));
   box-shadow: 0 8px 24px rgba(15, 17, 21, 0.14); color: var(--dsw-alias-label-primary, inherit);
   font-family: inherit; font-size: 12px; animation: dshvm-fadein 0.12s ease; }
 .dshvm-menu-label { padding: 2px 8px 4px; font-size: 11px; color: var(--dsw-alias-label-tertiary, #8b949e); }
 .dshvm-menu-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 5px 8px;
   border: none; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; text-align: left; }
-.dshvm-menu-item:hover, .dshvm-menu-item:focus-visible { background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14)); outline: none; }
+.dshvm-menu-item:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14)); }
+.dshvm-menu-item:focus-visible { background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14)); outline: 1.5px solid var(--dsw-alias-state-business-primary, #58a6ff); outline-offset: -1.5px; }
+@media (pointer: coarse) { .dshvm-menu-item { padding: 9px 10px; font-size: 13px; } }
 .dshvm-menu-check { color: var(--dsw-alias-state-business-primary, #58a6ff); font-size: 11px; }
 .dshvm-menu-sep { height: 1px; margin: 4px 2px; background: var(--dsw-alias-border-l1, rgba(139,148,158,.25)); }
 @media (prefers-reduced-motion: reduce) { .dshvm-spin, .dshvm-menu, .dshvm-eq-bar { animation: none !important; } }
@@ -2066,18 +2082,30 @@ const ONCE_STALL_MS = 10_000
 
 /** 麦克风右键快捷设置（PR #16 by dyguests）：交互模式 / 朗读回复 / 字幕 / 状态条 / 自动发送。
  *  读写与设置卡片同一个 scope（勾选即保存）；交互模式与自动发送下次进入语音模式生效。 */
-function MicMenu({ scope, anchor, onClose }: { scope: MenuScope; anchor: HTMLElement | null; onClose: (refocus: boolean) => void }): React.ReactElement {
+function MicMenu({
+  scope,
+  anchor,
+  ignoreTarget,
+  onClose,
+}: {
+  scope: MenuScope
+  anchor: HTMLElement | null
+  ignoreTarget?: HTMLElement | null
+  onClose: (refocus: boolean) => void
+}): React.ReactElement {
+  const modeGroupId = React.useId()
+  const readGroupId = React.useId()
   const [snap, setSnap] = useState(() => scope.getSnapshot())
   useEffect(() => scope.subscribe(() => setSnap({ ...scope.getSnapshot() })), [scope])
   const menuRef = useRef<HTMLDivElement | null>(null)
-  // 二次钳制偏移（Issue #64）：首帧按 208 宽估算定位，挂载后用实测尺寸修正，
-  // 窄视口下保证菜单完整可见（向内平移；极窄时收缩宽度）。
   const [adj, setAdj] = useState<{ dx: number; dy: number; w: number } | null>(null)
   useEffect(() => {
     const id = requestAnimationFrame(() => {
       const el = menuRef.current
       if (!el) return
       const rect = el.getBoundingClientRect()
+      const vw = window.visualViewport?.width ?? window.innerWidth
+      const vh = window.visualViewport?.height ?? window.innerHeight
       const next = clampMenuRect({
         menuW: el.offsetWidth || 208,
         menuH: el.offsetHeight || 0,
@@ -2085,8 +2113,8 @@ function MicMenu({ scope, anchor, onClose }: { scope: MenuScope; anchor: HTMLEle
         top: rect.top,
         right: rect.right,
         bottom: rect.bottom,
-        vw: window.innerWidth,
-        vh: window.innerHeight,
+        vw,
+        vh,
       })
       if (next.dx !== 0 || next.dy !== 0 || next.w !== 0) setAdj(next)
     })
@@ -2095,7 +2123,11 @@ function MicMenu({ scope, anchor, onClose }: { scope: MenuScope; anchor: HTMLEle
   useEffect(() => {
     menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
     const onDown = (e: PointerEvent): void => {
-      if (e.target instanceof Node && menuRef.current?.contains(e.target)) return
+      if (e.target instanceof Node) {
+        if (menuRef.current?.contains(e.target)) return
+        // 点击触发按钮自身（如 ⋯ 二次点按收起）由该按钮的 click 负责翻转，避免 capture 先关后被重开。
+        if (ignoreTarget?.contains(e.target)) return
+      }
       onClose(false)
     }
     const onKey = (e: KeyboardEvent): void => {
@@ -2105,11 +2137,22 @@ function MicMenu({ scope, anchor, onClose }: { scope: MenuScope; anchor: HTMLEle
         onClose(true)
         return
       }
+      if (e.key === 'Tab') {
+        onClose(false)
+        return
+      }
+      if (e.key === 'Home' || e.key === 'End') {
+        const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+        if (items.length > 0) {
+          e.preventDefault()
+          items[e.key === 'Home' ? 0 : items.length - 1]?.focus()
+        }
+        return
+      }
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
       e.preventDefault()
       const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? [])
       const i = items.indexOf(document.activeElement as HTMLButtonElement)
-      // 环绕：焦点被外部抢走时（i = -1）ArrowUp 要落到末项，不是倒数第二项。
       const next = menuFocusIndex(i, items.length, e.key === 'ArrowDown' ? 1 : -1)
       if (next >= 0) items[next]?.focus()
     }
@@ -2119,40 +2162,52 @@ function MicMenu({ scope, anchor, onClose }: { scope: MenuScope; anchor: HTMLEle
       document.removeEventListener('pointerdown', onDown, true)
       document.removeEventListener('keydown', onKey, true)
     }
-  }, [onClose])
+  }, [onClose, ignoreTarget])
   const v = snap.value ?? {}
   const width = 208
+  const vw = typeof window !== 'undefined' ? (window.visualViewport?.width ?? window.innerWidth) : 1024
+  const vh = typeof window !== 'undefined' ? (window.visualViewport?.height ?? window.innerHeight) : 768
   const r = anchor?.getBoundingClientRect()
   const below = !r || r.top < 340
   const pos: React.CSSProperties = {
     position: 'fixed',
     zIndex: 9999,
     width: adj?.w || width,
-    left: r ? Math.max(8, Math.min(window.innerWidth - width - 8, Math.round(r.right - width))) : 8,
-    ...(below ? { top: r ? Math.round(r.bottom + 8) : 96 } : { bottom: Math.round(window.innerHeight - r.top + 8) }),
+    left: r ? Math.max(8, Math.min(vw - width - 8, Math.round(r.right - width))) : 8,
+    ...(below ? { top: r ? Math.round(r.bottom + 8) : 96 } : { bottom: Math.round(vh - r.top + 8) }),
     ...(adj && (adj.dx !== 0 || adj.dy !== 0) ? { transform: `translate(${adj.dx}px, ${adj.dy}px)` } : null),
   }
   const item = (role: 'menuitemradio' | 'menuitemcheckbox', checked: boolean, label: string, onPick: () => void): React.ReactElement => (
     <button key={label} type="button" role={role} aria-checked={checked} className="dshvm-menu-item" onClick={onPick}>
       <span>{label}</span>
-      <span className="dshvm-menu-check">{checked ? '✓' : ''}</span>
+      <span className="dshvm-menu-check" aria-hidden="true">{checked ? '✓' : ''}</span>
     </button>
   )
-  const set = (field: string, value: unknown): void => void scope.set(field, value)
+  const set = (field: string, value: unknown): void => {
+    void Promise.resolve(scope.set(field, value)).finally(() => {
+      if (field === 'mode') {
+        try { window.dispatchEvent(new Event('dshvm-settings-changed')) } catch {}
+      }
+    })
+  }
   const mode = v.mode === 'hold' || v.mode === 'once' ? v.mode : 'toggle'
   const read = v.readAloud === 'always' || v.readAloud === 'off' ? v.readAloud : 'voice'
   return (
     <div ref={menuRef} className="dshvm-menu" role="menu" aria-label={t('stateVoiceMode')} style={pos}>
-      <div className="dshvm-menu-label">{t('modeLabel')}</div>
-      {(['toggle', 'hold', 'once'] as const).map((m) =>
-        item('menuitemradio', mode === m, t(m === 'toggle' ? 'modeToggle' : m === 'hold' ? 'modeHold' : 'modeOnce'), () => set('mode', m)),
-      )}
-      <div className="dshvm-menu-sep" />
-      <div className="dshvm-menu-label">{t('readAloudLabel')}</div>
-      {(['voice', 'always', 'off'] as const).map((m) =>
-        item('menuitemradio', read === m, t(m === 'voice' ? 'readAloudVoice' : m === 'always' ? 'readAloudAlways' : 'readAloudOff'), () => set('readAloud', m)),
-      )}
-      <div className="dshvm-menu-sep" />
+      <div role="group" aria-labelledby={modeGroupId}>
+        <div id={modeGroupId} className="dshvm-menu-label">{t('modeLabel')}</div>
+        {(['toggle', 'hold', 'once'] as const).map((m) =>
+          item('menuitemradio', mode === m, t(m === 'toggle' ? 'modeToggle' : m === 'hold' ? 'modeHold' : 'modeOnce'), () => set('mode', m)),
+        )}
+      </div>
+      <div className="dshvm-menu-sep" role="separator" />
+      <div role="group" aria-labelledby={readGroupId}>
+        <div id={readGroupId} className="dshvm-menu-label">{t('readAloudLabel')}</div>
+        {(['voice', 'always', 'off'] as const).map((m) =>
+          item('menuitemradio', read === m, t(m === 'voice' ? 'readAloudVoice' : m === 'always' ? 'readAloudAlways' : 'readAloudOff'), () => set('readAloud', m)),
+        )}
+      </div>
+      <div className="dshvm-menu-sep" role="separator" />
       {item('menuitemcheckbox', v.showCaptions !== false, t('showCaptionsLabel'), () => set('showCaptions', v.showCaptions === false))}
       {item('menuitemcheckbox', v.showStatusBar !== false, t('showStatusBarLabel'), () => set('showStatusBar', v.showStatusBar === false))}
       {item('menuitemcheckbox', v.autoSend !== false, t('autoSendLabel'), () => set('autoSend', v.autoSend === false))}
@@ -3925,6 +3980,17 @@ export function MicButton({
    *  仅 hold 模式生效：hold 全程由 pointer 事件驱动，不依赖合成 click；
    *  toggle 模式靠 click 进出，不能拦（否则点不动）。 */
   const btnRef = useRef<HTMLButtonElement | null>(null)
+  const moreBtnRef = useRef<HTMLButtonElement | null>(null)
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const touchMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const touchMenuOpenedRef = useRef(false)
+  const clearTouchMenuTimer = (): void => {
+    if (touchMenuTimerRef.current !== null) {
+      clearTimeout(touchMenuTimerRef.current)
+      touchMenuTimerRef.current = null
+    }
+  }
+  useEffect(() => clearTouchMenuTimer, [])
   useEffect(() => {
     const el = btnRef.current
     if (!el) return
@@ -3996,11 +4062,33 @@ export function MicButton({
         breakTimerRef.current = null
         if (holdPtrRef.current && (bus.ui.playing || onceRef.current)) void breakRef.current?.()
       }, 250)
+    } else if (
+      canTouchLongPressMenu({
+        pointerType: e.pointerType,
+        hasScope: Boolean(scope),
+        local: localRef.current,
+        mode: bootNow().mode,
+        playing: bus.ui.playing,
+        readingOutside: readingOutside(),
+      })
+    ) {
+      clearTouchMenuTimer()
+      touchMenuTimerRef.current = setTimeout(() => {
+        touchMenuTimerRef.current = null
+        if (!holdPtrRef.current || localRef.current !== 'off') return
+        touchMenuOpenedRef.current = true
+        suppressClickUntilRef.current = Date.now() + 2000
+        menuTriggerRef.current = btnRef.current
+        setMenuOpen(true)
+      }, TOUCH_MENU_HOLD_MS)
     }
   }
   const onPointerMove = (e: React.PointerEvent): void => {
     const p = holdPtrRef.current
     if (!p || p.id !== e.pointerId) return
+    if (touchMenuTimerRef.current !== null && Math.abs(e.clientY - p.y) >= 12) {
+      clearTouchMenuTimer()
+    }
     // 向上滑出 ≥40px → 放弃本段（保留在语音模式）
     if (p.y - e.clientY >= 40) {
       holdPtrRef.current = null
@@ -4029,6 +4117,7 @@ export function MicButton({
     const action = pointerUpAction(p, { id: e.pointerId, button: e.button })
     if (action === 'ignore') return
     holdPtrRef.current = null
+    clearTouchMenuTimer()
     clearBreakTimer() // 松手即取消未到阈值的打断（短按不得取消回复）
     if (action === 'unarmed' || !p) return
     setHolding(false)
@@ -4084,6 +4173,7 @@ export function MicButton({
     }
   }
   const onPointerCancel = (): void => {
+    clearTouchMenuTimer()
     // 同族窄边界：只在**我们 arm 过**手势时才收尾。未 arm 的 pointercancel（如 hold 模式
     // 「按住 Ctrl 说话」期间的触摸/滚动手势被浏览器取消）不得 endHeld(true) —— 那会把
     // Ctrl 按住录下的这一段丢掉（Ctrl 路径不经 holdPtrRef，其收尾由 cancelCtrl() 负责）。
@@ -4198,7 +4288,7 @@ export function MicButton({
   const [menuOpen, setMenuOpen] = useState(false)
   const closeMenu = React.useCallback((refocus: boolean) => {
     setMenuOpen(false)
-    if (refocus) btnRef.current?.focus()
+    if (refocus) (menuTriggerRef.current ?? btnRef.current)?.focus()
   }, [])
 
   const title = bus.ui.error
@@ -4213,103 +4303,130 @@ export function MicButton({
 
   return (
     <>
-      <button
-        type="button"
-        className="dshvm-mic"
-        data-state={visual}
-        onClick={(e: React.MouseEvent) => {
-          // 辅助点击（macOS 的 ctrl+click）派发的 click 必须忽略：WebKit 会为它额外
-          // 派发 click，若照走 toggle →「右键开快捷设置菜单」会顺带切一次语音模式
-          // （最坏是打开麦克风）。标志由 onPointerDown **赋值式**写入（任何非辅助点击
-          // 都会清掉残留），此处**只吞指针派生的 click**（detail !== 0）：
-          // Blink/Gecko 的 ctrl+click 不派发 click → 标志会残留，若无条件吞，用户随后
-          // 的**键盘**激活（detail === 0，Enter/Space）就被误吞（a11y 路径降级）。
-          if (isAuxClickToIgnore(auxClickRef.current, e.detail)) {
-            auxClickRef.current = false
-            return
+      <span className="dshvm-mic-group" data-dshvm="mic-group">
+        <button
+          type="button"
+          className="dshvm-mic"
+          data-state={visual}
+          onClick={(e: React.MouseEvent) => {
+            // 辅助点击（macOS ctrl+click）仅吞指针派生的 click（detail !== 0），保留键盘激活（detail === 0）。
+            if (isAuxClickToIgnore(auxClickRef.current, e.detail)) {
+              auxClickRef.current = false
+              return
+            }
+            if (touchMenuOpenedRef.current) {
+              touchMenuOpenedRef.current = false
+              return
+            }
+            // toggle 模式长按打断松手后，抑制合成的 click（防误触发 tap-to-exit）。
+            if (Date.now() < suppressClickUntilRef.current) return
+            if (localRef.current === 'on' && (bus.ui.playing || onceRef.current)) {
+              bus.stopReading(!!useSession)
+              void exitModeRef.current('manual')
+              return
+            }
+            if (holdMode && !readingOutside()) {
+              if (e.detail !== 0) return
+            }
+            toggle()
+          }}
+          onMouseDown={(e: React.MouseEvent) => {
+            e.preventDefault()
+          }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            const pt = (e.nativeEvent as PointerEvent).pointerType
+            if (scope && pt !== 'touch' && pt !== 'pen') {
+              menuTriggerRef.current = btnRef.current
+              setMenuOpen(true)
+            }
+          }}
+          ref={btnRef}
+          data-dshvm="mic"
+          aria-label={
+            reading
+              ? t('stopReading')
+              : on
+                ? `${t('ariaActive')} · ${label}`
+                : local === 'pending'
+                  ? `${label} · ${t('ariaPendingCancelHint')}`
+                  : t('ariaEnter')
           }
-          // toggle 模式长按打断松手后，抑制合成的 click（防误触发 tap-to-exit）。
-          if (Date.now() < suppressClickUntilRef.current) return
-          if (localRef.current === 'on' && (bus.ui.playing || onceRef.current)) {
-            bus.stopReading(!!useSession)
-            void exitModeRef.current('manual')
-            return
-          }
-          if (holdMode && !readingOutside()) {
-            // pointer/触摸合成的 click 一律忽略（tap 进入/退出走 pointer 路径，
-            // 否则 tap-exit 的 trailing click 会再次触发 toggle 重进 —— Blocker-1 反面）
-            if (e.detail !== 0) return
-            // 键盘/Space/Enter 激活（detail === 0）保持 a11y 可用
-          }
-          toggle()
-        }}
-        onMouseDown={(e: React.MouseEvent) => {
-          // mousedown 默认把焦点移到按钮上，输入框光标会丢；拦掉，输入框内快捷键继续可用。
-          e.preventDefault()
-        }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        onContextMenu={(e) => {
-          e.preventDefault() // 防长按/右键弹出「复制」菜单
-          // 只有鼠标右键 / 键盘菜单键开快捷设置；触屏、笔的长按属于按住说话手势。
-          const pt = (e.nativeEvent as PointerEvent).pointerType
-          if (scope && pt !== 'touch' && pt !== 'pen') setMenuOpen(true)
-        }}
-        ref={btnRef}
-        data-dshvm="mic"
-        // 图标按钮：可访问名 = 模式 + 当前状态（看得见的状态由颜色/竖条表达）。
-        // A4 审计 Minor：pending 态此前可访问名是「进入中」，但点击实际=取消 → 名字必须说清动作。
-        aria-label={
-          reading
-            ? t('stopReading')
-            : on
-              ? `${t('ariaActive')} · ${label}`
-              : local === 'pending'
-                ? `${label} · ${t('ariaPendingCancelHint')}`
-                : t('ariaEnter')
-        }
-        aria-pressed={on}
-        aria-haspopup={scope ? 'menu' : undefined}
-        aria-expanded={scope ? menuOpen : undefined}
-        title={title}
-      >
-        {visual !== 'waiting' && bus.ui.isSpeech === true && on && (
-          <span className="dshvm-mic-dot" data-kind="vad" title={t('vadDetected')} />
+          aria-pressed={on}
+          aria-haspopup={scope ? 'menu' : undefined}
+          aria-expanded={scope ? menuOpen : undefined}
+          title={title}
+        >
+          {visual !== 'waiting' && bus.ui.isSpeech === true && on && (
+            <span className="dshvm-mic-dot" data-kind="vad" title={t('vadDetected')} />
+          )}
+          {bus.ui.error && <span className="dshvm-mic-dot" data-kind="error" />}
+          {visual === 'waiting' ? (
+            <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden="true" className="dshvm-spin">
+              <circle cx={12} cy={12} r={8} fill="none" stroke="currentColor" strokeWidth={2} opacity={0.25} />
+              <path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
+            </svg>
+          ) : visual === 'ending' ? (
+            <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden="true">
+              <path d="M5.5 12.5l4.2 4.2 8.8-8.8" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          ) : eqKind ? (
+            <span className={eqKind === 'out' ? 'dshvm-eq dshvm-eq-out' : 'dshvm-eq'} aria-hidden="true">
+              {(eqKind === 'out' ? [6, 10, 14, 10, 6] : [6, 12, 8]).map((h, i) => (
+                <i key={i} style={{ height: h }} />
+              ))}
+            </span>
+          ) : (
+            <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden="true">
+              <path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" />
+              <path
+                fill="currentColor"
+                d="M17.3 11a.9.9 0 0 0-1.8 0 3.5 3.5 0 0 1-7 0 .9.9 0 0 0-1.8 0 5.3 5.3 0 0 0 4.4 5.2v1.9h-1.7a.9.9 0 0 0 0 1.8h5.2a.9.9 0 0 0 0-1.8h-1.7v-1.9A5.3 5.3 0 0 0 17.3 11Z"
+              />
+            </svg>
+          )}
+          {showTimer && (
+            <span className="dshvm-mic-timer" aria-hidden="true">
+              {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
+            </span>
+          )}
+        </button>
+        {scope && (
+          <button
+            ref={moreBtnRef}
+            type="button"
+            className="dshvm-mic-more"
+            data-dshvm="mic-more"
+            aria-label={t('micMoreMenu')}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title={t('micMoreMenu')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              menuTriggerRef.current = moreBtnRef.current
+              setMenuOpen((o) => !o)
+            }}
+          >
+            <svg viewBox="0 0 16 16" width={14} height={14} aria-hidden="true">
+              <circle cx={3.5} cy={8} r={1.3} fill="currentColor" />
+              <circle cx={8} cy={8} r={1.3} fill="currentColor" />
+              <circle cx={12.5} cy={8} r={1.3} fill="currentColor" />
+            </svg>
+          </button>
         )}
-        {bus.ui.error && <span className="dshvm-mic-dot" data-kind="error" />}
-        {visual === 'waiting' ? (
-          <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden="true" className="dshvm-spin">
-            <circle cx={12} cy={12} r={8} fill="none" stroke="currentColor" strokeWidth={2} opacity={0.25} />
-            <path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
-          </svg>
-        ) : visual === 'ending' ? (
-          <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden="true">
-            <path d="M5.5 12.5l4.2 4.2 8.8-8.8" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        ) : eqKind ? (
-          <span className={eqKind === 'out' ? 'dshvm-eq dshvm-eq-out' : 'dshvm-eq'} aria-hidden="true">
-            {(eqKind === 'out' ? [6, 10, 14, 10, 6] : [6, 12, 8]).map((h, i) => (
-              <i key={i} style={{ height: h }} />
-            ))}
-          </span>
-        ) : (
-          <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden="true">
-            <path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" />
-            <path
-              fill="currentColor"
-              d="M17.3 11a.9.9 0 0 0-1.8 0 3.5 3.5 0 0 1-7 0 .9.9 0 0 0-1.8 0 5.3 5.3 0 0 0 4.4 5.2v1.9h-1.7a.9.9 0 0 0 0 1.8h5.2a.9.9 0 0 0 0-1.8h-1.7v-1.9A5.3 5.3 0 0 0 17.3 11Z"
-            />
-          </svg>
-        )}
-        {showTimer && (
-          <span className="dshvm-mic-timer" aria-hidden="true">
-            {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
-          </span>
-        )}
-      </button>
-      {menuOpen && scope && <MicMenu scope={scope} anchor={btnRef.current} onClose={closeMenu} />}
+      </span>
+      {menuOpen && scope && (
+        <MicMenu
+          scope={scope}
+          anchor={menuTriggerRef.current ?? btnRef.current}
+          ignoreTarget={moreBtnRef.current}
+          onClose={closeMenu}
+        />
+      )}
       {micHint && (
         <span
           data-dshvm="mic-hint"

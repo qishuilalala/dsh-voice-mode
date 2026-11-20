@@ -2915,6 +2915,7 @@ var en = {
   startFail: "Voice mode failed to start: {err}",
   holdDots: "Hold to talk\u2026",
   exit: "Exit",
+  micMoreMenu: "Voice quick settings",
   configUnavailableNote: " (settings document not ready; retrying \u2014 the panel will appear when it is).",
   previewNameFirst: "Enter a voice ShortName first",
   previewDisabled: "Voice mode disabled (plugin enabled=false); preview unavailable",

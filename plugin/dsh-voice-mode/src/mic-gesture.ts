@@ -605,6 +605,26 @@ export function clampMenuRect(input: {
   return { dx, dy, w }
 }
 
+/** 触屏空闲长按呼出快捷菜单阈值（ms）：仅非 hold 待机未播期启用，与 hold 按住说话 / 250ms 打断零冲突。 */
+export const TOUCH_MENU_HOLD_MS = 450
+
+/** 触屏/笔 pointerdown 是否允许启动「长按呼出快捷设置菜单」计时器（纯判定）。
+ *  仅当：触屏或笔 + 有 scope + 当前未进语音模式(off) + 非按住说话模式(mode!==hold) + 未在朗读/外部朗读。
+ *  hold 模式与朗读打断期长按手势归语音采集/打断所有，触屏快捷菜单改由旁侧「⋯」按钮提供。 */
+export function canTouchLongPressMenu(input: {
+  pointerType: string
+  hasScope: boolean
+  local: 'off' | 'pending' | 'on'
+  mode: string
+  playing: boolean
+  readingOutside: boolean
+}): boolean {
+  if (input.pointerType !== 'touch' && input.pointerType !== 'pen') return false
+  if (!input.hasScope || input.local !== 'off') return false
+  if (input.mode === 'hold' || input.playing || input.readingOutside) return false
+  return true
+}
+
 /** 识别回填写草稿门控（Issue #65，纯判定，无 DOM 依赖）。
  *
  *  宿主引用/附件是非文本态（quotes/attachmentIds 独立于 draft 字符串）；

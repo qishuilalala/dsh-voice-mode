@@ -1926,6 +1926,7 @@ var zh = {
   startFail: "\u8BED\u97F3\u6A21\u5F0F\u542F\u52A8\u5931\u8D25\uFF1A{err}",
   holdDots: "\u6309\u4F4F\u8BF4\u8BDD\u2026",
   exit: "\u9000\u51FA",
+  micMoreMenu: "\u8BED\u97F3\u5FEB\u6377\u8BBE\u7F6E",
   configUnavailableNote: "\uFF08\u8BBE\u7F6E\u6587\u6863\u672A\u5C31\u7EEA\uFF0C\u6B63\u5728\u91CD\u8BD5\uFF1B\u9762\u677F\u5C31\u7EEA\u540E\u4F1A\u81EA\u52A8\u51FA\u73B0\uFF09\u3002",
   // settings-form
   previewNameFirst: "\u8BF7\u5148\u586B\u5199\u97F3\u8272\u540D\uFF08ShortName\uFF09",
@@ -2328,6 +2329,7 @@ var en = {
   startFail: "Voice mode failed to start: {err}",
   holdDots: "Hold to talk\u2026",
   exit: "Exit",
+  micMoreMenu: "Voice quick settings",
   configUnavailableNote: " (settings document not ready; retrying \u2014 the panel will appear when it is).",
   previewNameFirst: "Enter a voice ShortName first",
   previewDisabled: "Voice mode disabled (plugin enabled=false); preview unavailable",
@@ -2973,6 +2975,13 @@ function clampMenuRect(input) {
     if (top + dy < 8) dy = 8 - top;
   }
   return { dx, dy, w };
+}
+var TOUCH_MENU_HOLD_MS = 450;
+function canTouchLongPressMenu(input) {
+  if (input.pointerType !== "touch" && input.pointerType !== "pen") return false;
+  if (!input.hasScope || input.local !== "off") return false;
+  if (input.mode === "hold" || input.playing || input.readingOutside) return false;
+  return true;
 }
 function shouldSkipDraftWriteback(quoteCount, attachCount) {
   return quoteCount > 0 || attachCount > 0;
@@ -6895,7 +6904,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "4d68d88";
+var BUILD_TAG = "d456679";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = (() => {
   try {
@@ -8116,7 +8125,7 @@ function useVoiceCss() {
 .dshvm-bar, .dshvm-bar-bot { width: 3px; border-radius: 99px; transition: height 0.08s linear, opacity 0.08s linear }
 /* \u9EA6\u514B\u98CE\u6309\u94AE\u6240\u5728\u7684\u5BBF\u4E3B\u5BB9\u5668\u4E5F\u7981\u9009\uFF1A\u624B\u6307\u504F\u5927\u65F6\u957F\u6309\u53EF\u80FD\u547D\u4E2D\u6309\u94AE\u5916\u4FA7\u7684\u5BB9\u5668\u7559\u767D\uFF0C
    \u6D4F\u89C8\u5668\u5C31\u8FD1\u9009\u4E2D\u300C\u8BED\u97F3\u300D\u6807\u7B7E\u6587\u5B57\u3002 */
-:has(> [data-dshvm="mic"]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
+:has(> [data-dshvm="mic"]), :has(> [data-dshvm="mic-group"]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
 /* \u6309\u4F4F\u8BF4\u8BDD\u671F\u95F4\u6574\u9875\u7981\u9009\uFF08!important \u538B\u8FC7\u5BBF\u4E3B\u6837\u5F0F\uFF09\uFF1A\u5B89\u5353/\u684C\u9762\u5728\u957F\u6309\u6216\u6309\u4F4F\u5FAE\u62D6\u65F6
    \u4F1A\u4ECE\u6309\u94AE\u9644\u8FD1\u5F00\u59CB\u9009\u533A\uFF0C\u51FA\u73B0\u84DD\u8272\u9AD8\u4EAE\u548C\u9009\u62E9\u624B\u67C4\uFF0C\u5BFC\u81F4\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u4E0D\u53EF\u7528\u3002 */
 html.dshvm-holding, html.dshvm-holding * {
@@ -8158,15 +8167,31 @@ html.dshvm-holding, html.dshvm-holding * {
 .dshvm-mic-timer { position: absolute; left: 50%; top: calc(100% + 2px); transform: translateX(-50%); padding: 0 3px; border-radius: 4px;
   background: var(--dsw-specific-input-major, transparent); font-size: 9.5px; line-height: 12px; color: var(--dsw-alias-label-tertiary, #8b949e);
   font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+.dshvm-mic-group { display: inline-flex; align-items: center; gap: 2px; position: relative; flex: none; }
+.dshvm-mic-more {
+  display: none; width: 26px; height: 34px; padding: 0; border: none; border-radius: 999px;
+  background: transparent; color: var(--dsw-alias-label-tertiary, #8b949e); cursor: pointer;
+  place-items: center; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.dshvm-mic-more:hover, .dshvm-mic-more[aria-expanded="true"] {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.dshvm-mic-more:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary, #58a6ff); outline-offset: -2px; }
+@media (pointer: coarse), (hover: none) { .dshvm-mic-more { display: inline-grid; } }
 .dshvm-spin { animation: dshvm-spin 0.9s linear infinite; }
 .dshvm-menu { display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 10px;
+  max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box;
   background: var(--dsw-alias-bg-layer-3, #fff); border: 1px solid var(--dsw-alias-border-l2, rgba(139,148,158,.35));
   box-shadow: 0 8px 24px rgba(15, 17, 21, 0.14); color: var(--dsw-alias-label-primary, inherit);
   font-family: inherit; font-size: 12px; animation: dshvm-fadein 0.12s ease; }
 .dshvm-menu-label { padding: 2px 8px 4px; font-size: 11px; color: var(--dsw-alias-label-tertiary, #8b949e); }
 .dshvm-menu-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 5px 8px;
   border: none; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; text-align: left; }
-.dshvm-menu-item:hover, .dshvm-menu-item:focus-visible { background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14)); outline: none; }
+.dshvm-menu-item:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14)); }
+.dshvm-menu-item:focus-visible { background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14)); outline: 1.5px solid var(--dsw-alias-state-business-primary, #58a6ff); outline-offset: -1.5px; }
+@media (pointer: coarse) { .dshvm-menu-item { padding: 9px 10px; font-size: 13px; } }
 .dshvm-menu-check { color: var(--dsw-alias-state-business-primary, #58a6ff); font-size: 11px; }
 .dshvm-menu-sep { height: 1px; margin: 4px 2px; background: var(--dsw-alias-border-l1, rgba(139,148,158,.25)); }
 @media (prefers-reduced-motion: reduce) { .dshvm-spin, .dshvm-menu, .dshvm-eq-bar { animation: none !important; } }
@@ -8188,7 +8213,14 @@ var IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigato
 var ONCE_SETTLE_MS = 1200;
 var ONCE_NO_START_MS = 3e4;
 var ONCE_STALL_MS = 1e4;
-function MicMenu({ scope, anchor, onClose }) {
+function MicMenu({
+  scope,
+  anchor,
+  ignoreTarget,
+  onClose
+}) {
+  const modeGroupId = React2.useId();
+  const readGroupId = React2.useId();
   const [snap, setSnap] = (0, import_react3.useState)(() => scope.getSnapshot());
   (0, import_react3.useEffect)(() => scope.subscribe(() => setSnap({ ...scope.getSnapshot() })), [scope]);
   const menuRef = (0, import_react3.useRef)(null);
@@ -8198,6 +8230,8 @@ function MicMenu({ scope, anchor, onClose }) {
       const el = menuRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
+      const vw2 = window.visualViewport?.width ?? window.innerWidth;
+      const vh2 = window.visualViewport?.height ?? window.innerHeight;
       const next = clampMenuRect({
         menuW: el.offsetWidth || 208,
         menuH: el.offsetHeight || 0,
@@ -8205,8 +8239,8 @@ function MicMenu({ scope, anchor, onClose }) {
         top: rect.top,
         right: rect.right,
         bottom: rect.bottom,
-        vw: window.innerWidth,
-        vh: window.innerHeight
+        vw: vw2,
+        vh: vh2
       });
       if (next.dx !== 0 || next.dy !== 0 || next.w !== 0) setAdj(next);
     });
@@ -8215,7 +8249,10 @@ function MicMenu({ scope, anchor, onClose }) {
   (0, import_react3.useEffect)(() => {
     menuRef.current?.querySelector("button")?.focus();
     const onDown = (e) => {
-      if (e.target instanceof Node && menuRef.current?.contains(e.target)) return;
+      if (e.target instanceof Node) {
+        if (menuRef.current?.contains(e.target)) return;
+        if (ignoreTarget?.contains(e.target)) return;
+      }
       onClose(false);
     };
     const onKey = (e) => {
@@ -8223,6 +8260,18 @@ function MicMenu({ scope, anchor, onClose }) {
         e.preventDefault();
         e.stopPropagation();
         onClose(true);
+        return;
+      }
+      if (e.key === "Tab") {
+        onClose(false);
+        return;
+      }
+      if (e.key === "Home" || e.key === "End") {
+        const items2 = Array.from(menuRef.current?.querySelectorAll("button") ?? []);
+        if (items2.length > 0) {
+          e.preventDefault();
+          items2[e.key === "Home" ? 0 : items2.length - 1]?.focus();
+        }
         return;
       }
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
@@ -8238,37 +8287,52 @@ function MicMenu({ scope, anchor, onClose }) {
       document.removeEventListener("pointerdown", onDown, true);
       document.removeEventListener("keydown", onKey, true);
     };
-  }, [onClose]);
+  }, [onClose, ignoreTarget]);
   const v = snap.value ?? {};
   const width = 208;
+  const vw = typeof window !== "undefined" ? window.visualViewport?.width ?? window.innerWidth : 1024;
+  const vh = typeof window !== "undefined" ? window.visualViewport?.height ?? window.innerHeight : 768;
   const r = anchor?.getBoundingClientRect();
   const below = !r || r.top < 340;
   const pos = {
     position: "fixed",
     zIndex: 9999,
     width: adj?.w || width,
-    left: r ? Math.max(8, Math.min(window.innerWidth - width - 8, Math.round(r.right - width))) : 8,
-    ...below ? { top: r ? Math.round(r.bottom + 8) : 96 } : { bottom: Math.round(window.innerHeight - r.top + 8) },
+    left: r ? Math.max(8, Math.min(vw - width - 8, Math.round(r.right - width))) : 8,
+    ...below ? { top: r ? Math.round(r.bottom + 8) : 96 } : { bottom: Math.round(vh - r.top + 8) },
     ...adj && (adj.dx !== 0 || adj.dy !== 0) ? { transform: `translate(${adj.dx}px, ${adj.dy}px)` } : null
   };
   const item = (role2, checked, label, onPick) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("button", { type: "button", role: role2, "aria-checked": checked, className: "dshvm-menu-item", onClick: onPick, children: [
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: label }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-menu-check", children: checked ? "\u2713" : "" })
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-menu-check", "aria-hidden": "true", children: checked ? "\u2713" : "" })
   ] }, label);
-  const set2 = (field, value) => void scope.set(field, value);
+  const set2 = (field, value) => {
+    void Promise.resolve(scope.set(field, value)).finally(() => {
+      if (field === "mode") {
+        try {
+          window.dispatchEvent(new Event("dshvm-settings-changed"));
+        } catch {
+        }
+      }
+    });
+  };
   const mode = v.mode === "hold" || v.mode === "once" ? v.mode : "toggle";
   const read = v.readAloud === "always" || v.readAloud === "off" ? v.readAloud : "voice";
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { ref: menuRef, className: "dshvm-menu", role: "menu", "aria-label": t("stateVoiceMode"), style: pos, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-label", children: t("modeLabel") }),
-    ["toggle", "hold", "once"].map(
-      (m) => item("menuitemradio", mode === m, t(m === "toggle" ? "modeToggle" : m === "hold" ? "modeHold" : "modeOnce"), () => set2("mode", m))
-    ),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-sep" }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-label", children: t("readAloudLabel") }),
-    ["voice", "always", "off"].map(
-      (m) => item("menuitemradio", read === m, t(m === "voice" ? "readAloudVoice" : m === "always" ? "readAloudAlways" : "readAloudOff"), () => set2("readAloud", m))
-    ),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-sep" }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { role: "group", "aria-labelledby": modeGroupId, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { id: modeGroupId, className: "dshvm-menu-label", children: t("modeLabel") }),
+      ["toggle", "hold", "once"].map(
+        (m) => item("menuitemradio", mode === m, t(m === "toggle" ? "modeToggle" : m === "hold" ? "modeHold" : "modeOnce"), () => set2("mode", m))
+      )
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-sep", role: "separator" }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { role: "group", "aria-labelledby": readGroupId, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { id: readGroupId, className: "dshvm-menu-label", children: t("readAloudLabel") }),
+      ["voice", "always", "off"].map(
+        (m) => item("menuitemradio", read === m, t(m === "voice" ? "readAloudVoice" : m === "always" ? "readAloudAlways" : "readAloudOff"), () => set2("readAloud", m))
+      )
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-sep", role: "separator" }),
     item("menuitemcheckbox", v.showCaptions !== false, t("showCaptionsLabel"), () => set2("showCaptions", v.showCaptions === false)),
     item("menuitemcheckbox", v.showStatusBar !== false, t("showStatusBarLabel"), () => set2("showStatusBar", v.showStatusBar === false)),
     item("menuitemcheckbox", v.autoSend !== false, t("autoSendLabel"), () => set2("autoSend", v.autoSend === false))
@@ -9594,6 +9658,17 @@ function MicButton({
   };
   (0, import_react3.useEffect)(() => unlockSelection, []);
   const btnRef = (0, import_react3.useRef)(null);
+  const moreBtnRef = (0, import_react3.useRef)(null);
+  const menuTriggerRef = (0, import_react3.useRef)(null);
+  const touchMenuTimerRef = (0, import_react3.useRef)(null);
+  const touchMenuOpenedRef = (0, import_react3.useRef)(false);
+  const clearTouchMenuTimer = () => {
+    if (touchMenuTimerRef.current !== null) {
+      clearTimeout(touchMenuTimerRef.current);
+      touchMenuTimerRef.current = null;
+    }
+  };
+  (0, import_react3.useEffect)(() => clearTouchMenuTimer, []);
   (0, import_react3.useEffect)(() => {
     const el = btnRef.current;
     if (!el) return;
@@ -9650,11 +9725,31 @@ function MicButton({
         breakTimerRef.current = null;
         if (holdPtrRef.current && (bus.ui.playing || onceRef.current)) void breakRef.current?.();
       }, 250);
+    } else if (canTouchLongPressMenu({
+      pointerType: e.pointerType,
+      hasScope: Boolean(scope),
+      local: localRef.current,
+      mode: bootNow().mode,
+      playing: bus.ui.playing,
+      readingOutside: readingOutside()
+    })) {
+      clearTouchMenuTimer();
+      touchMenuTimerRef.current = setTimeout(() => {
+        touchMenuTimerRef.current = null;
+        if (!holdPtrRef.current || localRef.current !== "off") return;
+        touchMenuOpenedRef.current = true;
+        suppressClickUntilRef.current = Date.now() + 2e3;
+        menuTriggerRef.current = btnRef.current;
+        setMenuOpen(true);
+      }, TOUCH_MENU_HOLD_MS);
     }
   };
   const onPointerMove = (e) => {
     const p = holdPtrRef.current;
     if (!p || p.id !== e.pointerId) return;
+    if (touchMenuTimerRef.current !== null && Math.abs(e.clientY - p.y) >= 12) {
+      clearTouchMenuTimer();
+    }
     if (p.y - e.clientY >= 40) {
       holdPtrRef.current = null;
       toggleHoldRef.current = false;
@@ -9670,6 +9765,7 @@ function MicButton({
     const action = pointerUpAction(p, { id: e.pointerId, button: e.button });
     if (action === "ignore") return;
     holdPtrRef.current = null;
+    clearTouchMenuTimer();
     clearBreakTimer();
     if (action === "unarmed" || !p) return;
     setHolding(false);
@@ -9721,6 +9817,7 @@ function MicButton({
     }
   };
   const onPointerCancel = () => {
+    clearTouchMenuTimer();
     if (!holdPtrRef.current && !toggleHoldRef.current) return;
     holdPtrRef.current = null;
     toggleHoldRef.current = false;
@@ -9787,76 +9884,116 @@ function MicButton({
   const [menuOpen, setMenuOpen] = (0, import_react3.useState)(false);
   const closeMenu = React2.useCallback((refocus) => {
     setMenuOpen(false);
-    if (refocus) btnRef.current?.focus();
+    if (refocus) (menuTriggerRef.current ?? btnRef.current)?.focus();
   }, []);
   const title = bus.ui.error ? String(bus.ui.error) : reading ? t("stopReading") : on ? holdMode ? t("titleHold") : t("titleToggle") : t("titleEnter");
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-      "button",
-      {
-        type: "button",
-        className: "dshvm-mic",
-        "data-state": visual,
-        onClick: (e) => {
-          if (isAuxClickToIgnore(auxClickRef.current, e.detail)) {
-            auxClickRef.current = false;
-            return;
-          }
-          if (Date.now() < suppressClickUntilRef.current) return;
-          if (localRef.current === "on" && (bus.ui.playing || onceRef.current)) {
-            bus.stopReading(!!useSession);
-            void exitModeRef.current("manual");
-            return;
-          }
-          if (holdMode && !readingOutside()) {
-            if (e.detail !== 0) return;
-          }
-          toggle();
-        },
-        onMouseDown: (e) => {
-          e.preventDefault();
-        },
-        onPointerDown,
-        onPointerMove,
-        onPointerUp,
-        onPointerCancel,
-        onContextMenu: (e) => {
-          e.preventDefault();
-          const pt = e.nativeEvent.pointerType;
-          if (scope && pt !== "touch" && pt !== "pen") setMenuOpen(true);
-        },
-        ref: btnRef,
-        "data-dshvm": "mic",
-        "aria-label": reading ? t("stopReading") : on ? `${t("ariaActive")} \xB7 ${label}` : local === "pending" ? `${label} \xB7 ${t("ariaPendingCancelHint")}` : t("ariaEnter"),
-        "aria-pressed": on,
-        "aria-haspopup": scope ? "menu" : void 0,
-        "aria-expanded": scope ? menuOpen : void 0,
-        title,
-        children: [
-          visual !== "waiting" && bus.ui.isSpeech === true && on && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-mic-dot", "data-kind": "vad", title: t("vadDetected") }),
-          bus.ui.error && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-mic-dot", "data-kind": "error" }),
-          visual === "waiting" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 24 24", width: 16, height: 16, "aria-hidden": "true", className: "dshvm-spin", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("circle", { cx: 12, cy: 12, r: 8, fill: "none", stroke: "currentColor", strokeWidth: 2, opacity: 0.25 }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M12 4a8 8 0 0 1 8 8", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" })
-          ] }) : visual === "ending" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("svg", { viewBox: "0 0 24 24", width: 16, height: 16, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M5.5 12.5l4.2 4.2 8.8-8.8", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }) }) : eqKind ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: eqKind === "out" ? "dshvm-eq dshvm-eq-out" : "dshvm-eq", "aria-hidden": "true", children: (eqKind === "out" ? [6, 10, 14, 10, 6] : [6, 12, 8]).map((h, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("i", { style: { height: h } }, i)) }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 24 24", width: 16, height: 16, "aria-hidden": "true", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { fill: "currentColor", d: "M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              "path",
-              {
-                fill: "currentColor",
-                d: "M17.3 11a.9.9 0 0 0-1.8 0 3.5 3.5 0 0 1-7 0 .9.9 0 0 0-1.8 0 5.3 5.3 0 0 0 4.4 5.2v1.9h-1.7a.9.9 0 0 0 0 1.8h5.2a.9.9 0 0 0 0-1.8h-1.7v-1.9A5.3 5.3 0 0 0 17.3 11Z"
-              }
-            )
-          ] }),
-          showTimer && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "dshvm-mic-timer", "aria-hidden": "true", children: [
-            String(Math.floor(elapsed / 60)).padStart(2, "0"),
-            ":",
-            String(elapsed % 60).padStart(2, "0")
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "dshvm-mic-group", "data-dshvm": "mic-group", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+        "button",
+        {
+          type: "button",
+          className: "dshvm-mic",
+          "data-state": visual,
+          onClick: (e) => {
+            if (isAuxClickToIgnore(auxClickRef.current, e.detail)) {
+              auxClickRef.current = false;
+              return;
+            }
+            if (touchMenuOpenedRef.current) {
+              touchMenuOpenedRef.current = false;
+              return;
+            }
+            if (Date.now() < suppressClickUntilRef.current) return;
+            if (localRef.current === "on" && (bus.ui.playing || onceRef.current)) {
+              bus.stopReading(!!useSession);
+              void exitModeRef.current("manual");
+              return;
+            }
+            if (holdMode && !readingOutside()) {
+              if (e.detail !== 0) return;
+            }
+            toggle();
+          },
+          onMouseDown: (e) => {
+            e.preventDefault();
+          },
+          onPointerDown,
+          onPointerMove,
+          onPointerUp,
+          onPointerCancel,
+          onContextMenu: (e) => {
+            e.preventDefault();
+            const pt = e.nativeEvent.pointerType;
+            if (scope && pt !== "touch" && pt !== "pen") {
+              menuTriggerRef.current = btnRef.current;
+              setMenuOpen(true);
+            }
+          },
+          ref: btnRef,
+          "data-dshvm": "mic",
+          "aria-label": reading ? t("stopReading") : on ? `${t("ariaActive")} \xB7 ${label}` : local === "pending" ? `${label} \xB7 ${t("ariaPendingCancelHint")}` : t("ariaEnter"),
+          "aria-pressed": on,
+          "aria-haspopup": scope ? "menu" : void 0,
+          "aria-expanded": scope ? menuOpen : void 0,
+          title,
+          children: [
+            visual !== "waiting" && bus.ui.isSpeech === true && on && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-mic-dot", "data-kind": "vad", title: t("vadDetected") }),
+            bus.ui.error && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-mic-dot", "data-kind": "error" }),
+            visual === "waiting" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 24 24", width: 16, height: 16, "aria-hidden": "true", className: "dshvm-spin", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("circle", { cx: 12, cy: 12, r: 8, fill: "none", stroke: "currentColor", strokeWidth: 2, opacity: 0.25 }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M12 4a8 8 0 0 1 8 8", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" })
+            ] }) : visual === "ending" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("svg", { viewBox: "0 0 24 24", width: 16, height: 16, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M5.5 12.5l4.2 4.2 8.8-8.8", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }) }) : eqKind ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: eqKind === "out" ? "dshvm-eq dshvm-eq-out" : "dshvm-eq", "aria-hidden": "true", children: (eqKind === "out" ? [6, 10, 14, 10, 6] : [6, 12, 8]).map((h, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("i", { style: { height: h } }, i)) }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 24 24", width: 16, height: 16, "aria-hidden": "true", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { fill: "currentColor", d: "M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                "path",
+                {
+                  fill: "currentColor",
+                  d: "M17.3 11a.9.9 0 0 0-1.8 0 3.5 3.5 0 0 1-7 0 .9.9 0 0 0-1.8 0 5.3 5.3 0 0 0 4.4 5.2v1.9h-1.7a.9.9 0 0 0 0 1.8h5.2a.9.9 0 0 0 0-1.8h-1.7v-1.9A5.3 5.3 0 0 0 17.3 11Z"
+                }
+              )
+            ] }),
+            showTimer && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "dshvm-mic-timer", "aria-hidden": "true", children: [
+              String(Math.floor(elapsed / 60)).padStart(2, "0"),
+              ":",
+              String(elapsed % 60).padStart(2, "0")
+            ] })
+          ]
+        }
+      ),
+      scope && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "button",
+        {
+          ref: moreBtnRef,
+          type: "button",
+          className: "dshvm-mic-more",
+          "data-dshvm": "mic-more",
+          "aria-label": t("micMoreMenu"),
+          "aria-haspopup": "menu",
+          "aria-expanded": menuOpen,
+          title: t("micMoreMenu"),
+          onMouseDown: (e) => e.preventDefault(),
+          onClick: () => {
+            menuTriggerRef.current = moreBtnRef.current;
+            setMenuOpen((o) => !o);
+          },
+          children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 16 16", width: 14, height: 14, "aria-hidden": "true", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("circle", { cx: 3.5, cy: 8, r: 1.3, fill: "currentColor" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("circle", { cx: 8, cy: 8, r: 1.3, fill: "currentColor" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("circle", { cx: 12.5, cy: 8, r: 1.3, fill: "currentColor" })
           ] })
-        ]
+        }
+      )
+    ] }),
+    menuOpen && scope && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      MicMenu,
+      {
+        scope,
+        anchor: menuTriggerRef.current ?? btnRef.current,
+        ignoreTarget: moreBtnRef.current,
+        onClose: closeMenu
       }
     ),
-    menuOpen && scope && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MicMenu, { scope, anchor: btnRef.current, onClose: closeMenu }),
     micHint && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       "span",
       {

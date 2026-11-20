@@ -60,6 +60,7 @@ export const zh = {
   startFail: '语音模式启动失败：{err}',
   holdDots: '按住说话…',
   exit: '退出',
+  micMoreMenu: '语音快捷设置',
   configUnavailableNote: '（设置文档未就绪，正在重试；面板就绪后会自动出现）。',
   // settings-form
   previewNameFirst: '请先填写音色名（ShortName）',
@@ -463,6 +464,7 @@ export const en: Record<keyof typeof zh, string> = {
   startFail: 'Voice mode failed to start: {err}',
   holdDots: 'Hold to talk…',
   exit: 'Exit',
+  micMoreMenu: 'Voice quick settings',
   configUnavailableNote: ' (settings document not ready; retrying — the panel will appear when it is).',
   previewNameFirst: 'Enter a voice ShortName first',
   previewDisabled: 'Voice mode disabled (plugin enabled=false); preview unavailable',
