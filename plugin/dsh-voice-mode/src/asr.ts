@@ -293,8 +293,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
   let finalizeSeq = 0
   /** 下一个待发定稿序号（保序游标）。 */
   let nextEmitSeq = 1
-  /** 待发定稿缓冲：序号 → 待发文本（null = 该序号落定为「不发」，仅推进游标）。 */
-  const pendingFinals = new Map<number, { text: string; meta?: SegmentMeta } | null>()
+  /** 待发定稿缓冲：序号 → 待发文本（null = 该序号落定为「不发」，仅推进游标）。
+   *  记录入队时的 discardGen 快照：flush 出队时复检，防慢 A(seq=1) 晚到 settle(null) 推进游标后
+   *  把已作废的 B(seq=2) 发射给订阅方（退出/打断后幽灵草稿）。 */
+  const pendingFinals = new Map<number, { text: string; meta?: SegmentMeta; discardGen: number } | null>()
   /** wake 待机段静音累计（issue #10：待机段静音弃段用；有语音即清零）。 */
   let wakeSilenceMs = 0
   /** 本段已消费唤醒词（命中后置位；定稿时从文本头部剥掉词头，防唤醒词进消息）。 */
@@ -387,12 +389,12 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       const item = pendingFinals.get(nextEmitSeq)
       pendingFinals.delete(nextEmitSeq)
       nextEmitSeq++
-      if (item) emit(transcriptListeners, item.text, item.meta)
+      if (item && item.discardGen === discardGen && active) emit(transcriptListeners, item.text, item.meta)
     }
   }
 
   /** 落定一个定稿序号：有文本入缓冲待按序发；null = 不发（仅推进保序游标）。 */
-  const settleFinal = (seq: number, item: { text: string; meta?: SegmentMeta } | null): void => {
+  const settleFinal = (seq: number, item: { text: string; meta?: SegmentMeta; discardGen: number } | null): void => {
     pendingFinals.set(seq, item)
     flushOrderedFinals()
   }
@@ -475,6 +477,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         body: samples.buffer as ArrayBuffer,
         signal: AbortSignal.timeout(5000),
       })
+      if (epoch !== segmentEpoch || !active) return
       if (res.status === 202) {
         // 模型下载中：5s 后重试同一载荷（Q16 重试提示在状态条展示）。
         // B1 修复：wake 待机期**不得**切 loading-model——唤醒分支判据是 state==='wake'，
@@ -514,16 +517,21 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       }
       // 403 会话过期：host 端活跃会话已变更（如被抢占/让出），尝试恢复后重试一次。
       if (res.status === 403 && config.onSessionExpired) {
-        const recovered = await config.onSessionExpired()
-        if (recovered && epoch === segmentEpoch) {
+        let expireTimer: ReturnType<typeof setTimeout> | null = null
+        const recovered = await Promise.race([
+          config.onSessionExpired(),
+          new Promise<boolean>((resolve) => {
+            expireTimer = setTimeout(() => resolve(false), 5000)
+          }),
+        ])
+          .finally(() => {
+            if (expireTimer) clearTimeout(expireTimer)
+          })
+          .catch(() => false)
+        if (recovered && active && epoch === segmentEpoch) {
           // I2 修复：re-enter 已 asr.reset 清空 host 流（fed=0），旧增量水位作废——
           // 从 0 全量重发本段（段仍在本地内存），否则 host 只收到尾巴、定稿缺前半句。
           uploadedSamples = 0
-    if (holdTrimmed) {
-      holdTrimmed = false
-      // 提示而非静默：用户按了很久，只识别后半段必须知情（5s 自动清除的 notice）。
-      emit(noticeListeners, 'holdTrimmedNotice')
-    }
           try {
             res = await fetch(asrUrl(false, 0, epoch), {
               method: 'POST',
@@ -534,9 +542,13 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           } catch {
             // 重试失败：静默（下轮 partial 自动覆盖）
           }
+          if (res.status === 202) {
+            if (epoch === segmentEpoch && active && state !== 'wake') setState('loading-model')
+            return
+          }
         }
       }
-      if (epoch !== segmentEpoch) return
+      if (epoch !== segmentEpoch || !active) return
       if (!res.ok) {
         // Minor-3（R2）：连败计数此前只覆盖首个 fetch 的网络 throw——202 重试超时
         // （上方合成 503）、403 恢复重发失败（res 停在 403）、host 5xx 都经此静默
@@ -547,7 +559,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         return
       }
       const out = (await res.json()) as { text?: string; endpoint?: boolean; isSpeech?: boolean }
-      if (epoch !== segmentEpoch) return
+      if (epoch !== segmentEpoch || !active) return
       // 唤醒词门：wake 待机态下 partial 只用于匹配，命中 → 转入聆听（**不丢段**）。
       if (state === 'wake' && wakeEnabled) {
         uploadedSamples = Math.max(uploadedSamples, from + samples.length)
@@ -574,16 +586,19 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         }
         return
       }
+      // P1-4：先推进本段水位再交付 onIsSpeech——deliverIsSpeech 可能同步触发 hardBreak→discardSegment
+      // 归零 uploadedSamples 并推进 segmentEpoch；若反序则会在返回后把旧水位写回新段。
+      uploadedSamples = Math.max(uploadedSamples, from + samples.length)
+      partialFailStreak = 0 // Issue #15 批 7：成功即清零（瞬时失败不计提示）
       // 打断根治：服务端 Silero VAD 帧级检测结果下行，客户端据此驱动打断
       // （替代 RMS 能量快路径）；仅非 final 响应携带，undefined 表示本次无 VAD 信息。
       // Issue #15 R15-5：经 deliverIsSpeech 交付（带门控询问作用域）。
       if (out.isSpeech !== undefined) deliverIsSpeech(out.isSpeech)
+      // 同步重入守卫：deliverIsSpeech 内若已触发 hardBreak/discardSegment/stop，立刻收手。
+      if (epoch !== segmentEpoch || !active) return
       if (state === 'loading-model') setState('speech')
-      // P1-4：上传成功后才推进已传水位（失败/重试不推进，下一拍补传）。
-      uploadedSamples = Math.max(uploadedSamples, from + samples.length)
       // 唤醒后（wakeConsumed）实时字幕同样剥掉词头：字幕与「实际会发出的内容」保持一致
       // （待机期的字幕不剥——那正是「它听到了什么」的诊断反馈）。
-      partialFailStreak = 0 // Issue #15 批 7：成功即清零（瞬时失败不计提示）
       emit(partialListeners, wakeConsumed ? stripWakePrefix(out.text ?? '', wakeWord) : (out.text ?? ''))
       // 批 5 / ADR-0008 Phase 1：backchannel 软让位。I2 保护：仅在「朗读期 + 已开口」下才判——
       //   朗读期（config.isPlaying()）= TTS 在播；speechActive = 本地检测已开口（避免用户自言自语被误让位）。
@@ -657,7 +672,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       })
       rttMs = Date.now() - sentAt
       if (epoch !== segmentEpoch || gen !== detectGeneration) return // 弃段/重置后迟到响应作废
-      if (!res.ok) return
+      if (!res.ok) {
+        rttMs = -1
+        if (++detectFailStreak >= 3) emit(noticeListeners, 'detectFail')
+        return
+      }
       const out = (await res.json()) as { isSpeech?: boolean }
       if (epoch !== segmentEpoch || gen !== detectGeneration) return
       // Issue #15 批 1（ADR-0012）：VAD 首真 → 记录抢救种子起点。锚**请求体起点-250ms**
@@ -673,7 +692,8 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       if (out.isSpeech === true && preRollSeedWall === null && rawNow && reqBodyStartWall >= rawPlayingSinceWall) {
         preRollSeedWall = reqBodyStartWall - 250
       }
-      if (out.isSpeech !== undefined) deliverIsSpeech(out.isSpeech)
+      // 先推进检测水位再交付 onIsSpeech：deliverIsSpeech 内触发 hardBreak 会同步调用
+      // discardSegment() 归零 detectSent/detectChunks；若反序则会在返回后累加旧样本数污染下轮。
       detectFailStreak = 0 // Issue #15 批 7：成功即清零
       detectSent += samples.length
       // 释放已消费帧（长朗读下防缓冲无界增长）。
@@ -681,6 +701,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         detectSent -= detectChunks[0].length
         detectChunks.shift()
       }
+      if (out.isSpeech !== undefined) deliverIsSpeech(out.isSpeech)
     } catch {
       // 超时/网络波动：未推进水位，下一拍重传；Issue #15 批 7：连续 3 次才提示
       // （打断检测通道持续断 = 打断失效，用户该知道）。
@@ -742,11 +763,13 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     segment = []
     segmentMs = 0
     speechMs = 0
+    speechActive = false
     silenceMs = 0
     wakeSilenceMs = 0
     wakeConsumed = false
     salvagedSegment = false // Issue #15 批 1：新段不继承抢救标记（防 backchannel 误抑制）
     yieldedSegment = false // I4：新段不继承让位标记（同防误抑制）
+    holdTrimmed = false
     prePad = []
     uploadedSamples = 0
     void resetHostStream()
@@ -790,7 +813,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     const settle = (item: { text: string; meta?: SegmentMeta } | null): void => {
       if (settled) return
       settled = true
-      settleFinal(mySeq, item)
+      settleFinal(mySeq, item ? { ...item, discardGen: discardSnapshot } : null)
     }
     const meta: SegmentMeta = { force: forcePending }
     // 本段若消费过唤醒词（连说「你好小李+命令」），定稿时剥掉文本头部唤醒词再进草稿。
@@ -802,6 +825,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // I4：让位段标记快照（同弃段守卫；随本段消费）。
     const wasYielded = yieldedSegment
     yieldedSegment = false
+    // B1 修复：hold 段因 3MB 上限裁过头时，在定稿入口消费标记并给出 5s 瞬态提示（原错贴在 403 分支）。
+    const wasHoldTrimmed = holdTrimmed
+    holdTrimmed = false
+    if (wasHoldTrimmed) emit(noticeListeners, 'holdTrimmedNotice')
     forcePending = false
     speechMs = 0 // P1-3：新段重新起算纯语音时长
     uploadedSamples = 0
@@ -810,6 +837,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     silenceMs = 0
     segmentMs = 0
     prePad = []
+    utteranceEndAt = null
     setState('transcribing')
     void (async () => {
       emitTelemetry('submitted') // P1-5：定稿上传发起
@@ -820,11 +848,15 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       for (let attempt = 0; attempt < MAX_FINAL_ATTEMPTS; attempt++) {
         if (attempt > 0) {
           // 段已弃（弃段令牌推进）→ 停止重试；仅「后来者的定稿」推进段纪元**不算**弃段。
-          if (discardGen !== discardSnapshot) {
+          if (!active || discardGen !== discardSnapshot) {
             settle(null)
             return
           }
           await new Promise((r) => setTimeout(r, 500 * attempt))
+          if (!active || discardGen !== discardSnapshot) {
+            settle(null)
+            return
+          }
         }
         // 首次用增量尾巴（正常路径）；重试改用全量：host 按 seg.fed 去重幂等，且覆盖
         // 「403 恢复已 reset host 流，但恢复后的全量重发又失败」→ 尾巴重试会缺前半句。
@@ -844,10 +876,18 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
           if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn('[dsh-voice-mode] finalize fetch failed (retries exhausted)')
           continue
         }
+        if (!active || discardGen !== discardSnapshot) {
+          settle(null)
+          return
+        }
         if (res.status === 202) {
-          setState('loading-model')
+          if (state !== 'wake') setState('loading-model')
           res = await new Promise<Response>((resolve) => {
             setTimeout(async () => {
+              if (!active || discardGen !== discardSnapshot) {
+                resolve(new Response(null, { status: 410 }))
+                return
+              }
               try {
                 resolve(
                   await fetch(asrUrl(true, off, epochSnapshot), { signal: AbortSignal.timeout(25000), // Issue #15 批 4：对齐 host SenseVoice race 上限 20s（asr-host.ts:598-606）——原 10s 必触发一次空转重试
@@ -861,13 +901,19 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
               }
             }, 5000)
           })
+          if (!active || discardGen !== discardSnapshot) {
+            settle(null)
+            return
+          }
         }
-        // 413：单包超过 host 上限（4MB ≈ 95s）→ 重试改全量只会再 413。停止重试并给可行动提示
+        // 413：单包超过 host 上限（4MB ≈ 64s）→ 重试改全量只会再 413。停止重试并给可行动提示
         // （A1 审计 Important：此前整句丢失、只报「识别失败」）。
         if (res.status === 413) {
           console.warn('[dsh-voice-mode] finalize payload too large (413): utterance exceeded the per-request limit')
-          emit(noticeListeners, 'utteranceTooLong')
-          restoreState()
+          if (active && discardGen === discardSnapshot) {
+            emit(noticeListeners, 'utteranceTooLong')
+            restoreState()
+          }
           settle(null)
           return
         }
@@ -895,7 +941,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
               if (expireTimer) clearTimeout(expireTimer)
             })
             .catch(() => false)
-          if (recovered && discardGen === discardSnapshot) {
+          if (recovered && active && discardGen === discardSnapshot) {
             // I2 修复：re-enter 已 asr.reset 清空 host 流，从 0 全量重发（恢复段引用），
             // 否则 host 只收到尾巴、定稿缺前半句（确定性丢首段）。
             try {
@@ -907,6 +953,22 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
             } catch {
               // 重试失败：静默（本循环下一轮重试）
             }
+          }
+          if (!active || discardGen !== discardSnapshot) {
+            settle(null)
+            return
+          }
+          if (res.status === 413) {
+            console.warn('[dsh-voice-mode] finalize payload too large (413): utterance exceeded the per-request limit')
+            emit(noticeListeners, 'utteranceTooLong')
+            restoreState()
+            settle(null)
+            return
+          }
+          if (res.status === 202) {
+            if (state !== 'wake') setState('loading-model')
+            if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn('[dsh-voice-mode] finalize model-load timeout (retries exhausted)')
+            continue
           }
         }
         // M6：重试期间保持 'transcribing'（不在此 restore）；结果落定才统一 restore
@@ -927,7 +989,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         // 短噪声弃段 / stop / start / beginHeld / discardSegment / endHeld 取消）时作废；
         // **后来者的定稿不算弃段**——历史 bug：拿「后来者推进的段纪元」判作废，
         // 慢定稿被静默丢弃（文本永久丢失）、且并发定稿语序颠倒。
-        if (discardGen !== discardSnapshot) {
+        if (!active || discardGen !== discardSnapshot) {
           settle(null)
           return
         }
@@ -969,7 +1031,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
             emit(noticeListeners, 'backchannelDropped')
             // 终态与短噪声弃段对齐（审查 M4）：唤醒用户丢「嗯」后保持 listening（打断=已
             // engaged，ADR-0012 决策 3），不回待机态要求重说唤醒词。
-            if (active && wakeEnabled) setState('listening')
+            if (active && wakeEnabled && !speechActive && !holdActive) setState('listening')
             settle(null) // 弃段：不得 emit（落定该序号，避免保序游标被卡）
             return
           }
@@ -989,9 +1051,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       }
       // 3 次重试耗尽仍失败：触发 onError → 状态条「识别失败，请重试」（防静默丢句）。
       // M6：耗尽同属「结果落定」——统一 restore 一次（重试间隙一直是 transcribing）。
-      restoreState()
       settle(null) // 重试耗尽：不得 emit（落定该序号，避免保序游标被卡）
-      emitError('recognitionFail')
+      if (active && discardGen === discardSnapshot) {
+        restoreState()
+        emitError('recognitionFail')
+      }
     })().catch((err) => {
       // 兜底：意外异常不得让该序号永久悬空——否则后续定稿被保序游标永久卡住（静默丢句）。
       console.warn(`[dsh-voice-mode] finalize unexpected error (seq=${mySeq}, settled as no-emit)`, err)
@@ -1018,6 +1082,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     // 实际按 44.1k/48k 输出。非 16k 时先线性重采样，保证 host zipformer2
     // 始终收到 16k PCM（避免识别错乱）。
     let data = ctxRate !== SAMPLE_RATE ? resampleLinear(raw, ctxRate, SAMPLE_RATE) : raw
+    if (data.length === 0) return
     // fixture 录制（ADR-0004，默认关闭）：留住 AEC 前的 mic 与参考窗，供离线重放。
     const recMicPre = data
     let recRef: Float32Array | null = null
@@ -1153,14 +1218,22 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       segmentMs += durationMs
       silenceMs = 0
       segment.push(data)
-      // 播放中不做滚段定稿（自聊守卫会丢弃），但内存必须有上限：
-      // 仅在未上传任何样本时从头部裁剪（否则会破坏 host 的 offset 单调不变量）。
-      if (uploadedSamples === 0) {
-        let bytes = segment.reduce((n, c) => n + c.length, 0)
-        while (bytes > HOLD_SECOND_MAX_BYTES && segment.length > 1) {
-          bytes -= segment[0].length
-          segment.shift()
-          holdTrimmed = true
+      // B1 修复：按真实字节数（byteLength，非 Float32 样本数 length）限 3MB（< host 4MB 413 线）。
+      // 若已发过 partial（uploadedSamples > 0）再裁头，必须同步清 host 流并重置 uploadedSamples=0，
+      // 否则 host offset 单调性被破坏或定稿直接 413 丢句。
+      let bytes = segment.reduce((n, c) => n + c.byteLength, 0)
+      let trimmed = false
+      while (bytes > HOLD_SECOND_MAX_BYTES && segment.length > 1) {
+        bytes -= segment[0].byteLength
+        segment.shift()
+        trimmed = true
+      }
+      if (trimmed) {
+        holdTrimmed = true
+        if (uploadedSamples > 0) {
+          uploadedSamples = 0
+          segmentEpoch++
+          void resetHostStream()
         }
       }
       // M7 明示接受：播放中（isPlaying）的滚段定稿会被 finalizeSegment 入口的自聊守卫
@@ -1316,7 +1389,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
    */
   const abandonStart = async (myStream: MediaStream, myCtx: AudioContext | null): Promise<void> => {
     try {
-      myStream.getTracks().forEach((t) => t.stop())
+      myStream.getTracks().forEach((t) => {
+        t.onended = null
+        t.stop()
+      })
     } catch {
       // ignore
     }
@@ -1370,9 +1446,19 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       return
     }
     stream = myStream // I3：检查通过后才赋模块级（弃用分支只停 myStream）
+    // I4：监听音轨意外中断（拔麦/切蓝牙/系统回收权限），避免永久卡在 listening 无提示。
+    const primaryTrack = stream.getAudioTracks()[0]
+    if (primaryTrack) {
+      primaryTrack.onended = () => {
+        if (stream !== myStream || !active) return
+        active = false
+        emitError('micUnavailable')
+        void stopRecorder().then(() => setState('idle'))
+      }
+    }
     // A1：验证浏览器原生 AEC 是否真正生效。约束在首次 getUserMedia 建立处理链时生效，
     // track.getSettings() 是唯一可见信号；false 时外放回声几乎必然漏进 → 自打断。
-    const aecOn = stream.getAudioTracks()[0]?.getSettings().echoCancellation === true
+    const aecOn = primaryTrack?.getSettings().echoCancellation === true
     if (!aecOn) {
       console.warn('[dsh-voice-mode] native browser echoCancellation is not in effect (speakers may self-interrupt); use headphones or manual barge-in')
     }
@@ -1388,9 +1474,20 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     owned.ctx = myCtx
     audioCtx = myCtx
     // iOS Safari：非手势栈创建的上下文初始为 suspended，不恢复则 onaudioprocess
-    // 永不触发（进入语音模式后静默无反应）——在 getUserMedia 手势栈内尝试恢复。
+    // 永不触发（进入语音模式后静默无反应）——在 getUserMedia 手势栈内尝试恢复，带超时防挂死。
     try {
-      await audioCtx.resume?.()
+      const resumeP = audioCtx.resume?.()
+      if (resumeP) {
+        let resumeTimer: ReturnType<typeof setTimeout> | null = null
+        await Promise.race([
+          resumeP,
+          new Promise<void>((resolve) => {
+            resumeTimer = setTimeout(resolve, 3500)
+          }),
+        ]).finally(() => {
+          if (resumeTimer) clearTimeout(resumeTimer)
+        })
+      }
     } catch {
       // 恢复失败不阻塞（部分场景仍可用；状态条会提示收音异常）
     }
@@ -1472,6 +1569,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     discardGen++ // 弃段令牌推进：作废在途定稿（会话结束不得 emit）
     forcePending = false
     holdActive = false
+    holdTrimmed = false
     segment = []
     speechActive = false
     silenceMs = 0
@@ -1506,7 +1604,10 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     }
     workletNode = null
     try {
-      stream?.getTracks().forEach((t) => t.stop())
+      stream?.getTracks().forEach((t) => {
+        t.onended = null
+        t.stop()
+      })
     } catch {
       // ignore
     }
@@ -1573,6 +1674,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       detectFailStreak = 0
       lastPollAt = 0
       holdActive = false
+      holdTrimmed = false
       detectChunks = [] // 打断根治：进入清检测通道
       detectSent = 0
       detectGeneration++
@@ -1638,6 +1740,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     beginHeld() {
       if (!active || holdActive) return
       holdActive = true
+      holdTrimmed = false
       // 不在此置 forcePending：hold 期间 30s 滚段定稿应只累积（松手才发），
       // force 统一由 endHeld 松手时置位，避免按住 >30s 被提前发送。
       segmentEpoch++ // 作废迟到的 wake/旧段 partial
@@ -1663,7 +1766,9 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
     discardSegment() {
       // 语义与 P1-3「短语音弃段」一致：清本地段 + 作废迟到 partial + host 流重置。
       segmentEpoch++
+      const myEpoch = segmentEpoch
       discardGen++ // 弃段令牌推进：作废在途定稿（打断弃段不得 emit）
+      holdTrimmed = false
       // Issue #15 批 7（审查 M3）：段边界重置连败计数（同 clearWakeSegment 口径）。
       partialFailStreak = 0
       detectFailStreak = 0
@@ -1723,9 +1828,11 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       // wake 分支的静音处理器会在 reset 往返 > silenceMs 时 clearWakeSegment 把抢救段
       // 抹掉（审查 I1）。resetGate 已保证上行次序，状态展示不必等 reset。
       if (salvaged && active) setState('speech')
-      // Fix：等待 host 流重置完成后再恢复状态（防新段使用旧流）
+      // Fix：等待 host 流重置完成后再恢复状态（防新段使用旧流），带 epoch/开口守卫防踩新段。
       return resetHostStream().then(() => {
-        if (active && !salvaged) setState(wakeEnabled ? 'wake' : 'listening')
+        if (active && !salvaged && segmentEpoch === myEpoch && !speechActive && !holdActive) {
+          setState(wakeEnabled ? 'wake' : 'listening')
+        }
       })
     },
     endHeld(cancel = false) {
@@ -1735,6 +1842,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
         // 放弃本段（滑出取消 / Escape / blur 兜底）
         segmentEpoch++
         discardGen++ // 弃段令牌推进：作废在途定稿（取消段不得 emit）
+        holdTrimmed = false
         segment = []
         uploadedSamples = 0 // B-4：取消后上传水位必须复位（对齐 beginHeld）——否则下一句从陈旧水位起算：短于水位整句无输出，长于水位丢句首
         salvagedSegment = false // Issue #15 批 1：取消段不遗留抢救标记

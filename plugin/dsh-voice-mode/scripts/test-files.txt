@@ -99,3 +99,4 @@ test/asr-replacements.test.mjs
 test/once-hint.test.mjs
 test/audit-guards-2026-11-20.test.mjs
 test/hook-order.test.mjs
+test/asr-deep-audit.test.mjs

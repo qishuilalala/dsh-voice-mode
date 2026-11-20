@@ -115,6 +115,14 @@ class Track {
     }
     return btoa(bin)
   }
+  /** 复制另一轨前 chunks.length - dropLast 块（中段首次分叉时回填前置帧保对齐）。 */
+  copyPrefixFrom(other: Track, dropLast = 0): void {
+    const end = Math.max(0, other.chunks.length - dropLast)
+    for (let i = 0; i < end; i++) {
+      this.chunks.push(other.chunks[i])
+      this.total += other.chunks[i].length
+    }
+  }
   clear(): void {
     this.chunks = []
     this.total = 0
@@ -229,8 +237,11 @@ class FixtureRecorder {
       this.micTrack.push(micPre)
       this.refTrack.push(ref ?? new Float32Array(micPre.length))
       if (res !== micPre) {
-        // 自研 AEC 实际生效过：残差与 mic 不是同一块，单独落轨
-        if (!this.resDiffers) this.resDiffers = true
+        // 自研 AEC 实际生效过：残差与 mic 不是同一块，单独落轨；若中段首次分叉，回填前置帧保对齐。
+        if (!this.resDiffers) {
+          this.resDiffers = true
+          this.resTrack.copyPrefixFrom(this.micTrack, 1)
+        }
         this.resTrack.push(res)
       } else if (this.resDiffers) {
         this.resTrack.push(res)

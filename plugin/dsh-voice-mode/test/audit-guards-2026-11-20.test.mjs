@@ -23,9 +23,9 @@ const t = (name, fn) => {
 console.log('audit-guards（A1 hold/413）')
 const asr = src('asr.ts')
 
-t('hold 段有字节上限且只在未上传样本时裁剪（保住 host offset 单调）', () => {
+t('hold 段有字节上限且超限裁头同步重置 host 流（保住 offset 单调）', () => {
   assert.ok(asr.includes('HOLD_SECOND_MAX_BYTES'), '缺 hold 段字节上限常量')
-  assert.ok(/if \(uploadedSamples === 0\) \{/.test(asr), '裁剪必须限定在 uploadedSamples === 0')
+  assert.ok(asr.includes('c.byteLength'), '必须按 byteLength（非样本数 length）计字节上限')
   assert.ok(asr.includes('segment.shift()'), '缺头部裁剪实现')
   assert.ok(asr.includes("emit(noticeListeners, 'holdTrimmedNotice')"), '裁剪后必须提示用户')
 })
