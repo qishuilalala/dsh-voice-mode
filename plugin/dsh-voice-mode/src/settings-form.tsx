@@ -221,45 +221,61 @@ function NumberField({
 }): React.ReactElement {
   const [draft, setDraft] = useState<string>(String(value ?? ''))
   const [hint, setHint] = useState<string | null>(null)
+  const [invalid, setInvalid] = useState(false)
+  // I19：记录本组件刚 clamp 提交的值，避免外部 value 同帧同步把 clamp 提示清空。
+  const selfClampedRef = useRef<string | null>(null)
   useEffect(() => {
-    setDraft((d) => (d === String(value ?? '') ? d : String(value ?? '')))
-    // 外部 value 同步时清 hint（用户已通过其他路径处理过）。
-    setHint(null)
+    const nextStr = String(value ?? '')
+    setDraft((d) => (d === nextStr ? d : nextStr))
+    if (selfClampedRef.current !== null && selfClampedRef.current === nextStr) {
+      selfClampedRef.current = null
+    } else {
+      // 外部 value 同步时清 hint（用户已通过其他路径处理过）。
+      setInvalid(false)
+      setHint(null)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value])
   const commit = (): void => {
     const raw = draft.trim()
     if (raw === '') {
+      setInvalid(true)
       setHint(tr('numberInvalid'))
       return
     }
     // 批 J 任务 3：拒绝 "1." 这种残缺小数串（Number("1.") = 1 但视觉残留 "." 不消失）。
     // 输入态 "." 是用户中途态，提交时若仍残留则视为非法；多 "." 同样非法。
     if (raw.endsWith('.') || raw.split('.').length > 2) {
+      setInvalid(true)
       setHint(tr('numberInvalid'))
       return
     }
     const n = Number(raw)
     if (!Number.isFinite(n)) {
+      setInvalid(true)
       setHint(tr('numberInvalid'))
       return
     }
     if (n < min || n > max) {
       const clamped = Math.min(max, Math.max(min, n))
+      selfClampedRef.current = String(clamped)
+      setInvalid(false)
       setHint(tr('numberClamped').replace('{value}', String(clamped)))
       setDraft(String(clamped))
       void score.set(field, clamped)
       return
     }
+    selfClampedRef.current = null
+    setInvalid(false)
     setHint(null)
     void score.set(field, n)
   }
-  // A4 审计 Minor：非法态此前只有红框 + 纯文本 hint，读屏无感知；色值也硬编码。
-  const invalidStyle: React.CSSProperties = hint
+  // A4 + I19：仅非法输入套红框与 aria-invalid（已自动 clamp 到合法值不标 invalid），色值走主题 token。
+  const invalidStyle: React.CSSProperties = invalid
     ? {
         ...inputStyle,
         border: '1px solid var(--dsw-alias-state-error-primary)',
-        background: 'rgba(221, 51, 51, 0.08)',
+        background: 'color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent)',
       }
     : inputStyle
   const hintId = `${field}-number-hint`
@@ -268,7 +284,7 @@ function NumberField({
       <input
         style={invalidStyle}
         aria-label={tr(`${field}Label` as TKey)}
-        aria-invalid={hint ? true : undefined}
+        aria-invalid={invalid ? true : undefined}
         aria-describedby={hint ? hintId : undefined}
         type="number"
         step={step}
@@ -279,6 +295,7 @@ function NumberField({
           setDraft(e.target.value)
           // 用户继续编辑时清旧 hint，避免残留误导。
           if (hint) setHint(null)
+          if (invalid) setInvalid(false)
         }}
         onBlur={commit}
         onKeyDown={(e) => {
@@ -286,7 +303,16 @@ function NumberField({
         }}
       />
       {hint && (
-        <span id={hintId} role="status" aria-live="polite" style={{ color: 'var(--dsw-alias-state-error-primary)', fontSize: 11, lineHeight: '14px' }}>
+        <span
+          id={hintId}
+          role="status"
+          aria-live="polite"
+          style={{
+            color: invalid ? 'var(--dsw-alias-state-error-primary)' : t.term,
+            fontSize: 11,
+            lineHeight: '14px',
+          }}
+        >
           {hint}
         </span>
       )}
@@ -318,6 +344,7 @@ function TextField({
   return (
     <input
       style={inputStyle}
+      aria-label={tr(`${field}Label` as TKey)}
       type={type}
       autoComplete={type === 'password' ? 'new-password' : undefined}
       value={draft}
@@ -377,21 +404,39 @@ function SecretField({
   const clear = (): void => {
     if (busy) return
     setBusy(true)
-    void fetch(location.origin + BASE_PATH + '/settings', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ clearSecrets: [field] }),
-    })
-      .then((res) => {
+    void (async () => {
+      try {
+        const res = await fetch(location.origin + BASE_PATH + '/settings', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ clearSecrets: [field] }),
+          signal: AbortSignal.timeout(8000),
+        })
         if (res.ok) {
+          setFailed(false)
           setNote('cleared')
           onChanged()
-        } else {
-          setFailed(true)
+          return
         }
-      })
-      .catch(() => setFailed(true))
-      .finally(() => setBusy(false))
+        // I19：路径 A（dsh 托管，409 settings_managed）回退经 score.set(field, '') 清空。
+        if (res.status === 409) {
+          const ok = await Promise.resolve(score.set(field, ''))
+          if (ok === false) {
+            setFailed(true)
+            return
+          }
+          setFailed(false)
+          setNote('cleared')
+          onChanged()
+          return
+        }
+        setFailed(true)
+      } catch {
+        setFailed(true)
+      } finally {
+        setBusy(false)
+      }
+    })()
   }
   return (
     <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -469,16 +514,25 @@ function ShortcutField({
       window.dispatchEvent(new Event('dshvm-settings-changed'))
     } catch {}
   }
+  const saveAndNotify = (nextVal: string): void => {
+    void Promise.resolve(score.set(field, nextVal)).finally(() => notify())
+  }
   const commit = (): void => {
-    void score.set(field, draft.trim())
-    notify()
+    saveAndNotify(draft.trim())
   }
   useEffect(() => {
     if (!recording) return
+    const onBlur = (): void => {
+      setRecording(false)
+      setErr('')
+    }
     const onKey = (e: KeyboardEvent): void => {
-      // A4 审计 Important：录制态此前对所有键 preventDefault，Tab 也被吞 → 键盘焦点被困。
-      // Tab 是纯导航键，不可能是快捷键组合的一部分，必须放行。
-      if (e.key === 'Tab') return
+      // A4 + I19：录制态放行 Tab（不吞焦点），同时退出录制态避免后续敲键仍被劫持。
+      if (e.key === 'Tab') {
+        setRecording(false)
+        setErr('')
+        return
+      }
       e.preventDefault()
       e.stopPropagation()
       if (e.key === 'Escape') {
@@ -488,9 +542,9 @@ function ShortcutField({
       }
       if (e.key === 'Backspace' || e.key === 'Delete') {
         setDraft('')
-        void score.set(field, '')
-        notify()
+        saveAndNotify('')
         setRecording(false)
+        setErr('')
         return
       }
       if (e.key === 'Control' || e.key === 'Alt' || e.key === 'Shift' || e.key === 'Meta') return
@@ -513,19 +567,23 @@ function ShortcutField({
       }
       const combo = [...mods, k].join('+')
       setDraft(combo)
-      void score.set(field, combo)
-      notify()
+      saveAndNotify(combo)
       setRecording(false)
       setErr('')
     }
     window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('blur', onBlur)
+    }
   }, [recording, score, field])
   return (
     <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
         <input
           style={{ ...inputStyle, width: 150 }}
+          aria-label={tr(`${field}Label` as TKey)}
           value={draft}
           placeholder={tr('shortcutPlaceholder')}
           onChange={(e) => {
@@ -557,8 +615,13 @@ function ShortcutField({
           {recording ? tr('shortcutCancel') : tr('shortcutRecord')}
         </button>
       </span>
-      <span style={{ fontSize: 11, lineHeight: '14px', color: err ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-label-tertiary)' }}>
-        {recording ? tr('shortcutRecording') : err}
+      <span
+        role="status"
+        aria-live="polite"
+        style={{ fontSize: 11, lineHeight: '14px', color: err ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-label-tertiary)' }}
+      >
+        {/* I19：录制态报错优先展示 err（此前 recording 恒盖住 err 致缺修饰键/不支持键提示不可见）。 */}
+        {err || (recording ? tr('shortcutRecording') : '')}
       </span>
     </span>
   )
@@ -582,10 +645,15 @@ function SelectField({
 }): React.ReactElement {
   const cur = String(value ?? '')
   const inOptions = options.some((o) => o.v === cur)
+  // B10：forceCustom 让「当前值在列表中」也能显式切进自定义输入；依赖仅含 [cur] 避免 3s 轮询新 options 数组冲掉草稿。
+  const [forceCustom, setForceCustom] = useState(false)
   const [custom, setCustom] = useState<string>(inOptions ? '' : cur)
   useEffect(() => {
-    if (!options.some((o) => o.v === cur)) setCustom(cur)
-  }, [cur, options])
+    if (inOptions) setForceCustom(false)
+    else setCustom(cur)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur])
+  const showCustomInput = !inOptions || forceCustom
   const selectStyle: React.CSSProperties = {
     ...inputStyle,
     appearance: 'none',
@@ -597,14 +665,20 @@ function SelectField({
     paddingRight: 32,
   }
   return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 280, alignItems: 'stretch' }}>
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', maxWidth: 420, alignItems: 'stretch' }}>
       <select
         style={selectStyle}
-        value={inOptions ? cur : '__custom__'}
+        aria-label={tr(`${field}Label` as TKey)}
+        value={showCustomInput ? '__custom__' : cur}
         onChange={(e) => {
           const v = e.target.value
-          if (v === '__custom__') void score.set(field, custom)
-          else void score.set(field, v)
+          if (v === '__custom__') {
+            setForceCustom(true)
+            setCustom(inOptions ? '' : custom)
+          } else {
+            setForceCustom(false)
+            void score.set(field, v)
+          }
         }}
       >
         {options.map((o) => (
@@ -614,9 +688,10 @@ function SelectField({
         ))}
         <option value="__custom__">{tr('custom')}…</option>
       </select>
-      {!inOptions && (
+      {showCustomInput && (
         <input
           style={inputStyle}
+          aria-label={tr(`${field}Label` as TKey)}
           value={custom}
           placeholder={placeholder}
           onChange={(e) => setCustom(e.target.value)}
@@ -626,7 +701,7 @@ function SelectField({
           }}
         />
       )}
-      {footer?.(inOptions ? cur : custom)}
+      {footer?.(showCustomInput ? custom : cur)}
     </span>
   )
 }
@@ -674,12 +749,17 @@ function VoiceSelect({
   const cur = String(value ?? '')
   const inOptions = options.some((o) => o.v === cur)
   const idx = options.findIndex((o) => o.v === cur)
+  // B10：① 移除不稳定 options 依赖，3s 轮询不再冲掉手输音色草稿；② forceCustom 让已选预设音色也能切到「自定义…」输入。
+  const [forceCustom, setForceCustom] = useState(false)
   const [custom, setCustom] = useState<string>(inOptions ? '' : cur)
   useEffect(() => {
-    if (!options.some((o) => o.v === cur)) setCustom(cur)
-  }, [cur, options])
+    if (inOptions) setForceCustom(false)
+    else setCustom(cur)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cur])
   const move = (delta: number): void => {
     if (options.length === 0) return
+    setForceCustom(false)
     if (inOptions) {
       const n = options.length
       const next = options[(((idx + delta) % n) + n) % n]
@@ -704,9 +784,10 @@ function VoiceSelect({
     paddingRight: 32,
   }
   // 当前值 label：仅用于「自定义音色」输入框的提示（下拉可访问名改用字段名，见下）。
-  const currentValueLabel = inOptions ? options[idx].label : custom || placeholder || ''
+  const currentValueLabel = inOptions && !forceCustom ? options[idx].label : custom || placeholder || ''
   // 非自定义引擎（全量列出）：值不在列表视为异常，下拉回退到第一项；自定义引擎才出现手输框。
-  const selectValue = inOptions ? cur : showCustom ? '__custom__' : options[0]?.v ?? ''
+  const showCustomInput = showCustom && (!inOptions || forceCustom)
+  const selectValue = showCustomInput ? '__custom__' : inOptions ? cur : options[0]?.v ?? ''
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', maxWidth: '100%', alignItems: 'stretch' }}>
       <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -720,8 +801,13 @@ function VoiceSelect({
           aria-label={tr(`${field}Label` as TKey)}
           onChange={(e) => {
             const v = e.target.value
-            if (v === '__custom__') setCustom(inOptions ? '' : custom)
-            else void score.set(field, v)
+            if (v === '__custom__') {
+              setForceCustom(true)
+              setCustom(inOptions ? '' : custom)
+            } else {
+              setForceCustom(false)
+              void score.set(field, v)
+            }
           }}
         >
           {options.map((o) => (
@@ -735,12 +821,12 @@ function VoiceSelect({
           ›
         </button>
       </span>
-      {showCustom && !inOptions && (
+      {showCustomInput && (
         <input
           style={inputStyle}
           value={custom}
           placeholder={placeholder}
-          aria-label={currentValueLabel}
+          aria-label={currentValueLabel || tr(`${field}Label` as TKey)}
           onChange={(e) => setCustom(e.target.value)}
           onBlur={() => void score.set(field, custom)}
           onKeyDown={(e) => {
@@ -748,7 +834,7 @@ function VoiceSelect({
           }}
         />
       )}
-      {footer?.(inOptions ? cur : showCustom ? custom : cur)}
+      {footer?.(showCustomInput ? custom : cur)}
     </span>
   )
 }
@@ -763,6 +849,9 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  // I19：卸载或重启试听时中止在途 /preview 请求，禁止卸载后继续 audio.play() 或写状态。
+  const abortRef = useRef<AbortController | null>(null)
+  const mountedRef = useRef(true)
   /** 共享轮询器快照（null=尚未拿到；本地引擎看 tts.local.ready，云端引擎视为就绪）。 */
   const status = useModelsStatus()
   const stTts = status?.tts
@@ -793,6 +882,10 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
     }
     setBusy(true)
     setNote(null)
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
+    const timeoutId = setTimeout(() => ac.abort(new DOMException('timeout', 'TimeoutError')), 90000)
     const audio = new Audio()
     // 新试听打断旧试听：停播并释放旧 blob URL（onended/onerror 之外的打断路径）。
     const prev = audioRef.current
@@ -809,8 +902,9 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ voice: v, rate }),
-          signal: AbortSignal.timeout(90000),
+          signal: ac.signal,
         })
+        if (ac.signal.aborted || !mountedRef.current) return
         if (!res.ok) {
           // host 只返回稳定错误码（errors.ts），文案按界面语言由词典给出；不展示 host 的 error 原文。
           let body: unknown = null
@@ -819,6 +913,7 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
           } catch {
             // 非 JSON 错误体：走状态码/通用文案
           }
+          if (ac.signal.aborted || !mountedRef.current) return
           const code = (body as { code?: unknown } | null)?.code
           setNote(
             code === 'voice_disabled' || res.status === 403
@@ -830,17 +925,19 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
           return
         }
         const blob = await res.blob()
+        if (ac.signal.aborted || !mountedRef.current) return
         const url = URL.createObjectURL(blob)
         audio.src = url
         audio.onended = () => URL.revokeObjectURL(url)
         audio.onerror = () => {
           URL.revokeObjectURL(url)
-          setNote(tr('previewPlayFail'))
+          if (mountedRef.current) setNote(tr('previewPlayFail'))
         }
         try {
           await audio.play()
         } catch (e) {
           URL.revokeObjectURL(url)
+          if (ac.signal.aborted || !mountedRef.current) return
           setNote(
             e instanceof DOMException && e.name === 'NotAllowedError'
               ? tr('previewAutoplay')
@@ -848,24 +945,34 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
           )
         }
       } catch (e) {
-        setNote(e instanceof DOMException && e.name === 'TimeoutError' ? tr('previewTimeout') : tr('previewCheck'))
+        if (!mountedRef.current) return
+        const isTimeout =
+          (e instanceof DOMException && e.name === 'TimeoutError') ||
+          (ac.signal.reason instanceof DOMException && ac.signal.reason.name === 'TimeoutError')
+        if (ac.signal.aborted && !isTimeout) return
+        setNote(isTimeout ? tr('previewTimeout') : tr('previewCheck'))
       } finally {
-        setBusy(false)
+        clearTimeout(timeoutId)
+        if (abortRef.current === ac) abortRef.current = null
+        if (mountedRef.current) setBusy(false)
       }
     })()
   }
 
-  // A2 Minor：试听音频在组件卸载时停止（同一卡片里自测已单独处理）。
-  useEffect(
-    () => () => {
+  // A2 Minor + I19：组件卸载时中止在途请求并停播音频。
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      abortRef.current?.abort()
+      abortRef.current = null
       const a = audioRef.current
       if (a) {
         a.pause()
         if (a.src.startsWith('blob:')) URL.revokeObjectURL(a.src)
       }
-    },
-    [],
-  )
+    }
+  }, [])
   const btnStyle: React.CSSProperties = {
     font: 'inherit',
     display: 'inline-flex',
@@ -937,6 +1044,8 @@ function SelfTestSection({
   const [play, setPlay] = useState<'ok' | 'fail' | 'autoplay' | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const mountedRef = useRef(true)
 
   const run = (): void => {
     if (busy) return
@@ -945,6 +1054,10 @@ function SelfTestSection({
       setNote(tr('previewNameFirst'))
       return
     }
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
+    const timeoutId = setTimeout(() => ac.abort(new DOMException('timeout', 'TimeoutError')), 90000)
     const prev = audioRef.current
     if (prev) {
       prev.pause()
@@ -964,8 +1077,9 @@ function SelfTestSection({
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ voice: v, rate }),
-          signal: AbortSignal.timeout(90000),
+          signal: ac.signal,
         })
+        if (ac.signal.aborted || !mountedRef.current) return
         if (!res.ok) {
           let body: unknown = null
           try {
@@ -973,6 +1087,7 @@ function SelfTestSection({
           } catch {
             // 非 JSON 错误体：走通用文案
           }
+          if (ac.signal.aborted || !mountedRef.current) return
           const code = (body as { code?: unknown } | null)?.code
           // A2 审计 Important：429（与试听共用 20/min 桶）和 403（插件禁用）不是「引擎坏了」，
           // 若标红会让用户误判引擎故障。这两类只给说明、不置合成失败。
@@ -990,6 +1105,7 @@ function SelfTestSection({
           return
         }
         const blob = await res.blob()
+        if (ac.signal.aborted || !mountedRef.current) return
         if (blob.size === 0) {
           setSynth('fail')
           setNote(tr('selftestCheck'))
@@ -1001,17 +1117,20 @@ function SelfTestSection({
         audio.src = url
         audio.onended = () => {
           URL.revokeObjectURL(url)
-          setPlay('ok')
+          if (mountedRef.current) setPlay('ok')
         }
         audio.onerror = () => {
           URL.revokeObjectURL(url)
-          setPlay('fail')
-          setNote(tr('previewPlayFail'))
+          if (mountedRef.current) {
+            setPlay('fail')
+            setNote(tr('previewPlayFail'))
+          }
         }
         try {
           await audio.play()
         } catch (e) {
           URL.revokeObjectURL(url)
+          if (ac.signal.aborted || !mountedRef.current) return
           if (e instanceof DOMException && e.name === 'NotAllowedError') {
             setPlay('autoplay')
             setNote(tr('selftestAutoplay'))
@@ -1021,25 +1140,35 @@ function SelfTestSection({
           }
         }
       } catch (e) {
+        if (!mountedRef.current) return
+        const isTimeout =
+          (e instanceof DOMException && e.name === 'TimeoutError') ||
+          (ac.signal.reason instanceof DOMException && ac.signal.reason.name === 'TimeoutError')
+        if (ac.signal.aborted && !isTimeout) return
         setSynth('fail')
-        setNote(e instanceof DOMException && e.name === 'TimeoutError' ? tr('selftestTimeout') : tr('selftestCheck'))
+        setNote(isTimeout ? tr('selftestTimeout') : tr('selftestCheck'))
       } finally {
-        setBusy(false)
+        clearTimeout(timeoutId)
+        if (abortRef.current === ac) abortRef.current = null
+        if (mountedRef.current) setBusy(false)
       }
     })()
   }
 
-  // A2 Minor：卡片折叠/卸载后仍在播的音频要停掉，避免“关了设置还在响”。
-  useEffect(
-    () => () => {
+  // A2 Minor + I19：卡片折叠/卸载后中止在途请求并停播音频，避免“关了设置还在响”。
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      abortRef.current?.abort()
+      abortRef.current = null
       const a = audioRef.current
       if (a) {
         a.pause()
         if (a.src.startsWith('blob:')) URL.revokeObjectURL(a.src)
       }
-    },
-    [],
-  )
+    }
+  }, [])
 
   const verdict = (label: string, st: 'ok' | 'fail' | 'autoplay' | null, extra?: string): React.ReactElement => (
     <span style={{ fontSize: 12, color: t.term, display: 'inline-flex', gap: 4 }}>
@@ -1164,9 +1293,8 @@ function ReplacementsSection({
    */
   onChange: (next: ReplacementRule[]) => Promise<unknown> | unknown
 }): React.ReactElement {
-  // A2 审计 Blocker：非法/超大已有规则时，normalizeRules 返回 null——此前直接当空表显示，
-  // 用户再点「添加」就会用新数组整表覆盖、丢掉原规则。现在区分「空」与「无法解析」并禁止覆盖。
-  const parsed = normalizeRules(rules)
+  // A2 + I19：undefined 视为「尚未配置（空表）」，不误判为损坏；仅非数组/越界/畸形项才标 unreadable。
+  const parsed = rules === undefined ? [] : normalizeRules(rules)
   const unreadable = parsed === null
   const list = parsed ?? []
   const [fromText, setFromText] = useState('')
@@ -1321,7 +1449,7 @@ function ReplacementsSection({
           onChange={(e) => setFromText(e.target.value)}
           placeholder={tr('replFromPh')}
           aria-label={tr('replFromPh')}
-          style={{ fontSize: 12, padding: '4px 8px', maxWidth: 220 }}
+          style={{ ...inputStyle, width: 'auto', fontSize: 12, padding: '4px 8px', maxWidth: 220 }}
         />
         <input
           value={toText}
@@ -1331,7 +1459,7 @@ function ReplacementsSection({
           }}
           placeholder={tr('replToPh')}
           aria-label={tr('replToPh')}
-          style={{ fontSize: 12, padding: '4px 8px', maxWidth: 140 }}
+          style={{ ...inputStyle, width: 'auto', fontSize: 12, padding: '4px 8px', maxWidth: 140 }}
         />
         <button type="button" onClick={add} disabled={busy} style={btnStyle}>
           {tr('replAdd')}
@@ -1419,6 +1547,8 @@ type ModelsStatusSub = (st: ModelsStatusPayload) => void
 const modelsStatusSubs = new Set<ModelsStatusSub>()
 let modelsStatusTimer: ReturnType<typeof setInterval> | null = null
 let modelsStatusLast: ModelsStatusPayload | null = null
+/** B10：按原文本去重——状态未变化时不通知订阅者，消除每 3s 无意义重渲染。 */
+let modelsStatusRaw = ''
 /** 在途守卫：慢响应时 3s 定时器会叠加请求，串起来会让连接数持续上涨（R4 复核发现）。 */
 let modelsStatusInflight = false
 const MODELS_STATUS_INTERVAL_MS = 3000
@@ -1429,7 +1559,10 @@ async function pollModelsStatusOnce(): Promise<void> {
   try {
     const res = await fetch(location.origin + BASE_PATH + '/models/status', { signal: AbortSignal.timeout(8000) })
     if (!res.ok) return
-    modelsStatusLast = (await res.json()) as ModelsStatusPayload
+    const text = await res.text()
+    if (text === modelsStatusRaw && modelsStatusLast !== null) return
+    modelsStatusRaw = text
+    modelsStatusLast = JSON.parse(text) as ModelsStatusPayload
     // 复制一份再遍历：订阅者在回调里退订不会中断本轮分发。
     for (const fn of [...modelsStatusSubs]) fn(modelsStatusLast)
   } catch {
@@ -1651,6 +1784,7 @@ const NEXT_ENTRY_FMT: Record<string, (v: unknown) => string> = {
   llmCorrect: (v) => (v ? tr('valueOn') : tr('valueOff')),
   idleTimeoutMinutes: (v) => `${v} ${tr('unitMin')}`,
   shortcut: (v) => (v ? String(v) : tr('valueOff')),
+  composerShortcut: (v) => (v ? String(v) : tr('valueOff')),
 }
 
 /** 生效提示块：列出「下次进入语音模式才生效」的字段（tier④，NEXT_ENTRY_FIELDS）中
@@ -1747,10 +1881,11 @@ function SegGroup({
   onSelect?: (v: number | string) => void
 }): React.ReactElement {
   return (
-    <span role="group" style={setSeg}>
+    <span role="group" aria-label={tr(`${field}Label` as TKey)} style={setSeg}>
       {options.map((o) => (
         <button
           key={String(o.v)}
+          type="button"
           style={setSegBtn(value === o.v)}
           aria-pressed={value === o.v}
           onClick={() => {
@@ -2038,18 +2173,18 @@ function ModelStatusView(): React.ReactElement {
       </div>
       {mkRow(
         tr('modelStreamingAsr'),
-        { ready: !!st?.asr.ready, size: st?.asr.files.reduce((a, f) => a + f.size, 0) ?? 0, failLatchMs: st?.asr.failLatchMs ?? 0 },
+        { ready: !!st?.asr?.ready, size: st?.asr?.files?.reduce((a, f) => a + f.size, 0) ?? 0, failLatchMs: st?.asr?.failLatchMs ?? 0 },
         'asr',
         anyDownloading ? st.progress : null,
       )}
-      {mkRow(tr('modelVad'), { ready: !!st?.vad.ready, size: st?.vad.size ?? 0, failLatchMs: st?.vad.failLatchMs ?? 0 }, 'vad', anyDownloading ? st.progress : null)}
+      {mkRow(tr('modelVad'), { ready: !!st?.vad?.ready, size: st?.vad?.size ?? 0, failLatchMs: st?.vad?.failLatchMs ?? 0 }, 'vad', anyDownloading ? st.progress : null)}
       {mkRow(
         tr('modelSense'),
         {
-          ready: !!st?.sense.ready,
-          size: st?.sense.size ?? 0,
-          failLatchMs: st?.sense.enabled ? (st?.sense.failLatchMs ?? 0) : 0,
-          disabledText: st?.sense.enabled ? undefined : tr('modelsDisabled'),
+          ready: !!st?.sense?.ready,
+          size: st?.sense?.size ?? 0,
+          failLatchMs: st?.sense?.enabled ? (st?.sense?.failLatchMs ?? 0) : 0,
+          disabledText: st?.sense?.enabled ? undefined : tr('modelsDisabled'),
         },
         'sense',
         anyDownloading ? st.progress : null,
@@ -2149,18 +2284,18 @@ export function VoiceSettingsCard({
     }
     void (async () => {
       try {
-        // T5 B②：先确保 host 已切到该预设再合成——否则「点了预设立刻点验证」会用旧端点出结果。
-        // A2 审计 Important：写入失败必须直接判 fail——否则会用**旧端点/旧 key** 合成成功，
-        // 让用户以为「这个预设可用」，实际切过去仍不可用。
+        // T5 B② + I19：先确保 host 已切到该预设再合成——写失败/抛错必须直接判 fail 并不再发 /preview；
+        // 且不再写脏用户原有的 voice 设置（/preview 已在 body 显式传 voice）。
         const wrotePreset = await Promise.resolve(scope.set('openaiPreset', presetId))
         if (wrotePreset === false) {
           setPresetVerify({ id: presetId, state: 'fail', note: tr('presetWriteFailed') })
           setVerifying(false)
           return
         }
-        await scope.set('voice', voice)
       } catch {
-        // 写入失败：仍尝试验证，由结果决定提示
+        setPresetVerify({ id: presetId, state: 'fail', note: tr('presetWriteFailed') })
+        setVerifying(false)
+        return
       }
       try {
         const res = await fetch(`${BASE_PATH}/preview`, {
@@ -2209,7 +2344,7 @@ export function VoiceSettingsCard({
     void fetch(location.origin + BASE_PATH + '/voices')
       .then((res) => (res.ok ? (res.json() as Promise<{ voices?: EdgeRawVoice[] }>) : null))
       .then((data) => {
-        if (alive && data?.voices) setEdgeRaw(data.voices)
+        if (alive && Array.isArray(data?.voices) && data.voices.length > 0) setEdgeRaw(data.voices)
       })
       .catch(() => undefined)
     return () => {
@@ -2251,7 +2386,19 @@ export function VoiceSettingsCard({
             style={{ ...setDesc, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
             title={tr('settingsCardDesc')}
           >
-            {collapsed ? `${ENGINE_NAME[engine]()} · ${String(value.voice ?? '') || '—'} · ${headStatus?.tts?.error ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine) : headStatus?.tts?.loading ? tr('engineLoading') : tr('engineReady')}` : tr('settingsCardDesc')}
+            {collapsed
+              ? `${ENGINE_NAME[engine]()} · ${String(value.voice ?? '') || '—'} · ${
+                  !headStatus?.tts
+                    ? '…'
+                    : headStatus.tts.error
+                      ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine)
+                      : headStatus.tts.loading
+                        ? tr('engineLoading')
+                        : headStatus.tts.local && !headStatus.tts.local.ready
+                          ? tr('ttsModelsMissing')
+                          : tr('engineReady')
+                }`
+              : tr('settingsCardDesc')}
           </span>
         </span>
         <span style={{ ...setChevron, transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)' }} aria-hidden="true">
@@ -2460,7 +2607,7 @@ export function VoiceSettingsCard({
               <CheckRow field="toolBeep" checked={Boolean(value.toolBeep)} score={scope} />
             </Row>
             <Row name="autoSend" desc={tr('descAutoSend')}>
-              <CheckRow field="autoSend" checked={Boolean(value.autoSend)} score={scope} />
+              <CheckRow field="autoSend" checked={value.autoSend !== false} score={scope} />
             </Row>
             <Row name="readAloud" desc={tr('descReadAloud')}>
               <SegGroup
@@ -2535,12 +2682,15 @@ export function VoiceSettingsCard({
               <button
                 type="button"
                 onClick={() => {
-                  // 与配置默认值一致（文档写的就是它）；两项一起恢复。
-                  void scope.set('shortcut', 'Ctrl+Shift+V')
-                  void scope.set('composerShortcut', 'Alt+Enter')
-                  try {
-                    window.dispatchEvent(new Event('dshvm-settings-changed'))
-                  } catch {}
+                  // 与配置默认值一致（文档写的就是它）；两项写完后再通知客户端重拉配置。
+                  void Promise.all([
+                    Promise.resolve(scope.set('shortcut', 'Ctrl+Shift+V')),
+                    Promise.resolve(scope.set('composerShortcut', 'Alt+Enter')),
+                  ]).finally(() => {
+                    try {
+                      window.dispatchEvent(new Event('dshvm-settings-changed'))
+                    } catch {}
+                  })
                 }}
                 style={{
                   flexShrink: 0,
@@ -2560,13 +2710,13 @@ export function VoiceSettingsCard({
             </Section>
             <Section title={tr('secRecognition')}>
             <Row name="senseVoice" desc={tr('descSenseVoice')}>
-              <CheckRow field="senseVoice" checked={Boolean(value.senseVoice)} score={scope} />
+              <CheckRow field="senseVoice" checked={value.senseVoice !== false} score={scope} />
             </Row>
             <Row name="senseITN" desc={tr('descSenseITN')}>
               <CheckRow field="senseITN" checked={value.senseITN !== false} score={scope} />
             </Row>
             <Row name="spokenFormat" desc={tr('descSpokenFormat')}>
-              <CheckRow field="spokenFormat" checked={Boolean(value.spokenFormat)} score={scope} />
+              <CheckRow field="spokenFormat" checked={value.spokenFormat !== false} score={scope} />
             </Row>
             <Row name="silenceMs" desc={tr('descSilence')}>
               <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 1500} min={500} max={30000} step={100} />

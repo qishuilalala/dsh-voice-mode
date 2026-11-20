@@ -67,12 +67,13 @@ t('设置写入恒要求回环（allowLan 不得放大到配置/密钥写入）'
   assert.ok(block.includes('settings writes are loopback-only'), '缺明确 403 文案')
 })
 
-t('快捷键录制态放行 Tab（焦点不得被困）', () => {
+t('快捷键录制态放行 Tab 且退出录制（焦点不得被困）', () => {
   const s = src('settings-form.tsx')
   const i = s.indexOf('const onKey = (e: KeyboardEvent): void => {')
   assert.ok(i > 0, '找不到录制键盘处理器')
   const block = s.slice(i, i + 400)
-  assert.ok(/if \(e\.key === 'Tab'\) return/.test(block), '录制态必须放行 Tab（此前 preventDefault 吞掉 Tab）')
+  assert.ok(/if \(e\.key === 'Tab'\)[\s\S]{0,80}return/.test(block), '录制态必须放行 Tab（此前 preventDefault 吞掉 Tab）')
+  assert.ok(block.indexOf("e.key === 'Tab'") < block.indexOf('e.preventDefault()'), 'Tab 判定必须先于 preventDefault')
 })
 
 t('打断后有可见提示（不再只有 3s「…」占位）', () => {
