@@ -60,10 +60,10 @@ test('B7: 客户端接受 ID3v2 MP3 / OggS / fLaC 及 audio/* 帧，降级 Blob 
   globalThis.window.AudioContext = FakeAudioContext
   try {
     await c.bus.enter('s1')
-    // 1) ID3v2 MP3（以 0x49 0x44 0x33 开头，非 0xFF）→ 必须进入播放而非被静默丢弃
+    // 1) ID3v2 MP3（以 0x49 0x44 0x33 开头、且不传 mime，纯靠魔数放行）→ 必须进入播放而非被静默丢弃
     const id3 = Buffer.from('ID3\x03\x00\x00\x00\x00\x00\x00hello', 'latin1').toString('base64')
-    c.emit('audio', { sessionId: 's1', sentenceId: 1, chunkId: 0, final: false, audio: id3, mime: 'audio/mpeg' })
-    c.emit('audio', { sessionId: 's1', sentenceId: 1, chunkId: 1, final: true, text: 'ID3句', audio: '', mime: 'audio/mpeg' })
+    c.emit('audio', { sessionId: 's1', sentenceId: 1, chunkId: 0, final: false, audio: id3 })
+    c.emit('audio', { sessionId: 's1', sentenceId: 1, chunkId: 1, final: true, text: 'ID3句', audio: '' })
     await tick()
     assert.equal(c.bus.ui.playing, true, 'ID3v2 MP3 帧不得被静默丢弃')
     assert.equal(c.bus.ui.playingCaption, 'ID3句')

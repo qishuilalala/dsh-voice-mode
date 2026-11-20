@@ -6,7 +6,7 @@
  * 运行：node test/offline-gates.mjs [--write-doc]
  * 需要本机已缓存模型（~/.cache/dsh-voice-mode/models）。
  */
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -35,6 +35,10 @@ function charEditDistance(a, b) {
 }
 
 async function buildHarness(workDir) {
+  // 在隔离临时目录内链接 node_modules 与 worker 产物，避免污染仓库 lib/ 目录。
+  symlinkSync(join(pluginRoot, 'node_modules'), join(workDir, 'node_modules'), 'dir')
+  symlinkSync(join(pluginRoot, 'lib', 'sense-worker.mjs'), join(workDir, 'sense-worker.mjs'))
+  symlinkSync(join(pluginRoot, 'lib', 'tts-vits-worker.cjs'), join(workDir, 'tts-vits-worker.cjs'))
   const harnessPath = join(workDir, 'offline-harness.mjs')
   const entry = join(workDir, 'offline-entry.ts')
   writeFileSync(
