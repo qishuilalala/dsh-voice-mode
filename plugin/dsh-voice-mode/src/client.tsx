@@ -1912,6 +1912,9 @@ interface MicProps extends VoiceSlotActions {
 
 /** host /config 的运行时引导参数（客户端每次进入语音模式重新拉取）。 */
 interface VoiceBootConfig {
+  /** 云朗读是否需要 key / 当前是否已有 key（/config 下发；仅提示用）。 */
+  ttsNeedsKey?: boolean
+  ttsKeyPresent?: boolean
   basePath: string
   silenceMs: number
   interruptLevel: 0 | 1 | 2
@@ -2325,6 +2328,9 @@ export function MicButton({
         openaiPreset: typeof c.openaiPreset === 'string' ? c.openaiPreset : '',
         voice: typeof c.voice === 'string' ? c.voice : cur.voice,
         rate: typeof c.rate === 'number' ? c.rate : cur.rate,
+        // 2026-11-20 UX：云朗读鉴权状态（缺 Key 时进模式常驻提示，不必等一轮无声）。
+        ttsNeedsKey: c.ttsNeedsKey === true,
+        ttsKeyPresent: c.ttsKeyPresent === true,
       }
       // Issue #15 UX：快捷键非法值的客户端提示入口（settings-form 失焦校验之外的
       // 运行态兜底）——parseShortcut 对非法值返回 null（快捷键静默禁用），用户以为
@@ -2793,6 +2799,10 @@ export function MicButton({
         return
       }
       const basePath = cfg.basePath
+      // 朗读可用性前置：云引擎明确缺 Key 时，进模式即给常驻可行动提示（识别/字幕仍可用）。
+      if (cfg.readAloud !== 'off' && cfg.ttsNeedsKey === true && cfg.ttsKeyPresent === false) {
+        bus.setUi({ notice: t('ttsKeyMissingNotice') })
+      }
       const silenceMs = cfg.silenceMs
       const interruptLevel = cfg.interruptLevel
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2
@@ -2846,9 +2856,9 @@ export function MicButton({
           const rawRate = typeof cfg.rate === 'number' ? cfg.rate : typeof sv.rate === 'number' ? sv.rate : 1.1
           const pr = Math.min(2, Math.max(0.5, rawRate))
           const myProbe = enterEpochRef.current
-          const markDown = (): void => {
+          const markDown = (msg: string): void => {
             if (enterEpochRef.current !== myProbe || localRef.current === 'off') return
-            bus.setUi({ ttsNotice: t('ttsProbeFail') })
+            bus.setUi({ ttsNotice: msg })
           }
           void fetch(`${location.origin}${basePath}/preview`, {
             method: 'POST',
@@ -2856,17 +2866,27 @@ export function MicButton({
             body: JSON.stringify({ voice: pv, rate: pr }),
             signal: AbortSignal.timeout(30000),
           })
-            .then((res) => {
+            .then(async (res) => {
               // 429/403 是配额/禁用，不是引擎坏 → 不提示；但都要留日志（排障时看得到原因）。
               const skipped = res.status === 429 || res.status === 403
-              if (!res.ok && !skipped) markDown()
+              if (!res.ok && !skipped) {
+                // 归因：上游 401/403（Key 缺失/无效）必须与网络/引擎坏分开说（2026-11-20 UX）。
+                let code = ''
+                try {
+                  const body = (await res.json()) as { code?: unknown }
+                  code = typeof body?.code === 'string' ? body.code : ''
+                } catch {
+                  // 非 JSON 错误体 → 通用文案
+                }
+                markDown(code === 'preview_auth' ? t('ttsProbeAuthFail') : t('ttsProbeFail'))
+              }
               markProbe(res.ok)
               debugLog('tts-probe', { ok: res.ok, status: res.status, skipped, engine: eng })
             })
             .catch((e: unknown) => {
               markProbe(false)
               debugLog('tts-probe', { ok: false, error: String(e).slice(0, 80), engine: eng })
-              markDown()
+              markDown(t('ttsProbeFail'))
             })
         }
       } catch {

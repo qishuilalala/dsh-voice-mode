@@ -3024,6 +3024,11 @@ var en = {
   errMimoKeyMissing: "MiMo API key is not configured: enter it in this settings card or set mimoTts.apiKey in the profile",
   engineUnavailableShort: "Unavailable",
   errOpenaiConfigMissing: "Endpoint is not configured yet: pick a provider under Online preset (usually only the key is needed), or choose Custom and fill the endpoint and model",
+  engineMissingKey: "API key missing",
+  ttsKeyMissingNotice: "Online read-aloud has no API key: recognition and captions work, but speech will fail. Fill the key under Settings \u2192 Voice mode, or switch to a local engine (Edge / local VITS / Kokoro)",
+  ttsProbeAuthFail: "The service rejected read-aloud (usually a missing or invalid API key): fill or update the key under Settings \u2192 Voice mode, or switch to a local engine",
+  verifyAuthFail: "Verification failed: the server rejected authentication (401/403). Check and update the API key",
+  previewAuth: "The server rejected authentication: API key missing or invalid",
   errRemoteTts: "The TTS server is unreachable, failing or too slow; the local fallback reads aloud meanwhile if one is configured",
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
@@ -3602,7 +3607,9 @@ var OpenAiTtsEngine = class {
       ready: !fallingBack && !this.configError,
       loading: false,
       error: this.lastError?.message,
-      errorCode: this.lastError?.code
+      errorCode: this.lastError?.code,
+      // 2026-11-20 UX：只回布尔——状态卡据此提示「缺 API Key」，绝不回传 key。
+      keyPresent: Boolean(this.options.apiKey && this.options.apiKey.trim().length > 0)
     };
   }
   async close() {
@@ -3613,6 +3620,11 @@ var OpenAiTtsEngine = class {
     await fb?.close();
   }
 };
+function presetRequiresKey(presetId) {
+  if (!presetId) return false;
+  if (!Object.prototype.hasOwnProperty.call(OPENAI_PRESETS, presetId)) return false;
+  return !presetId.startsWith("selfhosted-");
+}
 var OPENAI_PRESETS = {
   "siliconflow-cosyvoice2": {
     baseUrl: "https://api.siliconflow.cn/v1",
@@ -4011,7 +4023,8 @@ var MimoTtsEngine = class {
       ready: !fallingBack && !this.configError,
       loading: false,
       error: err?.message,
-      errorCode: err?.code
+      errorCode: err?.code,
+      keyPresent: Boolean(this.options.apiKey && this.options.apiKey.trim().length > 0)
     };
   }
   async close() {
@@ -4132,10 +4145,12 @@ var NS_VOICE_MODE = "voice-mode";
 var MUTED_STREAMS_WITHOUT_TURN = 4;
 var BASE_PATH = "/voice-mode";
 var PREVIEW_NETWORK_PATTERN = /fetch failed|ECONN|ENOTFOUND|getaddrinfo|ETIMEDOUT|EAI_AGAIN|network|unreachable|socket hang up|aborted|WebSocket error/i;
+var PREVIEW_AUTH_PATTERN = /HTTP 401|HTTP 403|unauthorized|invalid[ _-]?api[ _-]?key|incorrect api key|authentication failed|missing api key/i;
 var PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa|local Kokoro|closed|init cooldown/i;
 var PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat|exceeds \d+ bytes|bad_payload|bad_audio|invalid base64|textual body/i;
 function classifyPreviewError(msg) {
   if (PREVIEW_TEXT_PATTERN.test(msg)) return "text";
+  if (PREVIEW_AUTH_PATTERN.test(msg)) return "auth";
   if (PREVIEW_NETWORK_PATTERN.test(msg)) return "network";
   if (PREVIEW_ENGINE_PATTERN.test(msg)) return "engine";
   return "unknown";
@@ -4144,6 +4159,7 @@ var PREVIEW_ERROR_CODES = {
   network: "preview_network",
   engine: "preview_engine",
   text: "preview_text",
+  auth: "preview_auth",
   unknown: "preview_unknown"
 };
 var respondJson2 = (res, status, payload) => {
@@ -4759,6 +4775,12 @@ function apply(ctx, config) {
     // 只在 host 经 `agent/turn-stopping` 确认回合真正结束后才发（见下方钩子）。
     awaitTurnEnd: true
   });
+  const ttsKeyState = () => {
+    const st = queue.status();
+    if (st.engine === "mimo") return { keyRequired: true, keyPresent: st.keyPresent === true };
+    if (st.engine === "openai") return { keyRequired: presetRequiresKey(vset.openaiPreset), keyPresent: st.keyPresent === true };
+    return { keyRequired: false, keyPresent: false };
+  };
   queue.updateVoice(vset.voice, vset.rate);
   const unsubscribe = queue.subscribe((frame) => broadcast("audio", frame));
   ctx.effect(() => unsubscribe);
@@ -4936,6 +4958,7 @@ function apply(ctx, config) {
       path: `${base}/config`,
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
+        const keyState = ttsKeyState();
         respondJson2(res, 200, {
           basePath: base,
           rate: currentRate(),
@@ -4952,6 +4975,9 @@ function apply(ctx, config) {
           autoResume: vset.autoResume,
           mode: vset.mode,
           readAloud: vset.readAloud,
+          // 2026-11-20 UX：进模式前即可判断「云朗读缺 Key」，客户端据此常驻提示。
+          ttsNeedsKey: keyState.keyRequired,
+          ttsKeyPresent: keyState.keyPresent,
           showCaptions: vset.showCaptions,
           showStatusBar: vset.showStatusBar,
           bargeInMode: vset.bargeInMode,
@@ -5182,7 +5208,7 @@ function apply(ctx, config) {
         if (denyNonLoopback(req, res)) return;
         respondJson2(res, 200, {
           ...asr.modelStatus(),
-          tts: queue.status(),
+          tts: { ...queue.status(), ...ttsKeyState() },
           // P1-3：词表规则数与命中计数（本次生效以来；设置变更重建即清零）。
           replacements: { rules: replacementRuleCount, hits: [...replacementHits] }
         });

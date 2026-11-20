@@ -73,6 +73,10 @@ export interface TtsEngineStatus {
   error?: string
   /** 最近一次错误的稳定错误码（可选；客户端据此翻译，无码则展示 error 原文）。 */
   errorCode?: string
+  /** 云引擎是否需要鉴权 key（宿主按引擎/预设判定；本地/edge 不填）。 */
+  keyRequired?: boolean
+  /** 云引擎是否解析到非空 key（只回布尔，不含 key 本身；本地/edge 不填）。 */
+  keyPresent?: boolean
   /** 当前模型下载进度（本地引擎下载时；edge 无）。 */
   progress?: { file: string; percent: number }
   /** 当前引擎的模型组（edge 无 local）。 */

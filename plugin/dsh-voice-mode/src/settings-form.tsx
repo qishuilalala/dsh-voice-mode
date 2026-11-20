@@ -1925,6 +1925,8 @@ interface ModelsStatusPayload {
     loading: boolean
     error?: string
     errorCode?: string
+    keyRequired?: boolean
+    keyPresent?: boolean
     progress?: { file: string; percent: number }
     local?: { repo: string; ready: boolean; loading: boolean; error?: string; files: Array<{ name: string; exists: boolean; size: number }> }
   }
@@ -1988,6 +1990,10 @@ function EngineStatusInline({ onSwitchLocal }: { onSwitchLocal?: () => void }): 
     // Spec 审查 #9：未配 key 与“云端挂了”必须可区分，否则用户不会想到去填 key。
     statusText = engineDownText(tts.errorCode, tts.engine)
     statusColor = 'var(--dsw-alias-state-error-primary)'
+  } else if (tts.keyRequired && tts.keyPresent === false) {
+    // 2026-11-20 UX：配置齐全但缺 Key 时不得显示「就绪」——否则用户进语音后无声且不知原因。
+    statusText = tr('engineMissingKey')
+    statusColor = 'var(--dsw-alias-state-warn-primary, #d29922)'
   } else if (isLocal && !localReady) {
     statusText = tr('ttsModelsMissing')
     statusColor = 'var(--dsw-alias-state-error-primary)'
@@ -2334,7 +2340,9 @@ export function VoiceSettingsCard({
           id: presetId,
           state: 'fail',
           note:
-            code === 'rate_limited' || res.status === 429
+            code === 'preview_auth'
+              ? tr('verifyAuthFail')
+              : code === 'rate_limited' || res.status === 429
               ? tr('selftestRateLimited')
               : code === 'voice_disabled' || res.status === 403
                 ? tr('selftestDisabled')
@@ -2408,9 +2416,11 @@ export function VoiceSettingsCard({
                       ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine)
                       : headStatus.tts.loading
                         ? tr('engineLoading')
-                        : headStatus.tts.local && !headStatus.tts.local.ready
-                          ? tr('ttsModelsMissing')
-                          : tr('engineReady')
+                        : headStatus.tts.keyRequired && headStatus.tts.keyPresent === false
+                          ? tr('engineMissingKey')
+                          : headStatus.tts.local && !headStatus.tts.local.ready
+                            ? tr('ttsModelsMissing')
+                            : tr('engineReady')
                 }`
               : tr('settingsCardDesc')}
           </span>
@@ -2507,7 +2517,10 @@ export function VoiceSettingsCard({
                 options={voiceOptions}
                 placeholder={ENGINE_DEFAULT_VOICE[engine] ?? 'zh-CN-XiaoxiaoNeural'}
                 showCustom={isCloudEngine(engine)}
-                footer={(v) => <VoicePreviewButton voice={v} rate={Number(value.rate ?? 1.1)} />}
+                // 2026-11-20 UX：voice 为空但已选预设时，试听必须回退到预设音色（否则「请先填写音色名」把首验卡死）。
+                footer={(v) => (
+                  <VoicePreviewButton voice={v || (engine === 'openai' ? effectiveVoice() : '')} rate={Number(value.rate ?? 1.1)} />
+                )}
               />
             </Row>
             {engine === 'openai' && (

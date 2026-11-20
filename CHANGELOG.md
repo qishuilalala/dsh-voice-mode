@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+### 修复（2026-11-20，多角色用户批判 Loop 1：朗读可用性可见 + 鉴权归因）
+
+- **「就绪」不再骗人**：`/models/status` 与 `/config` 新增 `keyRequired`/`keyPresent`（只回布尔，绝不回 key）；托管预设（硅基/OpenRouter/OpenAI/Groq）缺 API Key 时，设置卡折叠摘要与内联状态显示「缺 API Key」而非绿色「就绪」。
+- **进语音即知朗读不可用**：进模式时若云朗读缺 Key，立即给常驻提示「在线朗读缺少 API Key：识别与字幕可用，朗读会失败…」，不再等用户讲完一轮才发现无声。
+- **401/403 单独归因**：`/preview` 新增 auth 归类与稳定码 `preview_auth`（此前 401 落 `preview_unknown`）；自动探针与「验证此预设」对鉴权失败直说「Key 缺失或无效」，不再误报为网络/引擎问题。
+- **试听首验不再卡死**：voice 为空但已选在线预设时，试听回退预设音色（此前提示「请先填写音色名（ShortName）」）。
+- **证据与回归**：`preview-error` 增 5 个鉴权正例；`tts-deep-audit` 增预设 key 需求与状态布尔断言；`host-deep-audit` 增 `/config`、`/models/status` 字段断言；`settings-deep-audit` 增折叠/展开两态「缺 API Key」断言；多角色批判台账见 [docs/review-2026-11-20-ux-multi-persona.md](docs/review-2026-11-20-ux-multi-persona.md)。
+
 ### 修复（2026-11-20，Lead 对深度审计交付的独立复核跟进）
 
 - **ASR**：hold 裁头触发的 `resetHostStream()` 与 final 上行并发无序，host 会按旧 fed 跳过整段头部（final 现先等 `resetGate`）；裁头提示只在真的产出文本时发；意外异常日志保留脱敏后的 stack；`utteranceTooLong` 文案对齐真实单次上限。

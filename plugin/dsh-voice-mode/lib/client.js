@@ -1861,6 +1861,7 @@ var ERROR_I18N_KEY = {
   preview_network: "previewNetwork",
   preview_engine: "previewEngine",
   preview_text: "previewText",
+  preview_auth: "previewAuth",
   preview_unknown: "previewCheck",
   sense_degraded: "senseDegradedNotice",
   internal: "errInternal"
@@ -2036,6 +2037,11 @@ var zh = {
   errMimoKeyMissing: "\u672A\u914D\u7F6E\u5C0F\u7C73 MiMo \u7684 API Key\uFF1A\u8BF7\u5728\u672C\u8BBE\u7F6E\u5361\u7247\u586B\u5199\uFF0C\u6216\u5728 profile \u7684 mimoTts.apiKey \u4E2D\u914D\u7F6E",
   engineUnavailableShort: "\u4E0D\u53EF\u7528",
   errOpenaiConfigMissing: "\u8FD8\u6CA1\u914D\u597D\u7AEF\u70B9\uFF1A\u5728\u4E0A\u65B9\u300C\u5728\u7EBF\u9884\u8BBE\u300D\u9009\u4E00\u5BB6\uFF08\u901A\u5E38\u53EA\u9700\u586B key\uFF09\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u586B\u63A5\u53E3\u5730\u5740\u4E0E\u6A21\u578B\u540D",
+  engineMissingKey: "\u7F3A API Key",
+  ttsKeyMissingNotice: "\u5728\u7EBF\u6717\u8BFB\u7F3A\u5C11 API Key\uFF1A\u8BC6\u522B\u4E0E\u5B57\u5E55\u53EF\u7528\uFF0C\u6717\u8BFB\u4F1A\u5931\u8D25\uFF1B\u8BF7\u5230\u300C\u8BBE\u7F6E \u2192 \u8BED\u97F3\u6A21\u5F0F\u300D\u586B Key\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE\uFF08Edge/\u672C\u5730 VITS/Kokoro\uFF09",
+  ttsProbeAuthFail: "\u6717\u8BFB\u88AB\u670D\u52A1\u7AEF\u62D2\u7EDD\uFF08\u591A\u4E3A API Key \u7F3A\u5931\u6216\u65E0\u6548\uFF09\uFF1A\u8BF7\u5230\u300C\u8BBE\u7F6E \u2192 \u8BED\u97F3\u6A21\u5F0F\u300D\u586B\u5199\u6216\u66F4\u65B0 Key\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE",
+  verifyAuthFail: "\u9A8C\u8BC1\u5931\u8D25\uFF1A\u670D\u52A1\u7AEF\u62D2\u7EDD\u9274\u6743\uFF08401/403\uFF09\uFF0C\u8BF7\u68C0\u67E5\u5E76\u66F4\u65B0 API Key",
+  previewAuth: "\u670D\u52A1\u7AEF\u62D2\u7EDD\u9274\u6743\uFF1AAPI Key \u7F3A\u5931\u6216\u65E0\u6548",
   errRemoteTts: "\u6717\u8BFB\u670D\u52A1\u8FDE\u4E0D\u4E0A\u3001\u62A5\u9519\u6216\u592A\u6162\uFF1B\u914D\u7F6E\u4E86\u56DE\u9000\u65F6\u8FD9\u671F\u95F4\u7528\u672C\u5730\u5F15\u64CE\u6717\u8BFB",
   descVoiceKokoro: "Kokoro \u4E2D\u82F1\u97F3\u8272\uFF08103 \u4E2A\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B48-51 \u4E2D\u6587\u540D\uFF0C\u5176\u4F59\u6309\u7F16\u53F7+\u5B9E\u6D4B\u6027\u522B\u6807\u6CE8\uFF0C\u4E2D\u82F1\u6DF7\u8BFB\u5747\u53EF\uFF09",
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.1 \u9ED8\u8BA4\uFF1B\u8BA9\u56DE\u590D\u66F4\u7D27\u51D1\uFF09",
@@ -2419,6 +2425,11 @@ var en = {
   errMimoKeyMissing: "MiMo API key is not configured: enter it in this settings card or set mimoTts.apiKey in the profile",
   engineUnavailableShort: "Unavailable",
   errOpenaiConfigMissing: "Endpoint is not configured yet: pick a provider under Online preset (usually only the key is needed), or choose Custom and fill the endpoint and model",
+  engineMissingKey: "API key missing",
+  ttsKeyMissingNotice: "Online read-aloud has no API key: recognition and captions work, but speech will fail. Fill the key under Settings \u2192 Voice mode, or switch to a local engine (Edge / local VITS / Kokoro)",
+  ttsProbeAuthFail: "The service rejected read-aloud (usually a missing or invalid API key): fill or update the key under Settings \u2192 Voice mode, or switch to a local engine",
+  verifyAuthFail: "Verification failed: the server rejected authentication (401/403). Check and update the API key",
+  previewAuth: "The server rejected authentication: API key missing or invalid",
   errRemoteTts: "The TTS server is unreachable, failing or too slow; the local fallback reads aloud meanwhile if one is configured",
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
@@ -5665,6 +5676,9 @@ function EngineStatusInline({ onSwitchLocal }) {
   } else if (tts.error) {
     statusText = engineDownText(tts.errorCode, tts.engine);
     statusColor = "var(--dsw-alias-state-error-primary)";
+  } else if (tts.keyRequired && tts.keyPresent === false) {
+    statusText = t("engineMissingKey");
+    statusColor = "var(--dsw-alias-state-warn-primary, #d29922)";
   } else if (isLocal && !localReady) {
     statusText = t("ttsModelsMissing");
     statusColor = "var(--dsw-alias-state-error-primary)";
@@ -5931,7 +5945,7 @@ function VoiceSettingsCard({
         setPresetVerify({
           id: presetId,
           state: "fail",
-          note: code === "rate_limited" || res.status === 429 ? t("selftestRateLimited") : code === "voice_disabled" || res.status === 403 ? t("selftestDisabled") : errorText(body, "selftestCheck")
+          note: code === "preview_auth" ? t("verifyAuthFail") : code === "rate_limited" || res.status === 429 ? t("selftestRateLimited") : code === "voice_disabled" || res.status === 403 ? t("selftestDisabled") : errorText(body, "selftestCheck")
         });
       } catch {
         setPresetVerify({ id: presetId, state: "fail", note: t("selftestCheck") });
@@ -5969,7 +5983,7 @@ function VoiceSettingsCard({
           {
             style: { ...setDesc, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" },
             title: t("settingsCardDesc"),
-            children: collapsed ? `${ENGINE_NAME[engine]()} \xB7 ${String(value.voice ?? "") || "\u2014"} \xB7 ${!headStatus?.tts ? "\u2026" : headStatus.tts.error ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine) : headStatus.tts.loading ? t("engineLoading") : headStatus.tts.local && !headStatus.tts.local.ready ? t("ttsModelsMissing") : t("engineReady")}` : t("settingsCardDesc")
+            children: collapsed ? `${ENGINE_NAME[engine]()} \xB7 ${String(value.voice ?? "") || "\u2014"} \xB7 ${!headStatus?.tts ? "\u2026" : headStatus.tts.error ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine) : headStatus.tts.loading ? t("engineLoading") : headStatus.tts.keyRequired && headStatus.tts.keyPresent === false ? t("engineMissingKey") : headStatus.tts.local && !headStatus.tts.local.ready ? t("ttsModelsMissing") : t("engineReady")}` : t("settingsCardDesc")
           }
         )
       ] }),
@@ -6058,7 +6072,7 @@ function VoiceSettingsCard({
                   options: voiceOptions,
                   placeholder: ENGINE_DEFAULT_VOICE[engine] ?? "zh-CN-XiaoxiaoNeural",
                   showCustom: isCloudEngine(engine),
-                  footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1.1) })
+                  footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v || (engine === "openai" ? effectiveVoice() : ""), rate: Number(value.rate ?? 1.1) })
                 }
               )
             }
@@ -6472,7 +6486,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "075288b";
+var BUILD_TAG = "80ea64b";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);
@@ -7966,7 +7980,10 @@ function MicButton({
         ttsEngine: c.ttsEngine,
         openaiPreset: typeof c.openaiPreset === "string" ? c.openaiPreset : "",
         voice: typeof c.voice === "string" ? c.voice : cur.voice,
-        rate: typeof c.rate === "number" ? c.rate : cur.rate
+        rate: typeof c.rate === "number" ? c.rate : cur.rate,
+        // 2026-11-20 UX：云朗读鉴权状态（缺 Key 时进模式常驻提示，不必等一轮无声）。
+        ttsNeedsKey: c.ttsNeedsKey === true,
+        ttsKeyPresent: c.ttsKeyPresent === true
       };
       if (next.shortcut && !parseShortcut(next.shortcut)) bus.setNotice(tk("shortcutInvalid"));
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord });
@@ -8331,6 +8348,9 @@ function MicButton({
         return;
       }
       const basePath = cfg.basePath;
+      if (cfg.readAloud !== "off" && cfg.ttsNeedsKey === true && cfg.ttsKeyPresent === false) {
+        bus.setUi({ notice: t("ttsKeyMissingNotice") });
+      }
       const silenceMs = cfg.silenceMs;
       const interruptLevel = cfg.interruptLevel;
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2;
@@ -8370,24 +8390,32 @@ function MicButton({
           const rawRate = typeof cfg.rate === "number" ? cfg.rate : typeof sv.rate === "number" ? sv.rate : 1.1;
           const pr = Math.min(2, Math.max(0.5, rawRate));
           const myProbe = enterEpochRef.current;
-          const markDown = () => {
+          const markDown = (msg) => {
             if (enterEpochRef.current !== myProbe || localRef.current === "off") return;
-            bus.setUi({ ttsNotice: t("ttsProbeFail") });
+            bus.setUi({ ttsNotice: msg });
           };
           void fetch(`${location.origin}${basePath}/preview`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ voice: pv, rate: pr }),
             signal: AbortSignal.timeout(3e4)
-          }).then((res) => {
+          }).then(async (res) => {
             const skipped = res.status === 429 || res.status === 403;
-            if (!res.ok && !skipped) markDown();
+            if (!res.ok && !skipped) {
+              let code = "";
+              try {
+                const body = await res.json();
+                code = typeof body?.code === "string" ? body.code : "";
+              } catch {
+              }
+              markDown(code === "preview_auth" ? t("ttsProbeAuthFail") : t("ttsProbeFail"));
+            }
             markProbe(res.ok);
             debugLog("tts-probe", { ok: res.ok, status: res.status, skipped, engine: eng });
           }).catch((e) => {
             markProbe(false);
             debugLog("tts-probe", { ok: false, error: String(e).slice(0, 80), engine: eng });
-            markDown();
+            markDown(t("ttsProbeFail"));
           });
         }
       } catch {

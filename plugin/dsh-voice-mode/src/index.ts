@@ -51,7 +51,7 @@ import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts
 import type { HostErrorCode } from './errors.ts'
 import { en } from './strings.ts'
 import { correctText } from './llm-correct.ts'
-import { OPENAI_PRESETS, OpenAiTtsEngine } from './tts-openai.ts'
+import { OPENAI_PRESETS, OpenAiTtsEngine, presetRequiresKey } from './tts-openai.ts'
 import { resolveOnlineTts } from './online-tts.ts'
 import { engineRebuildReason } from './engine-rebuild.ts'
 import { applyClearSecrets, hasSecret, publicSettingsView } from './settings-view.ts'
@@ -124,14 +124,17 @@ const BASE_PATH = '/voice-mode'
  * 引擎错误：本地模型下载/校验失败 / 子进程 init 失败 / 子进程崩溃
  * 文本错误：合成产出空/非法音频（音色-语种不匹配等）
  */
-type PreviewErrorCategory = 'network' | 'engine' | 'text' | 'unknown'
+type PreviewErrorCategory = 'network' | 'engine' | 'text' | 'auth' | 'unknown'
 
 const PREVIEW_NETWORK_PATTERN = /fetch failed|ECONN|ENOTFOUND|getaddrinfo|ETIMEDOUT|EAI_AGAIN|network|unreachable|socket hang up|aborted|WebSocket error/i
+/** 鉴权类失败（401/403/无效 key）：必须与「网络坏/引擎坏」分开——否则用户不知道是 Key 问题。 */
+const PREVIEW_AUTH_PATTERN = /HTTP 401|HTTP 403|unauthorized|invalid[ _-]?api[ _-]?key|incorrect api key|authentication failed|missing api key/i
 const PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa|local Kokoro|closed|init cooldown/i
 const PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat|exceeds \d+ bytes|bad_payload|bad_audio|invalid base64|textual body/i
 
 function classifyPreviewError(msg: string): PreviewErrorCategory {
   if (PREVIEW_TEXT_PATTERN.test(msg)) return 'text'
+  if (PREVIEW_AUTH_PATTERN.test(msg)) return 'auth'
   if (PREVIEW_NETWORK_PATTERN.test(msg)) return 'network'
   if (PREVIEW_ENGINE_PATTERN.test(msg)) return 'engine'
   return 'unknown'
@@ -142,6 +145,7 @@ const PREVIEW_ERROR_CODES: Record<PreviewErrorCategory, HostErrorCode> = {
   network: 'preview_network',
   engine: 'preview_engine',
   text: 'preview_text',
+  auth: 'preview_auth',
   unknown: 'preview_unknown',
 }
 
@@ -1240,6 +1244,13 @@ export function apply(ctx: Context, config: Config): void {
   })
   // fork 修复：启动时把当前设置的音色/语速应用到引擎——
   // 此前引擎默认硬编码为素映雪，朗读直到"设置变化"才更新（重启后朗读一直女声的根因）。
+  /** 云朗读鉴权状态（仅供 UI 提示，不改变引擎行为）：是否需要 key、当前是否已有 key。 */
+  const ttsKeyState = (): { keyRequired: boolean; keyPresent: boolean } => {
+    const st = queue.status()
+    if (st.engine === 'mimo') return { keyRequired: true, keyPresent: st.keyPresent === true }
+    if (st.engine === 'openai') return { keyRequired: presetRequiresKey(vset.openaiPreset), keyPresent: st.keyPresent === true }
+    return { keyRequired: false, keyPresent: false }
+  }
   queue.updateVoice(vset.voice, vset.rate)
   const unsubscribe = queue.subscribe((frame) => broadcast('audio', frame))
   ctx.effect(() => unsubscribe)
@@ -1540,6 +1551,7 @@ export function apply(ctx: Context, config: Config): void {
       path: `${base}/config`,
       handler: (req, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
+        const keyState = ttsKeyState()
         respondJson(res, 200, {
             basePath: base,
             rate: currentRate(),
@@ -1556,6 +1568,9 @@ export function apply(ctx: Context, config: Config): void {
             autoResume: vset.autoResume,
             mode: vset.mode,
             readAloud: vset.readAloud,
+            // 2026-11-20 UX：进模式前即可判断「云朗读缺 Key」，客户端据此常驻提示。
+            ttsNeedsKey: keyState.keyRequired,
+            ttsKeyPresent: keyState.keyPresent,
             showCaptions: vset.showCaptions,
             showStatusBar: vset.showStatusBar,
             bargeInMode: vset.bargeInMode,
@@ -1870,7 +1885,7 @@ export function apply(ctx: Context, config: Config): void {
         // 模型实时状态（设置面板轮询；无需语音模式）。
         respondJson(res, 200, {
           ...asr.modelStatus(),
-          tts: queue.status(),
+          tts: { ...queue.status(), ...ttsKeyState() },
           // P1-3：词表规则数与命中计数（本次生效以来；设置变更重建即清零）。
           replacements: { rules: replacementRuleCount, hits: [...replacementHits] },
         })

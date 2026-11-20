@@ -11,12 +11,12 @@
 ## 本机运行态（部署与生效边界）
 
 - **部署形态**：生产 dsh 0.2.1-rc.5（`/usr/local/bin/dsh`），web profile 以 `link:` 指向本仓库 `plugin/dsh-voice-mode/lib/`；改源码后必须 `node build.mjs` 重建 lib（drift 门禁校验）。
-- **生效边界**：客户端改动刷新页面即生效；**host 侧**（index.js / asr-host 等）需重启 `dsh.service` 才生效。本分支开发与两轮审计期间均未重启生产服务，故 PR #72 的 host 改动尚未进入运行进程（以维护者重启为准）。
+- **生效边界**：客户端改动刷新页面即生效；**host 侧**（index.js / asr-host 等）需重启 `dsh.service` 才生效。2026-11-20 13:33:25 已由维护者授权重启一次（pid 478895），运行的是 `80ea64b` 的 lib；此后 UX Batch 1 的 host 改动（key 状态下发/鉴权归类）尚未重启生效。
 - **回滚锚点**：已发布版本 v0.7.39（tag 存在）；回滚 = checkout 该 tag 后重启 `dsh.service`。本轮无新 tag、未发版。
 
 ## 当前任务与唯一下一步
 
-- **唯一下一步**：维护者复核全量深度审计报告（[review-2026-11-20-deep-audit.md](../review-2026-11-20-deep-audit.md)）并做真机四项门禁验收（[四项必过](../qa/must-verify-manually.md)），验收后再决定 PR #72 合入与发版。
+- **唯一下一步**：继续多角色用户批判 Loop 2（切 tab/切会话定稿、manual 作用域收窄、让位暂停、字幕回看与安全区、触屏菜单/密度、状态条对比度），同时维护者做真机四项门禁验收（[四项必过](../qa/must-verify-manually.md)）；验收后再决定 PR #72 合入与发版。
 - **PR #72 已交付能力**：
   - P1 可靠性三件套：一键自测（合成/播放分离）、云引擎入口探针 + 可见错误 + 一键切本地、用户纠错词表（增删/导入导出/命中计数）、只听写预设（`readAloud=off`）。
   - TTS 扩张：在线预设 7 家（硅基×2 / OpenRouter / OpenAI 官方 / Groq PlayAI / 自建×2）、按预设多 key（`openaiTts.apiKeys`）、全 UI 在线配置（优先级 设置 > 预设 > profile）、小米 MiMo 独立引擎、本地 VITS/Kokoro 并存、音频 MIME 随结果返回 + 非音频 200 判失败、Edge 即时中止、连败整体退避。
@@ -34,6 +34,7 @@
 | 真机测量与 L4 | 待维护者；真实麦克风四项门禁与真 LLM 回复→朗读均未验收 |
 | 仓库设置 | 待维护者将 install/audit 与漂移门设为必需检查，并按需清理已合入远端分支 |
 | 测试入口 | 保留顺序运行脚本（按逐行清单 `scripts/test-files.txt` 执行） |
+| 用户体验打磨 | Loop 1 已修 8 项（缺 Key 可见性/鉴权归因/试听回退）；Loop 2 候选见 [多角色批判台账](../review-2026-11-20-ux-multi-persona.md) |
 | 中期工作 | Q2/Q3、失败率聚合及安装/浏览器验证入口见 [11 月规划](../plan/plan-2026-11.md) |
 
 ## 阻塞项与只有维护者能做的事
@@ -48,6 +49,7 @@
 | --- | --- |
 | [2026-11-20 全量深度审计台账](../review-2026-11-20-deep-audit.md) | 本轮 47 文件逐行覆盖表、B1–B11/I1–I20 修复与回归证据、门禁与实测输出 |
 | [Lead 独立复核](../review-2026-11-20-peer-audit-review.md) | 对对方 9 个提交的独立复跑（门禁/CI/离线/守卫变异/UI 只读冒烟）与 3 处台账更正 |
+| [多角色用户批判台账](../review-2026-11-20-ux-multi-persona.md) | 8 个用户角色的批判结论、Batch 1 已修清单与 Loop 2 候选（含逐项 file:line 证据） |
 | [目标完成度对照表](../review-2026-11-20-objective-completion.md) | P1/TTS/治理逐项代码位置与可复跑测试文件映射 |
 | [离线门禁替跑结果](../qa/offline-gates.md) | 真实本地 VITS → ASR 闭环延迟、打断与 Levenshtein 准确率实测 |
 | [兼容契约](../compat-contract.md) | 各目标 dsh 版本的实证与缺口（已覆盖至 0.2.2-rc.5） |

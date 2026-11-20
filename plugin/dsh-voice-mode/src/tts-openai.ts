@@ -293,6 +293,8 @@ export class OpenAiTtsEngine implements TtsEngine {
       loading: false,
       error: this.lastError?.message,
       errorCode: this.lastError?.code,
+      // 2026-11-20 UX：只回布尔——状态卡据此提示「缺 API Key」，绝不回传 key。
+      keyPresent: Boolean(this.options.apiKey && this.options.apiKey.trim().length > 0),
     }
   }
 
@@ -332,6 +334,13 @@ export interface OpenAiPreset {
  * key 解析：`openaiTts.apiKeys[预设 id]` 优先，其次 `openaiTts.apiKey`（见 resolveOpenAiApiKey）。
  * 这样多家服务商可各配一把 key，切换预设不必再手改；key 只在宿主侧，不进 /presets、/config。
  */
+/** 预设是否属于「必须带鉴权 key」的托管服务（自建/自定义不强制，避免误报）。 */
+export function presetRequiresKey(presetId: string | null | undefined): boolean {
+  if (!presetId) return false
+  if (!Object.prototype.hasOwnProperty.call(OPENAI_PRESETS, presetId)) return false
+  return !presetId.startsWith('selfhosted-')
+}
+
 export const OPENAI_PRESETS: Record<string, OpenAiPreset> = {
   'siliconflow-cosyvoice2': {
     baseUrl: 'https://api.siliconflow.cn/v1',

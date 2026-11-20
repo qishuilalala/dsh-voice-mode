@@ -95,6 +95,7 @@ t('bundle 含三档归类正则（network / engine / text）', () => {
   assert.ok(src.includes('PREVIEW_NETWORK_PATTERN'), 'bundle 缺 PREVIEW_NETWORK_PATTERN')
   assert.ok(src.includes('PREVIEW_ENGINE_PATTERN'), 'bundle 缺 PREVIEW_ENGINE_PATTERN')
   assert.ok(src.includes('PREVIEW_TEXT_PATTERN'), 'bundle 缺 PREVIEW_TEXT_PATTERN')
+  assert.ok(src.includes('PREVIEW_AUTH_PATTERN'), 'bundle 缺 PREVIEW_AUTH_PATTERN')
 })
 
 // --------------------------------------------------------------------------
@@ -120,6 +121,18 @@ t('成功从 bundle 提取并执行真实 classifyPreviewError', () => {
 // 3) 归类断言
 // --------------------------------------------------------------------------
 console.log('② network 归类（Edge 云端不可达 / DNS / 超时）')
+
+t('鉴权类（401/403/无效 key）归 auth，不得落 unknown（2026-11-20 UX）', () => {
+  for (const m of [
+    'HTTP 401 Unauthorized',
+    'HTTP 403: invalid api key',
+    'HTTP 401: Incorrect API key provided',
+    'authentication failed',
+    'missing api key',
+  ]) {
+    assert.equal(classifyPreviewError(m), 'auth', `"${m}" 应归 auth`)
+  }
+})
 
 t('云端服务拒绝握手（Edge 403）归 network，不落 unknown', () => {
   for (const m of ['Edge TTS WebSocket error: Unexpected server response: 403']) {
@@ -175,11 +188,11 @@ t('负例 2：包含 engine 字样但不属引擎错误的普通文本不误判�
 
 console.log('⑥ 响应协议：host 只发稳定错误码，不发任何自然语言（用户文案由客户端按界面语言翻译）')
 
-t('四类归类各映射到 preview_* 错误码；host 源码不再有中文试听文案', () => {
+t('五类归类各映射到 preview_* 错误码；host 源码不再有中文试听文案', () => {
   const codesStart = src.indexOf('var PREVIEW_ERROR_CODES')
   // 沙箱产物是跨 realm 对象，展开成宿主对象后再做 strict 深比较（比较目标仍是同一组键值）
   const codes = { ...vm.runInNewContext(`(function(){\n${src.slice(codesStart, src.indexOf('};', codesStart) + 2)}\nreturn PREVIEW_ERROR_CODES;\n})`, { console, setTimeout, clearTimeout, setInterval, clearInterval })() }
-  assert.deepEqual(codes, { network: 'preview_network', engine: 'preview_engine', text: 'preview_text', unknown: 'preview_unknown' })
+  assert.deepEqual(codes, { network: 'preview_network', engine: 'preview_engine', text: 'preview_text', auth: 'preview_auth', unknown: 'preview_unknown' })
   // 扫原始 src/index.ts 而非 bundle：esbuild 默认 ascii 输出会把中文串编译成
   // \uXXXX 转义，正则永不命中运行时字符串（旧实现扫产物 = 零保护，已实证空洞化）。
   // 注释行除外——注释不随响应发给客户端，不违反「host 不发中文」不变量。

@@ -1,0 +1,58 @@
+# 多角色用户批判与打磨台账（2026-11-20，Loop 1）
+
+> 目的：以真实用户角色对语音模式做严格批判，明确「哪里会让人放弃」，并把每轮改进固定下来。
+> 基线：分支 plan/p1-tts-2026-11-18 @ 80ea64b（PR #72 OPEN，未合并）。生产 dsh 13:33 启动，跑同一份代码。
+
+## 1. 本轮角色与方法
+
+| 角色 | 取证方式 | 状态 |
+| --- | --- | --- |
+| 高频语音/长听写用户 | 只读源码 + 测试 | 已产出 |
+| 恶劣环境（无麦权限/外放回声/Safari 无 AEC/低端 CPU/网络抖动/在线 TTS 不可用） | 只读源码 + 测试 | 已产出 |
+| 移动端/窄屏/浅色主题 | 只读源码 + 测试 | 已产出 |
+| 首次使用者 | 只读源码 + 测试 | 已产出 |
+| 无障碍 / 自建 TTS / 信息架构 / 对抗性批评者 | 只读源码 | 产出并入 Loop 2 |
+| Lead 本人 | 生产只读探针 + Playwright 只读走查 + API 对照 | 已产出 |
+
+## 2. 实锤发现（Lead 独立复现，非推测）
+
+1. 「就绪」是假的：live 设置 ttsEngine=openai / preset=siliconflow-cosyvoice2 / key 为空，/models/status 却返回 ready:true（引擎只校验 baseUrl/model，不校验 key）→ 用户看到绿色「就绪」，进语音后无声。
+2. 上游 401 被归为 unknown：手工 POST /preview（带预设音色、无 key）得到 502 preview_unknown；classifyPreviewError 只认 text/network/engine，鉴权失败无处归类。
+3. 探针提示误诊：自动探针失败文案是「云端接口变化或网络问题」，与实际（缺 Key）不符；且只在麦克风旁/状态条低优先级出现。
+4. 窄屏/浅色：状态条正文为成功绿叠 8% 绿底（约 2.1-2.3:1），正文 nowrap+ellipsis 无 title；设置卡片输入框 13px（iOS 聚焦会放大页面），触屏控件 24-26px。
+5. 触屏没有快捷菜单：onContextMenu 对 touch/pen 直接 return，MicMenu 只能鼠标右键打开。
+6. 切 tab / 切会话丢正在说的段：隐藏页只 engine.stop()（asr.ts:1721-1745），无 finalize；切会话卸载同路径。
+7. 让位丢句：朗读中「嗯/对」立即 skipAudio 杀当前句，让位窗 TTS 帧被丢，首句 final 又被完整性守卫丢弃。
+8. 手动打断（manual）作用域过大：manual 时非按压帧全部丢弃，空闲期无法说话；而 toggle 下长按打断只在播放中生效 → 外放+Safari 用户进语音后「连话都说不进去」，唯一解释是 10px 徽标。
+9. 试听首验卡死：voice 为空但已选预设时，试听按钮传的是空 voice → 提示「请先填写音色名（ShortName）」，而预设音色其实存在。
+
+## 3. 本轮已修（Batch 1：朗读可用性可见 + 鉴权归因）
+
+| 改动 | 位置 | 验收 |
+| --- | --- | --- |
+| 引擎状态新增 keyPresent（只回布尔，绝不回 key 明文） | src/tts-openai.ts、src/tts-mimo.ts、src/tts-queue.ts | tts-deep-audit 新用例；状态 JSON 不含明文 |
+| 宿主按引擎/预设判定 keyRequired，/models/status 与 /config 下发 keyRequired/keyPresent/ttsNeedsKey/ttsKeyPresent | src/index.ts、presetRequiresKey | host-deep-audit 新断言 |
+| 设置卡缺 Key 时显示「缺 API Key」而非「就绪」 | src/settings-form.tsx | settings-deep-audit 新用例 |
+| 进语音模式即常驻提示「在线朗读缺少 API Key：识别与字幕可用…」 | src/client.tsx（/config 字段驱动） | 源码级 + 类型校验 |
+| /preview 新增 auth 归类（401/403/无效 key）→ 稳定码 preview_auth | src/index.ts、src/errors.ts、src/strings.ts | preview-error 新用例（5 个鉴权正例） |
+| 自动探针按错误码给不同文案（鉴权失败 vs 泛化失败） | src/client.tsx | 源码级 |
+| 「验证此预设」鉴权失败给明确文案 | src/settings-form.tsx | 源码级 |
+| 试听在 voice 为空时回退预设音色（修「请先填写音色名」首验卡死） | src/settings-form.tsx | 类型检查 + 既有 settings deep 用例 |
+
+## 4. Loop 2 候选（按影响排序）
+
+1. 切 tab/切会话先定稿再停麦：隐藏页触发一次强制 finalize（含提示），不静默丢段。
+2. manual 作用域收窄到播放期：空闲时 manual 也允许说话（manual && !holdActive && playingNow），文案改「空闲可直接说，朗读中按住打断」。
+3. 让位改暂停而非 kill：backchannel 命中暂停在播源，窗口结束续播；真打断仍走 hardBreak。
+4. 字幕浮层可回看 + 安全区：最近 N 句可滚、env(safe-area-inset-bottom)、dvh、窄屏通栏。
+5. 状态条窄屏重排 + 对比度：正常态正文改 label-secondary、两行/可展开、错误色保留。
+6. 触屏快捷菜单：coarse 指针常驻「…」或长按 450ms 出菜单。
+7. 触屏控件密度：输入框 16px、主要按钮 44px（620 容器内）。
+8. 单句重试预算与提示：3x8s → 1x4s + 「朗读重试中」进度，避免 26s 无声。
+9. 多标签页互踩：同会话第二 tab 接管时前 tab 不静默停播，给「已被另一标签页接管」提示。
+10. 首次使用引导：首次进语音按 mode 给「按住说/直接说」提示。
+
+## 5. 约束
+
+- 生产 dsh 未重启（host 侧改动需维护者择机重启才生效）；PR #72 保持 OPEN，未合并、未发版。
+- 本轮只动代码/测试/文档，未改用户设置。

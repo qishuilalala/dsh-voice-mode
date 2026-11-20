@@ -13,7 +13,7 @@ import { build } from 'esbuild'
 import { sniffAudioMime } from '../src/audio-format.ts'
 import { parseEmotionTags } from '../src/emotion.ts'
 import { lookupPreset } from '../src/online-tts.ts'
-import { OpenAiTtsEngine, OpenAiTtsError, resolveOpenAiEndpoint, speechUrl } from '../src/tts-openai.ts'
+import { OpenAiTtsEngine, OpenAiTtsError, resolveOpenAiEndpoint, speechUrl, presetRequiresKey } from '../src/tts-openai.ts'
 import { MimoTtsEngine, MimoTtsError, mimoChatUrl } from '../src/tts-mimo.ts'
 import { EdgeTtsEngine, TtsQueue } from '../src/tts-queue.ts'
 
@@ -455,4 +455,20 @@ test('I12/Minor: 容器嗅探排错与新容器、无填充 base64url、空白�
   assert.ok(reMatch, '应存在编号替换正则')
   const re = eval(reMatch[1])
   assert.equal('1. 第一项 3.14 和 127.0.0.1'.replace(re, '$1、'), '1、第一项 3.14 和 127.0.0.1')
+})
+
+test('UX: 云预设是否必须 key + 引擎状态只回 keyPresent 布尔', () => {
+  assert.equal(presetRequiresKey('siliconflow-cosyvoice2'), true)
+  assert.equal(presetRequiresKey('openrouter-openai'), true)
+  assert.equal(presetRequiresKey('openai-official'), true)
+  assert.equal(presetRequiresKey('groq-playai'), true)
+  assert.equal(presetRequiresKey('selfhosted-kokoro'), false)
+  assert.equal(presetRequiresKey('selfhosted-vllm'), false)
+  assert.equal(presetRequiresKey(''), false)
+  assert.equal(presetRequiresKey('unknown-id'), false)
+  const withKey = new OpenAiTtsEngine({ baseUrl: 'https://api.example.com/v1', model: 'm', voice: 'v', apiKey: 'sk-test' })
+  const without = new OpenAiTtsEngine({ baseUrl: 'https://api.example.com/v1', model: 'm', voice: 'v' })
+  assert.equal(withKey.status().keyPresent, true)
+  assert.equal(without.status().keyPresent, false)
+  assert.equal(JSON.stringify(without.status()).includes('sk-test'), false, '状态载荷绝不能回传 key 明文')
 })

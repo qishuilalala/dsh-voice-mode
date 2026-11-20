@@ -60,7 +60,7 @@ export interface TtsEngine {
 - 解析 `<\w+(?:\s+\d+ms)?>` → 按引擎映射替换为对应 SSML/停顿/emoji
 - 返回**纯字符串**（注意：Edge 引擎后续需走 `rawToFile`/`rawToStream` 路径而非 `_SSMLTemplate`，因为后者的 `<prosody>` 包裹破坏 `<mstts:express-as>` 嵌入）
 
-**`src/tts-queue.ts` Edge 引擎 (`src/tts-queue.ts:152` 的 `EdgeTtsEngine`)**：
+**`src/tts-queue.ts` Edge 引擎 (`src/tts-queue.ts:156` 的 `EdgeTtsEngine`)**：
 - 检测 `text` 是否包含 emotion 标签（已 stripped 时不含）
 - 不含：走原 `synthesize` 路径
 - 含：切换到 rawSSML 路径（用 **`MsEdgeTTS.rawToFile` 或 `rawToStream`**（按符号定位；2026-09-14 时点 L122/L132，安装版 2.1.0 时点实测 :136 `rawToFile` / :146 `rawToStream`）—— 仓库公开 API；私有 `_rawSSMLRequest` 不可直接调用）—— 无需 fork

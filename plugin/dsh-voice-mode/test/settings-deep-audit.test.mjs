@@ -838,6 +838,39 @@ try {
     }
   })
 
+  // 9. UX（2026-11-20 多角色批判）：云朗读缺 Key 时状态不得显示「就绪」
+  await test('UX: 云朗读配置齐全但缺 API Key → 状态显示「缺 API Key」而非就绪', async () => {
+    const env = installBrowserEnv({
+      fetchImpl: (url) => {
+        if (String(url).includes('/models/status')) {
+          return Promise.resolve(new Response(JSON.stringify({
+            tts: { engine: 'openai', ready: true, loading: false, keyRequired: true, keyPresent: false },
+          }), { status: 200 }))
+        }
+        return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))
+      },
+    })
+    try {
+      const { VoiceSettingsCard } = await loadFreshForm()
+      const scope = makeScope({ ttsEngine: 'openai', openaiPreset: 'siliconflow-cosyvoice2', voice: '' })
+      const root = reactMod.createRoot(() => reactMod.createElement(VoiceSettingsCard, { scope, defaultOpen: true }))
+      await flush()
+      const text = textOf(root.tree)
+      assert.ok(text.includes(STRINGS.zh.engineMissingKey), '缺 Key 时必须显示「缺 API Key」')
+      assert.equal(text.includes(STRINGS.zh.engineReady), false, '缺 Key 时不得显示「就绪」（否则用户进语音无声却不知原因）')
+      // 折叠态摘要同样不得报就绪
+      const header = findAll(root.tree, (n) => n.type === 'button' && n.props['aria-expanded'] === true)[0]
+      header.props.onClick()
+      await flush()
+      const collapsed = textOf(root.tree)
+      assert.ok(collapsed.includes(STRINGS.zh.engineMissingKey), '折叠摘要缺 Key 时必须显示「缺 API Key」')
+      assert.equal(collapsed.includes(STRINGS.zh.engineReady), false, '折叠摘要缺 Key 时不得显示「就绪」')
+      root.unmount()
+    } finally {
+      env.restore()
+    }
+  })
+
   console.log(`\nsettings-deep-audit：${passed} 项通过`)
 } finally {
   rmSync(tmp, { recursive: true, force: true })

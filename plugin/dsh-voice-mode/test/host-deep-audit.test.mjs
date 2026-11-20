@@ -305,6 +305,16 @@ test('I14: 宿主路由行为验证（/toggle 预热竞态与超长 sid、/asr v
     const r11 = await callRoute('/voice-mode/voices', { method: 'GET' })
     assert.equal(r11.statusCode, 429, '/voices 第 11 次请求应 429 限流')
 
+    // 3c) UX：/config 与 /models/status 暴露「是否必须 key / 是否已有 key」布尔（只回布尔不回 key）
+    const cfgKey = await callRoute('/voice-mode/config', { method: 'GET' })
+    assert.equal(cfgKey.statusCode, 200)
+    assert.equal(typeof cfgKey.json.ttsNeedsKey, 'boolean', '/config 缺 ttsNeedsKey')
+    assert.equal(typeof cfgKey.json.ttsKeyPresent, 'boolean', '/config 缺 ttsKeyPresent')
+    const msKey = await callRoute('/voice-mode/models/status', { method: 'GET' })
+    assert.equal(msKey.statusCode, 200)
+    assert.equal(typeof msKey.json.tts.keyRequired, 'boolean', '/models/status 缺 keyRequired')
+    assert.equal(typeof msKey.json.tts.keyPresent, 'boolean', '/models/status 缺 keyPresent')
+
     // 4) /settings 写入真 key 后 GET 绝不泄露原文且 keys.openaiApiKey=true
     const realKey = 'sk-secret-audit-verify-9876543210'
     const postKey = await callRoute('/voice-mode/settings', {

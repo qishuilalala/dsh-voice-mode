@@ -351,6 +351,7 @@ export class MimoTtsEngine implements TtsEngine {
       loading: false,
       error: err?.message,
       errorCode: err?.code,
+      keyPresent: Boolean(this.options.apiKey && this.options.apiKey.trim().length > 0),
     }
   }
 
