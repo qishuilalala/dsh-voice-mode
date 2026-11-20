@@ -5350,6 +5350,7 @@ var fmtMB = (b) => b >= 1048576 ? `${(b / 1048576).toFixed(0)}MB` : b > 0 ? `${M
 function EngineStatusInline({ onSwitchLocal }) {
   const st = useModelsStatus();
   const [acting, setActing] = (0, import_react2.useState)(null);
+  const [actError, setActError] = (0, import_react2.useState)(null);
   const tts = st?.tts;
   if (!tts) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, {});
   const engineName = ENGINE_NAME[tts.engine]();
@@ -5370,7 +5371,6 @@ function EngineStatusInline({ onSwitchLocal }) {
     statusText = t("engineReady");
     statusColor = "var(--dsw-alias-state-success-primary)";
   }
-  const [actError, setActError] = (0, import_react2.useState)(null);
   const act = (kind) => {
     setActing(kind);
     setActError(null);
@@ -6159,7 +6159,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "a283700";
+var BUILD_TAG = "9621ba6";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
 console.log("[dsh-voice] build=" + BUILD_TAG);

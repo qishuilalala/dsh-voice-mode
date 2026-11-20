@@ -98,3 +98,4 @@ test/tts-openai.test.mjs
 test/asr-replacements.test.mjs
 test/once-hint.test.mjs
 test/audit-guards-2026-11-20.test.mjs
+test/hook-order.test.mjs

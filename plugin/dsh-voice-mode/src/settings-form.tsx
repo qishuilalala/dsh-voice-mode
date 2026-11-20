@@ -1821,6 +1821,8 @@ const fmtMB = (b: number): string => (b >= 1048576 ? `${(b / 1048576).toFixed(0)
 function EngineStatusInline({ onSwitchLocal }: { onSwitchLocal?: () => void }): React.ReactElement {
   const st = useModelsStatus()
   const [acting, setActing] = useState<'download' | 'clean' | null>(null)
+  // 必须在任何早退之前声明：hook 数量不得随渲染分支变化（2026-11-20 重启后实测 React #310）。
+  const [actError, setActError] = useState<string | null>(null)
   const tts = st?.tts
   if (!tts) return <></>
   const engineName = ENGINE_NAME[tts.engine]()
@@ -1844,7 +1846,6 @@ function EngineStatusInline({ onSwitchLocal }: { onSwitchLocal?: () => void }): 
     statusText = tr('engineReady')
     statusColor = 'var(--dsw-alias-state-success-primary)'
   }
-  const [actError, setActError] = useState<string | null>(null)
   const act = (kind: 'download' | 'clean'): void => {
     setActing(kind)
     setActError(null)
