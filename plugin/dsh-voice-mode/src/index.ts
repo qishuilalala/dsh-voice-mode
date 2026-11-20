@@ -881,9 +881,10 @@ export function apply(ctx: Context, config: Config): void {
     dropTurnTables(sessionId)
   }
 
-  /** 焦点离开即停止旧朗读；仍在语音模式中的活跃会话不受焦点离开影响。 */
-  const stopFocusReading = (sessionId: string | null): void => {
-    if (sessionId === null || sessionId === activeVoiceSession) return
+  /** 焦点离开即停止旧朗读；非语音所属标签页切换焦点不打断语音所属标签页的活跃朗读。 */
+  const stopFocusReading = (sessionId: string | null, fromTabId?: string | null): void => {
+    if (sessionId === null) return
+    if (sessionId === activeVoiceSession && activeTabId !== null && fromTabId !== activeTabId) return
     queue.cancel(sessionId)
     // 失效旧 tap：即使切回同一会话，旧流的尾句也不得重新入队。
     turnGen.set(sessionId, (turnGen.get(sessionId) ?? 0) + 1)
@@ -2409,7 +2410,7 @@ export function apply(ctx: Context, config: Config): void {
           }
           // R15（Issue #15 Important-4）：焦点离开的会话不再是朗读对象 → 回收其表项。
           // 判据与守卫见 reclaimFocusState 声明处。
-          if (prevFocus !== null && prevFocus !== focusedSessionId) stopFocusReading(prevFocus)
+          if (prevFocus !== null && prevFocus !== focusedSessionId) stopFocusReading(prevFocus, tabId)
           if (prevFocus !== null && prevFocus !== focusedSessionId) reclaimFocusState(prevFocus)
           broadcast('focus', { sessionId: focusedSessionId, tabId: focusedTabId })
           respondJson(res, 200, { ok: true, sessionId: focusedSessionId, tabId: focusedTabId })
@@ -2532,8 +2533,7 @@ export function apply(ctx: Context, config: Config): void {
               const prevFocus = focusedSessionId
               focusedSessionId = null
               focusedTabId = null
-              // R15（Important-4）：焦点随标签页一起离开 → 停掉旧焦点朗读并回收表项（与 /focus 清空同口径）。
-              stopFocusReading(prevFocus)
+              // R15（Important-4）：焦点随标签页一起离开 → 回收表项（不取消在途合成，留给 3s 重连恢复，见 focus-switch.test）。
               reclaimFocusState(prevFocus)
               broadcast('focus', { sessionId: null, tabId: null })
             }

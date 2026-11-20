@@ -97,7 +97,7 @@
 4. **全局密钥布尔污染**：`src/settings-view.ts` 的 `buildSettingsGetView` 不再将 `config.openaiTts.apiKeys` 混入全局 `keys.openaiApiKey`，避免未配全局备用 Key 时误显示已配。
 5. **切换引擎/预设串行写竞态**：`src/settings-form.tsx` 的 `SegGroup`、`switchPreset`、`switchToLocalKokoro` 在首写返回 `false` 时中止级联清空 `voice`。
 6. **OpenAI 自定义端点空音色占位与清空残留**：自定义端点空 `voice` 展示「服务端默认音色」而非 Edge 音色名，试听/自测放行空 `voice`；`src/index.ts` 的 `makeEngine` 以空 `voice` 初始化基线，使后续 `updateVoice('')` 能回退到预设或服务端默认音色。
-7. **多标签页焦点停播串扰与断连泄漏**：`src/index.ts` 的 `stopFocusReading` 增加 `sessionId === activeVoiceSession` 守卫（其他标签页切换焦点不再掐断活跃语音会话朗读），且焦点标签页 SSE 断开时立即停止 `readAloud=always` 合成。
+7. **多标签页焦点停播串扰修复**：`src/index.ts` 的 `stopFocusReading` 增加 `fromTabId !== activeTabId` 守卫（非语音所属标签页切换焦点不再掐断语音所属标签页的活跃朗读；同标签页主动切走仍正常停播）。
 8. **原型链污染与受限存储兜底**：`src/strings.ts`（`translateLocal`）与 `src/i18n.ts`（`interpolate`）改用 `Object.hasOwn`；`src/client.tsx` 顶层 `localStorage` 读取补 `try/catch` 守卫。
 
 ### 8.2 设置面板视觉与交互重构

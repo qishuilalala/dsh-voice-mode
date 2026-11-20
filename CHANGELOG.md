@@ -12,7 +12,7 @@
 - **HEAD 全流程缺陷修复（逐预设密钥与级联闭环）**：
   - 修复逐预设密钥落盘覆盖与清空 400：`src/settings-view.ts` 新增 `mergePresetApiKeys` 接入 `src/index.ts`（`persistSettings`），保存预设 B 密钥不再抹掉预设 A 已存密钥；`applyClearSecrets` 对 `openaiApiKeys` 写 `{}` 而非空串，消除 Zod 字典校验 400；`PresetKeyField` 空草稿失焦改为无操作并提供显式「清除」按钮。
   - 修复全局与逐预设密钥状态串扰、特殊字符重建碰撞与级联竞态：`buildSettingsGetView` 不再把 `config.openaiTts.apiKeys` 混入全局 `keys.openaiApiKey`；`engine-rebuild.ts` 的 `stableApiKeys` 改用 `JSON.stringify` 二元组消除 `=`/`&` 撞车；`SegGroup` 与 `switchPreset` 在首写返回 `false` 时中止后续 `voice` 清空；未知预设 id 不渲染无效密钥框，自建预设不误报缺 key；OpenAI 自定义端点空 `voice` 展示「服务端默认音色」并放行自测/试听，清空自定义音色后正确回退预设/服务端默认音色。
-  - 修复焦点朗读隔离与原型键安全：非语音标签页切换 `/focus` 不再误停活跃语音模式 TTS，焦点标签页 SSE 断开时自动停止 `readAloud=always` 合成；`translateLocal` 与 `interpolate` 改用 `Object.hasOwn` 防原型链污染；客户端顶层 `localStorage` 访问补齐受限环境守卫。
+  - 修复焦点朗读隔离与原型键安全：非语音标签页切换 `/focus` 不再误停活跃语音模式 TTS；`translateLocal` 与 `interpolate` 改用 `Object.hasOwn` 防原型链污染；客户端顶层 `localStorage` 访问补齐受限环境守卫。
 - **设置面板视觉与交互升级**：`src/settings-form.tsx`「朗读」分段调整为符合直觉的因果顺序（朗读回复 → 朗读引擎 → 在线预设与专属密钥〔高级端点与备用密钥默认折叠〕 → 朗读音色 → 语速 → 状态与测试朗读卡片）；复选行升级为现代胶囊拨杆开关，分段导航与单选组升级为内凹轨道胶囊，下拉框统一矢量箭头与触屏 `16px` 字号防缩放，快捷键、纠错词表与模型状态升级为卡片化布局。
 - **Loop 3 八项体验改进逐项落地**：
   1. **触屏快捷菜单**：`MicButton` 新增 `pointer: coarse` 旁侧 `⋯` 按钮与待机 450ms 触屏长按呼出 `MicMenu`（`canTouchLongPressMenu`），菜单补齐 `visualViewport` 钳制与 `100dvh` 滚动。

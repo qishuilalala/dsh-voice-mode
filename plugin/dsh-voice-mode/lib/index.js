@@ -4629,8 +4629,9 @@ function apply(ctx, config) {
     if (sessionId === null || sessionId === activeVoiceSession || tapInFlight.has(sessionId)) return;
     dropTurnTables(sessionId);
   };
-  const stopFocusReading = (sessionId) => {
-    if (sessionId === null || sessionId === activeVoiceSession) return;
+  const stopFocusReading = (sessionId, fromTabId) => {
+    if (sessionId === null) return;
+    if (sessionId === activeVoiceSession && activeTabId !== null && fromTabId !== activeTabId) return;
     queue.cancel(sessionId);
     turnGen.set(sessionId, (turnGen.get(sessionId) ?? 0) + 1);
   };
@@ -5731,7 +5732,7 @@ function apply(ctx, config) {
             focusedSessionId = null;
             focusedTabId = null;
           }
-          if (prevFocus !== null && prevFocus !== focusedSessionId) stopFocusReading(prevFocus);
+          if (prevFocus !== null && prevFocus !== focusedSessionId) stopFocusReading(prevFocus, tabId);
           if (prevFocus !== null && prevFocus !== focusedSessionId) reclaimFocusState(prevFocus);
           broadcast("focus", { sessionId: focusedSessionId, tabId: focusedTabId });
           respondJson2(res, 200, { ok: true, sessionId: focusedSessionId, tabId: focusedTabId });
@@ -5833,7 +5834,6 @@ data: ${JSON.stringify(payload)}
               const prevFocus = focusedSessionId;
               focusedSessionId = null;
               focusedTabId = null;
-              stopFocusReading(prevFocus);
               reclaimFocusState(prevFocus);
               broadcast("focus", { sessionId: null, tabId: null });
             }

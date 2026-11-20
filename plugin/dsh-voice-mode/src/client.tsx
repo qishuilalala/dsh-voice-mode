@@ -3488,6 +3488,14 @@ export function MicButton({
         bus.setUi({ partial: '' }) // 定稿即清实时字幕（防旧 partial 遮蔽思考/朗读状态条）
         const actions = actionsRef.current
         const trimmed = text.trim()
+        // 跨会话切换或卸载后迟到的收口定稿：绝不写进新会话输入框或触发提交，改为按原 sid 暂存。
+        if (!mountedRef.current || sidRef.current !== sid) {
+          if (trimmed) {
+            stashSessionDraft(sid, trimmed)
+            bus.setNotice(t('sessionSwitchFlushedNotice'))
+          }
+          return
+        }
         // I17：空定稿不得进入 beginOnceWait（不会提交新回合，否则干等 30s noStart 兜底）；
         // hold 松手产生的空定稿直接清标记并短延迟退出。
         if (!trimmed) {
@@ -3497,12 +3505,6 @@ export function MicButton({
               if (!holdPtrRef.current) void exitModeRef.current('manual')
             }, 300)
           }
-          return
-        }
-        // 跨会话切换或卸载后迟到的收口定稿：绝不写进新会话输入框或触发提交，改为按原 sid 暂存。
-        if (!mountedRef.current || sidRef.current !== sid) {
-          stashSessionDraft(sid, trimmed)
-          bus.setNotice(t('sessionSwitchFlushedNotice'))
           return
         }
         if (holdReleaseExitRef.current && meta?.force) {
