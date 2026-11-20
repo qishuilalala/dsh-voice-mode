@@ -2055,6 +2055,10 @@ html.dshvm-holding, html.dshvm-holding * {
 @media (pointer: coarse) { .dshvm-menu-item { padding: 9px 10px; font-size: 13px; } }
 .dshvm-menu-check { color: var(--dsw-alias-state-business-primary, #58a6ff); font-size: 11px; }
 .dshvm-menu-sep { height: 1px; margin: 4px 2px; background: var(--dsw-alias-border-l1, rgba(139,148,158,.25)); }
+.dshvm-statusbar-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 120px; min-width: 0; line-height: 18px; }
+@media (max-width: 520px) {
+  .dshvm-statusbar-text { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+}
 @media (prefers-reduced-motion: reduce) { .dshvm-spin, .dshvm-menu, .dshvm-eq-bar { animation: none !important; } }
 `
       document.head.appendChild(el)
@@ -4573,28 +4577,52 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
     )
   }
 
+  const displayText = b.ui.error
+    ? b.ui.error
+    : b.ui.sseDown
+      ? t('sseReconnect')
+      : b.ui.notice
+        ? b.ui.notice
+        : b.ui.idleWarn
+          ? t('idleWarn30s')
+          : b.ui.state === 'loading-model' || b.ui.model
+            ? b.ui.model
+              ? `${t('loadingModel')} ${b.ui.model.file} ${b.ui.model.percent}%`
+              : stateText
+            : b.ui.playing || b.ui.turn === 'agent-speaking'
+              ? stateText
+              : b.ui.state === 'wake' && b.ui.partial
+                ? `${stateText} · ${b.ui.partial}`
+                : b.ui.partial
+                  ? b.ui.partial
+                  : b.ui.ttsNotice
+                    ? b.ui.ttsNotice
+                    : stateText
+  const hasBadges = b.ui.isSpeech === true || Boolean(b.ui.ttsNotice) || b.ui.aecOff === true
+
   return (
     <div
+      data-dshvm="statusbar"
       // 可访问性（Issue #15 UX / I-19）：live 语义只放在下方「状态文本节点」（sr-only，
-      // role=status aria-atomic）；波形/计时/partial/角标一律 aria-hidden——整条状态条
-      // 作 live 区时，partial（百毫秒级）与每秒计时会被屏幕阅读器持续播报。
+      // role=status aria-atomic）；波形/计时/partial/角标一律 aria-hidden。
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: 2,
+        gap: 4,
         padding: '6px 12px',
         borderRadius: 10,
         fontSize: 12,
         fontFamily: 'system-ui, sans-serif',
-        // A4 审计 Blocker：根节点硬编码成功绿会让错误文案继承绿字（「麦克风不可用」看着像成功）。
-        // 正常态保持品牌绿系；错误态在下方 error 分支用 error token 覆盖前景色。
-        color: 'var(--dsw-alias-state-success-primary, #3fb950)',
-        background: 'rgba(63, 185, 80, 0.08)',
-        border: '1px solid rgba(63, 185, 80, 0.25)',
+        // 正常态正文走高对比度主文本色（解决浅色主题下 #3fb950 仅 ~2.1:1 对比度不可读问题），
+        // 语音激活氛围由浅绿底色与左侧声波表达；错误态在下方文本节点用 error token 覆盖。
+        color: 'var(--dsw-alias-label-primary, #1f2328)',
+        background: 'color-mix(in srgb, var(--dsw-alias-state-success-primary, #2ea043) 9%, var(--dsw-alias-bg-layer-2, transparent))',
+        border: '1px solid color-mix(in srgb, var(--dsw-alias-state-success-primary, #2ea043) 28%, var(--dsw-alias-border-l2, rgba(46, 160, 67, 0.3)))',
         animation: 'dshvm-fadein 0.2s ease',
+        minWidth: 0,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'nowrap' }}>
         {/* P0-UX 双条 SVG 波形：先 AI 朗读端(蓝)，后麦克风采集端(绿)；视觉左→右读"AI→我" */}
         {botBars.some((v) => v > 0) && (
           <span
@@ -4628,8 +4656,8 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
               className="dshvm-bar"
               style={{
                 height: `${3 + v * 12}px`,
-                background: '#3fb950',
-                opacity: 0.4 + v * 0.6,
+                background: 'var(--dsw-alias-state-success-primary, #2ea043)',
+                opacity: 0.45 + v * 0.55,
               }}
             />
           ))}
@@ -4657,37 +4685,34 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
         </span>
         <span
           aria-hidden="true"
+          className="dshvm-statusbar-text"
+          title={displayText}
           style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            flexGrow: 1,
-            // 错误必须是错误色（此前继承父级成功绿 → 状态骗人，浅色主题对比≈2.3:1）。
-            color: b.ui.error ? 'var(--dsw-alias-state-error-primary)' : undefined,
+            color: b.ui.error ? 'var(--dsw-alias-state-error-primary, #cf222e)' : undefined,
+            fontWeight: b.ui.error ? 500 : 400,
           }}
         >
-          {b.ui.error
-            ? b.ui.error
-            : b.ui.sseDown
-              ? t('sseReconnect')
-              : b.ui.notice
-              ? b.ui.notice
-              : b.ui.idleWarn
-                ? t('idleWarn30s')
-                : b.ui.state === 'loading-model' || b.ui.model
-                ? b.ui.model
-                  ? `${t('loadingModel')} ${b.ui.model.file} ${b.ui.model.percent}%`
-                  : stateText
-                : b.ui.playing || b.ui.turn === 'agent-speaking'
-                  ? stateText // 朗读/思考中优先显示状态，不显示用户旧的 partial（防遮蔽 thinking/reading）
-                  : b.ui.state === 'wake' && b.ui.partial
-                  ? `${stateText} · ${b.ui.partial}` // wake 待机：提示 + 实时转写并存（issue #10 问题 2，唤醒成败可自查）
-                  : b.ui.partial
-                    ? b.ui.partial
-                    : b.ui.ttsNotice
-                      ? b.ui.ttsNotice
-                      : stateText}
+          {displayText}
         </span>
+        {/* P1-UX 状态条计时器：会话时长（mm:ss），活跃期间按秒递增 */}
+        {elapsedSec > 0 && (
+          <span
+            aria-hidden="true"
+            title={t('elapsedHint')}
+            style={{
+              flexShrink: 0,
+              padding: '0 4px',
+              borderRadius: 6,
+              fontSize: 10.5,
+              lineHeight: '16px',
+              color: 'var(--dsw-alias-label-tertiary, #57606a)',
+              fontVariantNumeric: 'tabular-nums',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            }}
+          >
+            {String(Math.floor(elapsedSec / 60)).padStart(2, '0')}:{String(elapsedSec % 60).padStart(2, '0')}
+          </span>
+        )}
         <button
           type="button"
           data-dshvm="diag"
@@ -4698,120 +4723,106 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
             flexShrink: 0,
             border: 'none',
             background: 'transparent',
-            color: 'var(--dsw-alias-label-tertiary)',
+            color: 'var(--dsw-alias-label-tertiary, #57606a)',
             cursor: 'pointer',
-            padding: '0 4px',
+            padding: '2px 4px',
+            borderRadius: 4,
             fontSize: 11,
           }}
         >
           {t('diagCopy')}
         </button>
-        {b.ui.isSpeech === true && (
-          <span
-            aria-hidden="true"
-            title={t('vadDetected')}
-            style={{
-              flexShrink: 0,
-              padding: '0 6px',
-              borderRadius: 8,
-              fontSize: 10,
-              lineHeight: '16px',
-              color: 'var(--dsw-alias-state-warn-primary, #d29922)',
-              background: 'color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)',
-            }}
-          >
-            {t('vadDetected')}
-          </span>
-        )}
-        {/* Issue #15 UX：单句跳句提示角标。文本链里 ttsNotice 排在 playing 状态之后
-            （朗读中优先显示状态），跳句提示在朗读期间被遮蔽——用户看不到「有一句
-            跳过」。角标不依赖 playing，跳句后立即可见（完整文案仍在 title + 非播放期
-            文本链里）。 */}
-        {b.ui.ttsNotice && (
-          <span
-            aria-hidden="true"
-            title={b.ui.ttsNotice}
-            style={{
-              flexShrink: 0,
-              maxWidth: 200,
-              padding: '0 6px',
-              borderRadius: 8,
-              fontSize: 10,
-              lineHeight: '16px',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              color: 'var(--dsw-alias-state-warn-primary, #d29922)',
-              background: 'color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)',
-            }}
-          >
-            {b.ui.ttsNotice}
-          </span>
-        )}
-        {/* P1-UX 状态条计时器：会话时长（mm:ss），活跃期间按秒递增 */}
-        {elapsedSec > 0 && (
-          <span
-            aria-hidden="true"
-            title={t('elapsedHint')}
-            style={{
-              flexShrink: 0,
-              padding: '0 6px',
-              borderRadius: 8,
-              fontSize: 10,
-              lineHeight: '16px',
-              color: '#8b949e',
-              fontVariantNumeric: 'tabular-nums',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            }}
-          >
-            {String(Math.floor(elapsedSec / 60)).padStart(2, '0')}:{String(elapsedSec % 60).padStart(2, '0')}
-          </span>
-        )}
-        {b.ui.aecOff === true && (
-          <span
-            aria-hidden="true"
-            title={b.ui.bargeInDetectFallback ? t('bargeInDetectFallback') : t('aecOffHint')}
-            style={{
-              flexShrink: 0,
-              padding: '0 6px',
-              borderRadius: 8,
-              fontSize: 10,
-              lineHeight: '16px',
-              color: 'var(--dsw-alias-state-warn-primary, #d29922)',
-              background: 'color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)',
-            }}
-          >
-            {b.ui.bargeInDetectFallback ? t('bargeInDetectFallback') : t('aecOff')}
-          </span>
-        )}
         <button
+          type="button"
           onClick={() => {
-            // A4 审计 Minor：此前只调 bus.exit()（等 host 回广播才清本地态）——SSE 断开时
-            // 点了仍显示绿色、麦克风还开着。改走 exitMode：本地先清态、停 ASR、让出 host。
             if (exitModeExternal) exitModeExternal()
             else void bus.exit(sessionId!)
           }}
           style={{
             border: 'none',
             background: 'transparent',
-            color: '#8b949e',
+            color: 'var(--dsw-alias-label-secondary, #57606a)',
             cursor: 'pointer',
+            padding: '2px 4px',
+            borderRadius: 4,
             fontSize: 12,
+            fontWeight: 500,
             flexShrink: 0,
           }}
         >
           {t('exit')}
         </button>
       </div>
+      {hasBadges && (
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, minWidth: 0 }}>
+          {b.ui.isSpeech === true && (
+            <span
+              aria-hidden="true"
+              title={t('vadDetected')}
+              style={{
+                flexShrink: 0,
+                padding: '0 6px',
+                borderRadius: 8,
+                fontSize: 10.5,
+                lineHeight: '16px',
+                color: 'var(--dsw-alias-state-warn-primary, #9a6700)',
+                background: 'color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)',
+              }}
+            >
+              {t('vadDetected')}
+            </span>
+          )}
+          {b.ui.ttsNotice && (
+            <span
+              aria-hidden="true"
+              title={b.ui.ttsNotice}
+              style={{
+                maxWidth: '100%',
+                padding: '0 6px',
+                borderRadius: 8,
+                fontSize: 10.5,
+                lineHeight: '16px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                color: 'var(--dsw-alias-state-warn-primary, #9a6700)',
+                background: 'color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)',
+              }}
+            >
+              {b.ui.ttsNotice}
+            </span>
+          )}
+          {b.ui.aecOff === true && (
+            <span
+              aria-hidden="true"
+              title={b.ui.bargeInDetectFallback ? t('bargeInDetectFallback') : t('aecOffHint')}
+              style={{
+                maxWidth: '100%',
+                padding: '0 6px',
+                borderRadius: 8,
+                fontSize: 10.5,
+                lineHeight: '16px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                color: 'var(--dsw-alias-state-warn-primary, #9a6700)',
+                background: 'color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)',
+              }}
+            >
+              {b.ui.bargeInDetectFallback ? t('bargeInDetectFallback') : t('aecOff')}
+            </span>
+          )}
+        </div>
+      )}
       {telParts.length > 0 && (
         <div
           aria-hidden="true"
           style={{
             fontSize: 11,
-            color: '#8b949e',
+            color: 'var(--dsw-alias-label-tertiary, #57606a)',
             fontVariantNumeric: 'tabular-nums',
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
             whiteSpace: 'nowrap',

@@ -6904,7 +6904,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "d456679";
+var BUILD_TAG = "98a1f51";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = (() => {
   try {
@@ -8194,6 +8194,10 @@ html.dshvm-holding, html.dshvm-holding * {
 @media (pointer: coarse) { .dshvm-menu-item { padding: 9px 10px; font-size: 13px; } }
 .dshvm-menu-check { color: var(--dsw-alias-state-business-primary, #58a6ff); font-size: 11px; }
 .dshvm-menu-sep { height: 1px; margin: 4px 2px; background: var(--dsw-alias-border-l1, rgba(139,148,158,.25)); }
+.dshvm-statusbar-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 120px; min-width: 0; line-height: 18px; }
+@media (max-width: 520px) {
+  .dshvm-statusbar-text { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+}
 @media (prefers-reduced-motion: reduce) { .dshvm-spin, .dshvm-menu, .dshvm-eq-bar { animation: none !important; } }
 `;
       document.head.appendChild(el);
@@ -10089,26 +10093,30 @@ function VoiceStatusBar({ bus, sessionId }) {
       `AEC delay=${Math.round(b.ui.echoDelayMs ?? 0)}ms floor=${el.floorRms.toFixed(4)} resid=${el.residualRms.toFixed(4)}`
     );
   }
+  const displayText = b.ui.error ? b.ui.error : b.ui.sseDown ? t("sseReconnect") : b.ui.notice ? b.ui.notice : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.state === "wake" && b.ui.partial ? `${stateText} \xB7 ${b.ui.partial}` : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText;
+  const hasBadges = b.ui.isSpeech === true || Boolean(b.ui.ttsNotice) || b.ui.aecOff === true;
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",
     {
+      "data-dshvm": "statusbar",
       style: {
         display: "flex",
         flexDirection: "column",
-        gap: 2,
+        gap: 4,
         padding: "6px 12px",
         borderRadius: 10,
         fontSize: 12,
         fontFamily: "system-ui, sans-serif",
-        // A4 审计 Blocker：根节点硬编码成功绿会让错误文案继承绿字（「麦克风不可用」看着像成功）。
-        // 正常态保持品牌绿系；错误态在下方 error 分支用 error token 覆盖前景色。
-        color: "var(--dsw-alias-state-success-primary, #3fb950)",
-        background: "rgba(63, 185, 80, 0.08)",
-        border: "1px solid rgba(63, 185, 80, 0.25)",
-        animation: "dshvm-fadein 0.2s ease"
+        // 正常态正文走高对比度主文本色（解决浅色主题下 #3fb950 仅 ~2.1:1 对比度不可读问题），
+        // 语音激活氛围由浅绿底色与左侧声波表达；错误态在下方文本节点用 error token 覆盖。
+        color: "var(--dsw-alias-label-primary, #1f2328)",
+        background: "color-mix(in srgb, var(--dsw-alias-state-success-primary, #2ea043) 9%, var(--dsw-alias-bg-layer-2, transparent))",
+        border: "1px solid color-mix(in srgb, var(--dsw-alias-state-success-primary, #2ea043) 28%, var(--dsw-alias-border-l2, rgba(46, 160, 67, 0.3)))",
+        animation: "dshvm-fadein 0.2s ease",
+        minWidth: 0
       },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexWrap: "nowrap" }, children: [
           botBars.some((v) => v > 0) && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "span",
             {
@@ -10141,8 +10149,8 @@ function VoiceStatusBar({ bus, sessionId }) {
               className: "dshvm-bar",
               style: {
                 height: `${3 + v * 12}px`,
-                background: "#3fb950",
-                opacity: 0.4 + v * 0.6
+                background: "var(--dsw-alias-state-success-primary, #2ea043)",
+                opacity: 0.45 + v * 0.55
               }
             },
             i
@@ -10169,15 +10177,35 @@ function VoiceStatusBar({ bus, sessionId }) {
             "span",
             {
               "aria-hidden": "true",
+              className: "dshvm-statusbar-text",
+              title: displayText,
               style: {
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                flexGrow: 1,
-                // 错误必须是错误色（此前继承父级成功绿 → 状态骗人，浅色主题对比≈2.3:1）。
-                color: b.ui.error ? "var(--dsw-alias-state-error-primary)" : void 0
+                color: b.ui.error ? "var(--dsw-alias-state-error-primary, #cf222e)" : void 0,
+                fontWeight: b.ui.error ? 500 : 400
               },
-              children: b.ui.error ? b.ui.error : b.ui.sseDown ? t("sseReconnect") : b.ui.notice ? b.ui.notice : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.state === "wake" && b.ui.partial ? `${stateText} \xB7 ${b.ui.partial}` : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText
+              children: displayText
+            }
+          ),
+          elapsedSec > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+            "span",
+            {
+              "aria-hidden": "true",
+              title: t("elapsedHint"),
+              style: {
+                flexShrink: 0,
+                padding: "0 4px",
+                borderRadius: 6,
+                fontSize: 10.5,
+                lineHeight: "16px",
+                color: "var(--dsw-alias-label-tertiary, #57606a)",
+                fontVariantNumeric: "tabular-nums",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace"
+              },
+              children: [
+                String(Math.floor(elapsedSec / 60)).padStart(2, "0"),
+                ":",
+                String(elapsedSec % 60).padStart(2, "0")
+              ]
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
@@ -10192,14 +10220,39 @@ function VoiceStatusBar({ bus, sessionId }) {
                 flexShrink: 0,
                 border: "none",
                 background: "transparent",
-                color: "var(--dsw-alias-label-tertiary)",
+                color: "var(--dsw-alias-label-tertiary, #57606a)",
                 cursor: "pointer",
-                padding: "0 4px",
+                padding: "2px 4px",
+                borderRadius: 4,
                 fontSize: 11
               },
               children: t("diagCopy")
             }
           ),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                if (exitModeExternal) exitModeExternal();
+                else void bus.exit(sessionId);
+              },
+              style: {
+                border: "none",
+                background: "transparent",
+                color: "var(--dsw-alias-label-secondary, #57606a)",
+                cursor: "pointer",
+                padding: "2px 4px",
+                borderRadius: 4,
+                fontSize: 12,
+                fontWeight: 500,
+                flexShrink: 0
+              },
+              children: t("exit")
+            }
+          )
+        ] }),
+        hasBadges && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, minWidth: 0 }, children: [
           b.ui.isSpeech === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "span",
             {
@@ -10209,9 +10262,9 @@ function VoiceStatusBar({ bus, sessionId }) {
                 flexShrink: 0,
                 padding: "0 6px",
                 borderRadius: 8,
-                fontSize: 10,
+                fontSize: 10.5,
                 lineHeight: "16px",
-                color: "var(--dsw-alias-state-warn-primary, #d29922)",
+                color: "var(--dsw-alias-state-warn-primary, #9a6700)",
                 background: "color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)",
                 border: "1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)"
               },
@@ -10224,42 +10277,19 @@ function VoiceStatusBar({ bus, sessionId }) {
               "aria-hidden": "true",
               title: b.ui.ttsNotice,
               style: {
-                flexShrink: 0,
-                maxWidth: 200,
+                maxWidth: "100%",
                 padding: "0 6px",
                 borderRadius: 8,
-                fontSize: 10,
+                fontSize: 10.5,
                 lineHeight: "16px",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
-                color: "var(--dsw-alias-state-warn-primary, #d29922)",
+                color: "var(--dsw-alias-state-warn-primary, #9a6700)",
                 background: "color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)",
                 border: "1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)"
               },
               children: b.ui.ttsNotice
-            }
-          ),
-          elapsedSec > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-            "span",
-            {
-              "aria-hidden": "true",
-              title: t("elapsedHint"),
-              style: {
-                flexShrink: 0,
-                padding: "0 6px",
-                borderRadius: 8,
-                fontSize: 10,
-                lineHeight: "16px",
-                color: "#8b949e",
-                fontVariantNumeric: "tabular-nums",
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace"
-              },
-              children: [
-                String(Math.floor(elapsedSec / 60)).padStart(2, "0"),
-                ":",
-                String(elapsedSec % 60).padStart(2, "0")
-              ]
             }
           ),
           b.ui.aecOff === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
@@ -10268,34 +10298,19 @@ function VoiceStatusBar({ bus, sessionId }) {
               "aria-hidden": "true",
               title: b.ui.bargeInDetectFallback ? t("bargeInDetectFallback") : t("aecOffHint"),
               style: {
-                flexShrink: 0,
+                maxWidth: "100%",
                 padding: "0 6px",
                 borderRadius: 8,
-                fontSize: 10,
+                fontSize: 10.5,
                 lineHeight: "16px",
-                color: "var(--dsw-alias-state-warn-primary, #d29922)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                color: "var(--dsw-alias-state-warn-primary, #9a6700)",
                 background: "color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)",
                 border: "1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)"
               },
               children: b.ui.bargeInDetectFallback ? t("bargeInDetectFallback") : t("aecOff")
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-            "button",
-            {
-              onClick: () => {
-                if (exitModeExternal) exitModeExternal();
-                else void bus.exit(sessionId);
-              },
-              style: {
-                border: "none",
-                background: "transparent",
-                color: "#8b949e",
-                cursor: "pointer",
-                fontSize: 12,
-                flexShrink: 0
-              },
-              children: t("exit")
             }
           )
         ] }),
@@ -10305,7 +10320,7 @@ function VoiceStatusBar({ bus, sessionId }) {
             "aria-hidden": "true",
             style: {
               fontSize: 11,
-              color: "#8b949e",
+              color: "var(--dsw-alias-label-tertiary, #57606a)",
               fontVariantNumeric: "tabular-nums",
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
               whiteSpace: "nowrap",
