@@ -193,7 +193,7 @@ export const zh = {
   descVoiceKokoro: 'Kokoro 中英音色（103 个全部列出，下拉选或 ◀▶ 切换；48-51 中文名，其余按编号+实测性别标注，中英混读均可）',
   descRate: '朗读语速倍率（0.5 慢速 ～ 2.0 快速，1.1 默认；让回复更紧凑）',
   descInterrupt: '发声打断灵敏度（0 高门槛 ≈0.3s 确认 / 1 中门槛 ≈0.2s / 2 低门槛 ≈0.1s，最灵敏）；值越低门槛越高，越难打断',
-  descBargeIn: '打断方式（detect 自动探测本机回声消除状态、未生效时切为长按打断，默认；auto 强制自动打断：开口即打断，耳机/安静环境推荐；manual 手动打断：外放推荐——回声不会误触发自打断，按住麦克风/Ctrl 显式打断）。注意：manual（detect 在无原生回声消除的机器上也会自动落入）下非按压期的语音不被识别——toggle 模式仅播放中可长按说话，待机时无法语音输入，请改用 hold 模式或 auto/detect',
+  descBargeIn: '打断方式（detect 自动探测本机回声消除状态、未生效时切为朗读期长按打断，默认；auto 强制自动打断：开口即打断，耳机/安静环境推荐；manual 手动打断：外放推荐——空闲时可直接说话或说唤醒词，AI 朗读中仅按住麦克风/Ctrl 才打断并收音，回声不会误触发自打断）',
   bargeInDetect: '自动探测',
   bargeInAuto: '自动',
   bargeInManual: '手动',
@@ -203,7 +203,7 @@ export const zh = {
   aecOff: '原生回声消除未生效',
   aecOffHint: '浏览器原生回声消除未生效（外放可能自打断），建议用耳机或切换「手动打断」',
   // 批 7O（ADR-0006）：detect 模式第一级探测降级提示（状态条）。
-  bargeInDetectFallback: '本机回声消除未生效，已切为长按打断',
+  bargeInDetectFallback: '本机回声消除未生效：空闲可直接说，朗读中长按打断',
   // R1 收尾（fix-client 直连 tk() 调用）：连续 3 次回声拒断的解释出口 + 快捷键非法停用提示。
   echoRejectHint: '回声较强，打断可能不灵敏——这是回声防护在生效，可戴耳机或改用「手动打断」',
   shortcutInvalid: '快捷键无效，已停用（可在设置里改为如 Ctrl+Shift+V；留空表示只用麦克风按钮）',
@@ -275,7 +275,7 @@ export const zh = {
   descShowCaptions: '朗读时在右下角显示当前句子的字幕浮层',
   showStatusBarLabel: '状态条',
   descShowStatusBar: '在输入框上方显示语音状态条（波形、识别文字、计时、提示、退出）；关闭后状态只在麦克风按钮上显示',
-  descWakeWord: '唤醒词（默认关；如「你好小D」）：说出词头才进入识别，避免误触。可与命令连说（「你好小D，帮我查天气」——词头会自动剥掉、不进消息）；每句断句或打断后需重说；仅 toggle 模式生效（hold / 手动打断下不生效；detect 自动探测未生效、回落 manual 时同样不生效——Safari 等无原生回声消除的机器会默认落到这一档）；朗读期说唤醒词不触发（打断仍按 VAD 开口即打断）。匹配带容错（同音字 / 前导语气词），建议 3-4 字；非专用 KWS 引擎，嘈杂环境可能延迟或误激活',
+  descWakeWord: '唤醒词（默认关；如「你好小D」）：说出词头才进入识别，避免误触。可与命令连说（「你好小D，帮我查天气」——词头会自动剥掉、不进消息）；每句断句或打断后需重说；仅持续聆听/说完就关模式生效（按住说话 hold 模式下不生效；manual 手动打断或 detect 回落 manual 时，空闲期唤醒词照常生效，朗读期按住麦克风/Ctrl 打断）。匹配带容错（同音字 / 前导语气词），建议 3-4 字；非专用 KWS 引擎，嘈杂环境可能延迟或误激活',
   wakePlaceholder: '如：你好小D',
   settingsCardDesc: '本地识别 + 逐句朗读，开口即可打断。设置分四段：语音输入、朗读、显示与交互、高级；改完即时生效。',
   settingsEffectiveNote: '生效时机分四档：① 即时——朗读引擎 / 音色 / 语速 / Kokoro 模型精度（已缓存则即时，否则下次下载）/ 口语化提示词（对后续回复生效）/ 朗读回复 / 状态条 / 字幕浮层 / 模型镜像（下次下载尝试即生效）；② 下次识别时——定稿重译（SenseVoice）/ 逆文本归一化；③ 下一段话——静音判定时长（断句端点；发送等待固定 1.2 秒不受影响）；④ 下次进入语音模式——打断灵敏度 / 打断方式 / 回声门控 / 快捷键 / 自动发送 / 自动恢复 / 交互模式 / 唤醒词 / 工具提示音 / 字幕字号 / 字幕宽度 / 短应答让位 / 让位窗口 / 打断语音抢救 / LLM 纠错 / 空闲时长。下次进入语音模式才生效的项会列在卡片顶部（含当前生效值）。',
@@ -600,7 +600,7 @@ export const en: Record<keyof typeof zh, string> = {
   descVoiceKokoro: 'Kokoro zh-en voices (103; ◀▶ to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)',
   descRate: 'Speech rate (0.5 slow – 2.0 fast, 1.1 default; more compact replies)',
   descInterrupt: 'Interrupt sensitivity (0 high ≈0.3 s confirm / 1 medium ≈0.2 s / 2 low ≈0.1 s, most responsive); lower = higher barrier = harder to interrupt',
-  descBargeIn: 'Barge-in mode (detect: auto-probe native echo cancellation, fall back to hold-to-talk when inactive — default; auto: force interrupt by speaking — headphones/quiet; manual: for loudspeaker, no echo-triggered self-interrupt — hold mic/Ctrl to interrupt). Note: in manual mode (including detect falling back to manual on machines without native echo cancellation) audio outside a press is not recognized — in toggle mode you can long-press to speak only while the agent is playing; when idle there is no voice input, so use hold mode or switch to auto/detect',
+  descBargeIn: 'Barge-in mode (detect: auto-probe native echo cancellation and switch playback to hold-to-interrupt when inactive — default; auto: force interrupt by speaking — headphones/quiet; manual: recommended for speakers — speak directly or say the wake word when idle, and hold mic/Ctrl to interrupt while the agent is playing so speaker echo never self-interrupts)',
   bargeInDetect: 'Auto-detect',
   bargeInAuto: 'Auto',
   bargeInManual: 'Manual',
@@ -610,7 +610,7 @@ export const en: Record<keyof typeof zh, string> = {
   aecOff: 'Native AEC off',
   aecOffHint: 'Native echo cancellation is not active (speaker echo may self-interrupt); use headphones or Manual barge-in',
   // 批 7O（ADR-0006）：detect 模式第一级探测降级提示（英文）。
-  bargeInDetectFallback: 'Native echo cancellation is off — switched to hold-to-talk barge-in',
+  bargeInDetectFallback: 'Native echo cancellation is off: speak directly when idle, hold to interrupt playback',
   // R1 收尾（fix-client 直连 tk() 调用）：连续 3 次回声拒断的解释出口 + 快捷键非法停用提示。
   echoRejectHint: 'Strong echo detected — barge-in is limited by echo protection. Use headphones or switch to manual barge-in',
   shortcutInvalid: 'Invalid shortcut, disabled. Fix it in settings (e.g. Ctrl+Shift+V); leave empty to use the mic button only',
@@ -681,7 +681,7 @@ export const en: Record<keyof typeof zh, string> = {
   descShowCaptions: 'Show a floating caption of the current sentence while reading aloud',
   showStatusBarLabel: 'Status bar',
   descShowStatusBar: 'Show the voice status bar above the composer (waveform, transcript, timer, notices, exit); when off, state shows only on the mic button',
-  descWakeWord: 'Wake word (default off; e.g. "Hey D"): recognition starts only after you say it, to avoid accidental triggers. You may say it together with your command ("Hey D, check the weather" — the wake word is stripped and never sent); it must be repeated after each utterance split or barge-in; toggle mode only (inactive in hold / manual barge-in — and equally inactive when the detect probe fails and falls back to manual, the default on machines without native echo cancellation such as Safari); saying it while the agent is reading does not trigger (barge-in stays VAD-based). Fault-tolerant matching (homophones / leading fillers); 3-4 characters recommended; not a dedicated KWS engine — noisy environments may delay or falsely trigger',
+  descWakeWord: 'Wake word (default off; e.g. "Hey D"): recognition starts only after you say it, to avoid accidental triggers. You may say it together with your command ("Hey D, check the weather" — the wake word is stripped and never sent); it must be repeated after each utterance split or barge-in; inactive in hold-to-talk mode (in manual barge-in or when detect falls back to manual, the wake word still works when idle while playback requires holding mic/Ctrl to interrupt). Fault-tolerant matching (homophones / leading fillers); 3-4 characters recommended; not a dedicated KWS engine — noisy environments may delay or falsely trigger',
   wakePlaceholder: 'e.g. Hey D',
   settingsCardDesc: 'Local recognition plus sentence-by-sentence read-aloud; speak to interrupt. Four sections: voice input, read aloud, display & interaction, advanced. Changes apply instantly.',
   settingsEffectiveNote: 'When settings apply, in four tiers: ① immediately — engine / voice / rate / Kokoro model precision (immediate when cached, else next download) / spoken format (applies to later replies) / read replies / status bar / caption overlay / model mirror (next download attempt); ② next recognition — finalization re-transcription (SenseVoice) / ITN; ③ next utterance — silence threshold (endpoint; the send wait stays a fixed 1.2s); ④ next time you enter voice mode — interrupt sensitivity / barge-in mode / echo gate / shortcut / auto-send / auto-resume / interaction mode / wake word / tool beep / caption font / caption width / backchannel yielding / yield window / barge-in salvage / LLM correction / idle timeout. Items that take effect next time you enter voice mode are listed at the top of this card with their current effective values.',

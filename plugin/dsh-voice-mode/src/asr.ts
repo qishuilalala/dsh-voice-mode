@@ -1087,12 +1087,13 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
 
   const handleAudio = (raw: Float32Array): void => {
     if (!active || inFlush) return
-    // 批 7N（ADR-0006）：manual 模式仅在 holdActive（按住 mic / Ctrl）期间才处理音频。
-    // 外放不自打断根治：非按压期间麦克风持续拾取会进段、partial 会拾取环境音+回声，
-    // 既污染识别结果又触发自打断错觉；manual 直接丢弃非按压帧。
-    // auto 模式不限制（保持原行为；不变量 I2 不动——打断仍按 VAD 走）。
-    // 批 7O：detect 经探测落 manual 时同样丢弃非按压帧（runtimeBargeInMode 已解析）。
-    if (runtimeBargeInMode === 'manual' && !holdActive) return
+    // Loop3 #5（ADR-0006 收窄）：manual（含 detect 回落）仅在朗读播放期丢弃非按压帧（空闲可直接说话/唤醒）。
+    const playingNow = config.isPlaying?.() ?? false
+    if (runtimeBargeInMode === 'manual' && !holdActive && playingNow) {
+      if (state === 'wake' && segment.length > 0) clearWakeSegment()
+      else if (speechActive) finalizeSegment(true)
+      prePad = []; return
+    }
     // 跨平台守卫：Safari 等浏览器会忽略 AudioContext({sampleRate}) 选项，
     // 实际按 44.1k/48k 输出。非 16k 时先线性重采样，保证 host zipformer2
     // 始终收到 16k PCM（避免识别错乱）。
@@ -1143,7 +1144,6 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
 
     // 打断根治：播放窗口（含尾音宽限）内，AEC 后帧同时进入检测通道（vadOnly 上行）。
     // hold 有明确意图路径（segment 正常累积、partial 上行）。
-    const playingNow = config.isPlaying?.() ?? false
     const rawNow = config.isPlayingRaw ? config.isPlayingRaw() : playingNow
     // 回声地板：慢均值跟踪，仅在「纯回声期」更新（playingNow 且残差未明显高于地板）。
     // 关键：句间停顿（playingNow=false）不更新也不清空——地板保持在上一次回声水平，

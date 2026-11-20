@@ -234,5 +234,146 @@ await t('bargeInMode getter 实时切换：auto → manual', async () => {
   }
 })
 
+console.log('Loop 3 #5：客户端 manual 作用域收窄到播放期（空闲可直接说/唤醒，播放中非按压全丢）')
+
+await t('client AsrEngine(manual)：空闲期无需按住即可说话定稿与唤醒，播放期非按压帧 0 上行且自动收口播放前语音', async () => {
+  const saved = {
+    AudioContext: globalThis.AudioContext,
+    AudioWorkletNode: globalThis.AudioWorkletNode,
+    window: globalThis.window,
+    navigator: Object.getOwnPropertyDescriptor(globalThis, 'navigator'),
+    fetch: globalThis.fetch,
+    location: globalThis.location,
+    localStorage: globalThis.localStorage,
+    dateNow: Date.now,
+    perf: globalThis.performance,
+  }
+  let now = 5_000_000
+  Date.now = () => now
+  globalThis.performance = { now: () => now }
+  let port = null
+  class FakeWorkletNode {
+    constructor() {
+      this.port = { onmessage: null }
+      port = this.port
+    }
+    connect() {}
+    disconnect() {}
+  }
+  class FakeAudioContext {
+    sampleRate = 16000
+    destination = {}
+    audioWorklet = { addModule: async () => {} }
+    createMediaStreamSource() {
+      return { connect() {} }
+    }
+    async resume() {}
+    async close() {}
+  }
+  const fakeTrack = { getSettings: () => ({ echoCancellation: false }), stop() {} }
+  const fakeStream = { getAudioTracks: () => [fakeTrack], getTracks: () => [fakeTrack] }
+  globalThis.AudioContext = FakeAudioContext
+  globalThis.AudioWorkletNode = FakeWorkletNode
+  globalThis.window = { AudioContext: FakeAudioContext }
+  globalThis.location = { origin: 'http://127.0.0.1:3018' }
+  globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { mediaDevices: { getUserMedia: async () => fakeStream } },
+    configurable: true,
+    writable: true,
+  })
+  const origBlob = globalThis.URL.createObjectURL
+  globalThis.URL.createObjectURL = () => 'blob:mock-worklet'
+
+  const urls = []
+  let mockText = '你好小D帮我查天气'
+  globalThis.fetch = async (url) => {
+    const u = String(url)
+    urls.push(u)
+    return new Response(JSON.stringify({ text: mockText, endpoint: false, isSpeech: true }), { status: 200 })
+  }
+
+  try {
+    const clientAsrOut = join(tmp, 'asr-client.bundle.mjs')
+    await build({
+      entryPoints: [join(here, '..', 'src', 'asr.ts')],
+      outfile: clientAsrOut,
+      bundle: true,
+      format: 'esm',
+      platform: 'browser',
+      define: { __AUDIO_WORKLET__: '"// noop"' },
+      logLevel: 'silent',
+    })
+    const { createAsrEngine } = await import(pathToFileURL(clientAsrOut).href)
+
+    let playing = false
+    const segments = []
+    const eng = createAsrEngine(
+      {
+        silenceMs: 300,
+        basePath: '/voice-mode',
+        mode: 'toggle',
+        bargeInMode: 'detect', // aecCancellation=false → runtimeBargeInMode='manual'
+        wakeWord: '你好小D',
+        isPlaying: () => playing,
+      },
+      's-manual-idle',
+    )
+    eng.onSegment((txt) => segments.push(txt))
+    await eng.start()
+    const speechFrame = new Float32Array(1024).fill(0.09)
+    const silFrame = new Float32Array(1024).fill(0.0005)
+
+    // 1) 空闲期（playing=false）未按住：说出唤醒词+命令 → partial 带 manual=1 正常上行，静音后剥唤醒词定稿
+    for (let i = 0; i < 8; i++) {
+      now += 64
+      port.onmessage({ data: speechFrame })
+      await new Promise((r) => setImmediate(r))
+    }
+    assert.ok(urls.some((u) => u.includes('manual=1') && u.includes('final=0')), '空闲期 manual 应上行带 manual=1 的 partial')
+    for (let i = 0; i < 7; i++) {
+      now += 64
+      port.onmessage({ data: silFrame })
+      await new Promise((r) => setImmediate(r))
+    }
+    assert.deepEqual(segments, ['帮我查天气'], 'manual 空闲期唤醒词+命令应无需按住直接定稿')
+
+    // 2) 播放期（playing=true）未按住：外放回声帧全部在入口拦截，0 条 partial / vadOnly 请求
+    urls.length = 0
+    playing = true
+    for (let i = 0; i < 8; i++) {
+      now += 64
+      port.onmessage({ data: speechFrame })
+      await new Promise((r) => setImmediate(r))
+    }
+    assert.equal(urls.length, 0, `播放期 manual 未按住必须 0 上行（实际：${JSON.stringify(urls)}）`)
+
+    // 3) 播放期按住（beginHeld）：显式打断收音照常工作
+    mockText = '停一下换个方案'
+    eng.beginHeld()
+    for (let i = 0; i < 6; i++) {
+      now += 64
+      port.onmessage({ data: speechFrame })
+      await new Promise((r) => setImmediate(r))
+    }
+    eng.endHeld(false)
+    await new Promise((r) => setImmediate(r))
+    await new Promise((r) => setImmediate(r))
+    assert.equal(segments.at(-1), '停一下换个方案', '播放期按住麦克风松手仍应定稿')
+    await eng.stop()
+  } finally {
+    globalThis.URL.createObjectURL = origBlob
+    Date.now = saved.dateNow
+    globalThis.performance = saved.perf
+    globalThis.AudioContext = saved.AudioContext
+    globalThis.AudioWorkletNode = saved.AudioWorkletNode
+    globalThis.window = saved.window
+    globalThis.fetch = saved.fetch
+    globalThis.location = saved.location
+    globalThis.localStorage = saved.localStorage
+    if (saved.navigator) Object.defineProperty(globalThis, 'navigator', saved.navigator)
+  }
+})
+
 rmSync(tmp, { recursive: true, force: true })
 console.log('\nbarge-in-manual：' + passed + ' 项通过')

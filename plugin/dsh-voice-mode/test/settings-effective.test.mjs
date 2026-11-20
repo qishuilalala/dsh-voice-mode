@@ -254,7 +254,7 @@ t('strings（R6 UI 重做）：摘要卡改为「一句话说明」，不再罗�
 t('strings（R1 文案修正）：hold-only 披露 / detect 回落 / Ctrl 措辞 / 批次号清零 / 跳过本句 / 纠错口径', () => {
   assert.ok(stringsSrc.includes('仅「按住说话」模式播放期可触发'), 'backchannelYield/让位窗口缺 hold-only 如实披露（UX-I2：默认开但在 toggle 是结构性死路）')
   assert.ok(stringsSrc.includes('持续聆听」模式播放期不识别语音'), '缺「toggle 播放期不识别语音」披露')
-  assert.ok(stringsSrc.includes('回落 manual 时同样不生效'), 'descWakeWord 缺 detect 回落 manual 披露（UX-I3）')
+  assert.ok(stringsSrc.includes('回落 manual 时，空闲期唤醒词照常生效'), 'descWakeWord 应说明 manual/detect 回落时空闲期唤醒词照常生效')
   assert.ok(stringsSrc.includes('说话过程中按住 Ctrl 可立即发送'), 'descAutoSend 的 Ctrl 措辞过度承诺未修（仅说话过程中有效）')
   assert.ok(!stringsSrc.includes('批 G 任务 2 已加'), 'descIdle 仍泄漏内部批次号')
   assert.ok(!stringsSrc.includes('pre-batch-5'), 'en descBackchannelYield 仍泄漏内部批次号')
@@ -263,9 +263,9 @@ t('strings（R1 文案修正）：hold-only 披露 / detect 回落 / Ctrl 措辞
   assert.ok(stringsSrc.includes('每分钟最多 10 次'), 'descLlmCorrect 缺限流口径')
   assert.ok(stringsSrc.includes('语音模式关闭或触发限流时按原文发送'), 'descLlmCorrect 未区分两种失败（enabled=false→403 / 限流→429，均带原文回退，fix-host 终态）')
   assert.ok(stringsSrc.includes('需宿主已配置默认模型'), 'descLlmCorrect 缺默认模型前提')
-  // R1 收尾（fix-host 指名 I5）：descBargeIn 披露 toggle+manual 待机态无法语音输入。
-  assert.ok(stringsSrc.includes('toggle 模式仅播放中可长按说话，待机时无法语音输入'), 'descBargeIn 缺 I5 披露（manual 非按压期不识别语音，toggle 待机按不住）')
-  assert.ok(stringsSrc.includes('in toggle mode you can long-press to speak only while the agent is playing'), 'en descBargeIn 缺 I5 披露')
+  // Loop 3 #5：manual 作用域收窄到播放期——空闲可直接说话，朗读中按住打断。
+  assert.ok(stringsSrc.includes('空闲时可直接说话或说唤醒词，AI 朗读中仅按住麦克风/Ctrl 才打断并收音'), 'descBargeIn 应说明 manual 空闲可直接说、朗读中按住打断')
+  assert.ok(stringsSrc.includes('speak directly or say the wake word when idle, and hold mic/Ctrl to interrupt while the agent is playing'), 'en descBargeIn 应说明 manual 空闲可直接说、朗读中按住打断')
 })
 
 t('strings（R1 收尾）：fix-client 直连 tk() 调用的两个键双语落地（strings-coverage 的 t()/tr() 字面量扫描不覆盖 tk()）', () => {
