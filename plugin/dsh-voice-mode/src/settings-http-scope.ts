@@ -11,6 +11,8 @@
  *  - 在途读期间到来的重拉（失效/获焦/重挂载）不被丢弃：记标记 → 在途请求落定后补拉一次。
  */
 
+import { redactSecrets } from './redact.ts'
+
 export interface HttpScopeSnapshot {
   status: 'loading' | 'ready' | 'unavailable'
   value: Record<string, unknown>
@@ -77,7 +79,7 @@ export function createHttpScope(origin: string = location.origin, fetchImpl: typ
       try {
         fn()
       } catch (e) {
-        console.warn('[dsh-voice-mode] settings scope subscriber failed: ' + String(e))
+        console.warn('[dsh-voice-mode] settings scope subscriber failed: ' + redactSecrets(e))
       }
     }
   }

@@ -18,6 +18,7 @@
  */
 
 import { resampleLinear } from './resample.ts'
+import { redactSecrets } from './redact.ts'
 import { matchWakeWord, stripWakePrefix } from './wakeword.ts'
 import { fixtureRecorder } from './fixture-recorder.ts'
 
@@ -1058,7 +1059,7 @@ export function createAsrEngine(config: AsrConfig, sessionId: string): AsrEngine
       }
     })().catch((err) => {
       // 兜底：意外异常不得让该序号永久悬空——否则后续定稿被保序游标永久卡住（静默丢句）。
-      console.warn(`[dsh-voice-mode] finalize unexpected error (seq=${mySeq}, settled as no-emit)`, err)
+      console.warn(`[dsh-voice-mode] finalize unexpected error (seq=${mySeq}, settled as no-emit): ${redactSecrets(err)}`)
       settle(null)
     })
   }

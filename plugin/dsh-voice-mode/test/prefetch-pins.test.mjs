@@ -52,12 +52,16 @@ t('Kokoro 两档 revision 与 tts-local.ts 一致（上游换文件时不锁 rev
   }
 })
 
-t('prefetch 的 Kokoro 下载 URL 不再写死 /main（必须用 revision）', () => {
+t('prefetch 的 Kokoro 下载 URL 与路径编码正确（不用 /main 且不把 "/" 编成 %2F）', () => {
   const kokoroBlock = prefetch.slice(prefetch.indexOf('Kokoro 中英朗读模型'))
   assert.ok(!kokoroBlock.includes(/\/tree\/main/.source), 'Kokoro 树枚举仍在请求 /tree/main')
   assert.ok(!kokoroBlock.includes(/\/resolve\/main\//.source), 'Kokoro 文件下载仍在请求 /resolve/main')
   assert.ok(kokoroBlock.includes('/tree/${rev}'), '树枚举未使用 revision')
   assert.ok(kokoroBlock.includes('/resolve/${rev}/'), '文件下载未使用 revision')
+  assert.ok(!prefetch.includes('/resolve/main/'), 'downloadFile 仍硬编码 /resolve/main/（Kokoro 首轮必命中飘移 main）')
+  assert.ok(prefetch.includes('MODEL_REVS[repo]'), 'downloadFile 必须按 MODEL_REVS 映射锁定 revision')
+  assert.ok(!prefetch.includes('encodeURIComponent(rel)'), '不得对含 "/" 子路径整串 encodeURIComponent（会把 / 编成 %2F）')
+  assert.ok(prefetch.includes("split('/').map(encodeURIComponent).join('/')"), '必须按路径分段编码')
 })
 
 void here

@@ -30,7 +30,7 @@
 |---|---|---|
 | `segmentEpoch` | `src/asr.ts:258`（历史时点快照） | 弃段/定稿后迟到的 partial 响应 |
 | `detectGeneration` | `src/asr.ts:289`（历史时点快照） | 重置后旧 vadOnly 响应推进 `detectSent` 水位 |
-| `resetGen` | `src/asr-host.ts:254` | 定稿期间会话被 reset，陈旧缓存写回 |
+| `resetGen` | `src/asr-host.ts:301` | 定稿期间会话被 reset，陈旧缓存写回 |
 | `turnGen` | `src/index.ts` 的 `turnGen`（声明 `const turnGen = new Map<string, number>()`）+ get/set + 迟到回合守卫；会话清理处 `turnGen.delete`（按符号定位，不钉行号） | 旧回合的 turn state 覆盖新回合 |
 | TTS `q.epoch` | `src/tts-queue.ts:286`（`SessionQueue` 接口；其 `epoch` 字段声明在 :290） | 打断后积压句子与孤儿泵继续广播 |
 

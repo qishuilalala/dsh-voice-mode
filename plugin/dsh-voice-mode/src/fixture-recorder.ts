@@ -23,6 +23,8 @@
  * 产物：单个 .json（schema dsh-voice-mode/fixture@1），音轨为 base64 Int16。
  */
 
+import { redactSecrets } from './redact.ts'
+
 /** 录制档位。 */
 export type RecordMode = 'off' | 'meta' | 'full'
 
@@ -315,7 +317,7 @@ class FixtureRecorder {
         `[dsh-voice][rec] 已保存 ${name}：${this.frames.length} 帧 / ${(durationMs / 1000).toFixed(1)}s / 标注 ${this.marks.length} 条 / 检测往返 ${this.detects.length} 次`,
       )
     } catch (e) {
-      console.warn('[dsh-voice][rec] 保存失败：' + String(e))
+      console.warn('[dsh-voice][rec] 保存失败：' + redactSecrets(e))
     }
     this.micTrack.clear()
     this.refTrack.clear()

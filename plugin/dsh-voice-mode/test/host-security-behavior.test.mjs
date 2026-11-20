@@ -1363,15 +1363,30 @@ console.log('⑩ 设置密钥面：GET 永不回传密钥（ADR-0013）')
 
 assert.ok(routes.has('/voice-mode/settings'), '/voice-mode/settings 未注册')
 
-await t('GET /voice-mode/settings：密钥字段恒为空串，只回 has* 布尔', async () => {
-  const res = await awaitRes(get('/voice-mode/settings', makeReq({ method: 'GET', body: undefined })))
-  assert.equal(res.statusCode, 200)
-  const body = JSON.parse(res.body)
-  assert.equal(body.value.openaiApiKey, '', 'openaiApiKey 不得回传')
-  assert.equal(body.value.mimoApiKey, '', 'mimoApiKey 不得回传')
-  assert.equal(typeof body.keys?.openaiApiKey, 'boolean', '缺 keys.openaiApiKey 布尔')
-  assert.equal(typeof body.keys?.mimoApiKey, 'boolean', '缺 keys.mimoApiKey 布尔')
-  assert.ok(!/sk-/.test(res.body), 'GET 响应体出现疑似密钥')
+await t('GET /voice-mode/settings：预置真实形态密钥后，响应体密钥字段恒为空串且不含明文、只回 keys 布尔', async () => {
+  const prevOpenai = settingsValue.openaiApiKey
+  const prevMimo = settingsValue.mimoApiKey
+  settingsValue.openaiApiKey = 'sk-test-openai-secret-99999'
+  settingsValue.mimoApiKey = 'sk-test-mimo-secret-88888'
+  settingsWatcher?.({ ...settingsValue })
+  try {
+    const res = await awaitRes(get('/voice-mode/settings', makeReq({ method: 'GET', body: undefined })))
+    assert.equal(res.statusCode, 200)
+    const body = JSON.parse(res.body)
+    assert.equal(body.value.openaiApiKey, '', 'openaiApiKey 不得回传')
+    assert.equal(body.value.mimoApiKey, '', 'mimoApiKey 不得回传')
+    assert.equal(body.keys?.openaiApiKey, true, '预置 openaiApiKey 后 keys.openaiApiKey 必须为 true')
+    assert.equal(body.keys?.mimoApiKey, true, '预置 mimoApiKey 后 keys.mimoApiKey 必须为 true')
+    assert.ok(!res.body.includes('sk-test-openai-secret-99999'), 'GET 响应体不得泄露 openaiApiKey 明文')
+    assert.ok(!res.body.includes('sk-test-mimo-secret-88888'), 'GET 响应体不得泄露 mimoApiKey 明文')
+    assert.ok(!/sk-/.test(res.body), 'GET 响应体出现疑似密钥')
+  } finally {
+    if (prevOpenai === undefined) delete settingsValue.openaiApiKey
+    else settingsValue.openaiApiKey = prevOpenai
+    if (prevMimo === undefined) delete settingsValue.mimoApiKey
+    else settingsValue.mimoApiKey = prevMimo
+    settingsWatcher?.({ ...settingsValue })
+  }
 })
 
 await t('GET 回传在线 TTS 的 URL/模型字段（UI 需要回显，非机密）', async () => {

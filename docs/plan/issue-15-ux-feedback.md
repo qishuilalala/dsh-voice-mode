@@ -21,7 +21,7 @@
 
 证据链（当前源码）：
 
-- `src/asr.ts:1063`：播放期（playingNow）AEC 后帧**只进 detectChunks**（VAD 检测通道），不进识别 segment。
+- `src/asr.ts:1182-1183`：播放期（playingNow）AEC 后帧**只进 detectChunks**（VAD 检测通道），不进识别 segment。
 - `src/asr.ts`：正常语音分支在 `config.isPlaying()` 为真时**不入段**（自聊防护），仅把播放前已开着的段立即收口（`finalizeSegment(true)`，其体内 asr.ts:714 置 `speechActive=false`——播放期用户语音因此永远不进段）。
 - `src/asr.ts`（`requestDetect`）：播放期且未开口时轮询只走 `requestDetect()`（检测通道），常规 partial 断流。
 - `src/client.tsx`（`hardBreak`）：hardBreak = skipAudio + cancelTurn + POST /cancel（`keepAsr = engine.holding === true`）+ 非 hold 时 `discardSegment()`（:2511）。（**2026-10-21 按 HEAD `465c253` 重锚**：R15-G 的焦点归属实例级化在 `src/client.tsx` 增 +54 行，本行处位移 +51；旧值 2392 / 2422 为 `3154433` 口径）

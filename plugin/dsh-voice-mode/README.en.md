@@ -131,11 +131,11 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 - On dsh 0.1.7+ the values are stored in the plugin's own file `~/.dsh/voice-mode.settings.json` (under `$DSH_HOME`) and take precedence over same-named keys in the profile config. The first run migrates the old `voice-mode:` block from `settings.yaml(.imported)` once. To reset, set the file's content to `{}` (do not delete it).
 
 
-### Full 25-key settings table
+### Full 35-key settings table
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `ttsEngine` | `edge` | Read-aloud engine: `edge` Microsoft cloud (default, fast) / `vits` local Chinese / `kokoro` local zh+en / `openai` any OpenAI-compatible server (see below); **applies live** |
+| `ttsEngine` | `edge` | Read-aloud engine: `edge` Microsoft cloud (default, fast) / `vits` local Chinese / `kokoro` local zh+en / `openai` any OpenAI-compatible server / `mimo` Xiaomi MiMo (independent `mimoTts.apiKey`, see below); **applies live** |
 | `kokoroModel` | `int8` | Kokoro precision: `int8` (default, 109 MB, CPU/low-bandwidth) / `fp32` (311 MB, better quality, GPU/large memory); same 103 voices; **applies live** |
 | `voice` | per engine | Voice: 5 VITS speakers; 103 Kokoro voices (◀▶ stepper; 62/68/75/76 favourite males pinned); Edge ShortNames below. The inline "试听" button previews it at the current rate |
 | `rate` | `1.1` | Reading speed multiplier (0.5 slow ～ 2.0 fast), **applies live** (batch J 1.0→1.1) |
@@ -158,6 +158,12 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | `senseVoice` | `true` | Re-transcribe the finalized utterance with SenseVoice (punctuation + number normalization, more accurate; on by default). **Turning it off saves ~228 MB of models** and uses streaming recognition only (faster, less accurate) |
 | `toolBeep` | `false` | Tool-call beep (off by default): when on, a short beep plays each time the agent calls a tool; off = silent |
 | `senseITN` | `true` | SenseVoice inverse text normalization (number / date / currency; on by default) |
+| `openaiPreset` | empty (manual) | Online TTS preset id (`siliconflow-cosyvoice2` / `siliconflow-fish` / `openrouter-openai` / `openai-official` / `groq-playai` / `selfhosted-kokoro` / `selfhosted-vllm`, or `custom`). Fills baseUrl/model and falls back to the preset voice when `voice` is empty; keys prefer settings card > `openaiTts.apiKeys[preset]` > `openaiTts.apiKey`; **applies live** |
+| `openaiBaseUrl` | empty (preset/config) | Online TTS endpoint override configurable directly in the settings card (priority: settings > preset > `openaiTts.baseUrl`); pair with `custom` preset for any OpenAI-compatible server; **applies live** |
+| `openaiModel` | empty | Online TTS model override (same priority as `openaiBaseUrl`); **applies live** |
+| `openaiApiKey` | empty (config fallback) | Online TTS API key entered in the settings card; stored in the host-side `0600` settings file and **never sent back to the browser** (`GET /voice-mode/settings` returns empty string + `keys.*` booleans); **applies live** |
+| `mimoApiKey` | empty (config fallback) | Xiaomi MiMo API key (`api-key` header) entered in the settings card; host-only `0600` storage, never sent back to the browser; falls back to `mimoTts.apiKey`; **applies live** |
+| `asrReplacements` | `[]` | Post-recognition correction table `[{from:[misheard], to:wanted}]` (≤200 rules / ≤12 KB UTF-8); applies to both partials and finals, editable in the settings card with hit counters; **applies live** |
 | `captionFontSize` | `0` | Caption font tier 0=12px / 1=14px / 2=18px / 3=24px (default 0 is byte-equivalent to legacy) |
 | `captionMaxWidth` | `1` | Caption width tier 0=50vw / 1=70vw / 2=90vw |
 | `backchannelYield` | `true` | Yield semantics (ADR-0008); saying `嗯 / 对` while reading auto-pauses for 1.5 s; genuine speech still triggers hard barge-in; off = behavior identical to pre-change |
@@ -214,9 +220,9 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 > (`enabled/cacheDir` remain bundle-config-only).
 > The plugin HTTP namespace is fixed to `/voice-mode` (matching the client bundle contract; not configurable).
 
-### OpenAI-compatible TTS server (`ttsEngine: openai`)
+### OpenAI-compatible & Xiaomi MiMo TTS (`ttsEngine: openai` / `mimo`)
 
-Any server that implements OpenAI's `POST /v1/audio/speech` can read replies aloud: a self-hosted one on a GPU machine ([vLLM-Omni](https://github.com/vllm-project/vllm-omni), [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), LocalAI, ...) or a hosted API such as OpenAI or [OpenRouter](https://openrouter.ai/docs/guides/overview/multimodal/tts). The server is set in the bundle config (it is host-only; the key never reaches the browser), and the engine is picked in the settings panel like the others:
+Any server that implements OpenAI's `POST /v1/audio/speech` can read replies aloud: a self-hosted one on a GPU machine ([vLLM-Omni](https://github.com/vllm-project/vllm-omni), [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), LocalAI, ...) or a hosted API such as SiliconFlow, OpenAI, [OpenRouter](https://openrouter.ai/docs/guides/overview/multimodal/tts), or Groq PlayAI. You can pick one of the **7 built-in presets** (or `custom`) and enter `openaiBaseUrl` / `openaiModel` / `openaiApiKey` directly in the **Settings card** (priority: settings card > preset > bundle config), or seed them in the bundle config below; keys remain host-only (`0600`) and are never returned to the browser. Xiaomi MiMo (`ttsEngine: mimo`) uses its own independent key (`mimoApiKey` in the card or `mimoTts.apiKey` in config) so keys never leak across providers:
 
 ```yaml
 - id: voice-mode

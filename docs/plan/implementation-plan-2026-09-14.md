@@ -36,7 +36,7 @@ npm test                                                             # ④ 全�
 
 | # | 不变量 | 锚点 | 含义 |
 |---|---|---|---|
-| I1 | finalize 不丢句（幂等 + 并发守卫） | `asr-host.ts:249-252`（finalized 真址；旧锚实指 senseTranscribe 段） | 不改 finalized 缓存/resetGen 语义 |
+| I1 | finalize 不丢句（幂等 + 并发守卫） | `asr-host.ts:295-301`（`finalized` / `resetGen` 真址；原锚 249-252 已漂移） | 不改 finalized 缓存/resetGen 语义 |
 | I2 | 打断计数仅播放期累积 | `client.tsx` isSpeechTrueCount 复位分支 | 不把非播放期计数带进开播 |
 | I3 | 播放门分支不得 return | `asr.ts（原锚 728-747）` 轮询块 | 改动不得在该分支引入 return |
 | I4 | TTS 单 chunk + final 帧协议 | `tts-queue.ts` pump 帧结构 | 客户端拼帧逻辑不动 |
@@ -187,7 +187,7 @@ onDeath 懒重建机制已有（L388-391）。**开工前核实一点**：`creat
 ### 4.4 验证与 Done
 
 - 新增 `test/sense-lang.test.mjs`：① langKey 不变 → 复用 worker；② 变化 → terminate 被调 + 重建；③ workerData 携带 language/useITN。
-- **集成层豁免**：①② 由 host 接线正确性保证（`asr-host.ts:386-441` 短且直读可验），单测仅覆盖契约层（`buildSenseLangKey` 等值/不等值 + bundle 静态断言字段名）；集成层验证留**批 6 真机冒烟**（修改语种观察 worker 重建 + 旧请求走 zipformer fallback）。
+- **集成层豁免**：①② 由 host 接线正确性保证（`asr-host.ts:484-550` 短且直读可验），单测仅覆盖契约层（`buildSenseLangKey` 等值/不等值 + bundle 静态断言字段名）；集成层验证留**批 6 真机冒烟**（修改语种观察 worker 重建 + 旧请求走 zipformer fallback）。
 - **Done** = 单测三绿 + typecheck + npm test 全绿；真机：锁 `en` 后英文段落识别不再抖回中文（用户验收）。
 - 回滚 `git revert`；预计 ~55 行。
 - **I10**：默认 `auto`+`useITN:1` 与现状逐字节等价。

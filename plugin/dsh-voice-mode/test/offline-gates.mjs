@@ -6,43 +6,56 @@
  * 运行：node test/offline-gates.mjs [--write-doc]
  * 需要本机已缓存模型（~/.cache/dsh-voice-mode/models）。
  */
-import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const pluginRoot = join(here, '..')
-const harnessPath = join(pluginRoot, 'lib', 'offline-harness.mjs')
 
 // 冷启动（模型加载）与热态分开预算：冷启动 9s 内可接受，热态要求 <3s。
-const BUDGETS = { ttsMs: 30000, coldFirstPartialMs: 9000, warmFirstPartialMs: 3000, finalize5sMs: 8000, minCoverage: 0.6 }
+const BUDGETS = { ttsMs: 30000, coldFirstPartialMs: 9000, warmFirstPartialMs: 3000, finalize5sMs: 8000, minAccuracy: 0.6 }
 
-async function ensureHarness() {
-  if (existsSync(harnessPath)) return
-  const entry = join(pluginRoot, '.tmp-offline-entry.ts')
+/** Levenshtein 字符编辑距离：替代旧 .includes() 词袋计数（防乱序/多字幻觉仍得 100%）。 */
+function charEditDistance(a, b) {
+  const m = a.length
+  const n = b.length
+  let prev = Array.from({ length: n + 1 }, (_, j) => j)
+  for (let i = 1; i <= m; i++) {
+    const cur = [i]
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+    }
+    prev = cur
+  }
+  return prev[n]
+}
+
+async function buildHarness(workDir) {
+  const harnessPath = join(workDir, 'offline-harness.mjs')
+  const entry = join(workDir, 'offline-entry.ts')
   writeFileSync(
     entry,
     [
-      "export { createAsrRuntime } from './src/asr-host.ts'",
-      "export { createSherpaVitsEngine, pcmToWav } from './src/tts-local.ts'",
+      `export { createAsrRuntime } from ${JSON.stringify(join(pluginRoot, 'src', 'asr-host.ts'))}`,
+      `export { createSherpaVitsEngine, pcmToWav } from ${JSON.stringify(join(pluginRoot, 'src', 'tts-local.ts'))}`,
     ].join('\n'),
   )
-  try {
-    await build({
-      entryPoints: [entry],
-      outfile: harnessPath,
-      bundle: true,
-      platform: 'node',
-      format: 'esm',
-      target: 'node22',
-      external: ['sherpa-onnx-node', 'sherpa-onnx', 'msedge-tts', 'ws'],
-      logLevel: 'silent',
-    })
-  } finally {
-    try { const { unlinkSync } = await import('node:fs'); unlinkSync(entry) } catch {}
-  }
+  await build({
+    entryPoints: [entry],
+    outfile: harnessPath,
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    target: 'node22',
+    nodePaths: [join(pluginRoot, 'node_modules')],
+    external: ['sherpa-onnx-node', 'sherpa-onnx', 'msedge-tts', 'ws'],
+    logLevel: 'silent',
+  })
+  return harnessPath
 }
 
 function wavToSamples(buf) {
@@ -59,11 +72,12 @@ const results = []
 const push = (name, ok, detail) => { results.push({ name, ok, detail }); console.log((ok ? '  ✓ ' : '  ✗ ') + name + ' —— ' + detail) }
 
 async function main() {
-  await ensureHarness()
-  const mod = await import(harnessPath)
+  const workDir = mkdtempSync(join(tmpdir(), 'dshvm-gates-'))
+  try {
+  const harnessPath = await buildHarness(workDir)
+  const mod = await import(pathToFileURL(harnessPath).href)
   const { createAsrRuntime, createSherpaVitsEngine, pcmToWav } = mod
   const cacheDir = process.env.DSHVM_MODEL_CACHE || join(process.env.HOME || '/root', '.cache', 'dsh-voice-mode', 'models')
-  const workDir = mkdtempSync(join(tmpdir(), 'dshvm-gates-'))
   const SOURCE_TEXT = '今天天气很好，我们一起去公园散步吧。'
   console.log('offline-gates：cache=' + cacheDir)
 
@@ -129,10 +143,11 @@ async function main() {
     const finalText = (fin.text || '').replace(/\s/g, '')
     const norm = (s) => s.replace(/[^\u4e00-\u9fff]/g, '')
     const srcText = norm(SOURCE_TEXT)
-    const hit = [...srcText].filter((ch) => finalText.includes(ch)).length
-    const coverage = srcText.length ? hit / srcText.length : 0
+    const hypText = norm(finalText)
+    const editDist = charEditDistance(srcText, hypText)
+    const accuracy = srcText.length ? Math.max(0, 1 - editDist / srcText.length) : 0
     push('端点：定稿返回非空文本', finalText.length > 0, finalText.length + ' 字：「' + finalText.slice(0, 30) + '」')
-    push('字幕质量：定稿覆盖源文本 ≥ 预算', coverage >= BUDGETS.minCoverage, '覆盖率 ' + (coverage * 100).toFixed(0) + '%（源「' + SOURCE_TEXT + '」）/ 预算 ≥' + BUDGETS.minCoverage * 100 + '%')
+    push('字幕质量：定稿字准确率（1-CER）≥ 预算', accuracy >= BUDGETS.minAccuracy, '准确率 ' + (accuracy * 100).toFixed(0) + '%（editDist=' + editDist + '/' + srcText.length + '，源「' + SOURCE_TEXT + '」）/ 预算 ≥' + BUDGETS.minAccuracy * 100 + '%')
     push('延迟：5s 语音定稿在预算内', finalizeMs <= BUDGETS.finalize5sMs, finalizeMs + 'ms / 预算 ' + BUDGETS.finalize5sMs + 'ms')
 
     const failed = results.filter((r) => !r.ok)
@@ -159,7 +174,9 @@ async function main() {
     if (failed.length > 0) process.exit(1)
   } finally {
     runtime.dispose()
-    try { const { unlinkSync } = await import('node:fs'); unlinkSync(harnessPath) } catch {}
+  }
+  } finally {
+    rmSync(workDir, { recursive: true, force: true })
   }
 }
 

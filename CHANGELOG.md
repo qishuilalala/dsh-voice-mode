@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+### 修复（2026-11-20，全量 47 文件逐行深度对抗审计，B1–B11 / I1–I20）
+
+- **ASR 采集与宿主稳定性**：修复 hold 3MB 上限按样本数误算为 12MB 且朗读期误发 partial / 误贴 403 提示的问题；`pendingFinals` 记录 `discardGen` 防 stop/discard 后旧句泄漏；补齐 202 重试与 `resetHostStream` 代际守卫及 `audioCtx.resume` 超时/设备断连清理；修复 `asr-host.ts` 解码让出期间并发 `reset`/`dispose`/双 `final` 导致的 WASM UAF/Double-Free；修复 SenseVoice worker 创建失败无退避风暴与 20s 孤儿进程泄漏；修复端点确认窗口被 200ms 短路及 `models.ts` 子路径 `%2F` 编码与 `drain`/体取消泄漏。
+- **TTS 安全与队列可靠**：远程 OpenAI/MiMo TTS 强制 `redirect: 'error'` 并拒绝含凭据 URL，防止 307 跳转泄露 `api-key`/朗读正文；`synthesizeWithMime` 改经单次调用局部结果返回 MIME 消除并发串味；限制远程响应体 32MB 上限与 `<break>` 静音上界防 OOM；修复队列退避窗被新 `enqueue` 绕过、`setEngine` 不清退避态、`close()` 挂死 `retrySleep`、Edge `interrupt()` 在流正常闭合时返回截断音频、本地引擎 init 期 `interrupt()` 误触发 60s 断路器与 `ready && !child` 永久卡死；`src/audio-format.ts` 的 `sniffAudioMime` 排除 UTF-16LE BOM 误判并支持 Ogg/FLAC。
+- **宿主路由与脱敏**：`sameOriginRequest` 拒绝 `Sec-Fetch-Site: cross-site` 无 Origin GET；高基数未知 `sessionId` 先验存在性再入独立限流桶；`/mode`、`/models/clean`、`/models/download` 补齐回环写与限流；`/toggle` `warmupSense` 补 `toggleGen`/`disposed` 守卫；`/asr` `vadOnly`/`reset` 不再覆写 `turnStates`；`settings-http-scope` 串行化并发写并守卫 `load().catch`；`redact.ts` 覆盖 `Basic`/URL 凭据/`mimoApiKey`/`openaiApiKey`，全仓日志脱敏升级为 TypeScript AST 守卫并补齐 4 处漏网 `console.warn`。
+- **客户端交互与设置页**：客户端音频嗅探与降级 Blob 支持 ID3v2 MP3 / Ogg / FLAC（不再静默丢弃）；`MicButton` 切会话前主动退出旧会话防 host 状态分裂；`useVoiceCss` 改引用计数、`exitModeExternal` 补归属校验；修复播放队列解码期滞留、事件监听与 `EventSource` 卸载清理、条件调宿主 Hook、Esc 冒泡与 `contenteditable` 打字退出；设置页 `/models/status` 同体去重 + 移除不稳定 `options` 依赖 + `forceCustom` 状态，彻底解决 3s 轮询清空自定义草稿与自定义音色下拉回弹；修复 `NumberField` clamp 提示同帧清空、`ShortcutField` 录制报错不可见/Tab 退出、`VoicePreviewButton`/`SelfTestSection` 卸载中止请求、`verifyPreset` 不写脏 `voice`、`SecretField` 409 回退、`ModelStatusView` 可选链防御及 `README.en.md`/文档锚点同步。
+
 ### 新增（2026-11-20，设置界面重做 + 在线 TTS 全 UI 配置）
 
 - **在线 TTS 可在设置里直接配**：选中「OpenAI 兼容」后，接口地址 / 模型名 / API Key 三格直接填（也可点「在线预设」一键带出地址与模型，通常只需补 key）；没有预设的兼容平台选「自定义」手填即可。优先级：设置 > 预设 > 配置文件。Key 只保存在宿主，GET /settings 恒回空串。

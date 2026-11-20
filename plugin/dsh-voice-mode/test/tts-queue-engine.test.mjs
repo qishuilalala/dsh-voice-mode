@@ -1358,20 +1358,72 @@ await t('全部用例结束后无残留计时器，进程可自然退出', async
 }
 
 
-// A2 审计缺口：cancel 后立即重入 / close 撞在途 / 500 条上限
-await t('cancel 后立即重入：旧句作废、新句正常、序号单调（A2 审计缺口）', async () => {
-  const eng = makeEngine('reenter')
+// A2 审计缺口 + 深度审计加固：真在途 cancel 后立即重入 / close 撞在途 / 500 条积压上限
+await t('在途 cancel 后立即重入：旧在途句作废不广播、新句正常、序号单调', async () => {
+  let releaseFirst
+  const firstGate = new Promise((r) => (releaseFirst = r))
+  const eng = {
+    mime: 'audio/wav',
+    calls: [],
+    interrupts: 0,
+    updateVoice() {},
+    interrupt() { this.interrupts++ },
+    async synthesize(text) {
+      this.calls.push(text)
+      if (text === '第一句') await firstGate
+      return Buffer.from(`RIFF-${text}`)
+    },
+    async close() {},
+  }
   const q = new TtsQueue({ engine: eng })
   const frames = []
   q.subscribe((f) => frames.push(f))
-  q.enqueue('s1', '第一句')
+  q.enqueue('s1', '基线句')
   await waitFrames(frames, 2)
+  const baselineId = frames.at(-1).sentenceId
+
+  // 让「第一句」挂在合成中，然后在途 cancel 并立刻重入「第二句」
+  q.enqueue('s1', '第一句')
+  await waitFor(() => eng.calls.includes('第一句'), '第一句进入在途合成')
   q.cancel('s1')
+  assert.equal(eng.interrupts, 1, '在途 cancel 必须转发 interrupt')
   q.enqueue('s1', '第二句')
+  releaseFirst()
   await waitFor(() => frames.filter((f) => f.final).length >= 2, '第二句广播')
+  await sleep(40)
   const finals = frames.filter((f) => f.final)
-  assert.ok(finals.length >= 2)
-  assert.ok(finals.at(-1).sentenceId > finals[0].sentenceId, 'cancel 后重入的新句序号必须更大')
+  assert.equal(finals.length, 2, '被取消的在途第一句不得广播')
+  assert.equal(finals[1].text, '第二句', '广播的新句应为第二句')
+  assert.ok(finals[1].sentenceId > baselineId, 'cancel 后重入的新句序号必须单调递增')
+  await q.close()
+})
+
+await t('500 条积压上限：超限丢弃最旧未播句，队列总待播量保持有界', async () => {
+  let releaseFirst
+  const firstGate = new Promise((r) => (releaseFirst = r))
+  const synthOrder = []
+  const eng = {
+    mime: 'audio/wav',
+    updateVoice() {},
+    async synthesize(text) {
+      synthOrder.push(text)
+      if (text === 'S0') await firstGate
+      return Buffer.from('RIFF')
+    },
+    async close() {},
+  }
+  const q = new TtsQueue({ engine: eng })
+  const frames = []
+  q.subscribe((f) => frames.push(f))
+  q.enqueue('s1', 'S0')
+  await waitFor(() => synthOrder.length === 1, 'S0 占住泵')
+  for (let i = 1; i <= 510; i++) q.enqueue('s1', `S${i}`)
+  releaseFirst()
+  await waitFor(() => frames.filter((f) => f.final).length >= 501, '全部保留句合成完毕', 8000)
+  // S0 在途 + 积压上限 500 条 = 最多 501 句（最旧的 S1..S10 被淘汰，保留最新 S11..S510）
+  assert.ok(synthOrder.length <= 501, `积压上限未生效：共合成 ${synthOrder.length} 句`)
+  assert.equal(synthOrder.includes('S1'), false, '超限时应淘汰最旧积压句 S1')
+  assert.equal(synthOrder.at(-1), 'S510', '最新入队句 S510 应保留')
   await q.close()
 })
 

@@ -562,7 +562,7 @@ export function createAsrRuntime(options: AsrRuntimeOptions): AsrRuntime {
       // fetch 侧 Promise.race(10s) 在 worker 异步回执下真正可触发（主线程不被 decode 占住）。
       return await worker.request('decode', buf)
     } catch (e) {
-      console.warn('[dsh-voice-mode] SenseVoice re-transcribe failed: ' + String(e))
+      console.warn('[dsh-voice-mode] SenseVoice re-transcribe failed: ' + redactSecrets(e))
       return null
     }
   }

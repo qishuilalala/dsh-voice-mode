@@ -18,6 +18,7 @@ const read = (p) => readFileSync(new URL(p, ROOT), 'utf8')
 const indexSrc = read('plugin/dsh-voice-mode/src/index.ts')
 const contextMd = read('CONTEXT.md')
 const pluginReadme = read('plugin/dsh-voice-mode/README.md')
+const pluginReadmeEn = read('plugin/dsh-voice-mode/README.en.md')
 
 /** 从 createVoiceSettingsSchema 的函数体里取字段名（形如 `  foo: z`）。 */
 function schemaKeys(src) {
@@ -68,15 +69,25 @@ t('schema 的每个用户可见键都写进了 CONTEXT.md 设置表', () => {
   assert.deepEqual(missing, [], 'CONTEXT.md 设置表缺这些键（用户按文档配不出来）：' + missing.join(', '))
 })
 
-t('schema 的每个用户可见键都写进了 plugin README 设置表', () => {
+t('schema 的每个用户可见键都写进了 plugin README.md 设置表', () => {
   const documented = readmeKeys(pluginReadme)
   const missing = [...inSchema].filter((k) => !documented.has(k) && !EXEMPT.has(k))
-  assert.deepEqual(missing, [], 'plugin README 设置表缺这些键：' + missing.join(', '))
+  assert.deepEqual(missing, [], 'plugin README.md 设置表缺这些键：' + missing.join(', '))
+})
+
+t('schema 的每个用户可见键都写进了 plugin README.en.md 设置表', () => {
+  const documented = readmeKeys(pluginReadmeEn)
+  const missing = [...inSchema].filter((k) => !documented.has(k) && !EXEMPT.has(k))
+  assert.deepEqual(missing, [], 'plugin README.en.md 设置表缺这些键：' + missing.join(', '))
+  const stale = [...documented].filter((k) => !inSchema.has(k))
+  assert.deepEqual(stale, [], 'plugin README.en.md 里有 schema 不存在的键：' + stale.join(', '))
 })
 
 t('文档没有指向已被删除的键（防文档承诺失效）', () => {
   const stale = [...contextKeys(contextMd)].filter((k) => !inSchema.has(k))
   assert.deepEqual(stale, [], 'CONTEXT.md 里有 schema 不存在的键（已删或拼错）：' + stale.join(', '))
+  const staleZh = [...readmeKeys(pluginReadme)].filter((k) => !inSchema.has(k))
+  assert.deepEqual(staleZh, [], 'plugin README.md 里有 schema 不存在的键：' + staleZh.join(', '))
 })
 
 console.log(`\n${passed} passed`)

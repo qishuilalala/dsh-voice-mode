@@ -9,8 +9,8 @@ import assert from 'node:assert/strict'
 import { redactBodySnippet, redactSecrets } from '../src/redact.ts'
 
 let passed = 0
-const t = (name, fn) => {
-  fn()
+const t = async (name, fn) => {
+  await fn()
   passed += 1
   console.log(`  ✓ ${name}`)
 }
@@ -101,30 +101,77 @@ t('JSON 里的短 key 字段也遮（R6 Minor-4）', () => {
   assert.equal(redactSecrets('{"model":"mimo-v2.5-tts"}'), '{"model":"mimo-v2.5-tts"}')
 })
 
-await t('宿主日志边界守卫：**全部** src 文件里打印异常原文的日志必须经 redactSecrets（A2 审计：此前只扫 2 个文件、只认 String(e)）', async () => {
+await t('宿主日志边界守卫（AST 全仓）：单行/多行/非模板参数打印异常原文均须经 redactSecrets', async () => {
   const { readFileSync, readdirSync } = await import('node:fs')
+  const { default: ts } = await import('typescript')
   const srcDir = new URL('../src/', import.meta.url)
   const sites = readdirSync(srcDir).filter((f) => /\.tsx?$/.test(f))
-  // 异常形状：e / err / error / ex / errMsg / e.message / String(e) / e.stack 等插值。
-  const errShape = /\$\{[^}]*(\b(e|err|error|ex|errMsg)\b|String\((e|err|error|ex)\))[^}]*\}/
-  // 安全形状：异常只用于布尔/数值判定（不打印原文）。
-  const safeExpr = /\$\{[^}]*(Boolean\(|Number\(|Array\.isArray|instanceof)/
-  const rawText = /\$\{String\([^)]*\)\}|\$\{[^}]*\.(message|stack)\}|\$\{errMsg\}|\$\{e\}|\$\{err\}/
+
+  const ERR_IDENT = /^(e|err|error|ex|errMsg)$/
+  const SAFE_PROP = new Set(['name', 'code', 'status', 'ok', 'length', 'type'])
+  const SAFE_CALL = new Set(['redactSecrets', 'redactBodySnippet', 'Boolean', 'Number'])
+
+  function exprHasRawError(node) {
+    if (!node) return false
+    if (ts.isCallExpression(node)) {
+      const callee = ts.isIdentifier(node.expression)
+        ? node.expression.text
+        : ts.isPropertyAccessExpression(node.expression)
+          ? node.expression.name.text
+          : ''
+      if (SAFE_CALL.has(callee)) return false
+      if (callee === 'isArray') return false
+    }
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword) return false
+    if (ts.isIdentifier(node) && ERR_IDENT.test(node.text)) return true
+    if (ts.isPropertyAccessExpression(node)) {
+      if (ts.isIdentifier(node.expression) && ERR_IDENT.test(node.expression.text)) {
+        return !SAFE_PROP.has(node.name.text)
+      }
+      if (node.name.text === 'message' || node.name.text === 'stack') return true
+    }
+    let hit = false
+    ts.forEachChild(node, (c) => {
+      if (!hit && exprHasRawError(c)) hit = true
+    })
+    return hit
+  }
+
+  function scanSource(code, filename) {
+    const sf = ts.createSourceFile(filename, code, ts.ScriptTarget.Latest, true, filename.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
+    const found = []
+    const walk = (n) => {
+      if (
+        ts.isCallExpression(n) &&
+        ts.isPropertyAccessExpression(n.expression) &&
+        ts.isIdentifier(n.expression.expression) &&
+        n.expression.expression.text === 'console' &&
+        /^(warn|error|log|info|debug)$/.test(n.expression.name.text)
+      ) {
+        if (n.arguments.some((arg) => exprHasRawError(arg))) {
+          const line = sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1
+          found.push(filename + ':' + line + ' ' + n.getText(sf).replace(/\s+/g, ' ').slice(0, 100))
+        }
+      }
+      ts.forEachChild(n, walk)
+    }
+    walk(sf)
+    return found
+  }
+
+  // 自测：多行 console.warn 与裸参 console.error('x', e) 必须被检出（此前逐行正则可被绕过）
+  assert.ok(scanSource("try {} catch (e) { console.warn(\n  'fail:',\n  e,\n) }", 'self.ts').length === 1, 'AST 守卫自测失败：漏过多行裸参 console.warn')
+  assert.ok(scanSource("try {} catch (err) { console.error(`bad ${err.message}`) }", 'self.ts').length === 1, 'AST 守卫自测失败：漏过模板异常')
+  assert.ok(scanSource("try {} catch (e) { console.warn('fail:', redactSecrets(String(e))) }", 'self.ts').length === 0, 'AST 守卫自测失败：误报已脱敏日志')
+
   const offenders = []
   for (const f of sites) {
-    const src = readFileSync(new URL(f, srcDir), 'utf8')
-    src.split('\n').forEach((line, i) => {
-      if (!/console\.(warn|error|log)/.test(line)) return
-      if (!errShape.test(line)) return
-      if (line.includes('redactSecrets')) return
-      if (safeExpr.test(line) && !rawText.test(line)) return
-      offenders.push(f + ':' + (i + 1) + ' ' + line.trim().slice(0, 100))
-    })
+    offenders.push(...scanSource(readFileSync(new URL(f, srcDir), 'utf8'), f))
   }
   assert.deepEqual(offenders, [], '这些日志直接打印异常原文且未脱敏（可能含第三方回显的 key 片段）：' + offenders.join(' | '))
 })
 
-t('Groq 的 gsk_ 前缀与 32 位 hex key 也必须遮（A2 审计实测绕过）', () => {
+await t('Groq 的 gsk_ 前缀与 32 位 hex key 也必须遮（A2 审计实测绕过）', () => {
   const gsk = 'gsk_abcdefghijklmnopqrstuvwxyz012345'
   assert.ok(!redactSecrets('401: ' + gsk).includes(gsk), 'gsk_ 前缀漏遮')
   const hex32 = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
