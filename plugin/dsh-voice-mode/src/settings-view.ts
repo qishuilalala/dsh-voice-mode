@@ -59,7 +59,38 @@ export function applyClearSecrets(
     if (!(SECRET_SETTING_KEYS as readonly string[]).includes(item)) {
       throw new Error(`unknown secret: ${item}`)
     }
-    out[item] = ''
+    out[item] = item === 'openaiApiKeys' ? {} : ''
+  }
+  return out
+}
+
+/**
+ * 合并按预设保存的 key 字典（路径 B 持久化）：
+ * - GET 永不回传已有 key 明文，客户端单次只提交 `{ [presetId]: newKey }`（或 `''` 表示删该条目）；
+ * - 若直接浅覆盖整张字典，保存预设 B 会把磁盘上已存的预设 A key 抹掉；
+ * - `clearAll=true`（`clearSecrets: ['openaiApiKeys']`）时整表清空。
+ */
+export function mergePresetApiKeys(
+  existing: unknown,
+  patchMap: unknown,
+  clearAll = false,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!clearAll) {
+    const base = readKeyMap(existing)
+    for (const id of Object.keys(base)) {
+      if (id === '__proto__' || id === 'constructor' || id === 'prototype') continue
+      const v = base[id]
+      if (typeof v === 'string' && v.trim().length > 0) out[id] = v.trim()
+    }
+  }
+  const inc = readKeyMap(patchMap)
+  for (const id of Object.keys(inc)) {
+    if (id === '__proto__' || id === 'constructor' || id === 'prototype') continue
+    const v = inc[id]
+    if (typeof v !== 'string') continue
+    if (v.trim().length > 0) out[id] = v.trim()
+    else delete out[id]
   }
   return out
 }
@@ -121,17 +152,13 @@ export function buildSettingsGetView<T extends object>(
   vset: T,
   config: KeyFileConfig,
 ): { value: T & Record<SecretSettingKey, string>; keys: SecretPresence; keysFromConfig: SecretPresence } {
-  const cfgKey = hasSecret(config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {}))
+  const cfgKey = hasSecret(config.openaiTts?.apiKey)
   const cfgMimo = hasSecret(config.mimoTts?.apiKey)
   const presetKeys = buildPresetKeyPresence((vset as Record<string, unknown>).openaiApiKeys, config.openaiTts?.apiKeys)
   return publicSettingsView(
     vset,
     {
-      openaiApiKey: hasSecret(
-        (vset as Record<string, unknown>).openaiApiKey,
-        config.openaiTts?.apiKey,
-        ...Object.values(config.openaiTts?.apiKeys ?? {}),
-      ),
+      openaiApiKey: hasSecret((vset as Record<string, unknown>).openaiApiKey, config.openaiTts?.apiKey),
       mimoApiKey: hasSecret((vset as Record<string, unknown>).mimoApiKey, config.mimoTts?.apiKey),
       openaiApiKeys: presetKeys.presence,
     },

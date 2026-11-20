@@ -72,6 +72,11 @@ t('Q2：按预设 key 变化触发重建；键序抖动不触发；非法 map �
   assert.equal(engineRebuildReason(withMap, { ...base, openaiApiKeys: { a: 'k1-changed', b: 'k2' } }, 'openai', 'int8'), 'openai-config', '某预设 key 变更必须重建')
   assert.equal(engineRebuildReason(base, { ...base, openaiApiKeys: 'not-a-map' }, 'openai', 'int8'), null, '非法 map 不得误触发')
   assert.equal(engineRebuildReason({ ...base, ttsEngine: 'edge' }, { ...base, ttsEngine: 'edge', openaiApiKeys: { a: 'k1' } }, 'edge', 'int8'), null, '非 openai 引擎下 map 变化不重建')
+  assert.equal(
+    engineRebuildReason({ ...base, openaiApiKeys: { a: '1&b=2' } }, { ...base, openaiApiKeys: { a: '1', b: '2' } }, 'openai', 'int8'),
+    'openai-config',
+    'key 含 & 或 = 分隔符时不得发生序列化碰撞漏重建',
+  )
 })
 
 console.log(`\n${passed} passed`)

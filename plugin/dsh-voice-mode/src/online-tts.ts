@@ -106,7 +106,16 @@ export function resolveOnlineTts(
   // 原型污染防护：仅已知预设 id 才读表（lookupPreset 已排除 __proto__/constructor/custom/未知 id），
   // 且只认自有字符串值。未知预设的 map 条目永不生效。
   const settingsPresetKey = preset !== null && presetId && Object.hasOwn(overrides.apiKeys ?? {}, presetId) && typeof overrides.apiKeys?.[presetId] === 'string' ? trim(overrides.apiKeys?.[presetId]) : ''
-  const presetKey = presetId ? trim(config.apiKeys?.[presetId]) : ''
+  const presetKey =
+    presetId &&
+    presetId !== '__proto__' &&
+    presetId !== 'constructor' &&
+    presetId !== 'prototype' &&
+    config.apiKeys &&
+    Object.hasOwn(config.apiKeys, presetId) &&
+    typeof config.apiKeys[presetId] === 'string'
+      ? trim(config.apiKeys[presetId])
+      : ''
   const configKey = trim(config.apiKey)
   const apiKey = settingsPresetKey || settingKey || presetKey || configKey
 

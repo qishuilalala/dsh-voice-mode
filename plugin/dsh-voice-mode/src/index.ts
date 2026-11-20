@@ -54,7 +54,7 @@ import { correctText } from './llm-correct.ts'
 import { OPENAI_PRESETS, OpenAiTtsEngine, presetRequiresKey } from './tts-openai.ts'
 import { resolveOnlineTts } from './online-tts.ts'
 import { engineRebuildReason } from './engine-rebuild.ts'
-import { applyClearSecrets, buildSettingsGetView } from './settings-view.ts'
+import { applyClearSecrets, buildSettingsGetView, mergePresetApiKeys } from './settings-view.ts'
 import { asTtsEngineKind, isLocalEngine, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
 import { MimoTtsEngine } from './tts-mimo.ts'
 import { normalizePromptLang, previewSample, spokenPrompt, type PromptLang } from './prompts.ts'
@@ -881,9 +881,9 @@ export function apply(ctx: Context, config: Config): void {
     dropTurnTables(sessionId)
   }
 
-  /** 焦点离开即停止旧朗读；复用 cancel 的 epoch 和全局单调句号。 */
+  /** 焦点离开即停止旧朗读；仍在语音模式中的活跃会话不受焦点离开影响。 */
   const stopFocusReading = (sessionId: string | null): void => {
-    if (sessionId === null) return
+    if (sessionId === null || sessionId === activeVoiceSession) return
     queue.cancel(sessionId)
     // 失效旧 tap：即使切回同一会话，旧流的尾句也不得重新入队。
     turnGen.set(sessionId, (turnGen.get(sessionId) ?? 0) + 1)
@@ -1177,7 +1177,7 @@ export function apply(ctx: Context, config: Config): void {
             ? undefined
             : () => {
                 const engine = makeEngine(fb === 'vits' ? 'vits' : 'kokoro')
-                if (m.fallbackVoice) engine.updateVoice(m.fallbackVoice)
+                if (m.fallbackVoice) engine.updateVoice(m.fallbackVoice, vset.rate)
                 return engine
               },
       })
@@ -1185,9 +1185,8 @@ export function apply(ctx: Context, config: Config): void {
     if (kind === 'openai') {
       const o = config.openaiTts
       const fallbackKind = o.fallback
-      // E1：baseUrl/model/voice 三方合成口径统一在 tts-openai.ts 的 resolveOpenAiSpeech
-      //（T6 审查：这段此前内联在此、零测试覆盖）。key 恒走 Config，不进预设。
-      // 2026-11-19：设置卡片可直接覆盖 URL/模型/key（设置 > 预设 > 配置文件）。
+      // 构造期只计算「预设 > 配置文件」基线音色（voice 传 ''）；设置层自定义音色由外层
+      // queue.updateVoice(vset.voice, vset.rate) 统一叠加，确保清空自定义音色时能回落预设/默认而不残留旧值。
       const resolved = resolveOnlineTts(
         {
           presetId: vset.openaiPreset ?? '',
@@ -1195,7 +1194,7 @@ export function apply(ctx: Context, config: Config): void {
           model: vset.openaiModel ?? '',
           apiKey: vset.openaiApiKey ?? '',
           apiKeys: (vset.openaiApiKeys ?? {}) as Record<string, string>,
-          voice: vset.voice,
+          voice: '',
         },
         { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys },
       )
@@ -1350,9 +1349,12 @@ export function apply(ctx: Context, config: Config): void {
    * 路径 B：合并补丁 → schema 校验 → 原子落盘 → 热生效。非法值抛错（调用方回 400），落盘失败抛错（回 500）。
    * 路径 A 宿主不使用本函数（settingsScopeRef 非空，设置归 dsh 官方存储）。
    */
-  const persistSettings = (patch: Record<string, unknown>): Promise<VoiceSettingsValue> => {
+  const persistSettings = (patch: Record<string, unknown>, clearAllPresetKeys = false): Promise<VoiceSettingsValue> => {
     const run = async (): Promise<VoiceSettingsValue> => {
-      const candidate = { ...overrides, ...patch }
+      const candidate: Record<string, unknown> = { ...overrides, ...patch }
+      if ('openaiApiKeys' in patch || clearAllPresetKeys) {
+        candidate.openaiApiKeys = mergePresetApiKeys(overrides.openaiApiKeys, patch.openaiApiKeys, clearAllPresetKeys)
+      }
       const next = resolveSettings(candidate)
       writeOverrides(settingsFile, candidate)
       overrides = candidate
@@ -1647,7 +1649,7 @@ export function apply(ctx: Context, config: Config): void {
             respondJson(res, 400, { code: 'bad_request', error: 'voice too long' })
             return
           }
-          if (!voice) {
+          if (!voice && currentEngine() !== 'openai') {
             respondJson(res, 400, { code: 'bad_request', error: 'voice required' })
             return
           }
@@ -2279,9 +2281,10 @@ export function apply(ctx: Context, config: Config): void {
             return
           }
           // clearSecrets：显式清除已保存的密钥（GET 不回传密钥，空串无法表达「清除」）。
+          const rawClear = (patch as { clearSecrets?: unknown }).clearSecrets
           let cleared: Record<string, unknown>
           try {
-            cleared = applyClearSecrets(patch as Record<string, unknown>, (patch as { clearSecrets?: unknown }).clearSecrets)
+            cleared = applyClearSecrets(patch as Record<string, unknown>, rawClear)
           } catch (e) {
             respondJson(res, 400, { code: 'bad_request', error: String((e as Error).message).slice(0, 120) })
             return
@@ -2293,8 +2296,9 @@ export function apply(ctx: Context, config: Config): void {
             return
           }
           const rest = { ...(pickKnownKeys(cleared, SETTING_KEYS) as Record<string, unknown>) }
+          const clearAllMap = Array.isArray(rawClear) && rawClear.includes('openaiApiKeys')
           try {
-            const next = await persistSettings(rest as Partial<VoiceSettingsValue>)
+            const next = await persistSettings(rest as Partial<VoiceSettingsValue>, clearAllMap)
             // Q2：回显同样抹掉 key 表（GET 同口径；值恒 {}）。
             const out = { ...next, openaiApiKey: '', mimoApiKey: '', openaiApiKeys: {} as Record<string, string> }
             respondJson(res, 200, { ok: true, managedBy: 'plugin', value: out })
@@ -2527,8 +2531,8 @@ export function apply(ctx: Context, config: Config): void {
               const prevFocus = focusedSessionId
               focusedSessionId = null
               focusedTabId = null
-              // R15（Important-4）：焦点随标签页一起离开 → 该会话不再是朗读对象，回收其表项
-              // （与 /focus 清空同一条判据）。
+              // R15（Important-4）：焦点随标签页一起离开 → 停掉旧焦点朗读并回收表项（与 /focus 清空同口径）。
+              stopFocusReading(prevFocus)
               reclaimFocusState(prevFocus)
               broadcast('focus', { sessionId: null, tabId: null })
             }

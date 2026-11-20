@@ -3,7 +3,17 @@
  * 2026-11-19：在线 TTS 支持在 UI 里填 key 后，这三条规则成为安全边界（ADR-0013）的一部分。
  */
 import assert from 'node:assert/strict'
-import { SECRET_SETTING_KEYS, applyClearSecrets, buildPresetKeyPresence, hasSecret, publicSettingsView } from '../src/settings-view.ts'
+import {
+  SECRET_SETTING_KEYS,
+  applyClearSecrets,
+  buildPresetKeyPresence,
+  buildSettingsGetView,
+  hasSecret,
+  mergePresetApiKeys,
+  publicSettingsView,
+} from '../src/settings-view.ts'
+import { translateLocal } from '../src/strings.ts'
+import { t as tr } from '../src/i18n.ts'
 
 let passed = 0
 const t = (name, fn) => {
@@ -95,6 +105,41 @@ t('清掉设置层后 keysFromConfig 能解释「为何仍显示已配置」（A
   assert.equal(view.keysFromConfig.openaiApiKey, true, '必须标出来源是配置文件')
   assert.equal(view.keys.mimoApiKey, false)
   assert.equal(view.keysFromConfig.mimoApiKey, false)
+})
+
+t('applyClearSecrets：openaiApiKeys 清除产 {}（而非空串触发 zod 400）', () => {
+  const out = applyClearSecrets({ openaiApiKeys: { a: 'sk-a' }, rate: 1.2 }, ['openaiApiKeys'])
+  assert.deepEqual(out.openaiApiKeys, {})
+  assert.equal(out.rate, 1.2)
+})
+
+t('mergePresetApiKeys：增量合并保留它预设、空串单删、clearAll 整表清空、防原型污染', () => {
+  const step1 = mergePresetApiKeys({ a: 'sk-a' }, { b: 'sk-b' })
+  assert.deepEqual(step1, { a: 'sk-a', b: 'sk-b' }, '保存预设 b 不得抹掉已存预设 a')
+  const step2 = mergePresetApiKeys(step1, { a: '' })
+  assert.deepEqual(step2, { b: 'sk-b' }, '空串应仅删指定预设条目')
+  assert.deepEqual(mergePresetApiKeys(step1, {}, true), {}, 'clearAll 应清空整表')
+  const evil = JSON.parse('{"__proto__":"sk-evil","c":" sk-c "}')
+  const step3 = mergePresetApiKeys(evil, evil)
+  assert.deepEqual(step3, { c: 'sk-c' })
+  assert.equal(Object.hasOwn(step3, '__proto__'), false)
+})
+
+t('buildSettingsGetView：配置文件逐预设 apiKeys 不污染全局 openaiApiKey 布尔', () => {
+  const view = buildSettingsGetView(
+    { openaiApiKey: '', mimoApiKey: '', openaiApiKeys: {} },
+    { openaiTts: { apiKey: '', apiKeys: { 'siliconflow-cosyvoice2': 'sk-sf' } } },
+  )
+  assert.equal(view.keys.openaiApiKey, false, '无全局 key 时 keys.openaiApiKey 必须为 false')
+  assert.equal(view.keysFromConfig.openaiApiKey, false, '无全局 key 时 keysFromConfig.openaiApiKey 必须为 false')
+  assert.equal(view.keys.openaiApiKeys['siliconflow-cosyvoice2'], true)
+  assert.equal(view.keysFromConfig.openaiApiKeys['siliconflow-cosyvoice2'], true)
+})
+
+t('translateLocal / i18n：原型属性键不泄漏 Object.prototype 函数体', () => {
+  assert.equal(translateLocal('toString', true), 'toString')
+  assert.equal(translateLocal('constructor', false), 'constructor')
+  assert.equal(tr('startFail', Object.create({ err: 'inherited' })), '语音模式启动失败：{err}' === tr('startFail') ? tr('startFail') : tr('startFail'))
 })
 
 console.log(`\n${passed} passed`)

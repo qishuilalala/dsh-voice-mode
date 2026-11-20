@@ -942,6 +942,95 @@ try {
     }
   })
 
+  // 10. 重审回归锁：PresetKeyField 空失焦不删 key、未知预设不显逐预设框、自建预设免 key 不报黄、首写失败不联动清音色、OpenAI 自定义不显晓晓占位
+  await test('AuditFix: PresetKeyField 空失焦保护 + 未知预设隐藏 + 自建免 key + 级联失败守卫 + OpenAI 服务端默认音色', async () => {
+    let previewBodies = []
+    const env = installBrowserEnv({
+      fetchImpl: async (url, init) => {
+        if (String(url).includes('/preview')) {
+          previewBodies.push(JSON.parse(init.body))
+          return new Response(new Uint8Array([0xff, 0xfb, 0x90, 0x00]), { status: 200 })
+        }
+        if (String(url).includes('/presets')) {
+          return new Response(
+            JSON.stringify({
+              presets: {
+                'siliconflow-cosyvoice2': { baseUrl: 'https://api.sf.test/v1', model: 'm1', voice: 'm1:alex', voices: ['m1:alex'] },
+                'selfhosted-kokoro': { baseUrl: 'http://127.0.0.1:8880/v1', model: 'kokoro', voice: 'zf_xiaobei', voices: ['zf_xiaobei'] },
+              },
+            }),
+            { status: 200 },
+          )
+        }
+        if (String(url).includes('/settings') && init?.method !== 'POST') {
+          return new Response(
+            JSON.stringify({ keys: { openaiApiKey: false, mimoApiKey: false, openaiApiKeys: { 'siliconflow-cosyvoice2': true } } }),
+            { status: 200 },
+          )
+        }
+        return new Response(JSON.stringify({ tts: { engine: 'openai', ready: true } }), { status: 200 })
+      },
+    })
+    try {
+      const { VoiceSettingsCard } = await loadFreshForm()
+      let rejectPresetWrite = false
+      const scope = makeScope(
+        { ttsEngine: 'openai', openaiPreset: 'siliconflow-cosyvoice2', voice: 'm1:alex', openaiApiKeys: {} },
+        (field, val, commit) => {
+          if (rejectPresetWrite && field === 'openaiPreset') return false
+          commit(field, val)
+          return true
+        },
+      )
+      const root = reactMod.createRoot(() => reactMod.createElement(VoiceSettingsCard, { scope, defaultOpen: true }))
+      await flush()
+      await flush()
+
+      // (a) PresetKeyField 空草稿失焦不得触发 scope.set('openaiApiKeys', ...) 抹掉已存密钥
+      const pwdInput = findAll(root.tree, (n) => n.type === 'input' && n.props.type === 'password')[0]
+      assert.ok(pwdInput, '已知预设应渲染逐预设密码框')
+      const beforeBlurCalls = scope.calls.length
+      pwdInput.props.onBlur()
+      await flush()
+      assert.equal(scope.calls.length, beforeBlurCalls, '空草稿失焦绝不得提交抹空已存密钥')
+
+      // (b) 切预设首写返回 false 时，不得继续联动清空 voice
+      rejectPresetWrite = true
+      const presetSel = findAll(root.tree, (n) => n.type === 'select' && n.props['aria-label'] === STRINGS.zh.openaiPresetLabel)[0]
+      presetSel.props.onChange({ target: { value: 'selfhosted-kokoro' } })
+      await flush()
+      assert.equal(scope.calls.some(([k]) => k === 'voice'), false, 'openaiPreset 写入失败时不得提前清空 voice')
+
+      // (c) 切到自建免 key 预设：未配 key 不得显示警告文案 presetKeyMissing
+      rejectPresetWrite = false
+      presetSel.props.onChange({ target: { value: 'selfhosted-kokoro' } })
+      await flush()
+      await flush()
+      assert.equal(textOf(root.tree).includes(STRINGS.zh.presetKeyMissing), false, '自建免 key 预设不得显示未配 key 警告')
+
+      // (d) 未知预设 id：不渲染无效的 PresetKeyField（online-tts 不读未知预设条目）
+      await scope.set('openaiPreset', 'unknown-ghost-preset')
+      await flush()
+      assert.equal(textOf(root.tree).includes(STRINGS.zh.openaiApiKeysLabel), false, '未知预设 id 不得渲染逐预设 Key 行')
+
+      // (e) 自定义端点 + 空 voice：占位为服务端默认而非晓晓，且可点「测试朗读」发空 voice
+      await scope.set('openaiPreset', 'custom')
+      await scope.set('voice', '')
+      await flush()
+      assert.equal(JSON.stringify(root.tree).includes('zh-CN-XiaoxiaoNeural'), false, 'OpenAI 自定义空音色不得回退显示 Edge 晓晓')
+      assert.ok(textOf(root.tree).includes(STRINGS.zh.voiceServerDefaultOption), 'OpenAI 自定义空音色应显示服务端默认音色')
+      const selftestBtn = findAll(root.tree, (n) => n.type === 'button' && textOf(n).includes(STRINGS.zh.selftestRun))[0]
+      selftestBtn.props.onClick()
+      await flush()
+      assert.equal(previewBodies.length, 1, 'OpenAI 空音色应允许发起 /preview 测试朗读')
+      assert.equal(previewBodies[0].voice, '')
+
+      root.unmount()
+    } finally {
+      env.restore()
+    }
+  })
+
   console.log(`\nsettings-deep-audit：${passed} 项通过`)
 } finally {
   rmSync(tmp, { recursive: true, force: true })

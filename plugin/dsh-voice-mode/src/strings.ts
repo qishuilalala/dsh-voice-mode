@@ -77,10 +77,13 @@ export const zh = {
   preview: '试听',
   // E1 在线预设。
   openaiPresetLabel: '在线预设',
-  descOpenaiPreset: '选预设即带出地址与模型（一般只需填 key）；列表里没有就选「自定义」手填 URL/模型。选「跟随配置文件」= 三者都沿用 profile 的 openaiTts 配置。改完点「验证此预设」就地试合成',
+  descOpenaiPreset: '选预设即带出地址与模型（一般只需填 key）；列表里没有就选「自定义」手填 URL/模型。选「跟随配置文件」= 三者都沿用 profile 的 openaiTts 配置。改完点「测试朗读」就地试合成',
   presetCustom: '跟随配置文件',
   presetCustomCustom: '自定义（下方手填）',
   presetCustomHint: '选它后用下面的「接口地址 / 模型名 / API Key」三个输入框直接配任意 OpenAI 兼容服务',
+  openaiAdvancedShow: '自定义接口地址 / 全局备用密钥',
+  openaiAdvancedHide: '收起高级覆盖项',
+  voiceServerDefaultOption: '服务端默认音色',
   presetCosy: '硅基流动 · CosyVoice2',
   presetFish: '硅基流动 · Fish Speech 1.5',
   presetCosyNote: '约 $7.15/百万 UTF-8 字节，150ms 级；文本发往 api.siliconflow.cn',
@@ -179,10 +182,9 @@ export const zh = {
   segDisplay: '显示与交互',
   segAdvanced: '高级',
   segListLabel: '设置分段',
-  segOpenAiServer: '在线服务',
   segTuning: '调音与排障',
   segReplacements: '纠错词表',
-  errApiKeyMissingHint: '朗读服务需要 API Key：在下方「API Key」填入后点「验证此预设」，或切换为本地引擎',
+  errApiKeyMissingHint: '朗读服务需要 API Key：请在上方填写密钥后再点「测试朗读」，或切换为本地引擎',
   ttsKeyMissingNotice: '在线朗读缺少 API Key：识别与字幕可用，朗读会失败；请到「设置 → 语音模式」填 Key，或切换为本地引擎（Edge/本地 VITS/Kokoro）',
   ttsProbeAuthFail: '朗读被服务端拒绝（多为 API Key 缺失或无效）：请到「设置 → 语音模式」填写或更新 Key，或切换为本地引擎',
   previewAuth: '服务端拒绝鉴权：API Key 缺失或无效',
@@ -477,10 +479,13 @@ export const en: Record<keyof typeof zh, string> = {
   preview: 'Preview',
   // E1 online presets.
   openaiPresetLabel: 'Online preset',
-  descOpenaiPreset: 'Pick a preset to auto-fill base URL and model (usually just enter the API key); choose Custom to enter your own URL/model, or Follow config file to use profile openaiTts values. Click Verify preset to test inline',
+  descOpenaiPreset: 'Pick a preset to auto-fill base URL and model (usually just enter the API key); choose Custom to enter your own URL/model, or Follow config file to use profile openaiTts values. Click Test read-aloud to test inline',
   presetCustom: 'Follow the config file',
   presetCustomCustom: 'Custom (fill below)',
   presetCustomHint: 'With this selected, configure any OpenAI-compatible service in the Endpoint / Model / API key fields below',
+  openaiAdvancedShow: 'Custom endpoint / fallback API key',
+  openaiAdvancedHide: 'Hide advanced overrides',
+  voiceServerDefaultOption: 'Server default voice',
   presetCosy: 'SiliconFlow · CosyVoice2',
   presetFish: 'SiliconFlow · Fish Speech 1.5',
   presetCosyNote: 'About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn',
@@ -578,10 +583,9 @@ export const en: Record<keyof typeof zh, string> = {
   segDisplay: 'Display & interaction',
   segAdvanced: 'Advanced',
   segListLabel: 'Settings sections',
-  segOpenAiServer: 'Online service',
   segTuning: 'Tuning & troubleshooting',
   segReplacements: 'Corrections',
-  errApiKeyMissingHint: 'Read-aloud requires an API key: fill it under API Key below, then click Verify preset; or switch to a local engine',
+  errApiKeyMissingHint: 'Read-aloud requires an API key: fill the key above and click Test read-aloud, or switch to a local engine',
   ttsKeyMissingNotice: 'Online read-aloud has no API key: recognition and captions work, but speech will fail. Fill the key under Settings → Voice mode, or switch to a local engine (Edge / local VITS / Kokoro)',
   ttsProbeAuthFail: 'The service rejected read-aloud (usually a missing or invalid API key): fill or update the key under Settings → Voice mode, or switch to a local engine',
   previewAuth: 'The server rejected authentication: API key missing or invalid',
@@ -811,5 +815,9 @@ export const htmlLangIsZh = (): boolean =>
 /** 文案键类型（供组件侧声明含 t() 键的结构化配置）。 */
 export type TKey = keyof typeof zh
 
-/** 本地回退翻译：按语言取词，缺失回落英文（与官方 locale 服务的回退链一致：当前语言 → en）。 */
-export const translateLocal = (key: TKey, isZh: boolean): string => (isZh ? zh[key] : en[key]) ?? en[key] ?? key
+/** 本地回退翻译：按语言取词，缺失回落英文；显式 hasOwn 防止 toString/constructor 等原型键泄漏函数体。 */
+export const translateLocal = (key: TKey, isZh: boolean): string => {
+  const dict = (isZh ? zh : en) as Record<string, string>
+  const enDict = en as Record<string, string>
+  return (Object.hasOwn(dict, key) ? dict[key] : undefined) ?? (Object.hasOwn(enDict, key) ? enDict[key] : undefined) ?? key
+}

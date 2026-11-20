@@ -76,35 +76,46 @@ const setHeader: React.CSSProperties = {
   cursor: 'pointer',
   background: 'transparent',
   border: 0,
-  borderRadius: 12,
+  borderRadius: 0,
   alignItems: 'center',
   gap: 12,
-  padding: '14px 16px',
+  padding: '14px 18px',
   display: 'flex',
+  transition: 'background .15s ease',
 }
-const setHeadText: React.CSSProperties = { flexDirection: 'column', flex: 1, gap: 4, minWidth: 0, display: 'flex' }
-const setName: React.CSSProperties = { color: t.label, fontSize: 15, fontWeight: 600, lineHeight: 1.4 }
-const setDesc: React.CSSProperties = { color: t.term, fontSize: 13, lineHeight: 1.5 }
-const setChevron: React.CSSProperties = { color: t.term, flex: 'none', transition: 'transform .16s', display: 'inline-flex' }
-const setBody: React.CSSProperties = { borderTop: `1px solid ${t.border}`, margin: '0 16px', paddingBottom: 12, display: 'flex', flexDirection: 'column', minWidth: 0 }
+const setHeadText: React.CSSProperties = { flexDirection: 'column', flex: 1, gap: 3, minWidth: 0, display: 'flex' }
+const setName: React.CSSProperties = { color: t.label, fontSize: 15, fontWeight: 600, lineHeight: 1.35, display: 'inline-flex', alignItems: 'center', gap: 8 }
+const setDesc: React.CSSProperties = { color: t.term, fontSize: 12.5, lineHeight: 1.45 }
+const setChevron: React.CSSProperties = { color: t.term, flex: 'none', transition: 'transform .18s ease', display: 'inline-flex', padding: 4, borderRadius: 6 }
+const setBody: React.CSSProperties = { borderTop: `1px solid ${t.border}`, padding: '4px 18px 16px', display: 'flex', flexDirection: 'column', minWidth: 0 }
 const setRow: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'minmax(120px, 190px) minmax(0, 1fr)',
-  columnGap: 16,
-  rowGap: 4,
-  alignItems: 'start',
-  padding: '10px 0',
-  borderTop: `1px solid ${t.border}`,
+  gridTemplateColumns: 'minmax(132px, 196px) minmax(0, 1fr)',
+  columnGap: 18,
+  rowGap: 6,
+  alignItems: 'center',
+  padding: '11px 0',
+  borderTop: '1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 65%, transparent)',
   minWidth: 0,
 }
-const setLabel: React.CSSProperties = { fontSize: 13, lineHeight: '20px' }
-const setHint: React.CSSProperties = { color: t.term, fontSize: 12, lineHeight: '18px' }
+const setLabel: React.CSSProperties = { fontSize: 13, fontWeight: 500, color: t.label, lineHeight: '20px', display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 5 }
+const setHint: React.CSSProperties = {
+  color: 'var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))',
+  fontSize: 12,
+  lineHeight: '18px',
+  padding: '7px 10px',
+  borderRadius: 8,
+  background: 'var(--dsw-alias-bg-layer-2)',
+  borderLeft: '2px solid var(--dsw-alias-brand-primary)',
+  marginTop: 2,
+}
 const setSeg: React.CSSProperties = {
   border: `1px solid ${t.border}`,
-  borderRadius: 8,
+  background: 'var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.07))',
+  borderRadius: 9,
   gap: 2,
-  padding: 2,
-  display: 'flex',
+  padding: 3,
+  display: 'inline-flex',
   flexWrap: 'wrap',
   maxWidth: '100%',
   minWidth: 0,
@@ -114,50 +125,144 @@ const setSegBtn = (on: boolean): React.CSSProperties => ({
   font: 'inherit',
   color: on ? t.label : 'var(--dsw-alias-label-secondary)',
   cursor: 'pointer',
-  background: on ? 'var(--dsw-alias-bg-layer-2)' : 'transparent',
-  border: 'none',
+  background: on ? 'var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-layer-2))' : 'transparent',
+  boxShadow: on ? '0 1px 2px rgba(0, 0, 0, 0.12)' : 'none',
+  border: on ? '1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, transparent)' : '1px solid transparent',
   borderRadius: 6,
-  padding: '4px 12px',
+  padding: '5px 12px',
   fontSize: 12,
   lineHeight: '18px',
   fontWeight: on ? 600 : 400,
+  transition: 'background .14s ease, color .14s ease, box-shadow .14s ease',
 })
 const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
   width: '100%',
   maxWidth: 420,
-  padding: '7px 10px',
+  minHeight: 34,
+  padding: '6px 11px',
   borderRadius: 8,
   border: `1px solid ${t.border}`,
   background: 'var(--dsw-alias-bg-layer-2)',
   color: t.label,
   fontSize: 13,
+  lineHeight: '20px',
   fontFamily: 'inherit',
   outline: 'none',
+  transition: 'border-color .14s ease, box-shadow .14s ease',
+}
+const selectChevronBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`
+const selectBaseStyle: React.CSSProperties = {
+  ...inputStyle,
+  appearance: 'none',
+  cursor: 'pointer',
+  backgroundImage: selectChevronBg,
+  backgroundPosition: 'right 11px center',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: '12px 12px',
+  paddingRight: 32,
 }
 /**
- * 容器查询：设置弹窗内容区实测约 564px，两列栅格会把控件压到 324px 且说明换行过多。
- * 窄容器下改为「标题 / 控件 / 说明」三段堆叠；宽容器（独立设置页）保持左右两列。
- * 注意：CSS 模板里不写中文（strings-coverage 红线：用户可见文案必须走词典）。
+ * 容器查询与组件样式：窄容器自动改为上下堆叠，粗指针输入字号 16px 防 iOS 自动缩放，
+ * 复选框升级为现代胶囊开关（保留原生 input[type="checkbox"] 语义与无障碍）。
+ * 注意：CSS 模板里不写中文（strings-coverage 红线）。
  */
 const focusVisibleCss = `
 [data-dshvm-settings="card"] { container-type: inline-size; }
-@container (max-width: 620px) {
-  [data-dshvm-row] { grid-template-columns: minmax(0, 1fr) !important; row-gap: 6px !important; }
+[data-dshvm-settings="card"] [data-dshvm-row]:first-of-type { border-top: none; }
+[data-dshvm-settings="card"] .dshvm-tab-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  margin: 8px 0 6px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08));
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, transparent);
 }
-[data-dshvm-settings="card"] input:focus-visible,
+@container (max-width: 580px) {
+  [data-dshvm-row] { grid-template-columns: minmax(0, 1fr) !important; align-items: start !important; row-gap: 6px !important; }
+}
+@container (max-width: 440px) {
+  [data-dshvm-settings="card"] .dshvm-tab-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+[data-dshvm-settings="card"] input:not([type="checkbox"]):hover,
+[data-dshvm-settings="card"] select:hover {
+  border-color: var(--dsw-alias-border-l3, var(--dsw-alias-label-tertiary));
+}
+[data-dshvm-settings="card"] input:not([type="checkbox"]):focus-visible,
 [data-dshvm-settings="card"] select:focus-visible,
 [data-dshvm-settings="card"] button:focus-visible {
   outline: 2px solid var(--dsw-alias-brand-primary);
   outline-offset: 1px;
+}
+[data-dshvm-settings="card"] .dshvm-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 38px;
+  height: 22px;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  align-self: flex-start;
+  justify-self: start;
+}
+[data-dshvm-settings="card"] .dshvm-switch-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+[data-dshvm-settings="card"] .dshvm-switch-track {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-label-tertiary) 32%, var(--dsw-alias-bg-layer-1, transparent));
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 90%, transparent);
+  box-sizing: border-box;
+  transition: background .16s ease, border-color .16s ease;
+}
+[data-dshvm-settings="card"] .dshvm-switch[data-checked="1"] .dshvm-switch-track {
+  background: var(--dsw-alias-brand-primary);
+  border-color: var(--dsw-alias-brand-primary);
+}
+[data-dshvm-settings="card"] .dshvm-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
+  transition: transform .16s ease;
+}
+[data-dshvm-settings="card"] .dshvm-switch[data-checked="1"] .dshvm-switch-thumb {
+  transform: translateX(16px);
+}
+[data-dshvm-settings="card"] .dshvm-switch:has(.dshvm-switch-input:focus-visible) .dshvm-switch-track {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
+}
+@media (pointer: coarse) {
+  [data-dshvm-settings="card"] input:not([type="checkbox"]),
+  [data-dshvm-settings="card"] select {
+    font-size: 16px !important;
+    min-height: 38px !important;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   [data-dshvm-settings="card"], [data-dshvm-settings="card"] * { transition: none !important; }
 }`
 
 /**
- * 单个复选框 + 可读名称（A4 审计 Important：Row 标题是裸 span，12+ 开关读屏只报「复选框」）。
- * 用 aria-label 而不是 <label>:卡片是栅格布局，标题不在控件旁边，隐式关联会让点击标题意外切换。
+ * 现代胶囊开关（底层仍为带 aria-label 的原生 input[type="checkbox"]，兼顾读屏、键盘 Space 与自动化点击）。
  */
 function CheckRow({
   field,
@@ -169,15 +274,18 @@ function CheckRow({
   score: { set: (field: string, value: unknown) => unknown }
 }): React.ReactElement {
   return (
-    <input
-      type="checkbox"
-      aria-label={tr(`${field}Label` as TKey)}
-      checked={checked}
-      onChange={(e) => void score.set(field, e.target.checked)}
-      // 2026-11-20 视觉重构：宿主对 input 的通用样式会把复选框拉成整行输入框（实测），
-      // 这里显式收成 16px 原生复选框，且靠左不再撑满。
-      style={{ width: 16, height: 16, flex: '0 0 auto', alignSelf: 'flex-start', justifySelf: 'start', margin: 0, accentColor: 'var(--dsw-alias-state-success-primary, #3fb950)' }}
-    />
+    <label className="dshvm-switch" data-checked={checked ? '1' : '0'}>
+      <input
+        className="dshvm-switch-input"
+        type="checkbox"
+        aria-label={tr(`${field}Label` as TKey)}
+        checked={checked}
+        onChange={(e) => void score.set(field, e.target.checked)}
+      />
+      <span className="dshvm-switch-track" aria-hidden="true">
+        <span className="dshvm-switch-thumb" />
+      </span>
+    </label>
   )
 }
 
@@ -503,15 +611,16 @@ function SecretField({
   )
 }
 
-/** 按预设存的 key 输入框（2026-11-20 Q2：Key 跟预设走）。
- * 父组件传入当前整表 map；GET 永不回传明文，只按 saved 布尔显示。
- * 非空提交 = 覆盖该预设条目；清空提交 = 删除该条目（回落全局 key/配置文件）。 */
+/** 按预设存的 key 输入框（Q2：Key 跟预设走）。
+ * GET 永不回传明文，留空失焦不改动已存密钥；非空提交仅更新当前预设条目；
+ * 点「清除」显式置空当前预设条目，不波及其他预设。 */
 function PresetKeyField({
   score,
   presetId,
   map,
   saved,
   fromConfig,
+  requiresKey,
   onChanged,
 }: {
   score: ScopeController
@@ -519,19 +628,25 @@ function PresetKeyField({
   map: Record<string, string>
   saved: boolean
   fromConfig: boolean
+  requiresKey: boolean
   onChanged: () => void
 }): React.ReactElement {
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<'saved' | 'cleared' | null>(null)
   const [failed, setFailed] = useState(false)
+  // 切换预设时复位本地草稿与瞬时提示，避免上一预设的「已保存/失败」残留到新预设。
+  useEffect(() => {
+    setDraft('')
+    setNote(null)
+    setFailed(false)
+  }, [presetId])
   const commit = (): void => {
-    if (busy) return
     const value = draft.trim()
+    // 修复：密码框初始为空，点击失焦严禁发空表抹掉宿主已存的预设密钥！
+    if (!value || busy) return
     setBusy(true)
-    const next: Record<string, string> = { ...map }
-    if (value) next[presetId] = value
-    else delete next[presetId]
+    const next: Record<string, string> = { ...map, [presetId]: value }
     void Promise.resolve(score.set('openaiApiKeys', next))
       .then((ok) => {
         if (ok === false) {
@@ -540,38 +655,103 @@ function PresetKeyField({
         }
         setFailed(false)
         setDraft('')
-        setNote(value ? 'saved' : 'cleared')
+        setNote('saved')
         onChanged()
       })
       .catch(() => setFailed(true))
       .finally(() => setBusy(false))
   }
+  const clear = (): void => {
+    if (busy) return
+    setBusy(true)
+    void (async () => {
+      try {
+        const res = await fetch(location.origin + BASE_PATH + '/settings', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ openaiApiKeys: { [presetId]: '' } }),
+          signal: AbortSignal.timeout(8000),
+        })
+        if (res.ok) {
+          setFailed(false)
+          setDraft('')
+          setNote('cleared')
+          onChanged()
+          return
+        }
+        if (res.status === 409) {
+          const next: Record<string, string> = { ...map }
+          delete next[presetId]
+          const ok = await Promise.resolve(score.set('openaiApiKeys', next))
+          if (ok === false) {
+            setFailed(true)
+            return
+          }
+          setFailed(false)
+          setDraft('')
+          setNote('cleared')
+          onChanged()
+          return
+        }
+        setFailed(true)
+      } catch {
+        setFailed(true)
+      } finally {
+        setBusy(false)
+      }
+    })()
+  }
+  const canClearPanelKey = saved && !(fromConfig && !saved)
   return (
-    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+    <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
       <input
-        style={inputStyle}
+        style={{ ...inputStyle, maxWidth: 320 }}
         type="password"
         autoComplete="new-password"
         value={draft}
         placeholder={saved ? tr('secretKeep') : tr('secretPlaceholderEmpty')}
         aria-label={tr('secretHintBrowser')}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          setDraft(e.target.value)
+          if (failed) setFailed(false)
+        }}
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === 'Enter') commit()
         }}
       />
+      {canClearPanelKey ? (
+        <button
+          type="button"
+          onClick={clear}
+          aria-busy={busy || undefined}
+          style={{
+            font: 'inherit',
+            cursor: busy ? 'default' : 'pointer',
+            opacity: busy ? 0.6 : 1,
+            color: t.label,
+            background: 'var(--dsw-alias-bg-layer-2)',
+            border: `1px solid ${t.border}`,
+            borderRadius: 7,
+            padding: '5px 10px',
+            fontSize: 12,
+            lineHeight: '18px',
+          }}
+        >
+          {busy ? tr('secretClearing') : tr('secretClear')}
+        </button>
+      ) : null}
       <span
         role="status"
         aria-live="polite"
         style={{
-          fontSize: 11,
-          // 缺 key 是警告（warn），不是成功绿——绿只留给「已配」。
+          fontSize: 11.5,
+          fontWeight: saved || (requiresKey && !fromConfig) ? 500 : 400,
           color: failed
             ? 'var(--dsw-alias-state-error-primary)'
             : note === 'saved' || (note === null && saved)
               ? 'var(--dsw-alias-state-success-primary)'
-              : note === 'cleared' || fromConfig
+              : note === 'cleared' || fromConfig || !requiresKey
                 ? t.term
                 : 'var(--dsw-alias-state-warn-primary, #d29922)',
         }}
@@ -586,7 +766,9 @@ function PresetKeyField({
                 ? tr('presetKeySaved')
                 : fromConfig
                   ? tr('presetKeyFromConfig')
-                  : tr('presetKeyMissing')}
+                  : requiresKey
+                    ? tr('presetKeyMissing')
+                    : tr('secretHintBrowser')}
       </span>
     </span>
   )
@@ -678,10 +860,16 @@ function ShortcutField({
     }
   }, [recording, score, field])
   return (
-    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <input
-          style={{ ...inputStyle, width: 150 }}
+          style={{
+            ...inputStyle,
+            width: 176,
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontSize: 12.5,
+            borderColor: recording ? 'var(--dsw-alias-brand-primary)' : t.border,
+          }}
           aria-label={tr(`${field}Label` as TKey)}
           value={draft}
           placeholder={tr('shortcutPlaceholder')}
@@ -701,27 +889,30 @@ function ShortcutField({
             setErr('')
           }}
           style={{
-            height: 28,
-            padding: '0 10px',
-            borderRadius: 6,
-            border: '1px solid var(--dsw-alias-border-l3)',
-            background: 'transparent',
-            color: 'var(--dsw-alias-label-secondary)',
+            height: 34,
+            padding: '0 12px',
+            borderRadius: 8,
+            border: `1px solid ${recording ? 'var(--dsw-alias-brand-primary)' : t.border}`,
+            background: recording ? 'color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent)' : 'var(--dsw-alias-bg-layer-2)',
+            color: recording ? 'var(--dsw-alias-brand-primary)' : t.label,
             fontSize: 12,
+            fontWeight: recording ? 600 : 400,
             cursor: 'pointer',
           }}
         >
           {recording ? tr('shortcutCancel') : tr('shortcutRecord')}
         </button>
       </span>
-      <span
-        role="status"
-        aria-live="polite"
-        style={{ fontSize: 11, lineHeight: '14px', color: err ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-label-tertiary)' }}
-      >
-        {/* I19：录制态报错优先展示 err（此前 recording 恒盖住 err 致缺修饰键/不支持键提示不可见）。 */}
-        {err || (recording ? tr('shortcutRecording') : '')}
-      </span>
+      {err || recording ? (
+        <span
+          role="status"
+          aria-live="polite"
+          style={{ fontSize: 11.5, lineHeight: '16px', color: err ? 'var(--dsw-alias-state-error-primary)' : 'var(--dsw-alias-brand-primary)' }}
+        >
+          {/* I19：录制态报错优先展示 err（此前 recording 恒盖住 err 致缺修饰键/不支持键提示不可见）。 */}
+          {err || (recording ? tr('shortcutRecording') : '')}
+        </span>
+      ) : null}
     </span>
   )
 }
@@ -839,6 +1030,7 @@ function VoiceSelect({
   value,
   options,
   placeholder,
+  emptyDefaultLabel,
   footer,
   showCustom = true,
 }: {
@@ -847,17 +1039,21 @@ function VoiceSelect({
   value: unknown
   options: Array<{ v: string; label: string }>
   placeholder?: string
+  /** 无固定默认音色名时（如 OpenAI 自定义服务端默认）显示的空值选项文案。 */
+  emptyDefaultLabel?: string
   /** 附加渲染（如试听按钮）：入参为当前生效值。 */
   footer?: (current: string) => React.ReactNode
   /** 是否允许「自定义」兜底（Edge 需要手输 ShortName；本地引擎全量列出时关掉）。 */
   showCustom?: boolean
 }): React.ReactElement {
   const cur = String(value ?? '')
-  // 2026-11-20 视觉重构：空值语义是「用引擎默认音色」，此前被误显示为「自定义…」并弹出空输入框。
-  // 下拉补一个「默认（xxx）」选项（value=''），只有用户主动选「自定义…」才进入手输态。
+  // 空值语义是「用引擎/预设/服务端默认音色」；提供显式默认项避免误弹空手输框。
+  const defaultOptLabel = placeholder
+    ? tr('voiceDefaultOption').replace('{name}', placeholder)
+    : emptyDefaultLabel ?? ''
   const baseOpts =
-    placeholder && showCustom && !options.some((o) => o.v === '')
-      ? [{ v: '', label: tr('voiceDefaultOption').replace('{name}', placeholder) }, ...options]
+    defaultOptLabel && showCustom && !options.some((o) => o.v === '')
+      ? [{ v: '', label: defaultOptLabel }, ...options]
       : options
   // 非空但不在列表（如 MiMo/自定义端点的音色名）：把当前值显式列为一项，
   // 避免下拉显示「自定义…」而输入框里其实有值（看起来像没保存）。
@@ -950,7 +1146,7 @@ function VoiceSelect({
         <input
           style={inputStyle}
           value={custom}
-          placeholder={placeholder}
+          placeholder={placeholder || emptyDefaultLabel}
           aria-label={currentValueLabel || tr(`${field}Label` as TKey)}
           onChange={(e) => setCustom(e.target.value)}
           onBlur={() => commitCustom()}
@@ -967,10 +1163,8 @@ function VoiceSelect({
 /**
  * 试听按钮：请求 host /preview 用「当前音色 + 当前语速」一次性合成并播放。
  * Audio 必须在用户手势内创建（自动播放策略）；fetch 完成后仍处短暂激活期内。
- * 批 G 任务 6：ttsEngine 本地（vits/kokoro）时，若模型未就绪（modelStatus.tts.local?.ready=false），
- * 按钮 disabled + hint「请先下载本地模型」——避免点试听后等 90s 模型下载再合成。
  */
-function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): React.ReactElement {
+function VoicePreviewButton({ voice, rate, allowEmptyVoice = false }: { voice: string; rate: number; allowEmptyVoice?: boolean }): React.ReactElement {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -1001,7 +1195,7 @@ function VoicePreviewButton({ voice, rate }: { voice: string; rate: number }): R
       return
     }
     const v = voice.trim()
-    if (!v) {
+    if (!v && !allowEmptyVoice) {
       setNote(tr('previewNameFirst'))
       return
     }
@@ -1175,7 +1369,7 @@ function SelfTestSection({
   const run = (): void => {
     if (busy) return
     const v = voice.trim()
-    if (!v) {
+    if (!v && engine !== 'openai') {
       setNote(tr('previewNameFirst'))
       return
     }
@@ -1547,43 +1741,69 @@ function ReplacementsSection({
     lineHeight: '18px',
   }
   return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start', padding: '2px 0 10px' }}>
-      <span style={{ fontSize: 12, color: t.label, fontWeight: 600 }}>{tr('replTitle')}</span>
-      <span style={{ fontSize: 11, color: t.term }}>{tr('descAsrReplacements')}</span>
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'stretch', padding: '4px 0 10px', minWidth: 0 }}>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 13, color: t.label, fontWeight: 600 }}>{tr('replTitle')}</span>
+        <span style={{ fontSize: 12, color: t.term, lineHeight: '18px' }}>{tr('descAsrReplacements')}</span>
+      </span>
       {unreadable ? (
         <span role="alert" style={{ fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' }}>
           {tr('replUnreadable')}
         </span>
       ) : list.length === 0 ? (
-        <span style={{ fontSize: 12, color: t.term }}>{tr('replEmpty')}</span>
+        <span style={{ fontSize: 12, color: t.term, padding: '2px 0' }}>{tr('replEmpty')}</span>
       ) : (
-        list.map((r, i) => (
-          <span key={i} style={{ fontSize: 12, color: t.label, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-            <span>
-              {r.from.join(' / ')} {'→'} {r.to}
-            </span>
-            <span style={{ color: t.term }}>
-              {tr('replHits')} {hits[i] ?? 0}
-            </span>
-            <button
-              type="button"
-              aria-label={`${tr('replDelete')}: ${r.from.join(' / ')} → ${r.to}`}
-              disabled={busy}
-              onClick={() => void commit(list.filter((_, j) => j !== i))}
-              style={{ ...btnStyle, padding: '2px 8px' }}
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {list.map((r, i) => (
+            <span
+              key={i}
+              style={{
+                fontSize: 12,
+                color: t.label,
+                display: 'flex',
+                gap: 8,
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                padding: '6px 10px',
+                borderRadius: 8,
+                border: `1px solid ${t.border}`,
+                background: 'var(--dsw-alias-bg-layer-2)',
+              }}
             >
-              {tr('replDelete')}
-            </button>
-          </span>
-        ))
+              <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-word' }}>
+                {r.from.join(' / ')} {'→'} <strong>{r.to}</strong>
+              </span>
+              <span
+                style={{
+                  fontSize: 11,
+                  color: t.term,
+                  padding: '1px 6px',
+                  borderRadius: 999,
+                  background: 'var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.1))',
+                }}
+              >
+                {tr('replHits')} {hits[i] ?? 0}
+              </span>
+              <button
+                type="button"
+                aria-label={`${tr('replDelete')}: ${r.from.join(' / ')} → ${r.to}`}
+                disabled={busy}
+                onClick={() => void commit(list.filter((_, j) => j !== i))}
+                style={{ ...btnStyle, padding: '2px 8px', alignSelf: 'center' }}
+              >
+                {tr('replDelete')}
+              </button>
+            </span>
+          ))}
+        </span>
       )}
-      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <input
           value={fromText}
           onChange={(e) => setFromText(e.target.value)}
           placeholder={tr('replFromPh')}
           aria-label={tr('replFromPh')}
-          style={{ ...inputStyle, width: 'auto', fontSize: 12, padding: '4px 8px', maxWidth: 220 }}
+          style={{ ...inputStyle, width: 'auto', flex: '1 1 160px', fontSize: 12.5, padding: '5px 10px', maxWidth: 240 }}
         />
         <input
           value={toText}
@@ -1593,13 +1813,13 @@ function ReplacementsSection({
           }}
           placeholder={tr('replToPh')}
           aria-label={tr('replToPh')}
-          style={{ ...inputStyle, width: 'auto', fontSize: 12, padding: '4px 8px', maxWidth: 140 }}
+          style={{ ...inputStyle, width: 'auto', flex: '1 1 110px', fontSize: 12.5, padding: '5px 10px', maxWidth: 160 }}
         />
-        <button type="button" onClick={add} disabled={busy} style={btnStyle}>
+        <button type="button" onClick={add} disabled={busy} style={{ ...btnStyle, minHeight: 34, padding: '5px 12px' }}>
           {tr('replAdd')}
         </button>
       </span>
-      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="button" onClick={exportFile} style={btnStyle}>
           {tr('replExport')}
         </button>
@@ -1732,14 +1952,21 @@ function OpenAiPresetSection({
     label: id === CUSTOM ? tr('presetCustomCustom') : id ? (PRESET_LABEL[id]?.() ?? id) : tr('presetCustom'),
   }))
   const data = presets?.[cur]
+  let hostLabel = ''
+  if (data?.baseUrl) {
+    try {
+      hostLabel = new URL(data.baseUrl).host
+    } catch {
+      hostLabel = data.baseUrl
+    }
+  }
   return (
-    <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-      {/* 预设条目多（含自定义/跟随配置），窄容器里用下拉而不是一排按钮。 */}
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch', width: '100%', maxWidth: 420 }}>
       <select
         value={cur}
         aria-label={tr('openaiPresetLabel')}
         onChange={(e) => onSwitch(e.target.value)}
-        style={{ ...inputStyle, maxWidth: 360 }}
+        style={selectBaseStyle}
       >
         {options.map((o) => (
           <option key={o.v} value={o.v}>
@@ -1748,25 +1975,47 @@ function OpenAiPresetSection({
         ))}
       </select>
       {data ? (
-        <span style={{ fontSize: 11, color: t.term, fontFamily: 'monospace', wordBreak: 'break-all' }}>
-          {data.baseUrl} · {data.model} · {data.voice}
+        <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <span
+            style={{
+              fontSize: 11,
+              color: 'var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              padding: '2px 7px',
+              borderRadius: 5,
+              background: 'var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08))',
+            }}
+          >
+            {hostLabel}
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              color: t.term,
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              padding: '2px 7px',
+              borderRadius: 5,
+              background: 'var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08))',
+            }}
+          >
+            {data.model}
+          </span>
         </span>
       ) : null}
       {!presets ? (
-        <span style={{ fontSize: 11, color: t.term }}>
+        <span style={{ fontSize: 11.5, color: t.term }}>
           {tr('presetDataMissing')}{' '}
           <button
             type="button"
             onClick={onReloadPresets}
-            style={{ font: 'inherit', cursor: 'pointer', background: 'none', border: 'none', padding: 0, color: t.label, textDecoration: 'underline' }}
+            style={{ font: 'inherit', cursor: 'pointer', background: 'none', border: 'none', padding: 0, color: 'var(--dsw-alias-brand-primary)', textDecoration: 'underline' }}
           >
             {tr('presetReload')}
           </button>
         </span>
       ) : null}
-      {PRESET_NOTE[cur] ? <span style={{ fontSize: 11, color: t.term }}>{PRESET_NOTE[cur]()}</span> : null}
-      <span style={{ fontSize: 11, color: t.term }}>{tr('presetKeyNote')}</span>
-      {cur === CUSTOM ? <span style={{ fontSize: 11, color: t.term }}>{tr('presetCustomHint')}</span> : null}
+      {PRESET_NOTE[cur] ? <span style={{ fontSize: 11.5, color: t.term, lineHeight: '17px' }}>{PRESET_NOTE[cur]()}</span> : null}
+      {cur === CUSTOM ? <span style={{ fontSize: 11.5, color: t.term, lineHeight: '17px' }}>{tr('presetCustomHint')}</span> : null}
     </span>
   )
 }
@@ -1797,15 +2046,13 @@ function useHostPresets(): { presets: Record<string, HostPreset> | null; reload:
 
 function Row({ name, desc, children }: { name: string; desc: string; children: React.ReactNode }): React.ReactElement {
   const label = tr(`${name}Label` as TKey)
-  // 2026-11-20 重构：说明默认收起——46 个控件各带一条长说明会把面板撑成 4.6k px；
-  // 只保留「叫什么 + 控件 + 当前状态」，解释按需用问号展开（一次只看一条，不挤压控件）。
   const [showDesc, setShowDesc] = useState(false)
   const descId = `dshvm-desc-${name}`
   const hasDesc = desc.length > 0
   return (
     <div style={setRow} data-dshvm-row={name}>
       <span style={setLabel}>
-        {label}
+        <span>{label}</span>
         {hasDesc ? (
           <button
             type="button"
@@ -1815,23 +2062,29 @@ function Row({ name, desc, children }: { name: string; desc: string; children: R
             onClick={() => setShowDesc((v) => !v)}
             style={{
               appearance: 'none',
-              border: 0,
-              background: 'transparent',
+              border: `1px solid ${showDesc ? 'var(--dsw-alias-brand-primary)' : 'color-mix(in srgb, var(--dsw-alias-border-l2) 85%, transparent)'}`,
+              background: showDesc ? 'color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent)' : 'transparent',
               cursor: 'pointer',
               font: 'inherit',
-              fontSize: 11,
-              lineHeight: '16px',
-              padding: '1px 5px',
-              marginLeft: 4,
-              borderRadius: 4,
-              color: showDesc ? 'var(--dsw-alias-label-secondary)' : 'var(--dsw-alias-label-tertiary)',
+              fontSize: 10.5,
+              fontWeight: 600,
+              lineHeight: 1,
+              width: 17,
+              height: 17,
+              padding: 0,
+              borderRadius: 999,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: showDesc ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-label-tertiary)',
+              flexShrink: 0,
             }}
           >
             ?
           </button>
         ) : null}
       </span>
-      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>{children}</div>
+      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>{children}</div>
       {showDesc && hasDesc ? (
         <span id={descId} style={{ ...setHint, gridColumn: '1 / -1', minWidth: 0 }}>{desc}</span>
       ) : null}
@@ -1886,13 +2139,25 @@ function EffectivePending({ effective, value, ready }: { effective: Record<strin
     })
     .join(tr('effectiveItemSep'))
   return (
-    <div data-dshvm-settings="effective-pending" style={{ fontSize: 12, color: 'var(--dsw-alias-label-tertiary)', padding: '8px 2px 4px', lineHeight: 1.6 }}>
+    <div
+      data-dshvm-settings="effective-pending"
+      style={{
+        fontSize: 12,
+        color: 'var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))',
+        padding: '8px 12px',
+        marginTop: 8,
+        borderRadius: 8,
+        background: 'color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, var(--dsw-alias-bg-layer-2))',
+        border: '1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 24%, transparent)',
+        lineHeight: 1.55,
+      }}
+    >
       {tr('effectivePending').replace('{count}', String(pending.length)).replace('{items}', items)}
     </div>
   )
 }
 
-/** 设置面板顶部分段（2026-11-20 重构）：4 段替代 7 个折叠节，先扫一遍就知道去哪。 */
+/** 设置面板顶部分段：4 段胶囊分段栏，键盘左右键可切换。 */
 type SettingsSegment = 'input' | 'read' | 'display' | 'advanced'
 
 function SegmentTabs({ active, onChange }: { active: SettingsSegment; onChange: (k: SettingsSegment) => void }): React.ReactElement {
@@ -1911,8 +2176,8 @@ function SegmentTabs({ active, onChange }: { active: SettingsSegment; onChange: 
     <div
       role="tablist"
       aria-label={tr('segListLabel')}
+      className="dshvm-tab-bar"
       onKeyDown={(e) => {
-        // WAI-ARIA tabs：左右方向键在分段间移动（键盘用户不必逐个 Tab）。
         if (e.key === 'ArrowRight') {
           e.preventDefault()
           move(1)
@@ -1921,7 +2186,6 @@ function SegmentTabs({ active, onChange }: { active: SettingsSegment; onChange: 
           move(-1)
         }
       }}
-      style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '10px 0 12px', borderBottom: `1px solid ${t.border}` }}
     >
       {tabs.map((tb) => {
         const on = tb.k === active
@@ -1936,14 +2200,20 @@ function SegmentTabs({ active, onChange }: { active: SettingsSegment; onChange: 
             style={{
               appearance: 'none',
               font: 'inherit',
-              fontSize: 12,
+              fontSize: 12.5,
               cursor: 'pointer',
-              padding: '6px 12px',
-              borderRadius: 999,
-              border: `1px solid ${on ? 'transparent' : t.border}`,
-              background: on ? 'var(--dsw-alias-bg-layer-2)' : 'transparent',
+              padding: '6px 10px',
+              borderRadius: 7,
+              border: on ? '1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 85%, transparent)' : '1px solid transparent',
+              background: on ? 'var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-layer-2))' : 'transparent',
+              boxShadow: on ? '0 1px 3px rgba(0, 0, 0, 0.12)' : 'none',
               color: on ? 'var(--dsw-alias-label-primary)' : 'var(--dsw-alias-label-secondary)',
-              fontWeight: on ? 600 : 400,
+              fontWeight: on ? 600 : 500,
+              textAlign: 'center',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              transition: 'background .14s ease, color .14s ease, box-shadow .14s ease',
             }}
           >
             {tb.label}
@@ -1954,18 +2224,18 @@ function SegmentTabs({ active, onChange }: { active: SettingsSegment; onChange: 
   )
 }
 
-/** 段内分组小标题：只做视觉分层，不再提供折叠（折叠堆正是上一版难用的根因）。 */
+/** 段内分组小标题：视觉锚点与留白分层。 */
 function GroupTitle({ children, first }: { children: React.ReactNode; first?: boolean }): React.ReactElement {
   return (
     <div
       style={{
-        fontSize: 11,
+        fontSize: 11.5,
         fontWeight: 600,
-        letterSpacing: '.04em',
+        letterSpacing: '.03em',
         color: 'var(--dsw-alias-label-tertiary)',
-        padding: first ? '4px 0 2px' : '14px 0 2px',
+        padding: first ? '8px 0 2px' : '16px 0 4px',
         borderTop: first ? 'none' : `1px solid ${t.border}`,
-        marginTop: first ? 6 : 10,
+        marginTop: first ? 2 : 8,
       }}
     >
       {children}
@@ -1984,7 +2254,7 @@ function SegGroup({
   field: string
   value: unknown
   options: Array<{ v: number | string; label: string }>
-  /** 选中后回调（用于联动其它字段，如切换引擎时重置音色）。 */
+  /** 选中且写入成功后回调（用于联动其它字段，如切换引擎时重置音色；首写失败时不误改下游字段）。 */
   onSelect?: (v: number | string) => void
 }): React.ReactElement {
   return (
@@ -1996,8 +2266,9 @@ function SegGroup({
           style={setSegBtn(value === o.v)}
           aria-pressed={value === o.v}
           onClick={() => {
-            void score.set(field, o.v)
-            onSelect?.(o.v)
+            void Promise.resolve(score.set(field, o.v)).then((ok) => {
+              if (ok !== false) onSelect?.(o.v)
+            })
           }}
         >
           {o.label}
@@ -2281,8 +2552,16 @@ function ModelStatusView(): React.ReactElement {
   )
   const anyDownloading = !!st?.progress
   return (
-    <div style={{ marginTop: 4 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
+    <div
+      style={{
+        marginTop: 6,
+        padding: '10px 14px',
+        borderRadius: 10,
+        border: `1px solid ${t.border}`,
+        background: 'var(--dsw-alias-bg-layer-2)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 6 }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: t.label }}>{tr('modelsTitle')}</span>
         {anyDownloading && st?.progress && (
           <span style={{ fontSize: 12, color: t.term }}>{st.progress.file} {st.progress.percent}%</span>
@@ -2311,7 +2590,7 @@ function ModelStatusView(): React.ReactElement {
           {actionError}
         </div>
       ) : null}
-      <div style={{ fontSize: 12, color: t.term, lineHeight: '18px', padding: '4px 0 8px' }}>{tr('modelsHint')}</div>
+      <div style={{ fontSize: 11.5, color: t.term, lineHeight: '17px', paddingTop: 6 }}>{tr('modelsHint')}</div>
     </div>
   )
 }
@@ -2382,6 +2661,7 @@ export function VoiceSettingsCard({
   const hostPresets = hostPresetState.presets
   /** 2026-11-20 重构：顶部分段状态（默认停在「朗读」——打开设置最常见目的是让它出声）。 */
   const [tab, setTab] = useState<SettingsSegment>('read')
+  const [openaiAdvOpen, setOpenaiAdvOpen] = useState(false)
   // 折叠态摘要用：一次轮询拿到引擎就绪/错误（与 EngineStatusInline 同源）。
   const headStatus = useModelsStatus()
   /** 生效音色：设置值优先，空则回落预设音色（与 host 侧 makeEngine 的口径一致）。 */
@@ -2433,19 +2713,32 @@ export function VoiceSettingsCard({
           : engine === 'mimo'
             ? [...MIMO_VOICES].map((v) => ({ v, label: v }))
             : vitsOptions()
-  /** 切预设的原子联动（对抗 #2）：旧音色不在新预设表里时同步清空，否则旧音色带到新端点必 400。
-   *  预设表缺失（/presets 失败/旧宿主无 voices）时不碰 voice——退化为改造前行为。 */
+  /** 切预设的原子联动：首写成功后再决定是否清空不在新预设表里的旧音色（首写失败绝不误清音色）。 */
   const switchPreset = (next: string): void => {
     const list = hostPresets?.[next]?.voices
     const cur = String(value.voice ?? '').trim()
-    void Promise.resolve(scope.set('openaiPreset', next)).then(() => {
+    void Promise.resolve(scope.set('openaiPreset', next)).then((ok) => {
+      if (ok === false) return
       if (Array.isArray(list) && cur !== '' && !list.includes(cur)) void scope.set('voice', '')
     })
   }
+  const switchToLocalKokoro = (): void => {
+    void Promise.resolve(scope.set('ttsEngine', 'kokoro')).then((ok) => {
+      if (ok !== false) void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
+    })
+  }
+  const curPresetId = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
+  const isKnownOpenaiPreset =
+    hostPresets !== null &&
+    curPresetId !== '' &&
+    curPresetId !== 'custom' &&
+    Object.hasOwn(hostPresets, curPresetId)
+  const hasOpenaiOverrides = Boolean(String(value.openaiBaseUrl ?? '').trim() || String(value.openaiModel ?? '').trim())
+  const showOpenaiAdv = !isKnownOpenaiPreset || openaiAdvOpen || hasOpenaiOverrides
 
   if (unavailable) {
     return (
-      <div data-dshvm-settings="card" style={{ color: t.term, fontSize: 12, padding: '14px 16px', ...cardStyle }}>
+      <div data-dshvm-settings="card" style={{ color: t.term, fontSize: 12, padding: '14px 18px', ...cardStyle }}>
         <span style={{ color: 'var(--dsw-alias-state-error-primary)' }}>{tr('configUnavailable')}</span>{tr('configUnavailableNote')}
       </div>
     )
@@ -2455,10 +2748,27 @@ export function VoiceSettingsCard({
     <div data-dshvm-settings="card" style={cardStyle}>
       <style>{focusVisibleCss}</style>
       <button type="button" aria-expanded={!collapsed} aria-controls={cardBodyId} onClick={() => setCollapsed((c) => !c)} style={{ ...setHeader, background: collapsed ? 'transparent' : t.bgOpen }}>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            background: 'color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent)',
+            color: 'var(--dsw-alias-brand-primary)',
+          }}
+        >
+          <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+            <rect x="5.5" y="1.8" width="5" height="8.2" rx="2.5" />
+            <path d="M3.2 7.5a4.8 4.8 0 0 0 9.6 0M8 12.3v2" />
+          </svg>
+        </span>
         <span style={setHeadText}>
           <span style={setName}>{tr('stateVoiceMode')}</span>
-          {/* 折叠态只显示「当前是什么」三要素：引擎 · 音色 · 状态。旧实现把 24 个字段名用
-              「 / 」拼成一行，既读不懂也挤压布局。 */}
           <span
             style={{ ...setDesc, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
             title={tr('settingsCardDesc')}
@@ -2607,36 +2917,6 @@ export function VoiceSettingsCard({
                     }}
                   />
                 </Row>
-                {/* 状态与「测试朗读」合成一个面板：一个主行动，失败直说原因/下一步（旧版三套测试按钮并存）。 */}
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 8,
-                    margin: '4px 0 12px',
-                    padding: '10px 12px',
-                    border: `1px solid ${t.border}`,
-                    borderRadius: 8,
-                    background: 'var(--dsw-alias-bg-layer-2)',
-                    minWidth: 0,
-                  }}
-                >
-                  <EngineStatusInline
-                    onSwitchLocal={() => {
-                      void scope.set('ttsEngine', 'kokoro')
-                      void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
-                    }}
-                  />
-                  <SelfTestSection
-                    voice={effectiveVoice()}
-                    rate={Number(value.rate ?? 1.1)}
-                    engine={engine}
-                    onSwitchLocal={() => {
-                      void scope.set('ttsEngine', 'kokoro')
-                      void scope.set('voice', ENGINE_DEFAULT_VOICE['kokoro'] ?? 'zf_xiaobei')
-                    }}
-                  />
-                </div>
                 {engine === 'kokoro' && (
                   <Row name="kokoroModel" desc={tr('descKokoroModel')}>
                     <SegGroup
@@ -2649,6 +2929,99 @@ export function VoiceSettingsCard({
                       ]}
                     />
                   </Row>
+                )}
+                {engine === 'mimo' && (
+                  <Row name="mimoApiKey" desc={tr('descMimoApiKey')}>
+                    <SecretField
+                      score={scope}
+                      field="mimoApiKey"
+                      saved={secretKeys.mimoApiKey}
+                      configOnly={secretKeys.fromConfig.mimoApiKey}
+                      onChanged={refreshSecretKeys}
+                    />
+                  </Row>
+                )}
+                {engine === 'openai' && (
+                  <>
+                    <Row name="openaiPreset" desc={`${tr('descOpenaiPreset')} ${tr('presetKeyNote')}`}>
+                      <OpenAiPresetSection
+                        score={scope}
+                        value={value.openaiPreset}
+                        presets={hostPresets}
+                        onReloadPresets={hostPresetState.reload}
+                        onSwitch={switchPreset}
+                      />
+                    </Row>
+                    {isKnownOpenaiPreset ? (
+                      <Row name="openaiApiKeys" desc={tr('descOpenaiApiKeys')}>
+                        <PresetKeyField
+                          score={scope}
+                          presetId={curPresetId}
+                          map={(value.openaiApiKeys !== null && typeof value.openaiApiKeys === 'object' && !Array.isArray(value.openaiApiKeys) ? value.openaiApiKeys : {}) as Record<string, string>}
+                          saved={Boolean(secretKeys.openaiApiKeys[curPresetId])}
+                          fromConfig={Boolean(secretKeys.fromConfig.openaiApiKeys[curPresetId])}
+                          requiresKey={!curPresetId.startsWith('selfhosted-')}
+                          onChanged={refreshSecretKeys}
+                        />
+                      </Row>
+                    ) : null}
+                    {isKnownOpenaiPreset ? (
+                      <div style={{ padding: '4px 0 6px' }}>
+                        <button
+                          type="button"
+                          aria-expanded={showOpenaiAdv}
+                          onClick={() => setOpenaiAdvOpen((v) => !v)}
+                          style={{
+                            appearance: 'none',
+                            border: 'none',
+                            background: 'transparent',
+                            padding: '2px 0',
+                            font: 'inherit',
+                            fontSize: 12,
+                            color: 'var(--dsw-alias-label-secondary)',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                          }}
+                        >
+                          <span aria-hidden="true" style={{ fontSize: 10, display: 'inline-block', transform: showOpenaiAdv ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .14s ease' }}>
+                            ▶
+                          </span>
+                          {tr(showOpenaiAdv ? 'openaiAdvancedHide' : 'openaiAdvancedShow')}
+                        </button>
+                      </div>
+                    ) : null}
+                    {showOpenaiAdv ? (
+                      <>
+                        <Row name="openaiBaseUrl" desc={tr('descOpenaiBaseUrl')}>
+                          <TextField
+                            score={scope}
+                            field="openaiBaseUrl"
+                            value={value.openaiBaseUrl}
+                            placeholder={(curPresetId && hostPresets?.[curPresetId]?.baseUrl) || 'https://api.openai.com/v1'}
+                          />
+                        </Row>
+                        <Row name="openaiModel" desc={tr('descOpenaiModel')}>
+                          <TextField
+                            score={scope}
+                            field="openaiModel"
+                            value={value.openaiModel}
+                            placeholder={(curPresetId && hostPresets?.[curPresetId]?.model) || 'gpt-4o-mini-tts'}
+                          />
+                        </Row>
+                        <Row name="openaiApiKey" desc={tr('descOpenaiApiKey')}>
+                          <SecretField
+                            score={scope}
+                            field="openaiApiKey"
+                            saved={secretKeys.openaiApiKey}
+                            configOnly={secretKeys.fromConfig.openaiApiKey}
+                            onChanged={refreshSecretKeys}
+                          />
+                        </Row>
+                      </>
+                    ) : null}
+                  </>
                 )}
                 <Row
                   name="voice"
@@ -2670,85 +3043,47 @@ export function VoiceSettingsCard({
                     field="voice"
                     value={value.voice ?? ''}
                     options={voiceOptions}
-                    // openai 无通用默认音色：用当前预设示例音色当占位提示，空 voice 即回落它。
-                    placeholder={ENGINE_DEFAULT_VOICE[engine] || (engine === 'openai' ? effectiveVoice() : '') || 'zh-CN-XiaoxiaoNeural'}
+                    placeholder={
+                      engine === 'openai'
+                        ? effectiveVoice()
+                        : ENGINE_DEFAULT_VOICE[engine] || 'zh-CN-XiaoxiaoNeural'
+                    }
+                    emptyDefaultLabel={engine === 'openai' ? tr('voiceServerDefaultOption') : undefined}
                     showCustom={isCloudEngine(engine)}
                     footer={(v) => (
-                      <VoicePreviewButton voice={v || effectiveVoice() || ENGINE_DEFAULT_VOICE[engine] || ''} rate={Number(value.rate ?? 1.1)} />
+                      <VoicePreviewButton
+                        voice={v || effectiveVoice() || ENGINE_DEFAULT_VOICE[engine] || ''}
+                        rate={Number(value.rate ?? 1.1)}
+                        allowEmptyVoice={engine === 'openai'}
+                      />
                     )}
                   />
                 </Row>
                 <Row name="rate" desc={tr('descRate')}>
                   <NumberField score={scope} field="rate" value={value.rate ?? 1.1} min={0.5} max={2} step={0.1} />
                 </Row>
-                {engine === 'openai' && (
-                  <>
-                    <GroupTitle>{tr('segOpenAiServer')}</GroupTitle>
-                    <Row name="openaiPreset" desc={tr('descOpenaiPreset')}>
-                      <OpenAiPresetSection
-                        score={scope}
-                        value={value.openaiPreset}
-                        presets={hostPresets}
-                        onReloadPresets={hostPresetState.reload}
-                        onSwitch={switchPreset}
-                      />
-                    </Row>
-                    <Row name="openaiBaseUrl" desc={tr('descOpenaiBaseUrl')}>
-                      <TextField
-                        score={scope}
-                        field="openaiBaseUrl"
-                        value={value.openaiBaseUrl}
-                        placeholder={(() => {
-                          const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
-                          return (pid && hostPresets?.[pid]?.baseUrl) || ''
-                        })()}
-                      />
-                    </Row>
-                    <Row name="openaiModel" desc={tr('descOpenaiModel')}>
-                      <TextField
-                        score={scope}
-                        field="openaiModel"
-                        value={value.openaiModel}
-                        placeholder={(() => {
-                          const pid = typeof value.openaiPreset === 'string' ? value.openaiPreset : ''
-                          return (pid && hostPresets?.[pid]?.model) || ''
-                        })()}
-                      />
-                    </Row>
-                    <Row name="openaiApiKey" desc={tr('descOpenaiApiKey')}>
-                      <SecretField
-                        score={scope}
-                        field="openaiApiKey"
-                        saved={secretKeys.openaiApiKey}
-                        configOnly={secretKeys.fromConfig.openaiApiKey}
-                        onChanged={refreshSecretKeys}
-                      />
-                    </Row>
-                    {typeof value.openaiPreset === 'string' && value.openaiPreset && value.openaiPreset !== 'custom' ? (
-                      <Row name="openaiApiKeys" desc={tr('descOpenaiApiKeys')}>
-                        <PresetKeyField
-                          score={scope}
-                          presetId={value.openaiPreset}
-                          map={(value.openaiApiKeys !== null && typeof value.openaiApiKeys === 'object' && !Array.isArray(value.openaiApiKeys) ? value.openaiApiKeys : {}) as Record<string, string>}
-                          saved={Boolean(secretKeys.openaiApiKeys[value.openaiPreset])}
-                          fromConfig={Boolean(secretKeys.fromConfig.openaiApiKeys[value.openaiPreset])}
-                          onChanged={refreshSecretKeys}
-                        />
-                      </Row>
-                    ) : null}
-                  </>
-                )}
-                {engine === 'mimo' && (
-                  <Row name="mimoApiKey" desc={tr('descMimoApiKey')}>
-                    <SecretField
-                      score={scope}
-                      field="mimoApiKey"
-                      saved={secretKeys.mimoApiKey}
-                      configOnly={secretKeys.fromConfig.mimoApiKey}
-                      onChanged={refreshSecretKeys}
-                    />
-                  </Row>
-                )}
+                {/* 引擎实时状态 + 一键测试朗读（遵循「选服务 → 配密钥与音色 → 一键验证」的自然因果顺序）。 */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    margin: '8px 0 4px',
+                    padding: '12px 14px',
+                    border: `1px solid ${t.border}`,
+                    borderRadius: 10,
+                    background: 'var(--dsw-alias-bg-layer-2)',
+                    minWidth: 0,
+                  }}
+                >
+                  <EngineStatusInline onSwitchLocal={switchToLocalKokoro} />
+                  <SelfTestSection
+                    voice={effectiveVoice() || ENGINE_DEFAULT_VOICE[engine] || ''}
+                    rate={Number(value.rate ?? 1.1)}
+                    engine={engine}
+                    onSwitchLocal={switchToLocalKokoro}
+                  />
+                </div>
               </div>
             ) : null}
             {tab === 'display' ? (

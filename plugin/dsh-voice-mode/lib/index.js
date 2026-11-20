@@ -2931,10 +2931,13 @@ var en = {
   preview: "Preview",
   // E1 online presets.
   openaiPresetLabel: "Online preset",
-  descOpenaiPreset: "Pick a preset to auto-fill base URL and model (usually just enter the API key); choose Custom to enter your own URL/model, or Follow config file to use profile openaiTts values. Click Verify preset to test inline",
+  descOpenaiPreset: "Pick a preset to auto-fill base URL and model (usually just enter the API key); choose Custom to enter your own URL/model, or Follow config file to use profile openaiTts values. Click Test read-aloud to test inline",
   presetCustom: "Follow the config file",
   presetCustomCustom: "Custom (fill below)",
   presetCustomHint: "With this selected, configure any OpenAI-compatible service in the Endpoint / Model / API key fields below",
+  openaiAdvancedShow: "Custom endpoint / fallback API key",
+  openaiAdvancedHide: "Hide advanced overrides",
+  voiceServerDefaultOption: "Server default voice",
   presetCosy: "SiliconFlow \xB7 CosyVoice2",
   presetFish: "SiliconFlow \xB7 Fish Speech 1.5",
   presetCosyNote: "About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn",
@@ -3032,10 +3035,9 @@ var en = {
   segDisplay: "Display & interaction",
   segAdvanced: "Advanced",
   segListLabel: "Settings sections",
-  segOpenAiServer: "Online service",
   segTuning: "Tuning & troubleshooting",
   segReplacements: "Corrections",
-  errApiKeyMissingHint: "Read-aloud requires an API key: fill it under API Key below, then click Verify preset; or switch to a local engine",
+  errApiKeyMissingHint: "Read-aloud requires an API key: fill the key above and click Test read-aloud, or switch to a local engine",
   ttsKeyMissingNotice: "Online read-aloud has no API key: recognition and captions work, but speech will fail. Fill the key under Settings \u2192 Voice mode, or switch to a local engine (Edge / local VITS / Kokoro)",
   ttsProbeAuthFail: "The service rejected read-aloud (usually a missing or invalid API key): fill or update the key under Settings \u2192 Voice mode, or switch to a local engine",
   previewAuth: "The server rejected authentication: API key missing or invalid",
@@ -3379,7 +3381,7 @@ function resolveOnlineTts(overrides, config) {
   const settingKey = trim(overrides.apiKey);
   const presetId = trim(overrides.presetId);
   const settingsPresetKey = preset !== null && presetId && Object.hasOwn(overrides.apiKeys ?? {}, presetId) && typeof overrides.apiKeys?.[presetId] === "string" ? trim(overrides.apiKeys?.[presetId]) : "";
-  const presetKey = presetId ? trim(config.apiKeys?.[presetId]) : "";
+  const presetKey = presetId && presetId !== "__proto__" && presetId !== "constructor" && presetId !== "prototype" && config.apiKeys && Object.hasOwn(config.apiKeys, presetId) && typeof config.apiKeys[presetId] === "string" ? trim(config.apiKeys[presetId]) : "";
   const configKey = trim(config.apiKey);
   const apiKey = settingsPresetKey || settingKey || presetKey || configKey;
   return {
@@ -3698,8 +3700,9 @@ var OPENAI_PRESETS = {
 // src/engine-rebuild.ts
 function stableApiKeys(m) {
   if (m === null || typeof m !== "object" || Array.isArray(m)) return "";
-  const keys = Object.keys(m).filter((k) => typeof m[k] === "string").sort();
-  return keys.map((k) => `${k}=${String(m[k])}`).join("&");
+  const rec = m;
+  const keys = Object.keys(rec).filter((k) => typeof rec[k] === "string").sort();
+  return JSON.stringify(keys.map((k) => [k, rec[k]]));
 }
 function engineRebuildReason(prev, next, engineKind, activeKokoroModel) {
   if (next.ttsEngine !== engineKind) return "engine-switch";
@@ -3736,7 +3739,27 @@ function applyClearSecrets(patch, clearList) {
     if (!SECRET_SETTING_KEYS.includes(item)) {
       throw new Error(`unknown secret: ${item}`);
     }
-    out[item] = "";
+    out[item] = item === "openaiApiKeys" ? {} : "";
+  }
+  return out;
+}
+function mergePresetApiKeys(existing, patchMap, clearAll = false) {
+  const out = {};
+  if (!clearAll) {
+    const base = readKeyMap(existing);
+    for (const id of Object.keys(base)) {
+      if (id === "__proto__" || id === "constructor" || id === "prototype") continue;
+      const v = base[id];
+      if (typeof v === "string" && v.trim().length > 0) out[id] = v.trim();
+    }
+  }
+  const inc = readKeyMap(patchMap);
+  for (const id of Object.keys(inc)) {
+    if (id === "__proto__" || id === "constructor" || id === "prototype") continue;
+    const v = inc[id];
+    if (typeof v !== "string") continue;
+    if (v.trim().length > 0) out[id] = v.trim();
+    else delete out[id];
   }
   return out;
 }
@@ -3768,17 +3791,13 @@ function buildPresetKeyPresence(settingsMap, configMap) {
   return { presence, fromConfig };
 }
 function buildSettingsGetView(vset, config) {
-  const cfgKey = hasSecret(config.openaiTts?.apiKey, ...Object.values(config.openaiTts?.apiKeys ?? {}));
+  const cfgKey = hasSecret(config.openaiTts?.apiKey);
   const cfgMimo = hasSecret(config.mimoTts?.apiKey);
   const presetKeys = buildPresetKeyPresence(vset.openaiApiKeys, config.openaiTts?.apiKeys);
   return publicSettingsView(
     vset,
     {
-      openaiApiKey: hasSecret(
-        vset.openaiApiKey,
-        config.openaiTts?.apiKey,
-        ...Object.values(config.openaiTts?.apiKeys ?? {})
-      ),
+      openaiApiKey: hasSecret(vset.openaiApiKey, config.openaiTts?.apiKey),
       mimoApiKey: hasSecret(vset.mimoApiKey, config.mimoTts?.apiKey),
       openaiApiKeys: presetKeys.presence
     },
@@ -4589,7 +4608,7 @@ function apply(ctx, config) {
     dropTurnTables(sessionId);
   };
   const stopFocusReading = (sessionId) => {
-    if (sessionId === null) return;
+    if (sessionId === null || sessionId === activeVoiceSession) return;
     queue.cancel(sessionId);
     turnGen.set(sessionId, (turnGen.get(sessionId) ?? 0) + 1);
   };
@@ -4787,7 +4806,7 @@ function apply(ctx, config) {
         timeoutMs: m.timeoutMs,
         fallback: fb === "none" ? void 0 : () => {
           const engine = makeEngine(fb === "vits" ? "vits" : "kokoro");
-          if (m.fallbackVoice) engine.updateVoice(m.fallbackVoice);
+          if (m.fallbackVoice) engine.updateVoice(m.fallbackVoice, vset.rate);
           return engine;
         }
       });
@@ -4802,7 +4821,7 @@ function apply(ctx, config) {
           model: vset.openaiModel ?? "",
           apiKey: vset.openaiApiKey ?? "",
           apiKeys: vset.openaiApiKeys ?? {},
-          voice: vset.voice
+          voice: ""
         },
         { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys }
       );
@@ -4919,9 +4938,12 @@ function apply(ctx, config) {
     ctx.effect(() => scopeRef.watch(applyVset));
   }
   let settingsWriteChain = Promise.resolve();
-  const persistSettings = (patch) => {
+  const persistSettings = (patch, clearAllPresetKeys = false) => {
     const run = async () => {
       const candidate = { ...overrides, ...patch };
+      if ("openaiApiKeys" in patch || clearAllPresetKeys) {
+        candidate.openaiApiKeys = mergePresetApiKeys(overrides.openaiApiKeys, patch.openaiApiKeys, clearAllPresetKeys);
+      }
       const next = resolveSettings(candidate);
       writeOverrides(settingsFile, candidate);
       overrides = candidate;
@@ -5111,7 +5133,7 @@ function apply(ctx, config) {
             respondJson2(res, 400, { code: "bad_request", error: "voice too long" });
             return;
           }
-          if (!voice) {
+          if (!voice && currentEngine() !== "openai") {
             respondJson2(res, 400, { code: "bad_request", error: "voice required" });
             return;
           }
@@ -5581,9 +5603,10 @@ function apply(ctx, config) {
             respondJson2(res, 400, { code: "bad_request", error: "body must be a JSON object" });
             return;
           }
+          const rawClear = patch.clearSecrets;
           let cleared;
           try {
-            cleared = applyClearSecrets(patch, patch.clearSecrets);
+            cleared = applyClearSecrets(patch, rawClear);
           } catch (e) {
             respondJson2(res, 400, { code: "bad_request", error: String(e.message).slice(0, 120) });
             return;
@@ -5594,8 +5617,9 @@ function apply(ctx, config) {
             return;
           }
           const rest = { ...pickKnownKeys(cleared, SETTING_KEYS) };
+          const clearAllMap = Array.isArray(rawClear) && rawClear.includes("openaiApiKeys");
           try {
-            const next = await persistSettings(rest);
+            const next = await persistSettings(rest, clearAllMap);
             const out = { ...next, openaiApiKey: "", mimoApiKey: "", openaiApiKeys: {} };
             respondJson2(res, 200, { ok: true, managedBy: "plugin", value: out });
           } catch (e) {
@@ -5786,6 +5810,7 @@ data: ${JSON.stringify(payload)}
               const prevFocus = focusedSessionId;
               focusedSessionId = null;
               focusedTabId = null;
+              stopFocusReading(prevFocus);
               reclaimFocusState(prevFocus);
               broadcast("focus", { sessionId: null, tabId: null });
             }

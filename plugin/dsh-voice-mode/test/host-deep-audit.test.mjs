@@ -329,6 +329,39 @@ test('I14: 宿主路由行为验证（/toggle 预热竞态与超长 sid、/asr v
     assert.equal(getSet.json.keys.openaiApiKey, true)
     assert.ok(!getSet.text.includes(realKey), 'GET /settings 响应不得泄露已保存的真实密钥')
 
+    // 4b) 逐预设 openaiApiKeys 增量合并：写 B 不丢 A、单删 A 保 B、clearSecrets:['openaiApiKeys'] 回 200 清全表
+    const postPresetA = await callRoute('/voice-mode/settings', {
+      method: 'POST',
+      body: JSON.stringify({ openaiApiKeys: { 'siliconflow-cosyvoice2': 'sk-preset-a-111' } }),
+    })
+    assert.equal(postPresetA.statusCode, 200)
+    const postPresetB = await callRoute('/voice-mode/settings', {
+      method: 'POST',
+      body: JSON.stringify({ openaiApiKeys: { 'openai-official': 'sk-preset-b-222' } }),
+    })
+    assert.equal(postPresetB.statusCode, 200)
+    const afterAB = await callRoute('/voice-mode/settings', { method: 'GET' })
+    assert.equal(afterAB.json.keys.openaiApiKeys['siliconflow-cosyvoice2'], true, '写预设 B 后预设 A 的 key 不得丢失')
+    assert.equal(afterAB.json.keys.openaiApiKeys['openai-official'], true)
+    assert.ok(!afterAB.text.includes('sk-preset-'), 'GET 不得泄露逐预设 key 明文')
+
+    const delPresetA = await callRoute('/voice-mode/settings', {
+      method: 'POST',
+      body: JSON.stringify({ openaiApiKeys: { 'siliconflow-cosyvoice2': '' } }),
+    })
+    assert.equal(delPresetA.statusCode, 200)
+    const afterDelA = await callRoute('/voice-mode/settings', { method: 'GET' })
+    assert.equal(Boolean(afterDelA.json.keys.openaiApiKeys['siliconflow-cosyvoice2']), false, '空串应删掉预设 A 条目')
+    assert.equal(afterDelA.json.keys.openaiApiKeys['openai-official'], true, '单删预设 A 不得影响预设 B')
+
+    const clearAllMapR = await callRoute('/voice-mode/settings', {
+      method: 'POST',
+      body: JSON.stringify({ clearSecrets: ['openaiApiKeys'] }),
+    })
+    assert.equal(clearAllMapR.statusCode, 200, 'clearSecrets: ["openaiApiKeys"] 不得触发 zod 400')
+    const afterClearAll = await callRoute('/voice-mode/settings', { method: 'GET' })
+    assert.deepEqual(afterClearAll.json.keys.openaiApiKeys, {})
+
     // 5) /stream：POST → 405，Sec-Fetch-Site: cross-site → 403；同 tab 顶替立即清理旧心跳且 /asr vadOnly 不发 turn
     const postStream = await callRoute('/voice-mode/stream', { method: 'POST', body: '' })
     assert.equal(postStream.statusCode, 405)

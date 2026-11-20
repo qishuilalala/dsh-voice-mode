@@ -21,11 +21,12 @@ export interface EngineSettingsShape {
   mimoApiKey: string
 }
 
-/** 稳定序列化 key 表：键排序后拼接，防 JSON 键序抖动误触发重建。非字符串值一律忽略。 */
+/** 稳定序列化 key 表：键排序后 JSON 编码键值元组，防键序抖动或含 `=`/`&` 字符碰撞。非字符串值一律忽略。 */
 function stableApiKeys(m: unknown): string {
   if (m === null || typeof m !== 'object' || Array.isArray(m)) return ''
-  const keys = Object.keys(m as Record<string, unknown>).filter((k) => typeof (m as Record<string, unknown>)[k] === 'string').sort()
-  return keys.map((k) => `${k}=${String((m as Record<string, string>)[k])}`).join('&')
+  const rec = m as Record<string, unknown>
+  const keys = Object.keys(rec).filter((k) => typeof rec[k] === 'string').sort()
+  return JSON.stringify(keys.map((k) => [k, rec[k]]))
 }
 
 export type EngineRebuildReason = 'engine-switch' | 'mimo-key' | 'kokoro-model' | 'openai-config' | null

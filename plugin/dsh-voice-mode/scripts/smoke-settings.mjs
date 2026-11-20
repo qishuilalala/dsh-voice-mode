@@ -185,9 +185,15 @@ try {
     first.value?.silenceMs === 1800 ? ok('旧 settings.yaml 的 voice-mode 段已迁移（silenceMs=1800）') : bad(`旧设置迁移失败：silenceMs=${first.value?.silenceMs}（期望 1800）`)
   }
 
-  // 2) 展开卡片，切换一个未选中的复选框，断言恰有一个键被改
+  // 2) 展开卡片，若当前分段无复选框则切到含复选框的「显示」分段，切换一个复选框并断言恰有一项变化
   await page.evaluate(() => document.querySelector('[data-dshvm-settings="card"] button[aria-controls]')?.click())
-  await page.waitForTimeout(600)
+  await page.waitForTimeout(400)
+  await page.evaluate(() => {
+    if (!document.querySelector('[data-dshvm-settings="card"] input[type="checkbox"]')) {
+      document.querySelector('[data-dshvm-settings="card"] [data-dshvm-tab="display"]')?.click()
+    }
+  })
+  await page.waitForTimeout(300)
   const before = (await getSettings())?.value ?? null
   const toggled = await page.evaluate(() => {
     const boxes = Array.from(document.querySelectorAll('[data-dshvm-settings="card"] input[type="checkbox"]'))

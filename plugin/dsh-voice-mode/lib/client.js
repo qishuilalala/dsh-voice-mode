@@ -1943,10 +1943,13 @@ var zh = {
   preview: "\u8BD5\u542C",
   // E1 在线预设。
   openaiPresetLabel: "\u5728\u7EBF\u9884\u8BBE",
-  descOpenaiPreset: "\u9009\u9884\u8BBE\u5373\u5E26\u51FA\u5730\u5740\u4E0E\u6A21\u578B\uFF08\u4E00\u822C\u53EA\u9700\u586B key\uFF09\uFF1B\u5217\u8868\u91CC\u6CA1\u6709\u5C31\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u586B URL/\u6A21\u578B\u3002\u9009\u300C\u8DDF\u968F\u914D\u7F6E\u6587\u4EF6\u300D= \u4E09\u8005\u90FD\u6CBF\u7528 profile \u7684 openaiTts \u914D\u7F6E\u3002\u6539\u5B8C\u70B9\u300C\u9A8C\u8BC1\u6B64\u9884\u8BBE\u300D\u5C31\u5730\u8BD5\u5408\u6210",
+  descOpenaiPreset: "\u9009\u9884\u8BBE\u5373\u5E26\u51FA\u5730\u5740\u4E0E\u6A21\u578B\uFF08\u4E00\u822C\u53EA\u9700\u586B key\uFF09\uFF1B\u5217\u8868\u91CC\u6CA1\u6709\u5C31\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u586B URL/\u6A21\u578B\u3002\u9009\u300C\u8DDF\u968F\u914D\u7F6E\u6587\u4EF6\u300D= \u4E09\u8005\u90FD\u6CBF\u7528 profile \u7684 openaiTts \u914D\u7F6E\u3002\u6539\u5B8C\u70B9\u300C\u6D4B\u8BD5\u6717\u8BFB\u300D\u5C31\u5730\u8BD5\u5408\u6210",
   presetCustom: "\u8DDF\u968F\u914D\u7F6E\u6587\u4EF6",
   presetCustomCustom: "\u81EA\u5B9A\u4E49\uFF08\u4E0B\u65B9\u624B\u586B\uFF09",
   presetCustomHint: "\u9009\u5B83\u540E\u7528\u4E0B\u9762\u7684\u300C\u63A5\u53E3\u5730\u5740 / \u6A21\u578B\u540D / API Key\u300D\u4E09\u4E2A\u8F93\u5165\u6846\u76F4\u63A5\u914D\u4EFB\u610F OpenAI \u517C\u5BB9\u670D\u52A1",
+  openaiAdvancedShow: "\u81EA\u5B9A\u4E49\u63A5\u53E3\u5730\u5740 / \u5168\u5C40\u5907\u7528\u5BC6\u94A5",
+  openaiAdvancedHide: "\u6536\u8D77\u9AD8\u7EA7\u8986\u76D6\u9879",
+  voiceServerDefaultOption: "\u670D\u52A1\u7AEF\u9ED8\u8BA4\u97F3\u8272",
   presetCosy: "\u7845\u57FA\u6D41\u52A8 \xB7 CosyVoice2",
   presetFish: "\u7845\u57FA\u6D41\u52A8 \xB7 Fish Speech 1.5",
   presetCosyNote: "\u7EA6 $7.15/\u767E\u4E07 UTF-8 \u5B57\u8282\uFF0C150ms \u7EA7\uFF1B\u6587\u672C\u53D1\u5F80 api.siliconflow.cn",
@@ -2045,10 +2048,9 @@ var zh = {
   segDisplay: "\u663E\u793A\u4E0E\u4EA4\u4E92",
   segAdvanced: "\u9AD8\u7EA7",
   segListLabel: "\u8BBE\u7F6E\u5206\u6BB5",
-  segOpenAiServer: "\u5728\u7EBF\u670D\u52A1",
   segTuning: "\u8C03\u97F3\u4E0E\u6392\u969C",
   segReplacements: "\u7EA0\u9519\u8BCD\u8868",
-  errApiKeyMissingHint: "\u6717\u8BFB\u670D\u52A1\u9700\u8981 API Key\uFF1A\u5728\u4E0B\u65B9\u300CAPI Key\u300D\u586B\u5165\u540E\u70B9\u300C\u9A8C\u8BC1\u6B64\u9884\u8BBE\u300D\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE",
+  errApiKeyMissingHint: "\u6717\u8BFB\u670D\u52A1\u9700\u8981 API Key\uFF1A\u8BF7\u5728\u4E0A\u65B9\u586B\u5199\u5BC6\u94A5\u540E\u518D\u70B9\u300C\u6D4B\u8BD5\u6717\u8BFB\u300D\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE",
   ttsKeyMissingNotice: "\u5728\u7EBF\u6717\u8BFB\u7F3A\u5C11 API Key\uFF1A\u8BC6\u522B\u4E0E\u5B57\u5E55\u53EF\u7528\uFF0C\u6717\u8BFB\u4F1A\u5931\u8D25\uFF1B\u8BF7\u5230\u300C\u8BBE\u7F6E \u2192 \u8BED\u97F3\u6A21\u5F0F\u300D\u586B Key\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE\uFF08Edge/\u672C\u5730 VITS/Kokoro\uFF09",
   ttsProbeAuthFail: "\u6717\u8BFB\u88AB\u670D\u52A1\u7AEF\u62D2\u7EDD\uFF08\u591A\u4E3A API Key \u7F3A\u5931\u6216\u65E0\u6548\uFF09\uFF1A\u8BF7\u5230\u300C\u8BBE\u7F6E \u2192 \u8BED\u97F3\u6A21\u5F0F\u300D\u586B\u5199\u6216\u66F4\u65B0 Key\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE",
   previewAuth: "\u670D\u52A1\u7AEF\u62D2\u7EDD\u9274\u6743\uFF1AAPI Key \u7F3A\u5931\u6216\u65E0\u6548",
@@ -2342,10 +2344,13 @@ var en = {
   preview: "Preview",
   // E1 online presets.
   openaiPresetLabel: "Online preset",
-  descOpenaiPreset: "Pick a preset to auto-fill base URL and model (usually just enter the API key); choose Custom to enter your own URL/model, or Follow config file to use profile openaiTts values. Click Verify preset to test inline",
+  descOpenaiPreset: "Pick a preset to auto-fill base URL and model (usually just enter the API key); choose Custom to enter your own URL/model, or Follow config file to use profile openaiTts values. Click Test read-aloud to test inline",
   presetCustom: "Follow the config file",
   presetCustomCustom: "Custom (fill below)",
   presetCustomHint: "With this selected, configure any OpenAI-compatible service in the Endpoint / Model / API key fields below",
+  openaiAdvancedShow: "Custom endpoint / fallback API key",
+  openaiAdvancedHide: "Hide advanced overrides",
+  voiceServerDefaultOption: "Server default voice",
   presetCosy: "SiliconFlow \xB7 CosyVoice2",
   presetFish: "SiliconFlow \xB7 Fish Speech 1.5",
   presetCosyNote: "About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn",
@@ -2443,10 +2448,9 @@ var en = {
   segDisplay: "Display & interaction",
   segAdvanced: "Advanced",
   segListLabel: "Settings sections",
-  segOpenAiServer: "Online service",
   segTuning: "Tuning & troubleshooting",
   segReplacements: "Corrections",
-  errApiKeyMissingHint: "Read-aloud requires an API key: fill it under API Key below, then click Verify preset; or switch to a local engine",
+  errApiKeyMissingHint: "Read-aloud requires an API key: fill the key above and click Test read-aloud, or switch to a local engine",
   ttsKeyMissingNotice: "Online read-aloud has no API key: recognition and captions work, but speech will fail. Fill the key under Settings \u2192 Voice mode, or switch to a local engine (Edge / local VITS / Kokoro)",
   ttsProbeAuthFail: "The service rejected read-aloud (usually a missing or invalid API key): fill or update the key under Settings \u2192 Voice mode, or switch to a local engine",
   previewAuth: "The server rejected authentication: API key missing or invalid",
@@ -2664,7 +2668,11 @@ var en = {
 var htmlLangIsZh = () => /^zh\b/i.test(
   typeof document !== "undefined" && document.documentElement.lang || (typeof navigator !== "undefined" ? navigator.language : "") || ""
 );
-var translateLocal = (key, isZh) => (isZh ? zh[key] : en[key]) ?? en[key] ?? key;
+var translateLocal = (key, isZh) => {
+  const dict = isZh ? zh : en;
+  const enDict = en;
+  return (Object.hasOwn(dict, key) ? dict[key] : void 0) ?? (Object.hasOwn(enDict, key) ? enDict[key] : void 0) ?? key;
+};
 
 // src/i18n.ts
 var LOCALE_NAMESPACE = "voice-mode";
@@ -2716,7 +2724,7 @@ function activeLocale() {
 function lang() {
   return /^zh\b/i.test(activeLocale()) ? "zh" : "en";
 }
-var interpolate = (template, params) => params ? template.replace(/\{(\w+)\}/g, (m, name2) => name2 in params ? String(params[name2]) : m) : template;
+var interpolate = (template, params) => params ? template.replace(/\{(\w+)\}/g, (m, name2) => Object.hasOwn(params, name2) ? String(params[name2]) : m) : template;
 function t(key, params) {
   if (translate) {
     try {
@@ -4168,35 +4176,46 @@ var setHeader = {
   cursor: "pointer",
   background: "transparent",
   border: 0,
-  borderRadius: 12,
+  borderRadius: 0,
   alignItems: "center",
   gap: 12,
-  padding: "14px 16px",
-  display: "flex"
+  padding: "14px 18px",
+  display: "flex",
+  transition: "background .15s ease"
 };
-var setHeadText = { flexDirection: "column", flex: 1, gap: 4, minWidth: 0, display: "flex" };
-var setName = { color: t2.label, fontSize: 15, fontWeight: 600, lineHeight: 1.4 };
-var setDesc = { color: t2.term, fontSize: 13, lineHeight: 1.5 };
-var setChevron = { color: t2.term, flex: "none", transition: "transform .16s", display: "inline-flex" };
-var setBody = { borderTop: `1px solid ${t2.border}`, margin: "0 16px", paddingBottom: 12, display: "flex", flexDirection: "column", minWidth: 0 };
+var setHeadText = { flexDirection: "column", flex: 1, gap: 3, minWidth: 0, display: "flex" };
+var setName = { color: t2.label, fontSize: 15, fontWeight: 600, lineHeight: 1.35, display: "inline-flex", alignItems: "center", gap: 8 };
+var setDesc = { color: t2.term, fontSize: 12.5, lineHeight: 1.45 };
+var setChevron = { color: t2.term, flex: "none", transition: "transform .18s ease", display: "inline-flex", padding: 4, borderRadius: 6 };
+var setBody = { borderTop: `1px solid ${t2.border}`, padding: "4px 18px 16px", display: "flex", flexDirection: "column", minWidth: 0 };
 var setRow = {
   display: "grid",
-  gridTemplateColumns: "minmax(120px, 190px) minmax(0, 1fr)",
-  columnGap: 16,
-  rowGap: 4,
-  alignItems: "start",
-  padding: "10px 0",
-  borderTop: `1px solid ${t2.border}`,
+  gridTemplateColumns: "minmax(132px, 196px) minmax(0, 1fr)",
+  columnGap: 18,
+  rowGap: 6,
+  alignItems: "center",
+  padding: "11px 0",
+  borderTop: "1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 65%, transparent)",
   minWidth: 0
 };
-var setLabel = { fontSize: 13, lineHeight: "20px" };
-var setHint = { color: t2.term, fontSize: 12, lineHeight: "18px" };
+var setLabel = { fontSize: 13, fontWeight: 500, color: t2.label, lineHeight: "20px", display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: 5 };
+var setHint = {
+  color: "var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))",
+  fontSize: 12,
+  lineHeight: "18px",
+  padding: "7px 10px",
+  borderRadius: 8,
+  background: "var(--dsw-alias-bg-layer-2)",
+  borderLeft: "2px solid var(--dsw-alias-brand-primary)",
+  marginTop: 2
+};
 var setSeg = {
   border: `1px solid ${t2.border}`,
-  borderRadius: 8,
+  background: "var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.07))",
+  borderRadius: 9,
   gap: 2,
-  padding: 2,
-  display: "flex",
+  padding: 3,
+  display: "inline-flex",
   flexWrap: "wrap",
   maxWidth: "100%",
   minWidth: 0
@@ -4206,37 +4225,132 @@ var setSegBtn = (on) => ({
   font: "inherit",
   color: on ? t2.label : "var(--dsw-alias-label-secondary)",
   cursor: "pointer",
-  background: on ? "var(--dsw-alias-bg-layer-2)" : "transparent",
-  border: "none",
+  background: on ? "var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-layer-2))" : "transparent",
+  boxShadow: on ? "0 1px 2px rgba(0, 0, 0, 0.12)" : "none",
+  border: on ? "1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, transparent)" : "1px solid transparent",
   borderRadius: 6,
-  padding: "4px 12px",
+  padding: "5px 12px",
   fontSize: 12,
   lineHeight: "18px",
-  fontWeight: on ? 600 : 400
+  fontWeight: on ? 600 : 400,
+  transition: "background .14s ease, color .14s ease, box-shadow .14s ease"
 });
 var inputStyle = {
   boxSizing: "border-box",
   width: "100%",
   maxWidth: 420,
-  padding: "7px 10px",
+  minHeight: 34,
+  padding: "6px 11px",
   borderRadius: 8,
   border: `1px solid ${t2.border}`,
   background: "var(--dsw-alias-bg-layer-2)",
   color: t2.label,
   fontSize: 13,
+  lineHeight: "20px",
   fontFamily: "inherit",
-  outline: "none"
+  outline: "none",
+  transition: "border-color .14s ease, box-shadow .14s ease"
+};
+var selectChevronBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`;
+var selectBaseStyle = {
+  ...inputStyle,
+  appearance: "none",
+  cursor: "pointer",
+  backgroundImage: selectChevronBg,
+  backgroundPosition: "right 11px center",
+  backgroundRepeat: "no-repeat",
+  backgroundSize: "12px 12px",
+  paddingRight: 32
 };
 var focusVisibleCss = `
 [data-dshvm-settings="card"] { container-type: inline-size; }
-@container (max-width: 620px) {
-  [data-dshvm-row] { grid-template-columns: minmax(0, 1fr) !important; row-gap: 6px !important; }
+[data-dshvm-settings="card"] [data-dshvm-row]:first-of-type { border-top: none; }
+[data-dshvm-settings="card"] .dshvm-tab-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  margin: 8px 0 6px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08));
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, transparent);
 }
-[data-dshvm-settings="card"] input:focus-visible,
+@container (max-width: 580px) {
+  [data-dshvm-row] { grid-template-columns: minmax(0, 1fr) !important; align-items: start !important; row-gap: 6px !important; }
+}
+@container (max-width: 440px) {
+  [data-dshvm-settings="card"] .dshvm-tab-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+[data-dshvm-settings="card"] input:not([type="checkbox"]):hover,
+[data-dshvm-settings="card"] select:hover {
+  border-color: var(--dsw-alias-border-l3, var(--dsw-alias-label-tertiary));
+}
+[data-dshvm-settings="card"] input:not([type="checkbox"]):focus-visible,
 [data-dshvm-settings="card"] select:focus-visible,
 [data-dshvm-settings="card"] button:focus-visible {
   outline: 2px solid var(--dsw-alias-brand-primary);
   outline-offset: 1px;
+}
+[data-dshvm-settings="card"] .dshvm-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 38px;
+  height: 22px;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  align-self: flex-start;
+  justify-self: start;
+}
+[data-dshvm-settings="card"] .dshvm-switch-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+[data-dshvm-settings="card"] .dshvm-switch-track {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-label-tertiary) 32%, var(--dsw-alias-bg-layer-1, transparent));
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 90%, transparent);
+  box-sizing: border-box;
+  transition: background .16s ease, border-color .16s ease;
+}
+[data-dshvm-settings="card"] .dshvm-switch[data-checked="1"] .dshvm-switch-track {
+  background: var(--dsw-alias-brand-primary);
+  border-color: var(--dsw-alias-brand-primary);
+}
+[data-dshvm-settings="card"] .dshvm-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
+  transition: transform .16s ease;
+}
+[data-dshvm-settings="card"] .dshvm-switch[data-checked="1"] .dshvm-switch-thumb {
+  transform: translateX(16px);
+}
+[data-dshvm-settings="card"] .dshvm-switch:has(.dshvm-switch-input:focus-visible) .dshvm-switch-track {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
+}
+@media (pointer: coarse) {
+  [data-dshvm-settings="card"] input:not([type="checkbox"]),
+  [data-dshvm-settings="card"] select {
+    font-size: 16px !important;
+    min-height: 38px !important;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   [data-dshvm-settings="card"], [data-dshvm-settings="card"] * { transition: none !important; }
@@ -4246,16 +4360,19 @@ function CheckRow({
   checked,
   score
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-    "input",
-    {
-      type: "checkbox",
-      "aria-label": t(`${field}Label`),
-      checked,
-      onChange: (e) => void score.set(field, e.target.checked),
-      style: { width: 16, height: 16, flex: "0 0 auto", alignSelf: "flex-start", justifySelf: "start", margin: 0, accentColor: "var(--dsw-alias-state-success-primary, #3fb950)" }
-    }
-  );
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "dshvm-switch", "data-checked": checked ? "1" : "0", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "input",
+      {
+        className: "dshvm-switch-input",
+        type: "checkbox",
+        "aria-label": t(`${field}Label`),
+        checked,
+        onChange: (e) => void score.set(field, e.target.checked)
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dshvm-switch-track", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dshvm-switch-thumb" }) })
+  ] });
 }
 var ENGINE_DEFAULT_VOICE = {
   // 与 host 侧引擎 defaultVoice 对齐（VITS suyingxue / Kokoro zf_xiaobei），
@@ -4524,19 +4641,23 @@ function PresetKeyField({
   map,
   saved,
   fromConfig,
+  requiresKey,
   onChanged
 }) {
   const [draft, setDraft] = (0, import_react2.useState)("");
   const [busy, setBusy] = (0, import_react2.useState)(false);
   const [note, setNote] = (0, import_react2.useState)(null);
   const [failed, setFailed] = (0, import_react2.useState)(false);
+  (0, import_react2.useEffect)(() => {
+    setDraft("");
+    setNote(null);
+    setFailed(false);
+  }, [presetId]);
   const commit = () => {
-    if (busy) return;
     const value = draft.trim();
+    if (!value || busy) return;
     setBusy(true);
-    const next = { ...map };
-    if (value) next[presetId] = value;
-    else delete next[presetId];
+    const next = { ...map, [presetId]: value };
     void Promise.resolve(score.set("openaiApiKeys", next)).then((ok) => {
       if (ok === false) {
         setFailed(true);
@@ -4544,38 +4665,103 @@ function PresetKeyField({
       }
       setFailed(false);
       setDraft("");
-      setNote(value ? "saved" : "cleared");
+      setNote("saved");
       onChanged();
     }).catch(() => setFailed(true)).finally(() => setBusy(false));
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
+  const clear = () => {
+    if (busy) return;
+    setBusy(true);
+    void (async () => {
+      try {
+        const res = await fetch(location.origin + BASE_PATH + "/settings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ openaiApiKeys: { [presetId]: "" } }),
+          signal: AbortSignal.timeout(8e3)
+        });
+        if (res.ok) {
+          setFailed(false);
+          setDraft("");
+          setNote("cleared");
+          onChanged();
+          return;
+        }
+        if (res.status === 409) {
+          const next = { ...map };
+          delete next[presetId];
+          const ok = await Promise.resolve(score.set("openaiApiKeys", next));
+          if (ok === false) {
+            setFailed(true);
+            return;
+          }
+          setFailed(false);
+          setDraft("");
+          setNote("cleared");
+          onChanged();
+          return;
+        }
+        setFailed(true);
+      } catch {
+        setFailed(true);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+  const canClearPanelKey = saved && !(fromConfig && !saved);
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap", width: "100%" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "input",
       {
-        style: inputStyle,
+        style: { ...inputStyle, maxWidth: 320 },
         type: "password",
         autoComplete: "new-password",
         value: draft,
         placeholder: saved ? t("secretKeep") : t("secretPlaceholderEmpty"),
         "aria-label": t("secretHintBrowser"),
-        onChange: (e) => setDraft(e.target.value),
+        onChange: (e) => {
+          setDraft(e.target.value);
+          if (failed) setFailed(false);
+        },
         onBlur: commit,
         onKeyDown: (e) => {
           if (e.key === "Enter") commit();
         }
       }
     ),
+    canClearPanelKey ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        type: "button",
+        onClick: clear,
+        "aria-busy": busy || void 0,
+        style: {
+          font: "inherit",
+          cursor: busy ? "default" : "pointer",
+          opacity: busy ? 0.6 : 1,
+          color: t2.label,
+          background: "var(--dsw-alias-bg-layer-2)",
+          border: `1px solid ${t2.border}`,
+          borderRadius: 7,
+          padding: "5px 10px",
+          fontSize: 12,
+          lineHeight: "18px"
+        },
+        children: busy ? t("secretClearing") : t("secretClear")
+      }
+    ) : null,
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "span",
       {
         role: "status",
         "aria-live": "polite",
         style: {
-          fontSize: 11,
-          // 缺 key 是警告（warn），不是成功绿——绿只留给「已配」。
-          color: failed ? "var(--dsw-alias-state-error-primary)" : note === "saved" || note === null && saved ? "var(--dsw-alias-state-success-primary)" : note === "cleared" || fromConfig ? t2.term : "var(--dsw-alias-state-warn-primary, #d29922)"
+          fontSize: 11.5,
+          fontWeight: saved || requiresKey && !fromConfig ? 500 : 400,
+          color: failed ? "var(--dsw-alias-state-error-primary)" : note === "saved" || note === null && saved ? "var(--dsw-alias-state-success-primary)" : note === "cleared" || fromConfig || !requiresKey ? t2.term : "var(--dsw-alias-state-warn-primary, #d29922)"
         },
-        children: failed ? t("secretSaveFailed") : note === "saved" ? t("secretSaved") : note === "cleared" ? t(fromConfig ? "secretClearedConfigRemains" : "secretCleared") : saved ? t("presetKeySaved") : fromConfig ? t("presetKeyFromConfig") : t("presetKeyMissing")
+        children: failed ? t("secretSaveFailed") : note === "saved" ? t("secretSaved") : note === "cleared" ? t(fromConfig ? "secretClearedConfigRemains" : "secretCleared") : saved ? t("presetKeySaved") : fromConfig ? t("presetKeyFromConfig") : requiresKey ? t("presetKeyMissing") : t("secretHintBrowser")
       }
     )
   ] });
@@ -4659,12 +4845,18 @@ function ShortcutField({
       window.removeEventListener("blur", onBlur);
     };
   }, [recording, score, field]);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         "input",
         {
-          style: { ...inputStyle, width: 150 },
+          style: {
+            ...inputStyle,
+            width: 176,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: 12.5,
+            borderColor: recording ? "var(--dsw-alias-brand-primary)" : t2.border
+          },
           "aria-label": t(`${field}Label`),
           value: draft,
           placeholder: t("shortcutPlaceholder"),
@@ -4687,28 +4879,29 @@ function ShortcutField({
             setErr("");
           },
           style: {
-            height: 28,
-            padding: "0 10px",
-            borderRadius: 6,
-            border: "1px solid var(--dsw-alias-border-l3)",
-            background: "transparent",
-            color: "var(--dsw-alias-label-secondary)",
+            height: 34,
+            padding: "0 12px",
+            borderRadius: 8,
+            border: `1px solid ${recording ? "var(--dsw-alias-brand-primary)" : t2.border}`,
+            background: recording ? "color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent)" : "var(--dsw-alias-bg-layer-2)",
+            color: recording ? "var(--dsw-alias-brand-primary)" : t2.label,
             fontSize: 12,
+            fontWeight: recording ? 600 : 400,
             cursor: "pointer"
           },
           children: recording ? t("shortcutCancel") : t("shortcutRecord")
         }
       )
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    err || recording ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "span",
       {
         role: "status",
         "aria-live": "polite",
-        style: { fontSize: 11, lineHeight: "14px", color: err ? "var(--dsw-alias-state-error-primary)" : "var(--dsw-alias-label-tertiary)" },
+        style: { fontSize: 11.5, lineHeight: "16px", color: err ? "var(--dsw-alias-state-error-primary)" : "var(--dsw-alias-brand-primary)" },
         children: err || (recording ? t("shortcutRecording") : "")
       }
-    )
+    ) : null
   ] });
 }
 function SelectField({
@@ -4807,11 +5000,13 @@ function VoiceSelect({
   value,
   options,
   placeholder,
+  emptyDefaultLabel,
   footer,
   showCustom = true
 }) {
   const cur = String(value ?? "");
-  const baseOpts = placeholder && showCustom && !options.some((o) => o.v === "") ? [{ v: "", label: t("voiceDefaultOption").replace("{name}", placeholder) }, ...options] : options;
+  const defaultOptLabel = placeholder ? t("voiceDefaultOption").replace("{name}", placeholder) : emptyDefaultLabel ?? "";
+  const baseOpts = defaultOptLabel && showCustom && !options.some((o) => o.v === "") ? [{ v: "", label: defaultOptLabel }, ...options] : options;
   const withDefault = showCustom && cur.trim() !== "" && !baseOpts.some((o) => o.v === cur) ? [{ v: cur, label: t("voiceCurrentOption").replace("{name}", cur) }, ...baseOpts] : baseOpts;
   const inOptions = withDefault.some((o) => o.v === cur);
   const idx = withDefault.findIndex((o) => o.v === cur);
@@ -4889,7 +5084,7 @@ function VoiceSelect({
       {
         style: inputStyle,
         value: custom,
-        placeholder,
+        placeholder: placeholder || emptyDefaultLabel,
         "aria-label": currentValueLabel || t(`${field}Label`),
         onChange: (e) => setCustom(e.target.value),
         onBlur: () => commitCustom(),
@@ -4901,7 +5096,7 @@ function VoiceSelect({
     footer?.(showCustomInput ? custom : cur)
   ] });
 }
-function VoicePreviewButton({ voice, rate }) {
+function VoicePreviewButton({ voice, rate, allowEmptyVoice = false }) {
   const [busy, setBusy] = (0, import_react2.useState)(false);
   const [note, setNote] = (0, import_react2.useState)(null);
   const audioRef = (0, import_react2.useRef)(null);
@@ -4923,7 +5118,7 @@ function VoicePreviewButton({ voice, rate }) {
       return;
     }
     const v = voice.trim();
-    if (!v) {
+    if (!v && !allowEmptyVoice) {
       setNote(t("previewNameFirst"));
       return;
     }
@@ -5059,7 +5254,7 @@ function SelfTestSection({
   const run = () => {
     if (busy) return;
     const v = voice.trim();
-    if (!v) {
+    if (!v && engine !== "openai") {
       setNote(t("previewNameFirst"));
       return;
     }
@@ -5373,35 +5568,67 @@ function ReplacementsSection({
     fontSize: 12,
     lineHeight: "18px"
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start", padding: "2px 0 10px" }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.label, fontWeight: 600 }, children: t("replTitle") }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("descAsrReplacements") }),
-    unreadable ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "alert", style: { fontSize: 12, color: "var(--dsw-alias-state-error-primary)" }, children: t("replUnreadable") }) : list.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.term }, children: t("replEmpty") }) : list.map((r, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.label, display: "inline-flex", gap: 6, alignItems: "center" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
-        r.from.join(" / "),
-        " ",
-        "\u2192",
-        " ",
-        r.to
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: t2.term }, children: [
-        t("replHits"),
-        " ",
-        hits[i] ?? 0
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        "button",
-        {
-          type: "button",
-          "aria-label": `${t("replDelete")}: ${r.from.join(" / ")} \u2192 ${r.to}`,
-          disabled: busy,
-          onClick: () => void commit(list.filter((_, j) => j !== i)),
-          style: { ...btnStyle, padding: "2px 8px" },
-          children: t("replDelete")
-        }
-      )
-    ] }, i)),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch", padding: "4px 0 10px", minWidth: 0 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 2 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, color: t2.label, fontWeight: 600 }, children: t("replTitle") }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.term, lineHeight: "18px" }, children: t("descAsrReplacements") })
+    ] }),
+    unreadable ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "alert", style: { fontSize: 12, color: "var(--dsw-alias-state-error-primary)" }, children: t("replUnreadable") }) : list.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.term, padding: "2px 0" }, children: t("replEmpty") }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: list.map((r, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "span",
+      {
+        style: {
+          fontSize: 12,
+          color: t2.label,
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          flexWrap: "wrap",
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: `1px solid ${t2.border}`,
+          background: "var(--dsw-alias-bg-layer-2)"
+        },
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { flex: 1, minWidth: 0, wordBreak: "break-word" }, children: [
+            r.from.join(" / "),
+            " ",
+            "\u2192",
+            " ",
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: r.to })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "span",
+            {
+              style: {
+                fontSize: 11,
+                color: t2.term,
+                padding: "1px 6px",
+                borderRadius: 999,
+                background: "var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.1))"
+              },
+              children: [
+                t("replHits"),
+                " ",
+                hits[i] ?? 0
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              type: "button",
+              "aria-label": `${t("replDelete")}: ${r.from.join(" / ")} \u2192 ${r.to}`,
+              disabled: busy,
+              onClick: () => void commit(list.filter((_, j) => j !== i)),
+              style: { ...btnStyle, padding: "2px 8px", alignSelf: "center" },
+              children: t("replDelete")
+            }
+          )
+        ]
+      },
+      i
+    )) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         "input",
         {
@@ -5409,7 +5636,7 @@ function ReplacementsSection({
           onChange: (e) => setFromText(e.target.value),
           placeholder: t("replFromPh"),
           "aria-label": t("replFromPh"),
-          style: { ...inputStyle, width: "auto", fontSize: 12, padding: "4px 8px", maxWidth: 220 }
+          style: { ...inputStyle, width: "auto", flex: "1 1 160px", fontSize: 12.5, padding: "5px 10px", maxWidth: 240 }
         }
       ),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -5422,12 +5649,12 @@ function ReplacementsSection({
           },
           placeholder: t("replToPh"),
           "aria-label": t("replToPh"),
-          style: { ...inputStyle, width: "auto", fontSize: 12, padding: "4px 8px", maxWidth: 140 }
+          style: { ...inputStyle, width: "auto", flex: "1 1 110px", fontSize: 12.5, padding: "5px 10px", maxWidth: 160 }
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: add, disabled: busy, style: btnStyle, children: t("replAdd") })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: add, disabled: busy, style: { ...btnStyle, minHeight: 34, padding: "5px 12px" }, children: t("replAdd") })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: exportFile, style: btnStyle, children: t("replExport") }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => fileRef.current?.click(), disabled: busy, style: btnStyle, children: t("replImport") }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -5514,25 +5741,56 @@ function OpenAiPresetSection({
     label: id === CUSTOM ? t("presetCustomCustom") : id ? PRESET_LABEL[id]?.() ?? id : t("presetCustom")
   }));
   const data = presets?.[cur];
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }, children: [
+  let hostLabel = "";
+  if (data?.baseUrl) {
+    try {
+      hostLabel = new URL(data.baseUrl).host;
+    } catch {
+      hostLabel = data.baseUrl;
+    }
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, alignItems: "stretch", width: "100%", maxWidth: 420 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "select",
       {
         value: cur,
         "aria-label": t("openaiPresetLabel"),
         onChange: (e) => onSwitch(e.target.value),
-        style: { ...inputStyle, maxWidth: 360 },
+        style: selectBaseStyle,
         children: options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v))
       }
     ),
-    data ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 11, color: t2.term, fontFamily: "monospace", wordBreak: "break-all" }, children: [
-      data.baseUrl,
-      " \xB7 ",
-      data.model,
-      " \xB7 ",
-      data.voice
+    data ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", flexWrap: "wrap", gap: 6, alignItems: "center" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "span",
+        {
+          style: {
+            fontSize: 11,
+            color: "var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            padding: "2px 7px",
+            borderRadius: 5,
+            background: "var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08))"
+          },
+          children: hostLabel
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "span",
+        {
+          style: {
+            fontSize: 11,
+            color: t2.term,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            padding: "2px 7px",
+            borderRadius: 5,
+            background: "var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08))"
+          },
+          children: data.model
+        }
+      )
     ] }) : null,
-    !presets ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 11, color: t2.term }, children: [
+    !presets ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 11.5, color: t2.term }, children: [
       t("presetDataMissing"),
       " ",
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -5540,14 +5798,13 @@ function OpenAiPresetSection({
         {
           type: "button",
           onClick: onReloadPresets,
-          style: { font: "inherit", cursor: "pointer", background: "none", border: "none", padding: 0, color: t2.label, textDecoration: "underline" },
+          style: { font: "inherit", cursor: "pointer", background: "none", border: "none", padding: 0, color: "var(--dsw-alias-brand-primary)", textDecoration: "underline" },
           children: t("presetReload")
         }
       )
     ] }) : null,
-    PRESET_NOTE[cur] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: PRESET_NOTE[cur]() }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetKeyNote") }),
-    cur === CUSTOM ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: t2.term }, children: t("presetCustomHint") }) : null
+    PRESET_NOTE[cur] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11.5, color: t2.term, lineHeight: "17px" }, children: PRESET_NOTE[cur]() }) : null,
+    cur === CUSTOM ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11.5, color: t2.term, lineHeight: "17px" }, children: t("presetCustomHint") }) : null
   ] });
 }
 function useHostPresets() {
@@ -5571,7 +5828,7 @@ function Row({ name: name2, desc, children }) {
   const hasDesc = desc.length > 0;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, "data-dshvm-row": name2, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: setLabel, children: [
-      label,
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
       hasDesc ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         "button",
         {
@@ -5582,22 +5839,28 @@ function Row({ name: name2, desc, children }) {
           onClick: () => setShowDesc((v) => !v),
           style: {
             appearance: "none",
-            border: 0,
-            background: "transparent",
+            border: `1px solid ${showDesc ? "var(--dsw-alias-brand-primary)" : "color-mix(in srgb, var(--dsw-alias-border-l2) 85%, transparent)"}`,
+            background: showDesc ? "color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent)" : "transparent",
             cursor: "pointer",
             font: "inherit",
-            fontSize: 11,
-            lineHeight: "16px",
-            padding: "1px 5px",
-            marginLeft: 4,
-            borderRadius: 4,
-            color: showDesc ? "var(--dsw-alias-label-secondary)" : "var(--dsw-alias-label-tertiary)"
+            fontSize: 10.5,
+            fontWeight: 600,
+            lineHeight: 1,
+            width: 17,
+            height: 17,
+            padding: 0,
+            borderRadius: 999,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: showDesc ? "var(--dsw-alias-brand-primary)" : "var(--dsw-alias-label-tertiary)",
+            flexShrink: 0
           },
           children: "?"
         }
       ) : null
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }, children }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { minWidth: 0, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }, children }),
     showDesc && hasDesc ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { id: descId, style: { ...setHint, gridColumn: "1 / -1", minWidth: 0 }, children: desc }) : null
   ] });
 }
@@ -5629,7 +5892,23 @@ function EffectivePending({ effective, value, ready }) {
     const eff = fmt ? fmt(effMap[f.key]) : String(effMap[f.key]);
     return t("effectiveItem").replace("{label}", t(f.label)).replace("{value}", eff);
   }).join(t("effectiveItemSep"));
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { "data-dshvm-settings": "effective-pending", style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary)", padding: "8px 2px 4px", lineHeight: 1.6 }, children: t("effectivePending").replace("{count}", String(pending.length)).replace("{items}", items) });
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "div",
+    {
+      "data-dshvm-settings": "effective-pending",
+      style: {
+        fontSize: 12,
+        color: "var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))",
+        padding: "8px 12px",
+        marginTop: 8,
+        borderRadius: 8,
+        background: "color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, var(--dsw-alias-bg-layer-2))",
+        border: "1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 24%, transparent)",
+        lineHeight: 1.55
+      },
+      children: t("effectivePending").replace("{count}", String(pending.length)).replace("{items}", items)
+    }
+  );
 }
 function SegmentTabs({ active, onChange }) {
   const tabs = [
@@ -5648,6 +5927,7 @@ function SegmentTabs({ active, onChange }) {
     {
       role: "tablist",
       "aria-label": t("segListLabel"),
+      className: "dshvm-tab-bar",
       onKeyDown: (e) => {
         if (e.key === "ArrowRight") {
           e.preventDefault();
@@ -5657,7 +5937,6 @@ function SegmentTabs({ active, onChange }) {
           move(-1);
         }
       },
-      style: { display: "flex", flexWrap: "wrap", gap: 4, padding: "10px 0 12px", borderBottom: `1px solid ${t2.border}` },
       children: tabs.map((tb) => {
         const on = tb.k === active;
         return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -5671,14 +5950,20 @@ function SegmentTabs({ active, onChange }) {
             style: {
               appearance: "none",
               font: "inherit",
-              fontSize: 12,
+              fontSize: 12.5,
               cursor: "pointer",
-              padding: "6px 12px",
-              borderRadius: 999,
-              border: `1px solid ${on ? "transparent" : t2.border}`,
-              background: on ? "var(--dsw-alias-bg-layer-2)" : "transparent",
+              padding: "6px 10px",
+              borderRadius: 7,
+              border: on ? "1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 85%, transparent)" : "1px solid transparent",
+              background: on ? "var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-layer-2))" : "transparent",
+              boxShadow: on ? "0 1px 3px rgba(0, 0, 0, 0.12)" : "none",
               color: on ? "var(--dsw-alias-label-primary)" : "var(--dsw-alias-label-secondary)",
-              fontWeight: on ? 600 : 400
+              fontWeight: on ? 600 : 500,
+              textAlign: "center",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              transition: "background .14s ease, color .14s ease, box-shadow .14s ease"
             },
             children: tb.label
           },
@@ -5693,13 +5978,13 @@ function GroupTitle({ children, first }) {
     "div",
     {
       style: {
-        fontSize: 11,
+        fontSize: 11.5,
         fontWeight: 600,
-        letterSpacing: ".04em",
+        letterSpacing: ".03em",
         color: "var(--dsw-alias-label-tertiary)",
-        padding: first ? "4px 0 2px" : "14px 0 2px",
+        padding: first ? "8px 0 2px" : "16px 0 4px",
         borderTop: first ? "none" : `1px solid ${t2.border}`,
-        marginTop: first ? 6 : 10
+        marginTop: first ? 2 : 8
       },
       children
     }
@@ -5719,8 +6004,9 @@ function SegGroup({
       style: setSegBtn(value === o.v),
       "aria-pressed": value === o.v,
       onClick: () => {
-        void score.set(field, o.v);
-        onSelect?.(o.v);
+        void Promise.resolve(score.set(field, o.v)).then((ok) => {
+          if (ok !== false) onSelect?.(o.v);
+        });
       },
       children: o.label
     },
@@ -5907,37 +6193,49 @@ function ModelStatusView() {
     )
   ] });
   const anyDownloading = !!st?.progress;
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 600, color: t2.label }, children: t("modelsTitle") }),
-      anyDownloading && st?.progress && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
-        st.progress.file,
-        " ",
-        st.progress.percent,
-        "%"
-      ] })
-    ] }),
-    mkRow(
-      t("modelStreamingAsr"),
-      { ready: !!st?.asr?.ready, size: st?.asr?.files?.reduce((a, f) => a + f.size, 0) ?? 0, failLatchMs: st?.asr?.failLatchMs ?? 0 },
-      "asr",
-      anyDownloading ? st.progress : null
-    ),
-    mkRow(t("modelVad"), { ready: !!st?.vad?.ready, size: st?.vad?.size ?? 0, failLatchMs: st?.vad?.failLatchMs ?? 0 }, "vad", anyDownloading ? st.progress : null),
-    mkRow(
-      t("modelSense"),
-      {
-        ready: !!st?.sense?.ready,
-        size: st?.sense?.size ?? 0,
-        failLatchMs: st?.sense?.enabled ? st?.sense?.failLatchMs ?? 0 : 0,
-        disabledText: st?.sense?.enabled ? void 0 : t("modelsDisabled")
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+    "div",
+    {
+      style: {
+        marginTop: 6,
+        padding: "10px 14px",
+        borderRadius: 10,
+        border: `1px solid ${t2.border}`,
+        background: "var(--dsw-alias-bg-layer-2)"
       },
-      "sense",
-      anyDownloading ? st.progress : null
-    ),
-    actionError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { role: "status", "aria-live": "polite", style: { fontSize: 12, color: "var(--dsw-alias-state-error-primary)", lineHeight: "18px", padding: "2px 0" }, children: actionError }) : null,
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("modelsHint") })
-  ] });
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, paddingBottom: 6 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 600, color: t2.label }, children: t("modelsTitle") }),
+          anyDownloading && st?.progress && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
+            st.progress.file,
+            " ",
+            st.progress.percent,
+            "%"
+          ] })
+        ] }),
+        mkRow(
+          t("modelStreamingAsr"),
+          { ready: !!st?.asr?.ready, size: st?.asr?.files?.reduce((a, f) => a + f.size, 0) ?? 0, failLatchMs: st?.asr?.failLatchMs ?? 0 },
+          "asr",
+          anyDownloading ? st.progress : null
+        ),
+        mkRow(t("modelVad"), { ready: !!st?.vad?.ready, size: st?.vad?.size ?? 0, failLatchMs: st?.vad?.failLatchMs ?? 0 }, "vad", anyDownloading ? st.progress : null),
+        mkRow(
+          t("modelSense"),
+          {
+            ready: !!st?.sense?.ready,
+            size: st?.sense?.size ?? 0,
+            failLatchMs: st?.sense?.enabled ? st?.sense?.failLatchMs ?? 0 : 0,
+            disabledText: st?.sense?.enabled ? void 0 : t("modelsDisabled")
+          },
+          "sense",
+          anyDownloading ? st.progress : null
+        ),
+        actionError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { role: "status", "aria-live": "polite", style: { fontSize: 12, color: "var(--dsw-alias-state-error-primary)", lineHeight: "18px", padding: "2px 0" }, children: actionError }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11.5, color: t2.term, lineHeight: "17px", paddingTop: 6 }, children: t("modelsHint") })
+      ]
+    }
+  );
 }
 function VoiceSettingsCard({
   scope,
@@ -5983,6 +6281,7 @@ function VoiceSettingsCard({
   const hostPresetState = useHostPresets();
   const hostPresets = hostPresetState.presets;
   const [tab, setTab] = (0, import_react2.useState)("read");
+  const [openaiAdvOpen, setOpenaiAdvOpen] = (0, import_react2.useState)(false);
   const headStatus = useModelsStatus();
   const effectiveVoice = () => {
     const pid = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
@@ -6008,12 +6307,22 @@ function VoiceSettingsCard({
   const switchPreset = (next) => {
     const list = hostPresets?.[next]?.voices;
     const cur = String(value.voice ?? "").trim();
-    void Promise.resolve(scope.set("openaiPreset", next)).then(() => {
+    void Promise.resolve(scope.set("openaiPreset", next)).then((ok) => {
+      if (ok === false) return;
       if (Array.isArray(list) && cur !== "" && !list.includes(cur)) void scope.set("voice", "");
     });
   };
+  const switchToLocalKokoro = () => {
+    void Promise.resolve(scope.set("ttsEngine", "kokoro")).then((ok) => {
+      if (ok !== false) void scope.set("voice", ENGINE_DEFAULT_VOICE["kokoro"] ?? "zf_xiaobei");
+    });
+  };
+  const curPresetId = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
+  const isKnownOpenaiPreset = hostPresets !== null && curPresetId !== "" && curPresetId !== "custom" && Object.hasOwn(hostPresets, curPresetId);
+  const hasOpenaiOverrides = Boolean(String(value.openaiBaseUrl ?? "").trim() || String(value.openaiModel ?? "").trim());
+  const showOpenaiAdv = !isKnownOpenaiPreset || openaiAdvOpen || hasOpenaiOverrides;
   if (unavailable) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: t2.term, fontSize: 12, padding: "14px 16px", ...cardStyle }, children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: t2.term, fontSize: 12, padding: "14px 18px", ...cardStyle }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)" }, children: t("configUnavailable") }),
       t("configUnavailableNote")
     ] });
@@ -6021,6 +6330,27 @@ function VoiceSettingsCard({
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: cardStyle, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: focusVisibleCss }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-expanded": !collapsed, "aria-controls": cardBodyId, onClick: () => setCollapsed((c) => !c), style: { ...setHeader, background: collapsed ? "transparent" : t2.bgOpen }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "span",
+        {
+          "aria-hidden": "true",
+          style: {
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            background: "color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent)",
+            color: "var(--dsw-alias-brand-primary)"
+          },
+          children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", { viewBox: "0 0 16 16", width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "5.5", y: "1.8", width: "5", height: "8.2", rx: "2.5" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M3.2 7.5a4.8 4.8 0 0 0 9.6 0M8 12.3v2" })
+          ] })
+        }
+      ),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: setHeadText, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setName, children: t("stateVoiceMode") }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -6148,45 +6478,6 @@ function VoiceSettingsCard({
               }
             }
           ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-            "div",
-            {
-              style: {
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                margin: "4px 0 12px",
-                padding: "10px 12px",
-                border: `1px solid ${t2.border}`,
-                borderRadius: 8,
-                background: "var(--dsw-alias-bg-layer-2)",
-                minWidth: 0
-              },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                  EngineStatusInline,
-                  {
-                    onSwitchLocal: () => {
-                      void scope.set("ttsEngine", "kokoro");
-                      void scope.set("voice", ENGINE_DEFAULT_VOICE["kokoro"] ?? "zf_xiaobei");
-                    }
-                  }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                  SelfTestSection,
-                  {
-                    voice: effectiveVoice(),
-                    rate: Number(value.rate ?? 1.1),
-                    engine,
-                    onSwitchLocal: () => {
-                      void scope.set("ttsEngine", "kokoro");
-                      void scope.set("voice", ENGINE_DEFAULT_VOICE["kokoro"] ?? "zf_xiaobei");
-                    }
-                  }
-                )
-              ]
-            }
-          ),
           engine === "kokoro" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "kokoroModel", desc: t("descKokoroModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -6199,6 +6490,95 @@ function VoiceSettingsCard({
               ]
             }
           ) }),
+          engine === "mimo" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mimoApiKey", desc: t("descMimoApiKey"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            SecretField,
+            {
+              score: scope,
+              field: "mimoApiKey",
+              saved: secretKeys.mimoApiKey,
+              configOnly: secretKeys.fromConfig.mimoApiKey,
+              onChanged: refreshSecretKeys
+            }
+          ) }),
+          engine === "openai" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiPreset", desc: `${t("descOpenaiPreset")} ${t("presetKeyNote")}`, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              OpenAiPresetSection,
+              {
+                score: scope,
+                value: value.openaiPreset,
+                presets: hostPresets,
+                onReloadPresets: hostPresetState.reload,
+                onSwitch: switchPreset
+              }
+            ) }),
+            isKnownOpenaiPreset ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiApiKeys", desc: t("descOpenaiApiKeys"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              PresetKeyField,
+              {
+                score: scope,
+                presetId: curPresetId,
+                map: value.openaiApiKeys !== null && typeof value.openaiApiKeys === "object" && !Array.isArray(value.openaiApiKeys) ? value.openaiApiKeys : {},
+                saved: Boolean(secretKeys.openaiApiKeys[curPresetId]),
+                fromConfig: Boolean(secretKeys.fromConfig.openaiApiKeys[curPresetId]),
+                requiresKey: !curPresetId.startsWith("selfhosted-"),
+                onChanged: refreshSecretKeys
+              }
+            ) }) : null,
+            isKnownOpenaiPreset ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "4px 0 6px" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                type: "button",
+                "aria-expanded": showOpenaiAdv,
+                onClick: () => setOpenaiAdvOpen((v) => !v),
+                style: {
+                  appearance: "none",
+                  border: "none",
+                  background: "transparent",
+                  padding: "2px 0",
+                  font: "inherit",
+                  fontSize: 12,
+                  color: "var(--dsw-alias-label-secondary)",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": "true", style: { fontSize: 10, display: "inline-block", transform: showOpenaiAdv ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .14s ease" }, children: "\u25B6" }),
+                  t(showOpenaiAdv ? "openaiAdvancedHide" : "openaiAdvancedShow")
+                ]
+              }
+            ) }) : null,
+            showOpenaiAdv ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiBaseUrl", desc: t("descOpenaiBaseUrl"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                TextField,
+                {
+                  score: scope,
+                  field: "openaiBaseUrl",
+                  value: value.openaiBaseUrl,
+                  placeholder: curPresetId && hostPresets?.[curPresetId]?.baseUrl || "https://api.openai.com/v1"
+                }
+              ) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiModel", desc: t("descOpenaiModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                TextField,
+                {
+                  score: scope,
+                  field: "openaiModel",
+                  value: value.openaiModel,
+                  placeholder: curPresetId && hostPresets?.[curPresetId]?.model || "gpt-4o-mini-tts"
+                }
+              ) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiApiKey", desc: t("descOpenaiApiKey"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                SecretField,
+                {
+                  score: scope,
+                  field: "openaiApiKey",
+                  saved: secretKeys.openaiApiKey,
+                  configOnly: secretKeys.fromConfig.openaiApiKey,
+                  onChanged: refreshSecretKeys
+                }
+              ) })
+            ] }) : null
+          ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             Row,
             {
@@ -6211,82 +6591,50 @@ function VoiceSettingsCard({
                   field: "voice",
                   value: value.voice ?? "",
                   options: voiceOptions,
-                  placeholder: ENGINE_DEFAULT_VOICE[engine] || (engine === "openai" ? effectiveVoice() : "") || "zh-CN-XiaoxiaoNeural",
+                  placeholder: engine === "openai" ? effectiveVoice() : ENGINE_DEFAULT_VOICE[engine] || "zh-CN-XiaoxiaoNeural",
+                  emptyDefaultLabel: engine === "openai" ? t("voiceServerDefaultOption") : void 0,
                   showCustom: isCloudEngine(engine),
-                  footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v || effectiveVoice() || ENGINE_DEFAULT_VOICE[engine] || "", rate: Number(value.rate ?? 1.1) })
+                  footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    VoicePreviewButton,
+                    {
+                      voice: v || effectiveVoice() || ENGINE_DEFAULT_VOICE[engine] || "",
+                      rate: Number(value.rate ?? 1.1),
+                      allowEmptyVoice: engine === "openai"
+                    }
+                  )
                 }
               )
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1.1, min: 0.5, max: 2, step: 0.1 }) }),
-          engine === "openai" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("segOpenAiServer") }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiPreset", desc: t("descOpenaiPreset"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              OpenAiPresetSection,
-              {
-                score: scope,
-                value: value.openaiPreset,
-                presets: hostPresets,
-                onReloadPresets: hostPresetState.reload,
-                onSwitch: switchPreset
-              }
-            ) }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiBaseUrl", desc: t("descOpenaiBaseUrl"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              TextField,
-              {
-                score: scope,
-                field: "openaiBaseUrl",
-                value: value.openaiBaseUrl,
-                placeholder: (() => {
-                  const pid = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
-                  return pid && hostPresets?.[pid]?.baseUrl || "";
-                })()
-              }
-            ) }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiModel", desc: t("descOpenaiModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              TextField,
-              {
-                score: scope,
-                field: "openaiModel",
-                value: value.openaiModel,
-                placeholder: (() => {
-                  const pid = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
-                  return pid && hostPresets?.[pid]?.model || "";
-                })()
-              }
-            ) }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiApiKey", desc: t("descOpenaiApiKey"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              SecretField,
-              {
-                score: scope,
-                field: "openaiApiKey",
-                saved: secretKeys.openaiApiKey,
-                configOnly: secretKeys.fromConfig.openaiApiKey,
-                onChanged: refreshSecretKeys
-              }
-            ) }),
-            typeof value.openaiPreset === "string" && value.openaiPreset && value.openaiPreset !== "custom" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiApiKeys", desc: t("descOpenaiApiKeys"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              PresetKeyField,
-              {
-                score: scope,
-                presetId: value.openaiPreset,
-                map: value.openaiApiKeys !== null && typeof value.openaiApiKeys === "object" && !Array.isArray(value.openaiApiKeys) ? value.openaiApiKeys : {},
-                saved: Boolean(secretKeys.openaiApiKeys[value.openaiPreset]),
-                fromConfig: Boolean(secretKeys.fromConfig.openaiApiKeys[value.openaiPreset]),
-                onChanged: refreshSecretKeys
-              }
-            ) }) : null
-          ] }),
-          engine === "mimo" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mimoApiKey", desc: t("descMimoApiKey"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            SecretField,
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "div",
             {
-              score: scope,
-              field: "mimoApiKey",
-              saved: secretKeys.mimoApiKey,
-              configOnly: secretKeys.fromConfig.mimoApiKey,
-              onChanged: refreshSecretKeys
+              style: {
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                margin: "8px 0 4px",
+                padding: "12px 14px",
+                border: `1px solid ${t2.border}`,
+                borderRadius: 10,
+                background: "var(--dsw-alias-bg-layer-2)",
+                minWidth: 0
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EngineStatusInline, { onSwitchLocal: switchToLocalKokoro }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  SelfTestSection,
+                  {
+                    voice: effectiveVoice() || ENGINE_DEFAULT_VOICE[engine] || "",
+                    rate: Number(value.rate ?? 1.1),
+                    engine,
+                    onSwitchLocal: switchToLocalKokoro
+                  }
+                )
+              ]
             }
-          ) })
+          )
         ] }) : null,
         tab === "display" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { role: "tabpanel", "aria-label": t("segDisplay"), children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showCaptions", desc: t("descShowCaptions"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "showCaptions", checked: value.showCaptions !== false, score: scope }) }),
@@ -6547,9 +6895,15 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "7ff9670";
+var BUILD_TAG = "4d68d88";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
-var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
+var telemetryEnabled = (() => {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
+  } catch {
+    return false;
+  }
+})();
 console.log("[dsh-voice] build=" + BUILD_TAG);
 var debugLog = (event, fields = {}) => {
   if (!telemetryEnabled) return;
@@ -7600,15 +7954,16 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
           // I-7：宿主无响应不再让按钮永久 pending
         });
         const out = await res.json();
-        activeSessionId = out.active === sessionId ? sessionId : null;
+        const owned = out.stale ? null : out.active === sessionId ? sessionId : null;
+        activeSessionId = owned;
         playingEndAt = 0;
         notify();
         if (!res.ok) return { ok: false, error: errorText(out, "enterFail") };
-        if (out.active === sessionId) setLastVoiceSession(sessionId);
+        if (owned === sessionId) setLastVoiceSession(sessionId);
         return {
-          ok: out.active === sessionId,
-          preempted: out.active !== null && out.active !== sessionId,
-          error: out.active === sessionId ? void 0 : t("enterFail")
+          ok: owned === sessionId,
+          preempted: !out.stale && out.active !== null && out.active !== sessionId,
+          error: owned === sessionId ? void 0 : t("enterFail")
         };
       } catch {
         void fetch(`${location.origin}${basePath}/toggle`, {

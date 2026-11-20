@@ -234,8 +234,9 @@ declare const __BUILD_TAG__: string
 const BUILD_TAG = __BUILD_TAG__
 
 const TELEMETRY_FLAG = 'dsh-voice-mode.telemetry'
-const telemetryEnabled =
-  typeof localStorage !== 'undefined' && localStorage.getItem(TELEMETRY_FLAG) === '1'
+const telemetryEnabled = (() => {
+  try { return typeof localStorage !== 'undefined' && localStorage.getItem(TELEMETRY_FLAG) === '1' } catch { return false }
+})()
 
 // 无条件打一次构建版本（进入页面即见，不依赖 telemetry），确认加载的 bundle 版本。
 console.log('[dsh-voice] build=' + BUILD_TAG)
@@ -1722,30 +1723,27 @@ function createVoiceBus(basePath: string = BASE_PATH, ctx?: any): VoiceBus {
           body: JSON.stringify({ sessionId, on: true, tabId: TAB_ID, lang: activeLocale() }),
           signal: AbortSignal.timeout(TOGGLE_TIMEOUT_MS), // I-7：宿主无响应不再让按钮永久 pending
         })
-        const out = (await res.json()) as { active?: string | null; error?: string; code?: string }
-        // B1 修复：仅当本 tab 真正成为活跃会话才认领 owner；否则保持非 owner（null），
-        // 防止多 tab 下「out.active 是别的会话」时本 tab 误收养别人会话 → 重复播放。
-        activeSessionId = out.active === sessionId ? sessionId : null
+        const out = (await res.json()) as { active?: string | null; stale?: boolean; error?: string; code?: string }
+        // B1 修复：仅当本 tab 真正成为活跃会话且响应非 stale 才认领 owner；
+        // 防止多 tab 或同会话慢进入并发下误认领。
+        const owned = out.stale ? null : out.active === sessionId ? sessionId : null
+        activeSessionId = owned
         // M-c：重置回声尾音宽限起点——上会话自然停播 ≤400ms 内快速重入并立即开口时，
         // 残留 playingEndAt 会让 isPlaying 误判「朗读中」→ 丢首 400ms 语音（skip 路径
         // doSkipAudio 已置 0，自然停播路径没有，补在进入口）。
-        // 已知取舍（R3 登记，真机验证由 PM 安排）：typing 退出（keepAudio）→ 自然
-        // 停播 ≤400ms 内快速重入并立即开口，这条路径的尾音宽限同样被重置丢掉——
-        // 物理残响仍在，只剩 AEC 兜底。窄窗口 + 优先级合理：丢用户首 400ms 比
-        // 漏残响（自聊/误打断）更糟，故接受。
         playingEndAt = 0
         notify()
         if (!res.ok) return { ok: false, error: errorText(out, 'enterFail') }
         // I5：记住本次语音会话（autoResume 切回时自动恢复）。
-        if (out.active === sessionId) setLastVoiceSession(sessionId)
+        if (owned === sessionId) setLastVoiceSession(sessionId)
         // 双重奏根治：拒绝线保留（host toggle 用 cancel 保 seq 连续递增）——
         // 重入/403 恢复后新句 seq 必然 > 线（旧帧 ≤ 线仍被拒），不清线消除
         // 「exit→enter 在途旧帧重入」窗口。
         // M5：区分「被抢占」（另一会话已活跃）与「真失败」——抢占时不误闪失败提示。
         return {
-          ok: out.active === sessionId,
-          preempted: out.active !== null && out.active !== sessionId,
-          error: out.active === sessionId ? undefined : t('enterFail'),
+          ok: owned === sessionId,
+          preempted: !out.stale && out.active !== null && out.active !== sessionId,
+          error: owned === sessionId ? undefined : t('enterFail'),
         }
       } catch {
         // I-7：超时/网络错误时宿主可能已 arm 本会话（响应丢了）——补发 toggle off，防残留录音/占用。
