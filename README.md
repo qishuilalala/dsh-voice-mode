@@ -21,11 +21,12 @@
 
 > 在 DeepSeek Harness 会话内进行语音输入、编辑草稿和按句朗读，支持字幕及发声打断。识别在宿主端推理；默认 Edge 朗读访问微软在线服务，本地 VITS / Kokoro 可选。自动发送和打断行为可在设置中调整，实际效果取决于模型、设备、回声消除和网络。
 
-## 当前状态（2026-11-18）
+## 当前状态（2026-11-21）
 
 兼容跟进：已对最新 dsh 0.2.2-rc.5 完成锚点、类型和隔离运行时复核（含客户端侧，L3 全绿），详见[兼容契约](docs/compat-contract.md)；这不等同真实麦克风或全平台验收。
 
-- **v0.7.39 补丁版**：新增 OpenAI 兼容远程朗读引擎（自建/托管 `POST /v1/audio/speech`，失败自动回退本地）；可安装版本以 [npm](https://www.npmjs.com/package/dsh-voice-mode) 与 [Releases](https://github.com/qishuilalala/dsh-voice-mode/releases) 为准。
+- **v0.7.40**：新增 7 家在线 TTS 预设与按预设专属密钥、小米 MiMo 朗读引擎、用户纠错词表可视化管理，重塑四分段设置面板，并落地触屏快捷菜单、切页定稿、字幕回看等全流程体验与安全打磨；可安装版本以 [npm](https://www.npmjs.com/package/dsh-voice-mode) 与 [Releases](https://github.com/qishuilalala/dsh-voice-mode/releases) 为准。
+- **v0.7.39 补丁版**：新增 OpenAI 兼容远程朗读引擎（自建/托管 `POST /v1/audio/speech`，失败自动回退本地）。
 - **v0.7.37 补丁版**：切会话停朗读、once 打断续说、小数点不拆句、启动窗口释放麦克风。
 - **v0.7.36 补丁版**：覆盖 dsh 0.2.2-rc.2，对外「已验证至」0.2.2-rc.2。
 - **升级提示**：v0.7.33 不包含这项下载修复。v0.7.34 使用与既有摘要匹配的上游历史版本，不改模型、音色或缓存目录；请勿关闭摘要校验。
