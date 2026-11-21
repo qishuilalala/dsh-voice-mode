@@ -1,508 +1,276 @@
 # dsh-voice-mode
 
-[![License: MIT](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square&color=blue)](LICENSE)
-[![Latest Release](https://img.shields.io/github/v/release/qishuilalala/dsh-voice-mode?style=flat-square&color=brightgreen&include_prereleases)](https://github.com/qishuilalala/dsh-voice-mode/releases)
-[![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange)](https://www.npmjs.com/package/dsh-voice-mode)
+[![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=cb3837)](https://www.npmjs.com/package/dsh-voice-mode)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-voice-mode?style=flat-square&color=blue)](https://www.npmjs.com/package/dsh-voice-mode)
+[![Plugin Security Scan](https://github.com/qishuilalala/dsh-voice-mode/actions/workflows/hol-scanner.yml/badge.svg?branch=main)](https://github.com/qishuilalala/dsh-voice-mode/actions/workflows/hol-scanner.yml)
 [![CI](https://github.com/qishuilalala/dsh-voice-mode/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/qishuilalala/dsh-voice-mode/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/qishuilalala/dsh-voice-mode?style=flat-square)](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/LICENSE)
 
-DeepSeek Harness 语音双工对话插件：会话内一键进入 → 边说边出字的本地流式识别 → 停顿自动发送 → 最终答复按句合成播放 + 实时字幕，支持发声或按键打断。默认语音路径无需额外语音 API Key，识别在宿主端本地运行；宿主大模型的连接与费用由宿主自身配置决定。
+面向 **DeepSeek Harness（DSH）** 网页端与官方桌面端的全双工语音对话插件：在宿主端本地完成流式语音识别并写入可编辑草稿，模型回复生成时按句合成朗读并配实时字幕，朗读期间开口或按键即可随时打断。默认路径无需额外配置语音识别密钥；宿主对话大模型按原有配置计费与联网。
 
-**中文** · [English](https://github.com/qishuilalala/dsh-voice-mode/blob/HEAD/plugin/dsh-voice-mode/README.en.md)
-
-> **Full-duplex voice mode for DeepSeek Harness** — streamed ASR to an editable draft, sentence-by-sentence read-aloud with live captions, and speaking interrupts playback and the running turn.
+**简体中文** · [English](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/README.en.md) · [版本记录](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md) · [兼容契约](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md)
 
 ![dsh-voice-mode 全双工语音对话](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/assets/hero-banner.png)
 
-![语音模式真实录制：流式转写 → 自动发送 → 按句朗读 + 实时字幕](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
+---
 
-### 麦克风按钮即状态面板（PR #16，[@dyguests](https://github.com/dyguests) 贡献）
+## 核心功能
 
-![真实录制：语音输入全部收拢到右下角麦克风按钮](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-compact-ui.gif)
+- **宿主本地流式语音输入（ASR / STT）**：基于 `sherpa-onnx` 运行 `zipformer2` 流式识别与可选 `SenseVoice` 定稿重译（自动标点与数字/日期规范化），边说边出字、实时回填会话草稿；默认停顿约 1.5 秒断句、再静音约 1.2 秒自动发送，也可关闭自动发送仅作语音听写。
+- **三种收音交互模式**：支持「持续聆听（`toggle`）」「按住说话（`hold`，支持直接长按麦克风按钮或键盘 `Ctrl` / macOS `⌃ Control`）」「说完就关（`once`）」；可在设置页、桌面右键菜单或触屏 `⋯` 菜单即时切换。
+- **五类逐句朗读引擎（TTS）**：默认使用微软 Edge 在线朗读；支持完全本地离线的中文 VITS 与中英混读 Kokoro（103 音色），也支持接入 7 家内置 OpenAI 兼容在线预设（可按预设独立保存 API Key）、自定义端点与小米 MiMo 语音合成；远程服务超时或异常时可自动回退本地引擎。
+- **实时字幕浮层与紧凑模式**：朗读期间在右下角展示 4 档字号、3 档最大宽度的实时字幕（移动端避让底部安全区，播毕支持最近 8 句回看）；关闭状态条与字幕后，全部收音、朗读、计时与告警状态可收拢到输入框旁的单个麦克风按钮上。
+- **自然打断与短词让位**：朗读期间开口即可终止当前音频与在途合成队列，并通过 2 秒预录环拼回刚开口的前半句语音（防吞字）；随口回应「嗯 / 对」等短词时自动暂停让位 1.5 秒后继续朗读；外放无回声消除环境下可自动切换或手动指定为按住打断。
+- **口语纠错与可选唤醒词**：可在设置面板可视化维护识别纠错词表（修正人名、术语与中英混读听错写法），可选开启发送前大模型轻量纠错与待机唤醒词。
 
-dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`），更早的版本仍在输入框右侧。状态全部画在按钮上：
+![语音模式实录：流式转写 → 停顿发送 → 按句朗读 + 实时字幕](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
 
-- **聆听**：绿色三根竖条，随麦克风音量跳动；**朗读中**：蓝色五根竖条，随播放音量跳动；**按住说话**：红色
-- **说完就关**（`mode: once`）：发出后关麦、转圈等回复，自然读完显示对勾并自动退出；长按麦克风或按 Ctrl 打断后恢复收音并留在语音模式
-- **检测到说话**：右上角橙点；**出错**：左上角红点（悬停看原因）
-- **点击**：平时进入/退出；不在语音模式但正在朗读（`readAloud: always`）时点一下 = 停止朗读；等待回复或朗读期间单击 = 停止朗读并完全退出。点按钮不会抢走输入框的光标
-- **右键菜单**（鼠标右键、键盘菜单键，或触屏旁侧 `⋯` 按钮 / 空闲非按住态长按）：交互模式、朗读回复范围、字幕浮层、状态条、自动发送
-- 状态条与字幕默认开启；两项都关掉即上图的「全部收进按钮」形态，此时录音计时显示在按钮下方、提示文字显示在按钮旁
-
-
-> **当前状态**：支持 7 家在线 TTS 预设与逐预设独立密钥、小米 MiMo 语音合成、识别纠错词表可视化编辑、四分段设置面板，以及全模式键位提示（含 macOS 键帽本地化展示与 `220ms` 键盘按住说话）与跨平台兼容加固；可安装版本以 npm 徽章与 [Releases](https://github.com/qishuilalala/dsh-voice-mode/releases) 为准。
->
-> **兼容与验证边界**：最新 `dsh 0.2.2-rc.5` 的客户端注入锚点、双端类型检查与隔离运行态验证均已通过；完整版本矩阵、跨平台支持表与未覆盖边界见[兼容契约](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md)。CI 通过不替代真实麦克风听感与全硬件验收；详见 [CHANGELOG](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md) 与[产品路线图](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md)。包声明范围为 `>=0.1.1-rc.2 <0.3.0-0`，未测版本不做兼容保证。
-
+![紧凑形态：语音状态收拢到右下角麦克风按钮](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-compact-ui.gif)
 
 ---
 
-## 🤝 Fork 增强（本仓库新增）
+## 安装与快速开始
 
-本仓库在上游 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice) 基础上加入了大量增强，核心如下（完整清单见 git 历史与[旧账本档案](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/rules/archive/STATE-until-2026-11-12.md)）：
-
-- **朗读默认 Edge 云端；本地 TTS 可选（隐私优先）**：本地合成不向独立在线 TTS 服务发送回复文本，宿主 LLM 的网络请求不受此选项控制——
-  - 本地 VITS（WASM 运行时，`sherpa-onnx-vits-zh-ll`，纯中文，5 说话人）；
-  - 本地 Kokoro（**中英混读**，103 音色；`int8` 默认约 109MB / 可选 `fp32` 约 311MB 的较大模型），经 `sherpa-onnx-node` **原生 addon** 运行（原生运行时，实际资源占用与稳定性需按设备验证）；
-  - Edge 云端为默认朗读引擎，也可在设置中重新选择（设置 `ttsEngine: edge`）；设置面板「朗读引擎」热切换。
-- **Kokoro 音色全量 103 个**（F0 实测标定性别），四个常用男声置顶带编号；音色面板用 **下拉列表 + ◀▶ 步进**切换；
-- **增量传输**：partial 只传新增 0.9 秒，长段按住说话松手后**快速完成定稿**（不再整段重传重解码）；
-- **交互增强**：输入框旁**模式切换按钮**（持续聆听 ⇄ 按住说话，保存到设置）；按住说模式下**按住才录、不按住不打断**；
-- **长段支持**：持续聆听连续多段自动拼成一条消息（内部按 30s 分块识别，跨块累积拼接），静音断句默认 1500 毫秒；按住说停顿不断句；
-- **朗读稳定性**：打断即终止在途合成释放 CPU；合成不阻塞宿主主线程，句间等待取决于模型与硬件；长朗读不触发空闲下线；
-- **安全加固**：会话存在性校验 / 回环+Origin 校验 / 按端点配置限流 / 主要模型与清单内支持文件固定 SHA256（辅助目录仍为清单/存在性检查） / 下载域名白名单 / 重定向守卫。
-
-> ℹ️ 顶部 `demo-voice-flow.gif` 是**界面的真实录制示例**（语音模式 → 边说边出字 → 停顿自动发送 → 按句朗读 + 实时字幕），由 `screenshots/scripts/capture-demo.mjs` 驱动真实链路产出；UI 持续演进，以实际界面为准。
-
----
-
-## ✨ 功能
-
-- **语音模式**：输入框工具栏麦克风按钮或全局快捷键 `Ctrl+Shift+V`（macOS 为 `⌃ Control + ⇧ Shift + V`）进入/退出；光标在输入框里时还可按 `Alt+Enter`（macOS 为 `⌥ Option + Return`）切换（不插入换行）；全局单活（同一时刻仅一个会话处于语音模式，切换会话自动让出）
-- **三种交互模式（右键麦克风、触屏 `⋯` 菜单或设置页可切换，切换即持久化）**：
-  - `toggle`（默认）持续聆听：RMS VAD 分段 → zipformer2 流式识别（边说边出字，实时字幕预览）→ 静音约 1500 毫秒断句进草稿，连续多段拼成一条消息，再静音约 1.2 秒（合计约 2.7 秒）自动发送；说话时按住 `Ctrl`（macOS 为 `⌃ Control`）强制立即发送
-  - `hold` 按住说话：空闲时**直接按住麦克风按钮就开始录音、松手即发**（不必先点一下进入；短按仍是进入/退出）；已进入语音模式时也可**长按键盘 `Ctrl`（macOS 为 `⌃ Control`，约 0.22 秒起录，注意不是 `⌘ Command`）** 说话、松开即发；发出后等本轮回复结束（开朗读则读完）自动退出语音模式；关闭自动发送时松手只把文字留在输入框、不发送并直接退出；按住时没说话约 25 秒后兜底退出；上滑取消、`Esc`/失焦/组合按其他键自动放弃本段；按住期间停顿不断句（单次上限约 95 秒音频）
-  - `once` 说完就关：像 `toggle` 一样说一段，发出后关麦，等回复自然朗读完自动退出语音模式；长按麦克风或按 `Ctrl`（macOS `⌃ Control`）打断后恢复收音、留在语音模式，下一轮自然读完再退出（关闭自动发送时：说完这一段即退出，文字留在草稿）
-- **朗读范围**（`readAloud`）：`voice`（默认）只朗读语音模式下的回复；`always` 当前可见会话的所有回复都朗读（含打字发的；同一会话开多个标签页只在最后看的那个上播；切换会话立即停下原会话朗读，待播内容一并作废）；`off` 从不朗读
-- **唤醒词（可选，默认关）**：设置 `wakeWord` 后进入待机态，说出唤醒词才开始识别（如「你好小D」）。**可直接与命令连说**（「你好小D，帮我查天气」）——唤醒词会在定稿/字幕里自动剥掉、不进消息；匹配带容错（同音字替换「小莫→小墨」、首字错、前置语气词「呃/喂/我说」），建议 3-4 字；待机态状态条实时显示「说『x』开始 · 它听到的转写」，唤醒成败可自查。边界（重要）：**仅 `toggle` 模式生效**（`hold` / 手动打断下唤醒词静默失效）；**说完整一句后回到待机态需重说唤醒词**（只喊唤醒词、还没说命令时保持聆听，可停顿想好再说）；**朗读期说唤醒词不触发**（打断由 VAD 开口即触发，与唤醒词无关）
-- **字幕档位**：`captionFontSize` 4 档（0=12px / 1=14px / 2=18px / 3=24px）+ `captionMaxWidth` 3 档（0=50vw / 1=70vw / 2=90vw），窄屏自适应
-- **让位语义**（ADR-0008）：`backchannelYield` 默认开—— 朗读期用户插话「嗯/对」自动让位 1.5s，真要说走硬打断；让 LLM 主动让出话轮（人格层让位）；关掉恢复改造前行为
-- **输出链路**：只朗读最终答复的 `text-delta`（reasoning/工具调用不读），按句合成后播放（默认 Edge 云端；可切本地 VITS/Kokoro，中英混读选 Kokoro）+ 右下角实时字幕浮层；工具调用触发提示音；全文照常写入聊天记录；口语化提示词（设置 `spokenFormat`，默认开）让回复为自然短句、不带 Markdown 排版符号
-- **开口打断（barge-in）**：服务端 Silero VAD 帧级检测 + 回声门控（echoGateDb）三档灵敏度 → 本地静音 + host 合成队列作废 + 正在运行的回合取消（保留半截并自然续入新消息）；朗读中自动切超灵敏档。开启唤醒词后打断**仍是开口即打断**（打断门控是 VAD，不是唤醒词；打断后回待机态）
-- **模型懒加载与进度**：首次使用自动下载识别/合成模型（`.part` 断点续传），状态条实时显示进度；可用 `npm run prefetch` 预下载
-- **设置**：入口随 dsh 版本而不同（见下方「设置」），可调朗读引擎/音色/语速/打断灵敏度/静音停顿/空闲超时/模型镜像/自动发送/交互模式/唤醒词/口语化提示词/字幕档位/让位语义/让位窗口/打断语音抢救/LLM 纠错；**音色可试听**（按当前音色+语速即时合成预览，自定义 ShortName 亦可）
-- **界面语言**：跟随 dsh 的语言设置（设置 → 通用 → 语言），**切换即时生效、无需刷新**——设置页、语音状态条、字幕、音色名称/性别/口音、错误提示全部随之变化；LLM 口语化提示词也按界面语言选中/英文版。插件词典注册在 dsh 官方 locale 服务的 `voice-mode` 命名空间，社区语言包可据此补充其它语言，缺失的语言回落英文。插件名称与描述在「插件」页同样按语言显示。
-- **容错与诊断**：麦克风被拒红点提示、模型下载失败可见提示、TTS 连接失败状态条提示（自动退避重试）、提交失败文字留在草稿、SSE 断线自动重连；识别/打断检测通道连续失败、状态同步断连时状态条给出提示（可自愈的瞬时失败不打扰）；SenseVoice 定稿超过 2 秒时状态条显示「识别中… Ns」递增（看得见它在工作）；「复制诊断」一键复制版本/运行状态/设置快照/阶段耗时——**不含任何转写原文**（隐私口径）
-- **空闲退出**：5 分钟无活动自动退出并释放麦克风。朗读、AI 说话、回合运行均计为活动，后台标签页同样续期；但距最后一次真实操作（说话 / 打断 / 进入语音）满 2 小时仍会退出
-
----
-
-## 🚀 快速开始（Quick Start）
+**环境要求**：DeepSeek Harness `>=0.1.1-rc.2 <0.3.0-0`（已实测覆盖 `0.1.1-rc.2` 至 `0.2.2-rc.5` 的客户端注入锚点、双端类型检查与隔离运行态冒烟），Node.js `>=18.0.0`，支持 `getUserMedia` 与 Web Audio 的现代浏览器（Chrome / Edge / Firefox / Safari 16+）或 DSH 官方桌面客户端。
 
 ```sh
+# 方式一：从 npm 安装（推荐；按实际环境替换 web 等 profile 名称）
 dsh plugin --profile web add dsh-voice-mode
+
+# 未全局安装 dsh CLI 时等价写法：
+npx -y @deepseek-ai/dsh plugin --profile web add dsh-voice-mode
+
+# 方式二：源码构建安装
+git clone https://github.com/qishuilalala/dsh-voice-mode.git
+cd dsh-voice-mode/plugin/dsh-voice-mode && pnpm install && pnpm build
+dsh plugin --profile web add .
 ```
 
-命令针对 web profile；其他 profile 使用实际配置名称。安装后按部署方式重启宿主；只有配置了对应 systemd 服务的环境才使用服务重启命令。
-
-**第一次用**：
-
-1. 进入任一会话，按 `Ctrl+Shift+V`（或点输入区麦克风按钮）进入语音模式，状态条显示「聆听中…」；
-2. 说一句完整的话（如「帮我看看今天的天气」）→ 实时字幕立即出现，停顿后自动发送；
-3. AI 回复开始朗读时，尝试发声打断，检查朗读是否停止及后续转写；设备上不可靠时使用按住说话。
+组合包插件安装或升级后需**重启 DSH 宿主进程**生效。首次进入语音模式时会自动按需下载本地识别模型（约 160MB 流式模型 + 可选约 228MB SenseVoice 定稿模型，支持 `.part` 断点续传，状态条实时显示下载进度；中国大陆网络可在设置中将模型镜像填为 `https://hf-mirror.com`，也可提前在包目录执行 `npm run prefetch` 预热缓存）。
 
 ---
 
-## ⌨️ 操作手势与快捷键
+## 操作手势与快捷键（Windows / Linux 与 macOS 对照）
 
-| 场景 / 手势 | Windows / Linux | macOS | 作用说明 |
+| 操作场景 | Windows / Linux | macOS | 行为说明 |
 | --- | --- | --- | --- |
-| 进入 / 退出语音模式 | `Ctrl+Shift+V` | `⌃ Control + ⇧ Shift + V` | 应用内切换（注意 macOS 默认是 `Control` 而非 `⌘ Command`；可在设置页点「录制」修改或留空停用） |
-| 输入框内快速切换 | `Alt+Enter` | `⌥ Option + Return` | 光标在聊天输入框里时进入 / 退出语音模式，不插入换行；长按不重复切换；不占用 `Ctrl/⌘ + Enter` 发送键 |
-| 持续聆听（`toggle`） | 直接说话；按住 `Ctrl` 立即发 | 直接说话；按住 `⌃ Control` 立即发 | 边说边出字，停顿约 1500ms 断句进草稿、再静音约 1.2 秒自动发送；说话时按住 `Ctrl` / `⌃ Control` ≥250ms 松开可立即发送 |
-| 按住说话（`hold`）鼠标/触屏 | 按住麦克风按钮 | 按住麦克风按钮 | 未进入语音模式时**直接按住麦克风按钮即开始收音**，松手发送并在本轮回复结束后自动退出；短按仍是进入 / 退出；上滑或按 `Esc` 放弃本段 |
-| 按住说话（`hold`）键盘 | 进入后长按 `Ctrl`（≥220ms） | 进入后长按 `⌃ Control`（≥220ms） | 已处于语音模式时按住 `Ctrl` / `⌃ Control` 说话、松开即发；按 `Esc`、切走窗口或组合按其他键会自动取消本段 |
-| 手动打断 / 停止朗读 | 开口说话 / 按住 `Ctrl` / `Esc` | 开口说话 / 按住 `⌃ Control` / `Esc` | 自动打断下开口即停；手动打断（`manual`）下朗读期按住麦克风或 `Ctrl` / `⌃ Control` 打断；按一次 `Esc` 停播，连按两次 `Esc` 退出语音模式 |
-| 快捷菜单 | 右键点击麦克风按钮（或菜单键） | 右键 / 双指点按麦克风按钮 | 触屏端可点麦克风旁 `⋯` 按钮（或空闲非按住态长按 450ms），快速切换交互模式、朗读范围、字幕、状态条与自动发送 |
-| 跳过单句 / 退出 | 点字幕「跳过本句」/ 状态条「退出」 | 点字幕「跳过本句」/ 状态条「退出」 | 「跳过本句」仅跳过当前正在播的一句，不中断后续句子 |
+| 进入 / 退出语音模式 | `Ctrl+Shift+V` | `⌃ Control + ⇧ Shift + V` | 应用内全局切换（注意 macOS 默认使用 `Control` 而非 `⌘ Command`）；可在设置「快捷键」中点「录制」改键或留空停用 |
+| 输入框内快速切换 | `Alt+Enter` | `⌥ Option + Return` | 光标在聊天输入框内时切换语音模式，不插入换行，不占用 `Ctrl/⌘ + Enter` 发送键 |
+| 持续聆听（`toggle`，默认） | 直接说话；说话中按住 `Ctrl` 立即发 | 直接说话；说话中按住 `⌃ Control` 立即发 | 停顿约 1500ms 断句进草稿、再静音约 1.2s 自动发送；说话时按住 `Ctrl` / `⌃ Control` ≥250ms 松开可立即发送 |
+| 按住说话（`hold`）指针/触屏 | 按住麦克风按钮说话，松开发送 | 按住麦克风按钮说话，松开发送 | 未进入语音模式时**直接按住麦克风按钮即可开录**，松手发送并在本轮回复结束后自动退出；按住期间上滑或按 `Esc` 取消 |
+| 按住说话（`hold`）键盘 | 进入后长按 `Ctrl`（≥220ms） | 进入后长按 `⌃ Control`（≥220ms） | 已进入语音模式时按住 `Ctrl` / `⌃ Control` 持续收音、松开即发；按 `Esc`、切走窗口或组合按其他键自动放弃本段 |
+| 说完就关（`once`） | 说完一句自动停麦，播完自动退出 | 说完一句自动停麦，播完自动退出 | 适合单轮提问；朗读期长按麦克风或按 `Ctrl` / `⌃ Control` 打断后会恢复收音并留在语音模式 |
+| 打断或停止朗读 | 开口说话 / 按住 `Ctrl` / `Esc` | 开口说话 / 按住 `⌃ Control` / `Esc` | 自动打断下开口即停；手动打断（`manual`）下朗读期按住麦克风或 `Ctrl` / `⌃ Control` 打断；按一次 `Esc` 停播，连按两次 `Esc` 退出 |
+| 快捷菜单 | 右键点击麦克风按钮（或菜单键） | 右键 / 双指点按麦克风按钮 | 触屏端点击麦克风旁 `⋯` 按钮（或空闲非按住态长按 450ms），快速切换交互模式、朗读范围、字幕、状态条与自动发送 |
 
 ---
 
-## ⚙️ 设置
+## 设置面板与全部配置项
 
-**所有 dsh 版本通用入口：设置（Settings）→ 语音模式（Voice Mode）**。另有按版本不同的次要入口（卡片内容一致）：
+**所有 dsh 版本通用入口：设置（Settings）→ 语音模式（Voice Mode）**。按宿主版本另有次要入口：
 
-- dsh ≤ 0.1.5：设置 → Plugins → 插件配置 → 语音模式
-- dsh 0.1.6-alpha 及以后（含 0.1.7、0.2.0）：左侧 **Plugins** → 已安装的 `dsh-voice-mode` → 详情页「语音模式」卡片
-- dsh 0.1.7+ 起，设置保存在插件自有文件 `~/.dsh/voice-mode.settings.json`（`$DSH_HOME` 下），优先于 profile 配置里的同名键；首次运行会从旧 `settings.yaml(.imported)` 的 `voice-mode:` 段迁移一次；恢复默认请把该文件内容改成 `{}`（不要删除）。
+- `dsh <= 0.1.5`：设置 → Plugins → 插件配置 → 语音模式
+- `dsh >= 0.1.6-alpha`：左侧 **Plugins** → 已安装的 `dsh-voice-mode` → 详情页「语音模式」卡片（`0.1.7+` 起设置保存在 `$DSH_HOME/voice-mode.settings.json`，权限 `0600`；如需恢复默认，请将文件内容改为 `{}` 而不要直接删除文件）
 
+![四分段设置面板（语音输入 / 朗读 / 显示与交互 / 高级）](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/settings-panel.png)
+
+### 完整设置项说明表（36 项）
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
-| `ttsEngine` | `edge` | 朗读引擎：`edge` 微软云端（默认，快）/ `vits` 本地中文 / `kokoro` 本地中英 / `openai` 任意 OpenAI 兼容服务 / `mimo` 小米 MiMo（独立 `mimoTts.apiKey`）；**即时生效** |
-| `kokoroModel` | `int8` | Kokoro 模型精度：`int8`（默认，109MB，纯 CPU/低带宽推荐）/ `fp32`（311MB，音质更好，独显/大内存推荐）；两档共用 103 音色，**即时生效** |
-| `voice` | 按引擎 | 音色：VITS 五说话人；Kokoro 103 个（下拉+◀▶，62 深沉/68 浑厚/75 清亮/76 磁性置顶）；Edge 进入时自动加载全量 322 个。行内「试听」可即时预览 |
-| `rate` | `1.1` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
-| `interruptLevel` | `0` | 发声打断灵敏度（服务端 VAD 帧级检测 + 回声门控）：0 高门槛（3 帧）/ 1 中（2 帧）/ 2 低（1 帧） |
-| `bargeInMode` | `detect` | 打断方式：`detect` 自动探测本机原生回声消除状态（默认；未生效时朗读期切为长按打断）/ `auto` 强制开口即打断（耳机、安静环境推荐）/ `manual` 手动打断（外放推荐：空闲时可直接说话或说唤醒词，AI 朗读中按住麦克风/`Ctrl` 打断；参见 ADR-0006） |
-| `echoGateDb` | `6` | 无原生 AEC 时的回声门兜底阈值；原生 AEC 有效时不参与。仅在兜底路径中，增大更保守、减小更易触发；先确认设备与打断模式 |
-| `silenceMs` | `1500` | 说完整一句的静音停顿毫秒数 |
-| `idleTimeoutMinutes` | `5` | 无活动自动退出语音模式的分钟数（朗读计为活动） |
-| `modelHost` | 默认源 | 模型下载源（国内网络填 `https://hf-mirror.com`） |
-| `autoSend` | `true` | 静音到点自动发送（连续多段拼成一条消息）；关闭则只进草稿（按住 `Ctrl` / hold 松手仍会发送） |
-| `autoResume` | `false` | 切回上次语音会话时自动恢复语音模式（默认关）。开启后：下次进入语音会话即自动进入语音模式 + 恢复上次会话；关闭则需手动按 `Ctrl+Shift+V` 重新进入。关闭时切回上次语音会话，会在输入框旁用灰色字提示一次这件事（每个浏览器只提示一次） |
-| `mode` | `toggle` | 交互模式：`toggle` 持续聆听 + 1500ms 静音断句；`hold` 按住说话、松手发送（短按退出）；`once` 说一段、回复自然读完自动退出；手动打断后恢复收音并留在语音模式 |
-| `readAloud` | `voice` | 朗读范围：`voice` 仅语音模式下的回复；`always` 当前可见会话的所有回复（含打字发送，切换会话即停止原朗读）；`off` 从不朗读 |
-| `showStatusBar` | `true` | 输入框上方的语音状态条；关闭后状态只显示在麦克风按钮上（计时在按钮下方、提示在按钮旁） |
-| `showCaptions` | `true` | 朗读时的字幕浮层 |
-| `shortcut` | `Ctrl+Shift+V` | 进入 / 退出语音模式的快捷键（修饰键 Ctrl/Shift/Alt/Meta + 一个字母 / 数字 / Enter / Space / Tab）；设置页「快捷键」分组里可点「录制」直接按组合键录入（`Esc` 取消、`Backspace` 清空，缺修饰键或方向键 / F 键等不支持的键会提示）；**留空 = 禁用快捷键**，改用麦克风按钮；**即时生效** |
-| `composerShortcut` | `Alt+Enter` | 光标在输入框里时切换语音模式的快捷键（Mac 上即 Option+Enter），不插入换行；格式与录制方式同 `shortcut`；**留空 = 禁用**；设置卡片自己的输入框不拦截；`Cmd/Ctrl+Enter` 不占用；**即时生效**。「恢复默认」把两项快捷键恢复为 `Ctrl+Shift+V` 与 `Alt+Enter` |
-| `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭。**可与命令连说**，词头自动剥掉不进消息；匹配带容错（编辑距离 ≤1 + 前 3 字符前导窗口，吸收同音字/语气词）；**建议 3-4 字**——单字词无容错、2 字词的容错会连带吸收所有同首字的 2 字词（如「小莫」也会唤醒「小张」），介意误唤醒用 3 字以上；每句断句或打断后回待机需重说；**按住说话 hold 模式下不生效**（`manual` 手动打断与 `detect` 回落 `manual` 时空闲期照常生效）；朗读期说唤醒词不触发 |
-| `toolBeep` | `false` | 工具调用提示音（默认关）：开启后 AI 调用工具时「滴」一声；关闭则全程静默 |
-| `spokenFormat` | `true` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效** |
-| `senseITN` | `true` | SenseVoice 逆文本归一化（数字/日期/货币规范化；默认开） |
-| `openaiPreset` | 空（手动） | 在线 TTS 预设：`siliconflow-cosyvoice2` / `siliconflow-fish` / `openrouter-openai` / `openai-official` / `selfhosted-kokoro` / `selfhosted-vllm`。选中后按预设的 baseUrl/model 走，**音色留空时回落预设音色**；key 用 `openaiTts.apiKey`，或按预设用 `openaiTts.apiKeys[预设 id]` 分别配（**推荐：多家服务商各配一把，切预设不必再手改**）。注意：`apiKeys` 属宿主配置文件，改完需重启宿主;；卡片可点「测试朗读」就地试合成；**即时生效** |
-| `openaiBaseUrl` | 空（跟随预设/配置文件） | 在线 TTS 端点：**设置卡片里直接填**（无需改 profile YAML）；优先级 设置 > 预设 > `openaiTts.baseUrl`；配合「自定义」可接任意 OpenAI 兼容平台；**即时生效** |
-| `openaiModel` | 空 | 在线 TTS 模型名覆盖（同上优先级）；预设没列出的平台选「自定义」后填这里 |
-| `openaiApiKey` | 空（回落配置文件） | 在线 TTS 的 key：卡片里填，存宿主 0600 设置文件，**永不回传浏览器**；优先级 面板按预设key > 设置全局key > `openaiTts.apiKeys[预设id]` > `openaiTts.apiKey`；卡片「清除」显式清空；**即时生效** |
-| `openaiApiKeys` | `{}`（全未配） | 按预设独立保存的密钥表：面板按预设 id 分别存 key，选中哪个预设自动使用对应密钥，切换预设不再因串用密钥报 401；空条目回落全局 key；**接口只返回是否已配置布尔表、永不回传明文**；**即时生效** |
-| `mimoApiKey` | 空（回落配置文件） | 小米 MiMo 的 key（走 `api-key` 头）：卡片里填，同样只存宿主、不回传；留空回落 `mimoTts.apiKey` |
-| `asrReplacements` | `[]` | 纠错词表 `[{from:[听错写法],to:想要写法}]`（≤200 条 / ≤12KB UTF-8）：转写后统一改写（中间结果+定稿）；卡片显示「本次生效以来」命中次数；与 LLM 纠错串联；**即时生效** |
-| `senseVoice` | `true` | 定稿是否用 SenseVoice 重译（带标点 + 数字归一化，更准；默认开）。**关闭可省 ~228MB 模型**，只走流式识别（更快、精度下降） |
-| `captionFontSize` | `0` | 字幕字号档位 0=12px / 1=14px / 2=18px / 3=24px（默认 0 与现状字节等价） |
-| `captionMaxWidth` | `1` | 字幕宽度档位 0=50vw / 1=70vw / 2=90vw（视口 <686px 窄于 480px，≈686px 接近 480px，>686px 宽于 480px） |
-| `backchannelYield` | `true` | 让位语义（ADR-0008）；朗读期说「嗯/对」自动让位 1.5s + 真要说走硬打断；关 = 行为等同改造前 |
-| `bargeInSalvage` | `true` | 打断语音抢救（ADR-0012）：AI 朗读时你开口打断，自动保留从开口到打断生效之间你说的话，并入识别继续发送（避免打断瞬间吞字；关 = 丢弃打断前语音——仅外放且无回声消除的环境建议关） |
-| `llmCorrect` | `false` | LLM 纠错（默认关）：发送前用大模型对整条语音文本做一次纠错（只改错别字/同音字/标点，保持原意；复用宿主已配置模型。开 = 每条消息多一次约 1 秒的纠错等待；纠错失败自动用原文；模型改成回答你而非纠错时同样回退原文） |
-| `yieldMs` | `1500` | 让位窗口时长（ms，500-3000）：`backchannelYield` 命中后 TTS 丢帧持续时长；窗口内用户真要说则由原 `hardBreak` 接管，窗口到点自动恢复播放 |
+| `ttsEngine` | `edge` | 朗读引擎：`edge` 微软在线（默认）/ `vits` 本地中文 / `kokoro` 本地中英混读 / `openai` OpenAI 兼容服务 / `mimo` 小米 MiMo；**即时生效** |
+| `kokoroModel` | `int8` | Kokoro 模型精度：`int8`（默认，约 109MB，CPU 推荐）/ `fp32`（约 311MB，高音质）；共用 103 音色；**即时生效** |
+| `voice` | 按引擎 | 朗读音色：VITS 5 说话人；Kokoro 103 音色（下拉 + ◀▶ 切换，常用男声 `62/68/75/76` 置顶）；Edge 全量 322 音色；行内「试听」可即时预览；**即时生效** |
+| `rate` | `1.1` | 朗读语速倍率（`0.5` 慢速 ～ `2.0` 快速）；**即时生效** |
+| `interruptLevel` | `0` | 发声打断灵敏度（服务端 VAD 帧检测 + 回声门控）：`0` 高门槛（3 帧）/ `1` 中（2 帧）/ `2` 低（1 帧） |
+| `bargeInMode` | `detect` | 打断方式：`detect` 自动探测原生回声消除（未生效时朗读期自动切为长按打断）/ `auto` 强制开口即打断（耳机推荐）/ `manual` 手动长按麦克风或 `Ctrl` 打断（外放推荐） |
+| `echoGateDb` | `6` | 无原生回声消除时的回声门控阈值（`3`–`12` dB）；原生回声消除生效时不参与门控 |
+| `silenceMs` | `1500` | 判定一句话说完的静音停顿毫秒数（`500`–`30000`） |
+| `idleTimeoutMinutes` | `5` | 无活动自动退出语音模式的分钟数（`1`–`120`；朗读与回合运行计为活动，硬上限 2 小时） |
+| `modelHost` | 空（官方源） | 模型下载源覆盖（中国大陆网络可填 `https://hf-mirror.com`）；下次下载即生效 |
+| `autoSend` | `true` | 静音到点自动发送（连续多段拼为一条）；关闭后只写入输入框草稿（按住 `Ctrl` 或 `hold` 松手仍发送）；**即时生效** |
+| `autoResume` | `false` | 切换回上次语音会话时自动恢复进入语音模式（默认关） |
+| `mode` | `toggle` | 交互模式：`toggle` 持续聆听 / `hold` 按住说话、松开发送 / `once` 说完一句、回复播完自动退出；**即时生效** |
+| `readAloud` | `voice` | 朗读范围：`voice` 仅语音模式下的回复 / `always` 当前可见会话的所有回复（含打字发送）/ `off` 不朗读；**即时生效** |
+| `showStatusBar` | `true` | 输入框上方的语音状态条开关；关闭后状态收拢到麦克风按钮旁；**即时生效** |
+| `showCaptions` | `true` | 朗读期间右下角实时字幕浮层开关；**即时生效** |
+| `shortcut` | `Ctrl+Shift+V` | 进入 / 退出语音模式的全局快捷键（修饰键 + 字母/数字/Enter/Space/Tab，支持面板「录制」，留空停用）；**即时生效** |
+| `composerShortcut` | `Alt+Enter` | 光标在聊天输入框内时的切换快捷键（macOS 为 `Option+Return`，不插入换行，留空停用）；**即时生效** |
+| `wakeWord` | 空（关） | 待机唤醒词（如「你好小D」，建议 3–4 字）：仅在 `toggle` 模式空闲待机时生效，可与指令连说并自动剥离词头，每句断句或打断后回到待机 |
+| `toolBeep` | `false` | 模型调用工具时是否播放轻提示音（默认关） |
+| `spokenFormat` | `true` | 仅为当前活跃语音会话注入「口语化短句、不输出 Markdown 排版符号」提示词；**即时生效** |
+| `senseVoice` | `true` | 定稿是否使用 SenseVoice 重译补标点与逆文本归一化（关闭可省约 228MB 模型下载，仅跑流式识别） |
+| `senseITN` | `true` | SenseVoice 逆文本归一化开关（将口语数字、日期、金额转为规范书面格式） |
+| `openaiPreset` | 空（手动） | 在线 TTS 预设：`siliconflow-cosyvoice2` / `siliconflow-fish` / `openrouter-openai` / `openai-official` / `groq-playai` / `selfhosted-kokoro` / `selfhosted-vllm`（或 `custom` 自定义）；**即时生效** |
+| `openaiBaseUrl` | 空（跟随预设/配置） | 在线 TTS 接口地址覆盖（优先级：设置面板 > 内置预设 > 宿主配置文件）；**即时生效** |
+| `openaiModel` | 空（跟随预设/配置） | 在线 TTS 模型名覆盖（优先级同上）；**即时生效** |
+| `openaiApiKey` | 空（回落配置） | 在线 TTS 全局备用密钥（仅以 `0600` 权限存宿主侧，接口永不回传明文）；**即时生效** |
+| `openaiApiKeys` | `{}` | 按预设 ID 独立保存的在线 TTS 密钥表（优先级高于全局密钥，切换预设自动切换对应密钥，接口仅返回布尔状态）；**即时生效** |
+| `mimoApiKey` | 空（回落配置） | 小米 MiMo 独立 API Key（走 `api-key` 请求头，与 OpenAI 兼容密钥隔离存储、永不回传明文）；**即时生效** |
+| `asrReplacements` | `[]` | 识别后替换词表 `[{from:[听错写法], to:目标写法}]`（上限 200 条 / 12KB，中间结果与定稿均改写，面板显示命中计数）；**即时生效** |
+| `captionFontSize` | `0` | 字幕字号档位：`0`=12px / `1`=14px / `2`=18px / `3`=24px |
+| `captionMaxWidth` | `1` | 字幕最大宽度档位：`0`=50vw / `1`=70vw / `2`=90vw |
+| `backchannelYield` | `true` | 短应答让位：朗读期用户插话「嗯 / 对」自动暂停让位，继续说长句则升级为硬打断 |
+| `yieldMs` | `1500` | 短应答让位等待窗口毫秒数（`500`–`3000`），窗口结束未继续说话则恢复朗读 |
+| `bargeInSalvage` | `true` | 打断语音抢救：确认打断时将语音起点前 250ms 起的预录音频并入新识别段，防止起音被吞 |
+| `llmCorrect` | `false` | 发送前大模型轻量纠错（复用宿主已配置模型修正同音错字与标点，失败或超时自动回退原文） |
 
-生效时机分四档：① 即时——快捷键 / 输入框快捷键 / 交互模式 / 朗读范围 / 自动发送 / 字幕浮层 / 状态条 / 朗读引擎 / 音色 / 语速 / 口语化提示词（对后续回复生效）/ 模型镜像（下次下载尝试即生效）；② 下次识别时——定稿重译（SenseVoice）/ 逆文本归一化；③ 下一段话——静音判定时长（断句端点；发送等待固定 1.2 秒不受影响）；④ 下次进入语音模式——打断灵敏度 / 打断方式 / 回声门控 / 自动恢复 / 唤醒词 / 工具提示音 / 字幕字号 / 字幕宽度 / 短应答让位 / 让位窗口 / 打断语音抢救 / LLM 纠错 / 空闲时长。已保存但未生效的项会列在设置卡片顶部（含当前生效值）。设置项默认值由插件配置（`base` 层）提供。
+**生效时机分四档**：① 即时生效（快捷键、交互模式、朗读范围、自动发送、字幕与状态条开关、朗读引擎/预设/密钥/音色/语速、纠错词表、口语化提示词、模型镜像）② 下次识别生效（SenseVoice 定稿重译、逆文本归一化）③ 下一段话生效（静音停顿阈值）④ 下次进入语音模式生效（其余声学门控、唤醒词、字幕尺寸与空闲超时）。未立即生效的修改会在面板顶部提示其**当前生效值**。
 
-### 本地音色（VITS / Kokoro）
+### 本地音色与常用 Edge 音色
 
-> **桌面端（Electron）提示**：官方桌面端的宿主运行在 Electron 里，其 V8 不允许 Kokoro 的原生 addon 返回外部缓冲区。插件会自动改用一个真正的 Node.js 来跑 Kokoro——**需要系统 PATH 上有 Node.js ≥18**（或用环境变量 `DSHVM_NODE` 指定路径）；没有则 Kokoro 会提示失败，请改用默认的 Edge 或本地 VITS（两者在桌面端不受影响）。
+> **官方桌面端（Electron）说明**：桌面端宿主的 Electron V8 沙箱限制原生外部缓冲区，插件在运行本地 `kokoro` 时会自动探测并调用系统 `PATH` 上的独立 Node.js（`>=18`，或通过环境变量 `DSHVM_NODE` 指定可执行文件路径）。若本机未安装独立 Node.js，请使用默认的 `edge` 或纯 WASM 的本地 `vits`。
 
-- **VITS（纯中文）**：`suyingxue` 素映雪·女 / `gunian` 顾念·男 / `fushiyu` 傅斯遇·女 / `bingjiao` 冰娇·男 / `bazong` 霸总·男
-- **Kokoro（中英混读均可）**：103 个音色全量入表，面板按编号 + 实测性别标注；四个常用男声置顶：`62` 深沉 / `68` 浑厚 / `75` 清亮 / `76` 磁性；中文女声 `48` 小北 / `49` 小妮 / `50` 小小 / `51` 小艺。音色只是风格向量，**语言能力与音色无关**。
+- **本地 VITS（纯中文，5 说话人）**：`suyingxue`（素映雪·女）、`gunian`（顾念·男）、`fushiyu`（傅斯遇·女）、`bingjiao`（冰娇·男）、`bazong`（霸总·男）
+- **本地 Kokoro（中英混读，103 音色）**：置顶常用男声 `62`（深沉）、`68`（浑厚）、`75`（清亮）、`76`（磁性）；常用中文女声 `48`（小北）、`49`（小妮）、`50`（小小）、`51`（小艺）
+- **常用 Edge 音色**（可在包目录运行 `node scripts/list-voices.mjs` 查看全部 322 个音色）：
 
-### 常用 Edge 音色（完整清单见 `node scripts/list-voices.mjs`）
-
-| ShortName | 说明 |
+| Edge ShortName | 说明 |
 | --- | --- |
-| `zh-CN-XiaoxiaoNeural` | 晓晓 · 女声（默认） |
-| `zh-CN-XiaoyiNeural` | 晓伊 · 女声 |
-| `zh-CN-YunxiNeural` | 云希 · 男声 |
-| `zh-CN-YunjianNeural` | 云健 · 男声 |
-| `zh-CN-YunyangNeural` | 云扬 · 男声 |
-| `zh-CN-YunxiaNeural` | 云夏 · 男声 |
-| `zh-CN-liaoning-XiaobeiNeural` | 小北 · 东北话 · 女声 |
-| `zh-HK-HiuMaanNeural` | 晓曼 · 粤语 · 女声 |
-| `zh-TW-HsiaoYuNeural` | 小雨 · 台湾腔 · 女声 |
-| `en-US-AriaNeural` | Aria · English · 女声 |
+| `zh-CN-XiaoxiaoNeural` | 晓晓 · 普通话女声（默认） |
+| `zh-CN-XiaoyiNeural` | 晓伊 · 普通话女声 |
+| `zh-CN-YunxiNeural` | 云希 · 普通话男声 |
+| `zh-CN-YunjianNeural` | 云健 · 普通话男声 |
+| `zh-CN-YunyangNeural` | 云扬 · 普通话男声 |
+| `zh-CN-liaoning-XiaobeiNeural` | 小北 · 东北话女声 |
+| `zh-HK-HiuMaanNeural` | 晓曼 · 粤语女声 |
+| `zh-TW-HsiaoYuNeural` | 小雨 · 台湾国语女声 |
+| `en-US-AriaNeural` | Aria · 英语女声 |
 
 ---
 
-## 🔧 配置（bundle patch / settings.yaml）
+## 进阶配置文件示例（`settings.yaml` / `cordis.patch.yml`）
 
-也可以直接编辑 `~/.dsh/settings.yaml` 的 `voice-mode:` 段（设置面板与 RPC 写的是同一份文档层）：
+除图形设置面板外，也可在宿主配置文件中为插件播种初始默认值（运行时以设置面板保存值为最高优先级，`enabled`、`cacheDir`、`allowLan` 等宿主级开关仅由配置文件控制）：
 
-```yaml
-- id: voice-mode
-  name: dsh-voice-mode
-  config:
-    enabled: true                 # false = 完全禁用语音模式（toggle 会被拒）
-    cacheDir: ~/.cache/dsh-voice-mode/models   # 可覆盖；否则用平台默认
-    # 以下为设置项播种的默认值（设置面板优先级更高，面板是权威源）：
-    voice: zh-CN-XiaoxiaoNeural
-    rate: 1.1
-    interruptLevel: 0
-    silenceMs: 1500
-    idleTimeoutMinutes: 5
-    modelHost: https://huggingface.co
-```
+### OpenAI 兼容在线 TTS（`ttsEngine: openai`）
 
-> 注意：`voice` / `rate` / `interruptLevel` / `silenceMs` / `idleTimeoutMinutes` / `modelHost` / `autoSend`
-> 的**生效值来自设置面板**；bundle 配置只负责为这些键播种默认值
-> （`enabled` / `cacheDir` 则仅由 bundle 配置决定）。
-> 插件 HTTP 命名空间固定为 `/voice-mode`（与客户端打包契约一致，不可配置）。
-
-### OpenAI 兼容的 TTS 服务（`ttsEngine: openai`）
-
-任何实现了 OpenAI `POST /v1/audio/speech` 的服务都能用来朗读：自己 GPU 机器上的（[vLLM-Omni](https://github.com/vllm-project/vllm-omni)、[Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI)、LocalAI 等），或者 OpenAI、[OpenRouter](https://openrouter.ai/docs/guides/overview/multimodal/tts) 这类托管 API。服务地址写在组合包 config 里（仅 host 侧，key 不会下发到浏览器），引擎和其他引擎一样在设置面板里选：
+可在设置面板直接选择 7 家内置预设并填写各预设独立密钥，也可在宿主配置中接入自建 [vLLM-Omni](https://github.com/vllm-project/vllm-omni)、[Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) 或 [OpenRouter](https://openrouter.ai/docs/guides/overview/multimodal/tts) 等兼容 `POST /v1/audio/speech` 的服务端：
 
 ```yaml
 - id: voice-mode
   name: dsh-voice-mode
   config:
+    enabled: true
     ttsEngine: openai
-    voice: vivian                       # 服务端的音色名；留空 = openaiTts.voice
+    voice: vivian
     openaiTts:
-      baseUrl: http://gpu-box:8091/v1   # OpenRouter: https://openrouter.ai/api/v1，OpenAI: https://api.openai.com/v1
-      apiKey: ''                        # Bearer key（未按预设配置时的兜底；服务无鉴权可留空）
-      apiKeys:                          # 可选：按预设 id 分别配 key，切预设不必再手改上面的 apiKey
-        siliconflow-cosyvoice2: ''      # 硅基流动
-        openrouter-openai: ''           # OpenRouter
-        openai-official: ''             # OpenAI 官方
+      baseUrl: http://127.0.0.1:8091/v1
+      apiKey: ''
+      apiKeys:
+        siliconflow-cosyvoice2: ''
+        openrouter-openai: ''
+        openai-official: ''
       model: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
       voice: vivian
-      responseFormat: mp3               # mp3 | wav
-      timeoutMs: 8000                   # 单句超时，超过视为不可用
-      fallback: kokoro                  # none | vits | kokoro：服务挂了或太慢时用的本地引擎
-      fallbackVoice: zf_xiaobei         # 留空 = 该引擎的默认音色
-      instructions: ''                  # 可选，支持风格说明的模型才用
+      responseFormat: mp3
+      timeoutMs: 8000
+      fallback: kokoro
+      fallbackVoice: zf_xiaobei
+      instructions: ''
 ```
-
-每句一个请求（队列本来就在回复还在生成时逐句合成，句内流式不会让播放更早开始）。`rate` 不为 1 时作为 `speed` 发送。配置了 `fallback` 时，请求失败或超时的那句（以及之后 30 秒）改用本地引擎，然后再试服务，服务挂掉不会让每句都等一次超时。被朗读的文本会发到 `baseUrl`，请选你信得过的服务。
-
-## 在线 TTS 怎么配（2026-11-19 起）
-
-设置卡片 →「朗读引擎」选 `openai`（OpenAI 兼容）或 `mimo`（小米 MiMo）：
-
-1. **有预设的平台**：在「在线预设」里选一家（硅基流动 CosyVoice2 / 硅基流动 Fish / OpenRouter / OpenAI 官方 / Groq PlayAI / 自建 Kokoro-FastAPI / 自建 vLLM-Omni），只在「API Key」里填 key 即可，地址与模型自动带出。
-2. **列表里没有的平台**：预设选「自定义（下方手填）」，然后填三个框——**接口地址（Base URL）**、**模型名**、**API Key**（音色用上面「朗读音色」那栏填）。
-3. **想改某个预设的地址/模型**：选预设后直接在 URL/模型框里填，覆盖预设值即可（留空 = 用预设值）。
-
-优先级：**设置卡片 > 内置预设 > profile 配置文件**。key 只存宿主（0600 设置文件），GET 设置接口永不回传；卡片上的「清除」用于显式清空。
-
-验证：填完点「测试朗读」，成功会直接出声并就地提示；失败按限流/禁用/引擎/网络/Key 分类给出下一步。
 
 ### 小米 MiMo 语音合成（`ttsEngine: mimo`）
 
-小米 MiMo 的 TTS 走 **Chat Completions 形态**（`POST /v1/chat/completions`，音频以 base64 放在 `choices[0].message.audio.data`），不是 OpenAI 的 `/audio/speech`，所以有独立配置块。**与 OpenAI 兼容引擎各用各的 key**（`mimoTts.apiKey` 不借用 `openaiTts.apiKey`，避免把一家的凭据发给另一家）：
+小米 MiMo 使用独立的 `POST /v1/chat/completions` 音频输出接口与 `api-key` 请求头，密钥与 OpenAI 兼容引擎完全隔离（官方文档见 <https://mimo.mi.com>）：
 
 ```yaml
 - id: voice-mode
   name: dsh-voice-mode
   config:
     ttsEngine: mimo
-    voice: 冰糖                      # 预置音色：mimo_default / 冰糖 / 茉莉 / 苏打 / 白桦 / Mia / Chloe / Milo / Dean；留空 = mimoTts.voice
+    voice: 冰糖
     mimoTts:
-      apiKey: ''                     # 必填；走 api-key 头（不是 Bearer），key 只在宿主侧
+      apiKey: ''
       baseUrl: https://api.xiaomimimo.com/v1
-      model: mimo-v2.5-tts           # 现行仍是 v2.5 系列（V2.6 指的是 Pro/Flash 推理模型）
+      model: mimo-v2.5-tts
       voice: mimo_default
-      instructions: ''               # 可选：自然语言风格说明（如「温和一些」）
-      responseFormat: wav            # wav | mp3
-      timeoutMs: 8000                # 单句超时（默认 8000ms）
-      fallback: kokoro               # none | vits | kokoro：失败或超时后 30 秒内用本地引擎
+      instructions: ''
+      responseFormat: wav
+      timeoutMs: 8000
+      fallback: kokoro
       fallbackVoice: zf_xiaobei
 ```
 
-MiMo **没有 `speed` 字段**：`rate` 不为 1 时会译成自然语言风格指令（「语速加快到约 1.2 倍」）随请求下发。失败/超时同样进入 30 秒冷却并回退本地，打断（barge-in）不记为失败。官方文档：<https://mimo.mi.com>。
+### 识别纠错词表（`asrReplacements`）
 
-
-**接入与协议说明**：
-
-- 鉴权请求头为 `api-key: sk-…`（非 `Authorization: Bearer`），密钥可在 MiMo 控制台创建。
-- 可用模型为 `mimo-v2.5-tts`；预置音色包括 `mimo_default`、`冰糖`、`苏打`、`茉莉`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。
-- 服务端实际返回单声道 24kHz 16bit WAV 音频（即使请求 `mp3` 也可能返回 WAV），插件会按响应头字节自动嗅探真实音频格式（`sniffAudioMime`），确保浏览器正常解码播放。
-- 鉴权或接口报错消息均经过密钥脱敏后再记入宿主日志。
-
-### 纠正听错的词（`asrReplacements`）
-
-
-识别器会把中文里夹的人名、英文词听错（例如「Sakina」听成「ski男」）。常规办法热词在这里用不上：sherpa-onnx 只有 transducer 模型支持热词，流式 zipformer 以汉字为单位、写不出英文词，出定稿的 SenseVoice 又没有热词入口。在有热词能力的模型能覆盖之前，替换表是权宜办法：识别之后改写文本，中间结果和定稿都改，所以字幕、草稿和唤醒词看到的都是改好的文本。
+可直接在「设置 → 语音模式 → 高级 → 识别纠错词表」中添加、删除并即时生效，也可在宿主配置中预置：
 
 ```yaml
 - id: voice-mode
+  name: dsh-voice-mode
   config:
     asrReplacements:
-      - from: [ski男]          # 识别器给出的写法，可写多个
-        to: Sakina             # 想要的写法
+      - from: [ski男, ski 男]
+        to: Sakina
 ```
 
-匹配不区分大小写，中英交界处的空白不影响（「ski 男」同样命中）。写法以英文字母或数字开头/结尾时只匹配整词，所以 `sina` 不会改到 `Sinatra`；汉字没有词界，中文写法按子串匹配。同一位置优先匹配更长的写法，替换结果不会再被匹配。只写确实听到过的错法：太短或太常见的写法也会改掉正常的词。替换表读自插件配置，配置重载后下一次识别请求起生效。
+英文或数字开头的规则仅按完整词边界匹配（避免误改长词子串），中文规则按最长子串优先单遍替换，替换结果同时作用于实时字幕、输入框草稿与唤醒词匹配。
 
 ---
 
-## 🌐 API
+## 数据流架构与宿主路由
 
-| 路由 | 说明 |
+![dsh-voice-mode 数据流架构](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/architecture.svg)
+
+- **单活会话隔离**：同一时刻仅 `activeVoiceSession` 指向的会话开启语音拦截与朗读，其余会话完全零开销直通。
+- **无损流观察**：宿主通过 `llm/stream` 旁路观察最终文本增量并按句切分合成，不阻塞聊天流渲染，自动过滤推理思考块与代码块。
+- **纪元（Epoch）打断**：每次打断立即递增队列纪元并终止在途合成，过时音频帧全部丢弃，不会出现残留尾音。
+
+| 宿主 HTTP 路由 | 用途说明 |
 | --- | --- |
-| `GET /voice-mode/stream` | SSE：`event: audio`（`{sessionId, seq, text, audio(base64 MP3)}`）、`event: mode`（全局单活归属）、`event: tool`（提示音）、`event: asr-progress / asr-ready / asr-error / tts-error` |
-| `POST /voice-mode/toggle` | `{sessionId, on}` 进入 / 退出语音模式（全局单活） |
-| `POST /voice-mode/asr` | 裸 f32 LE 16k PCM → `{text}`（流式 zipformer2）；模型未就绪返回 `202 {loading}`；`?reset=1` 丢弃在途段（唤醒词命中时使用） |
-| `POST /voice-mode/cancel` | `{sessionId}` 作废 TTS 队列并丢弃在途 ASR 段 |
-| `POST /voice-mode/preview` | `{voice, rate?}` 一次性合成试听 → `audio/mpeg`（400 缺 voice / voice 过长；502 合成失败，如无效 ShortName；403 插件 `enabled=false`）。不要求语音模式处于激活态；使用独立合成连接，不影响朗读队列 |
-| `GET /voice-mode/config` | 客户端启动参数（静音阈值 / 灵敏度 / 音色与语速等）——含 ASR 侧字段 `senseITN` / `senseVoice` / `captionFontSize` / `captionMaxWidth` / `backchannelYield` / `yieldMs` / `bargeInSalvage` / `llmCorrect` |
-| `POST /voice-mode/correct` | `{text}` 发送前 LLM 纠错（只改错别字/同音字/标点；复用宿主已配置模型）→ `{text}`；失败/超时/无模型回退原文，不阻断发送 |
-| `GET /voice-mode/voices` | Edge 全量音色清单（设置面板选 Edge 时拉取；网络失败由客户端回退常用清单） |
-| `GET /voice-mode` | 健康检查 `{ok, name, enabled, active}` |
+| `GET /voice-mode` | 健康检查，返回 `{ok, name, enabled, active}` |
+| `GET /voice-mode/stream` | SSE 事件流（下行音频分块帧、会话状态同步、模型下载进度与错误码通知） |
+| `POST /voice-mode/toggle` | 进入或退出语音模式（校验会话存在性与单活所有权） |
+| `POST /voice-mode/asr` | 上传 `16kHz` 单声道 `Float32` 增量 PCM 音频，返回流式识别、定稿或打断检测结果 |
+| `POST /voice-mode/cancel` | 作废当前会话朗读队列并按需取消运行中回合 |
+| `POST /voice-mode/preview` | 独立音色试听合成接口（不影响会话朗读队列） |
+| `POST /voice-mode/correct` | 发送前轻量大模型文本纠错接口（失败或超时自动回退原文） |
+| `GET /voice-mode/config` | 客户端启动运行参数快照 |
+| `GET /voice-mode/voices` | 获取当前可用音色目录 |
 
 ---
 
-## 💾 模型与缓存
+## 权限、隐私与安全边界
 
-- 识别模型：`csukuangfj/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30`（encoder ≈154 MB / decoder / joiner / tokens，合计约 160 MB），宿主端经 sherpa-onnx（Node WASM，Apache-2.0，原生跨平台）运行
-- 缓存目录的平台默认：
-  - **Windows**：`%LOCALAPPDATA%\dsh-voice-mode\models`
-  - **macOS / Linux**：`~/.cache/dsh-voice-mode/models`
-  - 两者都可用 `cacheDir` 覆盖
-- 下载用 `.part` 断点续传（仅单文件模型）；`huggingface.co` 失败时回退 `hf-mirror.com`（可用 `modelHost` 配置）
-- 下载有 120 秒空闲看门狗：收到字节即重置，上游卡死超时会中止并换源；关闭面板会中止在途下载
-- 模型主文件 SHA256 固定；同一进程内文件 size+inode+ctime 未变则不重复校验（缓存只在内存，重启后首次全量校验）；Kokoro 的 espeak-ng-data 目录树按清单文件大小 / 文件数判完整，首次下载完成后可完全离线使用
-
----
-
-## 🏛️ 工作原理（Architecture）
-
-```mermaid
-flowchart LR
-    subgraph Client[浏览器 Client]
-        Mic[麦克风 16kHz<br/>AudioWorklet<br/>echoCancellation:true] --> VAD[客户端 VAD<br/>RMS 分段]
-        VAD -->|partial 0.9s| UI[状态条 + 字幕浮层]
-    end
-
-    subgraph Host[宿主 dsh.host]
-        ASR[zipformer2 流式识别<br/>host 端 WASM]
-        SV[SenseVoice 定稿<br/>+ ITN + 标点]
-        Tap[llm/stream tap<br/>仅观察·不阻塞]
-        Seg[sentence segmenter]
-        Q[TtsQueue<br/>epoch 打断]
-        TTS{引擎}
-        Edge[Edge 云端]
-        Vits[本地 VITS WASM]
-        Kokoro[本地 Kokoro<br/>原生 addon]
-        OpenAI[OpenAI 兼容端点]
-        MiMo[小米 MiMo 语音]
-    end
-
-    UI -->|audio f32 PCM<br/>POST /voice-mode/asr| ASR
-    ASR --> SV
-    SV --> Draft[composer draft<br/>autoSend]
-    Draft --> Tap
-    Tap --> Seg
-    Seg --> Q
-    Q --> TTS
-    TTS -->|edge| Edge
-    TTS -->|vits| Vits
-    TTS -->|kokoro| Kokoro
-    TTS -->|openai| OpenAI
-    TTS -->|mimo| MiMo
-    Edge -.->|SSE audio frame| UI
-    Vits -.->|SSE audio frame| UI
-    Kokoro -.->|SSE audio frame| UI
-    OpenAI -.->|SSE audio frame| UI
-    MiMo -.->|SSE audio frame| UI
-    VAD -.->|唤醒词/打断| Q
-```
-
-- 识别在 **host 端本地运行**（zipformer2 中文 int8 WASM + SenseVoice 定稿，模型懒下载），音频不上传第三方；识别定稿由 SenseVoice 补标点；
-- 朗读默认 **Edge 云端**；可选离线本地引擎 VITS（纯中文）/ Kokoro（原生中英混读，跑在独立子进程、按需隔离加载原生模块），也可配置自备密钥的 OpenAI 兼容端点或小米 MiMo（失败自动回退本地）；
-- 同一时间仅一个会话处于语音模式（全局单活）；LLM 流被无损观察（不阻塞）。
-
-详细架构决策：见 [`docs/adr/`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/adr/README.md) 15 个 ADR。
-
----
-
-## 🔍 与早期上游实现的历史对照
-
-| 维度 | 早期上游（历史） | dsh-voice-mode（本插件） |
+| 能力类别 | 插件实际行为 | 数据去向 |
 | --- | --- | --- |
-| 识别模型 | 云端 API（需 key） | **本地 zipformer2 + SenseVoice**（零 key） |
-| 多语种 | 英文为主 | **SenseVoice 自动识别（zh/en/ja/ko/yue）+ ITN** |
-| 朗读引擎 | 云端 TTS | **Edge 云端 + 本地 VITS/Kokoro + OpenAI 兼容 / 小米 MiMo** 五类可选 |
-| 打断检测 | 基础 VAD | **三档灵敏度 + 回声门控 + 让位语义** |
-| 字幕 a11y | 无 | **4 档字号 + 3 档宽度 + 主题跟随** |
-| 唤醒词 | 无 | **轻量流式匹配 + 前缀语气词白名单** |
-| 兼容 dsh | — | 声明范围 `>=0.1.1-rc.2 <0.3.0-0`；以已测版本矩阵为准 |
+| **network** | `edge` 将待朗读文本发往微软在线朗读服务；`openai` / `mimo` 将待朗读文本发往所选预设或配置的远程接口；本地 `vits` / `kokoro` 在模型首次从 Hugging Face（或配置镜像）下载并校验 SHA256 后完全离线合成；宿主默认仅在本地回环地址监听 `/voice-mode/*` | 麦克风音频仅发往所连接的 DSH 宿主做本地识别，不上传第三方云 ASR；对话文本遵循宿主自身大模型配置 |
+| **fs-read / fs-write** | 读写模型缓存目录（macOS/Linux `~/.cache/dsh-voice-mode/models/`，Windows `%LOCALAPPDATA%\dsh-voice-mode\models\`）与宿主侧 `0600` 权限设置文件 `$DSH_HOME/voice-mode.settings.json`；**不读写用户工作区文件** | 本机 |
+| **shell（子进程）** | 本地 TTS 经 `child_process.fork` 运行固定子进程脚本；桌面端 Electron 下为 Kokoro 探测本机 Node.js 可执行文件；**不拼接外部命令、不执行用户输入** | 本机 |
+| **env** | 读取 `DSH_HOME`、`LOCALAPPDATA`、`PATH` 与可选 `DSHVM_NODE` 等目录定位环境变量 | 本机 |
+
+- 插件不包含任何遥测上报；「复制诊断」按钮仅复制版本号、运行状态、脱敏设置快照与阶段耗时，**绝不包含任何语音或转写原文**。
+- 远程 TTS 密钥只存宿主侧，读取接口仅返回布尔状态；内联第三方依赖版本与许可证清单见 [THIRD_PARTY_NOTICES.md](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/THIRD_PARTY_NOTICES.md)，安全披露政策见 [SECURITY.md](https://github.com/qishuilalala/dsh-voice-mode/blob/main/SECURITY.md)。
+- 本地语音模型由各自上游作者授权（源自 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 生态），本插件的 MIT 许可证不覆盖外部模型权重；商用前请核对所选模型的上游许可证。
 
 ---
 
-## 🔐 权限与数据流声明
+## 常见问题排查
 
-插件如实声明它会做的事（与 awesome-dsh-plugin 的能力扫描 `network / fs-read / fs-write / shell / env` 一一对应）：
-
-| 类别 | 具体行为 | 数据去向 |
-| --- | --- | --- |
-| **network** | `ttsEngine: edge` 将待朗读文本发往微软在线服务；`ttsEngine: openai` 将待朗读文本发往配置的预设或 `openaiBaseUrl` / `openaiTts.baseUrl`；`ttsEngine: mimo` 将待朗读文本发往 `mimoTts.baseUrl`（默认 `https://api.xiaomimimo.com/v1`）；本地 VITS / Kokoro 下载完成后在宿主本机离线合成；本地模型首次从官方源或配置镜像下载并校验主文件 SHA256；插件在宿主注册 `/voice-mode/*` 路由 | 浏览器音频仅发送到所连接的 dsh 宿主识别，不使用独立云 ASR；提交文本及可选 `llmCorrect` 纠错遵循宿主已配置的大模型。切换本地 TTS 不会让宿主大模型自动离线 |
-| **fs-read / fs-write** | 模型缓存（Linux/macOS `~/.cache/dsh-voice-mode/models/`，Windows `%LOCALAPPDATA%\dsh-voice-mode\models\`）；dsh 0.1.7+ 的设置覆盖层 `$DSH_HOME/voice-mode.settings.json`（权限 `0600`，API 密钥只写宿主侧、永不回传浏览器）；**不读写你的工作区文件** | 全部在本机 |
-| **shell（子进程）** | 本地 TTS 合成跑在独立子进程（`child_process.fork` → `lib/tts-vits-worker.cjs`）；宿主为 Electron（官方桌面端）时，为 Kokoro 额外探测并启动一个真正的 Node.js（`node -p …` 探测版本，见 ADR/兼容契约）。**不执行用户输入、不经 shell 拼接命令** | 本机 |
-| **env** | 使用目录和运行时定位相关环境设置，如 `DSH_HOME`、`LOCALAPPDATA`、`PATH` 和可选 `DSHVM_NODE`；默认语音路径无需额外语音服务密钥 | 宿主 LLM 的配置和费用另计 |
-
-补充：调试用的真机录制（fixture）默认**关闭**；插件不上传遥测。完整威胁模型与漏洞报告方式见仓库根目录 [`SECURITY.md`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/SECURITY.md)。
-
-### 第三方模型与服务说明
-
-- **本地模型不随包分发**：ASR（zipformer 流式、SenseVoice 重译）、VAD、本地 TTS（VITS / Kokoro）的模型由插件**首次使用时从 Hugging Face（或你配置的镜像）下载**到本机缓存，来源为 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 生态的导出仓库（`csukuangfj/*`）。各模型的许可由其**原作者**决定，本插件的 MIT 许可**不覆盖**这些模型；用于商业场景前请自行核对上游许可（模型清单见下文「模型与缓存」，对应常量在 `src/asr-host.ts` / `src/tts-local.ts`）。
-- **Edge 云端朗读是第三方在线服务**：默认引擎经 [`msedge-tts`](https://github.com/Migushthe2nd/MsEdgeTTS) 使用微软 Edge 浏览器「大声朗读」的在线接口——这不是微软官方提供的稳定 API，**可用性、速率与条款均由微软决定**，可能随时变化。对稳定性/合规有要求的场景请改用本地 VITS / Kokoro（离线）。
-- 被内联进发布包的第三方代码（`msedge-tts` 及其依赖）的许可见 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)；`pnpm audit` 检查依赖数据库中的 high+ 公告，不能保证不存在未公开或未覆盖漏洞（CI `audit` job 持续监测）。
-
-### 兼容声明（插件市场的版本筛选依据）
-
-`package.json` 声明 `engines.dsh = ">=0.1.1-rc.2 <0.3.0-0"`。这是版本准入范围，不代表区间内每个版本都已实测。兼容记录列出了截至 0.2.2-rc.5 的已测版本及实际测试形态。默认验证集按“支持区间两端 + 每条小版本线最新已验证版 + latest/next”去重，当前为 9 版锚点/双类型检查、8 核心冒烟。历史实证保留，可用 `verify-dual.sh --full` 或显式版本复验；纯补验不发版。每日工作流比对上游标签并为未覆盖版本开 issue，不会自动跑完整矩阵。`peerDependencies` 声明宿主提供的 `@deepseek-ai/cordis` 与 `react`。
-
-## 🚧 已知限制
-
-- **云端朗读（Edge）依赖微软在线服务**：服务端可能随时调整握手/限流（2026-10-15 即发生过，见 CHANGELOG 0.7.24）；若连续多句朗读失败，状态条/弹出提示会建议切换本地 VITS / Kokoro，设置面板可一键切换
-- 发声打断依赖浏览器回声消除（`echoCancellation`）；扬声器音量过大时可能漏声到麦克风
-- `Ctrl+Shift+V` 会覆盖浏览器「粘贴纯文本」快捷键（普通粘贴仍可用 `Ctrl+V`）
-- 识别质量受环境噪声影响；zipformer2 中文流式 + SenseVoice 多语（中英日韩粤）定稿
-- 浏览器自动播放策略：朗读需要页面已有用户交互（点击麦克风即满足）；进入 / 退出、设置读写、「试听」均依赖 `AbortSignal.timeout`（Safari 16+ / Chrome 103+ / Firefox 100+；老浏览器上这些操作会立即提示失败，属预期降级）
-- **唤醒词为轻量实现**（流式文本匹配，非专用 KWS 引擎）：嘈杂环境可能延迟或误激活；唤醒词本身不会进入聊天
-- hold 模式按住时切换窗口/标签页会**放弃本段**（防持续收音）
-- hero（新会话空态）无语音入口：请先进入会话使用麦克风按钮
-- `spokenFormat` 提示词经官方 `system-prompt/assemble` 瀑布注入；若当前会话使用**完整提示词**配置（persona `complete: true` 的 agent preset），提示词不注入（官方 complete 契约优先）
-- 本地 Kokoro 打断后下一句前可能需要重建引擎，耗时取决于设备与模型（打断即终止在途合成的代价）
-- **苹果 Safari / iOS**：
-  - 需 **HTTPS 或 localhost**（iOS/macOS Safari 强制安全上下文；`http://` 局域网 IP 下麦克风不可用）
-  - 首次进入需授权麦克风；被拒后到「设置 → Safari → 麦克风」开启（iOS）
-  - iOS 后台/锁屏时识别与朗读暂停，回前台自动恢复（可能丢句）；建议语音模式期间保持前台
-- **安全说明**：插件 HTTP 面（`/voice-mode/*`）遵循宿主安全模型——请勿将 dsh 端口直接暴露公网；经反向代理发布时由代理层（如 basic auth）鉴权；插件侧对敏感操作保留会话归属校验
-
----
-
-## 🛠️ 故障排查
-
-| 现象 | 处理 |
+| 现象 | 排查与处理方式 |
 | --- | --- |
-| 点麦克风无反应，状态条红字 | 浏览器拒绝麦克风：地址栏（iOS 为 设置 → Safari → 麦克风）开启后重试 |
-| 状态条「正在加载模型… x%」卡住 | 检查网络；模型较大可先 `npm run prefetch`；国内网络 `modelHost` 配 `https://hf-mirror.com` |
-| 朗读无声音/无字幕 | Edge 需要外网；核对状态条、页面音量与自动播放权限。模型就绪后可手动切本地引擎；首次下载失败先看顶部 Kokoro 升级说明，不绕过摘要校验。历史 Edge 握手修复见 CHANGELOG |
-| AI 回复**偶尔不朗读**（某句没声/整条没声） | 已定位三类原因并修（v0.7.10）：① 云端 TTS 偶发超时——单句自动重试 3 次，仍失败会**跳过该句并在状态条提示**「有一句朗读失败，已跳过」（此前是静默丢句）；② 浏览器挂起 AudioContext（切到后台标签页/长时间静音后回来）——播放被调度但无声、UI 却显示朗读中；现在每次入队与**任意点击/按键**都会自动恢复；③ SSE 断线丢帧导致整句不完整——按设计丢弃该句（避免播坏音频），可开 `localStorage['dsh-voice-mode.telemetry']='1'` 看 `tts-drop-sentence` 诊断 |
-| 语音模式进不去 | 检查插件 `enabled`；多标签页时确认当前会话为活动会话 |
-| 识别到但不是我要说的 | 环境噪声或唤醒词误判：减少噪声并对比实时转写和定稿；`interruptLevel` 只影响打断，不提高识别准确率 |
-| 唤醒词唤不醒 | 先看待机态状态条的实时转写（它听到了什么）：同音字 1 字内已自动容错；停顿约 1.5 秒（= 静音断句时长）再说，清掉待机段残留语音、从段首重新匹配；换一个转写稳定的词（建议 3-4 字） |
-| 打断后说话没反应（开了唤醒词） | 唤醒词只管「开始识别」的门：打断/每句断句后回到待机态，**需重说唤醒词**再继续说；待机态状态条会显示「说『x』开始」提示 |
-| 唤醒词完全没反应 | ① 确认交互模式是 `toggle`（`hold` 按住说话模式下唤醒词不生效；`manual` 手动打断与 `detect` 回落 `manual` 时空闲期唤醒词照常生效）；② 朗读期说唤醒词不触发（朗读期打断只看 VAD 或手动长按）；③ 看待机态状态条实时转写，确认识别到的字词（同音字 1 字内已容错，建议设置 3–4 字唤醒词） |
-| 按住说话不知道按哪个键 / 松手后没反应 | 可直接**按住麦克风按钮**说话；用键盘时须先进入语音模式，再长按 **`Ctrl`（macOS 为 `⌃ Control`，注意不是 `⌘ Command`）** ≥0.22 秒，状态条提示「正在收音，松开发送」后再说话，松手约 1 秒内定稿进草稿 |
-| 打不断（朗读中开口无反应） | 将 `interruptLevel` 向 2 调整（2 最敏感，0 高门槛），确认麦克风与回声消除；仍不可靠时用按住说话。原生 AEC 有效时 `echoGateDb` 不参与门控，无原生 AEC 时才是兜底参数 |
-| 官方桌面端上选本地 Kokoro，设置里显示「加载失败」并提示需要 Node.js | 桌面端宿主是 Electron，Kokoro 的原生 addon 在其中不可用：在系统 PATH 上安装 Node.js ≥18（或设环境变量 `DSHVM_NODE` 指向它）后重试；或改用默认的 Edge / 本地 VITS（桌面端不受影响） |
-| 字幕被输入框挡住 | 默认 `captionMaxWidth=1`（70vw）+ `captionFontSize=0`（12px）在窄屏可能与底部输入框重叠；调高档位或点字幕浮层「×」收起 |
-| 让位行为异常（朗读期说「嗯」不停 / 真话被打断） | 「嗯/对」类短词触发让位 1.5s 后继续朗读；继续说真话会走硬打断；不要时关 `backchannelYield` 即可恢复改造前行为（ADR-0008） |
-| 朗读期说「嗯」没让位 | 确认 `backchannelYield=true`（默认开）；hold 模式松手后让位 1.5s 内继续说话会变硬打断 |
-| 空闲 5 分钟自动退出（不想退） | 调高 `idleTimeoutMinutes`（默认 5 分钟；朗读 / AI 说话 / 回合运行均计为活动，后台标签页同样续期；距最后一次真实操作满 2 小时仍会退出） |
-| 点麦克风一直转圈 | 宿主不应答时 8 秒超时；转圈时再点一次麦克风即取消进入，不会残留语音会话 |
+| 点击麦克风提示权限被拒 | 在浏览器地址栏权限图标（iOS Safari 为系统设置 → Safari → 麦克风）允许麦克风；非本机访问必须使用 `HTTPS` 或 `localhost` 安全上下文 |
+| 模型下载缓慢或中断 | 模型支持断点续传；中国大陆网络在「设置 → 语音模式 → 高级 → 模型镜像」填写 `https://hf-mirror.com` 后重新进入即可续传 |
+| 按住说话不知道按哪个键 | 未开语音模式可直接**长按界面麦克风按钮**说话；用键盘时先进入语音模式，再长按 **`Ctrl`（macOS 为左下角 `⌃ Control`，非 `⌘ Command`）** ≥0.22 秒，待状态条显示「正在收音，松开发送」后说话 |
+| 默认 Edge 朗读无声或连续报错 | Edge 依赖微软在线服务；网络受限或服务波动时可在「设置 → 语音模式 → 朗读」一键切换为本地离线的 `vits` / `kokoro` 或已配密钥的在线预设（注：`0.7.23` 及更早历史版本因上游握手变更已失效，请升级至最新版） |
+| 桌面端选本地 Kokoro 提示需安装 Node.js | 在系统安装 Node.js `>=18`（或设置环境变量 `DSHVM_NODE` 指向 `node` 可执行文件）后重启桌面端，或改用免外部运行时的 `vits` / `edge` |
+| 外放扬声器回声导致误打断 | 默认 `detect` 会在未检测到原生回声消除时自动改用长按打断；也可将打断方式显式设为 `manual`（朗读期按住麦克风或 `Ctrl` 打断），或将打断灵敏度调为 `0` 高门槛 |
+| 开启唤醒词后没反应 | 确认交互模式为 `toggle`（`hold` 模式下唤醒词不启用）；每次说完一句或打断后会自动回到待机态，可查看状态条实时转写确认识别字词（建议设置 3–4 字唤醒词） |
 
 ---
 
-## 🛣️ 路线图（Roadmap）
+## 开发与许可证
 
-[当前路线图](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md)统一记录优先级、候选准入、验收门槛与回滚条件。
-
-1. 先闭环已确认缺陷，验证真实 ASR → 可编辑草稿 → 发送 → TTS。
-2. 优先解决丢句、误发、编辑冲突和恢复成本等高损失体验问题。
-3. 推进可控的模型更新与回退；新模型或协议只有实测瓶颈证据才进入实验，不承诺必增后端。
-
-客户端 VAD、WebSocket 重写、声音克隆与广泛工具控制不作为已批准的近期工作。[历史 backlog](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/competitive/backlog.md)保留先前研究，旧 Ready 和估时不构成当前承诺。
-
----
-
-## 🛠️ 开发
-
-源码开发/测试使用 Node.js 22.18 或以上的 22.x 与 pnpm 11；macOS 构建要求 macOS 12 或以上；插件运行时声明不等于测试工具链要求。
+源码开发与全量测试要求 Node.js `>=22.18` 与 `pnpm 11`：
 
 ```sh
-pnpm install && pnpm build    # esbuild：lib/index.js（host）+ lib/client.js（browser）
-pnpm test                     # 执行包脚本中的单测、台架与结构守卫；范围以实际配置和输出为准
-systemctl restart dsh         # 本机加载新 host 代码；其他平台重启 dsh 进程
+cd plugin/dsh-voice-mode
+pnpm install
+pnpm run build            # 生成 lib/index.js、lib/index.d.ts、lib/client.js 及 worker 产物
+pnpm run typecheck        # 宿主与客户端双端 TypeScript 类型检查
+pnpm test                 # 运行全部单元测试、结构守卫与文档一致性门禁
+bash scripts/verify-install.sh  # 隔离目录验证打包产物的 pnpm / npm 全新安装
 ```
 
-> 注意：dsh 安装的是 pnpm `file:` 链接（目录拷贝），改完 `node build.mjs` 后需把 `lib/client.js` 同步到 `<profile>/node_modules/dsh-voice-mode/lib/` 再刷新页面（`lib/index.js` 与工作区为同一文件自动同步）。集成探测脚本（`test/hold-e2e.js`、`test/spoken-prompt-rpc.sh`、`test/spoken-toggle-ui-check.js`）位于仓库根 `test/`，不在 npm 包内。
-
-```
-src/index.ts         host：单活指针、llm/stream tap、SSE、settings 注册、口语化提示词注入
-src/asr-host.ts      host：zipformer2 流式识别 + SenseVoice 定稿 + 模型懒下载（.part 断点续传）+ 增量喂料
-src/models.ts        host：模型下载/校验（SHA256 固定 + 域名白名单）
-src/security.ts      host：限流器与安全守卫
-src/tts-local.ts     host：本地 TTS 引擎（VITS WASM / Kokoro 原生 addon，子进程管理）
-src/tts-vits-worker.ts 子进程：合成执行（base64 IPC，空文本静音守卫）
-src/tts-queue.ts     host：逐会话 TTS 队列 + epoch 打断 + 连续失败计数（云端整体不可用时给出可行动提示）
-src/tts-runtime.ts   host：Electron 宿主下 Kokoro 子进程的真 Node 选择
-src/settings-store.ts / settings-http-scope.ts  host：≥0.1.7 设置自持久化（覆盖层文件 + 端点，ADR-0009）
-src/segmenter.ts     host：句子切分 + 文本消毒（markdown 剥离 + 噪声字符剔除）
-src/asr.ts           client：音频采集、VAD 分段、增量识别、唤醒词、按住说门控
-src/client.tsx       client：麦克风按钮 + 模式切换按钮 + 状态条 + 字幕浮层 + 打断
-src/strings.ts       client：中英文案词典（zh / en 两份，键一一对应；有测试守卫）
-src/i18n.ts          client：接入官方 locale 服务（语言即时切换、语言包扩展、无服务时回退）
-src/voice-catalog.ts host+client：音色目录单一数据源；src/voice-labels.ts 按语言生成音色/镜像标签
-src/errors.ts        host↔client：稳定错误码（host 不发自然语言，客户端按语言翻译）
-src/prompts.ts       host：LLM 口语化提示词（中/英）与试听例句（按音色语种）
-```
-
----
-
-## 📄 License
-
-[MIT](./LICENSE)
-
-> 部分实现借鉴 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)（派生声明见子包 LICENSE）。
+本项目基于 [MIT 许可证](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/LICENSE) 开源；早期基础实现部分派生自 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)（MIT）。

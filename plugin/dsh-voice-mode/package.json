@@ -1,10 +1,15 @@
 {
   "name": "dsh-voice-mode",
   "description": "Voice input (ASR / STT) and TTS read-aloud for DeepSeek Harness — DSH 语音插件：本地语音识别输入、按住说话、回复朗读与实时字幕打断",
+  "author": {
+    "name": "qishuilalala",
+    "url": "https://github.com/qishuilalala"
+  },
   "icon": "./icon.svg",
-  "version": "0.7.43",
+  "version": "0.7.44",
   "type": "module",
   "main": "lib/index.js",
+  "types": "./lib/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/qishuilalala/dsh-voice-mode.git",
@@ -27,6 +32,7 @@
   },
   "files": [
     "lib/index.js",
+    "lib/index.d.ts",
     "lib/msedge-tts.cjs",
     "lib/tts-vits-worker.cjs",
     "lib/client.js",

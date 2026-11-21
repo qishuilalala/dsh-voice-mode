@@ -47,6 +47,15 @@ if (root.name !== plugin.name) problems.push(`name：根=${root.name} 插件=${p
 if (root.version !== plugin.version) problems.push(`version：根=${root.version} 插件=${plugin.version}`)
 if (root.license !== plugin.license) problems.push(`license：根=${root.license} 插件=${plugin.license}`)
 if (root.description !== plugin.description) problems.push('description：根与插件不一致（对外展示以插件 manifest 为准）')
+if (JSON.stringify(root.author ?? null) !== JSON.stringify(plugin.author ?? null) || !plugin.author?.name) {
+  problems.push('author：根与插件 manifest 必须同步声明非空 author')
+}
+if (!plugin.types || !existsSync(join(repoRoot, 'plugin', 'dsh-voice-mode', plugin.types))) {
+  problems.push(`plugin types 缺失或目标不存在：${plugin.types ?? '(缺)'}`)
+}
+if (!root.types || !existsSync(join(repoRoot, root.types))) {
+  problems.push(`root types 缺失或目标不存在：${root.types ?? '(缺)'}`)
+}
 if (root.homepage !== plugin.homepage) problems.push(`homepage：根=${root.homepage ?? '(缺)'} 插件=${plugin.homepage ?? '(缺)'}`)
 if ((root.bugs?.url ?? null) !== (plugin.bugs?.url ?? null)) {
   problems.push(`bugs.url：根=${root.bugs?.url ?? '(缺)'} 插件=${plugin.bugs?.url ?? '(缺)'}`)

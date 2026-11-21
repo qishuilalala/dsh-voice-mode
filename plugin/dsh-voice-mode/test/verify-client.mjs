@@ -47,8 +47,29 @@ t('exports 必须含 ./.client、./cordis.patch.yml、./package.json', () => {
 })
 t('files 白名单含 cordis.patch.yml 与 lib 产物', () => {
   const files = pkg.files ?? []
-  for (const f of ['lib/index.js', 'lib/client.js', 'cordis.patch.yml', 'README.md', 'LICENSE']) {
+  for (const f of ['lib/index.js', 'lib/index.d.ts', 'lib/client.js', 'cordis.patch.yml', 'README.md', 'README.en.md', 'LICENSE']) {
     assert.ok(files.includes(f), `files missing ${f}`)
+  }
+  assert.equal(pkg.types, './lib/index.d.ts')
+  assert.ok(pkg.author?.name, 'package.json missing author.name')
+})
+t('lib/index.d.ts 覆盖全部运行时导出与 VoiceSettingsValue 字段且不泄漏 devDependencies', () => {
+  const dts = read('lib/index.d.ts')
+  const js = read('lib/index.js')
+  const m = /export\s*\{([^}]*)\}/.exec(js)
+  assert.ok(m, 'host bundle lacks export statement')
+  for (const sym of m[1].split(',').map((s) => s.trim()).filter(Boolean)) {
+    assert.ok(new RegExp(`\\bexport\\s+declare\\s+(?:const|function)\\s+${sym}\\b`).test(dts), `lib/index.d.ts missing value export ${sym}`)
+  }
+  const indexTs = read('src/index.ts')
+  const start = indexTs.indexOf('export function createVoiceSettingsSchema')
+  const body = indexTs.slice(start, indexTs.indexOf('\n}', start))
+  for (const [, key] of body.matchAll(/^ {4}([a-zA-Z][a-zA-Z0-9]*): z/gm)) {
+    assert.ok(new RegExp(`^\\s+${key}:`, 'm').test(dts), `lib/index.d.ts VoiceSettingsValue missing ${key}`)
+  }
+  const declaredDeps = new Set([...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.peerDependencies ?? {})])
+  for (const [, mod] of dts.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
+    assert.ok(declaredDeps.has(mod), `lib/index.d.ts imports undeclared/dev module ${mod}`)
   }
 })
 t('publishConfig.access 为 public', () => {

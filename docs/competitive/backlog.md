@@ -56,7 +56,7 @@
 - **zipformer2 热词暴露**（批 1 落地 `9467c81` → 批 7M 砍 `e3423ef`）：asrHotwords / asrHotwordsScore 已砍，仅存档。
 - **SenseVoice 语言显式锁定**（批 2 落地 `3025e1b` → 批 7M 砍 `4532b48`）：recognitionLanguage 已砍，仅存档。
 - **B8 Wispr 100+ 语种入口**（Need-PoC → 批 7M 失效）：依赖 recognitionLanguage 已砍，仅存档。
-- **README 设置表 4 漏列 + 3 个误传字段**（2026-09-15 沉睡能力审计 → 2026-09-14 `ebe55b2` 已修 4 漏列；本轮复核闭合）：4 字段（`autoResume` / `bargeInMode` / `echoGateDb` / `senseVoice`）现已在 `plugin/dsh-voice-mode/README.md:120-147` 设置表内（表 28 行 ≡ schema `index.ts:294-409` 28 键，**双向零差集**）；「误传字段」`heldHint` / `cursorHint` / `recallAuto` **全仓历史对 `src/` / `test/` / 任何 README 均 0 命中**——本仓**从未存在**（仅见于调研文档对上游 fork 与用户消息的记录），删除动作本就无对象。仅存档。
+- **README 设置表 4 漏列 + 3 个误传字段**（2026-09-15 沉睡能力审计 → 2026-09-14 `ebe55b2` 已修 4 漏列；本轮复核闭合）：4 字段（`autoResume` / `bargeInMode` / `echoGateDb` / `senseVoice`）现已在 `plugin/dsh-voice-mode/README.md:81-116` 设置表内（表 28 行 ≡ schema `index.ts:294-409` 28 键，**双向零差集**）；「误传字段」`heldHint` / `cursorHint` / `recallAuto` **全仓历史对 `src/` / `test/` / 任何 README 均 0 命中**——本仓**从未存在**（仅见于调研文档对上游 fork 与用户消息的记录），删除动作本就无对象。仅存档。
 
 ---
 

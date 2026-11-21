@@ -19,7 +19,7 @@ echo "== 打包产物：$(basename "$TGZ")"
 check() { # <目录> <安装器名>
   local d="$1" name="$2"
   [ -e "$d/node_modules/msedge-tts" ] && { echo "✗ [$name] 运行时依赖里仍有 msedge-tts（应已内联）"; return 1; }
-  for f in lib/index.js lib/msedge-tts.cjs lib/client.js locale/en.json locale/zh.json icon.svg THIRD_PARTY_NOTICES.md; do
+  for f in lib/index.js lib/index.d.ts lib/msedge-tts.cjs lib/client.js locale/en.json locale/zh.json icon.svg THIRD_PARTY_NOTICES.md; do
     [ -f "$d/node_modules/dsh-voice-mode/$f" ] || { echo "✗ [$name] 包内缺 $f"; return 1; }
   done
   # 入口模块必须能加载；并显式加载内联的 CJS 并取到 MsEdgeTTS（第三方依赖已全部内联，无需额外安装）

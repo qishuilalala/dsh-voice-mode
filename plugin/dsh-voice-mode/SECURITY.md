@@ -28,5 +28,5 @@
 
 ## 依赖与供应链 / Supply chain
 
-- 发布包内联的第三方代码版本在 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) 中逐项列出，并由 CI 门禁校验与锁文件解析版本一致。
+- 发布包内联的第三方代码版本在 [THIRD_PARTY_NOTICES.md](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/THIRD_PARTY_NOTICES.md) 中逐项列出，并由 CI 门禁校验与锁文件解析版本一致。
 - 仓库启用 Dependabot 依赖监控与持续安全扫描工作流；自动化扫描通过不能替代人工安全审查，也不构成无漏洞承诺。
