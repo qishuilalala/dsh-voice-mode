@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "Voice Mode",
-    "description": "Full-duplex voice conversation for DeepSeek Harness: local streaming speech recognition (no API key) fills an editable draft, replies are read aloud sentence by sentence with live captions, and speaking interrupts the reply."
+    "description": "Full-duplex voice mode for DeepSeek Harness: local streaming speech-to-text, push-to-talk, sentence read-aloud TTS (Edge, OpenAI, MiMo, offline VITS/Kokoro), live captions, and voice barge-in.",
+    "detail": "README.en.md"
   }
 }

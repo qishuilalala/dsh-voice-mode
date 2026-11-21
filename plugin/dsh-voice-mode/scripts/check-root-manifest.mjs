@@ -54,6 +54,23 @@ if ((root.bugs?.url ?? null) !== (plugin.bugs?.url ?? null)) {
 if ((root.repository?.url ?? null) !== (plugin.repository?.url ?? null)) {
   problems.push(`repository.url：根=${root.repository?.url ?? '(缺)'} 插件=${plugin.repository?.url ?? '(缺)'}`)
 }
+if (plugin.repository?.directory !== 'plugin/dsh-voice-mode') {
+  problems.push(`plugin repository.directory：期望 "plugin/dsh-voice-mode"，实际=${plugin.repository?.directory ?? '(缺)'}`)
+}
+const rootKeywords = Array.isArray(root.keywords) ? root.keywords : []
+const pluginKeywords = Array.isArray(plugin.keywords) ? plugin.keywords : []
+if (pluginKeywords.length === 0) {
+  problems.push('plugin keywords 不能为空')
+} else if (new Set(pluginKeywords).size !== pluginKeywords.length) {
+  problems.push('plugin keywords 含重复项')
+} else if (JSON.stringify(rootKeywords) !== JSON.stringify(pluginKeywords)) {
+  problems.push(`keywords 不一致：根=${rootKeywords.length} 项 插件=${pluginKeywords.length} 项`)
+}
+const rootPeers = root.peerDependencies ?? {}
+const pluginPeers = plugin.peerDependencies ?? {}
+if (JSON.stringify(rootPeers) !== JSON.stringify(pluginPeers)) {
+  problems.push('peerDependencies 不一致：根与插件 manifest 必须同步')
+}
 if (!root.scripts?.prepublishOnly) problems.push('根 manifest 缺少 prepublishOnly 守卫（防止在根目录误发布）')
 // 根 manifest 还镜像了插件的宿主契约与入口，市场扫描器据此判定「这是一个 DSH 插件」
 // （实测：已收录插件的根 manifest 均带 dsh 段与 main）。镜像字段必须与插件 manifest 一致，否则会漂移。
@@ -91,11 +108,48 @@ if (root.main) {
   if (!existsSync(mainPath)) problems.push(`main 指向的文件不存在：${root.main}`)
 }
 
+const pluginDir = join(repoRoot, 'plugin', 'dsh-voice-mode')
+const pluginFiles = new Set(Array.isArray(plugin.files) ? plugin.files : [])
+for (const [lang, expectedDetail] of [['zh', 'README.md'], ['en', 'README.en.md']]) {
+  const localePath = join(pluginDir, 'locale', `${lang}.json`)
+  if (!existsSync(localePath)) {
+    problems.push(`缺少 locale/${lang}.json`)
+    continue
+  }
+  const localeJson = JSON.parse(readFileSync(localePath, 'utf8'))
+  const meta = localeJson?.meta ?? {}
+  if (typeof meta.title !== 'string' || !meta.title.trim()) problems.push(`locale/${lang}.json 缺少 meta.title`)
+  if (typeof meta.description !== 'string' || !meta.description.trim()) problems.push(`locale/${lang}.json 缺少 meta.description`)
+  if (meta.detail !== expectedDetail) problems.push(`locale/${lang}.json meta.detail 期望 "${expectedDetail}"，实际=${meta.detail ?? '(缺)'}`)
+  if (!existsSync(join(pluginDir, expectedDetail)) || !pluginFiles.has(expectedDetail)) {
+    problems.push(`locale/${lang}.json meta.detail 指向的 ${expectedDetail} 未包含在发布文件清单中`)
+  }
+  if (lang === 'en' && /\p{Script=Han}/u.test(JSON.stringify(meta))) {
+    problems.push('locale/en.json meta 不得包含中文字符')
+  }
+}
+
+const shotsPath = join(pluginDir, 'screenshots.json')
+if (!existsSync(shotsPath)) {
+  problems.push('缺少 plugin/dsh-voice-mode/screenshots.json（商店卡片预览清单）')
+} else {
+  const shots = JSON.parse(readFileSync(shotsPath, 'utf8'))
+  if (!Array.isArray(shots) || shots.length === 0 || shots.length > 8) {
+    problems.push(`screenshots.json 须为 1..8 项数组，实际=${Array.isArray(shots) ? shots.length : typeof shots}`)
+  } else {
+    for (const shot of shots) {
+      if (typeof shot !== 'string' || shot.startsWith('/') || shot.includes('..') || !existsSync(join(pluginDir, shot))) {
+        problems.push(`screenshots.json 指向的素材不存在或路径越界：${shot}`)
+      }
+    }
+  }
+}
+
 if (problems.length > 0) {
-  console.error('✗ 根 manifest 与插件 manifest 不一致：')
+  console.error('✗ 根 manifest 与插件分发元数据检查未通过：')
   for (const p of problems) console.error(`  - ${p}`)
-  console.error('  修法：同步两份 manifest 的 name/version/license/engines.dsh/type/dsh.client.inject 后重试。')
+  console.error('  修法：同步根与插件 manifest 的元数据、关键词、locale meta.detail 及 screenshots.json 后重试。')
   process.exit(1)
 }
 
-console.log(`✓ 根 manifest 与插件 manifest 一致（${root.name}@${root.version}，注入锚点 ${rootInject.length} 项）`)
+console.log(`✓ 根 manifest 与插件分发元数据一致（${root.name}@${root.version}，关键词 ${pluginKeywords.length} 项，注入锚点 ${rootInject.length} 项）`)
