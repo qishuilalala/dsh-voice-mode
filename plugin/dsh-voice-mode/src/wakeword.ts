@@ -26,10 +26,12 @@ const WAKE_MAX_EDITS = 1
  *  ("嗯/哎/呃/这个/那个/so/um/uh/er/well")，让"嗯你好小D"也能命中唤醒词"你好小D"。 */
 export function normalizeWake(text: string): string {
   return String(text ?? '')
-    .replace(/[\s\u3000]+/g, '')
     .toLowerCase()
+    // 英文前置语气词须在去空白前按词边界剥离，避免把 "Sora" 切成 "ra"、"welcome" 切成 "come"。
+    .replace(/^[\s\u3000]*(?:so|um|uh|er|well)(?=[\s\u3000，。！？!?；;、,.]|$)/, '')
+    .replace(/[\s\u3000]+/g, '')
     .replace(/[，。！？!?；;、,.]/g, '')
-    .replace(/^(嗯+|哎+|呃+|这个+|那个+|so|um|uh|er|well)[，。！？!?；;、,.\s\u3000]*/, '')
+    .replace(/^(嗯+|哎+|呃+|这个+|那个+)[，。！？!?；;、,.\s\u3000]*/, '')
 }
 
 /** 带提前退出的 Levenshtein 编辑距离（行最小值超 max 即返回 max+1，慢路径专用）。 */

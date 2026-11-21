@@ -53,6 +53,9 @@ jobs:
       # E-2：notices 表里的内联包版本必须与 pnpm-lock.yaml 一致（follow-redirects 1.16.0 vs 1.16.1 漂移的守卫）
       - name: Third-party notices version check
         run: node scripts/check-notices-versions.mjs
+      # 入库 lib 必须与当前源码一致（防「源码改了、产物没重建」在 PR 里混过去）。
+      - name: Library artifacts drift check
+        run: node scripts/check-lib-drift.mjs
       # 根 manifest（插件市场 dsh-plugin.org 收录读它）与插件 manifest 必须一致——两份手改会漂移
       - name: Root manifest consistency check
         run: node scripts/check-root-manifest.mjs

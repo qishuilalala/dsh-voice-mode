@@ -17,6 +17,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const root = join(here, '..')
@@ -40,12 +41,23 @@ t('asr.ts：onNotice 瞬态提示通道存在（与 onError 硬失败区分）',
   assert.ok(idx >= 0 && asrSrc.slice(idx, idx + 200).includes('noticeListeners.add'), '缺 onNotice 发射器实现')
 })
 
-t('asr.ts：partial 连败计数（3 次阈 + 成功清零）', () => {
+t('asr.ts：partial 连败计数（3 次阈 + 成功清零，AST 定位不再锁注释）', () => {
   assert.ok(asrSrc.includes('let partialFailStreak = 0'), '缺 partial 连败计数')
   assert.ok(asrSrc.includes("if (++partialFailStreak >= 3) emit(noticeListeners, 'partialFail')"), '缺 3 次阈提示')
-  // 整行字面量（审查 I2）：includes/计数式都会被声明行或段界重置处满足而无区分度——
-  // 锁 requestPartial 成功路径那一行（带注释锚）。
-  assert.ok(asrSrc.includes('partialFailStreak = 0 // Issue #15 批 7：成功即清零'), '缺成功清零——瞬时失败会累积误提示')
+  // A2 审计：旧断言 contains('partialFailStreak = 0 // 成功即清零') 锁的是**注释文本**——
+  // 把清零挪进死代码仍绿。改为 AST：清零必须出现在 requestPartial 函数体内。
+  // 直接用已导入的 typescript（devDependency）。
+  const sf = ts.createSourceFile('asr.ts', asrSrc, ts.ScriptTarget.Latest, true)
+  const hits = []
+  const visit = (node, fnName) => {
+    let name = fnName
+    if (ts.isFunctionDeclaration(node) && node.name) name = node.name.text
+    else if ((ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) name = node.parent.name.text
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left) && node.left.text === 'partialFailStreak') hits.push(name)
+    ts.forEachChild(node, (c) => visit(c, name))
+  }
+  visit(sf, '<top>')
+  assert.ok(hits.includes('requestPartial'), '成功清零不在 requestPartial 内（挪进死代码/别处会失效）')
 })
 
 t('asr.ts：detect 连败计数（3 次阈 + 成功清零）', () => {

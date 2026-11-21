@@ -150,5 +150,19 @@ await t('I-4 host：纯情绪标签句 → 引擎返回 0 字节（非 44 字节
   await e.close()
 })
 
+await t('B1-rpc：init 卡死超时 → 走失败冷却（不 fork 第二个子进程、不重跑 120s）', async () => {
+  const e = mk()
+  globalThis.__rpc.hang.add('init')
+  // 第一次：init 无应答 → call 超时（台架把 ≥100s 压到 30ms）→ 杀子进程
+  await assert.rejects(e.synthesize('你好'), /timeout|exited|init/)
+  assert.equal(globalThis.__rpc.children.length, 1, '超时应杀掉当前子进程（且尚未重建）')
+  // 第二次：必须在冷却期快速失败，绝不 fork 第二子进程（旧实现把超时 respawn 误记为用户打断 → 跳过断路器）
+  const t0 = Date.now()
+  await assert.rejects(e.synthesize('再试'), /timeout|exited|init/)
+  assert.ok(Date.now() - t0 < 500, `冷却期应快速失败，实际 ${Date.now() - t0}ms`)
+  assert.equal(globalThis.__rpc.children.length, 1, '冷却期内不得重建子进程（否则每句 3×120s 重试风暴）')
+  await e.close()
+})
+
 rmSync(tmp, { recursive: true, force: true })
 console.log(`tts-local-rpc-timeout：${passed} 项通过，0 项失败`)

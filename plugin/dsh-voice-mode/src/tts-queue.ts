@@ -13,6 +13,8 @@
  */
 import { MsEdgeTTS, OUTPUT_FORMAT, type ProsodyOptions } from 'msedge-tts'
 import { stripEmotionTags } from './emotion.ts'
+import { redactSecrets } from './redact.ts'
+import type { TtsEngineKind } from './engine-kind.ts'
 
 /** 合成引擎统一接口（云端/本地实现互替）。 */
 export interface TtsEngine {
@@ -22,6 +24,14 @@ export interface TtsEngine {
   updateVoice(voice: string, rate?: number): void
   /** 合成一段文本为音频字节；失败抛错（上层退避重试）。 */
   synthesize(text: string, options?: { voice?: string; rate?: number }): Promise<Buffer>
+  /**
+   * 合成并同时返回该段音频的 MIME（可选；远程引擎按真实字节嗅探，并发下必须随结果返回）。
+   * 未实现时调用方回落到 `synthesize` + `engine.mime`。
+   */
+  synthesizeWithMime?(
+    text: string,
+    options?: { voice?: string; rate?: number },
+  ): Promise<{ buf: Buffer; mime: string }>
   /** 打断：立刻中止在途合成并释放计算资源（本地引擎杀子进程；下一句自动重建）。 */
   interrupt?(): void
   /** 释放引擎资源（插件卸载/热重载）。 */
@@ -54,7 +64,7 @@ export interface TtsModelGroup {
 /** 引擎/模型现状（设置面板轮询）。 */
 export interface TtsEngineStatus {
   /** 当前生效引擎。 */
-  engine: 'edge' | 'vits' | 'kokoro' | 'openai'
+  engine: TtsEngineKind
   /** 当前引擎是否就绪（本地：模型校验 + 子进程 init；edge：恒 true）。 */
   ready: boolean
   /** 当前引擎正在初始化/加载。 */
@@ -63,6 +73,10 @@ export interface TtsEngineStatus {
   error?: string
   /** 最近一次错误的稳定错误码（可选；客户端据此翻译，无码则展示 error 原文）。 */
   errorCode?: string
+  /** 云引擎是否需要鉴权 key（宿主按引擎/预设判定；本地/edge 不填）。 */
+  keyRequired?: boolean
+  /** 云引擎是否解析到非空 key（只回布尔，不含 key 本身；本地/edge 不填）。 */
+  keyPresent?: boolean
   /** 当前模型下载进度（本地引擎下载时；edge 无）。 */
   progress?: { file: string; percent: number }
   /** 当前引擎的模型组（edge 无 local）。 */
@@ -142,10 +156,32 @@ function isEmptyAudio(buf: Buffer): boolean {
 export class EdgeTtsEngine implements TtsEngine {
   private voice: string
   private rate?: number
+  /** 在途连接→每调用独立中止态：并发试听与朗读不互相清零 aborted，interrupt/close 即时生效（I9）。 */
+  private active = new Map<{ close: () => void | Promise<void> }, { aborted: boolean }>()
+  /** 便于单测注入打桩（默认真实 msedge-tts）。 */
+  private readonly createTts: () => MsEdgeTTS
 
-  constructor(voice = 'zh-CN-XiaoxiaoNeural', rate?: number) {
+  constructor(voice = 'zh-CN-XiaoxiaoNeural', rate?: number, createTts?: () => MsEdgeTTS) {
     this.voice = voice
     this.rate = rate
+    this.createTts = createTts ?? (() => new MsEdgeTTS())
+  }
+
+  /**
+   * 立刻中止在途合成：关闭底层连接并置位每调用中止标志 → audioStream 结束 → synthesize 必以错误返回。
+   * 此前该引擎没有 interrupt，cancel 只能等库超时（连接 10s / 合成无活动 60s），
+   * 「停止朗读」后最长 60s 仍在合成。
+   */
+  interrupt(): void {
+    for (const [t, state] of this.active) {
+      state.aborted = true
+      try {
+        void t.close()
+      } catch {
+        // ignore
+      }
+    }
+    this.active.clear()
   }
 
   readonly mime = 'audio/mpeg'
@@ -163,20 +199,29 @@ export class EdgeTtsEngine implements TtsEngine {
     // 纯标签句（如「<laugh>」）：剥完只剩空白 → 零网络合成（不建连接、不重试）；
     // 0 字节由队列层按空音频整句丢弃（不发帧、不占句号）。
     if (spoken.trim() === '') return Buffer.alloc(0)
-    const tts = new MsEdgeTTS()
+    const tts = this.createTts()
+    const state = { aborted: false }
+    this.active.set(tts, state)
     try {
       await tts.setMetadata(
         options.voice ?? this.voice,
         OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3,
         TTS_METADATA,
       )
+      if (state.aborted) throw new Error('tts interrupted')
       const { audioStream } = tts.toStream(spoken, prosodyFromRate(options.rate ?? this.rate))
       const chunks: Buffer[] = []
-      for await (const chunk of audioStream) chunks.push(chunk as Buffer)
+      for await (const chunk of audioStream) {
+        if (state.aborted) throw new Error('tts interrupted')
+        chunks.push(chunk as Buffer)
+      }
+      // I9：interrupt() 正常关流时循环直接结束而不进循环体，须在循环外复检，禁止把截断音频当成功返回。
+      if (state.aborted) throw new Error('tts interrupted')
       const buf = Buffer.concat(chunks)
       if (!isValidMp3(buf)) throw new Error('empty or invalid audio')
       return buf
     } finally {
+      this.active.delete(tts)
       try {
         await tts.close()
       } catch {
@@ -186,7 +231,8 @@ export class EdgeTtsEngine implements TtsEngine {
   }
 
   async close(): Promise<void> {
-    // 无持久连接（每句独立连接），无需清理。
+    // I9：关闭引擎时立刻中止所有在途 Edge 连接，避免卸载/切换后连接滞留至超时。
+    this.interrupt()
   }
 }
 
@@ -246,6 +292,8 @@ interface QueuedSentence {
 interface SessionQueue {
   pending: QueuedSentence[]
   busy: boolean
+  /** I8：退避冷却中的重启计时器（非 undefined 表示处于退避窗，新 enqueue 不得绕过立即起泵）。 */
+  backoffTimer?: ReturnType<typeof setTimeout>
   /** cancel() 时提升；携带旧 epoch 的句子被丢弃。 */
   epoch: number
   /** TTS 不可达已通知过（去重，直到下一帧成功才复位）。 */
@@ -293,12 +341,11 @@ export class TtsQueue {
   private engine: TtsEngine
   /** TTS 全体不可达通知（每会话去重，成功后复位）。 */
   private readonly onError?: (sessionId: string) => void
-  /** 单句合成重试耗尽被跳过通知（每句一次；此前是静默丢句——真机「回复偶尔不朗读」根因之一）。 */
+  /** 单句合成重试耗尽被跳过通知；onRetry 为单句重试进度通知，synthBudgetMs 为单句重试总预算。 */
   private readonly onSkip?: (sessionId: string, text: string, streak: number) => void
-  /** 某会话队列跑空（无在途、无积压）：「说完就关」据此判定朗读真正结束——客户端只能看到
-   *  句间的播放空档，分不清「后面还有句子在合成」与「已全部读完」。
-   *
-   *  R15（Issue #15 Important-2）：本回调的口径取决于 awaitTurnEnd，见下方 openTurns。 */
+  private readonly onRetry?: (sessionId: string, attempt: number, maxAttempts: number) => void
+  private readonly synthBudgetMs: number
+  /** 某会话队列跑空（无在途、无积压）：「说完就关」据此判定朗读真正结束；口径见 openTurns。 */
   private readonly onIdle?: (sessionId: string) => void
   /**
    * R15（Issue #15 Important-2）：回合闸门——「队列排空」≠「回合结束」。
@@ -344,9 +391,17 @@ export class TtsQueue {
    * 残留一个 ref'd Timeout 拖住事件循环 ≤800ms（同型反模式家族第 5 处，
    * 前三处：asr-host senseP、listEdgeVoices、warmupSense；第四处 backoffTimers）。
    */
-  private readonly retryTimers = new Set<ReturnType<typeof setTimeout>>()
+  private readonly retryTimers = new Set<{ timer: ReturnType<typeof setTimeout>; resolve: () => void }>()
 
-  /** R13：可取消的重试 sleep——句柄入集供 close() 取消；落定即自摘。 */
+  private clearBackoff(q: SessionQueue): void {
+    if (q.backoffTimer !== undefined) {
+      clearTimeout(q.backoffTimer)
+      this.backoffTimers.delete(q.backoffTimer)
+      q.backoffTimer = undefined
+    }
+  }
+
+  /** R13 + I8：可取消的重试 sleep——句柄入集供 close() 取消并立刻 resolve，防止 pump 永久挂死。 */
   private retrySleep(ms: number): Promise<void> {
     // R14（探针 A 竞态）：close 后不得再入集。pump 挂在 await synthesize 时 close，
     // 在途合成被 engine.close() 的 kill→rejectAll 打回，catch 在 close 的 clear
@@ -355,11 +410,14 @@ export class TtsQueue {
     // 让上层重试循环顶部的 closed 判序立即 break（也不白等一轮 sleep）。
     if (this.closed) return Promise.resolve()
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.retryTimers.delete(timer)
-        resolve()
-      }, ms)
-      this.retryTimers.add(timer)
+      const entry = {
+        timer: setTimeout(() => {
+          this.retryTimers.delete(entry)
+          resolve()
+        }, ms),
+        resolve,
+      }
+      this.retryTimers.add(entry)
     })
   }
 
@@ -367,16 +425,14 @@ export class TtsQueue {
     engine: TtsEngine
     onError?: (sessionId: string) => void
     onSkip?: (sessionId: string, text: string, streak: number) => void
+    onRetry?: (sessionId: string, attempt: number, maxAttempts: number) => void
     onIdle?: (sessionId: string) => void
-    /**
-     * R15（Issue #15 Important-2）：置 true 后 onIdle 只在 host 确认回合结束
-     * （noteTurnEnd）后发出——修「回合间空档误发致 mode:once 提前退出」。缺省 false。
-     */
-    awaitTurnEnd?: boolean
+    /** R15：置 true 后 onIdle 只在 host 确认回合结束（noteTurnEnd）后发出；synthBudgetMs 限制单句总重试耗时。 */
+    awaitTurnEnd?: boolean; synthBudgetMs?: number
   }) {
     this.engine = options.engine
     this.onError = options.onError
-    this.onSkip = options.onSkip
+    this.onSkip = options.onSkip; this.onRetry = options.onRetry; this.synthBudgetMs = options.synthBudgetMs ?? 6000
     this.onIdle = options.onIdle
     this.awaitTurnEnd = options.awaitTurnEnd === true
   }
@@ -393,8 +449,8 @@ export class TtsQueue {
   noteTurnEnd(sessionId: string): void {
     if (this.closed) return // I-1 同构：close 后不得再对外发信号
     this.openTurns.delete(sessionId)
-    if (!this.awaitTurnEnd) return
-    if (!this.isIdle(sessionId)) return // 仍有在途/积压：排空时由 pump finally 发
+    if (this.isIdle(sessionId)) this.queues.delete(sessionId)
+    if (!this.awaitTurnEnd || !this.isIdle(sessionId)) return // 仍有在途/积压：排空时由 pump finally 发
     try {
       this.onIdle?.(sessionId)
     } catch {
@@ -437,7 +493,7 @@ export class TtsQueue {
     // 对外信号，而 close() 已在最早期同步 openTurns.clear()，故 close 之后再调用它对
     // 集合的操作恒为无操作——守卫无可观测后果。noteTurnEnd 的同守卫则确有后果（它会
     // 发 onIdle）。本仓只保留能用复现证据论证的判序，故不加。
-    this.openTurns.delete(sessionId)
+    this.openTurns.delete(sessionId); if (this.isIdle(sessionId)) this.queues.delete(sessionId)
   }
 
   /** 当前引擎音频 MIME（/preview 的 Content-Type 也用它）。 */
@@ -466,8 +522,12 @@ export class TtsQueue {
     const old = this.engine
     this.engine = engine
     for (const q of this.queues.values()) {
+      this.clearBackoff(q) // I8：切到新引擎立刻取消旧引擎的退避计时器并复位失败态
       q.epoch++ // 作废在途句：孤儿泵在下一句检查时 break，不再广播旧引擎帧
       q.pending.length = 0 // 弃掉积压（旧引擎的音色/语速已不适用）
+      q.failStreak = 0
+      q.errorNotified = false
+      q.backoff = 0
     }
     void old.close().catch(() => {})
   }
@@ -504,6 +564,21 @@ export class TtsQueue {
     // reject 与既有「失败抛错」语义一致，无需新错误码）。
     if (this.closed) throw new Error('tts queue closed')
     return this.engine.synthesize(text, options)
+  }
+
+  /**
+   * 一次性合成并返回 MIME（试听/自测用）。
+   * A2 审计 Important：不能 await 之后再读 engine.mime——引擎级「最近一次」状态在
+   * 试听与朗读并发时会串味，客户端按错容器解码，整句无声。
+   */
+  async synthesizeWithMime(
+    text: string,
+    options: { voice?: string; rate?: number } = {},
+  ): Promise<{ buf: Buffer; mime: string }> {
+    if (this.closed) throw new Error('tts queue closed')
+    const withMime = this.engine.synthesizeWithMime
+    if (withMime) return withMime.call(this.engine, text, options)
+    return { buf: await this.engine.synthesize(text, options), mime: this.engine.mime }
   }
 
   subscribe(listener: FrameListener): () => void {
@@ -554,14 +629,20 @@ export class TtsQueue {
    */
   cancel(sessionId: string): void {
     const q = this.queues.get(sessionId)
+    const wasBusy = Boolean(q?.busy)
     if (q) {
+      this.clearBackoff(q)
       q.epoch++
       q.pending.length = 0
     }
     // 立刻中止在途合成：本地引擎杀子进程释放 CPU（在途句已被作废；否则其
     // 满核合成会饿死主进程的 ASR 解码，打断后定稿等待可达分钟级——实测根因）。
-    // 引擎由所有会话共享；有其它会话在途时只作废本会话，不能杀掉它们的合成。
-    if (![...this.queues].some(([sid, other]) => sid !== sessionId && other.busy)) this.engine.interrupt?.()
+    // 只有「本会话确实在合成」才转发 interrupt：
+    // - 空闲 cancel（本会话没在合成）不该杀本地子进程，也不该误杀同引擎在途的 /preview；
+    // - 他会话 busy 时要保护它们，同样不转发；
+    // - 本会话在途时必须立刻中止（否则满核合成饿死 ASR 解码，打断后定稿等待可达分钟级）。
+    const othersBusy = [...this.queues].some(([sid, other]) => sid !== sessionId && other.busy)
+    if (wasBusy && !othersBusy) this.engine.interrupt?.()
   }
 
   /** 会话退出/被抢占时彻底清理其队列（防止 Map 长期累积）。 */
@@ -577,6 +658,7 @@ export class TtsQueue {
       // rejectSeqUpTo；seq 上移为全局发号器后该顾虑已消失，但**常规回收仍不该走它**：
       // prune 连 errorNotified 一起去重载体也丢掉，且不判「是否仍有在途泵」。日常回收
       // 由 pump finally 的排空退休承担，此方法保留为显式清理口，行为不变。
+      this.clearBackoff(q)
       q.epoch++
       q.pending.length = 0
     }
@@ -585,7 +667,7 @@ export class TtsQueue {
   }
 
   private async pump(sessionId: string, q: SessionQueue): Promise<void> {
-    if (this.closed || q.busy) return // I-1：关闭后不起泵
+    if (this.closed || q.busy || q.backoffTimer !== undefined) return // I-1 + I8：关闭/在途/退避窗内不起泵
     q.busy = true
     try {
       while (q.pending.length > 0) {
@@ -594,7 +676,10 @@ export class TtsQueue {
         // 单句合成有界重试：Edge 云端 WebSocket 偶发 ETIMEDOUT（实测日志），
         // 失败即静默丢句会表现为「长话没规律跳过几句」——重试 3 次、退避后仍失败才跳过。
         const MAX_SYNTH_ATTEMPTS = 3
+        const startedAt = Date.now()
         let buf: Buffer | null = null
+        // 远程引擎按真实字节嗅探出的 MIME：必须与本句字节一同传递，不能读引擎级「最近一次」。
+        let frameMime: string | null = null
         for (let attempt = 0; attempt < MAX_SYNTH_ATTEMPTS; attempt++) {
           if (item.epoch !== q.epoch) break // 打断：停止重试
           // R13（Issue #15 Important-1）：重试 sleep 期间 close 落进来 → 睡醒直接
@@ -605,12 +690,30 @@ export class TtsQueue {
           // close→kill child→在途 synthesize 被 child.on('exit') 的 rejectAll 打回即可进入。
           if (this.closed) break
           try {
-            buf = await this.engine.synthesize(item.text)
+            const withMime = this.engine.synthesizeWithMime
+            if (withMime) {
+              const r = await withMime.call(this.engine, item.text)
+              buf = r.buf
+              frameMime = r.mime
+            } else {
+              buf = await this.engine.synthesize(item.text)
+            }
             break
           } catch (e) {
-            console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${String(e)}`)
-            if (attempt < MAX_SYNTH_ATTEMPTS - 1) {
-              await this.retrySleep(400 * (attempt + 1))
+            console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${redactSecrets(e)}`)
+            // 被打断/关闭后不再重试：epoch 已变（cancel/interrupt 会先 bump epoch）或队列已关，
+            // 继续 sleep+重试只是白等（实测：切焦点时多出 400ms 空转，测试与真机都受影响）。
+            if (item.epoch !== q.epoch || this.closed) break
+            const sleepMs = 400 * (attempt + 1)
+            if (attempt < MAX_SYNTH_ATTEMPTS - 1 && Date.now() - startedAt + sleepMs < this.synthBudgetMs) {
+              try {
+                this.onRetry?.(sessionId, attempt + 2, MAX_SYNTH_ATTEMPTS)
+              } catch {
+                // listener errors must not kill pump
+              }
+              await this.retrySleep(sleepMs)
+            } else {
+              break
             }
           }
         }
@@ -623,6 +726,13 @@ export class TtsQueue {
           // 表现为「AI 回复偶尔整条/某句不朗读」，用户无从判断是网络还是功能坏了。
           q.failStreak++
           this.onSkip?.(sessionId, item.text, q.failStreak)
+          // A2 审计 Important：errorNotified 只在外层 catch 置位（注释自述近乎不可达），
+          // 于是恒失败时 while 继续空转、1s→8s 退避永不生效（实测 3 句恒失败 = 9 次调用、0 个≥1s 定时器）。
+          // 连败 2 句即视为「引擎整体不可用」：置位并 break，交给 finally 的统一退避。
+          if (q.failStreak >= 2) {
+            q.errorNotified = true
+            break
+          }
           continue
         }
         // B-3：空音频（0 字节 / 44 字节空 WAV）整句丢弃——不发帧、不占句号、
@@ -636,7 +746,7 @@ export class TtsQueue {
         // R15 T-3：发号器是全局的（会话维度不再持有 seq），故本会话的句号必然大于它
         // 历史上的任何一句——即使中间的队列对象已被回收，见 queues 声明处的 seq 单调不变式。
         const sentenceId = this.seq++
-        const mime = this.engine.mime
+        const mime = frameMime ?? this.engine.mime
         // 单 chunk（整句音频）+ final 帧（字幕文本）：客户端按句拼帧后解码起播。
         const dataFrame: TtsChunkFrame = {
           sessionId,
@@ -678,7 +788,7 @@ export class TtsQueue {
       // synthesize 做了 try/catch + 3 次重试，能逃到这里的只有监听器之外的非预期抛错。
       // 批 A：补 sessionId 上下文（item / attempt 是 while/for 内部 const/let，
       // 外层 catch 不可见——不做捕获重构以保持外科手术式改动）。
-      console.warn(`[dsh-voice-mode] TTS unavailable: sid=${sessionId} err=${String(e)}`)
+      console.warn(`[dsh-voice-mode] TTS unavailable: sid=${sessionId} err=${redactSecrets(e)}`)
       if (!q.errorNotified) {
         q.errorNotified = true
         this.onError?.(sessionId)
@@ -717,17 +827,21 @@ export class TtsQueue {
         // 路径保留整张表的增长不值得——故不设例外。**语义变化**：极端情况下同一会话
         // 的第二次 onError 现在会再通知一次（客户端 toast 逐次弹，而非整会话一次）；
         // 这是「每次发生都值得告知」的合理方向，代价为零可观测性的正常路径。
-        this.queues.delete(sessionId)
+        // 回合仍在进行（openTurns）时保留队列以跨流式句子累积 failStreak，回合结束时由 noteTurnEnd/abandonTurn 回收。
+        if (!this.openTurns.has(sessionId)) this.queues.delete(sessionId)
       } else {
         // 失败退避：1s 指数递增至多 8s；成功/无错误即时。
-        const delay = q.errorNotified ? q.backoff : 0
+        // 首档退避至少 1s（此前 backoff 初值 0 会先立即重试一次，等于退避没生效）。
+        const delay = q.errorNotified ? Math.max(1000, q.backoff) : 0
         q.backoff = Math.min(8000, delay + 1000)
         if (delay > 0) {
-          // M7②：持句柄 + 触发即自摘，供 close() 全量取消（详见 backoffTimers 声明处）。
+          // M7② + I8：持句柄绑定到 q.backoffTimer，退避窗内新 enqueue 不会绕过立即起泵；触发即自摘。
           const timer = setTimeout(() => {
             this.backoffTimers.delete(timer)
+            if (q.backoffTimer === timer) q.backoffTimer = undefined
             void this.pump(sessionId, q)
           }, delay)
+          q.backoffTimer = timer
           this.backoffTimers.add(timer)
         } else void this.pump(sessionId, q)
       }
@@ -750,11 +864,14 @@ export class TtsQueue {
     this.openTurns.clear() // R15：回合标记一并清空（close 后不得再有回合结束信号）
     // M7②：先取消所有待触发的退避重启，再关引擎——否则计时器会在 close 后触发 pump，
     // 让本地引擎 ensureReady() 重新 fork 出一个孤儿子进程（热重载泄漏）。
+    for (const q of this.queues.values()) q.backoffTimer = undefined
     for (const timer of this.backoffTimers) clearTimeout(timer)
     this.backoffTimers.clear()
-    // R13：一并取消重试 sleep 计时器——否则 close 落进 400/800ms 窗口时残留 ref'd
-    // timer 拖住事件循环（且睡醒后会走上面补的 closed 判序而 break，timer 本身仍走完）。
-    for (const timer of this.retryTimers) clearTimeout(timer)
+    // R13 + I8：取消重试 sleep 计时器并立即 resolve，让挂起的 pump 立即退出、释放 q.busy 与闭包。
+    for (const entry of this.retryTimers) {
+      clearTimeout(entry.timer)
+      entry.resolve()
+    }
     this.retryTimers.clear()
     await this.engine.close()
   }

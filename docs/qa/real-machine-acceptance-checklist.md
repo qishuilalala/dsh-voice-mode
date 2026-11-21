@@ -1,5 +1,8 @@
 # 真机验收清单（dsh-voice-mode 批 2/3/5 + 批 7 周全修复（10 批次 A-J））
 
+> **锚点口径（2026-11-19）**：清单内的 `file:line` 为当时快照（已标注历史时点），不回填；现行依据以符号锚为准。
+
+
 > **历史基准**：代码基线 = `16072be`（Issue #15 R15-K 收口——回合边界判据换真源 + 3 项客户端护栏 + 剥寒暄补形态 + 文档锚点守卫与回填；前值 `465c253`（R15-G 收口——client 焦点归属实例级化 + 设置 scope 跨标签页失效桥 + 4 处行为锁补齐 + 新增 `test/focus-ownership.test.mjs`；含 lib/client.js，属代码+lib 批；此处为历史批次快照，当前验收另记目标版本，**现行约定取代码+lib 批——docs-only 提交不滚动基线**）。历史基线 `d7890a4`（R13 收口）/ `38cc23e`（R12 收口）/ `c4e2c3a`（R11 收口）/ `bb42829`（R9 收口）/ `7997b4a`（R8 收口）/ `77cb212`（R6 收口）/ `2b28539`（R5 收口）/ `6ddfb09`（R3 收口）/ `6995ae7`（R2）/ `d92f43b`（Issue #15 八批收口）/ `5e2d34f`（批 7O 代码块收口）/ `0b63a13`（块 3 HEAD）保留备查——其「`git diff 5e2d34f..HEAD -- src/ lib/` 为空即纯文档/资产差集」口径已作废（Issue #15 八批代码改动全部落在该差集内）。
 > **范围**：5 审计轴（B1 UI Row 本地化 / B2 settings 即时生效 / B3 fetchConfig 白名单 / B4 break 静音错位 / B5 长段话丢失）+ 10 批次周全修复 31 个 commit（A-J 含 7 docs(state) 验收 + 6 docs/adr + 3 chore(lib)+release 收口）共 42 commits 的可重复真机验证步骤。
 > **目的**：每次发版前由用户亲跑 30 分钟闭环验证；所有失败项对应源码行号定位。
@@ -40,7 +43,7 @@
   2. 找到「语音模式 / Voice Mode」分组（或「Recognition」/「Interaction」分组）
   3. 滚动查看所有 Row
 - **预期**：4 个新 Row 标签都是中文：
-  - 「逆文本归一化」（senseITN；与 `src/strings.ts`（`senseITNLabel: '逆文本归一化'`）+ `src/settings-form.tsx:1344-1345`（`<Row name="senseITN" desc={tr('descSenseITN')}>` 的 checkbox 行）一致）
+  - 「逆文本归一化」（senseITN；与 `src/strings.ts`（`senseITNLabel: '逆文本归一化'`）+ `src/settings-form.tsx:1344-1345`（历史时点）（`<Row name="senseITN" desc={tr('descSenseITN')}>` 的 checkbox 行）一致）
   - 「字幕字号」/「字幕宽度」（captionFontSize / captionMaxWidth）
   - 「短应答让位」（backchannelYield）
 - **失败信号**：Row 标签显示 `senseITN` / `captionFontSize` 等原始 key 而非中文
@@ -144,7 +147,7 @@
   3. 听「这是悄悄话」段音量
 - **预期**：中间段音量明显低于前后（约 0.5 倍）
 - **失败信号**：三段音量相同（whisper 增益未生效）
-- **回退**：检查 `src/emotion.ts` 的 `whisper` 字段 + `src/tts-local.ts:513-516` 的**内联**增益（`if (seg.whisper) { … samples[j] *= 0.5 }`）——**该实现是内联的，没有 `applyGain` 这个函数**（全仓 0 命中），回查时勿按旧名找函数
+- **回退**：检查 `src/emotion.ts` 的 `whisper` 字段 + `src/tts-local.ts:580-583` 的**内联**增益（`if (seg.whisper) { … samples[j] *= 0.5 }`）——**该实现是内联的，没有 `applyGain` 这个函数**（全仓 0 命中），回查时勿按旧名找函数
 - **时间**：1.5 分钟
 
 ### [ ] 4.3 `<laugh>/<sigh>/<emphasis>` 不被读出
@@ -452,3 +455,12 @@
 > 以下为最近一次真机验证时 `curl /voice-mode/config` 返回的用户配置快照；与上方「默认值」表是两套不同语义，请勿混读。
 
 - captionMaxWidth：2（90vw；用户在默认 1=70vw 基础上放宽）
+
+## 离线替身门禁（2026-11-20，先用它筛回归，再上真机）
+
+真机四项门禁（打断/回声/字幕/延迟）里，除了「回声消除实际听感」之外都可以离线先验证：
+
+    cd plugin/dsh-voice-mode && node test/offline-gates.mjs --write-doc
+
+用真实本地 VITS 合成一句话 → 送进真实 host ASR runtime（zipformer partial + Silero VAD + SenseVoice 定稿），断言：首包 partial 延迟（冷/热分开）、定稿文本与源文本覆盖率、detect 对人声/静音的判别、合成与定稿耗时。结果自动写入 docs/qa/offline-gates.md。当前基线：10/10 通过，热态首包 160ms、定稿覆盖 100%。
+

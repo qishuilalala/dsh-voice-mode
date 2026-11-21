@@ -8,9 +8,19 @@
  */
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { OpenAiTtsEngine, OpenAiTtsError, speechUrl } from '../src/tts-openai.ts'
+import { OpenAiTtsEngine, OpenAiTtsError, OPENAI_PRESETS, resolveOpenAiEndpoint, speechUrl } from '../src/tts-openai.ts'
 
 const MP3 = Buffer.from([0xff, 0xfb, 0x90, 0x44, 0x00, 0x01, 0x02, 0x03])
+// 真 WAV（RIFF/WAVE）：MIME 以字节为准后，wav 用例必须喂真 WAV 才能得到 audio/wav。
+const WAV = (() => {
+  const data = Buffer.alloc(64)
+  const b = Buffer.alloc(44 + data.length)
+  b.write('RIFF', 0); b.writeUInt32LE(36 + data.length, 4); b.write('WAVE', 8)
+  b.write('fmt ', 12); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22)
+  b.writeUInt32LE(24000, 24); b.writeUInt32LE(48000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34)
+  b.write('data', 36); b.writeUInt32LE(data.length, 40)
+  return b
+})()
 
 function startServer(handler) {
   return new Promise((resolve) => {
@@ -68,8 +78,10 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
 // 1) OpenRouter 形状：/api/v1 前缀 + Bearer key + OpenAI 请求体。
 {
   const { server, requests, origin } = await startServer((r, res) => {
-    res.writeHead(200, { 'content-type': 'audio/mpeg' })
-    res.end(MP3)
+    // MIME 以真实字节为准：wav 用例必须返回真 WAV，否则引擎会（正确地）按 MP3 标注。
+    const wantsWav = r.body?.response_format === 'wav'
+    res.writeHead(200, { 'content-type': wantsWav ? 'audio/wav' : 'audio/mpeg' })
+    res.end(wantsWav ? WAV : MP3)
   })
   const engine = new OpenAiTtsEngine({
     baseUrl: `${origin}/api/v1`,
@@ -215,6 +227,53 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
   await closeServer(server)
 }
 
+
+// 6.5) 打断要**转发到已创建的回退引擎**（T6：fakeLocal.interrupted 从未被断言）
+{
+  const local = fakeLocal()
+  const { server, origin } = await startServer((r, res) => {
+    res.statusCode = 500
+    res.end('boom')
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: 'v', cooldownMs: 60000, fallback: () => local })
+    // 第一次远程失败 → 走回退（此时 fallbackEngine 已被创建）
+    const buf = await engine.synthesize('第一句')
+    assert.ok(buf.length > 0)
+    assert.equal(local.calls.length, 1)
+    // 打断必须透传到回退引擎（否则本地合成停不下来，用户按打断无声但后台仍占资源）
+    engine.interrupt()
+    assert.equal(local.interrupted, 1, 'interrupt 未转发到回退引擎')
+    // 冷却内再合成：不再打远程（服务器只收到 1 次请求）
+    await engine.synthesize('第二句')
+    assert.equal(local.calls.length, 2)
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+}
+
+
+// 7.5) 401 回显 key：错误消息不得含 key 原文（与 MiMo 同源缺口，锁住两个引擎都接线）
+{
+  const leaked = 'sk-live-abcdefghijklmnopqrstuvwxyz0123456789'
+  const { server, origin } = await startServer((r, res) => {
+    res.statusCode = 401
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify({ error: 'invalid key', received: leaked }))
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: 'v' })
+    const err = await engine.synthesize('x').then(() => null, (e) => e)
+    assert.ok(err, '应抛错')
+    assert.ok(!String(err.message).includes(leaked), '错误消息泄漏了密钥：' + err.message)
+    assert.ok(String(err.message).includes('<redacted>'))
+    await engine.close()
+  } finally {
+    await closeServer(server)
+  }
+}
+
 // 6) 未配置：构造不抛；每句走回退；close 关闭已创建的回退引擎。
 {
   const local = fakeLocal()
@@ -227,6 +286,220 @@ assert.throws(() => speechUrl('file:///etc/passwd'), OpenAiTtsError)
 
   const bare = new OpenAiTtsEngine({ baseUrl: '', model: '', voice: '' })
   await assert.rejects(bare.synthesize('hello'), (e) => e.code === 'openai_not_configured')
+}
+
+{
+  // E1：预设解析（纯函数；未知/空回 null 调用方回落 Config 文件值）。
+  const { OPENAI_PRESETS, resolveOpenAiEndpoint } = await import('../src/tts-openai.ts')
+  // 形状含 voice：设置音色为空时用它兜底（A3：否则 model:voice 形态永远用不上）。
+  // 2026-11-20 Q1：预设另带 voices 全表；此处只锁三元组（全表由 preset-voices.test.mjs 锁）。
+  const pickTriple = (p) => ({ baseUrl: p.baseUrl, model: p.model, voice: p.voice })
+  assert.deepEqual(pickTriple(resolveOpenAiEndpoint('siliconflow-cosyvoice2')), {
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    model: 'FunAudioLLM/CosyVoice2-0.5B',
+    voice: 'FunAudioLLM/CosyVoice2-0.5B:alex',
+  })
+  assert.deepEqual(pickTriple(resolveOpenAiEndpoint('siliconflow-fish')), {
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    model: 'fishaudio/fish-speech-1.5',
+    voice: 'fishaudio/fish-speech-1.5:anna',
+  })
+  assert.ok(resolveOpenAiEndpoint('siliconflow-cosyvoice2')?.voices?.includes('FunAudioLLM/CosyVoice2-0.5B:alex'))
+  // E1 原计划的三类都要在（SiliconFlow / OpenRouter / 自建）。
+  const or = resolveOpenAiEndpoint('openrouter-openai')
+  assert.ok(or?.baseUrl.includes('openrouter.ai'))
+  // OpenRouter 官方示例用的是带日期 slug；写错的 model 会被 404 后静默回退本地。
+  assert.equal(or?.model, 'openai/gpt-4o-mini-tts-2025-12-15')
+  const oa = resolveOpenAiEndpoint('openai-official')
+  assert.equal(oa?.baseUrl, 'https://api.openai.com/v1')
+  assert.equal(oa?.model, 'gpt-4o-mini-tts')
+  assert.equal(oa?.voice, 'marin')
+  assert.ok(resolveOpenAiEndpoint('selfhosted-kokoro')?.baseUrl.includes('127.0.0.1'))
+  assert.ok(resolveOpenAiEndpoint('selfhosted-vllm')?.baseUrl.includes('127.0.0.1'))
+  assert.equal(resolveOpenAiEndpoint(''), null)
+  assert.equal(resolveOpenAiEndpoint('unknown-preset'), null)
+  assert.ok(String(OPENAI_PRESETS['siliconflow-cosyvoice2'].voice).includes(':'))
+  assert.ok(String(OPENAI_PRESETS['siliconflow-fish'].voice).includes(':'))
+}
+
+// ---- 预设组合（T6 审查：全仓此前零覆盖，而这正是「用户点了预设却 400」的高发区）----
+{
+  const { resolveOpenAiSpeech } = await import('../src/tts-openai.ts')
+  const config = { baseUrl: 'http://cfg/v1', model: 'cfg-model', voice: 'cfg-voice' }
+
+  // 1) 命中预设：baseUrl/model 用预设，voice 空时回落预设音色
+  const preset = resolveOpenAiSpeech({ presetId: 'siliconflow-cosyvoice2', settingVoice: '', config })
+  assert.equal(preset.baseUrl, 'https://api.siliconflow.cn/v1')
+  assert.equal(preset.model, 'FunAudioLLM/CosyVoice2-0.5B')
+  assert.equal(preset.voice, 'FunAudioLLM/CosyVoice2-0.5B:alex')
+  assert.equal(preset.presetId, 'siliconflow-cosyvoice2')
+
+  // 2) 填了音色：设置值优先，预设音色不生效
+  assert.equal(resolveOpenAiSpeech({ presetId: 'siliconflow-cosyvoice2', settingVoice: 'my-own', config }).voice, 'my-own')
+
+  // 3) 未知/空预设：全部回落 Config（不能残留上一次预设的端点）
+  for (const id of ['', 'no-such-preset']) {
+    const r = resolveOpenAiSpeech({ presetId: id, settingVoice: '', config })
+    assert.equal(r.baseUrl, 'http://cfg/v1')
+    assert.equal(r.model, 'cfg-model')
+    assert.equal(r.voice, 'cfg-voice')
+    assert.equal(r.presetId, '')
+  }
+
+  // 4) 三方都缺：返回空串（由工厂报 not_configured，不猜默认端点）
+  const empty = resolveOpenAiSpeech({ presetId: '', settingVoice: '', config: {} })
+  assert.equal(empty.baseUrl, '')
+  assert.equal(empty.model, '')
+  assert.equal(empty.voice, '')
+
+  // 5) 每个预置预设都必须自带 baseUrl/model/voice（否则等于「接了没用」）
+  for (const id of Object.keys(OPENAI_PRESETS)) {
+    const r = resolveOpenAiSpeech({ presetId: id, settingVoice: '', config: {} })
+    assert.ok(r.baseUrl.startsWith('http'), `${id} 缺 baseUrl`)
+    assert.ok(r.model.length > 0, `${id} 缺 model`)
+    assert.ok(r.voice.length > 0, `${id} 缺示例音色`)
+  }
+  console.log('  ✓ 预设组合：命中 / 自定义音色优先 / 未知 id 回落 Config / 三方缺失 / 六预设完整性')
+}
+
+
+// ---- 多 key（E1 后续）：每个预设可用独立 key，换服务商不再 401 ----
+{
+  const { resolveOpenAiApiKey } = await import('../src/tts-openai.ts')
+
+  // 预设专属 key 优先
+  assert.equal(
+    resolveOpenAiApiKey('siliconflow-cosyvoice2', { apiKey: 'single', apiKeys: { 'siliconflow-cosyvoice2': 'sf' } }),
+    'sf',
+  )
+  // 该预设没配 → 回落单 key
+  assert.equal(resolveOpenAiApiKey('openrouter-openai', { apiKey: 'single', apiKeys: { 'siliconflow-cosyvoice2': 'sf' } }), 'single')
+  // 无预设（手动配置）→ 单 key
+  assert.equal(resolveOpenAiApiKey('', { apiKey: 'single', apiKeys: { 'siliconflow-cosyvoice2': 'sf' } }), 'single')
+  // 都没有 → 空串（引擎报 not_configured，不猜）
+  assert.equal(resolveOpenAiApiKey('openai-official', {}), '')
+  assert.equal(resolveOpenAiApiKey('openai-official', { apiKeys: {} }), '')
+  // 粘贴带空格要 trim（否则头里带空格必然 401）
+  assert.equal(resolveOpenAiApiKey('openai-official', { apiKeys: { 'openai-official': '  sk-abc  ' } }), 'sk-abc')
+  // 空串专属 key 不得覆盖单 key（视为未配置）
+  assert.equal(resolveOpenAiApiKey('openai-official', { apiKey: 'single', apiKeys: { 'openai-official': '   ' } }), 'single')
+  console.log('  ✓ 多 key：预设优先 / 回落单 key / 手动配置 / 空值不覆盖 / trim')
+}
+
+
+// ---- 多 key 的安全边界（ADR-0013：key 只在宿主侧，绝不下发浏览器）----
+{
+  const { OPENAI_PRESETS } = await import('../src/tts-openai.ts')
+  const { readFileSync } = await import('node:fs')
+  const idx = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8')
+
+  // 1) 预设表本身绝不携带 key（key 属 Config，不属预设；预设经 /presets 下发）
+  for (const [id, p] of Object.entries(OPENAI_PRESETS)) {
+    for (const k of Object.keys(p)) {
+      assert.ok(!/key/i.test(k), `预设 ${id} 含疑似 key 字段 ${k}——预设会经 /presets 下发`)
+    }
+  }
+
+  // 2) /presets 响应体形状固定；/config 载荷不得出现 apiKey
+  assert.ok(idx.includes('respondJson(res, 200, { presets: OPENAI_PRESETS })'), '/presets 响应体形状变了，请复核是否引入密钥')
+  const at = idx.indexOf('/config`,')
+  assert.ok(at > 0, '找不到 /config 路由')
+  // 载荷实际约 5.5k 字符；窗口必须覆盖整段，否则后半段插入 apiKey 抓不到（R5 复核）。
+  const configEnd = idx.indexOf('})', at)
+  const configPayload = idx.slice(at, configEnd > at ? configEnd : at + 8000)
+  assert.ok(!/apiKey/.test(configPayload), '/config 载荷疑似包含 apiKey')
+
+  // 3) schema 里两个 key 字段都必须标 secret（防被通用设置页展示/回显）
+  assert.ok(idx.includes("apiKey: z.string().role('secret')"), 'apiKey 未标 secret 角色')
+  assert.ok(idx.includes("apiKeys: z.dict(z.string().role('secret')).role('secret')"), 'apiKeys 容器未标 secret 角色（通用设置页可能整表展示）')
+  console.log('  ✓ 多 key 安全边界：预设无 key 字段 / 载荷无 key / schema 标 secret')
+}
+
+
+// 9) MIME 以真实字节为准（2026-11-19 真实链路发现：自建/代理常忽略 response_format）
+{
+  const riff = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WAVE'), Buffer.alloc(64)])
+  const { server, origin } = await startServer((r, res) => {
+    res.setHeader('content-type', 'audio/mpeg') // 服务端连 content-type 都声称 mp3，但字节是 WAV
+    res.end(riff)
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: 'v', responseFormat: 'mp3' })
+    await engine.synthesize('x')
+    assert.equal(engine.mime, 'audio/wav', '真实字节是 RIFF/WAVE，MIME 必须是 audio/wav')
+    await engine.close()
+    console.log('  ✓ MIME 以真实字节为准：配置 mp3 但返回 WAV → audio/wav')
+  } finally {
+    await closeServer(server)
+  }
+}
+
+// 10) 真 MP3 仍识别为 audio/mpeg（嗅探不能把正常路径弄坏）
+{
+  const mp3 = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(160)])
+  const { server, origin } = await startServer((r, res) => {
+    res.end(mp3)
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: 'v', responseFormat: 'mp3' })
+    await engine.synthesize('x')
+    assert.equal(engine.mime, 'audio/mpeg')
+    await engine.close()
+    console.log('  ✓ 真 MP3（ID3）仍识别为 audio/mpeg')
+  } finally {
+    await closeServer(server)
+  }
+}
+
+
+// 11) 音色为空时不发 voice 字段（避免服务端把 voice:'' 当 400）
+{
+  const { server, requests, origin } = await startServer((r, res) => {
+    res.writeHead(200, { 'content-type': 'audio/wav' })
+    res.end(WAV)
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: '' })
+    await engine.synthesize('hi')
+    assert.equal('voice' in (requests.at(-1).body ?? {}), false, '音色为空时不应发送 voice 字段')
+    console.log('  ✓ 音色为空时不发 voice 字段（用服务端默认音色）')
+  } finally {
+    await closeServer(server)
+  }
+}
+
+
+// 12) MIME 必须随结果返回（A2 审计 Important：引擎级 lastMime 在并发下会串味）
+{
+  const wav = Buffer.from('RIFF....WAVEfmt ', 'binary')
+  const { server, origin } = await startServer((r, res) => {
+    res.writeHead(200, { 'content-type': 'audio/wav' })
+    res.end(wav)
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: 'v' })
+    const [a, b] = await Promise.all([engine.synthesizeWithMime('one'), engine.synthesizeWithMime('two')])
+    assert.equal(a.mime, 'audio/wav', 'synthesizeWithMime 应返回本段嗅探出的 MIME')
+    assert.equal(b.mime, 'audio/wav', 'synthesizeWithMime 应返回本段嗅探出的 MIME')
+    console.log('  ✓ MIME 随合成结果返回（并发试听/朗读不串味）')
+  } finally {
+    await closeServer(server)
+  }
+}
+
+// 13) 200 但返回 HTML（反代登录页）必须判失败，不得当音频发出去
+{
+  const { server, origin } = await startServer((r, res) => {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+    res.end('<html><body>login</body></html>')
+  })
+  try {
+    const engine = new OpenAiTtsEngine({ baseUrl: `${origin}/v1`, model: 'm', voice: 'v' })
+    await assert.rejects(() => engine.synthesizeWithMime('hi'), /non-audio response/, 'HTML 200 必须判失败')
+    console.log('  ✓ 200 但返回 HTML（反代登录页）判失败（不再当 audio/mpeg 发出）')
+  } finally {
+    await closeServer(server)
+  }
 }
 
 console.log('tts-openai: all assertions passed')

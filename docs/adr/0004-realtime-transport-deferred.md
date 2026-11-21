@@ -30,9 +30,9 @@
 |---|---|---|
 | `segmentEpoch` | `src/asr.ts:258`（历史时点快照） | 弃段/定稿后迟到的 partial 响应 |
 | `detectGeneration` | `src/asr.ts:289`（历史时点快照） | 重置后旧 vadOnly 响应推进 `detectSent` 水位 |
-| `resetGen` | `src/asr-host.ts:238` | 定稿期间会话被 reset，陈旧缓存写回 |
-| `turnGen` | `src/index.ts:696`（声明 Map `const turnGen = new Map<string, number>()`）+ `:1050-1051`（get/set）+ `:1076`（迟到回合守卫）；`:648` 会话清理 delete | 旧回合的 turn state 覆盖新回合 |
-| TTS `q.epoch` | `src/tts-queue.ts:246`（`SessionQueue` 接口；其 `epoch` 字段声明在 :250） | 打断后积压句子与孤儿泵继续广播 |
+| `resetGen` | `src/asr-host.ts:301` | 定稿期间会话被 reset，陈旧缓存写回 |
+| `turnGen` | `src/index.ts` 的 `turnGen`（声明 `const turnGen = new Map<string, number>()`）+ get/set + 迟到回合守卫；会话清理处 `turnGen.delete`（按符号定位，不钉行号） | 旧回合的 turn state 覆盖新回合 |
+| TTS `q.epoch` | `src/tts-queue.ts:286`（`SessionQueue` 接口；其 `epoch` 字段声明在 :290） | 打断后积压句子与孤儿泵继续广播 |
 
 **锚点刷新声明（2026-10-21 二次刷新，绑定代码批冻结后的工作区源码；前次声明绑定 HEAD `080da15`）**：上表 `turnGen` 一行原值 `src/index.ts:552`（声明）+ `:916-924`（get/set/守卫），两条均已漂移——`:552` 现落在 `persistSettings` 内的 `run()` 辅助函数，`:916-924` 现为 `scopeRef.watch(applyVset)` + 「0.1.7+ 路径 B 写入串行化」注释区（与 `turnGen` 无关）；**实际声明在 `:671`、get/set 在 `:1084-1085`、迟到回合守卫在 `:1129`、会话清理 delete 在 `:682`**。**〔前次声明的「未漂移」结论已作废〕**：前次称「本表其余四行（`asr.ts（原锚 251）` / `asr.ts（原锚 267）` / `asr-host.ts` resetGen / `tts-queue.ts（原锚 212）`+`:207`）经复核**未漂移**，保留原值」——**该结论为假**（`f8a3268` 的锚点刷新写入了修复前源码快照，随 R15 各批重写已整体位移）：实测原值 `asr.ts（原锚 251）`→**`:258`**（segmentEpoch 声明）、原值 `asr.ts（原锚 267）`→**`:274`**（detectGeneration 声明）、`asr-host.ts` resetGen 声明补为 **`:238`**；仅 `tts-queue.ts（原锚 212）`+`:207` 中 `:212` 已漂移（`epoch` 声明在 `:211`）、`:207`（`SessionQueue` 接口）未漂移。**注**：本 ADR 此前**从未被列入锚点漂移清单**（清单只覆盖 glossary / adr-0003 / adr-0005 / adr-0006 / backlog），本轮按同一判据全量复扫时才发现。
 

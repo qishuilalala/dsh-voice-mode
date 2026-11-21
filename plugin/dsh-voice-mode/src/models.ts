@@ -130,9 +130,15 @@ const MODEL_BODY_IDLE_TIMEOUT_MS = 120000
 /** 建立 body 空闲看门狗：kick() 重置，stop() 解除；超时 abort 共用的 ac。 */
 function makeIdleWatch(ac: AbortController, ms: number): { kick: () => void; stop: () => void } {
   let t: ReturnType<typeof setTimeout> | undefined
-  const stop = (): void => clearTimeout(t)
+  let stopped = false
+  const stop = (): void => {
+    stopped = true
+    clearTimeout(t)
+    t = undefined
+  }
   const kick = (): void => {
-    stop()
+    if (stopped) return
+    clearTimeout(t)
     t = setTimeout(() => ac.abort(new Error('model download idle timeout')), ms)
   }
   return { kick, stop }
@@ -235,9 +241,13 @@ async function downloadVerified(opts: {
   const res = await fetchWithHeadersTimeout(url, { headers, redirect: 'follow' }, ac)
   idle.kick() // I-2：头已到，开始计 body 空闲
   // 重定向后的最终域名必须仍在白名单内（防恶意模型源把请求导去任意地址）。
-  if (!redirectHostAllowed(res.url, allowCustomHost)) return false
+  if (!redirectHostAllowed(res.url, allowCustomHost)) {
+    await res.body?.cancel().catch(() => undefined)
+    return false
+  }
   if (res.status === 416) {
-    // Range 不可满足 = 已完整：直接校验后改名。
+    // Range 不可满足 = 已完整：先取消响应体再校验改名，防 socket 滞留。
+    await res.body?.cancel().catch(() => undefined)
     if ((await sha256OfFile(partPath).catch(() => '')) === spec.sha256) {
       await rename(partPath, localPath)
       return true
@@ -245,7 +255,11 @@ async function downloadVerified(opts: {
     await unlink(partPath).catch(() => undefined)
     return false
   }
-  if (res.status !== 200 && res.status !== 206) return false
+  if (res.status !== 200 && res.status !== 206) {
+    // 提前返回必须取消响应体：不读不取消会让 socket/缓冲滞留（A1 审计 Important）。
+    await res.body?.cancel().catch(() => undefined)
+    return false
+  }
   // 续传只在服务端返回 206 时成立；若带已有 .part 却返回 200 全量（部分镜像/CDN
   // 忽略 Range），必须从头重写，否则在旧字节上追加全量 → 半旧半新损坏（SHA256 会拦下，但浪费一次全量下载）。
   const resume = res.status === 206 ? resumeFrom : 0
@@ -256,17 +270,33 @@ async function downloadVerified(opts: {
   const reader = src.getReader()
   let received = resume
   await new Promise<void>((resolve, reject) => {
-    sink.on('error', (e) => reject(e))
+    let failed = false
+    let wakeDrain: (() => void) | null = null
+    sink.on('error', (e) => {
+      if (failed) return
+      failed = true
+      ac.abort(e)
+      wakeDrain?.()
+      wakeDrain = null
+      void reader.cancel(e).catch(() => undefined)
+      reject(e)
+    })
     sink.on('finish', () => resolve())
     void (async () => {
       try {
         for (;;) {
+          if (failed) return
           const { done, value } = await reader.read()
-          if (done) break
+          if (done || failed) break
           idle.kick() // I-2：收到字节即重置
           received += value.byteLength
           if (!sink.write(value)) {
-            await new Promise<void>((r) => sink.once('drain', r))
+            await new Promise<void>((r) => {
+              if (failed) { r(); return }
+              wakeDrain = r
+              sink.once('drain', () => { wakeDrain = null; r() })
+            })
+            if (failed) return
             idle.kick()
           }
           if (total > 0) {
@@ -276,10 +306,14 @@ async function downloadVerified(opts: {
             })
           }
         }
-        sink.end()
+        if (!failed) sink.end()
       } catch (e) {
-        sink.destroy(e as Error)
-        reject(e)
+        if (!failed) {
+          failed = true
+          sink.destroy(e as Error)
+          void reader.cancel(e).catch(() => undefined)
+          reject(e)
+        }
       }
     })()
   })
@@ -370,22 +404,34 @@ export async function ensureModelTree(opts: {
 
   let tree: string[] = []
   for (const host of hosts) {
+    if (opts.signal?.aborted) break
+    const listAc = new AbortController()
+    const onListAbort = (): void => listAc.abort(opts.signal?.reason)
+    if (opts.signal?.aborted) onListAbort()
+    else opts.signal?.addEventListener('abort', onListAbort, { once: true })
+    const listIdle = makeIdleWatch(listAc, opts.idleTimeoutMs ?? MODEL_BODY_IDLE_TIMEOUT_MS)
     try {
-      // M4：补超时（同上，仅 headers 阶段）——上游挂住时 ensureModelTree 的 Promise
-      // 不 settle，Kokoro 的 ~355 个语音表文件补全永远不返回，/preview 与合成双双卡死。
       const res = await fetchWithHeadersTimeout(host + '/api/models/' + repo + '?blobs=true', {
         headers: { 'user-agent': 'dsh-voice-mode' },
-      })
-      // 重定向后的最终域名必须仍在白名单内（与下方两处下载路径同款守卫：文件头
-      // 不变式「重定向跳转到白名单之外的域名一律拒绝」——列举这一跳曾独缺）。
-      if (!redirectHostAllowed(res.url, allowCustomHost)) continue
+      }, listAc)
+      if (!redirectHostAllowed(res.url, allowCustomHost)) {
+        await res.body?.cancel().catch(() => undefined)
+        continue
+      }
       if (res.ok) {
+        listIdle.kick()
         const j = (await res.json()) as { siblings?: Array<{ rfilename?: string }> }
         tree = (j.siblings ?? []).map((s) => s.rfilename ?? '').filter((f) => isSafeModelRel(f, subdir))
         if (tree.length > 0) break
+      } else {
+        await res.body?.cancel().catch(() => undefined)
       }
     } catch {
       // 尝试下一个 host
+      if (opts.signal?.aborted) break
+    } finally {
+      listIdle.stop()
+      opts.signal?.removeEventListener('abort', onListAbort)
     }
   }
   if (tree.length === 0) return false
@@ -399,7 +445,8 @@ export async function ensureModelTree(opts: {
       if (rel === undefined) return
       const localPath = join(repoDir, rel)
       const partPath = localPath + '.part'
-      if ((await stat(localPath).catch(() => null))?.isFile() && (await stat(localPath)).size > 0) {
+      const localSt = await stat(localPath).catch(() => null)
+      if (localSt?.isFile() && localSt.size > 0) {
         done++
         continue
       }
@@ -407,15 +454,9 @@ export async function ensureModelTree(opts: {
       let ok = false
       for (const host of hosts) {
         try {
-          const url = host + '/' + repo + '/resolve/main/' + encodeURIComponent(rel)
-          // M-1（Issue #15 R2）：补 headers 阶段超时——与 :182/:275 同构。
-          //  M4 修复漏掉了同一函数内最后一处裸 fetch：上游「接受连接后永不吐响应头」时
-          //  本 worker 的 await 永不 settle → Promise.all 永不 resolve → ensureModelTree
-          //  永不返回 → Kokoro espeak-ng-data 树（355 文件/8 路并发）加载永久挂起，
-          //  不抛错、不进 engineError、连日志都没有。
-          //  仍只限 headers 阶段：拿到 res 后才开始流式读 body，慢网合法续传不被误杀
-          //  （见 models.ts:152-154 与 fetchWithHeadersTimeout 头注）。
-          // I-2：单文件共用 ac——headers 超时 / body 空闲看门狗 / 外部 signal 都 abort 它。
+          // I6 修复：逐路径段编码，保留目录分隔符 `/`（原 encodeURIComponent(rel) 会编成 %2F 致 404）。
+          const encodedRel = rel.split('/').map(encodeURIComponent).join('/')
+          const url = host + '/' + repo + '/resolve/main/' + encodedRel
           const ac = new AbortController()
           const onAbort = (): void => ac.abort(opts.signal?.reason)
           if (opts.signal?.aborted) onAbort()
@@ -423,34 +464,58 @@ export async function ensureModelTree(opts: {
           const idle = makeIdleWatch(ac, opts.idleTimeoutMs ?? MODEL_BODY_IDLE_TIMEOUT_MS)
           try {
           const res = await fetchWithHeadersTimeout(url, { headers: { 'user-agent': 'dsh-voice-mode' }, redirect: 'follow' }, ac)
-          if (!redirectHostAllowed(res.url, allowCustomHost)) continue
-          if (res.status !== 200) continue
+          if (!redirectHostAllowed(res.url, allowCustomHost)) {
+            await res.body?.cancel().catch(() => undefined)
+            continue
+          }
+          if (res.status !== 200) {
+            await res.body?.cancel().catch(() => undefined)
+            continue
+          }
           idle.kick()
-          // 先取 body 读流、再开写流：res.body 为 null 时不留未关闭的 fd 与空 .part 文件
-          // （前置 status===200 已使该分支实际不可达，纯顺序卫生）。
           const reader = res.body?.getReader()
           if (!reader) continue
           const sink = createWriteStream(partPath)
           let size = 0
           await new Promise<void>((resolve, reject) => {
-            sink.on('error', reject)
+            let failed = false
+            let wakeDrain: (() => void) | null = null
+            sink.on('error', (e) => {
+              if (failed) return
+              failed = true
+              ac.abort(e)
+              wakeDrain?.()
+              wakeDrain = null
+              void reader.cancel(e).catch(() => undefined)
+              reject(e)
+            })
             sink.on('finish', resolve)
             void (async () => {
               try {
                 for (;;) {
+                  if (failed) return
                   const r = await reader.read()
-                  if (r.done) break
+                  if (r.done || failed) break
                   idle.kick()
                   size += r.value.byteLength
                   if (!sink.write(r.value)) {
-                    await new Promise((r2) => sink.once('drain', r2))
+                    await new Promise<void>((r2) => {
+                      if (failed) { r2(); return }
+                      wakeDrain = r2
+                      sink.once('drain', () => { wakeDrain = null; r2() })
+                    })
+                    if (failed) return
                     idle.kick()
                   }
                 }
-                sink.end()
+                if (!failed) sink.end()
               } catch (e) {
-                sink.destroy(e as Error)
-                reject(e as Error)
+                if (!failed) {
+                  failed = true
+                  sink.destroy(e as Error)
+                  void reader.cancel(e).catch(() => undefined)
+                  reject(e as Error)
+                }
               }
             })()
           })

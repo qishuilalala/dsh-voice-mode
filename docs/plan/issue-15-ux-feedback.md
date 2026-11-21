@@ -1,5 +1,8 @@
 # Issue #15《用户体验反馈》处理计划（10 项问题）
 
+> **锚点口径（2026-11-19）**：本文是历史 issue 处置记录，行号为当时快照（已标注历史时点），不回填；现行依据以符号锚为准。
+
+
 > 状态：**全部落地完毕（批 1-8 + 收口批已全部实施并发布）**——Issue #15 的 10 项问题经 8 批 + 收口批处置，随 **v0.7.26**（2026-10-20，CHANGELOG `## [0.7.26]`「Issue #15 用户体验反馈处置（10 项，8 批+收口）」）发布；其后的 **v0.7.27**（2026-10-21，PR #16 社区交互移植）在同一交互面上叠加麦克风按钮即状态面板 / `readAloud` 朗读范围 / `mode:once` 说完就关 / 右键快捷设置 / 停止朗读 / SSE 加固。**本文件自此不再是「待开工计划」，而是 issue #15 唯一的问题清单与状态载体**（10 项问题的最终处置口径见 §3 批次表、§7 审查裁决、§8 回滚路径；真机门禁见 `docs/qa/real-machine-acceptance-checklist.md` 阶段 8）· 状态订正 2026-10-21
 > 派发方：用户指令「全部问题都深化和梳理计划文档，多agents协同反复审查完善计划文档，没问题就逐个去执行修复，第一性原理深挖，对抗性思维」。
 > 方法论：主会话 = 计划维护者（唯一写者）；5 个只读子代理并行取证（打断/提交/转写/设置可观测/兼容）；取证结论与本会话一手核实互校后落本计划；计划经多 agent 对抗审查通过后才进入执行；执行按批次走「执行 → 主会话事实核查 → 审查 subagent → 裁决」四步门禁。
@@ -18,12 +21,12 @@
 
 证据链（当前源码）：
 
-- `src/asr.ts:1063`：播放期（playingNow）AEC 后帧**只进 detectChunks**（VAD 检测通道），不进识别 segment。
+- `src/asr.ts:1196-1197`：播放期（playingNow）AEC 后帧**只进 detectChunks**（VAD 检测通道），不进识别 segment。
 - `src/asr.ts`：正常语音分支在 `config.isPlaying()` 为真时**不入段**（自聊防护），仅把播放前已开着的段立即收口（`finalizeSegment(true)`，其体内 asr.ts:714 置 `speechActive=false`——播放期用户语音因此永远不进段）。
 - `src/asr.ts`（`requestDetect`）：播放期且未开口时轮询只走 `requestDetect()`（检测通道），常规 partial 断流。
 - `src/client.tsx`（`hardBreak`）：hardBreak = skipAudio + cancelTurn + POST /cancel（`keepAsr = engine.holding === true`）+ 非 hold 时 `discardSegment()`（:2511）。（**2026-10-21 按 HEAD `465c253` 重锚**：R15-G 的焦点归属实例级化在 `src/client.tsx` 增 +54 行，本行处位移 +51；旧值 2392 / 2422 为 `3154433` 口径）
-- `src/index.ts:1787`：host 收到 /cancel，`keepAsr !== true` 时 `asr.reset(sessionId)`（:1577；host 识别流清空，asr-host.ts:781-813 reset 函数内 resetGen++（:800）且连带释放检测 VAD（:802-812））。
-- `src/asr.ts:1487-1554`：discardSegment 清空本地段 + segmentEpoch++ + resetHostStream。
+- `src/index.ts:1787`（历史时点）：host 收到 /cancel，`keepAsr !== true` 时 `asr.reset(sessionId)`（:1577；host 识别流清空，asr-host.ts:781-813 reset 函数内 resetGen++（:800）且连带释放检测 VAD（:802-812））。
+- `src/asr.ts:1515-1585`：discardSegment 清空本地段 + segmentEpoch++ + resetHostStream。
 
 后果链：hardBreak 确认需 confirmFrames×100ms + 上行往返（真机 confirmMs ~490ms，CONTEXT.md:37/42），用户打断开口到打断生效之间说的全部语音只短暂存在于 detectChunks（上限 1s，`src/asr.ts` MAX_DETECT_PENDING，且被检测消费/弃段时清空）——既未进识别段、未上 host 流，hardBreak 后新段从零开始。**丢的正是「打断那句话」**，与用户报告「整段或丢开头、长段落尤其明显」完全吻合。
 

@@ -170,5 +170,78 @@ await t('C3 全局手势恢复（pointerdown / keydown → warmAudio）', () => 
   assert.ok(/addEventListener\('keydown', resumeAudio/.test(clientSrc), '缺 keydown 恢复')
 })
 
+console.log('Loop 3 #6：单句重试墙钟预算 + 重试进度提示 + 流式句间连败累积')
+
+await t('快速瞬时失败触发 onRetry(2/3, 3/3)；慢超时超出 synthBudgetMs 立即止损不叠加 3× 超时', async () => {
+  const fastRetries = []
+  const fastSkipped = []
+  const fastEngine = makeStubEngine(['快失败'])
+  const qFast = new TtsQueue({
+    engine: fastEngine,
+    onRetry: (sid, attempt, max) => fastRetries.push({ sid, attempt, max }),
+    onSkip: (_sid, txt) => fastSkipped.push(txt),
+  })
+  qFast.enqueue('s1', '快失败')
+  assert.ok(await waitFor(() => fastSkipped.length === 1), '快失败应最终 onSkip')
+  assert.deepEqual(fastRetries, [
+    { sid: 's1', attempt: 2, max: 3 },
+    { sid: 's1', attempt: 3, max: 3 },
+  ])
+  await qFast.close()
+
+  let slowCalls = 0
+  const slowRetries = []
+  const slowSkipped = []
+  const slowEngine = {
+    mime: 'audio/mpeg',
+    synthesize: async () => {
+      slowCalls++
+      await sleep(160)
+      throw new Error('upstream timeout')
+    },
+    updateVoice: () => {},
+    close: async () => {},
+  }
+  const qSlow = new TtsQueue({
+    engine: slowEngine,
+    synthBudgetMs: 120,
+    onRetry: (sid, attempt, max) => slowRetries.push({ sid, attempt, max }),
+    onSkip: (_sid, txt) => slowSkipped.push(txt),
+  })
+  qSlow.enqueue('s2', '慢超时')
+  assert.ok(await waitFor(() => slowSkipped.length === 1), '慢超时超出预算后应立即跳过')
+  assert.equal(slowCalls, 1, `首次超时已超出单句重试预算时不得再发起第 2/3 次超时等待（实际 ${slowCalls} 次）`)
+  assert.deepEqual(slowRetries, [], '超出预算直接跳过时不应误报重试中')
+  await qSlow.close()
+})
+
+await t('awaitTurnEnd 流式回合内句间排空不丢失 failStreak，noteTurnEnd 后正常回收队列', async () => {
+  const streaks = []
+  const engine = makeStubEngine(['流式坏1', '流式坏2'])
+  const q = new TtsQueue({
+    engine,
+    awaitTurnEnd: true,
+    synthBudgetMs: 10, // 快速跳过重试等待以聚焦检验流式句间排空连败计数
+    onSkip: (_sid, _txt, streak) => streaks.push(streak),
+  })
+  q.enqueue('s-stream', '流式坏1')
+  assert.ok(await waitFor(() => streaks.length === 1), '第 1 句跳过')
+  await sleep(30) // 让第 1 句 pump finally 完整跑完（模拟流式 LLM 句间空档）
+  q.enqueue('s-stream', '流式坏2')
+  assert.ok(await waitFor(() => streaks.length === 2), '第 2 句跳过')
+  assert.deepEqual(streaks, [1, 2], '同一流式回合内跨排空空档必须累计 failStreak 到 2')
+  await sleep(30)
+  q.noteTurnEnd('s-stream')
+  assert.equal(q.queues.size, 0, 'noteTurnEnd 后空闲队列必须立即回收，不留内存增长')
+  await q.close()
+})
+
+await t('tts-retry 全链路接线：index 广播 → client 监听 → 状态条在 agent-speaking 未播音时优先展示重试提示', () => {
+  assert.ok(/broadcast\('tts-retry'/.test(indexSrc), 'index.ts 缺 tts-retry 广播')
+  assert.ok(/addEventListener\('tts-retry'/.test(clientSrc), 'client.tsx 缺 tts-retry 监听')
+  assert.ok(/t\('ttsRetryingNotice'/.test(clientSrc), 'client.tsx 缺 ttsRetryingNotice 文案引用')
+  assert.ok(/b\.ui\.turn === 'agent-speaking'\s*\?\s*b\.ui\.ttsNotice \|\| t\('thinking'\)/.test(clientSrc), '状态条在 agent-speaking 未起播时应优先展示 ttsNotice 而非被「思考中」遮蔽')
+})
+
 rmSync(tmp, { recursive: true, force: true })
 console.log(`\ntts-playback：${passed} 项通过`)

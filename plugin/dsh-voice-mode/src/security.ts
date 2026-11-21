@@ -27,6 +27,10 @@ export function isLoopbackRequest(req: IncomingMessage): boolean {
  * 因此只比较 host（忽略 scheme），并优先取 X-Forwarded-Host（反代改写 Host 的场景）。
  */
 export function sameOriginRequest(req: IncomingMessage): boolean {
+  // I13：跨站 GET/EventSource 可能不带 Origin，但现代浏览器会附带 Sec-Fetch-Site: cross-site，必须拒绝；
+  // 无 Origin 且非 cross-site（非浏览器回环客户端或同源 GET）继续由回环层兜底放行。
+  const sfs = req.headers['sec-fetch-site']
+  if (typeof sfs === 'string' && sfs.toLowerCase() === 'cross-site') return false
   const origin = req.headers.origin
   if (!origin) return true
   try {
@@ -46,6 +50,8 @@ export function sameOriginRequest(req: IncomingMessage): boolean {
  */
 export class RateLimiter {
   private readonly buckets = new Map<string, number[]>()
+  /** 每个 key 的窗口（回收到期键时按桶自身窗口判断；修复短窗请求误清长窗桶，2026-11-20 复核）。 */
+  private readonly windows = new Map<string, number>()
   private readonly maxKeys: number
 
   constructor(maxKeys = 10000) {
@@ -58,22 +64,30 @@ export class RateLimiter {
     const cutoff = now - windowMs
     let bucket = this.buckets.get(key)
     if (!bucket) {
+      // I13：触顶先惰性回收「各桶按自身窗口」已过期的键，避免高基数旧键把限流器锁死；
+      // 不得用本次调用的 windowMs（短窗请求会误清长窗桶 → 限流被绕过）。
+      if (this.buckets.size >= this.maxKeys) this.prune(now)
       if (this.buckets.size >= this.maxKeys) return false
       bucket = []
       this.buckets.set(key, bucket)
     }
+    const prevWindow = this.windows.get(key) ?? 0
+    if (windowMs > prevWindow) this.windows.set(key, windowMs)
     while (bucket.length > 0 && bucket[0] <= cutoff) bucket.shift()
     if (bucket.length >= maxHits) return false
     bucket.push(now)
     return true
   }
 
-  /** 定期清理（由调用方在低频路径触发即可）。 */
-  prune(now = Date.now(), windowMs: number): void {
-    const cutoff = now - windowMs
+  /** 定期清理（由调用方在低频路径触发即可）：每个桶按自身窗口判断是否全过期。 */
+  prune(now = Date.now(), fallbackWindowMs = 60000): void {
     for (const [key, bucket] of this.buckets) {
+      const cutoff = now - (this.windows.get(key) ?? fallbackWindowMs)
       while (bucket.length > 0 && bucket[0] <= cutoff) bucket.shift()
-      if (bucket.length === 0) this.buckets.delete(key)
+      if (bucket.length === 0) {
+        this.buckets.delete(key)
+        this.windows.delete(key)
+      }
     }
   }
 }

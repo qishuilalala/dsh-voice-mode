@@ -89,7 +89,7 @@ export class NlmsAec {
       if (this.filled >= this.delay + this.filterLength) {
         let y = 0
         let norm = 0
-        let idx = (cursor - this.delay + bufLen) % bufLen
+        let idx = (cursor - 1 - this.delay + bufLen) % bufLen
         for (let t = 0; t < this.filterLength; t++) {
           const x = xBuf[idx]
           y += this.w[t] * x
@@ -109,7 +109,7 @@ export class NlmsAec {
         if (norm > MIN_REF_NORM && !this.frozen) {
           const denom = norm + this.eps
           const gain = (this.mu * eSafe) / denom
-          idx = (cursor - this.delay + bufLen) % bufLen
+          idx = (cursor - 1 - this.delay + bufLen) % bufLen
           for (let t = 0; t < this.filterLength; t++) {
             this.w[t] += gain * xBuf[idx]
             idx = (idx - 1 + bufLen) % bufLen

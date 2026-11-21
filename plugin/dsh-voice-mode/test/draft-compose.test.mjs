@@ -123,7 +123,19 @@ t('wiring（审查 I-2 + R2 I-2）：在途标记置位点在 runSubmit（提交
   const segIdx = clientSrc.indexOf('engine.onSegment(')
   assert.ok(clientSrc.slice(segIdx, segIdx + 600).includes('submitInFlightRef.current = false'), 'onSegment 未清在途标记（新段=新周期）')
   const exitIdx = clientSrc.indexOf('const exitMode =')
-  assert.ok(clientSrc.slice(exitIdx, exitIdx + 500).includes('submitInFlightRef.current = false'), 'exitMode 未清在途标记')
+  // 不锁固定字符窗口：按函数体的大括号范围提取，避免窗口随无关改动放宽（I-2 复核）。
+  const bodyStart = clientSrc.indexOf('{', exitIdx)
+  let depth = 0
+  let bodyEnd = bodyStart
+  for (let k = bodyStart; k < clientSrc.length; k++) {
+    if (clientSrc[k] === '{') depth++
+    else if (clientSrc[k] === '}') {
+      depth--
+      if (depth === 0) { bodyEnd = k; break }
+    }
+  }
+  assert.ok(bodyStart > 0 && bodyEnd > bodyStart, '无法定位 exitMode 函数体')
+  assert.ok(clientSrc.slice(bodyStart, bodyEnd).includes('submitInFlightRef.current = false'), 'exitMode 未清在途标记')
 })
 
 t('wiring：onSegment 用 composeDraft 替换 partial 尾（double-append 防护）', () => {

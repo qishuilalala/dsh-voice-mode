@@ -13,6 +13,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { takeOnceHint } from '../src/once-hint.ts'
+import { voiceClient } from './helpers/voice-client.mjs'
+import { micRenderer, reactStub, asrStub } from './helpers/mic-renderer.mjs'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 let passed = 0
@@ -68,5 +70,98 @@ t('输入框旁提示：纯提示用中性色，错误才用红色', () => {
   assert.ok(client.includes('const micHintInfo = !bus.ui.error && micHint !=='))
   assert.ok(client.includes("color: micHintInfo ? 'var(--dsw-alias-label-tertiary, #8b949e)' : 'var(--dsw-alias-state-error-primary, #f85149)'"))
 })
+
+console.log('Loop 3 #8：首次使用引导（按模式分流 + 缺 Key 告警在位时不抢占不耗额度）')
+
+t('首次引导经 takeOnceHint(FIRST_USE_HINT_KEY) 门控，且排在 !error && !notice 之后', () => {
+  assert.ok(client.includes("const FIRST_USE_HINT_KEY = 'dshvm-first-use-hint-seen'"))
+  assert.ok(client.includes('!bus.ui.error && !bus.ui.notice && takeOnceHint(FIRST_USE_HINT_KEY)'))
+})
+
+{
+  const r = micRenderer()
+  const c = await voiceClient({ react: reactStub, 'asr.ts': asrStub })
+  const store = {}
+  globalThis.localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => {
+      store[k] = String(v)
+    },
+    removeItem: (k) => {
+      delete store[k]
+    },
+  }
+  let cfg = {
+    ...c.bus.ui.boot,
+    mode: 'hold',
+    wakeWord: '',
+    readAloud: 'voice',
+    ttsNeedsKey: true,
+    ttsKeyPresent: false,
+    autoResume: false,
+    autoSend: true,
+    llmCorrect: false,
+  }
+  const baseFetch = globalThis.fetch
+  globalThis.fetch = async (url, init) => {
+    const u = String(url)
+    if (u.endsWith('/config')) return { ok: true, json: async () => cfg }
+    if (u.endsWith('/toggle')) {
+      const body = init?.body ? JSON.parse(init.body) : {}
+      return { ok: true, status: 200, json: async () => ({ active: body.on ? body.sessionId : null, ownerTabId: 'tab' }) }
+    }
+    return { ok: true, status: 200, json: async () => ({}) }
+  }
+  try {
+    await r.mount(() =>
+      c.MicButton({
+        bus: c.bus,
+        sessionId: 's-first',
+        useSession: (fn) => fn({ running: false }),
+        useInput: (fn) => fn({ draft: '', phase: 'idle' }),
+        inputActions: { setDraft() {}, submit() {} },
+      }),
+    )
+    // 1) 缺 Key 告警已占住 bus.ui.notice 时：不覆盖缺 Key 提示，且不消耗首次引导额度
+    r.button().props.onClick({ detail: 0 })
+    await r.flush()
+    assert.equal(store['dshvm-first-use-hint-seen'], undefined, '存在缺 Key 提示时不得提前消耗首次引导额度')
+    assert.ok(
+      String(c.bus.ui.notice).includes('API key') || String(c.bus.ui.notice).includes('API Key'),
+      `缺 Key 提示应保留（实际：${c.bus.ui.notice}）`,
+    )
+    await r.advance(300)
+    r.button().props.onClick({ detail: 0 }) // 退出
+    await r.flush()
+    await r.advance(6000)
+
+    // 2) 配好 Key 后首次正常进入 hold 模式：展示按住说话引导并落盘 seen='1'
+    cfg = { ...cfg, ttsKeyPresent: true }
+    r.button().props.onClick({ detail: 0 })
+    await r.flush()
+    assert.equal(store['dshvm-first-use-hint-seen'], '1', '正常进入后应记下首次引导已展示')
+    assert.ok(
+      String(c.bus.ui.notice).includes('Ctrl'),
+      `hold 模式首次进入应展示按住说话引导（实际：${c.bus.ui.notice}）`,
+    )
+    await r.advance(300)
+    r.button().props.onClick({ detail: 0 }) // 退出
+    await r.flush()
+    await r.advance(6000)
+
+    // 3) 再次进入：不再重复打扰
+    r.button().props.onClick({ detail: 0 })
+    await r.flush()
+    assert.equal(c.bus.ui.notice, null, '第二次进入不应重复弹出首次引导')
+    passed++
+    console.log('  ✓ 缺 Key 不抢占额度 → 首次正常进入展示对应模式引导 → 再次进入静默')
+  } finally {
+    globalThis.fetch = baseFetch
+    c.bus.dispose()
+    r.close()
+    c.close()
+    delete globalThis.__micEngine
+  }
+}
 
 console.log(`\n${passed} passed`)

@@ -31,7 +31,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 - **待机段音频组装 = 与正常聆听路径同构（真机「唤醒词几乎无法触发」流程根因，2026-09-18 修）**：① **朗读期不入段并清残留**（自聊守卫，对齐正常路径的 isPlaying 分支）——否则 TTS 回声累积进待机段，朗读结束后第一次 partial 把「AI 的话 + 唤醒词」整段上传 → 头部锚定必失配；② **开口后尾随静音也入段上传**——流式解码器要尾随音频才 flush 得出尾字，只发超门限帧会让用户一停口就没有新帧、不再发 partial，4 字唤醒词只剩 2 字（编辑距离 2 > 1 → 失配）；③ **prePad 补起始音**（弱起音不被切）。
   ④ **命中不丢段**：用户常把命令与唤醒词连说（「你好小李你给我说100个字」），命中时命令前半句已在同一段里，清段/清 host 流会把它整段吃掉、只剩尾部几个字（「完全无法使用」根因）；改为保留音频继续识别，定稿时用 `stripWakePrefix` 从文本头部剥掉唤醒词（找不到就原样保留——**保内容优先**，多留一个词好过丢一句命令）。
   ⑤ **命中置 `speechActive` 并结转 `silenceMs`**（D4：命中发生在用户停口之后时，尾随静音不定稿 → 命令悬挂；台架 LAG=3000ms 实证 0 条定稿）；⑥ **只喊唤醒词不关命令窗口**（D5：剥完为空时保持聆听，否则「唤醒词…停顿…命令」的命令会被当待机音频丢弃）。待机段计入 `speechMs`（过 MIN_SPEECH_MS）。真机台架 `test/wake-flow.test.mjs`（假浏览器+假 host 驱动真引擎；D1-D5 每处都有反向验证）。
-- **输出链路静默丢音（2026-09-18 真机「AI 回复偶尔不朗读」）**：三类原因——① 云端 TTS 单句重试（3 次/退避）耗尽后**静默跳句**（`tts-queue.ts` pump）→ 现 `onSkip` → host `tts-skip` → 客户端状态条提示，不再静默；② 浏览器挂起 AudioContext 后播放被调度但**无声**（UI 仍显示朗读中、字幕照走）→ 现 `push()` 先 `warm()`（resume）+ 全局 pointerdown/keydown 恢复；③ SSE 丢帧致整句不完整 → 按设计丢弃坏句（`chunkId !== curChunkCount`），留 `tts-drop-sentence` 诊断。`engine.duck()` 为未启用预留挂点（增益恒 1，无静音风险）。回合 aborted 时不 flush 残句 = 有意（用户打断了不想听）。
+- **输出链路静默丢音（2026-09-18 真机「AI 回复偶尔不朗读」，2026-11-21 补重试预算）**：三类原因——① 云端 TTS 单句重试（最多 3 次，受 `synthBudgetMs` 6s 单句墙钟预算约束，慢超时不叠加 3 倍等待）期间经 `onRetry` → `tts-retry` 状态条提示进度，耗尽后 `onSkip` → host `tts-skip` → 客户端提示（流式回合未结束前保留队列累计 `failStreak`）；② 浏览器挂起 AudioContext 后播放被调度但**无声**（UI 仍显示朗读中、字幕照走）→ 现 `push()` 先 `warm()`（resume）+ 全局 pointerdown/keydown 恢复；③ SSE 丢帧致整句不完整 → 按设计丢弃坏句（`chunkId !== curChunkCount`），留 `tts-drop-sentence` 诊断。`engine.duck()` 为未启用预留挂点（增益恒 1，无静音风险）。回合 aborted 时不 flush 残句 = 有意（用户打断了不想听）。
 - **断句静音阈值由设置 silenceMs 真实驱动**（端点 VAD minSilenceDuration = silenceMs/1000，默认 1500ms；
   客户端静音计时仅作 VAD 缺失兜底）。**发送为累积模式**：定稿进草稿，再静音一个 silenceMs 或 Ctrl/hold 才发，
   连续多段拼成一条消息（内部仍按 30s 分块识别、跨块拼接）。
@@ -57,7 +57,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 
 | 键 | 默认 | 语义 |
 |---|---|---|
-| ttsEngine | edge | 朗读引擎 edge / vits / kokoro / openai（即时；openai 为自建或托管 `POST /v1/audio/speech`，失败自动回退本地） |
+| ttsEngine | edge | 朗读引擎 edge / vits / kokoro / openai / mimo（即时；openai 为自建或托管 `POST /v1/audio/speech`；mimo 为小米 `POST /v1/chat/completions`，**独立 mimoTts.apiKey**；两者失败均自动回退本地） |
 | kokoroModel | int8 | Kokoro 精度 int8（109MB，CPU）/ fp32（311MB，音质更好）；即时切换，两档共用 103 音色 |
 | voice | 按引擎 | VITS 说话人名 / Kokoro sid 或中文名 / Edge ShortName / OpenAI 兼容引擎自由文本（即时） |
 | bargeInMode | detect | detect：开机探测本机原生 AEC，生效则自动打断，未生效自动落 manual；manual 长按打断（外放推荐）；`auto` 为旧值（src/index.ts:223 默认值 / :503 schema 真源；原值 214/476 为 2026-10-19 实测，已随 v0.7.27 重写漂移，本轮刷新） |
@@ -68,12 +68,28 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 | showStatusBar | true | PR #16：输入框上方语音状态条；关则状态只显于麦克风按钮（计时在按钮下方、提示在按钮旁） |
 | showCaptions | true | PR #16：朗读字幕浮层；关则不显示字幕 |
 | senseITN | true | 批 2 P0：SenseVoice 逆文本归一化（数字/日期规范化；默认开） |
+| openaiPreset | ''（手动） | E1 在线 TTS 预设 id（siliconflow-cosyvoice2 / siliconflow-fish / openrouter-openai / openai-official / groq-playai / selfhosted-kokoro / selfhosted-vllm）；选中后 baseUrl/model 按预设、**音色留空时回落预设音色**，key 走设置卡片 → `openaiTts.apiKeys[预设id]` → `openaiTts.apiKey`；真源 `src/tts-openai.ts` OPENAI_PRESETS，经 `GET /voice-mode/presets` 下发 |
+| openaiBaseUrl | ''（跟随预设/配置文件） | 在线 TTS 端点覆盖：设置卡片可直接填（不必改 profile YAML），优先级 设置 > 预设 > `openaiTts.baseUrl`；留空不覆盖 |
+| openaiModel | '' | 在线 TTS 模型名覆盖，优先级同上；配合「自定义（custom）」预设即可接任意 OpenAI 兼容平台 |
+| openaiApiKey | ''（回落配置文件） | 在线 TTS 的 key：设置卡片填写后存宿主 0600 设置文件，**不回传浏览器**（GET /settings 恒空串 + `keys.*` 布尔）；优先级 面板按预设key > 设置全局key > `openaiTts.apiKeys[预设]` > `openaiTts.apiKey`；`POST /settings {clearSecrets:[…]}` 清除 |
+| openaiApiKeys | {}（全未配） | Q2 Key 跟预设走：面板按预设 id 存的 key 表（`{预设id: key}`）；选中哪个预设用哪把，互不干扰；空条目回落全局 key；**只回布尔表、不回传明文**（`keys.openaiApiKeys`） |
+| mimoApiKey | ''（回落配置文件） | 小米 MiMo 的 key（`api-key` 头），UI 填写后存宿主 0600；留空回落 `mimoTts.apiKey`；同样不回传 |
+| asrReplacements | [] | P1-3 用户纠错词表 `[{from:[听错写法],to:想要写法}]`（≤200 条 / ≤12KB UTF-8）：转写后统一改写（中间结果+定稿），命中计数经 /models/status.replacements 暴露；与 PR #68 文本层引擎复用 |
 | captionFontSize | 0 | 批 3 P0：字幕字号档位 0=12px/1=14px/2=18px/3=24px（默认 0 与现状字节等价） |
 | captionMaxWidth | 1 | 批 3 P0：字幕宽度档位 0=50vw/1=70vw/2=90vw；视口 <686px 窄于 480px、≈686px 接近、>686px 宽于 480px |
 | backchannelYield | true | 让位语义（ADR-0008）；朗读期说「嗯/对」自动让位 1.5s + 真要说走 hardBreak。默认开是产品决策 |
 | bargeInSalvage | true | Issue #15 批 1 / ADR-0012：打断语音抢救。播放期预录 2s 环，hardBreak 时把「语音起始前 250ms」起的音频并入新段（修打断吃句）；关=回退丢句（外放无 AEC 环境逃生口） |
 | llmCorrect | false | Issue #15 批 4：发送前 LLM 纠错（只改错别字/同音字/标点，复用宿主模型；失败回退原文）。默认关 |
 | yieldMs | 1500 | 让位窗口时长（500-3000） |
+| rate | 1.1 | 朗读语速倍率（0.5–2.0，即时）；MiMo 无 speed 字段，译成自然语言风格指令 |
+| idleTimeoutMinutes | 5 | 无活动自动退出语音模式（朗读计为活动） |
+| modelHost | ''（官方源） | 模型下载源，国内可填 `https://hf-mirror.com`；允许自定义需 `allowCustomModelHost` |
+| autoSend | true | 定稿后自动发送（关=只填输入框不发送） |
+| composerShortcut | Alt+Enter | 光标在输入框时切语音模式的快捷键；留空=禁用；不插入换行 |
+| spokenFormat | true | 朗读前把 Markdown/代码块等转成口语化文本 |
+| senseVoice | true | 是否启用 SenseVoice 定稿通道（关则只用流式 zipformer） |
+| wakeWord | '' | 唤醒词（空=不启用；配套 wakeWordEnabled 等键见 schema） |
+| toolBeep | false | 工具调用提示音（AI 调工具时轻响，避免误以为卡住） |
 
 **生效时机四档**（Issue #15 批 6）：① 即时（引擎/音色/语速/口语化提示词/模型镜像）② 下次识别（定稿重译/ITN）③ 下一段话（silenceMs 端点）④ 下次进入语音模式（其余，含上表大部分）。设置卡片顶部显示「已保存未生效」项及当前生效值（与运行态 boot 快照比对）。**自动发送附加等待固定 1200ms**（批 5，与 silenceMs 解耦——调低断句阈值不再压缩发送窗）。
 
@@ -89,12 +105,11 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 
 - 原生 AEC 失效兜底（耳机无原生 AEC / Safari）：自研 AEC 的 delay 对齐需 FDLMS+RES；
   该场景**尚无真机数据**，也是回声地板棘轮唯一还可能发作的一格
-- ADR-0006：第一级探测**已实现**（asr.ts:1212-1223 / client.tsx:2596-2601，探测到原生 AEC 失效即落 manual 并提示；client 侧原值 2106-2118 为 2026-10-19 实测，已随 v0.7.27 重写漂移，本轮刷新，asr 侧未漂移）；未做的是二级探测，阈值可用 fixture verdict 数据标定。
-  副作用：manual 下待机态拿不到音频，唤醒词不触发（设置面板已声明「hold / 手动打断下不生效」）——无原生 AEC 的浏览器（Safari）+ 唤醒词 = 持续聆听等于关闭
+- ADR-0006：第一级探测**已实现**（asr.ts:1212-1223 / client.tsx:2596-2601，探测到原生 AEC 失效即落 manual 并提示；client 侧原值 2106-2118 为 2026-10-19 实测，已随 v0.7.27 重写漂移，本轮刷新，asr 侧未漂移）；未做的是二级探测，阈值可用 fixture verdict 数据标定。2026-11-21 已将 `manual` 非按压丢帧收窄至朗读播放期，Safari 等无原生 AEC 环境空闲期可直接说话与使用唤醒词，朗读期按住麦克风/Ctrl 打断。
 - Ctrl 强制发送在「已停顿但草稿有累积」时不 flush（Minor，需处理 in-flight 定稿竞态）
 - 松手恰在 30s 滚段边界（~1-3s 窗口）的竞态（Rare，需给 hold 引入待发块队列）
 - **2026-10-15 静态审计登记（未真机复核，发版前不盲改引擎）**：① 已修（日期 2026-11-12，测试名「stop 在 resume 窗口后释放全部轨道且不激活」「stop 在 addModule 窗口后释放全部轨道且不激活」）；② 已是修复态（2026-11-12 台架确认，测试名「旧 stop 的 close 迟到不清除新会话资源」）；③ hold 取消分支已复位上传水位，host 流仍未 reset；2026-11-12 台架以「取消 hold 后新段按 epoch 隔离，定稿不含取消段文本」未复现残留文本，取消段仍留在 host 待清理；④ 回声地板棘轮：外放音量调大后 doubleTalk 持续为真，地板冻结在旧低值（asr.ts:964-972）；⑤ NLMS 非有限权重检测并清零，已修；测试：`A-5：麦克风极大有限值不得把权重撑成非有限（重置滤波器而非永久坏死）`。⑥ 跨 delta 小数点拆句已修，闭合代码块跨 delta 不朗读已修；测试：`跨 delta 的小数和版本号不被拆句，流结束时输出悬挂句点`、```` 流式切碎的 ``` 代码块整块不读（含跨 delta 的反引号与语言标记） ````。
-- **host 侧待核对（依赖宿主 Host/Origin 前置防护）**：DNS rebinding（`sameOriginRequest` 只比 Origin 与 Host，不校验 Host 白名单；dsh 以 `--trusted-host` 启动时宿主已拦）；经 HTTPS 反代时回环判定与限流键都取 remoteAddress（所有用户共享一个桶）；`toggle:${sessionId}` 限流键先于会话存在性校验，可被任意构造占满 maxKeys；SSE `/stream` 无 Origin 校验、tabId/sessionId 可见；`/models/status` 经 `queue.status()` 透出本地引擎 engineError 原文
+- **host 侧待核对（依赖宿主 Host/Origin 前置防护）**：DNS rebinding（`sameOriginRequest` 只比 Origin 与 Host，不校验 Host 白名单；dsh 以 `--trusted-host` 启动时宿主已拦）；经 HTTPS 反代时回环判定与限流键都取 remoteAddress（所有用户共享一个桶）。注：2026-11-20 深度审计已加固 `Sec-Fetch-Site: cross-site` 跨站 GET 拒绝（含 `/stream`/`/voices`）、未知 `sessionId` 先校验存在性再入独立限流桶（高基数回落按 `clientKey` 限流）、以及 `/models/status` 错误原文脱敏。
 - 发布流程见维护者本机文档（git push + npm publish + tag + GitHub release；`docs/RELEASE-WORKFLOW.md` 与 `scripts/release.sh`、`check-dsh-version.sh` 按 publication-policy 不入库）
 
 ## 声学基准与录制（ADR-0005）
@@ -107,4 +122,4 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 
 ## 关键源文件
 
-src/asr.ts（采集/门控/打断引擎）· fixture-recorder.ts（真机录制，默认关）· client.tsx（播放/参考池/手势/UI）· mic-gesture.ts（麦克风按钮纯判定：快捷键与编辑撞车让位 / 进出语音节流 / once 回复读完判据；无 DOM 依赖，PR #16 新增）· aec.ts（NLMS）· asr-host.ts（host ASR/检测通道）· index.ts（路由/SSE/owner）· tts-local.ts（本地 TTS VITS/Kokoro + 精度）· tts-queue.ts（逐会话队列/epoch 打断）· settings-form.tsx（设置面板）；tts-runtime.ts（Electron 宿主下 Kokoro 子进程的真 Node 选择，ADR-0011 后续）· settings-store.ts / settings-http-scope.ts（≥0.1.7 设置自持久化，ADR-0009）· i18n.ts / strings.ts / error-text.ts / errors.ts（国际化，ADR-0010）。测试装置：scripts/smoke-runtime.sh（已安装形态/Electron 宿主/桌面外壳 DSHVM_ELECTRON/语音链路 DSHVM_VOICE_CHAIN）、scripts/full-e2e.sh（DSHVM_VOICE_LOOP 真 LLM 闭环）、scripts/verify-install.sh（安装门禁）；test/host-hardening.test.mjs（/models/retry 仅同源 POST、模型树路径校验、错误原文不下行的守卫）
+src/asr.ts（采集/门控/打断引擎）· fixture-recorder.ts（真机录制，默认关）· client.tsx（播放/参考池/手势/UI）· mic-gesture.ts（麦克风按钮纯判定：快捷键与编辑撞车让位 / 进出语音节流 / once 回复读完判据；无 DOM 依赖，PR #16 新增）· aec.ts（NLMS）· asr-host.ts（host ASR/检测通道）· index.ts（路由/SSE/owner）· tts-local.ts（本地 TTS VITS/Kokoro + 精度）· tts-queue.ts（逐会话队列/epoch 打断）· engine-kind.ts（**引擎种类单一真源**：清单 + 云端/本地/第三方判别 + 双语例句判据；加新引擎只改此处）· tts-openai.ts（OpenAI 兼容引擎 + 7 预设表，经 `/presets` 下发）· tts-mimo.ts（小米 MiMo 引擎，独立 key/冷却回退）· asr-replacements.ts（纠错词表 replacer + 体积口径）· settings-form.tsx（设置面板）；tts-runtime.ts（Electron 宿主下 Kokoro 子进程的真 Node 选择，ADR-0011 后续）· settings-store.ts / settings-http-scope.ts（≥0.1.7 设置自持久化，ADR-0009）· i18n.ts / strings.ts / error-text.ts / errors.ts（国际化，ADR-0010）。测试装置：scripts/smoke-runtime.sh（已安装形态/Electron 宿主/桌面外壳 DSHVM_ELECTRON/语音链路 DSHVM_VOICE_CHAIN）、scripts/full-e2e.sh（DSHVM_VOICE_LOOP 真 LLM 闭环）、scripts/verify-install.sh（安装门禁）；test/host-hardening.test.mjs（/models/retry 仅同源 POST、模型树路径校验、错误原文不下行的守卫）

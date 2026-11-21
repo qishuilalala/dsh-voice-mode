@@ -13,7 +13,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { TtsQueue } from '../src/tts-queue.ts'
+import { EdgeTtsEngine, TtsQueue } from '../src/tts-queue.ts'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 
@@ -272,13 +272,59 @@ await t('T-2：失败退避墙钟封顶 8s（1s 起步递增，封顶后不外�
     // 第 11 句把队列排空走 onIdle 分支（不排 timer）→ 共 9 个可观测退避 delay。
     for (let i = 0; i < 11; i++) q.enqueue('s1', `S${i + 1}`)
     const t0 = Date.now()
-    while (delays.length < 9 && Date.now() - t0 < 20000) await realSleep(5)
-    assert.equal(delays.length, 9, `前置条件：应观察到 9 个退避 delay（实际 ${delays.length}：${JSON.stringify(delays)}）`)
+    while (delays.length < 10 && Date.now() - t0 < 20000) await realSleep(5)
+    // 2026-11-20：连败 2 句即进入整体退避（此前 errorNotified 永不置位，退避实际不生效），
+    // 因此同一批 11 句会多出一次退避延迟；序列语义不变（1s 起步、8s 封顶）。
+    assert.equal(delays.length, 10, `前置条件：应观察到 10 个退避 delay（实际 ${delays.length}：${JSON.stringify(delays)}）`)
     assert.deepEqual(
       delays,
-      [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 8000],
+      [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 8000, 8000],
       `退避序列不是「1s 起步递增 + 8s 封顶」：${JSON.stringify(delays)}——封顶放宽会让连败时句间静默从 8s 一路涨到 30s`,
     )
+  } finally {
+    globalThis.setTimeout = realSetTimeout
+    await q?.close()
+  }
+})
+
+
+// A2 审计缺口（2026-11-20）：退避此前只有「onSkip 抛错」这条生产不经过的死路径能触发，
+// 真实路径（onSkip 正常回调）下 errorNotified 永不置位 → 退避不生效。本用例用**正常 onSkip**
+// 的恒失败引擎验证：连败 2 句后进入整体退避（≥1s），且退避期间不再狂打引擎。
+await t('A2 缺口：正常 onSkip 的恒失败引擎也会进入整体退避（≥1s，且不刷接口）', async () => {
+  const realSetTimeout = globalThis.setTimeout
+  const realSleep = (ms) => new Promise((r) => realSetTimeout(r, ms))
+  const delays = []
+  globalThis.setTimeout = (fn, ms, ...rest) => {
+    if (typeof ms !== 'number') return realSetTimeout(fn, ms, ...rest)
+    if (ms >= 1000) {
+      delays.push(ms)
+      return realSetTimeout(fn, 1, ...rest)
+    }
+    return realSetTimeout(fn, ms >= 200 ? 1 : ms, ...rest)
+  }
+  let q
+  try {
+    let calls = 0
+    const skips = []
+    const eng = {
+      mime: 'audio/wav',
+      updateVoice() {},
+      async synthesize() {
+        calls++
+        throw new Error('ETIMEDOUT (stub)')
+      },
+      async close() {},
+    }
+    q = new TtsQueue({ engine: eng, onSkip: (_sid, _text, streak) => skips.push(streak) })
+    for (let i = 0; i < 4; i++) q.enqueue('s1', `F${i + 1}`)
+    const t0 = Date.now()
+    while (delays.length < 1 && Date.now() - t0 < 5000) await realSleep(5)
+    assert.ok(delays.length >= 1, '正常 onSkip 路径下退避仍未触发（errorNotified 不可达回归）')
+    assert.ok(delays[0] >= 1000, `首档退避应 ≥1s（实际 ${delays[0]}ms）`)
+    assert.ok(skips.length >= 1, '失败句必须有 onSkip 通知（静默丢句回归）')
+    // 连败后的句子不再无退避地狂打引擎：4 句 × 3 次重试 = 12 次为理论上限，实际应更少。
+    assert.ok(calls <= 12, `退避期间仍在狂打引擎（${calls} 次调用）`)
   } finally {
     globalThis.setTimeout = realSetTimeout
     await q?.close()
@@ -1203,31 +1249,39 @@ await t('R15 T-4：cancel 不清回合闸门（不得把 abort 与「停止朗�
 // ---------------------------------------------------------------------------
 console.log('Round 8 第二批：T-7 cancel→interrupt 转发 + T-8 abandonTurn 队列已空不补发')
 
-await t('Round 8 T-7：cancel() 转发 engine.interrupt()（每次 cancel 恰好一次）', async () => {
-  const eng = makeEngine('a')
-  const q = new TtsQueue({ engine: eng })
-  const frames = []
-  q.subscribe((f) => frames.push(f))
-  // 真实调用点：/toggle off 退出、/cancel「停止朗读」与用户打断、会话让出（index.ts 的
-  // 5 处 queue.cancel）。先跑一句确认泵在役，再打断。
-  q.enqueue('s1', '一句')
-  await waitFrames(frames, 2)
-  assert.equal(
-    eng.interrupts,
-    0,
-    '前置条件：正常合成不得触发 interrupt（否则本锁无法区分「转发」与「一直都在转发」）',
-  )
-  q.cancel('s1')
-  assert.equal(
-    eng.interrupts,
-    1,
-    'cancel() 未转发 engine.interrupt()——本地引擎不会立刻杀子进程，在途句继续满核合成：打断后定稿等待可达分钟级（实测根因），且满核合成会饿死主进程的 ASR 解码',
-  )
-  // 恰好一次：第二次 cancel 再转发一次（不重复、不少发）。
-  q.cancel('s1')
-  assert.equal(eng.interrupts, 2, `两次 cancel 应转发两次 interrupt（实际 ${eng.interrupts} 次）`)
-  await q.close()
-  assert.equal(eng.interrupts, 2, 'close() 不得转发 interrupt（关停路径与打断路径是两回事）')
+await t('Round 8 T-7（2026-11-20 修正语义）：在途合成时 cancel 才转发 interrupt；空闲 cancel 不转发', async () => {
+  // 语义修正依据（A2 审计）：旧实现无论队列是否在合成都转发 interrupt → 每次 toggle off/让出
+  // 都会杀掉本地引擎子进程（下句重载模型），并误杀同引擎在途的 /preview。
+  //   - 在途（busy）时：必须转发（否则满核合成饿死 ASR 解码，打断后定稿等待可达分钟级）；
+  //   - 空闲时：不转发（无在途工作可中止，转发只会付出重载成本）；
+  //   - 他会话 busy 时：不转发（保护其它会话的共享引擎）。
+  const gate = (() => {
+    let release
+    const p = new Promise((r) => (release = r))
+    return { p, release }
+  })()
+  const busyEng = makeEngine('busy', gate.p)
+  const busyQ = new TtsQueue({ engine: busyEng })
+  const busyFrames = []
+  busyQ.subscribe((f) => busyFrames.push(f))
+  busyQ.enqueue('s1', '在途句')
+  await waitFor(() => busyEng.calls.length === 1, '引擎已开始合成')
+  busyQ.cancel('s1')
+  assert.equal(busyEng.interrupts, 1, '在途合成被 cancel 时必须转发 interrupt（否则子进程继续满核合成）')
+  gate.release()
+  await sleep(20)
+  await busyQ.close()
+
+  // 空闲 cancel：刚跑完一句，泵已收工 → 不转发。
+  const idleEng = makeEngine('idle')
+  const idleQ = new TtsQueue({ engine: idleEng })
+  const idleFrames = []
+  idleQ.subscribe((f) => idleFrames.push(f))
+  idleQ.enqueue('s1', '一句')
+  await waitFrames(idleFrames, 2)
+  idleQ.cancel('s1')
+  assert.equal(idleEng.interrupts, 0, '空闲 cancel 不得转发 interrupt（否则每次退出都杀本地子进程、下句重载模型）')
+  await idleQ.close()
 })
 
 await t('Round 8 T-8：队列已空时 abandonTurn 不补发 tts-idle（abort 路径不得复发 R15 Important-1）', async () => {
@@ -1261,6 +1315,163 @@ await t('全部用例结束后无残留计时器，进程可自然退出', async
     0,
     '用例结束后不得留下合成 RPC 的 120 秒计时器',
   )
+})
+
+
+// Edge 引擎可中止（A2 审计 Minor：此前无 interrupt，停止朗读最长等 60s）
+{
+  let closed = 0
+  const fake = {
+    setMetadata: async () => undefined,
+    toStream: () => ({
+      audioStream: (async function* () {
+        // 模拟「上游安静挂起」：一直不产出，直到连接被 close 打断
+        await new Promise((_, reject) => {
+          const timer = setTimeout(() => reject(new Error('timeout')), 5000)
+          closeHook = () => {
+            clearTimeout(timer)
+            reject(new Error('connection closed'))
+          }
+        })
+      })(),
+    }),
+    close: () => {
+      closed++
+      closeHook?.()
+    },
+  }
+  let closeHook = null
+  const eng = new EdgeTtsEngine('zh-CN-XiaoxiaoNeural', 1, () => fake)
+  const t0 = Date.now()
+  const p = eng.synthesize('你好').then(
+    () => 'resolved',
+    () => 'rejected',
+  )
+  await new Promise((r) => setTimeout(r, 30))
+  eng.interrupt()
+  const out = await p
+  const ms = Date.now() - t0
+  assert.equal(out, 'rejected', 'interrupt 后 synthesize 必须尽快以失败返回（不得等库超时）')
+  assert.ok(ms < 2000, `interrupt 生效过慢（${ms}ms）`)
+  assert.ok(closed >= 1, 'interrupt 必须关闭在途连接')
+  console.log('  ✓ Edge interrupt：立刻中止在途合成（不再等 60s 库超时）')
+}
+
+
+// A2 审计缺口 + 深度审计加固：真在途 cancel 后立即重入 / close 撞在途 / 500 条积压上限
+await t('在途 cancel 后立即重入：旧在途句作废不广播、新句正常、序号单调', async () => {
+  let releaseFirst
+  const firstGate = new Promise((r) => (releaseFirst = r))
+  const eng = {
+    mime: 'audio/wav',
+    calls: [],
+    interrupts: 0,
+    updateVoice() {},
+    interrupt() { this.interrupts++ },
+    async synthesize(text) {
+      this.calls.push(text)
+      if (text === '第一句') await firstGate
+      return Buffer.from(`RIFF-${text}`)
+    },
+    async close() {},
+  }
+  const q = new TtsQueue({ engine: eng })
+  const frames = []
+  q.subscribe((f) => frames.push(f))
+  q.enqueue('s1', '基线句')
+  await waitFrames(frames, 2)
+  const baselineId = frames.at(-1).sentenceId
+
+  // 让「第一句」挂在合成中，然后在途 cancel 并立刻重入「第二句」
+  q.enqueue('s1', '第一句')
+  await waitFor(() => eng.calls.includes('第一句'), '第一句进入在途合成')
+  q.cancel('s1')
+  assert.equal(eng.interrupts, 1, '在途 cancel 必须转发 interrupt')
+  q.enqueue('s1', '第二句')
+  releaseFirst()
+  await waitFor(() => frames.filter((f) => f.final).length >= 2, '第二句广播')
+  await sleep(40)
+  const finals = frames.filter((f) => f.final)
+  assert.equal(finals.length, 2, '被取消的在途第一句不得广播')
+  assert.equal(finals[1].text, '第二句', '广播的新句应为第二句')
+  assert.ok(finals[1].sentenceId > baselineId, 'cancel 后重入的新句序号必须单调递增')
+  await q.close()
+})
+
+await t('500 条积压上限：超限丢弃最旧未播句，队列总待播量保持有界', async () => {
+  let releaseFirst
+  const firstGate = new Promise((r) => (releaseFirst = r))
+  const synthOrder = []
+  const eng = {
+    mime: 'audio/wav',
+    updateVoice() {},
+    async synthesize(text) {
+      synthOrder.push(text)
+      if (text === 'S0') await firstGate
+      return Buffer.from('RIFF')
+    },
+    async close() {},
+  }
+  const q = new TtsQueue({ engine: eng })
+  const frames = []
+  q.subscribe((f) => frames.push(f))
+  q.enqueue('s1', 'S0')
+  await waitFor(() => synthOrder.length === 1, 'S0 占住泵')
+  for (let i = 1; i <= 510; i++) q.enqueue('s1', `S${i}`)
+  releaseFirst()
+  await waitFor(() => frames.filter((f) => f.final).length >= 501, '全部保留句合成完毕', 8000)
+  // S0 在途 + 积压上限 500 条 = 最多 501 句（最旧的 S1..S10 被淘汰，保留最新 S11..S510）
+  assert.ok(synthOrder.length <= 501, `积压上限未生效：共合成 ${synthOrder.length} 句`)
+  assert.equal(synthOrder.includes('S1'), false, '超限时应淘汰最旧积压句 S1')
+  assert.equal(synthOrder.at(-1), 'S510', '最新入队句 S510 应保留')
+  await q.close()
+})
+
+await t('close 撞在途：关闭后不再广播、引擎被关闭（A2 审计缺口）', async () => {
+  let release
+  const gate = new Promise((r) => (release = r))
+  const eng = makeEngine('close-busy', gate)
+  const q = new TtsQueue({ engine: eng })
+  const frames = []
+  q.subscribe((f) => frames.push(f))
+  q.enqueue('s1', '在途句')
+  await waitFor(() => eng.calls.length === 1, '引擎已开始合成')
+  await q.close()
+  release()
+  await sleep(30)
+  assert.equal(frames.filter((f) => f.final).length, 0, 'close 后不得再广播（客户端已断开）')
+  assert.ok(eng.closed >= 1, 'close 必须关闭引擎')
+})
+
+await t('I16/B6 队列级：跨会话并发合成按各自返回 MIME 出帧，不读共享 engine.mime', async () => {
+  // 旧实现：await 合成后读 this.engine.mime（共享「最近一次」值）→ 并发异构容器串味。
+  // 新实现：帧 MIME 来自本次 synthesizeWithMime 的返回值；把实现改回共享值本用例必须变红。
+  let releaseA, releaseB
+  const gateA = new Promise((r) => (releaseA = r))
+  const gateB = new Promise((r) => (releaseB = r))
+  const engine = {
+    tag: 'mix',
+    mime: 'audio/wav',
+    updateVoice() {},
+    async synthesizeWithMime(text) {
+      if (text === 'A') { await gateA; return { buf: Buffer.from('RIFF-A'), mime: 'audio/mpeg' } }
+      await gateB; return { buf: Buffer.from('OggS-B'), mime: 'audio/ogg' }
+    },
+    async close() {},
+  }
+  const q = new TtsQueue({ engine })
+  const frames = []
+  q.subscribe((f) => frames.push(f))
+  q.enqueue('s1', 'A')
+  q.enqueue('s2', 'B')
+  releaseB()
+  releaseA()
+  await waitFor(() => frames.filter((f) => f.final).length >= 2, '两会话各出 final 帧')
+  const bySid = {}
+  for (const f of frames) if (f.final) bySid[f.sessionId] = f.mime
+  assert.equal(bySid.s1, 'audio/mpeg', 's1 帧必须用自己那次合成返回的 MIME')
+  assert.equal(bySid.s2, 'audio/ogg', 's2 帧必须用自己那次合成返回的 MIME（不得串成共享 engine.mime）')
+  await q.close()
 })
 
 console.log(`\ntts-queue-engine：${passed} 项通过`)

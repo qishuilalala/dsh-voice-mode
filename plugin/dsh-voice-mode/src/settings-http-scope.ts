@@ -11,6 +11,8 @@
  *  - 在途读期间到来的重拉（失效/获焦/重挂载）不被丢弃：记标记 → 在途请求落定后补拉一次。
  */
 
+import { redactSecrets } from './redact.ts'
+
 export interface HttpScopeSnapshot {
   status: 'loading' | 'ready' | 'unavailable'
   value: Record<string, unknown>
@@ -20,7 +22,8 @@ export interface HttpScopeSnapshot {
 export interface HttpScope {
   getSnapshot(): HttpScopeSnapshot
   subscribe(fn: () => void): () => void
-  set(field: string, value: unknown): Promise<void>
+  /** 写入覆盖层；返回是否成功（失败时内部已回滚到服务端当前值）。 */
+  set(field: string, value: unknown): Promise<boolean>
   /**
    * 摘除本 scope 自建的资源（窗口 focus 监听 + 后台重试定时器）。
    * 插件每次 apply（热重载/卸载重建）都会新建一个 scope——不调用本方法则每次泄漏
@@ -50,6 +53,10 @@ export function createHttpScope(origin: string = location.origin, fetchImpl: typ
    * 计数在语义上不可能正确，必须靠单调序号。
    */
   let writeGen = 0
+  // A3 审计 Minor：并发 set 的响应没有序号，迟到的旧响应会覆盖新值。
+  let writeSeq = 0
+  // I15：串行化 POST 写链，确保磁盘落盘顺序与客户端乐观快照顺序严格一致。
+  let writeChain: Promise<void> = Promise.resolve()
   /**
    * 在途读期间到来的重拉请求（失效/获焦/重挂载触发）。
    *
@@ -72,7 +79,7 @@ export function createHttpScope(origin: string = location.origin, fetchImpl: typ
       try {
         fn()
       } catch (e) {
-        console.warn('[dsh-voice-mode] settings scope subscriber failed: ' + String(e))
+        console.warn('[dsh-voice-mode] settings scope subscriber failed: ' + redactSecrets(e))
       }
     }
   }
@@ -102,9 +109,11 @@ export function createHttpScope(origin: string = location.origin, fetchImpl: typ
       //  ① writing === 0：写未落定期间发出的读，其数据可能早于那次写；
       //  ② myGen === writeGen：写在本读发出**之后**落定过（无论成功还是回滚）——
       //     本读的快照已过期，回写就是把刚写好的值盖回旧值。
-      if (writing === 0 && myGen === writeGen) emit({ status: 'ready', value: data.value ?? {} })
+      // A3 审计 Minor：卸载后不得再向订阅者派发（旧读响应仍可能落在 dispose 之后）。
+      if (!disposed && writing === 0 && myGen === writeGen) emit({ status: 'ready', value: data.value ?? {} })
     } catch {
-      emit({ status: 'unavailable', value: snap.value })
+      // I15：过期的失败 GET（写已在途或写代数已推进）不得把最新 ready 快照覆盖成 unavailable。
+      if (!disposed && writing === 0 && myGen === writeGen) emit({ status: 'unavailable', value: snap.value })
       scheduleRetry()
     } finally {
       inFlight = false
@@ -155,33 +164,42 @@ export function createHttpScope(origin: string = location.origin, fetchImpl: typ
     },
     async set(field, value) {
       // 置死后不再写（插件卸载期的悬空写请求没有意义）。
-      if (disposed) return
-      // 乐观更新：失败则以服务端当前值回滚（卡片不需要感知错误细节）。
+      if (disposed) return false
+      // 乐观更新：同步生效，随后 POST 按 writeChain 串行落盘，保证服务端终态与最后一次 set 一致（I15）。
       const before = snap
+      const mySeq = ++writeSeq
       writing++
       emit({ status: 'ready', value: { ...snap.value, [field]: value } })
-      let ok = false
-      try {
-        const res = await fetchImpl(origin + SETTINGS_URL, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ [field]: value }),
-          signal: AbortSignal.timeout(timeoutMs),
-        })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const data = (await res.json()) as { value?: Record<string, unknown> }
-        emit({ status: 'ready', value: data.value ?? before.value })
-        ok = true
-      } catch {
-        emit(before)
-      } finally {
-        writing--
-        // 写落定（成功或回滚）→ 写代数自增：在途的旧读（发出于本次写之前或期间）
-        // 一律过期，不得再回写（否则刚写好的值会被旧快照盖回）。
-        writeGen++
+      const runPost = async (): Promise<boolean> => {
+        let ok = false
+        try {
+          if (disposed) return false
+          const res = await fetchImpl(origin + SETTINGS_URL, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ [field]: value }),
+            signal: AbortSignal.timeout(timeoutMs),
+          })
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          const data = (await res.json()) as { value?: Record<string, unknown> }
+          // 卸载后 / 已不是最新写：不回写快照（旧响应覆盖新值 = 用户看到的设置倒退）。
+          if (!disposed && mySeq === writeSeq) emit({ status: 'ready', value: data.value ?? before.value })
+          ok = true
+        } catch {
+          if (!disposed && mySeq === writeSeq) emit(before)
+        } finally {
+          writing--
+          // 写落定（成功或回滚）→ 写代数自增：在途的旧读（发出于本次写之前或期间）
+          // 一律过期，不得再回写（否则刚写好的值会被旧快照盖回）。
+          writeGen++
+        }
+        // 写失败且已无排队写：回滚后以服务端当前值兜底（成功路径已由 POST 响应带回全量值）。
+        if (!ok && !disposed && writing === 0) await load()
+        return ok
       }
-      // 写失败：回滚后以服务端当前值兜底（成功路径已由 POST 响应带回全量值）。
-      if (!ok) await load()
+      const p = writeChain.then(runPost, runPost)
+      writeChain = p.then(() => undefined, () => undefined)
+      return p
     },
     dispose: () => {
       // 置死：dispose 之后本 scope 不再拉取、不再重试、不再写

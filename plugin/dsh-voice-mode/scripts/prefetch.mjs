@@ -67,6 +67,25 @@ const MODELS = {
 const HOST_PRIMARY = 'https://huggingface.co'
 const HOST_FALLBACK = 'https://hf-mirror.com'
 
+// Kokoro revision 必须与 src/tts-local.ts 的 kokoroSpec 一致：上游 main 会替换同名文件，
+// 不锁 revision 时首轮单文件下载与树枚举都会校验失败（E0 报告 2026-11-18）。
+const KOKORO_REPOS = [
+  {
+    repo: 'csukuangfj/kokoro-int8-multi-lang-v1_1',
+    rev: '155831f1b4ba23b1f5c058be6a61df90cefb2a37',
+    main: 'model.int8.onnx',
+    sha: 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26',
+  },
+  {
+    repo: 'csukuangfj/kokoro-multi-lang-v1_1',
+    rev: '914313412b607d95400bcd12446233fbd1248801',
+    main: 'model.onnx',
+    sha: 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38',
+  },
+]
+const MODEL_REVS = Object.fromEntries(KOKORO_REPOS.map((k) => [k.repo, k.rev]))
+const encodeRelPath = (rel) => rel.split('/').map(encodeURIComponent).join('/')
+
 const defaultCacheDir = () =>
   process.platform === 'win32'
     ? join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'dsh-voice-mode', 'models')
@@ -100,8 +119,10 @@ async function downloadFile(repo, repoDir, file, expectedSha) {
   // 子目录文件（如 espeak-ng-data/phontab）：确保父目录存在再写流。
   await mkdir(join(repoDir, file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : ''), { recursive: true }).catch(() => undefined)
   const partSt = await stat(partPath).catch(() => null)
+  const rev = MODEL_REVS[repo] ?? 'main'
+  const encodedFile = encodeRelPath(file)
   for (const host of [HOST_PRIMARY, HOST_FALLBACK]) {
-    const url = `${host}/${repo}/resolve/main/${file}`
+    const url = `${host}/${repo}/resolve/${rev}/${encodedFile}`
     const headers = { 'user-agent': 'dsh-voice-mode/prefetch' }
     const resumeFrom = partSt?.size ?? 0
     if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`
@@ -164,11 +185,8 @@ for (const [repo, files] of Object.entries(MODELS)) {
 
 // --- Kokoro 中英朗读模型：文件多（含 espeak-ng-data 全目录），走 HF 树枚举批量下载。
 //     int8（默认，CPU 友好）与 fp32（音质更好）两档，主模型文件不同、支持文件同源。 ---
-for (const kokoro of [
-  { repo: 'csukuangfj/kokoro-int8-multi-lang-v1_1', main: 'model.int8.onnx', sha: 'bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26' },
-  { repo: 'csukuangfj/kokoro-multi-lang-v1_1', main: 'model.onnx', sha: 'acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38' },
-]) {
-  const { repo, main, sha } = kokoro
+for (const kokoro of KOKORO_REPOS) {
+  const { repo, main, sha, rev } = kokoro
   const repoDir = join(cacheDir, repo)
   const SENTINELS = {
     [main]: sha,
@@ -181,13 +199,26 @@ for (const kokoro of [
   const sentinelOk = await Promise.all(Object.entries(SENTINELS).map(async ([f, sha2]) => (await sha256OfFile(join(repoDir, f)).catch(() => '')) === sha2))
   if (!sentinelOk.every(Boolean)) {
     console.log(`Kokoro 模型（${repo}）：文件不全，走 HF 树枚举下载`)
-    const treeRes = await fetch(`${HOST_FALLBACK}/api/models/${repo}/tree/main?recursive=true`, { headers: { 'user-agent': 'dsh-voice-mode/prefetch' } })
-    if (treeRes.ok) {
-      const tree = await treeRes.json()
+    let tree = null
+    let treeHost = HOST_FALLBACK
+    for (const host of [HOST_PRIMARY, HOST_FALLBACK]) {
+      try {
+        const treeRes = await fetch(`${host}/api/models/${repo}/tree/${rev}?recursive=true`, { headers: { 'user-agent': 'dsh-voice-mode/prefetch' } })
+        if (treeRes.ok) {
+          tree = await treeRes.json()
+          treeHost = host
+          break
+        }
+      } catch {
+        // 换下一个镜像
+      }
+    }
+    if (tree) {
       const files = (tree ?? []).map((x) => x.path).filter((p) => !p.endsWith('/') && !['.gitattributes', 'README.md', 'LICENSE'].includes(p))
       await mkdir(repoDir, { recursive: true })
       let doneCount = 0
       const queue = [...files]
+      const hostOrder = treeHost === HOST_PRIMARY ? [HOST_PRIMARY, HOST_FALLBACK] : [HOST_FALLBACK, HOST_PRIMARY]
       async function worker() {
         for (;;) {
           const rel = queue.shift()
@@ -196,24 +227,33 @@ for (const kokoro of [
           const localPath = join(repoDir, rel)
           const partPath = `${localPath}.part`
           if (want && (await sha256OfFile(localPath).catch(() => '')) === want) { doneCount++; continue }
-          try {
-            await mkdir(localPath.replace(/[\\/][^\\/]*$/, ''), { recursive: true })
-            const res = await fetch(`${HOST_FALLBACK}/${repo}/resolve/main/${encodeURIComponent(rel)}`, { headers: { 'user-agent': 'dsh-voice-mode/prefetch' } })
-            if (res.status !== 200) { console.error(`  ✗ ${rel} (status ${res.status})`); ok = false; continue }
-            const sink = createWriteStream(partPath)
-            const reader = res.body?.getReader()
-            if (!reader) continue
-            for (;;) {
-              const { done, value } = await reader.read()
-              if (done) break
-              if (!sink.write(value)) await new Promise((r) => sink.once('drain', r))
+          const encodedRel = encodeRelPath(rel)
+          let downloaded = false
+          for (const host of hostOrder) {
+            try {
+              await mkdir(localPath.replace(/[\\/][^\\/]*$/, ''), { recursive: true })
+              const res = await fetch(`${host}/${repo}/resolve/${rev}/${encodedRel}`, { headers: { 'user-agent': 'dsh-voice-mode/prefetch' } })
+              if (res.status !== 200) { await res.body?.cancel().catch(() => undefined); continue }
+              const sink = createWriteStream(partPath)
+              const reader = res.body?.getReader()
+              if (!reader) continue
+              for (;;) {
+                const { done, value } = await reader.read()
+                if (done) break
+                if (!sink.write(value)) await new Promise((r) => sink.once('drain', r))
+              }
+              await new Promise((resolve, reject) => { sink.end(resolve); sink.on('error', reject) })
+              const got = await sha256OfFile(partPath)
+              if (want && got !== want) { await unlink(partPath).catch(() => undefined); continue }
+              await rename(partPath, localPath)
+              downloaded = true
+              doneCount++
+              break
+            } catch {
+              await unlink(partPath).catch(() => undefined)
             }
-            await new Promise((resolve, reject) => { sink.end(resolve); sink.on('error', reject) })
-            const got = await sha256OfFile(partPath)
-            if (want && got !== want) { console.error(`  ✗ ${rel} 校验失败`); ok = false; await unlink(partPath).catch(() => undefined); continue }
-            await rename(partPath, localPath)
-            doneCount++
-          } catch {
+          }
+          if (!downloaded) {
             console.error(`  ✗ ${rel} 下载失败`)
             ok = false
           }

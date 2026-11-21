@@ -94,7 +94,7 @@ process.on("message", (msg) => {
     }
     if (msg.type === "synth") {
       const text = sanitizeForTts(
-        String(msg.text ?? "").replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu, " ").replace(/(\d)[.．]\s*/g, "$1\u3001")
+        String(msg.text ?? "").replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu, " ").replace(/(\d)[.．](?!\d)\s*/g, "$1\u3001")
       );
       if (!text.trim()) {
         const sr = 24e3;

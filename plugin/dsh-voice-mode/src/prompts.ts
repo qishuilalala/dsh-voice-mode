@@ -6,6 +6,7 @@
  * 简洁无寒暄、被用户插话时让位。回答所用语言始终以「用户所用语言」为准（两版都明确写了），与提示词语言无关。
  * 旧客户端不带 lang → 默认中文版（与升级前行为字节一致）。
  */
+import { usesBilingualSample, type TtsEngineKind } from './engine-kind.ts'
 
 export type PromptLang = 'zh' | 'en'
 
@@ -33,7 +34,7 @@ export const spokenPrompt = (lang: PromptLang): string => (lang === 'en' ? EN : 
 /** 把客户端上报的界面语言归并为 PromptLang：以 zh 开头 → zh；其它非空 → en；缺失/非法 → zh（旧客户端兼容）。 */
 export function normalizePromptLang(raw: unknown): PromptLang {
   if (typeof raw !== 'string' || raw === '' || raw.length > 32) return 'zh'
-  return /^zh\b/i.test(raw) ? 'zh' : 'en'
+  return /^zh(?:[-_]|$)/i.test(raw) ? 'zh' : 'en'
 }
 
 /**
@@ -56,8 +57,17 @@ const SAMPLE_BY_LANG: Readonly<Record<string, string>> = {
   ru: 'Здравствуйте, добро пожаловать в голосовой режим.',
 }
 
-export function previewSample(engine: 'edge' | 'vits' | 'kokoro' | 'openai', voice: string): string {
-  if (engine === 'kokoro' || engine === 'openai') return `${SAMPLE_ZH}${SAMPLE_EN}`
+/**
+ * MiMo 语速风格指令（模型面固定文案）：MiMo TTS 无 speed 字段，官方推荐用自然语言描述
+ * 语速/情绪/方言等风格（见 mimo.mi.com 语音合成使用指南）。
+ */
+export function mimoSpeedInstruction(rate: number): string {
+  return rate > 1 ? `语速加快到约 ${rate} 倍` : `语速放慢到约 ${rate} 倍`
+}
+
+export function previewSample(engine: TtsEngineKind, voice: string): string {
+  // 双语判据收敛在 engine-kind（edge 例外：按音色语种选例句；vits 纯中文）。
+  if (usesBilingualSample(engine)) return `${SAMPLE_ZH}${SAMPLE_EN}`
   if (engine === 'vits') return SAMPLE_ZH
   const m = /^([a-z]{2,3})-/i.exec(voice)
   return (m && SAMPLE_BY_LANG[m[1].toLowerCase()]) || SAMPLE_EN

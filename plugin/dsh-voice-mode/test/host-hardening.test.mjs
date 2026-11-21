@@ -92,4 +92,14 @@ t('fetchWithHeadersTimeout 只约束 headers 阶段（带 signal + 拿到响应�
   )
 })
 
+
+t('设置卡所有复选框都有可读名称（A4 审计：此前读屏只报「复选框」）', () => {
+  const formSrc = src('settings-form.tsx')
+  const bare = formSrc.match(/<input[^>]*type="checkbox"[^>]*>/g) ?? []
+  for (const tag of bare) {
+    assert.ok(tag.includes('aria-label'), `裸 checkbox 缺 aria-label：${tag}`)
+  }
+  assert.ok(formSrc.includes('function CheckRow('), 'CheckRow 组件缺失（复选框可读名称的唯一入口）')
+})
+
 console.log(`\nhost-hardening：${passed} 项通过`)

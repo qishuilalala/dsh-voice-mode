@@ -748,7 +748,7 @@ t('C-13：Blink/Gecko 的 ctrl+click 不派发 click → 残留标志不得误�
 t('C-13 接线：client.tsx 的 pointerdown 记标志（赋值式）、click 消费标志', () => {
   const down = handlerSrc('const onPointerDown = (e: React.PointerEvent): void => {')
   assert.ok(/auxClickRef\.current = auxClickPending\(/.test(down), 'pointerdown 未按赋值式写辅助点击标志（非辅助点击必须清残留）')
-  const click = srcBetween('onClick={(e: React.MouseEvent) => {', '\n        }}\n')
+  const click = srcBetween('onClick={(e: React.MouseEvent) => {', '\n          }}\n')
   assert.ok(/isAuxClickToIgnore\(/.test(click), 'click 未消费辅助点击标志')
   assert.ok(/auxClickRef\.current = false/.test(click), 'click 未清掉标志')
 })
@@ -789,7 +789,7 @@ t('C-15：键盘激活的 click 不得被辅助点击标志吞掉', () => {
   assert.equal(isAuxClickToIgnore(false, 0), false, '无辅助点击标志时不得吞 click')
 })
 t('C-15 接线：client.tsx 的 click 只吞指针派生的（detail !== 0）', () => {
-  const click = srcBetween('onClick={(e: React.MouseEvent) => {', '\n        }}\n')
+  const click = srcBetween('onClick={(e: React.MouseEvent) => {', '\n          }}\n')
   assert.ok(
     /isAuxClickToIgnore\(auxClickRef\.current, e\.detail\)/.test(click),
     'click 未按「只吞指针派生的 click」判定——键盘激活会被误吞',

@@ -23,6 +23,8 @@
  * 产物：单个 .json（schema dsh-voice-mode/fixture@1），音轨为 base64 Int16。
  */
 
+import { redactSecrets } from './redact.ts'
+
 /** 录制档位。 */
 export type RecordMode = 'off' | 'meta' | 'full'
 
@@ -114,6 +116,14 @@ class Track {
       bin += String.fromCharCode(...bytes.subarray(i, i + STEP))
     }
     return btoa(bin)
+  }
+  /** 复制另一轨前 chunks.length - dropLast 块（中段首次分叉时回填前置帧保对齐）。 */
+  copyPrefixFrom(other: Track, dropLast = 0): void {
+    const end = Math.max(0, other.chunks.length - dropLast)
+    for (let i = 0; i < end; i++) {
+      this.chunks.push(other.chunks[i])
+      this.total += other.chunks[i].length
+    }
   }
   clear(): void {
     this.chunks = []
@@ -229,8 +239,11 @@ class FixtureRecorder {
       this.micTrack.push(micPre)
       this.refTrack.push(ref ?? new Float32Array(micPre.length))
       if (res !== micPre) {
-        // 自研 AEC 实际生效过：残差与 mic 不是同一块，单独落轨
-        if (!this.resDiffers) this.resDiffers = true
+        // 自研 AEC 实际生效过：残差与 mic 不是同一块，单独落轨；若中段首次分叉，回填前置帧保对齐。
+        if (!this.resDiffers) {
+          this.resDiffers = true
+          this.resTrack.copyPrefixFrom(this.micTrack, 1)
+        }
         this.resTrack.push(res)
       } else if (this.resDiffers) {
         this.resTrack.push(res)
@@ -304,7 +317,7 @@ class FixtureRecorder {
         `[dsh-voice][rec] 已保存 ${name}：${this.frames.length} 帧 / ${(durationMs / 1000).toFixed(1)}s / 标注 ${this.marks.length} 条 / 检测往返 ${this.detects.length} 次`,
       )
     } catch (e) {
-      console.warn('[dsh-voice][rec] 保存失败：' + String(e))
+      console.warn('[dsh-voice][rec] 保存失败：' + redactSecrets(e))
     }
     this.micTrack.clear()
     this.refTrack.clear()

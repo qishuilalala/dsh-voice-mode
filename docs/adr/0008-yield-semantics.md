@@ -19,7 +19,7 @@ dsh-voice-mode 当前的"让位"仅有两个层：
 | 层 | 实现 | 文件:行 |
 |---|---|---|
 | 物理层（声学） | 录音 → VAD → 端点检测 → 硬打断 | `src/asr.ts:172`（历史时点快照） 的 `MAX_SEGMENT_MS` 声明（段长上限，`:972-976` 使用；原写 `:936-945` 是 preRoll 累积区、与该常量无关）+ `src/client.tsx` 的 `hardBreak` 定义（`const hardBreak = async`；原值 1946 与 2026-10-21 前快照的 `:2392` 均已漂移——2026-10-21 R15-J 改按**符号锚**重锚） |
-| 物理层（回声门） | echoPeak/echoFloor + echoGateDb 双讲冻结 | `src/asr.ts:933-998`（echoPeak/Floor 跨区）+ ADR-0006 真机结论：原生 AEC 生效时**从未被执行**，因为 VAD 已先拦截 |
+| 物理层（回声门） | echoPeak/echoFloor + echoGateDb 双讲冻结 | `src/asr.ts:1012-1092`（echoPeak/Floor 跨区）+ ADR-0006 真机结论：原生 AEC 生效时**从未被执行**，因为 VAD 已先拦截 |
 
 **完全缺失的层**：**人格层 / 社会-语用层让位**——LLM 没有"何时该停、停多久、是否该接住用户的'嗯'/'对'/'so'"的指令。
 
@@ -60,7 +60,7 @@ YIELDING (let the user interrupt)
 |---|---|---|---|
 | 🥇 P0 | **Backchannel detector**（"嗯/哎/so"等 6+ 中英文词检测）+ 半双工暂停（停下 TTS 不 hardBreak，等 1s） | `src/asr.ts` `matchWakeWord` 同位置加 `matchBackchannel`；`src/tts-queue.ts` 新 `pauseAtBoundary()` 走 epoch 通道 | 2-3 天 |
 | 🥈 P0 | **Hume EVI 风格让位 prompt 注入**（48 维 prosody top-3 注入 system prompt） | `src/index.ts` 的 `system-prompt/assemble` 瀑布扩展（`ctx.on('system-prompt/assemble'`；原值 896 与 2026-10-21 前快照的 `:966` 均已漂移——2026-10-21 R15-J 改按**符号锚**重锚）；如无云端 emotion2vec，本地替代 0 | 1-2 天 |
-| 🥉 P2 | **Inattentive silence 自动 break**（6s 沉默后模型主动 break silence） | `src/index.ts:664` `ownerYieldTimer` 旁加 `silenceBreakTimer`（原值 537 已漂移 Δ47） | 1-2 天 |
+| 🥉 P2 | **Inattentive silence 自动 break**（6s 沉默后模型主动 break silence） | `src/index.ts` 的 `ownerYieldTimer` 旁加 `silenceBreakTimer`（原值 537、前值 664/729 均已漂移） | 1-2 天 |
 | ❄ | **End-of-turn probability 让位** | 需 ADR-0003 VAD 下沉前置 | 推迟 |
 | ❄ | **让位历史记忆**（环形 buffer） | 配 ADR-0005 fixture，需先扩展 | 推迟 |
 
@@ -90,7 +90,7 @@ YIELDING (let the user interrupt)
 | 时延预算 | 200-500ms（人感知阈） | 256-597ms（实测 CONTEXT.md L37） |
 | LLM 介入 | 是（system prompt 注入信号） | 否（纯前端） |
 
-**新加的"pauseAtBoundary"必须经 epoch 通道**（CLAUDE.md "CONTEXT.md 不丢句不变量"），不能直接 `engine.interrupt()`（那会破坏 `tts-queue.ts:593-611` 的"重试 3 次"（`MAX_SYNTH_ATTEMPTS = 3` :595 + epoch 守卫 break / continue）+ `:455`（`cancel` 内 `q.epoch++`）的 epoch 守卫不变量；原值 `413-430`/`:296` 已漂移 Δ72 / Δ159，2026-10-21 按符号定位刷新）。
+**新加的"pauseAtBoundary"必须经 epoch 通道**（CLAUDE.md "CONTEXT.md 不丢句不变量"），不能直接 `engine.interrupt()`（那会破坏 `tts-queue.ts:620-640` 的"重试 3 次"（`MAX_SYNTH_ATTEMPTS = 3` :626 + epoch 守卫 break / continue）+ `:584`（`cancel` 内 `q.epoch++`）的 epoch 守卫不变量；原值 `413-430`/`:296` 已漂移 Δ72 / Δ159，2026-10-21 按符号定位刷新）。
 
 ### 5. ADR-0008 之外但本 ADR 顺带解决的
 
@@ -117,10 +117,10 @@ YIELDING (let the user interrupt)
 
 - `src/prompts.ts:31` `spokenPrompt`（2026-10-02 自 `src/index.ts` 的 `VOICE_SPOKEN_PROMPT`（**原名**，原址 `:103-110`）迁入；基础 4 句口语化 + ADR-0008 #2 让位段，Phase 1 已落地，见 :199）
 - `src/index.ts` 的 `system-prompt/assemble` 注入点（`ctx.on('system-prompt/assemble'`；原值 896 与 2026-10-21 前快照的 `:966`/`:966-972` 均已漂移——2026-10-21 R15-J 改按**符号锚**重锚，行号待最终 HEAD 稳定后统一回填）
-- `src/asr.ts:933-998`（echoFloor/echoPeak 跨区 + ADR-0006 真机结论）
+- `src/asr.ts:1012-1092`（echoFloor/echoPeak 跨区 + ADR-0006 真机结论）
 - `src/asr.ts:192`（历史时点快照）（wakeEnabled 唤醒词门：唤醒词非空且非 hold 模式，逻辑可参考）
-- `src/asr-host.ts:627`（finalize 同步路径 `finalizeP`，"不丢句"不变量；原 442-466 区现为 senseTranscribe、原 584 锚点已漂移；2026-10-20 10:30 实测刷新）
-- `src/tts-queue.ts:555`（`cancel()` 硬打断；epoch 守卫；不丢句；原值 379 已漂移 Δ73——该行现为 `this.engine.status?.()`；原 268-307 区现为 updateVoice、原 325 锚点已漂移；2026-10-21 按符号定位刷新）
+- `src/asr-host.ts:708`（finalize 同步路径 `finalizeP`，"不丢句"不变量；原 653/584 锚点已漂移，本轮刷新）
+- `src/tts-queue.ts:633`（`cancel()` 硬打断；epoch 守卫；不丢句；原值 580/379 已漂移，本轮刷新）
 - `src/tts-queue.ts`（`q.epoch` 逐队列代际字段——epoch 通道本体：类型声明 `QueuedSentence.epoch` :204 / `SessionQueue.epoch` :212（接口 :207），自增 :366（prune 路径）/ :455（cancel）/ :471（re-enter 新队列），入队快照 :444，泵内守卫 :490（break）/ :511（continue）。**勘误（2026-10-20）**：原「`_SSMLTemplate` epoch 通道」全 src 0 命中，系幻影符号。**刷新口径声明（2026-10-21）**：原 `:296`（setEngine）/`:382`（cancel）两处自增锚点系幻影符号——HEAD 中 `cancel` 的 `q.epoch++` 在 :455、`:296` 与 `:382` 均无自增语句；原 `:371` 入队快照实为 :444、原 `:416`/`:437` 泵内守卫实为 :490/:511。**fix-host R14 引擎级 closed 标志改动的终验至今未做**（原 :124 文末「需终验」为遗留待办），故本段锚点为 2026-10-21 符号定位结果，不构成 R14 终验结论）
 - `src/client.tsx` 的 `hardBreak` 定义（`const hardBreak = async`；原值 1946 与 2026-10-21 前快照的 `:2392` 均已漂移——旧文自述的「Δ946」与自述现值互相矛盾，已更正；2026-10-21 R15-J 改按**符号锚**重锚）
 - `src/client.tsx:2593`（历史时点快照）（`onAecState` 回调已用，证明回调注入机制成熟；原值 2106 已漂移 Δ447、原 1539 区现为 fetchConfig；**原 2553 为 2026-10-21 前快照**，已随 R15 各批重写漂移，本轮按冻结后的工作区源码刷新）

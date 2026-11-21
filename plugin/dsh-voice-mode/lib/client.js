@@ -11,11 +11,11 @@ var __export = (target, all) => {
   for (var name2 in all)
     __defProp(target, name2, { get: all[name2], enumerable: true });
 };
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
+var __copyProps = (to, from2, except, desc) => {
+  if (from2 && typeof from2 === "object" || typeof from2 === "function") {
+    for (let key of __getOwnPropNames(from2))
       if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+        __defProp(to, key, { get: () => from2[key], enumerable: !(desc = __getOwnPropDesc(from2, key)) || desc.enumerable });
   }
   return to;
 };
@@ -39,7 +39,7 @@ __export(client_exports, {
   inject: () => inject
 });
 module.exports = __toCommonJS(client_exports);
-var React = __toESM(require("react"), 1);
+var React2 = __toESM(require("react"), 1);
 var import_react3 = require("react");
 
 // src/resample.ts
@@ -59,11 +59,50 @@ function resampleLinear(src, srcRate, dstRate) {
   return out;
 }
 
+// src/redact.ts
+var PREFIXED = [
+  { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
+  { re: /\b(Basic\s+)[A-Za-z0-9+/=-]{8,}/gi, to: "$1<redacted>" },
+  { re: /\b((?:api[-_]?key|x-api-key)\s*[:=]\s*)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
+  // URL 内嵌凭据（https://user:pass@host）与查询参数密钥（?api_key=... / &token=... / &key=...）
+  { re: /(https?:\/\/)([^:@/\s]+:[^@/\s]+)(@)/gi, to: "$1<redacted>$3" },
+  { re: /([?&](?:api[_-]?key|access_token|token|key)=)([^&\s#]+)/gi, to: "$1<redacted>" },
+  // JSON 形态：{"apiKey":"..."} / {"mimoApiKey":"..."} / {"openaiApiKey":"..."} / {"token":"..."}（只遮引号内的值）
+  {
+    re: /("(?:[a-zA-Z0-9_-]*?(?:api[_-]?key|token|secret|password))"\s*:\s*")([^"\\]{6,})(")/gi,
+    to: "$1<redacted>$3"
+  }
+];
+var BARE = [
+  /\bsk[-_][A-Za-z0-9._-]{8,}/g,
+  // 更多厂商前缀（2026-11-20 审计实测：Groq 的 gsk_ 原样漏出，而 Groq 就在本仓预设里）。
+  /\bgsk_[A-Za-z0-9._-]{8,}/g,
+  /\bsk-(?:proj|live|test)-[A-Za-z0-9._-]{8,}/g,
+  /\brk_(?:live|test)_[A-Za-z0-9]{8,}/g,
+  /\bAIza[A-Za-z0-9._-]{10,}/g,
+  /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
+  // 通用兜底：≥20 连续 base64-ish 字符，要求**同时含大写、小写与数字**（真密钥的典型特征），
+  // 且排除纯十六进制（SHA256/MD5 是排障信息）。这样不会吃掉全小写的模型名、
+  // 也不会吃掉被 - / 分隔的 UUID 与路径。
+  // 注意：字符类**不含 '/'**——路径与 provider/model:voice 形态都靠 '/' 分隔，含进来会误伤排障信息。
+  // 豁免仅限 64 位 sha256（模型摘要）；32 位 hex 也可能是 key（审计实测漏遮）。
+  /\b(?![0-9a-fA-F]{64}\b)(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[0-9])[A-Za-z0-9+=_-]{20,}\b/g,
+  // 32 位 hex（md5 形状）也可能是 key：通用规则要求大小写混合，纯小写 hex 会被漏掉。
+  // 64 位 sha256 不在此列（模型摘要要保留排障）。
+  /\b[0-9a-f]{32}\b/gi
+];
+function redactSecrets(text) {
+  let out = typeof text === "string" ? text : String(text ?? "");
+  for (const { re, to } of PREFIXED) out = out.replace(re, to);
+  for (const re of BARE) out = out.replace(re, "<redacted>");
+  return out;
+}
+
 // src/wakeword.ts
 var WAKE_LEAD_CHARS = 3;
 var WAKE_MAX_EDITS = 1;
 function normalizeWake(text) {
-  return String(text ?? "").replace(/[\s\u3000]+/g, "").toLowerCase().replace(/[，。！？!?；;、,.]/g, "").replace(/^(嗯+|哎+|呃+|这个+|那个+|so|um|uh|er|well)[，。！？!?；;、,.\s\u3000]*/, "");
+  return String(text ?? "").toLowerCase().replace(/^[\s\u3000]*(?:so|um|uh|er|well)(?=[\s\u3000，。！？!?；;、,.]|$)/, "").replace(/[\s\u3000]+/g, "").replace(/[，。！？!?；;、,.]/g, "").replace(/^(嗯+|哎+|呃+|这个+|那个+)[，。！？!?；;、,.\s\u3000]*/, "");
 }
 function editDistanceWithin(a, b, max) {
   const la = a.length;
@@ -169,6 +208,14 @@ var Track = class {
     }
     return btoa(bin);
   }
+  /** 复制另一轨前 chunks.length - dropLast 块（中段首次分叉时回填前置帧保对齐）。 */
+  copyPrefixFrom(other, dropLast = 0) {
+    const end = Math.max(0, other.chunks.length - dropLast);
+    for (let i = 0; i < end; i++) {
+      this.chunks.push(other.chunks[i]);
+      this.total += other.chunks[i].length;
+    }
+  }
   clear() {
     this.chunks = [];
     this.total = 0;
@@ -258,7 +305,10 @@ var FixtureRecorder = class {
       this.micTrack.push(micPre);
       this.refTrack.push(ref ?? new Float32Array(micPre.length));
       if (res !== micPre) {
-        if (!this.resDiffers) this.resDiffers = true;
+        if (!this.resDiffers) {
+          this.resDiffers = true;
+          this.resTrack.copyPrefixFrom(this.micTrack, 1);
+        }
         this.resTrack.push(res);
       } else if (this.resDiffers) {
         this.resTrack.push(res);
@@ -327,7 +377,7 @@ var FixtureRecorder = class {
         `[dsh-voice][rec] \u5DF2\u4FDD\u5B58 ${name2}\uFF1A${this.frames.length} \u5E27 / ${(durationMs / 1e3).toFixed(1)}s / \u6807\u6CE8 ${this.marks.length} \u6761 / \u68C0\u6D4B\u5F80\u8FD4 ${this.detects.length} \u6B21`
       );
     } catch (e) {
-      console.warn("[dsh-voice][rec] \u4FDD\u5B58\u5931\u8D25\uFF1A" + String(e));
+      console.warn("[dsh-voice][rec] \u4FDD\u5B58\u5931\u8D25\uFF1A" + redactSecrets(e));
     }
     this.micTrack.clear();
     this.refTrack.clear();
@@ -444,6 +494,7 @@ var PRE_ROLL_MS = 2e3;
 var PARTIAL_INTERVAL_MS = 100;
 var PARTIAL_MIN_S = 0.4;
 var PARTIAL_MAX_S = 30;
+var HOLD_SECOND_MAX_BYTES = 3 * 1024 * 1024;
 var BUFFER_SIZE = 1024;
 function createAsrEngine(config, sessionId) {
   const wakeWord = (config.wakeWord ?? "").trim().toLowerCase().replace(/[\s\u3000]+/g, "");
@@ -493,10 +544,12 @@ function createAsrEngine(config, sessionId) {
   let silenceMs = 0;
   let prePad = [];
   let holdActive = false;
+  let holdTrimmed = false;
   const echo = config.echo;
   let lastPollAt = 0;
   let partialInFlight = false;
   let resetGate = Promise.resolve();
+  let hostResetPending = false;
   let segmentEpoch = 0;
   let discardGen = 0;
   let finalizeSeq = 0;
@@ -551,27 +604,28 @@ function createAsrEngine(config, sessionId) {
       const item = pendingFinals.get(nextEmitSeq);
       pendingFinals.delete(nextEmitSeq);
       nextEmitSeq++;
-      if (item) emit(transcriptListeners, item.text, item.meta);
+      if (item && item.discardGen === discardGen && (active || draining)) emit(transcriptListeners, item.text, item.meta);
     }
   };
   const settleFinal = (seq, item) => {
     pendingFinals.set(seq, item);
     flushOrderedFinals();
+    wakeDrainWaiters();
   };
   const resetFailStreaks = () => {
     partialFailStreak = 0;
     detectFailStreak = 0;
   };
-  const sliceChunks = (chunks, from) => {
+  const sliceChunks = (chunks, from2) => {
     let total = 0;
     for (const c of chunks) total += c.length;
-    const out = new Float32Array(Math.max(0, total - from));
+    const out = new Float32Array(Math.max(0, total - from2));
     if (out.length === 0) return out;
     let off = 0;
     let acc = 0;
     for (const c of chunks) {
       if (off >= out.length) break;
-      const sub = c.subarray(Math.max(0, from - acc));
+      const sub = c.subarray(Math.max(0, from2 - acc));
       const n = Math.min(sub.length, out.length - off);
       out.set(sub.subarray(0, n), off);
       off += n;
@@ -579,7 +633,7 @@ function createAsrEngine(config, sessionId) {
     }
     return out;
   };
-  const sliceSince = (from) => sliceChunks(segment, from);
+  const sliceSince = (from2) => sliceChunks(segment, from2);
   const deliverIsSpeech = (speech) => {
     gateQueryScope = true;
     try {
@@ -595,33 +649,38 @@ function createAsrEngine(config, sessionId) {
     const total = segment.reduce((n, c) => n + c.length, 0);
     const seconds = total / SAMPLE_RATE2;
     if (seconds < PARTIAL_MIN_S || seconds > PARTIAL_MAX_S) return;
-    const from = uploadedSamples;
-    if (total - from <= 0) return;
-    const samples = sliceSince(from);
+    const from2 = uploadedSamples;
+    if (total - from2 <= 0) return;
+    const samples = sliceSince(from2);
     const epoch = segmentEpoch;
     partialInFlight = true;
     try {
-      let res = await fetch(asrUrl(false, from, epoch), {
+      let res = await fetch(asrUrl(false, from2, epoch), {
         method: "POST",
         headers: { "content-type": "application/octet-stream" },
         body: samples.buffer,
         signal: AbortSignal.timeout(5e3)
       });
+      if (epoch !== segmentEpoch || !active) return;
       if (res.status === 202) {
         if (state !== "wake") setState("loading-model");
-        const retry = await new Promise((resolve) => {
+        const retry = await new Promise((resolve2) => {
           setTimeout(async () => {
+            if (!active || epoch !== segmentEpoch) {
+              resolve2(new Response(null, { status: 410 }));
+              return;
+            }
             try {
-              const r2 = await fetch(asrUrl(false, from, epoch), {
+              const r2 = await fetch(asrUrl(false, from2, epoch), {
                 method: "POST",
                 headers: { "content-type": "application/octet-stream" },
                 body: samples.buffer,
                 signal: AbortSignal.timeout(5e3)
                 // I1：重试同样要超时（否则重试挂起仍锁死 partialInFlight）
               });
-              resolve(r2);
+              resolve2(r2);
             } catch {
-              resolve(new Response(null, { status: 503 }));
+              resolve2(new Response(null, { status: 503 }));
             }
           }, 5e3);
         });
@@ -632,8 +691,16 @@ function createAsrEngine(config, sessionId) {
         }
       }
       if (res.status === 403 && config.onSessionExpired) {
-        const recovered = await config.onSessionExpired();
-        if (recovered && epoch === segmentEpoch) {
+        let expireTimer = null;
+        const recovered = await Promise.race([
+          config.onSessionExpired(),
+          new Promise((resolve2) => {
+            expireTimer = setTimeout(() => resolve2(false), 5e3);
+          })
+        ]).finally(() => {
+          if (expireTimer) clearTimeout(expireTimer);
+        }).catch(() => false);
+        if (recovered && active && epoch === segmentEpoch) {
           uploadedSamples = 0;
           try {
             res = await fetch(asrUrl(false, 0, epoch), {
@@ -645,17 +712,21 @@ function createAsrEngine(config, sessionId) {
             });
           } catch {
           }
+          if (res.status === 202) {
+            if (epoch === segmentEpoch && active && state !== "wake") setState("loading-model");
+            return;
+          }
         }
       }
-      if (epoch !== segmentEpoch) return;
+      if (epoch !== segmentEpoch || !active) return;
       if (!res.ok) {
         if (res.status !== 202 && ++partialFailStreak >= 3) emit(noticeListeners, "partialFail");
         return;
       }
       const out = await res.json();
-      if (epoch !== segmentEpoch) return;
+      if (epoch !== segmentEpoch || !active) return;
       if (state === "wake" && wakeEnabled) {
-        uploadedSamples = Math.max(uploadedSamples, from + samples.length);
+        uploadedSamples = Math.max(uploadedSamples, from2 + samples.length);
         partialFailStreak = 0;
         emit(partialListeners, out.text ?? "");
         if (matchWakeWord(out.text ?? "", wakeWord)) {
@@ -666,10 +737,11 @@ function createAsrEngine(config, sessionId) {
         }
         return;
       }
-      if (out.isSpeech !== void 0) deliverIsSpeech(out.isSpeech);
-      if (state === "loading-model") setState("speech");
-      uploadedSamples = Math.max(uploadedSamples, from + samples.length);
+      uploadedSamples = Math.max(uploadedSamples, from2 + samples.length);
       partialFailStreak = 0;
+      if (out.isSpeech !== void 0) deliverIsSpeech(out.isSpeech);
+      if (epoch !== segmentEpoch || !active) return;
+      if (state === "loading-model") setState("speech");
       emit(partialListeners, wakeConsumed ? stripWakePrefix(out.text ?? "", wakeWord) : out.text ?? "");
       if (config.backchannelYield !== false && // 默认 true（I10 豁免）；显式 false 时跳过
       speechActive && (config.isPlaying?.() ?? false) && matchBackchannel(out.text ?? "")) {
@@ -713,20 +785,24 @@ function createAsrEngine(config, sessionId) {
       });
       rttMs = Date.now() - sentAt;
       if (epoch !== segmentEpoch || gen !== detectGeneration) return;
-      if (!res.ok) return;
+      if (!res.ok) {
+        rttMs = -1;
+        if (++detectFailStreak >= 3) emit(noticeListeners, "detectFail");
+        return;
+      }
       const out = await res.json();
       if (epoch !== segmentEpoch || gen !== detectGeneration) return;
       const rawNow = config.isPlayingRaw ? config.isPlayingRaw() : config.isPlaying?.() ?? false;
       if (out.isSpeech === true && preRollSeedWall === null && rawNow && reqBodyStartWall >= rawPlayingSinceWall) {
         preRollSeedWall = reqBodyStartWall - 250;
       }
-      if (out.isSpeech !== void 0) deliverIsSpeech(out.isSpeech);
       detectFailStreak = 0;
       detectSent += samples.length;
       while (detectChunks.length > 0 && detectSent >= detectChunks[0].length) {
         detectSent -= detectChunks[0].length;
         detectChunks.shift();
       }
+      if (out.isSpeech !== void 0) deliverIsSpeech(out.isSpeech);
     } catch {
       if (++detectFailStreak >= 3) emit(noticeListeners, "detectFail");
     } finally {
@@ -771,16 +847,18 @@ function createAsrEngine(config, sessionId) {
     segment = [];
     segmentMs = 0;
     speechMs = 0;
+    speechActive = false;
     silenceMs = 0;
     wakeSilenceMs = 0;
     wakeConsumed = false;
     salvagedSegment = false;
     yieldedSegment = false;
+    holdTrimmed = false;
     prePad = [];
     uploadedSamples = 0;
     void resetHostStream();
   };
-  const finalizeSegment = (force = false) => {
+  const finalizeSegment = (force = false, flushed = false) => {
     if (segment.length === 0) return;
     if (config.isPlaying?.() && !forcePending && !force) return;
     if (utteranceEndAt === null) {
@@ -789,8 +867,8 @@ function createAsrEngine(config, sessionId) {
     }
     emitTelemetry("endpoint-fired");
     const myRound = telemetryRound;
-    const from = uploadedSamples;
-    const samples = sliceSince(from);
+    const from2 = uploadedSamples;
+    const samples = sliceSince(from2);
     const recoverySegment = segment;
     const epochSnapshot = segmentEpoch;
     segmentEpoch++;
@@ -800,15 +878,18 @@ function createAsrEngine(config, sessionId) {
     const settle = (item) => {
       if (settled) return;
       settled = true;
-      settleFinal(mySeq, item);
+      settleFinal(mySeq, item ? { ...item, discardGen: discardSnapshot } : null);
     };
-    const meta = { force: forcePending };
+    const canSettle = () => (active || draining) && discardGen === discardSnapshot;
+    const meta = flushed ? { force: forcePending, flushed: true } : { force: forcePending };
     const consumedWake = wakeConsumed;
     wakeConsumed = false;
     const wasSalvaged = salvagedSegment;
     salvagedSegment = false;
     const wasYielded = yieldedSegment;
     yieldedSegment = false;
+    const wasHoldTrimmed = holdTrimmed;
+    holdTrimmed = false;
     forcePending = false;
     speechMs = 0;
     uploadedSamples = 0;
@@ -817,21 +898,30 @@ function createAsrEngine(config, sessionId) {
     silenceMs = 0;
     segmentMs = 0;
     prePad = [];
+    utteranceEndAt = null;
     setState("transcribing");
     void (async () => {
+      if (hostResetPending) {
+        hostResetPending = false;
+        await resetGate;
+      }
       emitTelemetry("submitted");
       const MAX_FINAL_ATTEMPTS = 3;
       const restoreState = () => setState(active ? speechActive || holdActive ? "speech" : wakeEnabled ? "wake" : "listening" : "idle");
       for (let attempt = 0; attempt < MAX_FINAL_ATTEMPTS; attempt++) {
         if (attempt > 0) {
-          if (discardGen !== discardSnapshot) {
+          if (!canSettle()) {
             settle(null);
             return;
           }
           await new Promise((r) => setTimeout(r, 500 * attempt));
+          if (!canSettle()) {
+            settle(null);
+            return;
+          }
         }
         const useFull = attempt > 0;
-        const off = useFull ? 0 : from;
+        const off = useFull ? 0 : from2;
         const body = useFull ? sliceChunks(recoverySegment, 0).buffer : samples.buffer;
         let res;
         try {
@@ -846,12 +936,20 @@ function createAsrEngine(config, sessionId) {
           if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize fetch failed (retries exhausted)");
           continue;
         }
+        if (!canSettle()) {
+          settle(null);
+          return;
+        }
         if (res.status === 202) {
-          setState("loading-model");
-          res = await new Promise((resolve) => {
+          if (state !== "wake") setState("loading-model");
+          res = await new Promise((resolve2) => {
             setTimeout(async () => {
+              if (!canSettle()) {
+                resolve2(new Response(null, { status: 410 }));
+                return;
+              }
               try {
-                resolve(
+                resolve2(
                   await fetch(asrUrl(true, off, epochSnapshot), {
                     signal: AbortSignal.timeout(25e3),
                     // Issue #15 批 4：对齐 host SenseVoice race 上限 20s（asr-host.ts:598-606）——原 10s 必触发一次空转重试
@@ -861,10 +959,23 @@ function createAsrEngine(config, sessionId) {
                   })
                 );
               } catch {
-                resolve(new Response(null, { status: 503 }));
+                resolve2(new Response(null, { status: 503 }));
               }
             }, 5e3);
           });
+          if (!canSettle()) {
+            settle(null);
+            return;
+          }
+        }
+        if (res.status === 413) {
+          console.warn("[dsh-voice-mode] finalize payload too large (413): utterance exceeded the per-request limit");
+          if (canSettle()) {
+            emit(noticeListeners, "utteranceTooLong");
+            restoreState();
+          }
+          settle(null);
+          return;
         }
         if (res.status === 202) {
           if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize model-load timeout (retries exhausted)");
@@ -874,13 +985,13 @@ function createAsrEngine(config, sessionId) {
           let expireTimer = null;
           const recovered = await Promise.race([
             config.onSessionExpired(),
-            new Promise((resolve) => {
-              expireTimer = setTimeout(() => resolve(false), 5e3);
+            new Promise((resolve2) => {
+              expireTimer = setTimeout(() => resolve2(false), 5e3);
             })
           ]).finally(() => {
             if (expireTimer) clearTimeout(expireTimer);
           }).catch(() => false);
-          if (recovered && discardGen === discardSnapshot) {
+          if (recovered && canSettle()) {
             try {
               res = await fetch(asrUrl(true, 0, epochSnapshot), {
                 signal: AbortSignal.timeout(25e3),
@@ -891,6 +1002,22 @@ function createAsrEngine(config, sessionId) {
               });
             } catch {
             }
+          }
+          if (!canSettle()) {
+            settle(null);
+            return;
+          }
+          if (res.status === 413) {
+            console.warn("[dsh-voice-mode] finalize payload too large (413): utterance exceeded the per-request limit");
+            emit(noticeListeners, "utteranceTooLong");
+            restoreState();
+            settle(null);
+            return;
+          }
+          if (res.status === 202) {
+            if (state !== "wake") setState("loading-model");
+            if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize model-load timeout (retries exhausted)");
+            continue;
           }
         }
         if (!res.ok) {
@@ -904,7 +1031,7 @@ function createAsrEngine(config, sessionId) {
           if (attempt === MAX_FINAL_ATTEMPTS - 1) console.warn("[dsh-voice-mode] finalize response is not JSON (retries exhausted)");
           continue;
         }
-        if (discardGen !== discardSnapshot) {
+        if (!canSettle()) {
           settle(null);
           return;
         }
@@ -916,10 +1043,11 @@ function createAsrEngine(config, sessionId) {
         if (finalText) {
           if ((wasSalvaged || wasYielded) && matchBackchannel(finalText)) {
             emit(noticeListeners, "backchannelDropped");
-            if (active && wakeEnabled) setState("listening");
+            if (active && wakeEnabled && !speechActive && !holdActive) setState("listening");
             settle(null);
             return;
           }
+          if (wasHoldTrimmed) emit(noticeListeners, "holdTrimmedNotice");
           settle({ text: finalText, meta });
         } else {
           settle(null);
@@ -929,11 +1057,14 @@ function createAsrEngine(config, sessionId) {
         }
         return;
       }
-      restoreState();
       settle(null);
-      emitError("recognitionFail");
+      if (active && discardGen === discardSnapshot) {
+        restoreState();
+        emitError("recognitionFail");
+      }
     })().catch((err) => {
-      console.warn(`[dsh-voice-mode] finalize unexpected error (seq=${mySeq}, settled as no-emit)`, err);
+      const detail = err instanceof Error ? err.stack ?? err.message : String(err);
+      console.warn(`[dsh-voice-mode] finalize unexpected error (seq=${mySeq}, settled as no-emit): ${redactSecrets(detail)}`);
       settle(null);
     });
   };
@@ -942,8 +1073,15 @@ function createAsrEngine(config, sessionId) {
   let echoPeak = 0;
   const handleAudio = (raw) => {
     if (!active || inFlush) return;
-    if (runtimeBargeInMode === "manual" && !holdActive) return;
+    const playingNow = config.isPlaying?.() ?? false;
+    if (runtimeBargeInMode === "manual" && !holdActive && playingNow) {
+      if (state === "wake" && segment.length > 0) clearWakeSegment();
+      else if (speechActive) finalizeSegment(true);
+      prePad = [];
+      return;
+    }
     let data = ctxRate !== SAMPLE_RATE2 ? resampleLinear(raw, ctxRate, SAMPLE_RATE2) : raw;
+    if (data.length === 0) return;
     const recMicPre = data;
     let recRef = null;
     if (echo) {
@@ -960,9 +1098,9 @@ function createAsrEngine(config, sessionId) {
     }
     let rms = Math.sqrt(sum / data.length);
     if (nonFinite > 0) {
-      const clean = new Float32Array(data);
-      for (let i = 0; i < clean.length; i++) if (!Number.isFinite(clean[i])) clean[i] = 0;
-      data = clean;
+      const clean2 = new Float32Array(data);
+      for (let i = 0; i < clean2.length; i++) if (!Number.isFinite(clean2[i])) clean2[i] = 0;
+      data = clean2;
       if (!Number.isFinite(rms)) rms = 0;
     }
     const frameValid = nonFinite === 0;
@@ -973,7 +1111,6 @@ function createAsrEngine(config, sessionId) {
       } catch {
       }
     }
-    const playingNow = config.isPlaying?.() ?? false;
     const rawNow = config.isPlayingRaw ? config.isPlayingRaw() : playingNow;
     const gateRatio = Math.pow(10, (config.echoGateDb ?? 6) / 20);
     const peakDecay = Math.pow(0.9, durationMs / 64);
@@ -1035,6 +1172,22 @@ function createAsrEngine(config, sessionId) {
       segmentMs += durationMs;
       silenceMs = 0;
       segment.push(data);
+      let bytes = segment.reduce((n, c) => n + c.byteLength, 0);
+      let trimmed = false;
+      while (bytes > HOLD_SECOND_MAX_BYTES && segment.length > 1) {
+        bytes -= segment[0].byteLength;
+        segment.shift();
+        trimmed = true;
+      }
+      if (trimmed) {
+        holdTrimmed = true;
+        if (uploadedSamples > 0) {
+          uploadedSamples = 0;
+          segmentEpoch++;
+          hostResetPending = true;
+          void resetHostStream();
+        }
+      }
       if (segmentMs > MAX_SEGMENT_MS) finalizeSegment();
     } else if (config.mode === "hold") {
     } else if (state === "wake") {
@@ -1132,7 +1285,10 @@ function createAsrEngine(config, sessionId) {
   };
   const abandonStart = async (myStream, myCtx) => {
     try {
-      myStream.getTracks().forEach((t3) => t3.stop());
+      myStream.getTracks().forEach((t3) => {
+        t3.onended = null;
+        t3.stop();
+      });
     } catch {
     }
     if (stream === myStream) stream = null;
@@ -1172,7 +1328,16 @@ function createAsrEngine(config, sessionId) {
       return;
     }
     stream = myStream;
-    const aecOn = stream.getAudioTracks()[0]?.getSettings().echoCancellation === true;
+    const primaryTrack = stream.getAudioTracks()[0];
+    if (primaryTrack) {
+      primaryTrack.onended = () => {
+        if (stream !== myStream || !active) return;
+        active = false;
+        emitError("micUnavailable");
+        void stopRecorder().then(() => setState("idle"));
+      };
+    }
+    const aecOn = primaryTrack?.getSettings().echoCancellation === true;
     if (!aecOn) {
       console.warn("[dsh-voice-mode] native browser echoCancellation is not in effect (speakers may self-interrupt); use headphones or manual barge-in");
     }
@@ -1185,7 +1350,18 @@ function createAsrEngine(config, sessionId) {
     owned.ctx = myCtx;
     audioCtx = myCtx;
     try {
-      await audioCtx.resume?.();
+      const resumeP = audioCtx.resume?.();
+      if (resumeP) {
+        let resumeTimer = null;
+        await Promise.race([
+          resumeP,
+          new Promise((resolve2) => {
+            resumeTimer = setTimeout(resolve2, 3500);
+          })
+        ]).finally(() => {
+          if (resumeTimer) clearTimeout(resumeTimer);
+        });
+      }
     } catch {
     }
     if (stopRequested || mySeq !== startSeq) {
@@ -1241,6 +1417,7 @@ function createAsrEngine(config, sessionId) {
     discardGen++;
     forcePending = false;
     holdActive = false;
+    holdTrimmed = false;
     segment = [];
     speechActive = false;
     silenceMs = 0;
@@ -1272,7 +1449,10 @@ function createAsrEngine(config, sessionId) {
     }
     workletNode = null;
     try {
-      stream?.getTracks().forEach((t3) => t3.stop());
+      stream?.getTracks().forEach((t3) => {
+        t3.onended = null;
+        t3.stop();
+      });
     } catch {
     }
     stream = null;
@@ -1285,6 +1465,14 @@ function createAsrEngine(config, sessionId) {
       ctxRate = SAMPLE_RATE2;
     }
     inFlush = false;
+  };
+  let draining = false;
+  let drainWaiters = [];
+  const wakeDrainWaiters = () => {
+    if (drainWaiters.length === 0) return;
+    const list = drainWaiters;
+    drainWaiters = [];
+    for (const fn of list) fn();
   };
   return {
     get state() {
@@ -1314,6 +1502,8 @@ function createAsrEngine(config, sessionId) {
     },
     async start() {
       if (active) return;
+      draining = false;
+      wakeDrainWaiters();
       stopRequested = false;
       startSeq++;
       const myStartSeq = startSeq;
@@ -1323,6 +1513,7 @@ function createAsrEngine(config, sessionId) {
       detectFailStreak = 0;
       lastPollAt = 0;
       holdActive = false;
+      holdTrimmed = false;
       detectChunks = [];
       detectSent = 0;
       detectGeneration++;
@@ -1346,6 +1537,8 @@ function createAsrEngine(config, sessionId) {
     },
     async stop() {
       stopRequested = true;
+      draining = false;
+      wakeDrainWaiters();
       startSeq++;
       const myStopSeq = startSeq;
       const wasActive = active;
@@ -1357,6 +1550,85 @@ function createAsrEngine(config, sessionId) {
       await stopRecorder();
       if (startSeq === myStopSeq) setState("idle");
     },
+    async flushAndStop(timeoutMs = 3e3) {
+      stopRequested = true;
+      inFlush = true;
+      const myFlushCtx = audioCtx;
+      try {
+        processor?.disconnect();
+      } catch {
+      }
+      processor = null;
+      try {
+        workletNode?.disconnect();
+      } catch {
+      }
+      workletNode = null;
+      try {
+        stream?.getTracks().forEach((t3) => {
+          t3.onended = null;
+          t3.stop();
+        });
+      } catch {
+      }
+      stream = null;
+      void myFlushCtx?.close().catch(() => {
+      });
+      if (audioCtx === myFlushCtx) {
+        audioCtx = null;
+        ctxRate = SAMPLE_RATE2;
+      }
+      const wasActive = active;
+      if (wasActive) {
+        if (holdActive) {
+          holdActive = false;
+          if (segment.length > 0 && segmentMs >= MIN_SPEECH_MS) {
+            lastPollAt = 0;
+            finalizeSegment(true, true);
+          }
+        } else if (speechActive && state !== "wake" && speechMs >= MIN_SPEECH_MS && !config.isPlaying?.()) {
+          lastPollAt = 0;
+          finalizeSegment(false, true);
+        }
+      }
+      const targetSeq = finalizeSeq;
+      const hasPendingFinal = wasActive && nextEmitSeq <= targetSeq;
+      startSeq++;
+      const myStopSeq = startSeq;
+      active = false;
+      if (!wasActive && !hasPendingFinal) {
+        inFlush = false;
+        setState("idle");
+        return false;
+      }
+      if (hasPendingFinal && timeoutMs > 0) {
+        draining = true;
+        setState("transcribing");
+        await new Promise((resolve2) => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            resolve2();
+          };
+          const check = () => {
+            if (nextEmitSeq > targetSeq || !draining || startSeq !== myStopSeq) finish();
+            else drainWaiters.push(check);
+          };
+          const timer = setTimeout(finish, timeoutMs);
+          timer?.unref?.();
+          drainWaiters.push(check);
+          check();
+        });
+        draining = false;
+      }
+      if (startSeq === myStopSeq) {
+        await stopRecorder();
+        if (startSeq === myStopSeq) setState("idle");
+      }
+      return hasPendingFinal;
+    },
     forceSend() {
       if (speechActive && speechMs >= MIN_SPEECH_MS) {
         forcePending = true;
@@ -1367,6 +1639,7 @@ function createAsrEngine(config, sessionId) {
     beginHeld() {
       if (!active || holdActive) return;
       holdActive = true;
+      holdTrimmed = false;
       segmentEpoch++;
       discardGen++;
       wakeConsumed = false;
@@ -1389,7 +1662,9 @@ function createAsrEngine(config, sessionId) {
     },
     discardSegment() {
       segmentEpoch++;
+      const myEpoch = segmentEpoch;
       discardGen++;
+      holdTrimmed = false;
       partialFailStreak = 0;
       detectFailStreak = 0;
       segment = [];
@@ -1439,7 +1714,9 @@ function createAsrEngine(config, sessionId) {
       preRollSeedWall = null;
       if (salvaged && active) setState("speech");
       return resetHostStream().then(() => {
-        if (active && !salvaged) setState(wakeEnabled ? "wake" : "listening");
+        if (active && !salvaged && segmentEpoch === myEpoch && !speechActive && !holdActive) {
+          setState(wakeEnabled ? "wake" : "listening");
+        }
       });
     },
     endHeld(cancel = false) {
@@ -1448,6 +1725,7 @@ function createAsrEngine(config, sessionId) {
       if (cancel) {
         segmentEpoch++;
         discardGen++;
+        holdTrimmed = false;
         segment = [];
         uploadedSamples = 0;
         salvagedSegment = false;
@@ -1570,7 +1848,7 @@ var NlmsAec = class {
       if (this.filled >= this.delay + this.filterLength) {
         let y = 0;
         let norm = 0;
-        let idx = (cursor - this.delay + bufLen) % bufLen;
+        let idx = (cursor - 1 - this.delay + bufLen) % bufLen;
         for (let t3 = 0; t3 < this.filterLength; t3++) {
           const x = xBuf[idx];
           y += this.w[t3] * x;
@@ -1583,7 +1861,7 @@ var NlmsAec = class {
         if (norm > MIN_REF_NORM && !this.frozen) {
           const denom = norm + this.eps;
           const gain = this.mu * eSafe / denom;
-          idx = (cursor - this.delay + bufLen) % bufLen;
+          idx = (cursor - 1 - this.delay + bufLen) % bufLen;
           for (let t3 = 0; t3 < this.filterLength; t3++) {
             this.w[t3] += gain * xBuf[idx];
             idx = (idx - 1 + bufLen) % bufLen;
@@ -1681,7 +1959,9 @@ var ERROR_I18N_KEY = {
   preview_network: "previewNetwork",
   preview_engine: "previewEngine",
   preview_text: "previewText",
+  preview_auth: "previewAuth",
   preview_unknown: "previewCheck",
+  sense_degraded: "senseDegradedNotice",
   internal: "errInternal"
 };
 var isHostErrorCode = (v) => typeof v === "string" && Object.prototype.hasOwnProperty.call(ERROR_I18N_KEY, v);
@@ -1695,6 +1975,7 @@ var zh = {
   ttsNoticeFail: "\u6717\u8BFB\u8FDE\u63A5\u5931\u8D25\uFF1A\u6B63\u5728\u91CD\u8BD5\u2026",
   ttsSkipNotice: "\u6709\u4E00\u53E5\u6717\u8BFB\u5931\u8D25\uFF0C\u5DF2\u8DF3\u8FC7\uFF08\u53EF\u91CD\u53D1\u8FD9\u6761\u6D88\u606F\uFF09",
   ttsUnavailableNotice: "\u6717\u8BFB\u8FDE\u7EED\u5931\u8D25\uFF1A\u4E91\u7AEF\u6717\u8BFB\u6682\u4E0D\u53EF\u7528\u3002\u53EF\u7A0D\u540E\u518D\u8BD5\uFF0C\u6216\u5728\u8BBE\u7F6E\u91CC\u628A\u6717\u8BFB\u5F15\u64CE\u5207\u6362\u4E3A\u672C\u5730 VITS / Kokoro",
+  ttsProbeFail: "\u6717\u8BFB\u5F15\u64CE\u81EA\u68C0\u672A\u901A\u8FC7\uFF1A\u53EF\u80FD\u662F\u4E91\u7AEF\u63A5\u53E3\u53D8\u5316\u6216\u7F51\u7EDC\u95EE\u9898\u3002\u53EF\u5728\u8BBE\u7F6E\u91CC\u5207\u6362\u672C\u5730/\u5176\u5B83\u5F15\u64CE\uFF0C\u518D\u70B9\u300C\u81EA\u6D4B\u300D\u786E\u8BA4",
   enterFail: "\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u5931\u8D25",
   disabled: "\u8BED\u97F3\u6A21\u5F0F\u5DF2\u7981\u7528\uFF08\u63D2\u4EF6 enabled=false\uFF09",
   sendFailKept: "\u53D1\u9001\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u5728\u8349\u7A3F",
@@ -1714,6 +1995,7 @@ var zh = {
   voiceBtn: "\u8BED\u97F3",
   ariaActive: "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D",
   ariaEnter: "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F",
+  ariaPendingCancelHint: "\u518D\u6309\u4E00\u6B21\u53D6\u6D88",
   titleHold: "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF1B\u77ED\u6309\u9000\u51FA\uFF1BEsc/\u5931\u53BB\u7126\u70B9\u653E\u5F03\uFF1BCtrl+Shift+V \u9000\u51FA",
   titleToggle: "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u70B9\u51FB\u9000\u51FA\uFF08Ctrl+Shift+V\uFF09\xB7 \u8BF4\u8BDD\u65F6\u6309\u4F4F Ctrl \u7ACB\u5373\u53D1\u9001",
   titleEnter: "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F\uFF08Ctrl+Shift+V\uFF09",
@@ -1726,6 +2008,10 @@ var zh = {
   sayWake: "\u8BF4\u300C{wake}\u300D\u5F00\u59CB",
   reading: "\u6717\u8BFB\u4E2D\u2026",
   recognitionFail: "\u8BC6\u522B\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
+  holdTrimmedNotice: "\u6309\u4F4F\u8BF4\u8BDD\u8D85\u8FC7\u7EA6 48 \u79D2\uFF1A\u53EA\u8BC6\u522B\u4E86\u6700\u540E\u4E00\u6BB5\uFF08\u524D\u9762\u7684\u97F3\u9891\u5DF2\u4E22\u5F03\uFF09",
+  utteranceTooLong: "\u8FD9\u6B21\u8BF4\u8BDD\u592A\u957F\uFF08\u8D85\u8FC7\u5355\u6B21\u4E0A\u9650\uFF0C\u7EA6 1 \u5206\u949F\uFF09\uFF1A\u5DF2\u8DF3\u8FC7\uFF0C\u8BF7\u5206\u6BB5\u518D\u8BF4\u4E00\u6B21",
+  interruptedNotice: "\u5DF2\u6253\u65AD\u6717\u8BFB\uFF0C\u7B49\u4F60\u7EE7\u7EED\u8BF4",
+  senseDegradedNotice: "\u5B9A\u7A3F\u6A21\u578B\u52A0\u8F7D\u5931\u8D25\uFF0C\u5DF2\u4E34\u65F6\u964D\u7EA7\u4E3A\u5907\u7528\u8BC6\u522B\uFF08\u51C6\u786E\u7387\u53EF\u80FD\u7565\u964D\uFF09",
   partialFail: "\u5B9E\u65F6\u5B57\u5E55\u6682\u65F6\u4E0D\u53EF\u7528\uFF08\u8BC6\u522B\u901A\u9053\u5F02\u5E38\uFF0C\u91CD\u8BD5\u4E2D\uFF09",
   detectFail: "\u6253\u65AD\u68C0\u6D4B\u6682\u65F6\u4E0D\u53EF\u7528\uFF08\u68C0\u6D4B\u901A\u9053\u5F02\u5E38\uFF0C\u91CD\u8BD5\u4E2D\uFF09",
   sseReconnect: "\u72B6\u6001\u540C\u6B65\u65AD\u8FDE\uFF0C\u91CD\u8FDE\u4E2D\u2026",
@@ -1738,6 +2024,7 @@ var zh = {
   startFail: "\u8BED\u97F3\u6A21\u5F0F\u542F\u52A8\u5931\u8D25\uFF1A{err}",
   holdDots: "\u6309\u4F4F\u8BF4\u8BDD\u2026",
   exit: "\u9000\u51FA",
+  micMoreMenu: "\u8BED\u97F3\u5FEB\u6377\u8BBE\u7F6E",
   configUnavailableNote: "\uFF08\u8BBE\u7F6E\u6587\u6863\u672A\u5C31\u7EEA\uFF0C\u6B63\u5728\u91CD\u8BD5\uFF1B\u9762\u677F\u5C31\u7EEA\u540E\u4F1A\u81EA\u52A8\u51FA\u73B0\uFF09\u3002",
   // settings-form
   previewNameFirst: "\u8BF7\u5148\u586B\u5199\u97F3\u8272\u540D\uFF08ShortName\uFF09",
@@ -1753,24 +2040,124 @@ var zh = {
   previewBtnTitle: "\u8BD5\u542C\u5F53\u524D\u97F3\u8272\uFF08\u5F53\u524D\u8BED\u901F\uFF09",
   synthesizing: "\u5408\u6210\u4E2D\u2026",
   preview: "\u8BD5\u542C",
+  // E1 在线预设。
+  openaiPresetLabel: "\u5728\u7EBF\u9884\u8BBE",
+  descOpenaiPreset: "\u9009\u9884\u8BBE\u5373\u5E26\u51FA\u5730\u5740\u4E0E\u6A21\u578B\uFF08\u4E00\u822C\u53EA\u9700\u586B key\uFF09\uFF1B\u5217\u8868\u91CC\u6CA1\u6709\u5C31\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u586B URL/\u6A21\u578B\u3002\u9009\u300C\u8DDF\u968F\u914D\u7F6E\u6587\u4EF6\u300D= \u4E09\u8005\u90FD\u6CBF\u7528 profile \u7684 openaiTts \u914D\u7F6E\u3002\u6539\u5B8C\u70B9\u300C\u6D4B\u8BD5\u6717\u8BFB\u300D\u5C31\u5730\u8BD5\u5408\u6210",
+  presetCustom: "\u8DDF\u968F\u914D\u7F6E\u6587\u4EF6",
+  presetCustomCustom: "\u81EA\u5B9A\u4E49\uFF08\u4E0B\u65B9\u624B\u586B\uFF09",
+  presetCustomHint: "\u9009\u5B83\u540E\u7528\u4E0B\u9762\u7684\u300C\u63A5\u53E3\u5730\u5740 / \u6A21\u578B\u540D / API Key\u300D\u4E09\u4E2A\u8F93\u5165\u6846\u76F4\u63A5\u914D\u4EFB\u610F OpenAI \u517C\u5BB9\u670D\u52A1",
+  openaiAdvancedShow: "\u81EA\u5B9A\u4E49\u63A5\u53E3\u5730\u5740 / \u5168\u5C40\u5907\u7528\u5BC6\u94A5",
+  openaiAdvancedHide: "\u6536\u8D77\u9AD8\u7EA7\u8986\u76D6\u9879",
+  voiceServerDefaultOption: "\u670D\u52A1\u7AEF\u9ED8\u8BA4\u97F3\u8272",
+  presetCosy: "\u7845\u57FA\u6D41\u52A8 \xB7 CosyVoice2",
+  presetFish: "\u7845\u57FA\u6D41\u52A8 \xB7 Fish Speech 1.5",
+  presetCosyNote: "\u7EA6 $7.15/\u767E\u4E07 UTF-8 \u5B57\u8282\uFF0C150ms \u7EA7\uFF1B\u6587\u672C\u53D1\u5F80 api.siliconflow.cn",
+  presetFishNote: "\u7EA6 $15/\u767E\u4E07 UTF-8 \u5B57\u8282\uFF08\u6309 UTF-8 \u5B57\u8282\u8BA1\u8D39\uFF09\uFF1B\u6587\u672C\u53D1\u5F80 api.siliconflow.cn",
+  presetOpenrouter: "OpenRouter \xB7 OpenAI \u8BED\u97F3",
+  presetOpenrouterNote: "\u6309\u6240\u7528\u6A21\u578B\u8BA1\u8D39\uFF1B\u6587\u672C\u53D1\u5F80 openrouter.ai\uFF1B\u5B98\u65B9\u8981\u6C42\u5411\u7EC8\u7AEF\u7528\u6237\u62AB\u9732\u8BE5\u8BED\u97F3\u4E3A AI \u751F\u6210",
+  presetOpenaiOfficial: "OpenAI \u5B98\u65B9 \xB7 gpt-4o-mini-tts",
+  presetOpenaiOfficialNote: "\u6309 OpenAI \u5B98\u65B9\u4EF7\u683C\u8BA1\u8D39\uFF1B\u6587\u672C\u53D1\u5F80 api.openai.com\uFF1B\u5B98\u65B9\u8981\u6C42\u5411\u7EC8\u7AEF\u7528\u6237\u62AB\u9732\u8BE5\u8BED\u97F3\u4E3A AI \u751F\u6210",
+  presetGroq: "Groq \xB7 PlayAI \u8BED\u97F3",
+  presetGroqNote: "\u6309 Groq \u4EF7\u683C\u8BA1\u8D39\uFF1B\u6587\u672C\u53D1\u5F80 api.groq.com\uFF1B\u82F1\u6587\u97F3\u8272\u7528 Fritz-PlayAI \u7B49",
+  presetSelfKokoro: "\u81EA\u5EFA \xB7 Kokoro-FastAPI",
+  presetSelfKokoroNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8880\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
+  presetSelfVllm: "\u81EA\u5EFA \xB7 vLLM-Omni",
+  presetSelfVllmNote: "\u672C\u5730\u670D\u52A1\uFF08\u9ED8\u8BA4 127.0.0.1:8000\uFF09\uFF0C\u65E0\u9010\u6B21\u8D39\u7528\uFF1B\u6587\u672C\u4E0D\u51FA\u672C\u673A\u7F51\u7EDC\u3002\u9996\u6B21\u9700\u81EA\u884C\u90E8\u7F72",
+  presetKeyNote: "\u9009\u597D\u540E\u5728\u4E0B\u9762\u300CAPI Key\u300D\u91CC\u586B\u5373\u53EF\uFF08\u4E5F\u53EF\u4EE5\u7EE7\u7EED\u7528 profile \u7684 openaiTts.apiKey/apiKeys\uFF09\u3002key \u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\uFF0C\u4E0D\u56DE\u4F20\u6D4F\u89C8\u5668",
+  presetKeySaved: "\u5DF2\u914D\uFF08\u9762\u677F\uFF09",
+  presetKeyFromConfig: "\u5DF2\u914D\uFF08\u914D\u7F6E\u6587\u4EF6\uFF09",
+  presetKeyMissing: "\u672A\u914D key",
+  presetDataMissing: "\u9884\u8BBE\u6570\u636E\u672A\u52A0\u8F7D\uFF08\u5BBF\u4E3B /presets \u4E0D\u53EF\u7528\uFF09\uFF1A\u8BF7\u91CD\u542F\u5BBF\u4E3B\u6216\u5237\u65B0\u9875\u9762\u540E\u91CD\u8BD5",
+  presetReload: "\u91CD\u65B0\u52A0\u8F7D\u9884\u8BBE",
+  // 2026-11-19：在线 TTS 可在设置卡片直接配置（URL/模型/key），不必改 profile YAML。
+  openaiBaseUrlLabel: "\u63A5\u53E3\u5730\u5740\uFF08Base URL\uFF09",
+  descOpenaiBaseUrl: "OpenAI \u517C\u5BB9\u7AEF\u70B9\uFF0C\u901A\u5E38\u4EE5 /v1 \u7ED3\u5C3E\uFF08\u63D2\u4EF6\u81EA\u52A8\u62FC /audio/speech\uFF09\u3002\u7559\u7A7A = \u7528\u9884\u8BBE\u6216 profile \u7684 openaiTts.baseUrl",
+  openaiModelLabel: "\u6A21\u578B\u540D",
+  descOpenaiModel: "\u8BE5\u7AEF\u70B9\u4E0A\u7684 TTS \u6A21\u578B\uFF0C\u4F8B\u5982 gpt-4o-mini-tts\u3001FunAudioLLM/CosyVoice2-0.5B\u3002\u7559\u7A7A = \u7528\u9884\u8BBE\u6216 profile",
+  openaiApiKeyLabel: "\u63A5\u53E3\u5BC6\u94A5\uFF08API Key\uFF09",
+  descOpenaiApiKey: "\u5BC6\u94A5\u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\uFF080600 \u8BBE\u7F6E\u6587\u4EF6\uFF09\uFF0C\u4E0D\u56DE\u4F20\u6D4F\u89C8\u5668\u3001\u4E0D\u8FDB\u65E5\u5FD7\u3002\u7559\u7A7A = \u6CBF\u7528 profile \u91CC\u7684 openaiTts.apiKeys[\u9884\u8BBE]/apiKey\uFF1B\u586B\u4E86\u5219\u8986\u76D6",
+  openaiApiKeysLabel: "\u5404\u9884\u8BBE\u5BC6\u94A5\uFF08\u8DDF\u9884\u8BBE\u8D70\uFF09",
+  descOpenaiApiKeys: "\u7ED9\u6BCF\u4E2A\u5728\u7EBF\u9884\u8BBE\u5355\u72EC\u914D key\uFF1A\u5207\u5230\u54EA\u4E2A\u9884\u8BBE\u5C31\u7528\u54EA\u628A\uFF0C\u4E92\u4E0D\u5E72\u6270\u3002\u7559\u7A7A\u7684\u9884\u8BBE\u56DE\u843D\u5230\u4E0A\u9762\u7684\u5168\u5C40\u5BC6\u94A5\uFF0C\u518D\u56DE\u843D profile\u3002\u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\u4FA7",
+  mimoApiKeyLabel: "\u5C0F\u7C73 MiMo \u5BC6\u94A5",
+  descMimoApiKey: "\u5C0F\u7C73 MiMo \u7684 key\uFF08\u8D70 api-key \u5934\uFF0C\u4E0D\u662F Bearer\uFF09\u3002\u53EA\u4FDD\u5B58\u5728\u5BBF\u4E3B\u4FA7\uFF1B\u7559\u7A7A = \u6CBF\u7528 profile \u7684 mimoTts.apiKey",
+  secretSaved: "\u5DF2\u4FDD\u5B58",
+  secretSaveFailed: "\u4FDD\u5B58\u5931\u8D25\uFF1A\u5BBF\u4E3B\u672A\u63A5\u53D7\uFF08\u68C0\u67E5\u662F\u5426\u88AB\u7B56\u7565\u62E6\u622A\uFF09",
+  secretKeep: "\u5DF2\u4FDD\u5B58\uFF08\u7559\u7A7A\u4FDD\u6301\u4E0D\u53D8\uFF09",
+  secretClear: "\u6E05\u9664",
+  secretClearing: "\u6E05\u9664\u4E2D\u2026",
+  secretHintBrowser: "\u586B\u5199\u540E\u4F1A\u7ACB\u5373\u53D1\u5230\u672C\u673A\u5BBF\u4E3B\u5E76\u843D\u76D8\uFF080600\uFF09\uFF0C\u4E0D\u4F1A\u5199\u8FDB\u804A\u5929\u6216\u65E5\u5FD7",
+  secretPlaceholderEmpty: "\u7C98\u8D34 key\uFF08\u4FDD\u5B58\u540E\u53EA\u663E\u793A\u300C\u5DF2\u4FDD\u5B58\u300D\uFF09",
+  secretCleared: "\u5DF2\u6E05\u9664",
+  secretClearedConfigRemains: "\u5DF2\u6E05\u9664\u8BBE\u7F6E\u91CC\u7684 key\uFF1B\u914D\u7F6E\u6587\u4EF6\uFF08openaiTts/mimoTts\uFF09\u91CC\u4ECD\u914D\u7740 key\uFF0C\u5B9E\u9645\u4ECD\u4F1A\u4F7F\u7528\u5B83",
+  // P1-4 只听写预设。
+  // P1-3 用户纠错词表。
+  replTitle: "\u7EA0\u9519\u8BCD\u8868",
+  replFromPh: "\u542C\u9519\u5199\u6CD5\uFF0C\u9017\u53F7\u5206\u9694",
+  replToPh: "\u60F3\u8981\u5199\u6CD5",
+  replAdd: "\u6DFB\u52A0",
+  replDelete: "\u5220",
+  replEmpty: "\u6682\u65E0\u89C4\u5219",
+  replHits: "\u547D\u4E2D",
+  replExport: "\u5BFC\u51FA",
+  replImport: "\u5BFC\u5165",
+  replInvalid: "\u89C4\u5219\u65E0\u6548\uFF1Afrom \u975E\u7A7A\u3001to \u975E\u7A7A\uFF0C\u9017\u53F7\u5206\u9694\u591A\u4E2A\u5199\u6CD5",
+  replBadFile: "\u6587\u4EF6\u4E0D\u662F\u6709\u6548\u8BCD\u8868 JSON\uFF08\u6570\u7EC4 [{from[], to}]\uFF0C\u6700\u591A 200 \u6761\uFF09",
+  replUnreadable: "\u73B0\u6709\u8BCD\u8868\u5DF2\u635F\u574F\u6216\u8D85\u51FA\u4E0A\u9650\uFF0C\u4E3A\u907F\u514D\u8986\u76D6\u5DF2\u505C\u6B62\u7F16\u8F91\uFF1A\u8BF7\u5148\u5BFC\u51FA\u5907\u4EFD\uFF0C\u518D\u5BFC\u5165\u4E00\u4EFD\u65B0\u8BCD\u8868",
+  replSaveFail: "\u4FDD\u5B58\u5931\u8D25\uFF08\u672A\u5199\u5165\uFF09\uFF0C\u89C4\u5219\u672A\u6539\u52A8\uFF1B\u8BF7\u68C0\u67E5\u63D2\u4EF6\u662F\u5426\u5DF2\u7981\u7528\u6216\u8BBE\u7F6E\u5B58\u50A8\u4E0D\u53EF\u5199",
+  replTooLarge: "\u8BCD\u8868\u8FC7\u5927\uFF08\u8D85\u8FC7\u7EA6 12KB\uFF09\uFF1A\u8BF7\u51CF\u5C11\u89C4\u5219\u6570\u91CF\u6216\u7F29\u77ED\u5199\u6CD5",
+  // P1-1 一键自测：合成✓/播放✓分离显示。
+  selftestTitle: "\u6D4B\u8BD5\u6717\u8BFB",
+  selftestHint: "\u5408\u6210 + \u64AD\u653E\u4E00\u6B21\u5B8C\u6210\uFF1A\u6210\u529F\u4F1A\u76F4\u63A5\u51FA\u58F0\uFF0C\u5931\u8D25\u4F1A\u6307\u51FA\u662F\u5F15\u64CE\u3001Key \u8FD8\u662F\u7F51\u7EDC\u95EE\u9898",
+  selftestRun: "\u6D4B\u8BD5\u6717\u8BFB",
+  selftestRunning: "\u81EA\u6D4B\u4E2D\u2026",
+  selftestSynth: "\u5408\u6210",
+  selftestPlay: "\u64AD\u653E",
+  selftestOk: "\u6B63\u5E38",
+  selftestFail: "\u5931\u8D25",
+  selftestCheck: "\u81EA\u6D4B\u5931\u8D25\uFF1A\u8BF7\u68C0\u67E5\u7F51\u7EDC\u3001\u5F15\u64CE\u72B6\u6001\u6216\u97F3\u8272\u540D",
+  selftestTimeout: "\u5408\u6210\u8D85\u65F6\uFF1A\u6A21\u578B\u4ECD\u5728\u52A0\u8F7D\u8BF7\u7A0D\u5019\u51E0\u79D2\u518D\u70B9\u81EA\u6D4B",
+  selftestAutoplay: "\u6D4F\u89C8\u5668\u62E6\u622A\u4E86\u81EA\u52A8\u64AD\u653E\u8BF7\u518D\u70B9\u4E00\u6B21\u81EA\u6D4B",
+  selftestRateLimited: "\u81EA\u6D4B\u8BD5\u542C\u592A\u9891\u7E41\uFF08\u4E0E\u300C\u8BD5\u542C\u300D\u5171\u6BCF\u5206\u949F 20 \u6B21\uFF09\uFF1A\u7A0D\u7B49\u51E0\u79D2\u518D\u70B9\u81EA\u6D4B",
+  selftestDisabled: "\u8BED\u97F3\u6A21\u5F0F\u5DF2\u7981\u7528\uFF08\u63D2\u4EF6 enabled=false\uFF09\uFF0C\u65E0\u6CD5\u81EA\u6D4B",
+  switchToLocalTts: "\u5207\u6362\u4E3A\u672C\u5730 Kokoro\uFF08\u9996\u6B21\u9700\u4E0B\u8F7D\u7EA6 109MB\uFF0C\u4E4B\u540E\u79BB\u7EBF\u53EF\u7528\uFF09",
   custom: "\u81EA\u5B9A\u4E49",
   // settings rows
   voicePrev: "\u4E0A\u4E00\u97F3\u8272",
   voiceNext: "\u4E0B\u4E00\u97F3\u8272",
   descVoice: "Edge \u4E91\u7AEF\u97F3\u8272\uFF08\u8FDB\u5165\u65F6\u81EA\u52A8\u52A0\u8F7D\u5FAE\u8F6F\u5168\u90E8\u97F3\u8272\uFF0C\u5E38\u7528\u4E2D\u6587\u97F3\u8272\u7F6E\u9876\uFF0C\u4E0B\u62C9\u6216 \u25C0\u25B6 \u9009\uFF1B\u4E5F\u53EF\u300C\u81EA\u5B9A\u4E49\u300D\u586B ShortName\uFF09",
   descVoiceLocal: "\u672C\u5730\u97F3\u8272\uFF08vits \u4E94\u4E2A\u8BF4\u8BDD\u4EBA\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B\u65E0\u9700\u81EA\u5B9A\u4E49\uFF09",
-  descTtsEngine: "\u672C\u5730 VITS\uFF08\u7EAF\u4E2D\u6587\uFF09/ \u672C\u5730 Kokoro\uFF08\u4E2D\u82F1\u5747\u53EF\uFF09/ Edge \u4E91\u7AEF\uFF08\u97F3\u8D28\u6700\u81EA\u7136\uFF0C\u6587\u672C\u4E0A\u5FAE\u8F6F\uFF09/ OpenAI \u517C\u5BB9\u670D\u52A1\uFF08\u81EA\u5EFA\u6216\u6258\u7BA1\uFF0C\u6587\u672C\u53D1\u5F80\u914D\u7F6E\u7684\u5730\u5740\uFF09",
+  descTtsEngine: "\u672C\u5730 VITS\uFF08\u7EAF\u4E2D\u6587\uFF09/ \u672C\u5730 Kokoro\uFF08\u4E2D\u82F1\u5747\u53EF\uFF09/ Edge \u4E91\u7AEF\uFF08\u97F3\u8D28\u6700\u81EA\u7136\uFF0C\u6587\u672C\u4E0A\u5FAE\u8F6F\uFF09/ OpenAI \u517C\u5BB9\u670D\u52A1\uFF08\u81EA\u5EFA\u6216\u6258\u7BA1\uFF0C\u6587\u672C\u53D1\u5F80\u914D\u7F6E\u7684\u5730\u5740\uFF09/ \u5C0F\u7C73 MiMo\uFF08TTS \u7CFB\u5217\u9650\u65F6\u514D\u8D39\uFF0C\u6587\u672C\u53D1\u5F80\u5C0F\u7C73\uFF09",
   engineVits: "\u672C\u5730 VITS",
   engineKokoro: "\u672C\u5730\u4E2D\u82F1",
   engineEdge: "Edge \u4E91\u7AEF",
   engineOpenai: "OpenAI \u517C\u5BB9",
-  descVoiceOpenai: "\u670D\u52A1\u7AEF\u7684\u97F3\u8272\u540D\uFF08\u7559\u7A7A = \u914D\u7F6E\u91CC\u7684 openaiTts.voice\uFF09",
+  engineMimo: "\u5C0F\u7C73 MiMo",
+  descVoiceOpenai: "\u5148\u9009\u4E0A\u9762\u7684\u5728\u7EBF\u9884\u8BBE\uFF0C\u4E0B\u9762\u5373\u5217\u51FA\u8BE5\u670D\u52A1\u7684\u97F3\u8272\uFF1B\u81EA\u5B9A\u4E49\u7AEF\u70B9\u7559\u7A7A = \u7528\u670D\u52A1\u7AEF\u9ED8\u8BA4\u97F3\u8272\u3002\u624B\u586B\u4F1A\u8986\u76D6\u5217\u8868\u9009\u62E9",
+  descVoiceMimo: "MiMo \u9884\u7F6E\u97F3\u8272\u540D\uFF08\u7559\u7A7A = \u914D\u7F6E\u91CC\u7684 mimoTts.voice\uFF0C\u9ED8\u8BA4 mimo_default\uFF09\uFF1B\u9884\u7F6E\uFF1Amimo_default\u3001\u51B0\u7CD6\u3001\u8309\u8389\u3001\u82CF\u6253\u3001\u767D\u6866\u3001Mia\u3001Chloe\u3001Milo\u3001Dean",
   engineRemoteDown: "\u670D\u52A1\u4E0D\u53EF\u7528",
+  errMimoKeyMissing: "\u672A\u914D\u7F6E\u5C0F\u7C73 MiMo \u7684 API Key\uFF1A\u8BF7\u5728\u672C\u8BBE\u7F6E\u5361\u7247\u586B\u5199\uFF0C\u6216\u5728 profile \u7684 mimoTts.apiKey \u4E2D\u914D\u7F6E",
+  engineUnavailableShort: "\u4E0D\u53EF\u7528",
+  errOpenaiConfigMissing: "\u8FD8\u6CA1\u914D\u597D\u7AEF\u70B9\uFF1A\u5728\u4E0B\u65B9\u300C\u5728\u7EBF\u9884\u8BBE\u300D\u9009\u4E00\u5BB6\uFF08\u901A\u5E38\u53EA\u9700\u586B key\uFF09\uFF0C\u6216\u9009\u300C\u81EA\u5B9A\u4E49\u300D\u624B\u586B\u63A5\u53E3\u5730\u5740\u4E0E\u6A21\u578B\u540D",
+  engineMissingKey: "\u7F3A API Key",
+  rowInfo: "\u8BF4\u660E",
+  voiceDefaultOption: "\u9ED8\u8BA4\uFF08{name}\uFF09",
+  voiceCurrentOption: "\u5F53\u524D\u503C\uFF08{name}\uFF09",
+  segInput: "\u8BED\u97F3\u8F93\u5165",
+  segReadAloud: "\u6717\u8BFB",
+  segDisplay: "\u663E\u793A\u4E0E\u4EA4\u4E92",
+  segAdvanced: "\u9AD8\u7EA7",
+  segListLabel: "\u8BBE\u7F6E\u5206\u6BB5",
+  segTuning: "\u8C03\u97F3\u4E0E\u6392\u969C",
+  segReplacements: "\u7EA0\u9519\u8BCD\u8868",
+  errApiKeyMissingHint: "\u6717\u8BFB\u670D\u52A1\u9700\u8981 API Key\uFF1A\u8BF7\u5728\u4E0A\u65B9\u586B\u5199\u5BC6\u94A5\u540E\u518D\u70B9\u300C\u6D4B\u8BD5\u6717\u8BFB\u300D\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE",
+  ttsKeyMissingNotice: "\u5728\u7EBF\u6717\u8BFB\u7F3A\u5C11 API Key\uFF1A\u8BC6\u522B\u4E0E\u5B57\u5E55\u53EF\u7528\uFF0C\u6717\u8BFB\u4F1A\u5931\u8D25\uFF1B\u8BF7\u5230\u300C\u8BBE\u7F6E \u2192 \u8BED\u97F3\u6A21\u5F0F\u300D\u586B Key\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE\uFF08Edge/\u672C\u5730 VITS/Kokoro\uFF09",
+  ttsProbeAuthFail: "\u6717\u8BFB\u88AB\u670D\u52A1\u7AEF\u62D2\u7EDD\uFF08\u591A\u4E3A API Key \u7F3A\u5931\u6216\u65E0\u6548\uFF09\uFF1A\u8BF7\u5230\u300C\u8BBE\u7F6E \u2192 \u8BED\u97F3\u6A21\u5F0F\u300D\u586B\u5199\u6216\u66F4\u65B0 Key\uFF0C\u6216\u5207\u6362\u4E3A\u672C\u5730\u5F15\u64CE",
+  previewAuth: "\u670D\u52A1\u7AEF\u62D2\u7EDD\u9274\u6743\uFF1AAPI Key \u7F3A\u5931\u6216\u65E0\u6548",
   errRemoteTts: "\u6717\u8BFB\u670D\u52A1\u8FDE\u4E0D\u4E0A\u3001\u62A5\u9519\u6216\u592A\u6162\uFF1B\u914D\u7F6E\u4E86\u56DE\u9000\u65F6\u8FD9\u671F\u95F4\u7528\u672C\u5730\u5F15\u64CE\u6717\u8BFB",
   descVoiceKokoro: "Kokoro \u4E2D\u82F1\u97F3\u8272\uFF08103 \u4E2A\u5168\u90E8\u5217\u51FA\uFF0C\u4E0B\u62C9\u9009\u6216 \u25C0\u25B6 \u5207\u6362\uFF1B48-51 \u4E2D\u6587\u540D\uFF0C\u5176\u4F59\u6309\u7F16\u53F7+\u5B9E\u6D4B\u6027\u522B\u6807\u6CE8\uFF0C\u4E2D\u82F1\u6DF7\u8BFB\u5747\u53EF\uFF09",
   descRate: "\u6717\u8BFB\u8BED\u901F\u500D\u7387\uFF080.5 \u6162\u901F \uFF5E 2.0 \u5FEB\u901F\uFF0C1.1 \u9ED8\u8BA4\uFF1B\u8BA9\u56DE\u590D\u66F4\u7D27\u51D1\uFF09",
   descInterrupt: "\u53D1\u58F0\u6253\u65AD\u7075\u654F\u5EA6\uFF080 \u9AD8\u95E8\u69DB \u22480.3s \u786E\u8BA4 / 1 \u4E2D\u95E8\u69DB \u22480.2s / 2 \u4F4E\u95E8\u69DB \u22480.1s\uFF0C\u6700\u7075\u654F\uFF09\uFF1B\u503C\u8D8A\u4F4E\u95E8\u69DB\u8D8A\u9AD8\uFF0C\u8D8A\u96BE\u6253\u65AD",
-  descBargeIn: "\u6253\u65AD\u65B9\u5F0F\uFF08detect \u81EA\u52A8\u63A2\u6D4B\u672C\u673A\u56DE\u58F0\u6D88\u9664\u72B6\u6001\u3001\u672A\u751F\u6548\u65F6\u5207\u4E3A\u957F\u6309\u6253\u65AD\uFF0C\u9ED8\u8BA4\uFF1Bauto \u5F3A\u5236\u81EA\u52A8\u6253\u65AD\uFF1A\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u8033\u673A/\u5B89\u9759\u73AF\u5883\u63A8\u8350\uFF1Bmanual \u624B\u52A8\u6253\u65AD\uFF1A\u5916\u653E\u63A8\u8350\u2014\u2014\u56DE\u58F0\u4E0D\u4F1A\u8BEF\u89E6\u53D1\u81EA\u6253\u65AD\uFF0C\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u663E\u5F0F\u6253\u65AD\uFF09\u3002\u6CE8\u610F\uFF1Amanual\uFF08detect \u5728\u65E0\u539F\u751F\u56DE\u58F0\u6D88\u9664\u7684\u673A\u5668\u4E0A\u4E5F\u4F1A\u81EA\u52A8\u843D\u5165\uFF09\u4E0B\u975E\u6309\u538B\u671F\u7684\u8BED\u97F3\u4E0D\u88AB\u8BC6\u522B\u2014\u2014toggle \u6A21\u5F0F\u4EC5\u64AD\u653E\u4E2D\u53EF\u957F\u6309\u8BF4\u8BDD\uFF0C\u5F85\u673A\u65F6\u65E0\u6CD5\u8BED\u97F3\u8F93\u5165\uFF0C\u8BF7\u6539\u7528 hold \u6A21\u5F0F\u6216 auto/detect",
+  descBargeIn: "\u6253\u65AD\u65B9\u5F0F\uFF08detect \u81EA\u52A8\u63A2\u6D4B\u672C\u673A\u56DE\u58F0\u6D88\u9664\u72B6\u6001\u3001\u672A\u751F\u6548\u65F6\u5207\u4E3A\u6717\u8BFB\u671F\u957F\u6309\u6253\u65AD\uFF0C\u9ED8\u8BA4\uFF1Bauto \u5F3A\u5236\u81EA\u52A8\u6253\u65AD\uFF1A\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u8033\u673A/\u5B89\u9759\u73AF\u5883\u63A8\u8350\uFF1Bmanual \u624B\u52A8\u6253\u65AD\uFF1A\u5916\u653E\u63A8\u8350\u2014\u2014\u7A7A\u95F2\u65F6\u53EF\u76F4\u63A5\u8BF4\u8BDD\u6216\u8BF4\u5524\u9192\u8BCD\uFF0CAI \u6717\u8BFB\u4E2D\u4EC5\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u624D\u6253\u65AD\u5E76\u6536\u97F3\uFF0C\u56DE\u58F0\u4E0D\u4F1A\u8BEF\u89E6\u53D1\u81EA\u6253\u65AD\uFF09",
   bargeInDetect: "\u81EA\u52A8\u63A2\u6D4B",
   bargeInAuto: "\u81EA\u52A8",
   bargeInManual: "\u624B\u52A8",
@@ -1780,7 +2167,7 @@ var zh = {
   aecOff: "\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548",
   aecOffHint: "\u6D4F\u89C8\u5668\u539F\u751F\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548\uFF08\u5916\u653E\u53EF\u80FD\u81EA\u6253\u65AD\uFF09\uFF0C\u5EFA\u8BAE\u7528\u8033\u673A\u6216\u5207\u6362\u300C\u624B\u52A8\u6253\u65AD\u300D",
   // 批 7O（ADR-0006）：detect 模式第一级探测降级提示（状态条）。
-  bargeInDetectFallback: "\u672C\u673A\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548\uFF0C\u5DF2\u5207\u4E3A\u957F\u6309\u6253\u65AD",
+  bargeInDetectFallback: "\u672C\u673A\u56DE\u58F0\u6D88\u9664\u672A\u751F\u6548\uFF1A\u7A7A\u95F2\u53EF\u76F4\u63A5\u8BF4\uFF0C\u6717\u8BFB\u4E2D\u957F\u6309\u6253\u65AD",
   // R1 收尾（fix-client 直连 tk() 调用）：连续 3 次回声拒断的解释出口 + 快捷键非法停用提示。
   echoRejectHint: "\u56DE\u58F0\u8F83\u5F3A\uFF0C\u6253\u65AD\u53EF\u80FD\u4E0D\u7075\u654F\u2014\u2014\u8FD9\u662F\u56DE\u58F0\u9632\u62A4\u5728\u751F\u6548\uFF0C\u53EF\u6234\u8033\u673A\u6216\u6539\u7528\u300C\u624B\u52A8\u6253\u65AD\u300D",
   shortcutInvalid: "\u5FEB\u6377\u952E\u65E0\u6548\uFF0C\u5DF2\u505C\u7528\uFF08\u53EF\u5728\u8BBE\u7F6E\u91CC\u6539\u4E3A\u5982 Ctrl+Shift+V\uFF1B\u7559\u7A7A\u8868\u793A\u53EA\u7528\u9EA6\u514B\u98CE\u6309\u94AE\uFF09",
@@ -1827,9 +2214,21 @@ var zh = {
   captionWidth90: "\u5BBD",
   // 跳过按钮：只跳当前 TTS 句（非整段朗读）——UX 审查歧义修正。
   skipReading: "\u8DF3\u8FC7\u672C\u53E5",
+  captionHistoryOpen: "\u56DE\u770B ({count})",
+  captionHistoryHide: "\u6536\u8D77",
+  captionDismiss: "\u5173\u95ED\u5B57\u5E55",
+  tabSwitchFlushedNotice: "\u5207\u9875\u524D\u8BED\u97F3\u5DF2\u5B9A\u7A3F\u586B\u5165\u8349\u7A3F",
+  sessionSwitchFlushedNotice: "\u4E0A\u4E00\u4F1A\u8BDD\u8BED\u97F3\u5DF2\u6682\u5B58\uFF0C\u5207\u56DE\u540E\u81EA\u52A8\u586B\u5165\u8349\u7A3F",
+  ttsRetryingNotice: "\u6717\u8BFB\u91CD\u8BD5\u4E2D\uFF08{attempt}/{max}\uFF09\u2026",
+  tabPreemptedNotice: "\u8BED\u97F3\u6A21\u5F0F\u5DF2\u88AB\u53E6\u4E00\u6807\u7B7E\u9875\u63A5\u7BA1",
+  firstUseToggle: "\u76F4\u63A5\u5F00\u53E3\u8BF4\u8BDD\uFF0C\u505C\u987F\u81EA\u52A8\u586B\u5165\u5E76\u53D1\u9001\uFF1BAI \u6717\u8BFB\u65F6\u5F00\u53E3\u6216\u957F\u6309\u9EA6\u514B\u98CE\u5373\u53EF\u6253\u65AD",
+  firstUseHold: "\u6309\u4F4F\u9EA6\u514B\u98CE\u6216 Ctrl \u8BF4\u8BDD\uFF0C\u677E\u624B\u53D1\u9001\uFF1B\u6309\u4F4F\u5411\u4E0A\u6ED1\u52A8\u53EF\u53D6\u6D88\u672C\u53E5",
+  firstUseOnce: "\u76F4\u63A5\u8BF4\u51FA\u4E00\u53E5\uFF0C\u505C\u987F\u81EA\u52A8\u53D1\u9001\uFF0CAI \u6717\u8BFB\u5B8C\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F",
+  firstUseWake: "\u5148\u8BF4\u5524\u9192\u8BCD\u300C{wake}\u300D\u5F00\u542F\u8BC6\u522B\uFF08\u4E5F\u53EF\u8FDE\u7740\u6307\u4EE4\u4E00\u8D77\u8BF4\uFF09",
   descBackchannelYield: "\u6717\u8BFB\u671F\u7528\u6237\u8BF4\u300C\u55EF/\u5BF9\u300D\u7B49\u77ED\u5E94\u7B54\u65F6\u81EA\u52A8\u8BA9\u4F4D\uFF08\u8DF3\u8FC7\u5F53\u524D TTS \u53E5 + \u77ED\u6682\u4E22\u5E27 1.5s\uFF1B\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF1B\u5173 = \u4E0D\u8BA9\u4F4D\uFF0C\u884C\u4E3A\u7B49\u540C\u6539\u9020\u524D\uFF09\u3002\u4EC5\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u53EF\u89E6\u53D1\uFF1A\u300C\u6301\u7EED\u8046\u542C\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u4E0D\u8BC6\u522B\u8BED\u97F3\uFF0C\u5F00\u53E3\u8BF4\u8BDD\u6309\u6253\u65AD\u5904\u7406",
   // Issue #15 批 1 / ADR-0012：打断语音抢救。
   descBargeInSalvage: "AI \u6717\u8BFB\u65F6\u4F60\u5F00\u53E3\u6253\u65AD\uFF1A\u81EA\u52A8\u4FDD\u7559\u4ECE\u5F00\u53E3\u5230\u6253\u65AD\u751F\u6548\u4E4B\u95F4\u4F60\u8BF4\u7684\u8BDD\uFF0C\u5E76\u5165\u8BC6\u522B\u7EE7\u7EED\u53D1\u9001\uFF08\u4FEE\u300C\u6253\u65AD\u5403\u53E5\u300D\uFF1B\u5173 = \u4E22\u5F03\u6253\u65AD\u524D\u8BED\u97F3\u2014\u2014\u4EC5\u5916\u653E\u4E14\u65E0\u56DE\u58F0\u6D88\u9664\u7684\u73AF\u5883\u5EFA\u8BAE\u5173\uFF09",
+  descAsrReplacements: '\u7528\u6237\u7EA0\u9519\u8BCD\u8868\uFF08JSON \u6570\u7EC4 [{from:["\u542C\u9519\u5199\u6CD5"],to:"\u60F3\u8981\u5199\u6CD5"}]\uFF0C\u8F6C\u5199\u540E\u7EDF\u4E00\u6539\u5199\uFF1B\u8BBE\u7F6E\u5361\u7247\u53EF\u89C6\u5316\u589E\u5220\u4E0E\u5BFC\u5165\u5BFC\u51FA\uFF0C\u89C4\u5219\u540E\u65B9\u6570\u5B57\u4E3A\u300C\u672C\u6B21\u751F\u6548\u4EE5\u6765\u300D\u547D\u4E2D\u6B21\u6570\uFF09',
   descLlmCorrect: "\u53D1\u9001\u524D\u7528\u5927\u6A21\u578B\u5BF9\u6574\u6761\u8BED\u97F3\u6587\u672C\u505A\u4E00\u6B21\u7EA0\u9519\uFF08\u53EA\u6539\u9519\u522B\u5B57/\u540C\u97F3\u5B57/\u6807\u70B9\uFF0C\u4FDD\u6301\u539F\u610F\uFF1B\u9700\u5BBF\u4E3B\u5DF2\u914D\u7F6E\u9ED8\u8BA4\u6A21\u578B\uFF0C\u672A\u914D\u7F6E\u5219\u81EA\u52A8\u7528\u539F\u6587\uFF09\u3002\u5F00 = \u6BCF\u6761\u6D88\u606F\u591A\u4E00\u6B21\u7EA0\u9519\u7B49\u5F85\uFF1A\u901A\u5E38 1 \u79D2\u5185\uFF0C\u6700\u957F\u7EA6 10 \u79D2\uFF1B\u6BCF\u5206\u949F\u6700\u591A 10 \u6B21\uFF0C\u8BED\u97F3\u6A21\u5F0F\u5173\u95ED\u6216\u89E6\u53D1\u9650\u6D41\u65F6\u6309\u539F\u6587\u53D1\u9001\u3002\u7EA0\u9519\u5931\u8D25\u6216\u8F93\u51FA\u5F02\u5E38\u540C\u6837\u81EA\u52A8\u7528\u539F\u6587",
   descYieldMs: "\u8BA9\u4F4D\u8BED\u4E49\u89E6\u53D1\u540E\u7B49\u5F85\u65F6\u957F\uFF08\u6BEB\u79D2\uFF0C500-3000\uFF0C\u9ED8\u8BA4 1500\uFF1B\u7A97\u53E3\u5185\u7528\u6237\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF0C\u7A97\u53E3\u5230\u70B9\u81EA\u52A8\u6062\u590D\u64AD\u653E\uFF09\u3002\u4EC5\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u53EF\u89E6\u53D1",
   descMode: "\u4EA4\u4E92\u6A21\u5F0F\uFF08toggle \u6301\u7EED\u8046\u542C+\u9759\u97F3\u65AD\u53E5 / hold \u6309\u4F4F\u8BF4\u8BDD / once \u8BF4\u5B8C\u4E00\u6BB5\u3001\u7B49\u56DE\u590D\u6717\u8BFB\u5B8C\u518D\u81EA\u52A8\u9000\u51FA\uFF09",
@@ -1846,9 +2245,9 @@ var zh = {
   descShowCaptions: "\u6717\u8BFB\u65F6\u5728\u53F3\u4E0B\u89D2\u663E\u793A\u5F53\u524D\u53E5\u5B50\u7684\u5B57\u5E55\u6D6E\u5C42",
   showStatusBarLabel: "\u72B6\u6001\u6761",
   descShowStatusBar: "\u5728\u8F93\u5165\u6846\u4E0A\u65B9\u663E\u793A\u8BED\u97F3\u72B6\u6001\u6761\uFF08\u6CE2\u5F62\u3001\u8BC6\u522B\u6587\u5B57\u3001\u8BA1\u65F6\u3001\u63D0\u793A\u3001\u9000\u51FA\uFF09\uFF1B\u5173\u95ED\u540E\u72B6\u6001\u53EA\u5728\u9EA6\u514B\u98CE\u6309\u94AE\u4E0A\u663E\u793A",
-  descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF09\uFF1A\u8BF4\u51FA\u8BCD\u5934\u624D\u8FDB\u5165\u8BC6\u522B\uFF0C\u907F\u514D\u8BEF\u89E6\u3002\u53EF\u4E0E\u547D\u4EE4\u8FDE\u8BF4\uFF08\u300C\u4F60\u597D\u5C0FD\uFF0C\u5E2E\u6211\u67E5\u5929\u6C14\u300D\u2014\u2014\u8BCD\u5934\u4F1A\u81EA\u52A8\u5265\u6389\u3001\u4E0D\u8FDB\u6D88\u606F\uFF09\uFF1B\u6BCF\u53E5\u65AD\u53E5\u6216\u6253\u65AD\u540E\u9700\u91CD\u8BF4\uFF1B\u4EC5 toggle \u6A21\u5F0F\u751F\u6548\uFF08hold / \u624B\u52A8\u6253\u65AD\u4E0B\u4E0D\u751F\u6548\uFF1Bdetect \u81EA\u52A8\u63A2\u6D4B\u672A\u751F\u6548\u3001\u56DE\u843D manual \u65F6\u540C\u6837\u4E0D\u751F\u6548\u2014\u2014Safari \u7B49\u65E0\u539F\u751F\u56DE\u58F0\u6D88\u9664\u7684\u673A\u5668\u4F1A\u9ED8\u8BA4\u843D\u5230\u8FD9\u4E00\u6863\uFF09\uFF1B\u6717\u8BFB\u671F\u8BF4\u5524\u9192\u8BCD\u4E0D\u89E6\u53D1\uFF08\u6253\u65AD\u4ECD\u6309 VAD \u5F00\u53E3\u5373\u6253\u65AD\uFF09\u3002\u5339\u914D\u5E26\u5BB9\u9519\uFF08\u540C\u97F3\u5B57 / \u524D\u5BFC\u8BED\u6C14\u8BCD\uFF09\uFF0C\u5EFA\u8BAE 3-4 \u5B57\uFF1B\u975E\u4E13\u7528 KWS \u5F15\u64CE\uFF0C\u5608\u6742\u73AF\u5883\u53EF\u80FD\u5EF6\u8FDF\u6216\u8BEF\u6FC0\u6D3B",
+  descWakeWord: "\u5524\u9192\u8BCD\uFF08\u9ED8\u8BA4\u5173\uFF1B\u5982\u300C\u4F60\u597D\u5C0FD\u300D\uFF09\uFF1A\u8BF4\u51FA\u8BCD\u5934\u624D\u8FDB\u5165\u8BC6\u522B\uFF0C\u907F\u514D\u8BEF\u89E6\u3002\u53EF\u4E0E\u547D\u4EE4\u8FDE\u8BF4\uFF08\u300C\u4F60\u597D\u5C0FD\uFF0C\u5E2E\u6211\u67E5\u5929\u6C14\u300D\u2014\u2014\u8BCD\u5934\u4F1A\u81EA\u52A8\u5265\u6389\u3001\u4E0D\u8FDB\u6D88\u606F\uFF09\uFF1B\u6BCF\u53E5\u65AD\u53E5\u6216\u6253\u65AD\u540E\u9700\u91CD\u8BF4\uFF1B\u4EC5\u6301\u7EED\u8046\u542C/\u8BF4\u5B8C\u5C31\u5173\u6A21\u5F0F\u751F\u6548\uFF08\u6309\u4F4F\u8BF4\u8BDD hold \u6A21\u5F0F\u4E0B\u4E0D\u751F\u6548\uFF1Bmanual \u624B\u52A8\u6253\u65AD\u6216 detect \u56DE\u843D manual \u65F6\uFF0C\u7A7A\u95F2\u671F\u5524\u9192\u8BCD\u7167\u5E38\u751F\u6548\uFF0C\u6717\u8BFB\u671F\u6309\u4F4F\u9EA6\u514B\u98CE/Ctrl \u6253\u65AD\uFF09\u3002\u5339\u914D\u5E26\u5BB9\u9519\uFF08\u540C\u97F3\u5B57 / \u524D\u5BFC\u8BED\u6C14\u8BCD\uFF09\uFF0C\u5EFA\u8BAE 3-4 \u5B57\uFF1B\u975E\u4E13\u7528 KWS \u5F15\u64CE\uFF0C\u5608\u6742\u73AF\u5883\u53EF\u80FD\u5EF6\u8FDF\u6216\u8BEF\u6FC0\u6D3B",
   wakePlaceholder: "\u5982\uFF1A\u4F60\u597D\u5C0FD",
-  settingsCardDesc: "\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / \u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u9759\u97F3\u505C\u987F / \u7A7A\u95F2\u8D85\u65F6 / \u6A21\u578B\u955C\u50CF / \u81EA\u52A8\u53D1\u9001 / \u6717\u8BFB\u56DE\u590D / \u72B6\u6001\u6761 / \u5B57\u5E55\u6D6E\u5C42 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3 / \u9006\u6587\u672C\u5F52\u4E00\u5316 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3 / \u6253\u65AD\u8BED\u97F3\u62A2\u6551 / LLM \u7EA0\u9519",
+  settingsCardDesc: "\u672C\u5730\u8BC6\u522B + \u9010\u53E5\u6717\u8BFB\uFF0C\u5F00\u53E3\u5373\u53EF\u6253\u65AD\u3002\u8BBE\u7F6E\u5206\u56DB\u6BB5\uFF1A\u8BED\u97F3\u8F93\u5165\u3001\u6717\u8BFB\u3001\u663E\u793A\u4E0E\u4EA4\u4E92\u3001\u9AD8\u7EA7\uFF1B\u6539\u5B8C\u5373\u65F6\u751F\u6548\u3002",
   settingsEffectiveNote: "\u751F\u6548\u65F6\u673A\u5206\u56DB\u6863\uFF1A\u2460 \u5373\u65F6\u2014\u2014\u6717\u8BFB\u5F15\u64CE / \u97F3\u8272 / \u8BED\u901F / Kokoro \u6A21\u578B\u7CBE\u5EA6\uFF08\u5DF2\u7F13\u5B58\u5219\u5373\u65F6\uFF0C\u5426\u5219\u4E0B\u6B21\u4E0B\u8F7D\uFF09/ \u53E3\u8BED\u5316\u63D0\u793A\u8BCD\uFF08\u5BF9\u540E\u7EED\u56DE\u590D\u751F\u6548\uFF09/ \u6717\u8BFB\u56DE\u590D / \u72B6\u6001\u6761 / \u5B57\u5E55\u6D6E\u5C42 / \u6A21\u578B\u955C\u50CF\uFF08\u4E0B\u6B21\u4E0B\u8F7D\u5C1D\u8BD5\u5373\u751F\u6548\uFF09\uFF1B\u2461 \u4E0B\u6B21\u8BC6\u522B\u65F6\u2014\u2014\u5B9A\u7A3F\u91CD\u8BD1\uFF08SenseVoice\uFF09/ \u9006\u6587\u672C\u5F52\u4E00\u5316\uFF1B\u2462 \u4E0B\u4E00\u6BB5\u8BDD\u2014\u2014\u9759\u97F3\u5224\u5B9A\u65F6\u957F\uFF08\u65AD\u53E5\u7AEF\u70B9\uFF1B\u53D1\u9001\u7B49\u5F85\u56FA\u5B9A 1.2 \u79D2\u4E0D\u53D7\u5F71\u54CD\uFF09\uFF1B\u2463 \u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u2014\u2014\u6253\u65AD\u7075\u654F\u5EA6 / \u6253\u65AD\u65B9\u5F0F / \u56DE\u58F0\u95E8\u63A7 / \u5FEB\u6377\u952E / \u81EA\u52A8\u53D1\u9001 / \u81EA\u52A8\u6062\u590D / \u4EA4\u4E92\u6A21\u5F0F / \u5524\u9192\u8BCD / \u5DE5\u5177\u63D0\u793A\u97F3 / \u5B57\u5E55\u5B57\u53F7 / \u5B57\u5E55\u5BBD\u5EA6 / \u77ED\u5E94\u7B54\u8BA9\u4F4D / \u8BA9\u4F4D\u7A97\u53E3 / \u6253\u65AD\u8BED\u97F3\u62A2\u6551 / LLM \u7EA0\u9519 / \u7A7A\u95F2\u65F6\u957F\u3002\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u624D\u751F\u6548\u7684\u9879\u4F1A\u5217\u5728\u5361\u7247\u9876\u90E8\uFF08\u542B\u5F53\u524D\u751F\u6548\u503C\uFF09\u3002",
   effectivePending: "\u6709 {count} \u9879\u4FEE\u6539\u5C06\u5728\u4E0B\u6B21\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F\u65F6\u751F\u6548\uFF1A{items}",
   valueOn: "\u5F00",
@@ -1882,6 +2281,7 @@ var zh = {
   modelsRetrying: "\u91CD\u8BD5\u4E2D\u2026",
   modelsRetryHint: "\u955C\u50CF\u5207\u6362\u6216\u4E0B\u8F7D\u5931\u8D25\u540E\u70B9\u51FB\u7ACB\u5373\u91CD\u8BD5",
   modelsHint: "\u4E0B\u8F7D/\u8FDB\u5EA6\u5B9E\u65F6\u8DDF\u8FDB\uFF1B\u5931\u8D25\u81EA\u52A8\u9000\u907F 60s \u91CD\u8BD5\u3002\u955C\u50CF\u6E90\u5207\u6362\u540E\u70B9\u300C\u91CD\u8BD5\u4E0B\u8F7D\u300D\u7ACB\u5373\u751F\u6548\uFF1B\u4E5F\u53EF\u7528 npm run prefetch \u9884\u4E0B\u8F7D\u3002",
+  modelActionFailed: "\u64CD\u4F5C\u6CA1\u6709\u751F\u6548\uFF1A\u5BBF\u4E3B\u672A\u63A5\u53D7\uFF08\u7A0D\u540E\u91CD\u8BD5\uFF0C\u6216\u67E5\u770B\u5BBF\u4E3B\u65E5\u5FD7\uFF09",
   // 朗读引擎状态（设置面板内联展示）
   engineLoading: "\u52A0\u8F7D\u4E2D\u2026",
   engineReady: "\u5C31\u7EEA",
@@ -1894,7 +2294,7 @@ var zh = {
   ttsDeleting: "\u5220\u9664\u4E2D\u2026",
   ttsDownloadHint: "\u4E0B\u8F7D\u8BE5\u5F15\u64CE\u7684\u672C\u5730\u6A21\u578B\uFF1B\u4E0B\u8F7D\u5B8C\u6210\u540E\u7ACB\u5373\u5C31\u7EEA\uFF0C\u53EF\u8BD5\u542C/\u6717\u8BFB",
   ttsDeleteHint: "\u5220\u9664\u672C\u5730\u6A21\u578B\uFF08\u91CA\u653E\u7A7A\u95F4\uFF1B\u4E0B\u6B21\u4F7F\u7528\u4F1A\u81EA\u52A8\u91CD\u65B0\u4E0B\u8F7D\uFF09",
-  dataFlowHint: "\u6570\u636E\u6D41\u5411\uFF1AASR \u8BC6\u522B\uFF08zipformer2+SenseVoice\uFF09\u59CB\u7EC8\u672C\u5730\uFF1BTTS \u6717\u8BFB\u53D6\u51B3\u4E8E\u5F15\u64CE\uFF08edge=\u5FAE\u8F6F\u4E91\u7AEF\uFF0Cvits/kokoro=\u672C\u5730\uFF09",
+  dataFlowHint: "\u6570\u636E\u6D41\u5411\uFF1AASR \u8BC6\u522B\uFF08zipformer2+SenseVoice\uFF09\u59CB\u7EC8\u672C\u5730\uFF1BTTS \u6717\u8BFB\u53D6\u51B3\u4E8E\u5F15\u64CE\uFF08edge=\u5FAE\u8F6F\u4E91\u7AEF\uFF0Copenai/mimo=\u7B2C\u4E09\u65B9\u4E91\u7AEF\uFF0Cvits/kokoro=\u672C\u5730\uFF09",
   kokoroModelInt8: "int8\uFF08\u9ED8\u8BA4\uFF09",
   kokoroModelFp32: "fp32\uFF08\u97F3\u8D28\u66F4\u597D\uFF09",
   descKokoroModel: "Kokoro \u6A21\u578B\u7CBE\u5EA6\uFF1Aint8 \u4F53\u79EF\u5C0F/\u52A0\u8F7D\u5FEB\uFF08\u7EAF CPU \u670D\u52A1\u5668\u6216\u4F4E\u5E26\u5BBD\u63A8\u8350\uFF0C\u9ED8\u8BA4\uFF09\uFF1Bfp32 \u97F3\u8D28\u66F4\u597D\u4F46\u7EA6 311MB\u3001\u66F4\u6162\uFF08\u6709\u72EC\u7ACB\u663E\u5361\u6216\u5927\u5185\u5B58\u673A\u5668\u63A8\u8350\uFF09\u3002\u4E24\u6863\u5171\u7528\u540C\u4E00\u5957 103 \u97F3\u8272\uFF0C\u5207\u6362\u5373\u65F6\u751F\u6548\u3002",
@@ -1989,6 +2389,7 @@ var en = {
   ttsNoticeFail: "Read-aloud connection failed: retrying\u2026",
   ttsSkipNotice: "One sentence failed to read and was skipped (resend the message to retry)",
   ttsUnavailableNotice: "Read-aloud keeps failing: cloud TTS is unavailable. Try again later, or switch the read-aloud engine to local VITS / Kokoro in settings",
+  ttsProbeFail: "Read-aloud self-check failed: the cloud endpoint may have changed, or the network is down. Switch to local/another engine in settings, then run Self-test",
   enterFail: "Failed to enter voice mode",
   disabled: "Voice mode disabled (plugin enabled=false)",
   sendFailKept: "Send failed; text kept in draft",
@@ -2008,6 +2409,7 @@ var en = {
   voiceBtn: "Voice",
   ariaActive: "Voice mode active",
   ariaEnter: "Enter voice mode",
+  ariaPendingCancelHint: "activate again to cancel",
   titleHold: "Voice mode \xB7 hold to talk, release to send; tap to exit; Esc/blur cancels; Ctrl+Shift+V exits",
   titleToggle: "Voice mode \xB7 click to exit (Ctrl+Shift+V) \xB7 hold Ctrl while speaking to send now",
   titleEnter: "Enter voice mode (Ctrl+Shift+V)",
@@ -2020,6 +2422,10 @@ var en = {
   sayWake: 'Say "{wake}" to start',
   reading: "Reading aloud\u2026",
   recognitionFail: "Recognition failed, try again",
+  holdTrimmedNotice: "Hold-to-talk exceeded about 48 s: only the last part was recognised (earlier audio was dropped)",
+  utteranceTooLong: "That utterance was too long (over the per-utterance limit, about a minute): skipped \u2014 please speak it again in shorter parts",
+  interruptedNotice: "Playback interrupted \u2014 go ahead",
+  senseDegradedNotice: "Final-pass model failed to load; temporarily using the backup recogniser (accuracy may drop slightly)",
   partialFail: "Live captions temporarily unavailable (recognition channel error, retrying)",
   detectFail: "Break-in detection temporarily unavailable (detect channel error, retrying)",
   sseReconnect: "State sync disconnected, reconnecting\u2026",
@@ -2032,6 +2438,7 @@ var en = {
   startFail: "Voice mode failed to start: {err}",
   holdDots: "Hold to talk\u2026",
   exit: "Exit",
+  micMoreMenu: "Voice quick settings",
   configUnavailableNote: " (settings document not ready; retrying \u2014 the panel will appear when it is).",
   previewNameFirst: "Enter a voice ShortName first",
   previewDisabled: "Voice mode disabled (plugin enabled=false); preview unavailable",
@@ -2046,23 +2453,123 @@ var en = {
   previewBtnTitle: "Preview voice (current rate)",
   synthesizing: "Synthesizing\u2026",
   preview: "Preview",
+  // E1 online presets.
+  openaiPresetLabel: "Online preset",
+  descOpenaiPreset: "Pick a preset to auto-fill base URL and model (usually just enter the API key); choose Custom to enter your own URL/model, or Follow config file to use profile openaiTts values. Click Test read-aloud to test inline",
+  presetCustom: "Follow the config file",
+  presetCustomCustom: "Custom (fill below)",
+  presetCustomHint: "With this selected, configure any OpenAI-compatible service in the Endpoint / Model / API key fields below",
+  openaiAdvancedShow: "Custom endpoint / fallback API key",
+  openaiAdvancedHide: "Hide advanced overrides",
+  voiceServerDefaultOption: "Server default voice",
+  presetCosy: "SiliconFlow \xB7 CosyVoice2",
+  presetFish: "SiliconFlow \xB7 Fish Speech 1.5",
+  presetCosyNote: "About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn",
+  presetFishNote: "About $15 per million UTF-8 bytes (billed per UTF-8 byte); text goes to api.siliconflow.cn",
+  presetOpenrouter: "OpenRouter \xB7 OpenAI TTS",
+  presetOpenrouterNote: "Billed through the selected model; text goes to openrouter.ai; OpenAI terms require disclosing that the voice is AI-generated",
+  presetOpenaiOfficial: "OpenAI official \xB7 gpt-4o-mini-tts",
+  presetOpenaiOfficialNote: "Billed at OpenAI list prices; text goes to api.openai.com; OpenAI terms require disclosing that the voice is AI-generated",
+  presetGroq: "Groq \xB7 PlayAI TTS",
+  presetGroqNote: "Billed at Groq prices; text goes to api.groq.com; English voices such as Fritz-PlayAI",
+  presetSelfKokoro: "Self-hosted \xB7 Kokoro-FastAPI",
+  presetSelfKokoroNote: "Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first",
+  presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
+  presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
+  presetKeyNote: "After picking one, fill the API Key field below (the profile openaiTts.apiKey/apiKeys still work). The key stays on the host and is never sent back to the browser",
+  presetKeySaved: "Saved (panel)",
+  presetKeyFromConfig: "Configured (profile)",
+  presetKeyMissing: "No key",
+  presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
+  presetReload: "Reload presets",
+  // 2026-11-19: online TTS is configurable from the settings card (URL/model/key), no profile YAML edit needed.
+  openaiBaseUrlLabel: "Endpoint (base URL)",
+  descOpenaiBaseUrl: "OpenAI-compatible endpoint, usually ending in /v1 (the plugin appends /audio/speech). Empty = use the preset or the profile openaiTts.baseUrl",
+  openaiModelLabel: "Model",
+  descOpenaiModel: "TTS model on that endpoint, e.g. gpt-4o-mini-tts or FunAudioLLM/CosyVoice2-0.5B. Empty = use the preset or the profile",
+  openaiApiKeyLabel: "API key",
+  descOpenaiApiKey: "The key stays on the host (0600 settings file); it is never sent back to the browser and never logged. Empty = use the profile openaiTts.apiKeys[preset]/apiKey; a value here overrides it",
+  openaiApiKeysLabel: "Per-preset keys (follow the preset)",
+  descOpenaiApiKeys: "One key per online preset: whichever preset is selected uses its own key. Empty entries fall back to the global key above, then the profile. Host-side only",
+  mimoApiKeyLabel: "MiMo API key",
+  descMimoApiKey: "Xiaomi MiMo key (sent as the api-key header, not Bearer). Host-side only; empty = use the profile mimoTts.apiKey",
+  secretSaved: "Saved",
+  secretSaveFailed: "Save failed: the host did not accept it (check for policy restrictions)",
+  secretKeep: "Saved (leave empty to keep)",
+  secretClear: "Clear",
+  secretClearing: "Clearing\u2026",
+  secretHintBrowser: "Typed values go straight to the local host and are stored with 0600; never written to chat or logs",
+  secretPlaceholderEmpty: "Paste the key (after saving only Saved is shown)",
+  secretCleared: "Cleared",
+  secretClearedConfigRemains: "Removed the key from settings; the config file (openaiTts/mimoTts) still has one and will keep using it",
+  // P1-4 dictation-only preset.
+  // P1-3 correction wordlist.
+  replTitle: "Correction wordlist",
+  replFromPh: "Misheard spellings, comma-separated",
+  replToPh: "Wanted spelling",
+  replAdd: "Add",
+  replDelete: "Del",
+  replEmpty: "No rules yet",
+  replHits: "hits",
+  replExport: "Export",
+  replImport: "Import",
+  replInvalid: "Invalid rule: non-empty from and to, comma-separate multiple spellings",
+  replBadFile: "File is not a valid wordlist JSON (array [{from[], to}], max 200 rules)",
+  replUnreadable: "The stored wordlist is unreadable or over the limit; editing is disabled to avoid overwriting it. Export a backup first, then import a new wordlist",
+  replSaveFail: "Save failed (nothing was written); rules unchanged. Check whether the plugin is disabled or the settings store is read-only",
+  replTooLarge: "Wordlist is too large (over ~12KB): reduce the number of rules or shorten the spellings",
+  // P1-1 self-test: separate synthesis / playback verdicts.
+  selftestTitle: "Test read-aloud",
+  selftestHint: "Synthesize and play once: it speaks on success, and points to the engine, key or network on failure",
+  selftestRun: "Test read-aloud",
+  selftestRunning: "Testing\u2026",
+  selftestSynth: "Synthesis",
+  selftestPlay: "Playback",
+  selftestOk: "OK",
+  selftestFail: "Failed",
+  selftestCheck: "Self-test failed: check network, engine status, or voice name",
+  selftestTimeout: "Synthesis timed out: model still loading, retry self-test in a few seconds",
+  selftestAutoplay: "Browser blocked autoplay \u2014 run self-test again",
+  selftestRateLimited: "Preview requests are rate limited (20/min shared with Preview): wait a few seconds and run self-test again",
+  selftestDisabled: "Voice mode is disabled (plugin enabled=false), so the self-test cannot run",
+  switchToLocalTts: "Switch to local Kokoro (first use downloads ~109MB, then works offline)",
   custom: "Custom",
   voicePrev: "Previous voice",
   voiceNext: "Next voice",
   descVoice: "Edge cloud voices (auto-loads all Microsoft voices; common Chinese voices pinned on top; \u25C0\u25B6 or dropdown; custom ShortName allowed)",
   descVoiceLocal: "Local voice (vits, all 5 speakers listed; dropdown or \u25C0\u25B6; no custom needed)",
-  descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft) / OpenAI-compatible server (self-hosted or hosted, text sent to the configured URL)",
+  descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft) / OpenAI-compatible server (self-hosted or hosted, text sent to the configured URL) / Xiaomi MiMo (TTS series free for a limited time, text sent to Xiaomi)",
   engineVits: "Local VITS",
   engineKokoro: "Local Kokoro",
   engineEdge: "Edge cloud",
   engineOpenai: "OpenAI-compatible",
-  descVoiceOpenai: "Voice name on the server (empty = openaiTts.voice from the config)",
+  engineMimo: "Xiaomi MiMo",
+  descVoiceOpenai: "Pick the online preset above first, then pick a voice from that service list below; for a custom endpoint, empty means the server default voice. A typed value overrides the list",
+  descVoiceMimo: "MiMo preset voice id (empty = mimoTts.voice from the config, default mimo_default). Presets: mimo_default, Mia, Chloe, Milo, Dean, plus four Chinese-named voices (Bingtang/Moli/Suda/Baihua) \u2014 enter them by their native Chinese names as listed on the MiMo docs",
   engineRemoteDown: "server unavailable",
+  errMimoKeyMissing: "MiMo API key is not configured: enter it in this settings card or set mimoTts.apiKey in the profile",
+  engineUnavailableShort: "Unavailable",
+  errOpenaiConfigMissing: "Endpoint is not configured yet: pick a provider under Online preset (usually only the key is needed), or choose Custom and fill the endpoint and model",
+  engineMissingKey: "API key missing",
+  rowInfo: "Details",
+  voiceDefaultOption: "Default ({name})",
+  voiceCurrentOption: "Current ({name})",
+  segInput: "Voice input",
+  segReadAloud: "Read aloud",
+  segDisplay: "Display & interaction",
+  segAdvanced: "Advanced",
+  segListLabel: "Settings sections",
+  segTuning: "Tuning & troubleshooting",
+  segReplacements: "Corrections",
+  errApiKeyMissingHint: "Read-aloud requires an API key: fill the key above and click Test read-aloud, or switch to a local engine",
+  ttsKeyMissingNotice: "Online read-aloud has no API key: recognition and captions work, but speech will fail. Fill the key under Settings \u2192 Voice mode, or switch to a local engine (Edge / local VITS / Kokoro)",
+  ttsProbeAuthFail: "The service rejected read-aloud (usually a missing or invalid API key): fill or update the key under Settings \u2192 Voice mode, or switch to a local engine",
+  previewAuth: "The server rejected authentication: API key missing or invalid",
   errRemoteTts: "The TTS server is unreachable, failing or too slow; the local fallback reads aloud meanwhile if one is configured",
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
   descInterrupt: "Interrupt sensitivity (0 high \u22480.3 s confirm / 1 medium \u22480.2 s / 2 low \u22480.1 s, most responsive); lower = higher barrier = harder to interrupt",
-  descBargeIn: "Barge-in mode (detect: auto-probe native echo cancellation, fall back to hold-to-talk when inactive \u2014 default; auto: force interrupt by speaking \u2014 headphones/quiet; manual: for loudspeaker, no echo-triggered self-interrupt \u2014 hold mic/Ctrl to interrupt). Note: in manual mode (including detect falling back to manual on machines without native echo cancellation) audio outside a press is not recognized \u2014 in toggle mode you can long-press to speak only while the agent is playing; when idle there is no voice input, so use hold mode or switch to auto/detect",
+  descBargeIn: "Barge-in mode (detect: auto-probe native echo cancellation and switch playback to hold-to-interrupt when inactive \u2014 default; auto: force interrupt by speaking \u2014 headphones/quiet; manual: recommended for speakers \u2014 speak directly or say the wake word when idle, and hold mic/Ctrl to interrupt while the agent is playing so speaker echo never self-interrupts)",
   bargeInDetect: "Auto-detect",
   bargeInAuto: "Auto",
   bargeInManual: "Manual",
@@ -2072,7 +2579,7 @@ var en = {
   aecOff: "Native AEC off",
   aecOffHint: "Native echo cancellation is not active (speaker echo may self-interrupt); use headphones or Manual barge-in",
   // 批 7O（ADR-0006）：detect 模式第一级探测降级提示（英文）。
-  bargeInDetectFallback: "Native echo cancellation is off \u2014 switched to hold-to-talk barge-in",
+  bargeInDetectFallback: "Native echo cancellation is off: speak directly when idle, hold to interrupt playback",
   // R1 收尾（fix-client 直连 tk() 调用）：连续 3 次回声拒断的解释出口 + 快捷键非法停用提示。
   echoRejectHint: "Strong echo detected \u2014 barge-in is limited by echo protection. Use headphones or switch to manual barge-in",
   shortcutInvalid: "Invalid shortcut, disabled. Fix it in settings (e.g. Ctrl+Shift+V); leave empty to use the mic button only",
@@ -2118,9 +2625,21 @@ var en = {
   captionWidth70: "Medium",
   captionWidth90: "Wide",
   skipReading: "Skip this sentence",
+  captionHistoryOpen: "History ({count})",
+  captionHistoryHide: "Collapse",
+  captionDismiss: "Close captions",
+  tabSwitchFlushedNotice: "Speech before tab switch was finalized into draft",
+  sessionSwitchFlushedNotice: "Speech from previous session saved; restores to draft on return",
+  ttsRetryingNotice: "Retrying read-aloud ({attempt}/{max})\u2026",
+  tabPreemptedNotice: "Voice mode was taken over by another tab",
+  firstUseToggle: "Speak directly \u2014 pauses commit and send; speak or hold the mic to interrupt replies",
+  firstUseHold: "Hold the mic button or Ctrl to speak, release to send, or slide up to cancel",
+  firstUseOnce: "Speak one request \u2014 it sends after a pause and exits once the reply finishes reading",
+  firstUseWake: 'Say the wake word "{wake}" to start speaking (or say it together with your request)',
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",
+  descAsrReplacements: 'User correction wordlist (JSON array [{from:["misheard"],to:"wanted"}], rewritten after transcription; add/remove and import/export in the settings card. The number after each rule is its hit count since the last apply)',
   descLlmCorrect: "Before sending, run one LLM pass over the whole transcribed text (typos/homophones/punctuation only, meaning preserved; requires a default model configured in the host \u2014 otherwise the original text is sent as-is). On = one extra correction round trip per message: usually under 1 second, at most ~10 seconds; at most 10 times per minute \u2014 when voice mode is off or the limit is hit, the original text is sent. Failed or abnormal output also falls back to the original text",
   descYieldMs: "How long (ms) to drop frames after a yield trigger (500-3000, default 1500; within the window the existing hardBreak takes over if the user really wants to speak; auto-resume after the window expires). Hold-to-talk mode only, during playback",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk / once: one utterance, then exit after the reply is read aloud)",
@@ -2137,9 +2656,9 @@ var en = {
   descShowCaptions: "Show a floating caption of the current sentence while reading aloud",
   showStatusBarLabel: "Status bar",
   descShowStatusBar: "Show the voice status bar above the composer (waveform, transcript, timer, notices, exit); when off, state shows only on the mic button",
-  descWakeWord: 'Wake word (default off; e.g. "Hey D"): recognition starts only after you say it, to avoid accidental triggers. You may say it together with your command ("Hey D, check the weather" \u2014 the wake word is stripped and never sent); it must be repeated after each utterance split or barge-in; toggle mode only (inactive in hold / manual barge-in \u2014 and equally inactive when the detect probe fails and falls back to manual, the default on machines without native echo cancellation such as Safari); saying it while the agent is reading does not trigger (barge-in stays VAD-based). Fault-tolerant matching (homophones / leading fillers); 3-4 characters recommended; not a dedicated KWS engine \u2014 noisy environments may delay or falsely trigger',
+  descWakeWord: 'Wake word (default off; e.g. "Hey D"): recognition starts only after you say it, to avoid accidental triggers. You may say it together with your command ("Hey D, check the weather" \u2014 the wake word is stripped and never sent); it must be repeated after each utterance split or barge-in; inactive in hold-to-talk mode (in manual barge-in or when detect falls back to manual, the wake word still works when idle while playback requires holding mic/Ctrl to interrupt). Fault-tolerant matching (homophones / leading fillers); 3-4 characters recommended; not a dedicated KWS engine \u2014 noisy environments may delay or falsely trigger',
   wakePlaceholder: "e.g. Hey D",
-  settingsCardDesc: "Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / read replies / status bar / caption overlay / auto-resume / mode / wake word / tool beep / ITN / caption font / caption width / yielding / yield window / barge-in salvage / LLM correction",
+  settingsCardDesc: "Local recognition plus sentence-by-sentence read-aloud; speak to interrupt. Four sections: voice input, read aloud, display & interaction, advanced. Changes apply instantly.",
   settingsEffectiveNote: "When settings apply, in four tiers: \u2460 immediately \u2014 engine / voice / rate / Kokoro model precision (immediate when cached, else next download) / spoken format (applies to later replies) / read replies / status bar / caption overlay / model mirror (next download attempt); \u2461 next recognition \u2014 finalization re-transcription (SenseVoice) / ITN; \u2462 next utterance \u2014 silence threshold (endpoint; the send wait stays a fixed 1.2s); \u2463 next time you enter voice mode \u2014 interrupt sensitivity / barge-in mode / echo gate / shortcut / auto-send / auto-resume / interaction mode / wake word / tool beep / caption font / caption width / backchannel yielding / yield window / barge-in salvage / LLM correction / idle timeout. Items that take effect next time you enter voice mode are listed at the top of this card with their current effective values.",
   effectivePending: "{count} change(s) will apply next time you enter voice mode: {items}",
   valueOn: "On",
@@ -2169,6 +2688,7 @@ var en = {
   modelsRetrying: "Retrying\u2026",
   modelsRetryHint: "Click to retry now after switching mirror or a failure",
   modelsHint: "Live download state; failures auto-backoff 60s. After switching the mirror, click Retry to take effect immediately; npm run prefetch pre-downloads.",
+  modelActionFailed: "Action did not take effect: the host rejected it (retry later or check host logs)",
   engineLoading: "loading\u2026",
   engineReady: "ready",
   engineError: "failed",
@@ -2179,7 +2699,7 @@ var en = {
   ttsDownloading: "Downloading\u2026",
   ttsDeleting: "Deleting\u2026",
   ttsDownloadHint: "Download this engine's local model; becomes ready immediately after",
-  dataFlowHint: "Data flow: ASR recognition (zipformer2+SenseVoice) is always local; TTS playback depends on engine (edge=Microsoft cloud, vits/kokoro=local)",
+  dataFlowHint: "Data flow: ASR recognition (zipformer2+SenseVoice) is always local; TTS playback depends on engine (edge=Microsoft cloud, openai/mimo=third-party cloud, vits/kokoro=local)",
   ttsDeleteHint: "Delete local models (frees space; auto re-downloads on next use)",
   kokoroModelInt8: "int8 (default)",
   kokoroModelFp32: "fp32 (better quality)",
@@ -2270,7 +2790,11 @@ var en = {
 var htmlLangIsZh = () => /^zh\b/i.test(
   typeof document !== "undefined" && document.documentElement.lang || (typeof navigator !== "undefined" ? navigator.language : "") || ""
 );
-var translateLocal = (key, isZh) => (isZh ? zh[key] : en[key]) ?? en[key] ?? key;
+var translateLocal = (key, isZh) => {
+  const dict = isZh ? zh : en;
+  const enDict = en;
+  return (Object.hasOwn(dict, key) ? dict[key] : void 0) ?? (Object.hasOwn(enDict, key) ? enDict[key] : void 0) ?? key;
+};
 
 // src/i18n.ts
 var LOCALE_NAMESPACE = "voice-mode";
@@ -2322,7 +2846,7 @@ function activeLocale() {
 function lang() {
   return /^zh\b/i.test(activeLocale()) ? "zh" : "en";
 }
-var interpolate = (template, params) => params ? template.replace(/\{(\w+)\}/g, (m, name2) => name2 in params ? String(params[name2]) : m) : template;
+var interpolate = (template, params) => params ? template.replace(/\{(\w+)\}/g, (m, name2) => Object.hasOwn(params, name2) ? String(params[name2]) : m) : template;
 function t(key, params) {
   if (translate) {
     try {
@@ -2572,8 +3096,45 @@ function clampMenuRect(input) {
   }
   return { dx, dy, w };
 }
+var TOUCH_MENU_HOLD_MS = 450;
+function canTouchLongPressMenu(input) {
+  if (input.pointerType !== "touch" && input.pointerType !== "pen") return false;
+  if (!input.hasScope || input.local !== "off") return false;
+  if (input.mode === "hold" || input.playing || input.readingOutside) return false;
+  return true;
+}
+var CAPTION_HISTORY_MAX = 8;
+var CAPTION_LINGER_MS = 3500;
+function pushCaptionHistory(history, text, max = CAPTION_HISTORY_MAX) {
+  const clean2 = text.trim();
+  if (!clean2) return [...history];
+  if (history.length > 0 && history[history.length - 1] === clean2) return [...history];
+  const next = [...history, clean2];
+  return next.length > max ? next.slice(next.length - max) : next;
+}
 function shouldSkipDraftWriteback(quoteCount, attachCount) {
   return quoteCount > 0 || attachCount > 0;
+}
+
+// src/engine-kind.ts
+var TTS_ENGINE_KINDS = ["vits", "kokoro", "edge", "openai", "mimo"];
+var CLOUD_ENGINE_KINDS = ["edge", "openai", "mimo"];
+function asTtsEngineKind(value) {
+  return TTS_ENGINE_KINDS.includes(value) ? value : "vits";
+}
+function isCloudEngine(value) {
+  return CLOUD_ENGINE_KINDS.includes(value);
+}
+function isThirdPartyEngine(value) {
+  return value === "openai" || value === "mimo";
+}
+
+// src/voice-resolution.ts
+function clean(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function resolvePresetVoice(settingVoice, presetVoice) {
+  return clean(settingVoice) || clean(presetVoice);
 }
 
 // src/runtime-boot.ts
@@ -2586,9 +3147,21 @@ function getRuntimeBoot() {
 }
 
 // src/settings-form.tsx
+var React = __toESM(require("react"), 1);
 var import_react2 = require("react");
 
 // src/voice-catalog.ts
+var MIMO_VOICES = [
+  "mimo_default",
+  "\u51B0\u7CD6",
+  "\u8309\u8389",
+  "\u82CF\u6253",
+  "\u767D\u6866",
+  "Mia",
+  "Chloe",
+  "Milo",
+  "Dean"
+];
 var EDGE_COMMON_VOICES = [
   { v: "zh-CN-XiaoxiaoNeural", zh: "\u6653\u6653", en: "Xiaoxiao", gender: "F", accent: "mandarin" },
   { v: "zh-CN-XiaoyiNeural", zh: "\u6653\u4F0A", en: "Xiaoyi", gender: "F", accent: "mandarin" },
@@ -2804,8 +3377,913 @@ function voiceLangHint(engine, voice) {
   return "";
 }
 
+// src/effective-pending.ts
+var NEXT_ENTRY_FIELD_SPECS = [
+  { key: "interruptLevel", label: "interruptLevelLabel" },
+  { key: "bargeInMode", label: "bargeInModeLabel" },
+  { key: "echoGateDb", label: "echoGateDbLabel" },
+  { key: "autoSend", label: "autoSendLabel" },
+  { key: "autoResume", label: "autoResumeLabel" },
+  { key: "mode", label: "modeLabel" },
+  { key: "wakeWord", label: "wakeWordLabel" },
+  { key: "toolBeep", label: "toolBeepLabel" },
+  { key: "captionFontSize", label: "captionFontSizeLabel" },
+  { key: "captionMaxWidth", label: "captionMaxWidthLabel" },
+  { key: "backchannelYield", label: "backchannelYieldLabel" },
+  { key: "yieldMs", label: "yieldMsLabel" },
+  { key: "bargeInSalvage", label: "bargeInSalvageLabel" },
+  { key: "llmCorrect", label: "llmCorrectLabel" },
+  { key: "idleTimeoutMinutes", label: "idleTimeoutMinutesLabel" },
+  { key: "shortcut", label: "shortcutLabel" },
+  { key: "composerShortcut", label: "composerShortcutLabel" }
+];
+function computePendingFields(effective, value, ready, specs = NEXT_ENTRY_FIELD_SPECS) {
+  if (!ready || !effective) return [];
+  return specs.filter((f) => effective[f.key] !== void 0 && effective[f.key] !== value[f.key]);
+}
+
+// node_modules/.pnpm/@deepseek-ai+cosmokit@1.9.0/node_modules/@deepseek-ai/cosmokit/lib/index.js
+function isNullable(value) {
+  return value === null || value === void 0;
+}
+function isPlainObject(data) {
+  return data && typeof data === "object" && !Array.isArray(data);
+}
+function filterKeys(object, filter) {
+  return Object.fromEntries(Object.entries(object).filter(([key, value]) => filter(key, value)));
+}
+function mapValues(object, transform) {
+  return Object.fromEntries(Object.entries(object).map(([key, value]) => [key, transform(value, key)]));
+}
+function pick(source, keys, forced) {
+  if (!keys) return { ...source };
+  const result = {};
+  for (const key of keys) if (forced || source[key] !== void 0) result[key] = source[key];
+  return result;
+}
+var write = /* @__PURE__ */ Symbol.for("cosmokit.volatile.write");
+function snapshot(value, ancestors = /* @__PURE__ */ new Set()) {
+  if (typeof value === "function") throw new TypeError("volatile config cannot contain functions");
+  if (value === null || typeof value !== "object") return value;
+  if (ancestors.has(value)) throw new TypeError("volatile config cannot contain cycles");
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) return Object.freeze(value.map((item) => snapshot(item, ancestors)));
+    if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) throw new TypeError("volatile config objects must be plain objects or arrays");
+    return Object.freeze(Object.fromEntries(Object.entries(value).map(([key, item]) => [key, snapshot(item, ancestors)])));
+  } finally {
+    ancestors.delete(value);
+  }
+}
+function createVolatile(value) {
+  let current = snapshot(value);
+  return Object.freeze({
+    get: () => current,
+    [write]: (value2) => {
+      current = value2;
+    }
+  });
+}
+function isVolatile(value) {
+  return typeof value === "object" && value !== null && write in value;
+}
+function is(type, value) {
+  if (arguments.length === 1) return (value2) => is(type, value2);
+  return type in globalThis && value instanceof globalThis[type] || Object.prototype.toString.call(value).slice(8, -1) === type;
+}
+function isArrayBufferLike(value) {
+  return is("ArrayBuffer", value) || is("SharedArrayBuffer", value);
+}
+function isArrayBufferSource(value) {
+  return isArrayBufferLike(value) || ArrayBuffer.isView(value);
+}
+var Binary;
+(function(Binary2) {
+  Binary2.is = isArrayBufferLike;
+  Binary2.isSource = isArrayBufferSource;
+  function fromSource(source) {
+    if (ArrayBuffer.isView(source)) return source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
+    else return source;
+  }
+  Binary2.fromSource = fromSource;
+  function toBase64(source) {
+    source = fromSource(source);
+    if (typeof Buffer !== "undefined") return Buffer.from(source).toString("base64");
+    let binary = "";
+    const bytes = new Uint8Array(source);
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  }
+  Binary2.toBase64 = toBase64;
+  function fromBase64(source) {
+    if (typeof Buffer !== "undefined") return fromSource(Buffer.from(source, "base64"));
+    return Uint8Array.from(atob(source), (c) => c.charCodeAt(0));
+  }
+  Binary2.fromBase64 = fromBase64;
+  function toHex(source) {
+    source = fromSource(source);
+    if (typeof Buffer !== "undefined") return Buffer.from(source).toString("hex");
+    return Array.from(new Uint8Array(source), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  Binary2.toHex = toHex;
+  function fromHex(source) {
+    if (typeof Buffer !== "undefined") return fromSource(Buffer.from(source, "hex"));
+    const hex = source.length % 2 === 0 ? source : source.slice(0, source.length - 1);
+    const buffer = [];
+    for (let i = 0; i < hex.length; i += 2) buffer.push(parseInt(`${hex[i]}${hex[i + 1]}`, 16));
+    return Uint8Array.from(buffer).buffer;
+  }
+  Binary2.fromHex = fromHex;
+})(Binary || (Binary = {}));
+var base64ToArrayBuffer = Binary.fromBase64;
+var arrayBufferToBase64 = Binary.toBase64;
+var hexToArrayBuffer = Binary.fromHex;
+var arrayBufferToHex = Binary.toHex;
+function clone(source, refs = /* @__PURE__ */ new Map()) {
+  if (!source || typeof source !== "object") return source;
+  if (is("Date", source)) return new Date(source.valueOf());
+  if (is("RegExp", source)) return new RegExp(source.source, source.flags);
+  if (isArrayBufferLike(source)) return source.slice(0);
+  if (ArrayBuffer.isView(source)) return source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
+  const cached = refs.get(source);
+  if (cached) return cached;
+  if (Array.isArray(source)) {
+    const result2 = [];
+    refs.set(source, result2);
+    source.forEach((value, index) => {
+      result2[index] = Reflect.apply(clone, null, [value, refs]);
+    });
+    return result2;
+  }
+  const result = Object.create(Object.getPrototypeOf(source));
+  refs.set(source, result);
+  for (const key of Reflect.ownKeys(source)) {
+    const descriptor = { ...Reflect.getOwnPropertyDescriptor(source, key) };
+    if ("value" in descriptor) descriptor.value = Reflect.apply(clone, null, [descriptor.value, refs]);
+    Reflect.defineProperty(result, key, descriptor);
+  }
+  return result;
+}
+function deepEqual(a, b, strict) {
+  const ancestors = /* @__PURE__ */ new Set();
+  function compare(a2, b2) {
+    if (a2 === b2) return true;
+    if (isVolatile(a2) || isVolatile(b2)) return isVolatile(a2) && isVolatile(b2);
+    if (!strict && isNullable(a2) && isNullable(b2)) return true;
+    if (typeof a2 !== typeof b2 || typeof a2 !== "object" || !a2 || !b2) return false;
+    if (ancestors.has(a2)) return false;
+    function check(test, then) {
+      return test(a2) ? test(b2) ? then(a2, b2) : false : test(b2) ? false : void 0;
+    }
+    ancestors.add(a2);
+    try {
+      return check(Array.isArray, (a3, b3) => {
+        if (a3.length !== b3.length) return false;
+        for (let index = 0; index < a3.length; index++) if (!compare(a3[index], b3[index])) return false;
+        return true;
+      }) ?? check(is("Date"), (a3, b3) => a3.valueOf() === b3.valueOf()) ?? check(is("URL"), (a3, b3) => a3.href === b3.href) ?? check(is("RegExp"), (a3, b3) => a3.source === b3.source && a3.flags === b3.flags) ?? check(isArrayBufferLike, (a3, b3) => {
+        if (a3.byteLength !== b3.byteLength) return false;
+        const viewA = new Uint8Array(a3);
+        const viewB = new Uint8Array(b3);
+        for (let i = 0; i < viewA.length; i++) if (viewA[i] !== viewB[i]) return false;
+        return true;
+      }) ?? ((!strict || [a2, b2].every((value) => Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)) && Object.keys({
+        ...a2,
+        ...b2
+      }).every((key) => compare(a2[key], b2[key])));
+    } finally {
+      ancestors.delete(a2);
+    }
+  }
+  return compare(a, b);
+}
+var Time;
+(function(Time2) {
+  Time2.millisecond = 1;
+  Time2.second = 1e3;
+  Time2.minute = Time2.second * 60;
+  Time2.hour = Time2.minute * 60;
+  Time2.day = Time2.hour * 24;
+  Time2.week = Time2.day * 7;
+  let timezoneOffset = (/* @__PURE__ */ new Date()).getTimezoneOffset();
+  function setTimezoneOffset(offset) {
+    timezoneOffset = offset;
+  }
+  Time2.setTimezoneOffset = setTimezoneOffset;
+  function getTimezoneOffset() {
+    return timezoneOffset;
+  }
+  Time2.getTimezoneOffset = getTimezoneOffset;
+  function getDateNumber(date2 = /* @__PURE__ */ new Date(), offset) {
+    if (typeof date2 === "number") date2 = new Date(date2);
+    if (offset === void 0) offset = timezoneOffset;
+    return Math.floor((date2.valueOf() / Time2.minute - offset) / 1440);
+  }
+  Time2.getDateNumber = getDateNumber;
+  function fromDateNumber(value, offset) {
+    const date2 = new Date(value * Time2.day);
+    if (offset === void 0) offset = timezoneOffset;
+    return new Date(+date2 + offset * Time2.minute);
+  }
+  Time2.fromDateNumber = fromDateNumber;
+  const numeric = /\d+(?:\.\d+)?/.source;
+  const timeRegExp = new RegExp(`^${[
+    "w(?:eek(?:s)?)?",
+    "d(?:ay(?:s)?)?",
+    "h(?:our(?:s)?)?",
+    "m(?:in(?:ute)?(?:s)?)?",
+    "s(?:ec(?:ond)?(?:s)?)?"
+  ].map((unit) => `(${numeric}${unit})?`).join("")}$`);
+  function parseTime(source) {
+    const capture = timeRegExp.exec(source);
+    if (!capture) return 0;
+    return (parseFloat(capture[1]) * Time2.week || 0) + (parseFloat(capture[2]) * Time2.day || 0) + (parseFloat(capture[3]) * Time2.hour || 0) + (parseFloat(capture[4]) * Time2.minute || 0) + (parseFloat(capture[5]) * Time2.second || 0);
+  }
+  Time2.parseTime = parseTime;
+  function parseDate(date2) {
+    const parsed = parseTime(date2);
+    if (parsed) date2 = Date.now() + parsed;
+    else if (/^\d{1,2}(:\d{1,2}){1,2}$/.test(date2)) date2 = `${(/* @__PURE__ */ new Date()).toLocaleDateString()}-${date2}`;
+    else if (/^\d{1,2}-\d{1,2}-\d{1,2}(:\d{1,2}){1,2}$/.test(date2)) date2 = `${(/* @__PURE__ */ new Date()).getFullYear()}-${date2}`;
+    return date2 ? new Date(date2) : /* @__PURE__ */ new Date();
+  }
+  Time2.parseDate = parseDate;
+  function format(ms) {
+    const abs = Math.abs(ms);
+    if (abs >= Time2.day - Time2.hour / 2) return Math.round(ms / Time2.day) + "d";
+    else if (abs >= Time2.hour - Time2.minute / 2) return Math.round(ms / Time2.hour) + "h";
+    else if (abs >= Time2.minute - Time2.second / 2) return Math.round(ms / Time2.minute) + "m";
+    else if (abs >= Time2.second) return Math.round(ms / Time2.second) + "s";
+    return ms + "ms";
+  }
+  Time2.format = format;
+  function toDigits(source, length = 2) {
+    return source.toString().padStart(length, "0");
+  }
+  Time2.toDigits = toDigits;
+  function template(template2, time = /* @__PURE__ */ new Date()) {
+    return template2.replace("yyyy", time.getFullYear().toString()).replace("yy", time.getFullYear().toString().slice(2)).replace("MM", toDigits(time.getMonth() + 1)).replace("dd", toDigits(time.getDate())).replace("hh", toDigits(time.getHours())).replace("mm", toDigits(time.getMinutes())).replace("ss", toDigits(time.getSeconds())).replace("SSS", toDigits(time.getMilliseconds(), 3));
+  }
+  Time2.template = template;
+})(Time || (Time = {}));
+
+// node_modules/.pnpm/@deepseek-ai+schemastery@3.19.0/node_modules/@deepseek-ai/schemastery/lib/index.mjs
+var kSchema = /* @__PURE__ */ Symbol.for("schemastery");
+var kValidationError = /* @__PURE__ */ Symbol.for("ValidationError");
+globalThis.__schemastery_index__ ??= 0;
+globalThis.__schemastery_refs__ = void 0;
+var ValidationError = class extends TypeError {
+  options;
+  name = "ValidationError";
+  constructor(message, options) {
+    let prefix = "$";
+    for (const segment of options.path || []) if (typeof segment === "string") prefix += "." + segment;
+    else if (typeof segment === "number") prefix += "[" + segment + "]";
+    else if (typeof segment === "symbol") prefix += `[Symbol(${segment.toString()})]`;
+    if (prefix.startsWith(".")) prefix = prefix.slice(1);
+    super((prefix === "$" ? "" : `${prefix} `) + message);
+    this.options = options;
+  }
+  static is(error) {
+    return !!error?.[kValidationError];
+  }
+};
+Object.defineProperty(ValidationError.prototype, kValidationError, { value: true });
+var Schema = function(options) {
+  const schema = function(data, options2 = {}) {
+    return Schema.resolve(data, schema, options2)[0];
+  };
+  if (options.refs) {
+    const refs = mapValues(options.refs, (options2) => new Schema(options2));
+    const getRef = (uid) => refs[uid];
+    for (const key in refs) {
+      const options2 = refs[key];
+      options2.sKey = getRef(options2.sKey);
+      options2.inner = getRef(options2.inner);
+      options2.list = options2.list && options2.list.map(getRef);
+      options2.dict = options2.dict && mapValues(options2.dict, getRef);
+    }
+    return refs[options.uid];
+  }
+  Object.assign(schema, options);
+  if (typeof schema.callback === "string") try {
+    schema.callback = new Function("return " + schema.callback)();
+  } catch {
+  }
+  Object.defineProperty(schema, "uid", { value: globalThis.__schemastery_index__++ });
+  Object.setPrototypeOf(schema, Schema.prototype);
+  schema.meta ||= {};
+  schema.toString = schema.toString.bind(schema);
+  return schema;
+};
+Schema.prototype = Object.create(Function.prototype);
+Schema.prototype[kSchema] = true;
+Object.defineProperty(Schema.prototype, "~standard", { get() {
+  return {
+    version: 1,
+    vendor: "schemastery",
+    validate: (value) => {
+      try {
+        return { value: Schema.resolve(value, this, {})[0] };
+      } catch (error) {
+        if (ValidationError.is(error)) return { issues: [{
+          message: error.message,
+          path: error.options.path
+        }] };
+        throw error;
+      }
+    }
+  };
+} });
+Schema.ValidationError = ValidationError;
+Schema.prototype.toJSON = function toJSON() {
+  if (globalThis.__schemastery_refs__) {
+    globalThis.__schemastery_refs__[this.uid] ??= JSON.parse(JSON.stringify({ ...this }));
+    return this.uid;
+  }
+  globalThis.__schemastery_refs__ = { [this.uid]: { ...this } };
+  globalThis.__schemastery_refs__[this.uid] = JSON.parse(JSON.stringify({ ...this }));
+  const result = {
+    uid: this.uid,
+    refs: globalThis.__schemastery_refs__
+  };
+  globalThis.__schemastery_refs__ = void 0;
+  return result;
+};
+Schema.prototype.set = function set(key, value) {
+  this.dict[key] = value;
+  return this;
+};
+Schema.prototype.push = function push(value) {
+  this.list.push(value);
+  return this;
+};
+function mergeDesc(original, messages) {
+  const result = typeof original === "string" ? { "": original } : { ...original };
+  for (const locale in messages) {
+    const value = messages[locale];
+    if (value?.$description || value?.$desc) result[locale] = value.$description || value.$desc;
+    else if (typeof value === "string") result[locale] = value;
+  }
+  return result;
+}
+function getInner(value) {
+  return value?.$value ?? value?.$inner;
+}
+function extractKeys(data) {
+  return filterKeys(data ?? {}, (key) => !key.startsWith("$"));
+}
+Schema.prototype.i18n = function i18n(messages) {
+  const schema = Schema(this);
+  const desc = mergeDesc(schema.meta.description, messages);
+  if (Object.keys(desc).length) schema.meta.description = desc;
+  if (schema.dict) schema.dict = mapValues(schema.dict, (inner, key) => {
+    return inner.i18n(mapValues(messages, (data) => getInner(data)?.[key] ?? data?.[key]));
+  });
+  if (schema.list) schema.list = schema.list.map((inner, index) => {
+    return inner.i18n(mapValues(messages, (data = {}) => {
+      if (Array.isArray(getInner(data))) return getInner(data)[index];
+      if (Array.isArray(data)) return data[index];
+      return extractKeys(data);
+    }));
+  });
+  if (schema.inner) schema.inner = schema.inner.i18n(mapValues(messages, (data) => {
+    if (getInner(data)) return getInner(data);
+    return extractKeys(data);
+  }));
+  if (schema.sKey) schema.sKey = schema.sKey.i18n(mapValues(messages, (data) => data?.$key));
+  return schema;
+};
+Schema.prototype.extra = function extra(key, value) {
+  const schema = Schema(this);
+  schema.meta = {
+    ...schema.meta,
+    [key]: value
+  };
+  return schema;
+};
+for (const key of [
+  "required",
+  "disabled",
+  "collapse",
+  "hidden",
+  "loose"
+]) Object.assign(Schema.prototype, { [key](value = true) {
+  const schema = Schema(this);
+  schema.meta = {
+    ...schema.meta,
+    [key]: value
+  };
+  return schema;
+} });
+Schema.prototype.deprecated = function deprecated() {
+  const schema = Schema(this);
+  schema.meta.badges ||= [];
+  schema.meta.badges.push({
+    text: "deprecated",
+    type: "danger"
+  });
+  return schema;
+};
+Schema.prototype.experimental = function experimental() {
+  const schema = Schema(this);
+  schema.meta.badges ||= [];
+  schema.meta.badges.push({
+    text: "experimental",
+    type: "warning"
+  });
+  return schema;
+};
+Schema.prototype.pattern = function pattern(regexp) {
+  const schema = Schema(this);
+  const pattern2 = pick(regexp, ["source", "flags"]);
+  schema.meta = {
+    ...schema.meta,
+    pattern: pattern2
+  };
+  return schema;
+};
+Schema.prototype.simplify = function simplify(value) {
+  if (isVolatile(value)) value = value.get();
+  if (deepEqual(value, this.meta.default, this.type === "dict")) return null;
+  if (isNullable(value)) return value;
+  if (this.type === "object" || this.type === "dict") {
+    const result = {};
+    for (const key in value) {
+      const item = (this.type === "object" ? this.dict[key] : this.inner)?.simplify(value[key]);
+      if (this.type === "dict" || !isNullable(item)) result[key] = item;
+    }
+    if (deepEqual(result, this.meta.default, this.type === "dict")) return null;
+    return result;
+  } else if (this.type === "array" || this.type === "tuple") {
+    const result = [];
+    value.forEach((value2, index) => {
+      const schema = this.type === "array" ? this.inner : this.list[index];
+      const item = schema ? schema.simplify(value2) : value2;
+      result.push(item);
+    });
+    return result;
+  } else if (this.type === "intersect") {
+    const result = {};
+    for (const item of this.list) Object.assign(result, item.simplify(value));
+    return result;
+  } else if (this.type === "union") for (const schema of this.list) try {
+    Schema.resolve(value, schema, {});
+    return schema.simplify(value);
+  } catch {
+  }
+  return value;
+};
+Schema.prototype.toString = function toString(inline) {
+  return formatters[this.type]?.(this, inline) ?? `Schema<${this.type}>`;
+};
+Schema.prototype.role = function role(role, extra2) {
+  const schema = Schema(this);
+  schema.meta = {
+    ...schema.meta,
+    role,
+    extra: extra2
+  };
+  return schema;
+};
+for (const key of [
+  "default",
+  "link",
+  "comment",
+  "description",
+  "max",
+  "min",
+  "step"
+]) Object.assign(Schema.prototype, { [key](value) {
+  const schema = Schema(this);
+  schema.meta = {
+    ...schema.meta,
+    [key]: value
+  };
+  return schema;
+} });
+Schema.prototype.volatile = function volatile() {
+  if (this.meta.volatile) throw new TypeError("volatile schema is already wrapped");
+  return this.extra("volatile", true);
+};
+var resolvers = {};
+var checkedVolatile = /* @__PURE__ */ Symbol("checked-volatile-schema");
+function validateVolatileSchema(schema, path = [], blocked = false, seen = /* @__PURE__ */ new Map()) {
+  const states = seen.get(schema) ?? /* @__PURE__ */ new Set();
+  if (states.has(blocked)) return;
+  states.add(blocked);
+  seen.set(schema, states);
+  if (schema.meta?.volatile && blocked) throw new ValidationError("volatile fields require a fixed object path without an enclosing volatile field", { path });
+  const nested = blocked || !!schema.meta?.volatile;
+  if (schema.dict) for (const [key, child] of Object.entries(schema.dict)) validateVolatileSchema(child, [...path, key], nested, seen);
+  if (schema.sKey) validateVolatileSchema(schema.sKey, [...path, "<key>"], true, seen);
+  if (schema.inner && (schema.type !== "lazy" || schema.inner[kSchema])) validateVolatileSchema(schema.inner, [...path, "*"], true, seen);
+  if (schema.list) for (let index = 0; index < schema.list.length; index++) validateVolatileSchema(schema.list[index], [...path, String(index)], true, seen);
+}
+Schema.extend = function extend(type, resolve2) {
+  resolvers[type] = resolve2;
+};
+Schema.resolve = function resolve(data, schema, options = {}, strict = false) {
+  if (!schema) return [data];
+  if (!options[checkedVolatile]) {
+    validateVolatileSchema(schema, options.path);
+    options = {
+      ...options,
+      [checkedVolatile]: true
+    };
+  }
+  if (schema.meta?.volatile) {
+    const inner = Schema(schema);
+    inner.meta = {
+      ...schema.meta,
+      volatile: false
+    };
+    const [value, adapted] = Schema.resolve(data, inner, options, strict);
+    try {
+      return [createVolatile(value), adapted];
+    } catch (error) {
+      throw new ValidationError(error instanceof Error ? error.message : String(error), options);
+    }
+  }
+  if (options.ignore?.(data, schema)) return [data];
+  if (isNullable(data) && schema.type !== "lazy") {
+    if (schema.meta.required) throw new ValidationError(`missing required value`, options);
+    let current = schema;
+    let fallback = schema.meta.default;
+    while (current?.type === "intersect" && isNullable(fallback)) {
+      current = current.list[0];
+      fallback = current?.meta.default;
+    }
+    if (isNullable(fallback)) return [data];
+    data = clone(fallback);
+  }
+  const callback = resolvers[schema.type];
+  if (!callback) throw new ValidationError(`unsupported type "${schema.type}"`, options);
+  try {
+    return callback(data, schema, options, strict);
+  } catch (error) {
+    if (!schema.meta.loose) throw error;
+    return [schema.meta.default];
+  }
+};
+Schema.from = function from(source) {
+  if (isNullable(source)) return Schema.any();
+  else if ([
+    "string",
+    "number",
+    "boolean"
+  ].includes(typeof source)) return Schema.const(source).required();
+  else if (source[kSchema]) return source;
+  else if (typeof source === "function") switch (source) {
+    case String:
+      return Schema.string().required();
+    case Number:
+      return Schema.number().required();
+    case Boolean:
+      return Schema.boolean().required();
+    case Function:
+      return Schema.function().required();
+    default:
+      return Schema.is(source).required();
+  }
+  else throw new TypeError(`cannot infer schema from ${source}`);
+};
+Schema.lazy = function lazy(builder) {
+  const toJSON2 = () => {
+    if (!schema.inner[kSchema]) {
+      schema.inner = schema.builder();
+      schema.inner.meta = {
+        ...schema.meta,
+        ...schema.inner.meta
+      };
+    }
+    return schema.inner.toJSON();
+  };
+  const schema = new Schema({
+    type: "lazy",
+    builder,
+    inner: { toJSON: toJSON2 }
+  });
+  return schema;
+};
+Schema.natural = function natural() {
+  return Schema.number().step(1).min(0);
+};
+Schema.percent = function percent() {
+  return Schema.number().step(0.01).min(0).max(1).role("slider");
+};
+Schema.date = function date() {
+  return Schema.union([Schema.is(Date), Schema.transform(Schema.string().role("datetime"), (value, options) => {
+    const date2 = new Date(value);
+    if (isNaN(+date2)) throw new ValidationError(`invalid date "${value}"`, options);
+    return date2;
+  }, true)]);
+};
+Schema.regExp = function regExp(flag = "") {
+  return Schema.union([Schema.is(RegExp), Schema.transform(Schema.string().role("regexp", { flag }), (value, options) => {
+    try {
+      return new RegExp(value, flag);
+    } catch (e) {
+      throw new ValidationError(e.message, options);
+    }
+  }, true)]);
+};
+Schema.arrayBuffer = function arrayBuffer(encoding) {
+  return Schema.union([
+    Schema.is(ArrayBuffer),
+    Schema.is(SharedArrayBuffer),
+    Schema.transform(Schema.any(), (value, options) => {
+      if (Binary.isSource(value)) return Binary.fromSource(value);
+      throw new ValidationError(`expected ArrayBufferSource but got ${value}`, options);
+    }, true),
+    ...encoding ? [Schema.transform(Schema.string(), (value, options) => {
+      try {
+        return encoding === "base64" ? Binary.fromBase64(value) : Binary.fromHex(value);
+      } catch (e) {
+        throw new ValidationError(e.message, options);
+      }
+    }, true)] : []
+  ]);
+};
+Schema.extend("lazy", (data, schema, options, strict) => {
+  if (!schema.inner[kSchema]) {
+    schema.inner = schema.builder();
+    schema.inner.meta = {
+      ...schema.meta,
+      ...schema.inner.meta
+    };
+    validateVolatileSchema(schema.inner, options.path, true);
+  }
+  return Schema.resolve(data, schema.inner, options, strict);
+});
+Schema.extend("any", (data) => {
+  return [data];
+});
+Schema.extend("never", (data, _, options) => {
+  throw new ValidationError(`expected nullable but got ${data}`, options);
+});
+Schema.extend("const", (data, { value }, options) => {
+  if (deepEqual(data, value)) return [value];
+  throw new ValidationError(`expected ${value} but got ${data}`, options);
+});
+function checkWithinRange(data, meta, description, options, skipMin = false) {
+  const { max = Infinity, min = -Infinity } = meta;
+  if (data > max) throw new ValidationError(`expected ${description} <= ${max} but got ${data}`, options);
+  if (data < min && !skipMin) throw new ValidationError(`expected ${description} >= ${min} but got ${data}`, options);
+}
+Schema.extend("string", (data, { meta }, options) => {
+  if (typeof data !== "string") throw new ValidationError(`expected string but got ${data}`, options);
+  if (meta.pattern) {
+    const regexp = new RegExp(meta.pattern.source, meta.pattern.flags);
+    if (!regexp.test(data)) throw new ValidationError(`expect string to match regexp ${regexp}`, options);
+  }
+  checkWithinRange(data.length, meta, "string length", options);
+  return [data];
+});
+function decimalShift(data, digits) {
+  const str = data.toString();
+  if (str.includes("e")) return data * Math.pow(10, digits);
+  const index = str.indexOf(".");
+  if (index === -1) return data * Math.pow(10, digits);
+  const frac = str.slice(index + 1);
+  const integer = str.slice(0, index);
+  if (frac.length <= digits) return +(integer + frac.padEnd(digits, "0"));
+  return +(integer + frac.slice(0, digits) + "." + frac.slice(digits));
+}
+function isMultipleOf(data, min, step) {
+  step = Math.abs(step);
+  if (!/^\d+\.\d+$/.test(step.toString())) return (data - min) % step === 0;
+  const index = step.toString().indexOf(".");
+  const digits = step.toString().slice(index + 1).length;
+  return Math.abs(decimalShift(data, digits) - decimalShift(min, digits)) % decimalShift(step, digits) === 0;
+}
+Schema.extend("number", (data, { meta }, options) => {
+  if (typeof data !== "number") throw new ValidationError(`expected number but got ${data}`, options);
+  checkWithinRange(data, meta, "number", options);
+  const { step } = meta;
+  if (step && !isMultipleOf(data, meta.min ?? 0, step)) throw new ValidationError(`expected number multiple of ${step} but got ${data}`, options);
+  return [data];
+});
+Schema.extend("boolean", (data, _, options) => {
+  if (typeof data === "boolean") return [data];
+  throw new ValidationError(`expected boolean but got ${data}`, options);
+});
+Schema.extend("bitset", (data, { bits, meta }, options) => {
+  let value = 0, keys = [];
+  if (typeof data === "number") {
+    value = data;
+    for (const key in bits) if (data & bits[key]) keys.push(key);
+  } else if (Array.isArray(data)) {
+    keys = data;
+    for (const key of keys) {
+      if (typeof key !== "string") throw new ValidationError(`expected string but got ${key}`, options);
+      if (key in bits) value |= bits[key];
+    }
+  } else throw new ValidationError(`expected number or array but got ${data}`, options);
+  if (value === meta.default) return [value];
+  return [value, keys];
+});
+Schema.extend("function", (data, _, options) => {
+  if (typeof data === "function") return [data];
+  throw new ValidationError(`expected function but got ${data}`, options);
+});
+Schema.extend("is", (data, { constructor }, options) => {
+  if (typeof constructor === "function") {
+    if (data instanceof constructor) return [data];
+    throw new ValidationError(`expected ${constructor.name} but got ${data}`, options);
+  } else {
+    if (isNullable(data)) throw new ValidationError(`expected ${constructor} but got ${data}`, options);
+    let prototype = Object.getPrototypeOf(data);
+    while (prototype) {
+      if (prototype.constructor?.name === constructor) return [data];
+      prototype = Object.getPrototypeOf(prototype);
+    }
+    throw new ValidationError(`expected ${constructor} but got ${data}`, options);
+  }
+});
+function property(data, key, schema, options) {
+  try {
+    const [value, adapted] = Schema.resolve(data[key], schema, {
+      ...options,
+      path: [...options.path || [], key]
+    });
+    if (adapted !== void 0) data[key] = adapted;
+    return value;
+  } catch (e) {
+    if (!options?.autofix) throw e;
+    delete data[key];
+    return schema.meta.volatile ? createVolatile(schema.meta.default) : schema.meta.default;
+  }
+}
+Schema.extend("array", (data, { inner, meta }, options) => {
+  if (!Array.isArray(data)) throw new ValidationError(`expected array but got ${data}`, options);
+  checkWithinRange(data.length, meta, "array length", options, !isNullable(inner.meta.default));
+  return [data.map((_, index) => property(data, index, inner, options))];
+});
+Schema.extend("dict", (data, { inner, sKey }, options, strict) => {
+  if (!isPlainObject(data)) throw new ValidationError(`expected object but got ${data}`, options);
+  const result = {};
+  for (const key in data) {
+    let rKey;
+    try {
+      rKey = Schema.resolve(key, sKey, options)[0];
+    } catch (error) {
+      if (strict) continue;
+      throw error;
+    }
+    result[rKey] = property(data, key, inner, options);
+    data[rKey] = data[key];
+    if (key !== rKey) delete data[key];
+  }
+  return [result];
+});
+Schema.extend("tuple", (data, { list }, options, strict) => {
+  if (!Array.isArray(data)) throw new ValidationError(`expected array but got ${data}`, options);
+  const result = list.map((inner, index) => property(data, index, inner, options));
+  if (strict) return [result];
+  result.push(...data.slice(list.length));
+  return [result];
+});
+function merge(result, data) {
+  for (const key in data) {
+    if (key in result) continue;
+    result[key] = data[key];
+  }
+}
+Schema.extend("object", (data, { dict }, options, strict) => {
+  if (!isPlainObject(data)) throw new ValidationError(`expected object but got ${data}`, options);
+  const result = {};
+  for (const key in dict) {
+    const value = property(data, key, dict[key], options);
+    if (!isNullable(value) || key in data) result[key] = value;
+  }
+  if (!strict) merge(result, data);
+  return [result];
+});
+Schema.extend("union", (data, { list, toString: toString2 }, options, strict) => {
+  const messages = [];
+  for (const inner of list) try {
+    return Schema.resolve(data, inner, options, strict);
+  } catch (error) {
+    messages.push(error);
+  }
+  throw new ValidationError(`expected ${toString2()} but got ${JSON.stringify(data)}`, options);
+});
+Schema.extend("intersect", (data, { list, toString: toString2 }, options, strict) => {
+  if (!list.length) return [data];
+  let result;
+  for (const inner of list) {
+    const value = Schema.resolve(data, inner, options, true)[0];
+    if (isNullable(value)) continue;
+    if (isNullable(result)) result = value;
+    else if (typeof result !== typeof value) throw new ValidationError(`expected ${toString2()} but got ${JSON.stringify(data)}`, options);
+    else if (typeof value === "object") merge(result ??= {}, value);
+    else if (result !== value) throw new ValidationError(`expected ${toString2()} but got ${JSON.stringify(data)}`, options);
+  }
+  if (!strict && isPlainObject(data)) merge(result, data);
+  return [result];
+});
+Schema.extend("transform", (data, { inner, callback, preserve }, options) => {
+  const [result, adapted = data] = Schema.resolve(data, inner, options, true);
+  if (preserve) return [callback(result)];
+  else return [callback(result), callback(adapted)];
+});
+var formatters = {};
+function defineMethod(name2, keys, format) {
+  formatters[name2] = format;
+  Object.assign(Schema, { [name2](...args) {
+    const schema = new Schema({ type: name2 });
+    keys.forEach((key, index) => {
+      switch (key) {
+        case "sKey":
+          schema.sKey = args[index] ?? Schema.string();
+          break;
+        case "inner":
+          schema.inner = Schema.from(args[index]);
+          break;
+        case "list":
+          schema.list = args[index].map(Schema.from);
+          break;
+        case "dict":
+          schema.dict = mapValues(args[index], Schema.from);
+          break;
+        case "bits":
+          schema.bits = {};
+          for (const key2 in args[index]) {
+            if (typeof args[index][key2] !== "number") continue;
+            schema.bits[key2] = args[index][key2];
+          }
+          break;
+        case "callback": {
+          const callback = schema.callback = args[index];
+          callback["toJSON"] ||= () => callback.toString();
+          break;
+        }
+        case "constructor": {
+          const constructor = schema.constructor = args[index];
+          if (typeof constructor === "function") constructor["toJSON"] ||= () => constructor["name"];
+          break;
+        }
+        default:
+          schema[key] = args[index];
+      }
+    });
+    if (name2 === "object" || name2 === "dict") schema.meta.default = {};
+    else if (name2 === "array" || name2 === "tuple") schema.meta.default = [];
+    else if (name2 === "bitset") schema.meta.default = 0;
+    return schema;
+  } });
+}
+defineMethod("is", ["constructor"], ({ constructor }) => {
+  if (typeof constructor === "function") return constructor.name;
+  else return constructor;
+});
+defineMethod("any", [], () => "any");
+defineMethod("never", [], () => "never");
+defineMethod("const", ["value"], ({ value }) => typeof value === "string" ? JSON.stringify(value) : value);
+defineMethod("string", [], () => "string");
+defineMethod("number", [], () => "number");
+defineMethod("boolean", [], () => "boolean");
+defineMethod("bitset", ["bits"], () => "bitset");
+defineMethod("function", [], () => "function");
+defineMethod("array", ["inner"], ({ inner }) => `${inner.toString(true)}[]`);
+defineMethod("dict", ["inner", "sKey"], ({ inner, sKey }) => `{ [key: ${sKey.toString()}]: ${inner.toString()} }`);
+defineMethod("tuple", ["list"], ({ list }) => `[${list.map((inner) => inner.toString()).join(", ")}]`);
+defineMethod("object", ["dict"], ({ dict }) => {
+  if (Object.keys(dict).length === 0) return "{}";
+  return `{ ${Object.entries(dict).map(([key, inner]) => {
+    return `${key}${inner.meta.required ? "" : "?"}: ${inner.toString()}`;
+  }).join(", ")} }`;
+});
+defineMethod("union", ["list"], ({ list }, inline) => {
+  const result = list.map(({ toString: format }) => format()).join(" | ");
+  return inline ? `(${result})` : result;
+});
+defineMethod("intersect", ["list"], ({ list }) => {
+  return `${list.map((inner) => inner.toString(true)).join(" & ")}`;
+});
+defineMethod("transform", [
+  "inner",
+  "callback",
+  "preserve"
+], ({ inner }, isInner) => inner.toString(isInner));
+
+// src/asr-replacements.ts
+var AsrReplacementSchema = Schema.object({
+  from: Schema.array(Schema.string()).description('Spellings the recognizer produces, e.g. ["sakeena"]; case-insensitive, whitespace between Latin and CJK text ignored.'),
+  to: Schema.string().description('The spelling you want, e.g. "Sakina".')
+});
+var REPLACEMENTS_MAX_PAYLOAD_BYTES = 12e3;
+function replacementsPayloadBytes(rules) {
+  return new TextEncoder().encode(JSON.stringify(rules ?? [])).length;
+}
+
 // src/settings-form.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
+function presetVoiceLabel(full) {
+  const i = full.lastIndexOf(":");
+  return i >= 0 ? full.slice(i + 1) || full : full;
+}
 var t2 = {
   bg: "var(--dsw-alias-bg-layer-3)",
   bgOpen: "var(--dsw-alias-bg-layer-2)",
@@ -2819,7 +4297,13 @@ var cardStyle = {
   border: `1px solid ${t2.border}`,
   background: t2.bg,
   borderRadius: 12,
-  overflow: "hidden"
+  overflow: "hidden",
+  // 2026-11-20：卡片必须适配所在容器（设置弹窗内容区实测只有 ~800px，旧实现被内容撑到 904px
+  // 直接溢出弹窗 192px、右侧文字被裁）。minWidth:0 是 flex/grid 子项能收缩的前提。
+  boxSizing: "border-box",
+  width: "100%",
+  maxWidth: "100%",
+  minWidth: 0
 };
 var setHeader = {
   appearance: "none",
@@ -2830,57 +4314,205 @@ var setHeader = {
   cursor: "pointer",
   background: "transparent",
   border: 0,
-  borderRadius: 12,
+  borderRadius: 0,
   alignItems: "center",
   gap: 12,
-  padding: "14px 16px",
-  display: "flex"
+  padding: "14px 18px",
+  display: "flex",
+  transition: "background .15s ease"
 };
-var setHeadText = { flexDirection: "column", flex: 1, gap: 4, minWidth: 0, display: "flex" };
-var setName = { color: t2.label, fontSize: 15, fontWeight: 600, lineHeight: 1.4 };
-var setDesc = { color: t2.term, fontSize: 13, lineHeight: 1.5 };
-var setChevron = { color: t2.term, flex: "none", transition: "transform .16s", display: "inline-flex" };
-var setBody = { borderTop: `1px solid ${t2.border}`, margin: "0 16px", paddingBottom: 8 };
-var setRow = { alignItems: "center", gap: 12, padding: "12px 0", display: "flex" };
-var setLabelBox = { flexDirection: "column", flex: 1, gap: 3, minWidth: 0, display: "flex" };
-var setLabel = { fontSize: 13, lineHeight: "20px" };
-var setHint = { color: t2.term, fontSize: 12, lineHeight: "18px" };
-var setSeg = { border: `1px solid ${t2.border}`, borderRadius: 8, flexShrink: 0, gap: 2, padding: 2, display: "inline-flex" };
+var setHeadText = { flexDirection: "column", flex: 1, gap: 3, minWidth: 0, display: "flex" };
+var setName = { color: t2.label, fontSize: 15, fontWeight: 600, lineHeight: 1.35, display: "inline-flex", alignItems: "center", gap: 8 };
+var setDesc = { color: t2.term, fontSize: 12.5, lineHeight: 1.45 };
+var setChevron = { color: t2.term, flex: "none", transition: "transform .18s ease", display: "inline-flex", padding: 4, borderRadius: 6 };
+var setBody = { borderTop: `1px solid ${t2.border}`, padding: "4px 18px 16px", display: "flex", flexDirection: "column", minWidth: 0 };
+var setRow = {
+  display: "grid",
+  gridTemplateColumns: "minmax(116px, 160px) minmax(0, 1fr)",
+  columnGap: 14,
+  rowGap: 6,
+  alignItems: "center",
+  padding: "10px 0",
+  borderTop: "1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 65%, transparent)",
+  minWidth: 0
+};
+var setLabel = { fontSize: 13, fontWeight: 500, color: t2.label, lineHeight: "20px", display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: 5 };
+var setHint = {
+  color: "var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))",
+  fontSize: 12,
+  lineHeight: "18px",
+  padding: "7px 11px",
+  borderRadius: "0 8px 8px 0",
+  background: "color-mix(in srgb, var(--dsw-alias-label-tertiary) 9%, transparent)",
+  borderLeft: "2.5px solid #2563eb",
+  marginTop: 2
+};
+var setSeg = {
+  border: `1px solid ${t2.border}`,
+  background: "var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.07))",
+  borderRadius: 9,
+  gap: 2,
+  padding: 3,
+  display: "inline-flex",
+  flexWrap: "wrap",
+  maxWidth: "100%",
+  minWidth: 0
+};
 var setSegBtn = (on) => ({
+  flex: "0 0 auto",
   font: "inherit",
   color: on ? t2.label : "var(--dsw-alias-label-secondary)",
   cursor: "pointer",
-  background: on ? "var(--dsw-alias-bg-layer-2)" : "transparent",
-  border: "none",
+  background: on ? "var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-layer-2))" : "transparent",
+  boxShadow: on ? "0 1px 2px rgba(0, 0, 0, 0.12)" : "none",
+  border: on ? "1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, transparent)" : "1px solid transparent",
   borderRadius: 6,
-  padding: "4px 12px",
+  padding: "5px 12px",
   fontSize: 12,
   lineHeight: "18px",
-  fontWeight: on ? 600 : 400
+  fontWeight: on ? 600 : 400,
+  transition: "background .14s ease, color .14s ease, box-shadow .14s ease"
 });
 var inputStyle = {
   boxSizing: "border-box",
-  width: 280,
-  maxWidth: "100%",
-  padding: "7px 10px",
+  width: "100%",
+  maxWidth: 420,
+  minHeight: 34,
+  padding: "6px 11px",
   borderRadius: 8,
   border: `1px solid ${t2.border}`,
   background: "var(--dsw-alias-bg-layer-2)",
   color: t2.label,
   fontSize: 13,
+  lineHeight: "20px",
   fontFamily: "inherit",
-  outline: "none"
+  outline: "none",
+  transition: "border-color .14s ease, box-shadow .14s ease"
+};
+var selectChevronBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`;
+var selectBaseStyle = {
+  ...inputStyle,
+  appearance: "none",
+  cursor: "pointer",
+  backgroundImage: selectChevronBg,
+  backgroundPosition: "right 11px center",
+  backgroundRepeat: "no-repeat",
+  backgroundSize: "12px 12px",
+  paddingRight: 32
 };
 var focusVisibleCss = `
-[data-dshvm-settings="card"] input:focus-visible,
+[data-dshvm-settings="card"] { container-type: inline-size; }
+[data-dshvm-settings="card"] [data-dshvm-row]:first-of-type { border-top: none; }
+[data-dshvm-settings="card"] .dshvm-tab-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  margin: 8px 0 6px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08));
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 80%, transparent);
+}
+@container (max-width: 420px) {
+  [data-dshvm-row] { grid-template-columns: minmax(0, 1fr) !important; align-items: start !important; row-gap: 6px !important; }
+  [data-dshvm-row]:has(.dshvm-switch) { grid-template-columns: minmax(0, 1fr) auto !important; align-items: center !important; }
+}
+@container (max-width: 400px) {
+  [data-dshvm-settings="card"] .dshvm-tab-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+[data-dshvm-settings="card"] input:not([type="checkbox"]):hover,
+[data-dshvm-settings="card"] select:hover {
+  border-color: var(--dsw-alias-border-l3, var(--dsw-alias-label-tertiary));
+}
+[data-dshvm-settings="card"] input:not([type="checkbox"]):focus-visible,
 [data-dshvm-settings="card"] select:focus-visible,
 [data-dshvm-settings="card"] button:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline: 2px solid #2563eb;
   outline-offset: 1px;
+}
+[data-dshvm-settings="card"] .dshvm-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 38px;
+  height: 22px;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  align-self: flex-start;
+  justify-self: start;
+}
+[data-dshvm-settings="card"] .dshvm-switch-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+[data-dshvm-settings="card"] .dshvm-switch-track {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-label-tertiary) 32%, var(--dsw-alias-bg-layer-1, transparent));
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 90%, transparent);
+  box-sizing: border-box;
+  transition: background .16s ease, border-color .16s ease;
+}
+[data-dshvm-settings="card"] .dshvm-switch[data-checked="1"] .dshvm-switch-track {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+[data-dshvm-settings="card"] .dshvm-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
+  transition: transform .16s ease;
+}
+[data-dshvm-settings="card"] .dshvm-switch[data-checked="1"] .dshvm-switch-thumb {
+  transform: translateX(16px);
+}
+[data-dshvm-settings="card"] .dshvm-switch:has(.dshvm-switch-input:focus-visible) .dshvm-switch-track {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+@media (pointer: coarse) {
+  [data-dshvm-settings="card"] input:not([type="checkbox"]),
+  [data-dshvm-settings="card"] select {
+    font-size: 16px !important;
+    min-height: 38px !important;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   [data-dshvm-settings="card"], [data-dshvm-settings="card"] * { transition: none !important; }
 }`;
+function CheckRow({
+  field,
+  checked,
+  score
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "dshvm-switch", "data-checked": checked ? "1" : "0", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "input",
+      {
+        className: "dshvm-switch-input",
+        type: "checkbox",
+        "aria-label": t(`${field}Label`),
+        checked,
+        onChange: (e) => void score.set(field, e.target.checked)
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dshvm-switch-track", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dshvm-switch-thumb" }) })
+  ] });
+}
 var ENGINE_DEFAULT_VOICE = {
   // 与 host 侧引擎 defaultVoice 对齐（VITS suyingxue / Kokoro zf_xiaobei），
   // 避免「config 直连」与「面板切引擎」落到不同默认音色。
@@ -2888,7 +4520,17 @@ var ENGINE_DEFAULT_VOICE = {
   kokoro: "zf_xiaobei",
   edge: "zh-CN-XiaoxiaoNeural",
   // 空 = 用配置里的 openaiTts.voice（服务端音色名各家不同，没有通用默认）。
-  openai: ""
+  openai: "",
+  mimo: "mimo_default"
+};
+var PRESET_NOTE = {
+  "siliconflow-cosyvoice2": () => t("presetCosyNote"),
+  "siliconflow-fish": () => t("presetFishNote"),
+  "openrouter-openai": () => t("presetOpenrouterNote"),
+  "openai-official": () => t("presetOpenaiOfficialNote"),
+  "groq-playai": () => t("presetGroqNote"),
+  "selfhosted-kokoro": () => t("presetSelfKokoroNote"),
+  "selfhosted-vllm": () => t("presetSelfVllmNote")
 };
 function NumberField({
   score,
@@ -2900,45 +4542,64 @@ function NumberField({
 }) {
   const [draft, setDraft] = (0, import_react2.useState)(String(value ?? ""));
   const [hint, setHint2] = (0, import_react2.useState)(null);
+  const [invalid, setInvalid] = (0, import_react2.useState)(false);
+  const selfClampedRef = (0, import_react2.useRef)(null);
   (0, import_react2.useEffect)(() => {
-    setDraft((d) => d === String(value ?? "") ? d : String(value ?? ""));
-    setHint2(null);
+    const nextStr = String(value ?? "");
+    setDraft((d) => d === nextStr ? d : nextStr);
+    if (selfClampedRef.current !== null && selfClampedRef.current === nextStr) {
+      selfClampedRef.current = null;
+    } else {
+      setInvalid(false);
+      setHint2(null);
+    }
   }, [value]);
   const commit = () => {
     const raw = draft.trim();
     if (raw === "") {
+      setInvalid(true);
       setHint2(t("numberInvalid"));
       return;
     }
     if (raw.endsWith(".") || raw.split(".").length > 2) {
+      setInvalid(true);
       setHint2(t("numberInvalid"));
       return;
     }
     const n = Number(raw);
     if (!Number.isFinite(n)) {
+      setInvalid(true);
       setHint2(t("numberInvalid"));
       return;
     }
     if (n < min || n > max) {
       const clamped = Math.min(max, Math.max(min, n));
+      selfClampedRef.current = String(clamped);
+      setInvalid(false);
       setHint2(t("numberClamped").replace("{value}", String(clamped)));
       setDraft(String(clamped));
       void score.set(field, clamped);
       return;
     }
+    selfClampedRef.current = null;
+    setInvalid(false);
     setHint2(null);
     void score.set(field, n);
   };
-  const invalidStyle = hint ? {
+  const invalidStyle = invalid ? {
     ...inputStyle,
-    border: "1px solid #d33",
-    background: "rgba(221, 51, 51, 0.08)"
+    border: "1px solid var(--dsw-alias-state-error-primary)",
+    background: "color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent)"
   } : inputStyle;
+  const hintId = `${field}-number-hint`;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", flexDirection: "column", gap: 3, flexShrink: 0 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "input",
       {
         style: invalidStyle,
+        "aria-label": t(`${field}Label`),
+        "aria-invalid": invalid ? true : void 0,
+        "aria-describedby": hint ? hintId : void 0,
         type: "number",
         step,
         min,
@@ -2947,6 +4608,7 @@ function NumberField({
         onChange: (e) => {
           setDraft(e.target.value);
           if (hint) setHint2(null);
+          if (invalid) setInvalid(false);
         },
         onBlur: commit,
         onKeyDown: (e) => {
@@ -2954,14 +4616,28 @@ function NumberField({
         }
       }
     ),
-    hint && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#d33", fontSize: 11, lineHeight: "14px" }, children: hint })
+    hint && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "span",
+      {
+        id: hintId,
+        role: "status",
+        "aria-live": "polite",
+        style: {
+          color: invalid ? "var(--dsw-alias-state-error-primary)" : t2.term,
+          fontSize: 11,
+          lineHeight: "14px"
+        },
+        children: hint
+      }
+    )
   ] });
 }
 function TextField({
   score,
   field,
   value,
-  placeholder
+  placeholder,
+  type = "text"
 }) {
   const [draft, setDraft] = (0, import_react2.useState)(String(value ?? ""));
   (0, import_react2.useEffect)(() => {
@@ -2974,6 +4650,9 @@ function TextField({
     "input",
     {
       style: inputStyle,
+      "aria-label": t(`${field}Label`),
+      type,
+      autoComplete: type === "password" ? "new-password" : void 0,
       value: draft,
       placeholder,
       onChange: (e) => setDraft(e.target.value),
@@ -2983,6 +4662,248 @@ function TextField({
       }
     }
   );
+}
+function SecretField({
+  score,
+  field,
+  saved,
+  configOnly = false,
+  onChanged
+}) {
+  const [draft, setDraft] = (0, import_react2.useState)("");
+  const [busy, setBusy] = (0, import_react2.useState)(false);
+  const [note, setNote] = (0, import_react2.useState)(null);
+  const [failed, setFailed] = (0, import_react2.useState)(false);
+  const commit = () => {
+    const value = draft.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    void Promise.resolve(score.set(field, value)).then((ok) => {
+      if (ok === false) {
+        setFailed(true);
+        return;
+      }
+      setFailed(false);
+      setDraft("");
+      setNote("saved");
+      onChanged();
+    }).catch(() => setFailed(true)).finally(() => setBusy(false));
+  };
+  const clear = () => {
+    if (busy) return;
+    setBusy(true);
+    void (async () => {
+      try {
+        const res = await fetch(location.origin + BASE_PATH + "/settings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ clearSecrets: [field] }),
+          signal: AbortSignal.timeout(8e3)
+        });
+        if (res.ok) {
+          setFailed(false);
+          setNote("cleared");
+          onChanged();
+          return;
+        }
+        if (res.status === 409) {
+          const ok = await Promise.resolve(score.set(field, ""));
+          if (ok === false) {
+            setFailed(true);
+            return;
+          }
+          setFailed(false);
+          setNote("cleared");
+          onChanged();
+          return;
+        }
+        setFailed(true);
+      } catch {
+        setFailed(true);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "input",
+      {
+        style: inputStyle,
+        type: "password",
+        autoComplete: "new-password",
+        value: draft,
+        placeholder: saved ? t("secretKeep") : t("secretPlaceholderEmpty"),
+        "aria-label": t(saved ? "secretSaved" : "secretHintBrowser"),
+        onChange: (e) => setDraft(e.target.value),
+        onBlur: commit,
+        onKeyDown: (e) => {
+          if (e.key === "Enter") commit();
+        }
+      }
+    ),
+    saved ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        type: "button",
+        onClick: clear,
+        "aria-busy": busy || void 0,
+        style: {
+          font: "inherit",
+          cursor: busy ? "default" : "pointer",
+          opacity: busy ? 0.6 : 1,
+          color: t2.label,
+          background: "var(--dsw-alias-bg-layer-2)",
+          border: `1px solid ${t2.border}`,
+          borderRadius: 6,
+          padding: "4px 8px",
+          fontSize: 12,
+          lineHeight: "16px"
+        },
+        children: busy ? t("secretClearing") : t("secretClear")
+      }
+    ) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "span",
+      {
+        role: "status",
+        "aria-live": "polite",
+        style: { fontSize: 11, color: failed ? "var(--dsw-alias-state-error-primary)" : note === "cleared" ? t2.term : "var(--dsw-alias-state-success-primary)" },
+        children: failed ? t("secretSaveFailed") : note === "saved" ? t("secretSaved") : note === "cleared" ? t(configOnly ? "secretClearedConfigRemains" : "secretCleared") : saved ? t("secretSaved") : t("secretHintBrowser")
+      }
+    )
+  ] });
+}
+function PresetKeyField({
+  score,
+  presetId,
+  map,
+  saved,
+  fromConfig,
+  requiresKey,
+  onChanged
+}) {
+  const [draft, setDraft] = (0, import_react2.useState)("");
+  const [busy, setBusy] = (0, import_react2.useState)(false);
+  const [note, setNote] = (0, import_react2.useState)(null);
+  const [failed, setFailed] = (0, import_react2.useState)(false);
+  (0, import_react2.useEffect)(() => {
+    setDraft("");
+    setNote(null);
+    setFailed(false);
+  }, [presetId]);
+  const commit = () => {
+    const value = draft.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    const next = { ...map, [presetId]: value };
+    void Promise.resolve(score.set("openaiApiKeys", next)).then((ok) => {
+      if (ok === false) {
+        setFailed(true);
+        return;
+      }
+      setFailed(false);
+      setDraft("");
+      setNote("saved");
+      onChanged();
+    }).catch(() => setFailed(true)).finally(() => setBusy(false));
+  };
+  const clear = () => {
+    if (busy) return;
+    setBusy(true);
+    void (async () => {
+      try {
+        const res = await fetch(location.origin + BASE_PATH + "/settings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ openaiApiKeys: { [presetId]: "" } }),
+          signal: AbortSignal.timeout(8e3)
+        });
+        if (res.ok) {
+          setFailed(false);
+          setDraft("");
+          setNote("cleared");
+          onChanged();
+          return;
+        }
+        if (res.status === 409) {
+          const next = { ...map };
+          delete next[presetId];
+          const ok = await Promise.resolve(score.set("openaiApiKeys", next));
+          if (ok === false) {
+            setFailed(true);
+            return;
+          }
+          setFailed(false);
+          setDraft("");
+          setNote("cleared");
+          onChanged();
+          return;
+        }
+        setFailed(true);
+      } catch {
+        setFailed(true);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+  const canClearPanelKey = saved && !(fromConfig && !saved);
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap", width: "100%" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "input",
+      {
+        style: { ...inputStyle, maxWidth: 320 },
+        type: "password",
+        autoComplete: "new-password",
+        value: draft,
+        placeholder: saved ? t("secretKeep") : t("secretPlaceholderEmpty"),
+        "aria-label": t("secretHintBrowser"),
+        onChange: (e) => {
+          setDraft(e.target.value);
+          if (failed) setFailed(false);
+        },
+        onBlur: commit,
+        onKeyDown: (e) => {
+          if (e.key === "Enter") commit();
+        }
+      }
+    ),
+    canClearPanelKey ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        type: "button",
+        onClick: clear,
+        "aria-busy": busy || void 0,
+        style: {
+          font: "inherit",
+          cursor: busy ? "default" : "pointer",
+          opacity: busy ? 0.6 : 1,
+          color: t2.label,
+          background: "var(--dsw-alias-bg-layer-2)",
+          border: `1px solid ${t2.border}`,
+          borderRadius: 7,
+          padding: "5px 10px",
+          fontSize: 12,
+          lineHeight: "18px"
+        },
+        children: busy ? t("secretClearing") : t("secretClear")
+      }
+    ) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "span",
+      {
+        role: "status",
+        "aria-live": "polite",
+        style: {
+          fontSize: 11.5,
+          fontWeight: saved || requiresKey && !fromConfig ? 500 : 400,
+          color: failed ? "var(--dsw-alias-state-error-primary)" : note === "saved" || note === null && saved ? "var(--dsw-alias-state-success-primary)" : note === "cleared" || fromConfig || !requiresKey ? t2.term : "var(--dsw-alias-state-warn-primary, #d29922)"
+        },
+        children: failed ? t("secretSaveFailed") : note === "saved" ? t("secretSaved") : note === "cleared" ? t(fromConfig ? "secretClearedConfigRemains" : "secretCleared") : saved ? t("presetKeySaved") : fromConfig ? t("presetKeyFromConfig") : requiresKey ? t("presetKeyMissing") : t("secretHintBrowser")
+      }
+    )
+  ] });
 }
 function ShortcutField({
   score,
@@ -3001,13 +4922,24 @@ function ShortcutField({
     } catch {
     }
   };
+  const saveAndNotify = (nextVal) => {
+    void Promise.resolve(score.set(field, nextVal)).finally(() => notify());
+  };
   const commit = () => {
-    void score.set(field, draft.trim());
-    notify();
+    saveAndNotify(draft.trim());
   };
   (0, import_react2.useEffect)(() => {
     if (!recording) return;
+    const onBlur = () => {
+      setRecording(false);
+      setErr("");
+    };
     const onKey = (e) => {
+      if (e.key === "Tab") {
+        setRecording(false);
+        setErr("");
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       if (e.key === "Escape") {
@@ -3017,9 +4949,9 @@ function ShortcutField({
       }
       if (e.key === "Backspace" || e.key === "Delete") {
         setDraft("");
-        void score.set(field, "");
-        notify();
+        saveAndNotify("");
         setRecording(false);
+        setErr("");
         return;
       }
       if (e.key === "Control" || e.key === "Alt" || e.key === "Shift" || e.key === "Meta") return;
@@ -3041,20 +4973,30 @@ function ShortcutField({
       }
       const combo = [...mods, k].join("+");
       setDraft(combo);
-      void score.set(field, combo);
-      notify();
+      saveAndNotify(combo);
       setRecording(false);
       setErr("");
     };
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("blur", onBlur);
+    };
   }, [recording, score, field]);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         "input",
         {
-          style: { ...inputStyle, width: 150 },
+          style: {
+            ...inputStyle,
+            width: 176,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: 12.5,
+            borderColor: recording ? "var(--dsw-alias-brand-primary)" : t2.border
+          },
+          "aria-label": t(`${field}Label`),
           value: draft,
           placeholder: t("shortcutPlaceholder"),
           onChange: (e) => {
@@ -3076,20 +5018,29 @@ function ShortcutField({
             setErr("");
           },
           style: {
-            height: 28,
-            padding: "0 10px",
-            borderRadius: 6,
-            border: "1px solid var(--dsw-alias-border-l3)",
-            background: "transparent",
-            color: "var(--dsw-alias-label-secondary)",
+            height: 34,
+            padding: "0 12px",
+            borderRadius: 8,
+            border: `1px solid ${recording ? "var(--dsw-alias-brand-primary)" : t2.border}`,
+            background: recording ? "color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent)" : "var(--dsw-alias-bg-layer-2)",
+            color: recording ? "var(--dsw-alias-brand-primary)" : t2.label,
             fontSize: 12,
+            fontWeight: recording ? 600 : 400,
             cursor: "pointer"
           },
           children: recording ? t("shortcutCancel") : t("shortcutRecord")
         }
       )
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, lineHeight: "14px", color: err ? "var(--dsw-alias-state-error-primary)" : "var(--dsw-alias-label-tertiary)" }, children: recording ? t("shortcutRecording") : err })
+    err || recording ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "span",
+      {
+        role: "status",
+        "aria-live": "polite",
+        style: { fontSize: 11.5, lineHeight: "16px", color: err ? "var(--dsw-alias-state-error-primary)" : "var(--dsw-alias-brand-primary)" },
+        children: err || (recording ? t("shortcutRecording") : "")
+      }
+    ) : null
   ] });
 }
 function SelectField({
@@ -3102,10 +5053,18 @@ function SelectField({
 }) {
   const cur = String(value ?? "");
   const inOptions = options.some((o) => o.v === cur);
+  const [forceCustom, setForceCustom] = (0, import_react2.useState)(false);
   const [custom, setCustom] = (0, import_react2.useState)(inOptions ? "" : cur);
   (0, import_react2.useEffect)(() => {
-    if (!options.some((o) => o.v === cur)) setCustom(cur);
-  }, [cur, options]);
+    if (inOptions) setForceCustom(false);
+    else setCustom(cur);
+  }, [cur]);
+  const commitCustom = () => {
+    const next = custom.trim();
+    if (next.length === 0 || next === cur) return;
+    void score.set(field, next);
+  };
+  const showCustomInput = !inOptions || forceCustom;
   const selectStyle = {
     ...inputStyle,
     appearance: "none",
@@ -3116,16 +5075,22 @@ function SelectField({
     backgroundSize: "12px 12px",
     paddingRight: 32
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: 280, alignItems: "stretch" }, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 420, alignItems: "stretch" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "select",
       {
         style: selectStyle,
-        value: inOptions ? cur : "__custom__",
+        "aria-label": t(`${field}Label`),
+        value: showCustomInput ? "__custom__" : cur,
         onChange: (e) => {
           const v = e.target.value;
-          if (v === "__custom__") void score.set(field, custom);
-          else void score.set(field, v);
+          if (v === "__custom__") {
+            setForceCustom(true);
+            setCustom(inOptions ? cur : custom);
+          } else {
+            setForceCustom(false);
+            void score.set(field, v);
+          }
         },
         children: [
           options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v)),
@@ -3136,20 +5101,21 @@ function SelectField({
         ]
       }
     ),
-    !inOptions && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    showCustomInput && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "input",
       {
         style: inputStyle,
+        "aria-label": t(`${field}Label`),
         value: custom,
         placeholder,
         onChange: (e) => setCustom(e.target.value),
-        onBlur: () => void score.set(field, custom),
+        onBlur: () => commitCustom(),
         onKeyDown: (e) => {
-          if (e.key === "Enter") void score.set(field, custom);
+          if (e.key === "Enter") commitCustom();
         }
       }
     ),
-    footer?.(inOptions ? cur : custom)
+    footer?.(showCustomInput ? custom : cur)
   ] });
 }
 var stepBtn = {
@@ -3173,24 +5139,36 @@ function VoiceSelect({
   value,
   options,
   placeholder,
+  emptyDefaultLabel,
   footer,
   showCustom = true
 }) {
   const cur = String(value ?? "");
-  const inOptions = options.some((o) => o.v === cur);
-  const idx = options.findIndex((o) => o.v === cur);
+  const defaultOptLabel = placeholder ? t("voiceDefaultOption").replace("{name}", presetVoiceLabel(placeholder)) : emptyDefaultLabel ?? "";
+  const baseOpts = defaultOptLabel && showCustom && !options.some((o) => o.v === "") ? [{ v: "", label: defaultOptLabel }, ...options] : options;
+  const withDefault = showCustom && cur.trim() !== "" && !baseOpts.some((o) => o.v === cur) ? [{ v: cur, label: t("voiceCurrentOption").replace("{name}", cur) }, ...baseOpts] : baseOpts;
+  const inOptions = withDefault.some((o) => o.v === cur);
+  const idx = withDefault.findIndex((o) => o.v === cur);
+  const [forceCustom, setForceCustom] = (0, import_react2.useState)(false);
   const [custom, setCustom] = (0, import_react2.useState)(inOptions ? "" : cur);
   (0, import_react2.useEffect)(() => {
-    if (!options.some((o) => o.v === cur)) setCustom(cur);
-  }, [cur, options]);
+    if (inOptions) setForceCustom(false);
+    else setCustom(cur);
+  }, [cur]);
+  const commitCustom = () => {
+    const next = custom.trim();
+    if (next.length === 0 || next === cur) return;
+    void score.set(field, next);
+  };
   const move = (delta) => {
-    if (options.length === 0) return;
+    if (withDefault.length === 0) return;
+    setForceCustom(false);
     if (inOptions) {
-      const n = options.length;
-      const next = options[((idx + delta) % n + n) % n];
+      const n = withDefault.length;
+      const next = withDefault[((idx + delta) % n + n) % n];
       void score.set(field, next.v);
     } else {
-      void score.set(field, options[0].v);
+      void score.set(field, withDefault[0].v);
     }
   };
   const selectStyle = {
@@ -3207,8 +5185,9 @@ function VoiceSelect({
     backgroundSize: "12px 12px",
     paddingRight: 32
   };
-  const label = inOptions ? options[idx].label : custom || placeholder || "";
-  const selectValue = inOptions ? cur : showCustom ? "__custom__" : options[0]?.v ?? "";
+  const currentValueLabel = inOptions && !forceCustom ? withDefault[idx].label : custom || placeholder || "";
+  const showCustomInput = showCustom && (!inOptions || forceCustom);
+  const selectValue = showCustomInput ? "__custom__" : inOptions ? cur : withDefault[0]?.v ?? "";
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: "100%", alignItems: "stretch" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", gap: 6, alignItems: "center" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": t("voicePrev"), onClick: () => move(-1), style: stepBtn, children: "\u2039" }),
@@ -3217,14 +5196,19 @@ function VoiceSelect({
         {
           style: selectStyle,
           value: selectValue,
-          "aria-label": label,
+          "aria-label": t(`${field}Label`),
           onChange: (e) => {
             const v = e.target.value;
-            if (v === "__custom__") setCustom(inOptions ? "" : custom);
-            else void score.set(field, v);
+            if (v === "__custom__") {
+              setForceCustom(true);
+              setCustom(inOptions ? cur : custom);
+            } else {
+              setForceCustom(false);
+              void score.set(field, v);
+            }
           },
           children: [
-            options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v)),
+            withDefault.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v)),
             showCustom && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", { value: "__custom__", children: [
               t("custom"),
               "\u2026"
@@ -3234,53 +5218,33 @@ function VoiceSelect({
       ),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-label": t("voiceNext"), onClick: () => move(1), style: stepBtn, children: "\u203A" })
     ] }),
-    showCustom && !inOptions && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    showCustomInput && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "input",
       {
         style: inputStyle,
         value: custom,
-        placeholder,
+        placeholder: placeholder || emptyDefaultLabel,
+        "aria-label": currentValueLabel || t(`${field}Label`),
         onChange: (e) => setCustom(e.target.value),
-        onBlur: () => void score.set(field, custom),
+        onBlur: () => commitCustom(),
         onKeyDown: (e) => {
-          if (e.key === "Enter") void score.set(field, custom);
+          if (e.key === "Enter") commitCustom();
         }
       }
     ),
-    footer?.(inOptions ? cur : showCustom ? custom : cur)
+    footer?.(showCustomInput ? custom : cur)
   ] });
 }
-function VoicePreviewButton({ voice, rate }) {
+function VoicePreviewButton({ voice, rate, allowEmptyVoice = false }) {
   const [busy, setBusy] = (0, import_react2.useState)(false);
   const [note, setNote] = (0, import_react2.useState)(null);
   const audioRef = (0, import_react2.useRef)(null);
-  const [localReady, setLocalReady] = (0, import_react2.useState)(null);
-  const [ttsLoading, setTtsLoading] = (0, import_react2.useState)(false);
-  (0, import_react2.useEffect)(() => {
-    let alive = true;
-    const poll = async () => {
-      try {
-        const res = await fetch(location.origin + BASE_PATH + "/models/status");
-        if (res.ok && alive) {
-          const st = await res.json();
-          const tts = st.tts;
-          if (tts.engine === "edge" || tts.engine === "openai") {
-            setLocalReady(true);
-          } else {
-            setLocalReady(!!tts.local?.ready);
-          }
-          setTtsLoading(!!tts.loading);
-        }
-      } catch {
-      }
-    };
-    void poll();
-    const timer = setInterval(() => void poll(), 3e3);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, []);
+  const abortRef = (0, import_react2.useRef)(null);
+  const mountedRef = (0, import_react2.useRef)(true);
+  const status = useModelsStatus();
+  const stTts = status?.tts;
+  const localReady = stTts ? isCloudEngine(stTts.engine) ? true : !!stTts.local?.ready : null;
+  const ttsLoading = !!stTts?.loading;
   const disabledByModel = localReady === false;
   const play = () => {
     if (busy) return;
@@ -3293,12 +5257,16 @@ function VoicePreviewButton({ voice, rate }) {
       return;
     }
     const v = voice.trim();
-    if (!v) {
+    if (!v && !allowEmptyVoice) {
       setNote(t("previewNameFirst"));
       return;
     }
     setBusy(true);
     setNote(null);
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const timeoutId = setTimeout(() => ac.abort(new DOMException("timeout", "TimeoutError")), 9e4);
     const audio = new Audio();
     const prev = audioRef.current;
     if (prev) {
@@ -3312,14 +5280,16 @@ function VoicePreviewButton({ voice, rate }) {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ voice: v, rate }),
-          signal: AbortSignal.timeout(9e4)
+          signal: ac.signal
         });
+        if (ac.signal.aborted || !mountedRef.current) return;
         if (!res.ok) {
           let body = null;
           try {
             body = await res.json();
           } catch {
           }
+          if (ac.signal.aborted || !mountedRef.current) return;
           const code = body?.code;
           setNote(
             code === "voice_disabled" || res.status === 403 ? t("previewDisabled") : code === "rate_limited" || res.status === 429 ? t("previewRateLimited") : errorText(body, "previewCheck")
@@ -3327,28 +5297,48 @@ function VoicePreviewButton({ voice, rate }) {
           return;
         }
         const blob = await res.blob();
+        if (ac.signal.aborted || !mountedRef.current) return;
         const url = URL.createObjectURL(blob);
         audio.src = url;
         audio.onended = () => URL.revokeObjectURL(url);
         audio.onerror = () => {
           URL.revokeObjectURL(url);
-          setNote(t("previewPlayFail"));
+          if (mountedRef.current) setNote(t("previewPlayFail"));
         };
         try {
           await audio.play();
         } catch (e) {
           URL.revokeObjectURL(url);
+          if (ac.signal.aborted || !mountedRef.current) return;
           setNote(
             e instanceof DOMException && e.name === "NotAllowedError" ? t("previewAutoplay") : t("previewPlayFail")
           );
         }
       } catch (e) {
-        setNote(e instanceof DOMException && e.name === "TimeoutError" ? t("previewTimeout") : t("previewCheck"));
+        if (!mountedRef.current) return;
+        const isTimeout = e instanceof DOMException && e.name === "TimeoutError" || ac.signal.reason instanceof DOMException && ac.signal.reason.name === "TimeoutError";
+        if (ac.signal.aborted && !isTimeout) return;
+        setNote(isTimeout ? t("previewTimeout") : t("previewCheck"));
       } finally {
-        setBusy(false);
+        clearTimeout(timeoutId);
+        if (abortRef.current === ac) abortRef.current = null;
+        if (mountedRef.current) setBusy(false);
       }
     })();
   };
+  (0, import_react2.useEffect)(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      const a = audioRef.current;
+      if (a) {
+        a.pause();
+        if (a.src.startsWith("blob:")) URL.revokeObjectURL(a.src);
+      }
+    };
+  }, []);
   const btnStyle = {
     font: "inherit",
     display: "inline-flex",
@@ -3367,59 +5357,777 @@ function VoicePreviewButton({ voice, rate }) {
   const btnDisabledStyle = disabledByModel ? { ...btnStyle, opacity: 0.5, cursor: "default" } : btnStyle;
   const btnTitle = disabledByModel ? t("previewModelMissing") : t("previewBtnTitle");
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", onClick: play, disabled: busy || disabledByModel, style: btnDisabledStyle, title: btnTitle, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 11, height: 11, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 3l9 5-9 5z" }) }),
-      busy ? t("synthesizing") : t("preview")
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "button",
+      {
+        type: "button",
+        onClick: play,
+        disabled: busy || disabledByModel,
+        style: btnDisabledStyle,
+        title: btnTitle,
+        "aria-describedby": disabledByModel ? "dshvm-preview-hint" : void 0,
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 11, height: 11, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 3l9 5-9 5z" }) }),
+          busy ? t("synthesizing") : t("preview")
+        ]
+      }
+    ),
+    disabledByModel ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { id: "dshvm-preview-hint", style: { fontSize: 11, color: t2.term }, children: t("previewModelMissing") }) : null,
+    note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
+  ] });
+}
+function SelfTestSection({
+  voice,
+  rate,
+  engine,
+  onSwitchLocal
+}) {
+  const [busy, setBusy] = (0, import_react2.useState)(false);
+  const [synth, setSynth] = (0, import_react2.useState)(null);
+  const [synthMs, setSynthMs] = (0, import_react2.useState)(0);
+  const [play, setPlay] = (0, import_react2.useState)(null);
+  const [note, setNote] = (0, import_react2.useState)(null);
+  const audioRef = (0, import_react2.useRef)(null);
+  const abortRef = (0, import_react2.useRef)(null);
+  const mountedRef = (0, import_react2.useRef)(true);
+  const run = () => {
+    if (busy) return;
+    const v = voice.trim();
+    if (!v && engine !== "openai") {
+      setNote(t("previewNameFirst"));
+      return;
+    }
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const timeoutId = setTimeout(() => ac.abort(new DOMException("timeout", "TimeoutError")), 9e4);
+    const prev = audioRef.current;
+    if (prev) {
+      prev.pause();
+      if (prev.src.startsWith("blob:")) URL.revokeObjectURL(prev.src);
+    }
+    audioRef.current = null;
+    setBusy(true);
+    setSynth(null);
+    setPlay(null);
+    setNote(null);
+    const t0 = Date.now();
+    const audio = new Audio();
+    audioRef.current = audio;
+    void (async () => {
+      try {
+        const res = await fetch(`${BASE_PATH}/preview`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ voice: v, rate }),
+          signal: ac.signal
+        });
+        if (ac.signal.aborted || !mountedRef.current) return;
+        if (!res.ok) {
+          let body = null;
+          try {
+            body = await res.json();
+          } catch {
+          }
+          if (ac.signal.aborted || !mountedRef.current) return;
+          const code = body?.code;
+          if (code === "rate_limited" || res.status === 429) {
+            setNote(t("selftestRateLimited"));
+            return;
+          }
+          if (code === "voice_disabled" || res.status === 403) {
+            setNote(t("selftestDisabled"));
+            return;
+          }
+          setSynth("fail");
+          setNote(code === "preview_engine" ? t("previewModelMissing") : errorText(body, "selftestCheck"));
+          return;
+        }
+        const blob = await res.blob();
+        if (ac.signal.aborted || !mountedRef.current) return;
+        if (blob.size === 0) {
+          setSynth("fail");
+          setNote(t("selftestCheck"));
+          return;
+        }
+        setSynth("ok");
+        setSynthMs(Date.now() - t0);
+        const url = URL.createObjectURL(blob);
+        audio.src = url;
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          if (mountedRef.current) setPlay("ok");
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          if (mountedRef.current) {
+            setPlay("fail");
+            setNote(t("previewPlayFail"));
+          }
+        };
+        try {
+          await audio.play();
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          if (ac.signal.aborted || !mountedRef.current) return;
+          if (e instanceof DOMException && e.name === "NotAllowedError") {
+            setPlay("autoplay");
+            setNote(t("selftestAutoplay"));
+          } else {
+            setPlay("fail");
+            setNote(t("previewPlayFail"));
+          }
+        }
+      } catch (e) {
+        if (!mountedRef.current) return;
+        const isTimeout = e instanceof DOMException && e.name === "TimeoutError" || ac.signal.reason instanceof DOMException && ac.signal.reason.name === "TimeoutError";
+        if (ac.signal.aborted && !isTimeout) return;
+        setSynth("fail");
+        setNote(isTimeout ? t("selftestTimeout") : t("selftestCheck"));
+      } finally {
+        clearTimeout(timeoutId);
+        if (abortRef.current === ac) abortRef.current = null;
+        if (mountedRef.current) setBusy(false);
+      }
+    })();
+  };
+  (0, import_react2.useEffect)(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      const a = audioRef.current;
+      if (a) {
+        a.pause();
+        if (a.src.startsWith("blob:")) URL.revokeObjectURL(a.src);
+      }
+    };
+  }, []);
+  const chip = (st) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "span",
+    {
+      style: {
+        fontSize: 11,
+        fontWeight: 600,
+        color: st === "ok" ? "var(--dsw-alias-state-success-primary)" : st === null ? t2.term : "var(--dsw-alias-state-error-primary)"
+      },
+      children: st === "ok" ? t("selftestOk") : st === null ? "\u2013" : st === "autoplay" ? t("selftestAutoplay") : t("selftestFail")
+    }
+  );
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+    "span",
+    {
+      role: "group",
+      "aria-label": t("selftestTitle"),
+      title: t("selftestHint"),
+      style: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "2px 0 6px" },
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            type: "button",
+            onClick: run,
+            disabled: busy,
+            style: {
+              font: "inherit",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              cursor: busy ? "default" : "pointer",
+              // 2026-11-20 Slice4（自审计实测）：主行动按钮走品牌主色；成功绿只留给「已配/正常」状态文案。
+              // 原 success 绿底白字在浅色下对比约 2.5:1，且把「动作」与「状态」混成一种颜色。
+              color: "var(--dsw-alias-bg-base, #fff)",
+              background: "var(--dsw-alias-brand-primary)",
+              border: "1px solid transparent",
+              borderRadius: 6,
+              padding: "4px 12px",
+              fontSize: 12,
+              fontWeight: 600,
+              lineHeight: "18px"
+            },
+            children: busy ? t("selftestRunning") : t("selftestRun")
+          }
+        ),
+        synth !== null || play !== null ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "span",
+          {
+            role: "status",
+            "aria-live": "polite",
+            style: { display: "inline-flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 11, color: t2.term },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                t("selftestSynth"),
+                " ",
+                chip(synth),
+                synth === "ok" ? ` ${synthMs} ${t("unitMs")}` : ""
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                t("selftestPlay"),
+                " ",
+                chip(play)
+              ] })
+            ]
+          }
+        ) : null,
+        synth === "fail" && isCloudEngine(engine) ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            type: "button",
+            onClick: onSwitchLocal,
+            style: {
+              font: "inherit",
+              cursor: "pointer",
+              color: t2.label,
+              background: "transparent",
+              border: `1px solid ${t2.border}`,
+              borderRadius: 6,
+              padding: "3px 10px",
+              fontSize: 11,
+              lineHeight: "18px"
+            },
+            children: t("switchToLocalTts")
+          }
+        ) : null,
+        note ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "status", style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px", flexBasis: "100%" }, children: note }) : null
+      ]
+    }
+  );
+}
+function normalizeRules(input) {
+  if (!Array.isArray(input) || input.length > 200) return null;
+  const out = [];
+  for (const r of input) {
+    if (typeof r !== "object" || r === null) return null;
+    const rec = r;
+    if (typeof rec.to !== "string" || !rec.to.trim()) return null;
+    if (!Array.isArray(rec.from)) return null;
+    const from2 = rec.from.filter((s) => typeof s === "string" && !!s.trim()).map((s) => s.trim());
+    if (from2.length === 0) return null;
+    out.push({ from: from2, to: rec.to.trim() });
+  }
+  return out;
+}
+function ReplacementsSection({
+  rules,
+  onChange
+}) {
+  const parsed = rules === void 0 ? [] : normalizeRules(rules);
+  const unreadable = parsed === null;
+  const list = parsed ?? [];
+  const [fromText, setFromText] = (0, import_react2.useState)("");
+  const [toText, setToText] = (0, import_react2.useState)("");
+  const [note, setNote] = (0, import_react2.useState)(null);
+  const fileRef = (0, import_react2.useRef)(null);
+  const status = useModelsStatus();
+  const rawHits = status?.replacements?.hits?.filter((n) => typeof n === "number") ?? [];
+  const hits = rawHits.length === list.length ? rawHits : [];
+  const [busy, setBusy] = (0, import_react2.useState)(false);
+  const commit = async (next) => {
+    if (busy) return false;
+    setBusy(true);
+    try {
+      return await commitUnlocked(next);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const commitUnlocked = async (next) => {
+    if (replacementsPayloadBytes(next) > REPLACEMENTS_MAX_PAYLOAD_BYTES) {
+      setNote(t("replTooLarge"));
+      return false;
+    }
+    const ok = await onChange(next);
+    if (ok === false) {
+      setNote(t("replSaveFail"));
+      return false;
+    }
+    setNote(null);
+    return true;
+  };
+  const add = () => {
+    if (unreadable) {
+      setNote(t("replUnreadable"));
+      return;
+    }
+    const from2 = fromText.split(/[,，、]/).map((s) => s.trim()).filter((s) => s.length > 0);
+    const to = toText.trim();
+    if (from2.length === 0 || !to || list.length >= 200) {
+      setNote(t("replInvalid"));
+      return;
+    }
+    void (async () => {
+      if (await commit([...list, { from: from2, to }])) {
+        setFromText("");
+        setToText("");
+      }
+    })();
+  };
+  const exportFile = () => {
+    const payload = unreadable ? rules : list;
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "voice-replacements.json";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1e3);
+  };
+  const importFile = (f) => {
+    if (!f) return;
+    if (f.size > 1048576) {
+      setNote(t("replBadFile"));
+      return;
+    }
+    void (async () => {
+      try {
+        const parsed2 = JSON.parse(await f.text());
+        const next = normalizeRules(parsed2);
+        if (!next) {
+          setNote(t("replBadFile"));
+          return;
+        }
+        await commit(next);
+      } catch {
+        setNote(t("replBadFile"));
+      }
+    })();
+  };
+  const btnStyle = {
+    font: "inherit",
+    display: "inline-flex",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    cursor: "pointer",
+    color: t2.label,
+    background: "var(--dsw-alias-bg-layer-2)",
+    border: `1px solid ${t2.border}`,
+    borderRadius: 6,
+    padding: "4px 10px",
+    fontSize: 12,
+    lineHeight: "18px"
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch", padding: "4px 0 10px", minWidth: 0 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 2 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, color: t2.label, fontWeight: 600 }, children: t("replTitle") }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.term, lineHeight: "18px" }, children: t("descAsrReplacements") })
+    ] }),
+    unreadable ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "alert", style: { fontSize: 12, color: "var(--dsw-alias-state-error-primary)" }, children: t("replUnreadable") }) : list.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: t2.term, padding: "2px 0" }, children: t("replEmpty") }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: list.map((r, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "span",
+      {
+        style: {
+          fontSize: 12,
+          color: t2.label,
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          flexWrap: "wrap",
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: `1px solid ${t2.border}`,
+          background: "var(--dsw-alias-bg-layer-2)"
+        },
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { flex: 1, minWidth: 0, wordBreak: "break-word" }, children: [
+            r.from.join(" / "),
+            " ",
+            "\u2192",
+            " ",
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: r.to })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "span",
+            {
+              style: {
+                fontSize: 11,
+                color: t2.term,
+                padding: "1px 6px",
+                borderRadius: 999,
+                background: "var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.1))"
+              },
+              children: [
+                t("replHits"),
+                " ",
+                hits[i] ?? 0
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              type: "button",
+              "aria-label": `${t("replDelete")}: ${r.from.join(" / ")} \u2192 ${r.to}`,
+              disabled: busy,
+              onClick: () => void commit(list.filter((_, j) => j !== i)),
+              style: { ...btnStyle, padding: "2px 8px", alignSelf: "center" },
+              children: t("replDelete")
+            }
+          )
+        ]
+      },
+      i
+    )) }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "input",
+        {
+          value: fromText,
+          onChange: (e) => setFromText(e.target.value),
+          placeholder: t("replFromPh"),
+          "aria-label": t("replFromPh"),
+          style: { ...inputStyle, width: "auto", flex: "1 1 160px", fontSize: 12.5, padding: "5px 10px", maxWidth: 240 }
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "input",
+        {
+          value: toText,
+          onChange: (e) => setToText(e.target.value),
+          onKeyDown: (e) => {
+            if (e.key === "Enter") add();
+          },
+          placeholder: t("replToPh"),
+          "aria-label": t("replToPh"),
+          style: { ...inputStyle, width: "auto", flex: "1 1 110px", fontSize: 12.5, padding: "5px 10px", maxWidth: 160 }
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: add, disabled: busy, style: { ...btnStyle, minHeight: 34, padding: "5px 12px" }, children: t("replAdd") })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: exportFile, style: btnStyle, children: t("replExport") }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => fileRef.current?.click(), disabled: busy, style: btnStyle, children: t("replImport") }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "input",
+        {
+          ref: fileRef,
+          type: "file",
+          accept: "application/json,.json",
+          style: { display: "none" },
+          onChange: (e) => {
+            importFile(e.target.files?.[0]);
+            e.target.value = "";
+          }
+        }
+      )
     ] }),
     note && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)", fontSize: 12, lineHeight: "18px" }, children: note })
   ] });
 }
+var modelsStatusSubs = /* @__PURE__ */ new Set();
+var modelsStatusTimer = null;
+var modelsStatusLast = null;
+var modelsStatusRaw = "";
+var modelsStatusInflight = false;
+var MODELS_STATUS_INTERVAL_MS = 3e3;
+async function pollModelsStatusOnce() {
+  if (modelsStatusInflight) return;
+  modelsStatusInflight = true;
+  try {
+    const res = await fetch(location.origin + BASE_PATH + "/models/status", { signal: AbortSignal.timeout(8e3) });
+    if (!res.ok) return;
+    const text = await res.text();
+    if (text === modelsStatusRaw && modelsStatusLast !== null) return;
+    modelsStatusRaw = text;
+    modelsStatusLast = JSON.parse(text);
+    for (const fn of [...modelsStatusSubs]) fn(modelsStatusLast);
+  } catch {
+  } finally {
+    modelsStatusInflight = false;
+  }
+}
+function subscribeModelsStatus(fn) {
+  modelsStatusSubs.add(fn);
+  if (modelsStatusLast) fn(modelsStatusLast);
+  if (!modelsStatusTimer) {
+    void pollModelsStatusOnce();
+    modelsStatusTimer = setInterval(() => void pollModelsStatusOnce(), MODELS_STATUS_INTERVAL_MS);
+  }
+  return () => {
+    modelsStatusSubs.delete(fn);
+    if (modelsStatusSubs.size === 0 && modelsStatusTimer) {
+      clearInterval(modelsStatusTimer);
+      modelsStatusTimer = null;
+    }
+  };
+}
+function useModelsStatus() {
+  const [st, setSt] = (0, import_react2.useState)(modelsStatusLast);
+  (0, import_react2.useEffect)(() => subscribeModelsStatus(setSt), []);
+  return st;
+}
+var PRESET_LABEL = {
+  "siliconflow-cosyvoice2": () => t("presetCosy"),
+  "siliconflow-fish": () => t("presetFish"),
+  "openrouter-openai": () => t("presetOpenrouter"),
+  "openai-official": () => t("presetOpenaiOfficial"),
+  "groq-playai": () => t("presetGroq"),
+  "selfhosted-kokoro": () => t("presetSelfKokoro"),
+  "selfhosted-vllm": () => t("presetSelfVllm")
+};
+function OpenAiPresetSection({
+  score,
+  value,
+  presets,
+  onReloadPresets,
+  onSwitch
+}) {
+  const cur = typeof value === "string" ? value : "";
+  const known = Object.keys(presets ?? {});
+  const CUSTOM = "custom";
+  const ids = ["", CUSTOM, ...known, ...cur && cur !== CUSTOM && !known.includes(cur) ? [cur] : []];
+  const options = ids.map((id) => ({
+    v: id,
+    label: id === CUSTOM ? t("presetCustomCustom") : id ? PRESET_LABEL[id]?.() ?? id : t("presetCustom")
+  }));
+  const data = presets?.[cur];
+  let hostLabel = "";
+  if (data?.baseUrl) {
+    try {
+      hostLabel = new URL(data.baseUrl).host;
+    } catch {
+      hostLabel = data.baseUrl;
+    }
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", flexDirection: "column", gap: 6, alignItems: "stretch", width: "100%", maxWidth: 420 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "select",
+      {
+        value: cur,
+        "aria-label": t("openaiPresetLabel"),
+        onChange: (e) => onSwitch(e.target.value),
+        style: selectBaseStyle,
+        children: options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o.v, children: o.label }, o.v))
+      }
+    ),
+    data ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "inline-flex", flexWrap: "wrap", gap: 6, alignItems: "center" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "span",
+        {
+          style: {
+            fontSize: 11,
+            color: "var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            padding: "2px 7px",
+            borderRadius: 5,
+            background: "var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08))"
+          },
+          children: hostLabel
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "span",
+        {
+          style: {
+            fontSize: 11,
+            color: t2.term,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            padding: "2px 7px",
+            borderRadius: 5,
+            background: "var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08))"
+          },
+          children: data.model
+        }
+      )
+    ] }) : null,
+    !presets ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 11.5, color: t2.term }, children: [
+      t("presetDataMissing"),
+      " ",
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          type: "button",
+          onClick: onReloadPresets,
+          style: { font: "inherit", cursor: "pointer", background: "none", border: "none", padding: 0, color: "var(--dsw-alias-brand-primary)", textDecoration: "underline" },
+          children: t("presetReload")
+        }
+      )
+    ] }) : null,
+    PRESET_NOTE[cur] ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11.5, color: t2.term, lineHeight: "17px" }, children: PRESET_NOTE[cur]() }) : null,
+    cur === CUSTOM ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11.5, color: t2.term, lineHeight: "17px" }, children: t("presetCustomHint") }) : null
+  ] });
+}
+function useHostPresets() {
+  const [presets, setPresets] = (0, import_react2.useState)(null);
+  const [nonce, setNonce] = (0, import_react2.useState)(0);
+  (0, import_react2.useEffect)(() => {
+    let alive = true;
+    void fetch(location.origin + BASE_PATH + "/presets").then((res) => res.ok ? res.json() : null).then((data) => {
+      if (alive && data?.presets) setPresets(data.presets);
+    }).catch(() => void 0);
+    return () => {
+      alive = false;
+    };
+  }, [nonce]);
+  return { presets, reload: () => setNonce((n) => n + 1) };
+}
 function Row({ name: name2, desc, children }) {
   const label = t(`${name2}Label`);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setLabelBox, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setLabel, children: label }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setHint, children: desc })
+  const [showDesc, setShowDesc] = (0, import_react2.useState)(false);
+  const descId = `dshvm-desc-${name2}`;
+  const hasDesc = desc.length > 0;
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: setRow, "data-dshvm-row": name2, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: setLabel, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
+      hasDesc ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          type: "button",
+          "aria-label": t("rowInfo"),
+          "aria-expanded": showDesc,
+          "aria-controls": descId,
+          onClick: () => setShowDesc((v) => !v),
+          style: {
+            appearance: "none",
+            border: `1px solid ${showDesc ? "#2563eb" : "color-mix(in srgb, var(--dsw-alias-border-l2) 85%, transparent)"}`,
+            background: showDesc ? "rgba(37, 99, 235, 0.12)" : "transparent",
+            cursor: "pointer",
+            font: "inherit",
+            fontSize: 10.5,
+            fontWeight: 600,
+            lineHeight: 1,
+            width: 17,
+            height: 17,
+            padding: 0,
+            borderRadius: 999,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: showDesc ? "#2563eb" : "var(--dsw-alias-label-tertiary)",
+            flexShrink: 0
+          },
+          children: "?"
+        }
+      ) : null
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flexShrink: 0, maxWidth: 300 }, children })
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { minWidth: 0, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }, children }),
+    showDesc && hasDesc ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { id: descId, style: { ...setHint, gridColumn: "1 / -1", minWidth: 0 }, children: desc }) : null
   ] });
 }
-var NEXT_ENTRY_FIELDS = [
-  { key: "interruptLevel", label: "interruptLevelLabel", fmt: (v) => t(v === 1 ? "sev1" : v === 2 ? "sev2" : "sev0") },
-  { key: "bargeInMode", label: "bargeInModeLabel", fmt: (v) => t(v === "auto" ? "bargeInAuto" : v === "manual" ? "bargeInManual" : "bargeInDetect") },
-  { key: "echoGateDb", label: "echoGateDbLabel", fmt: (v) => `${v} ${t("unitDb")}` },
-  { key: "autoSend", label: "autoSendLabel", fmt: (v) => v ? t("valueOn") : t("valueOff") },
-  { key: "autoResume", label: "autoResumeLabel", fmt: (v) => v ? t("valueOn") : t("valueOff") },
-  { key: "mode", label: "modeLabel", fmt: (v) => t(v === "hold" ? "modeHold" : v === "once" ? "modeOnce" : "modeToggle") },
-  { key: "wakeWord", label: "wakeWordLabel", fmt: (v) => v ? t("valueQuoted").replace("{value}", String(v)) : t("valueOff") },
-  { key: "toolBeep", label: "toolBeepLabel", fmt: (v) => v ? t("valueOn") : t("valueOff") },
-  { key: "captionFontSize", label: "captionFontSizeLabel", fmt: (v) => t(v === 1 ? "captionSizeM" : v === 2 ? "captionSizeL" : v === 3 ? "captionSizeXL" : "captionSizeS") },
-  { key: "captionMaxWidth", label: "captionMaxWidthLabel", fmt: (v) => t(v === 0 ? "captionWidth50" : v === 2 ? "captionWidth90" : "captionWidth70") },
-  { key: "backchannelYield", label: "backchannelYieldLabel", fmt: (v) => v ? t("valueOn") : t("valueOff") },
-  { key: "yieldMs", label: "yieldMsLabel", fmt: (v) => `${v} ${t("unitMs")}` },
-  { key: "bargeInSalvage", label: "bargeInSalvageLabel", fmt: (v) => v ? t("valueOn") : t("valueOff") },
-  { key: "llmCorrect", label: "llmCorrectLabel", fmt: (v) => v ? t("valueOn") : t("valueOff") },
-  { key: "idleTimeoutMinutes", label: "idleTimeoutMinutesLabel", fmt: (v) => `${v} ${t("unitMin")}` },
-  { key: "shortcut", label: "shortcutLabel", fmt: (v) => v ? String(v) : t("valueOff") }
-];
+var NEXT_ENTRY_FMT = {
+  interruptLevel: (v) => t(v === 1 ? "sev1" : v === 2 ? "sev2" : "sev0"),
+  bargeInMode: (v) => t(v === "auto" ? "bargeInAuto" : v === "manual" ? "bargeInManual" : "bargeInDetect"),
+  echoGateDb: (v) => `${v} ${t("unitDb")}`,
+  autoSend: (v) => v ? t("valueOn") : t("valueOff"),
+  autoResume: (v) => v ? t("valueOn") : t("valueOff"),
+  mode: (v) => t(v === "hold" ? "modeHold" : v === "once" ? "modeOnce" : "modeToggle"),
+  wakeWord: (v) => v ? t("valueQuoted").replace("{value}", String(v)) : t("valueOff"),
+  toolBeep: (v) => v ? t("valueOn") : t("valueOff"),
+  captionFontSize: (v) => t(v === 1 ? "captionSizeM" : v === 2 ? "captionSizeL" : v === 3 ? "captionSizeXL" : "captionSizeS"),
+  captionMaxWidth: (v) => t(v === 0 ? "captionWidth50" : v === 2 ? "captionWidth90" : "captionWidth70"),
+  backchannelYield: (v) => v ? t("valueOn") : t("valueOff"),
+  yieldMs: (v) => `${v} ${t("unitMs")}`,
+  bargeInSalvage: (v) => v ? t("valueOn") : t("valueOff"),
+  llmCorrect: (v) => v ? t("valueOn") : t("valueOff"),
+  idleTimeoutMinutes: (v) => `${v} ${t("unitMin")}`,
+  shortcut: (v) => v ? String(v) : t("valueOff"),
+  composerShortcut: (v) => v ? String(v) : t("valueOff")
+};
 function EffectivePending({ effective, value, ready }) {
-  if (!ready || !effective) return null;
-  const pending = NEXT_ENTRY_FIELDS.filter((f) => effective[f.key] !== void 0 && effective[f.key] !== value[f.key]);
+  const pending = computePendingFields(effective, value, ready === true);
   if (pending.length === 0) return null;
+  const effMap = effective;
   const items = pending.map((f) => {
-    const eff = f.fmt ? f.fmt(effective[f.key]) : String(effective[f.key]);
+    const fmt = NEXT_ENTRY_FMT[f.key];
+    const eff = fmt ? fmt(effMap[f.key]) : String(effMap[f.key]);
     return t("effectiveItem").replace("{label}", t(f.label)).replace("{value}", eff);
   }).join(t("effectiveItemSep"));
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { "data-dshvm-settings": "effective-pending", style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary)", padding: "8px 2px 4px", lineHeight: 1.6 }, children: t("effectivePending").replace("{count}", String(pending.length)).replace("{items}", items) });
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "div",
+    {
+      "data-dshvm-settings": "effective-pending",
+      style: {
+        fontSize: 12,
+        color: "var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))",
+        padding: "8px 12px",
+        marginTop: 8,
+        borderRadius: 8,
+        background: "color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, var(--dsw-alias-bg-layer-2))",
+        border: "1px solid color-mix(in srgb, var(--dsw-alias-brand-primary) 24%, transparent)",
+        lineHeight: 1.55
+      },
+      children: t("effectivePending").replace("{count}", String(pending.length)).replace("{items}", items)
+    }
+  );
 }
-function Section({ title, children }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 2 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "10px 0 2px" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--dsw-alias-label-secondary)" }, children: title }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { flex: 1, height: 1, background: t2.border } })
-    ] }),
-    children
-  ] });
+function SegmentTabs({ active, onChange }) {
+  const tabs = [
+    { k: "input", label: t("segInput") },
+    { k: "read", label: t("segReadAloud") },
+    { k: "display", label: t("segDisplay") },
+    { k: "advanced", label: t("segAdvanced") }
+  ];
+  const move = (delta) => {
+    const i = tabs.findIndex((tb) => tb.k === active);
+    const next = tabs[((i + delta) % tabs.length + tabs.length) % tabs.length];
+    onChange(next.k);
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "div",
+    {
+      role: "tablist",
+      "aria-label": t("segListLabel"),
+      className: "dshvm-tab-bar",
+      onKeyDown: (e) => {
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          move(1);
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          move(-1);
+        }
+      },
+      children: tabs.map((tb) => {
+        const on = tb.k === active;
+        return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            type: "button",
+            role: "tab",
+            "aria-selected": on,
+            "data-dshvm-tab": tb.k,
+            onClick: () => onChange(tb.k),
+            style: {
+              appearance: "none",
+              font: "inherit",
+              fontSize: 12.5,
+              cursor: "pointer",
+              padding: "6px 10px",
+              borderRadius: 7,
+              border: on ? "1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 85%, transparent)" : "1px solid transparent",
+              background: on ? "var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-layer-2))" : "transparent",
+              boxShadow: on ? "0 1px 3px rgba(0, 0, 0, 0.12)" : "none",
+              color: on ? "var(--dsw-alias-label-primary)" : "var(--dsw-alias-label-secondary)",
+              fontWeight: on ? 600 : 500,
+              textAlign: "center",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              transition: "background .14s ease, color .14s ease, box-shadow .14s ease"
+            },
+            children: tb.label
+          },
+          tb.k
+        );
+      })
+    }
+  );
+}
+function GroupTitle({ children, first }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "div",
+    {
+      style: {
+        fontSize: 11.5,
+        fontWeight: 600,
+        letterSpacing: ".03em",
+        color: "var(--dsw-alias-label-tertiary)",
+        padding: first ? "8px 0 2px" : "16px 0 4px",
+        borderTop: first ? "none" : `1px solid ${t2.border}`,
+        marginTop: first ? 2 : 8
+      },
+      children
+    }
+  );
 }
 function SegGroup({
   score,
@@ -3428,43 +6136,48 @@ function SegGroup({
   options,
   onSelect
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "group", style: setSeg, children: options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "group", "aria-label": t(`${field}Label`), style: setSeg, children: options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
     "button",
     {
+      type: "button",
       style: setSegBtn(value === o.v),
       "aria-pressed": value === o.v,
       onClick: () => {
-        void score.set(field, o.v);
-        onSelect?.(o.v);
+        void Promise.resolve(score.set(field, o.v)).then((ok) => {
+          if (ok !== false) onSelect?.(o.v);
+        });
       },
       children: o.label
     },
     String(o.v)
   )) });
 }
+var ENGINE_NAME = {
+  vits: () => t("engineVits"),
+  kokoro: () => t("engineKokoro"),
+  edge: () => t("engineEdge"),
+  openai: () => t("engineOpenai"),
+  mimo: () => t("engineMimo")
+};
+function engineBadge(engine) {
+  if (engine === "edge") return t("engineBadgeCloud");
+  if (isThirdPartyEngine(engine)) return t("engineBadgeRemote");
+  return t("engineBadgeLocal");
+}
+function engineDownText(errorCode, engine) {
+  if (errorCode === "mimo_not_configured") return t("errMimoKeyMissing");
+  if (errorCode === "openai_not_configured") return t("errOpenaiConfigMissing");
+  if (isThirdPartyEngine(engine)) return t("engineRemoteDown");
+  return t("engineError");
+}
 var fmtMB = (b) => b >= 1048576 ? `${(b / 1048576).toFixed(0)}MB` : b > 0 ? `${Math.round(b / 1024)}KB` : "\u2013";
-function EngineStatusInline() {
-  const [st, setSt] = (0, import_react2.useState)(null);
+function EngineStatusInline({ onSwitchLocal }) {
+  const st = useModelsStatus();
   const [acting, setActing] = (0, import_react2.useState)(null);
-  (0, import_react2.useEffect)(() => {
-    let alive = true;
-    const poll = async () => {
-      try {
-        const res = await fetch(location.origin + BASE_PATH + "/models/status");
-        if (res.ok && alive) setSt(await res.json());
-      } catch {
-      }
-    };
-    void poll();
-    const timer = setInterval(() => void poll(), 3e3);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, []);
+  const [actError, setActError] = (0, import_react2.useState)(null);
   const tts = st?.tts;
   if (!tts) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, {});
-  const engineName = tts.engine === "vits" ? t("engineVits") : tts.engine === "kokoro" ? t("engineKokoro") : tts.engine === "openai" ? t("engineOpenai") : t("engineEdge");
+  const engineName = ENGINE_NAME[tts.engine]();
   const isLocal = !!tts.local;
   const localReady = isLocal ? !!tts.local?.ready : false;
   let statusText;
@@ -3472,8 +6185,11 @@ function EngineStatusInline() {
   if (tts.loading) {
     statusText = t("engineLoading");
     statusColor = t2.term;
+  } else if (tts.keyRequired && tts.keyPresent === false) {
+    statusText = t("engineMissingKey");
+    statusColor = "var(--dsw-alias-state-warn-primary, #d29922)";
   } else if (tts.error) {
-    statusText = t(tts.engine === "openai" ? "engineRemoteDown" : "engineError");
+    statusText = engineDownText(tts.errorCode, tts.engine);
     statusColor = "var(--dsw-alias-state-error-primary)";
   } else if (isLocal && !localReady) {
     statusText = t("ttsModelsMissing");
@@ -3484,11 +6200,15 @@ function EngineStatusInline() {
   }
   const act = (kind) => {
     setActing(kind);
+    setActError(null);
     void fetch(location.origin + BASE_PATH + (kind === "clean" ? "/models/clean" : "/models/download"), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ engine: tts.engine })
-    }).catch(() => void 0).finally(() => setTimeout(() => setActing(null), 1500));
+      body: JSON.stringify({ engine: tts.engine }),
+      signal: AbortSignal.timeout(15e3)
+    }).then((res) => {
+      setActError(res.ok ? null : t("modelActionFailed"));
+    }).catch(() => setActError(t("modelActionFailed"))).finally(() => setTimeout(() => setActing(null), 1500));
   };
   const action = localReady ? "clean" : "download";
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, padding: "2px 0 10px" }, children: [
@@ -3504,10 +6224,10 @@ function EngineStatusInline() {
           borderRadius: 6,
           background: "var(--dsw-alias-bg-layer-1)"
         },
-        children: t(tts.engine === "edge" ? "engineBadgeCloud" : tts.engine === "openai" ? "engineBadgeRemote" : "engineBadgeLocal")
+        children: engineBadge(tts.engine)
       }
     ),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: statusText === t("engineReady") || statusText === t("engineError") ? 600 : 400, color: statusColor }, children: statusText }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, fontWeight: 600, color: statusColor }, children: tts.keyRequired && tts.keyPresent === false ? t("engineMissingKey") : tts.error ? t("engineUnavailableShort") : statusText }),
     tts.loading && tts.progress?.file && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
       tts.progress.file,
       " ",
@@ -3535,37 +6255,49 @@ function EngineStatusInline() {
         children: acting ? acting === "clean" ? t("ttsDeleting") : t("ttsDownloading") : action === "clean" ? t("ttsDelete") : t("ttsDownload")
       }
     ),
-    tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: tts.errorCode === "kokoro_needs_node" ? t("errKokoroNeedsNode") : tts.engine === "openai" ? t("errRemoteTts") : t("engineError") })
+    actError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { role: "status", "aria-live": "polite", style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: actError }) : null,
+    tts.error && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: "var(--dsw-alias-state-error-primary)", flexBasis: "100%" }, children: tts.keyRequired && tts.keyPresent === false ? t("errApiKeyMissingHint") : tts.errorCode === "kokoro_needs_node" ? t("errKokoroNeedsNode") : tts.errorCode === "mimo_not_configured" ? t("errMimoKeyMissing") : tts.errorCode === "openai_not_configured" ? t("errOpenaiConfigMissing") : isThirdPartyEngine(tts.engine) ? t("errRemoteTts") : t("engineError") }),
+      !isLocal && onSwitchLocal ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          type: "button",
+          onClick: onSwitchLocal,
+          style: {
+            font: "inherit",
+            cursor: "pointer",
+            color: t2.label,
+            background: "var(--dsw-alias-bg-layer-2)",
+            border: `1px solid ${t2.border}`,
+            borderRadius: 8,
+            padding: "3px 10px",
+            flexShrink: 0
+          },
+          children: t("switchToLocalTts")
+        }
+      ) : null
+    ] })
   ] });
 }
 function ModelStatusView() {
-  const [st, setSt] = (0, import_react2.useState)(null);
+  const st = useModelsStatus();
   const [retrying, setRetrying] = (0, import_react2.useState)(null);
-  (0, import_react2.useEffect)(() => {
-    let alive = true;
-    const poll = async () => {
-      try {
-        const res = await fetch(`${location.origin}${BASE_PATH}/models/status`);
-        if (res.ok && alive) setSt(await res.json());
-      } catch {
-      }
-    };
-    void poll();
-    const timer = setInterval(() => void poll(), 3e3);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, []);
-  const retry = (kind) => {
-    setRetrying(kind);
-    void fetch(`${location.origin}${BASE_PATH}/models/retry`, {
+  const [actionError, setActionError] = (0, import_react2.useState)(null);
+  const postModelAction = (path, body) => {
+    void fetch(`${location.origin}${BASE_PATH}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ kind })
-    }).catch(() => void 0).finally(() => {
-      setTimeout(() => setRetrying(null), 2e3);
-    });
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15e3)
+    }).then((res) => {
+      setActionError(res.ok ? null : t("modelActionFailed"));
+    }).catch(() => setActionError(t("modelActionFailed")));
+  };
+  const retry = (kind) => {
+    setRetrying(kind);
+    setActionError(null);
+    postModelAction("/models/retry", { kind });
+    setTimeout(() => setRetrying(null), 2e3);
   };
   const mkRow = (label, info, key, progressFor) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { width: 92, flexShrink: 0, fontSize: 12, color: t2.label }, children: label }),
@@ -3600,38 +6332,55 @@ function ModelStatusView() {
     )
   ] });
   const anyDownloading = !!st?.progress;
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 600, color: t2.label }, children: t("modelsTitle") }),
-      anyDownloading && st?.progress && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
-        st.progress.file,
-        " ",
-        st.progress.percent,
-        "%"
-      ] })
-    ] }),
-    mkRow(
-      t("modelStreamingAsr"),
-      { ready: !!st?.asr.ready, size: st?.asr.files.reduce((a, f) => a + f.size, 0) ?? 0, failLatchMs: st?.asr.failLatchMs ?? 0 },
-      "asr",
-      anyDownloading ? st.progress : null
-    ),
-    mkRow(t("modelVad"), { ready: !!st?.vad.ready, size: st?.vad.size ?? 0, failLatchMs: st?.vad.failLatchMs ?? 0 }, "vad", anyDownloading ? st.progress : null),
-    mkRow(
-      t("modelSense"),
-      {
-        ready: !!st?.sense.ready,
-        size: st?.sense.size ?? 0,
-        failLatchMs: st?.sense.enabled ? st?.sense.failLatchMs ?? 0 : 0,
-        disabledText: st?.sense.enabled ? void 0 : t("modelsDisabled")
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+    "div",
+    {
+      style: {
+        marginTop: 6,
+        padding: "10px 14px",
+        borderRadius: 10,
+        border: `1px solid ${t2.border}`,
+        background: "var(--dsw-alias-bg-layer-2)"
       },
-      "sense",
-      anyDownloading ? st.progress : null
-    ),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("modelsHint") })
-  ] });
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, paddingBottom: 6 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 600, color: t2.label }, children: t("modelsTitle") }),
+          anyDownloading && st?.progress && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: t2.term }, children: [
+            st.progress.file,
+            " ",
+            st.progress.percent,
+            "%"
+          ] })
+        ] }),
+        mkRow(
+          t("modelStreamingAsr"),
+          { ready: !!st?.asr?.ready, size: st?.asr?.files?.reduce((a, f) => a + f.size, 0) ?? 0, failLatchMs: st?.asr?.failLatchMs ?? 0 },
+          "asr",
+          anyDownloading ? st.progress : null
+        ),
+        mkRow(t("modelVad"), { ready: !!st?.vad?.ready, size: st?.vad?.size ?? 0, failLatchMs: st?.vad?.failLatchMs ?? 0 }, "vad", anyDownloading ? st.progress : null),
+        mkRow(
+          t("modelSense"),
+          {
+            ready: !!st?.sense?.ready,
+            size: st?.sense?.size ?? 0,
+            failLatchMs: st?.sense?.enabled ? st?.sense?.failLatchMs ?? 0 : 0,
+            disabledText: st?.sense?.enabled ? void 0 : t("modelsDisabled")
+          },
+          "sense",
+          anyDownloading ? st.progress : null
+        ),
+        actionError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { role: "status", "aria-live": "polite", style: { fontSize: 12, color: "var(--dsw-alias-state-error-primary)", lineHeight: "18px", padding: "2px 0" }, children: actionError }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11.5, color: t2.term, lineHeight: "17px", paddingTop: 6 }, children: t("modelsHint") })
+      ]
+    }
+  );
 }
-function VoiceSettingsCard({ scope, defaultOpen = false }) {
+function VoiceSettingsCard({
+  scope,
+  defaultOpen = false
+}) {
+  const cardBodyId = React.useId();
   useLang();
   const [snap, setSnap] = (0, import_react2.useState)(() => scope.getSnapshot());
   const [collapsed, setCollapsed] = (0, import_react2.useState)(!defaultOpen);
@@ -3643,92 +6392,139 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
   );
   const value = snap?.value ?? {};
   const unavailable = snap?.status === "unavailable" || snap?.status === "error";
-  const engine = value.ttsEngine === "edge" ? "edge" : value.ttsEngine === "kokoro" ? "kokoro" : value.ttsEngine === "openai" ? "openai" : "vits";
+  const [secretKeys, setSecretKeys] = (0, import_react2.useState)({ openaiApiKey: false, mimoApiKey: false, openaiApiKeys: {}, fromConfig: { openaiApiKey: false, mimoApiKey: false, openaiApiKeys: {} } });
+  const boolMap = (v) => {
+    if (v === null || typeof v !== "object" || Array.isArray(v)) return {};
+    const out = {};
+    for (const k of Object.keys(v)) out[k] = Boolean(v[k]);
+    return out;
+  };
+  const refreshSecretKeys = () => {
+    void fetch(location.origin + BASE_PATH + "/settings", { signal: AbortSignal.timeout(8e3) }).then(
+      (res) => res.ok ? res.json() : null
+    ).then((data) => {
+      if (data?.keys) {
+        setSecretKeys({
+          openaiApiKey: Boolean(data.keys.openaiApiKey),
+          mimoApiKey: Boolean(data.keys.mimoApiKey),
+          openaiApiKeys: boolMap(data.keys.openaiApiKeys),
+          fromConfig: {
+            openaiApiKey: Boolean(data.keysFromConfig?.openaiApiKey),
+            mimoApiKey: Boolean(data.keysFromConfig?.mimoApiKey),
+            openaiApiKeys: boolMap(data.keysFromConfig?.openaiApiKeys)
+          }
+        });
+      }
+    }).catch(() => void 0);
+  };
+  const hostPresetState = useHostPresets();
+  const hostPresets = hostPresetState.presets;
+  const [tab, setTab] = (0, import_react2.useState)("read");
+  const [openaiAdvOpen, setOpenaiAdvOpen] = (0, import_react2.useState)(false);
+  const headStatus = useModelsStatus();
+  const effectiveVoice = () => {
+    const pid = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
+    return resolvePresetVoice(value.voice, pid ? hostPresets?.[pid]?.voice : "");
+  };
+  (0, import_react2.useEffect)(() => {
+    refreshSecretKeys();
+  }, [value.ttsEngine]);
+  const engine = asTtsEngineKind(value.ttsEngine);
   const [edgeRaw, setEdgeRaw] = (0, import_react2.useState)(null);
   (0, import_react2.useEffect)(() => {
     if (engine !== "edge") return;
     let alive = true;
     void fetch(location.origin + BASE_PATH + "/voices").then((res) => res.ok ? res.json() : null).then((data) => {
-      if (alive && data?.voices) setEdgeRaw(data.voices);
+      if (alive && Array.isArray(data?.voices) && data.voices.length > 0) setEdgeRaw(data.voices);
     }).catch(() => void 0);
     return () => {
       alive = false;
     };
   }, [engine]);
-  const voiceOptions = engine === "edge" ? edgeRaw ? edgeAllOptions(edgeRaw, activeLocale()) : edgeCommonOptions() : engine === "kokoro" ? kokoroOptions() : engine === "openai" ? [] : vitsOptions();
+  const presetVoiceList = engine === "openai" && typeof value.openaiPreset === "string" && value.openaiPreset ? hostPresets?.[value.openaiPreset]?.voices ?? [] : [];
+  const voiceOptions = engine === "edge" ? edgeRaw ? edgeAllOptions(edgeRaw, activeLocale()) : edgeCommonOptions() : engine === "kokoro" ? kokoroOptions() : engine === "openai" ? presetVoiceList.map((v) => ({ v, label: presetVoiceLabel(v) })) : engine === "mimo" ? [...MIMO_VOICES].map((v) => ({ v, label: v })) : vitsOptions();
+  const switchPreset = (next) => {
+    const list = hostPresets?.[next]?.voices;
+    const cur = String(value.voice ?? "").trim();
+    void Promise.resolve(scope.set("openaiPreset", next)).then((ok) => {
+      if (ok === false) return;
+      if (Array.isArray(list) && cur !== "" && !list.includes(cur)) void scope.set("voice", "");
+    });
+  };
+  const switchToLocalKokoro = () => {
+    void Promise.resolve(scope.set("ttsEngine", "kokoro")).then((ok) => {
+      if (ok !== false) void scope.set("voice", ENGINE_DEFAULT_VOICE["kokoro"] ?? "zf_xiaobei");
+    });
+  };
+  const curPresetId = typeof value.openaiPreset === "string" ? value.openaiPreset : "";
+  const isKnownOpenaiPreset = hostPresets !== null && curPresetId !== "" && curPresetId !== "custom" && Object.hasOwn(hostPresets, curPresetId);
+  const hasOpenaiOverrides = Boolean(String(value.openaiBaseUrl ?? "").trim() || String(value.openaiModel ?? "").trim());
+  const showOpenaiAdv = !isKnownOpenaiPreset || openaiAdvOpen || hasOpenaiOverrides;
   if (unavailable) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: t2.term, fontSize: 12, padding: "14px 16px", ...cardStyle }, children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: { color: t2.term, fontSize: 12, padding: "14px 18px", ...cardStyle }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "var(--dsw-alias-state-error-primary)" }, children: t("configUnavailable") }),
       t("configUnavailableNote")
     ] });
   }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-dshvm-settings": "card", style: cardStyle, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: focusVisibleCss }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-expanded": !collapsed, "aria-controls": "dshvm-settings-card-body", onClick: () => setCollapsed((c) => !c), style: { ...setHeader, background: collapsed ? "transparent" : t2.bgOpen }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-expanded": !collapsed, "aria-controls": cardBodyId, onClick: () => setCollapsed((c) => !c), style: { ...setHeader, background: collapsed ? "transparent" : t2.bgOpen }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "span",
+        {
+          "aria-hidden": "true",
+          style: {
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            background: "color-mix(in srgb, var(--dsw-alias-brand-primary) 12%, transparent)",
+            color: "var(--dsw-alias-brand-primary)"
+          },
+          children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("svg", { viewBox: "0 0 16 16", width: 15, height: 15, fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "5.5", y: "1.8", width: "5", height: "8.2", rx: "2.5" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M3.2 7.5a4.8 4.8 0 0 0 9.6 0M8 12.3v2" })
+          ] })
+        }
+      ),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: setHeadText, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setName, children: t("stateVoiceMode") }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: setDesc, children: t("settingsCardDesc") })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "span",
+          {
+            style: { ...setDesc, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" },
+            title: t("settingsCardDesc"),
+            children: collapsed ? `${ENGINE_NAME[engine]()} \xB7 ${(String(value.voice ?? "").trim() || (engine === "openai" ? effectiveVoice() : "")).trim() || "\u2014"} \xB7 ${!headStatus?.tts ? "\u2026" : headStatus.tts.loading ? t("engineLoading") : headStatus.tts.keyRequired && headStatus.tts.keyPresent === false ? t("engineMissingKey") : headStatus.tts.error ? engineDownText(headStatus.tts.errorCode, headStatus.tts.engine) : headStatus.tts.local && !headStatus.tts.local.ready ? t("ttsModelsMissing") : t("engineReady")}` : t("settingsCardDesc")
+          }
+        )
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...setChevron, transform: collapsed ? "rotate(0deg)" : "rotate(180deg)" }, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 16 16", width: 14, height: 14, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { fill: "currentColor", d: "M4 6l4 4 4-4z" }) }) })
     ] }),
-    !collapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { id: "dshvm-settings-card-body", style: setBody, children: [
+    !collapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { id: cardBodyId, style: setBody, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EffectivePending, { effective: getRuntimeBoot(), value, ready: snap?.status === "ready" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 4 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRead"), children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "ttsEngine", desc: t("descTtsEngine"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SegmentTabs, { active: tab, onChange: setTab }),
+        tab === "input" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { role: "tabpanel", "aria-label": t("segInput"), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { first: true, children: t("secInteraction") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: t("descMode"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
               score: scope,
-              field: "ttsEngine",
-              value: engine,
+              field: "mode",
+              value: value.mode,
               options: [
-                { v: "vits", label: t("engineVits") },
-                { v: "kokoro", label: t("engineKokoro") },
-                { v: "edge", label: t("engineEdge") },
-                { v: "openai", label: t("engineOpenai") }
-              ],
-              onSelect: (v) => {
-                if (v !== engine) {
-                  void scope.set("voice", ENGINE_DEFAULT_VOICE[String(v)] ?? "zh-CN-XiaoxiaoNeural");
-                }
-              }
-            }
-          ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EngineStatusInline, {}),
-          engine === "kokoro" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "kokoroModel", desc: t("descKokoroModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            SegGroup,
-            {
-              score: scope,
-              field: "kokoroModel",
-              value: value.kokoroModel,
-              options: [
-                { v: "int8", label: t("kokoroModelInt8") },
-                { v: "fp32", label: t("kokoroModelFp32") }
+                { v: "toggle", label: t("modeToggle") },
+                { v: "hold", label: t("modeHold") },
+                { v: "once", label: t("modeOnce") }
               ]
             }
           ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            Row,
-            {
-              name: "voice",
-              desc: (engine === "edge" ? t("descVoice") : engine === "kokoro" ? t("descVoiceKokoro") : engine === "openai" ? t("descVoiceOpenai") : t("descVoiceLocal")) + voiceLangHint(engine, String(value.voice ?? "")),
-              children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                VoiceSelect,
-                {
-                  score: scope,
-                  field: "voice",
-                  value: value.voice ?? "",
-                  options: voiceOptions,
-                  placeholder: ENGINE_DEFAULT_VOICE[engine] ?? "zh-CN-XiaoxiaoNeural",
-                  showCustom: engine === "edge" || engine === "openai",
-                  footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VoicePreviewButton, { voice: v, rate: Number(value.rate ?? 1.1) })
-                }
-              )
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1.1, min: 0.5, max: 2, step: 0.1 }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secInterrupt"), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "autoSend", checked: value.autoSend !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("secInterrupt") }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "interruptLevel", desc: t("descInterrupt"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -3755,25 +6551,44 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               ]
             }
           ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "echoGateDb", desc: t("descEchoGate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "echoGateDb", value: value.echoGateDb ?? 6, min: 3, max: 12, step: 1 }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secInteraction"), children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: t("descMode"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            SegGroup,
-            {
-              score: scope,
-              field: "mode",
-              value: value.mode,
-              options: [
-                { v: "toggle", label: t("modeToggle") },
-                { v: "hold", label: t("modeHold") },
-                { v: "once", label: t("modeOnce") }
-              ]
-            }
-          ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.toolBeep), onChange: (e) => void scope.set("toolBeep", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoSend), onChange: (e) => void scope.set("autoSend", e.target.checked) }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("secShortcut") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "shortcut", desc: t("descShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShortcutField, { score: scope, field: "shortcut", value: value.shortcut ?? "" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "composerShortcut", desc: t("descComposerShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShortcutField, { score: scope, field: "composerShortcut", value: value.composerShortcut ?? "Alt+Enter" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "flex-start", gap: 10, padding: "2px 0 6px" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, fontSize: 11, lineHeight: "17px", color: "var(--dsw-alias-label-tertiary)" }, children: t("shortcutNote") }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                type: "button",
+                onClick: () => {
+                  void Promise.all([
+                    Promise.resolve(scope.set("shortcut", "Ctrl+Shift+V")),
+                    Promise.resolve(scope.set("composerShortcut", "Alt+Enter"))
+                  ]).finally(() => {
+                    try {
+                      window.dispatchEvent(new Event("dshvm-settings-changed"));
+                    } catch {
+                    }
+                  });
+                },
+                style: {
+                  flexShrink: 0,
+                  height: 26,
+                  padding: "0 10px",
+                  borderRadius: 6,
+                  border: "1px solid var(--dsw-alias-border-l3)",
+                  background: "transparent",
+                  color: "var(--dsw-alias-label-secondary)",
+                  fontSize: 12,
+                  cursor: "pointer"
+                },
+                children: t("shortcutReset")
+              }
+            )
+          ] })
+        ] }) : null,
+        tab === "read" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { role: "tabpanel", "aria-label": t("segReadAloud"), children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "readAloud", desc: t("descReadAloud"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -3787,9 +6602,181 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               ]
             }
           ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showStatusBar", desc: t("descShowStatusBar"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.showStatusBar !== false, onChange: (e) => void scope.set("showStatusBar", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showCaptions", desc: t("descShowCaptions"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.showCaptions !== false, onChange: (e) => void scope.set("showCaptions", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.autoResume), onChange: (e) => void scope.set("autoResume", e.target.checked) }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("secRead") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "ttsEngine", desc: t("descTtsEngine"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            SegGroup,
+            {
+              score: scope,
+              field: "ttsEngine",
+              value: engine,
+              options: TTS_ENGINE_KINDS.map((k) => ({ v: k, label: ENGINE_NAME[k]() })),
+              onSelect: (v) => {
+                if (v !== engine) {
+                  void scope.set("voice", ENGINE_DEFAULT_VOICE[String(v)] ?? "zh-CN-XiaoxiaoNeural");
+                }
+              }
+            }
+          ) }),
+          engine === "kokoro" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "kokoroModel", desc: t("descKokoroModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            SegGroup,
+            {
+              score: scope,
+              field: "kokoroModel",
+              value: value.kokoroModel,
+              options: [
+                { v: "int8", label: t("kokoroModelInt8") },
+                { v: "fp32", label: t("kokoroModelFp32") }
+              ]
+            }
+          ) }),
+          engine === "mimo" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mimoApiKey", desc: t("descMimoApiKey"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            SecretField,
+            {
+              score: scope,
+              field: "mimoApiKey",
+              saved: secretKeys.mimoApiKey,
+              configOnly: secretKeys.fromConfig.mimoApiKey,
+              onChanged: refreshSecretKeys
+            }
+          ) }),
+          engine === "openai" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiPreset", desc: `${t("descOpenaiPreset")} ${t("presetKeyNote")}`, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              OpenAiPresetSection,
+              {
+                score: scope,
+                value: value.openaiPreset,
+                presets: hostPresets,
+                onReloadPresets: hostPresetState.reload,
+                onSwitch: switchPreset
+              }
+            ) }),
+            isKnownOpenaiPreset ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiApiKeys", desc: t("descOpenaiApiKeys"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              PresetKeyField,
+              {
+                score: scope,
+                presetId: curPresetId,
+                map: value.openaiApiKeys !== null && typeof value.openaiApiKeys === "object" && !Array.isArray(value.openaiApiKeys) ? value.openaiApiKeys : {},
+                saved: Boolean(secretKeys.openaiApiKeys[curPresetId]),
+                fromConfig: Boolean(secretKeys.fromConfig.openaiApiKeys[curPresetId]),
+                requiresKey: !curPresetId.startsWith("selfhosted-"),
+                onChanged: refreshSecretKeys
+              }
+            ) }) : null,
+            isKnownOpenaiPreset ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "4px 0 6px" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                type: "button",
+                "aria-expanded": showOpenaiAdv,
+                onClick: () => setOpenaiAdvOpen((v) => !v),
+                style: {
+                  appearance: "none",
+                  border: "none",
+                  background: "transparent",
+                  padding: "2px 0",
+                  font: "inherit",
+                  fontSize: 12,
+                  color: "var(--dsw-alias-label-secondary)",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { "aria-hidden": "true", style: { fontSize: 10, display: "inline-block", transform: showOpenaiAdv ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .14s ease" }, children: "\u25B6" }),
+                  t(showOpenaiAdv ? "openaiAdvancedHide" : "openaiAdvancedShow")
+                ]
+              }
+            ) }) : null,
+            showOpenaiAdv ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiBaseUrl", desc: t("descOpenaiBaseUrl"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                TextField,
+                {
+                  score: scope,
+                  field: "openaiBaseUrl",
+                  value: value.openaiBaseUrl,
+                  placeholder: curPresetId && hostPresets?.[curPresetId]?.baseUrl || "https://api.openai.com/v1"
+                }
+              ) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiModel", desc: t("descOpenaiModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                TextField,
+                {
+                  score: scope,
+                  field: "openaiModel",
+                  value: value.openaiModel,
+                  placeholder: curPresetId && hostPresets?.[curPresetId]?.model || "gpt-4o-mini-tts"
+                }
+              ) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "openaiApiKey", desc: t("descOpenaiApiKey"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                SecretField,
+                {
+                  score: scope,
+                  field: "openaiApiKey",
+                  saved: secretKeys.openaiApiKey,
+                  configOnly: secretKeys.fromConfig.openaiApiKey,
+                  onChanged: refreshSecretKeys
+                }
+              ) })
+            ] }) : null
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            Row,
+            {
+              name: "voice",
+              desc: (engine === "edge" ? t("descVoice") : engine === "kokoro" ? t("descVoiceKokoro") : engine === "openai" ? t("descVoiceOpenai") : engine === "mimo" ? t("descVoiceMimo") : t("descVoiceLocal")) + voiceLangHint(engine, String(value.voice ?? "")),
+              children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                VoiceSelect,
+                {
+                  score: scope,
+                  field: "voice",
+                  value: value.voice ?? "",
+                  options: voiceOptions,
+                  placeholder: engine === "openai" ? effectiveVoice() : ENGINE_DEFAULT_VOICE[engine] || "zh-CN-XiaoxiaoNeural",
+                  emptyDefaultLabel: engine === "openai" ? t("voiceServerDefaultOption") : void 0,
+                  showCustom: isCloudEngine(engine),
+                  footer: (v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    VoicePreviewButton,
+                    {
+                      voice: v || effectiveVoice() || ENGINE_DEFAULT_VOICE[engine] || "",
+                      rate: Number(value.rate ?? 1.1),
+                      allowEmptyVoice: engine === "openai"
+                    }
+                  )
+                }
+              )
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "rate", desc: t("descRate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "rate", value: value.rate ?? 1.1, min: 0.5, max: 2, step: 0.1 }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "div",
+            {
+              style: {
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                margin: "8px 0 4px",
+                padding: "12px 14px",
+                border: `1px solid ${t2.border}`,
+                borderRadius: 10,
+                background: "var(--dsw-alias-bg-layer-2)",
+                minWidth: 0
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EngineStatusInline, { onSwitchLocal: switchToLocalKokoro }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  SelfTestSection,
+                  {
+                    voice: effectiveVoice() || ENGINE_DEFAULT_VOICE[engine] || "",
+                    rate: Number(value.rate ?? 1.1),
+                    engine,
+                    onSwitchLocal: switchToLocalKokoro
+                  }
+                )
+              ]
+            }
+          )
+        ] }) : null,
+        tab === "display" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { role: "tabpanel", "aria-label": t("segDisplay"), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showCaptions", desc: t("descShowCaptions"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "showCaptions", checked: value.showCaptions !== false, score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "captionFontSize", desc: t("descCaptionFontSize"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             SegGroup,
             {
@@ -3817,54 +6804,35 @@ function VoiceSettingsCard({ scope, defaultOpen = false }) {
               ]
             }
           ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "backchannelYield", desc: t("descBackchannelYield"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.backchannelYield !== false, onChange: (e) => void scope.set("backchannelYield", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "bargeInSalvage", desc: t("descBargeInSalvage"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.bargeInSalvage !== false, onChange: (e) => void scope.set("bargeInSalvage", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "llmCorrect", desc: t("descLlmCorrect"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.llmCorrect === true, onChange: (e) => void scope.set("llmCorrect", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "yieldMs", desc: t("descYieldMs"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "yieldMs", value: value.yieldMs ?? 1500, min: 500, max: 3e3, step: 100 }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secShortcut"), children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "shortcut", desc: t("descShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShortcutField, { score: scope, field: "shortcut", value: value.shortcut ?? "" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "composerShortcut", desc: t("descComposerShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShortcutField, { score: scope, field: "composerShortcut", value: value.composerShortcut ?? "Alt+Enter" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "flex-start", gap: 10, padding: "2px 0 6px" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, fontSize: 11, lineHeight: "17px", color: "var(--dsw-alias-label-tertiary)" }, children: t("shortcutNote") }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "button",
-              {
-                type: "button",
-                onClick: () => {
-                  void scope.set("shortcut", "Ctrl+Shift+V");
-                  void scope.set("composerShortcut", "Alt+Enter");
-                  try {
-                    window.dispatchEvent(new Event("dshvm-settings-changed"));
-                  } catch {
-                  }
-                },
-                style: {
-                  flexShrink: 0,
-                  height: 26,
-                  padding: "0 10px",
-                  borderRadius: 6,
-                  border: "1px solid var(--dsw-alias-border-l3)",
-                  background: "transparent",
-                  color: "var(--dsw-alias-label-secondary)",
-                  fontSize: 12,
-                  cursor: "pointer"
-                },
-                children: t("shortcutReset")
-              }
-            )
-          ] })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Section, { title: t("secRecognition"), children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.senseVoice), onChange: (e) => void scope.set("senseVoice", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseITN", desc: t("descSenseITN"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: value.senseITN !== false, onChange: (e) => void scope.set("senseITN", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: Boolean(value.spokenFormat), onChange: (e) => void scope.set("spokenFormat", e.target.checked) }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "showStatusBar", desc: t("descShowStatusBar"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "showStatusBar", checked: value.showStatusBar !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoResume", desc: t("descAutoResume"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "autoResume", checked: Boolean(value.autoResume), score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "toolBeep", desc: t("descToolBeep"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "toolBeep", checked: Boolean(value.toolBeep), score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "idleTimeoutMinutes", desc: t("descIdle"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "idleTimeoutMinutes", value: value.idleTimeoutMinutes ?? 5, min: 1, max: 120, step: 1 }) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Section, { title: t("secModel"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: hostOptions(), placeholder: "https://..." }) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("settingsEffectiveNote") }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ModelStatusView, {})
+        ] }) : null,
+        tab === "advanced" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { role: "tabpanel", "aria-label": t("segAdvanced"), children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { first: true, children: t("secRecognition") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseVoice", desc: t("descSenseVoice"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "senseVoice", checked: value.senseVoice !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "senseITN", desc: t("descSenseITN"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "senseITN", checked: value.senseITN !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "spokenFormat", desc: t("descSpokenFormat"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "spokenFormat", checked: value.spokenFormat !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "llmCorrect", desc: t("descLlmCorrect"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "llmCorrect", checked: value.llmCorrect === true, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("segTuning") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "echoGateDb", desc: t("descEchoGate"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "echoGateDb", value: value.echoGateDb ?? 6, min: 3, max: 12, step: 1 }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "backchannelYield", desc: t("descBackchannelYield"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "backchannelYield", checked: value.backchannelYield !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "bargeInSalvage", desc: t("descBargeInSalvage"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "bargeInSalvage", checked: value.bargeInSalvage !== false, score: scope }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "yieldMs", desc: t("descYieldMs"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "yieldMs", value: value.yieldMs ?? 1500, min: 500, max: 3e3, step: 100 }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("segReplacements") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            ReplacementsSection,
+            {
+              rules: value.asrReplacements,
+              onChange: (next) => scope.set("asrReplacements", next)
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("secModel") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "modelHost", desc: t("descModelHost"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SelectField, { score: scope, field: "modelHost", value: value.modelHost ?? "", options: hostOptions(), placeholder: "https://..." }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: t2.term, lineHeight: "18px", padding: "4px 0 8px" }, children: t("settingsEffectiveNote") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ModelStatusView, {})
+        ] }) : null
       ] })
     ] })
   ] });
@@ -3881,6 +6849,8 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
   let inFlight = false;
   let writing = 0;
   let writeGen = 0;
+  let writeSeq = 0;
+  let writeChain = Promise.resolve();
   let pendingReload = false;
   let disposed = false;
   let retryTimer = null;
@@ -3891,7 +6861,7 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
       try {
         fn();
       } catch (e) {
-        console.warn("[dsh-voice-mode] settings scope subscriber failed: " + String(e));
+        console.warn("[dsh-voice-mode] settings scope subscriber failed: " + redactSecrets(e));
       }
     }
   };
@@ -3915,9 +6885,9 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       retryDelay = 0;
-      if (writing === 0 && myGen === writeGen) emit({ status: "ready", value: data.value ?? {} });
+      if (!disposed && writing === 0 && myGen === writeGen) emit({ status: "ready", value: data.value ?? {} });
     } catch {
-      emit({ status: "unavailable", value: snap.value });
+      if (!disposed && writing === 0 && myGen === writeGen) emit({ status: "unavailable", value: snap.value });
       scheduleRetry();
     } finally {
       inFlight = false;
@@ -3956,29 +6926,37 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
       };
     },
     async set(field, value) {
-      if (disposed) return;
+      if (disposed) return false;
       const before = snap;
+      const mySeq = ++writeSeq;
       writing++;
       emit({ status: "ready", value: { ...snap.value, [field]: value } });
-      let ok = false;
-      try {
-        const res = await fetchImpl(origin + SETTINGS_URL, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ [field]: value }),
-          signal: AbortSignal.timeout(timeoutMs)
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        emit({ status: "ready", value: data.value ?? before.value });
-        ok = true;
-      } catch {
-        emit(before);
-      } finally {
-        writing--;
-        writeGen++;
-      }
-      if (!ok) await load();
+      const runPost = async () => {
+        let ok = false;
+        try {
+          if (disposed) return false;
+          const res = await fetchImpl(origin + SETTINGS_URL, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ [field]: value }),
+            signal: AbortSignal.timeout(timeoutMs)
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          if (!disposed && mySeq === writeSeq) emit({ status: "ready", value: data.value ?? before.value });
+          ok = true;
+        } catch {
+          if (!disposed && mySeq === writeSeq) emit(before);
+        } finally {
+          writing--;
+          writeGen++;
+        }
+        if (!ok && !disposed && writing === 0) await load();
+        return ok;
+      };
+      const p = writeChain.then(runPost, runPost);
+      writeChain = p.then(() => void 0, () => void 0);
+      return p;
     },
     dispose: () => {
       disposed = true;
@@ -4012,7 +6990,45 @@ var isSpeechTrueCount = 0;
 var interruptFirstAt = 0;
 var isSpeechFalseRun = 0;
 var lastReenterAt = 0;
+var MAX_STASHED_DRAFTS = 16;
+var stashedSessionDrafts = /* @__PURE__ */ new Map();
+function stashSessionDraft(sessionId, text) {
+  const clean2 = text.trim();
+  if (!sessionId || !clean2) return;
+  const prev = stashedSessionDrafts.get(sessionId) ?? "";
+  stashedSessionDrafts.delete(sessionId);
+  stashedSessionDrafts.set(sessionId, composeDraft(prev, "", clean2));
+  while (stashedSessionDrafts.size > MAX_STASHED_DRAFTS) {
+    const oldest = stashedSessionDrafts.keys().next().value;
+    if (oldest === void 0) break;
+    stashedSessionDrafts.delete(oldest);
+  }
+}
+function takeStashedSessionDraft(sessionId) {
+  const saved = stashedSessionDrafts.get(sessionId);
+  if (saved === void 0) return null;
+  stashedSessionDrafts.delete(sessionId);
+  return saved;
+}
 var INT_CONFIRM_FRAMES = { 0: 3, 1: 2, 2: 1 };
+var presetVoiceCache = null;
+async function fetchPresetVoice(presetId) {
+  if (!presetVoiceCache) {
+    try {
+      const res = await fetch(`${BASE_PATH2}/presets`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const next = {};
+      for (const [id, p] of Object.entries(data.presets ?? {})) {
+        if (typeof p?.voice === "string") next[id] = p.voice;
+      }
+      presetVoiceCache = next;
+    } catch {
+      return null;
+    }
+  }
+  return presetVoiceCache[presetId] ?? null;
+}
 var inject = ["slots", "sessions"];
 var TELEMETRY_VIEW = [
   { stage: "utterance-end", key: "telUtteranceEnd" },
@@ -4038,9 +7054,15 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "18723b4";
+var BUILD_TAG = "7688b55";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
-var telemetryEnabled = typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
+var telemetryEnabled = (() => {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem(TELEMETRY_FLAG) === "1";
+  } catch {
+    return false;
+  }
+})();
 console.log("[dsh-voice] build=" + BUILD_TAG);
 var debugLog = (event, fields = {}) => {
   if (!telemetryEnabled) return;
@@ -4068,6 +7090,7 @@ function playToolBeep() {
   } catch {
   }
 }
+var exitModeExternal = null;
 var SAMPLE_RATE_16K = 16e3;
 var ECHO_DELAY_MS = 0;
 var AUTO_SEND_EXTRA_MS = 1200;
@@ -4125,6 +7148,7 @@ function parseShortcut(s) {
   return { ...mods, key };
 }
 var AUTO_RESUME_HINT_KEY = "dshvm-autoresume-hint-seen";
+var FIRST_USE_HINT_KEY = "dshvm-first-use-hint-seen";
 function getLastVoiceSession() {
   try {
     return localStorage.getItem("dshvm-last-voice");
@@ -4142,10 +7166,17 @@ function setLastVoiceSession(id) {
 function apply(ctx) {
   ctx.effect(() => bindLocale(ctx.get?.("locale")), "dsh-voice-mode: locale dictionaries");
   const bus = createVoiceBus(void 0, ctx);
+  ctx.effect(() => () => bus.dispose(), "dsh-voice-mode: voice bus");
   if (typeof document !== "undefined") {
-    const resumeAudio = () => bus.warmAudio();
-    document.addEventListener("pointerdown", resumeAudio, { passive: true });
-    document.addEventListener("keydown", resumeAudio, { passive: true });
+    ctx.effect(() => {
+      const resumeAudio = () => bus.warmAudio();
+      document.addEventListener("pointerdown", resumeAudio, { passive: true });
+      document.addEventListener("keydown", resumeAudio, { passive: true });
+      return () => {
+        document.removeEventListener("pointerdown", resumeAudio);
+        document.removeEventListener("keydown", resumeAudio);
+      };
+    }, "dsh-voice-mode: audio gesture resume");
   }
   const activity = { declared: false, mounted: 0, listeners: /* @__PURE__ */ new Set() };
   const activityChanged = () => activity.listeners.forEach((fn) => fn());
@@ -4158,7 +7189,7 @@ function apply(ctx) {
         activityChanged();
       };
     }, []);
-    return React.createElement(MicButton, props);
+    return React2.createElement(MicButton, props);
   };
   const RightMic = (props) => {
     const [show, setShow] = (0, import_react3.useState)(() => !activity.declared);
@@ -4177,7 +7208,7 @@ function apply(ctx) {
         clearTimeout(timer);
       };
     }, []);
-    return show ? React.createElement(MicButton, props) : null;
+    return show ? React2.createElement(MicButton, props) : null;
   };
   ctx.slots.inject("conversation.input.activity", () => {
     activity.declared = true;
@@ -4256,21 +7287,21 @@ function apply(ctx) {
         // 切换语言前的旧文案冻在菜单里；函数形式每次渲染读当前语言。
         label: () => t("stateVoiceMode")
       },
-      () => React.createElement(VoiceSettingsCard, { scope })
+      () => React2.createElement(VoiceSettingsCard, { scope })
     )
   );
   ctx.slots.inject(
     "settings.section",
     () => ctx.slots.register(
       { name: "settings.section", id: "voice-mode", order: 100, label: () => t("stateVoiceMode") },
-      () => React.createElement(VoiceSettingsCard, { scope, defaultOpen: true })
+      () => React2.createElement(VoiceSettingsCard, { scope, defaultOpen: true })
     )
   );
   ctx.slots.inject(
     "plugins.bundle.config",
     () => ctx.slots.register(
       { name: "plugins.bundle.config", key: "dsh-voice-mode" },
-      (props) => props?.view === "summary" ? React.createElement("span", null, t("settingsCardDesc")) : React.createElement(VoiceSettingsCard, { scope })
+      (props) => props?.view === "summary" ? React2.createElement("span", null, t("settingsCardDesc")) : React2.createElement(VoiceSettingsCard, { scope })
     )
   );
 }
@@ -4280,6 +7311,14 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
   let fallback = false;
   let decodeFailStreak = 0;
   let fallbackBusy = false;
+  let activeFallbackUrl = null;
+  let fallbackGen = 0;
+  const revokeFallbackUrl = () => {
+    if (activeFallbackUrl) {
+      URL.revokeObjectURL(activeFallbackUrl);
+      activeFallbackUrl = null;
+    }
+  };
   let ctx = null;
   let duckGain = null;
   let analyser = null;
@@ -4315,19 +7354,29 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
   const playFallback = () => {
     const frame = pending.shift() ?? null;
     if (!frame) {
+      revokeFallbackUrl();
       fallbackBusy = false;
       setUi({ playing: false, playingCaption: null });
+      onAllPlayed?.();
       return;
     }
     fallbackBusy = true;
-    const url = URL.createObjectURL(new Blob([frame.audio], { type: frame.mime === "audio/wav" ? "audio/wav" : "audio/mpeg" }));
+    const myGen = ++fallbackGen;
+    revokeFallbackUrl();
+    const blobMime = typeof frame.mime === "string" && frame.mime.toLowerCase().startsWith("audio/") ? frame.mime : "audio/mpeg";
+    const url = URL.createObjectURL(new Blob([frame.audio], { type: blobMime }));
+    activeFallbackUrl = url;
     fallbackAudio.src = url;
     const next = () => {
-      URL.revokeObjectURL(url);
+      if (myGen !== fallbackGen) return;
+      revokeFallbackUrl();
       fallbackBusy = false;
       if (!fallback && ctx) {
         if (pending.length > 0) drainPending();
-        else setUi({ playing: false, playingCaption: null });
+        else {
+          setUi({ playing: false, playingCaption: null });
+          onAllPlayed?.();
+        }
       } else playFallback();
     };
     fallbackAudio.onended = next;
@@ -4349,7 +7398,10 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
     };
     setUi({ playing: true, playingCaption: frame.text, ttsNotice: null });
     fixtureRecorder.mark("tts-sentence", frame.text);
-    void fallbackAudio.play().catch(() => playFallback());
+    void fallbackAudio.play().catch((err) => {
+      if (myGen !== fallbackGen || err?.name === "AbortError") return;
+      next();
+    });
   };
   const drainPending = () => {
     if (decoding || fallbackBusy || !ctx || !duckGain || pending.length === 0) return;
@@ -4396,6 +7448,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
         }
       } catch {
         for (const src of activeSrcs) {
+          src.onended = null;
           try {
             src.stop();
           } catch {
@@ -4407,6 +7460,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
         playFallback();
       } finally {
         decoding = false;
+        if (pending.length > 0 && !fallbackBusy && !fallback && ctx) drainPending();
       }
     })();
   };
@@ -4415,7 +7469,7 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
       warm();
       if (fallback || !ctx) {
         pending.push(frame);
-        if (fallbackAudio.paused) playFallback();
+        if (fallbackAudio.paused && !fallbackBusy) playFallback();
         return;
       }
       pending.push(frame);
@@ -4423,12 +7477,16 @@ function createAudioEngine(setUi, onPlayed, onPlaybackRef, onAllPlayed) {
     },
     skip() {
       pending.length = 0;
+      fallbackGen++;
       fallbackBusy = false;
+      revokeFallbackUrl();
       nextEndAt = 0;
-      fallbackAudio.pause();
       fallbackAudio.onended = null;
       fallbackAudio.onerror = null;
+      fallbackAudio.onplaying = null;
+      fallbackAudio.pause();
       for (const src of activeSrcs) {
+        src.onended = null;
         try {
           src.stop();
         } catch {
@@ -4526,6 +7584,16 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     senseVoice: true
   };
   let noticeTimer = null;
+  let captionLingerTimer = null;
+  let captionPinned = false;
+  let skippingAudio = false;
+  let captionSessionId = null;
+  const clearCaptionLinger = () => {
+    if (captionLingerTimer) {
+      clearTimeout(captionLingerTimer);
+      captionLingerTimer = null;
+    }
+  };
   const ui = {
     state: "idle",
     partial: "",
@@ -4533,6 +7601,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     botLevels: [],
     error: null,
     playingCaption: null,
+    captionHistory: [],
+    captionLinger: false,
     playing: false,
     model: null,
     ttsNotice: null,
@@ -4681,7 +7751,41 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     setFrozen: (frozen) => aec.setFrozen(frozen)
   };
   const setUi = (patch) => {
-    if (patch.playing === false && ui.playing === true) playingEndAt = Date.now();
+    const curSid = activeSessionId ?? focusedSessionId;
+    if (curSid && captionSessionId && curSid !== captionSessionId) {
+      ui.captionHistory = [];
+      ui.captionLinger = false;
+      clearCaptionLinger();
+    }
+    if (curSid) captionSessionId = curSid;
+    if (typeof patch.playingCaption === "string" && patch.playingCaption.trim()) {
+      ui.captionHistory = pushCaptionHistory(ui.captionHistory, patch.playingCaption);
+    }
+    if (patch.playing === true) {
+      clearCaptionLinger();
+      ui.captionLinger = false;
+    }
+    if (patch.playing === false && ui.playing === true) {
+      playingEndAt = Date.now();
+      if (!skippingAudio && ui.captionHistory.length > 0) {
+        ui.captionLinger = true;
+        patch = { ...patch, playingCaption: ui.playingCaption ?? ui.captionHistory[ui.captionHistory.length - 1] ?? null };
+        clearCaptionLinger();
+        if (!captionPinned) {
+          captionLingerTimer = setTimeout(() => {
+            captionLingerTimer = null;
+            if (!ui.playing && !captionPinned) {
+              ui.captionLinger = false;
+              ui.playingCaption = null;
+              notify();
+            }
+          }, CAPTION_LINGER_MS);
+          captionLingerTimer?.unref?.();
+        }
+      } else {
+        ui.captionLinger = false;
+      }
+    }
     Object.assign(ui, patch);
     notify();
   };
@@ -4778,7 +7882,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
           if (ui.turn !== "idle") ui.turn = "idle";
           doSkipAudio(prev);
           resetTelemetry();
-          notify();
+          if (active !== null) busApi.setNotice(t("tabPreemptedNotice"));
+          else notify();
         }
       } catch {
       }
@@ -4821,13 +7926,23 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       } catch {
       }
     });
+    let ttsRetryActive = false;
     source.addEventListener("tts-idle", (e) => {
       try {
         const ev = JSON.parse(e.data);
         if (ev.sessionId && ev.turn !== void 0 && ev.turn < (currentTurn.get(ev.sessionId) ?? ev.turn)) return;
-        if (ev.sessionId === activeSessionId && !ui.ttsDrained) {
-          ui.ttsDrained = true;
-          notify();
+        if (ev.sessionId === activeSessionId) {
+          let changed = false;
+          if (ttsRetryActive) {
+            ttsRetryActive = false;
+            ui.ttsNotice = null;
+            changed = true;
+          }
+          if (!ui.ttsDrained) {
+            ui.ttsDrained = true;
+            changed = true;
+          }
+          if (changed) notify();
         }
       } catch {
       }
@@ -4853,6 +7968,16 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         notify();
       }
     });
+    source.addEventListener("asr-notice", (e) => {
+      try {
+        const p = JSON.parse(e.data);
+        if (!activeSessionId) return;
+        if (p.code === "sense_degraded") {
+          busApi.setNotice(t("senseDegradedNotice"));
+        }
+      } catch {
+      }
+    });
     source.addEventListener("asr-error", (e) => {
       try {
         const p = JSON.parse(e.data);
@@ -4863,10 +7988,21 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       } catch {
       }
     });
+    source.addEventListener("tts-retry", (e) => {
+      try {
+        const p = JSON.parse(e.data);
+        if (p.sessionId !== activeSessionId) return;
+        ttsRetryActive = true;
+        ui.ttsNotice = t("ttsRetryingNotice", { attempt: p.attempt ?? 2, max: p.maxAttempts ?? 3 });
+        notify();
+      } catch {
+      }
+    });
     source.addEventListener("tts-skip", (e) => {
       try {
         const p = JSON.parse(e.data);
         if (p.sessionId !== activeSessionId) return;
+        ttsRetryActive = false;
         const down = (p.streak ?? 1) >= 2;
         const msg = down ? t("ttsUnavailableNotice") : t("ttsSkipNotice");
         ui.ttsNotice = msg;
@@ -4968,9 +8104,12 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
       curBytes = 0;
       curChunkCount = 0;
       if (buf.length === 0) return;
-      const isMp3 = buf[0] === 255;
+      const isMp3 = buf[0] === 255 || buf.length >= 3 && buf[0] === 73 && buf[1] === 68 && buf[2] === 51;
       const isWav = buf.length >= 4 && buf[0] === 82 && buf[1] === 73 && buf[2] === 70 && buf[3] === 70;
-      if (!isMp3 && !isWav) return;
+      const isOgg = buf.length >= 4 && buf[0] === 79 && buf[1] === 103 && buf[2] === 103 && buf[3] === 83;
+      const isFlac = buf.length >= 4 && buf[0] === 102 && buf[1] === 76 && buf[2] === 97 && buf[3] === 67;
+      const isAudioMime = typeof frame.mime === "string" && frame.mime.toLowerCase().startsWith("audio/");
+      if (!isMp3 && !isWav && !isOgg && !isFlac && !isAudioMime) return;
       engine.push({
         sessionId: frame.sessionId,
         seq: frame.sentenceId,
@@ -4991,7 +8130,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
   const doSkipAudio = (sidArg) => {
     const sid = sidArg ?? activeSessionId ?? focusedSessionId;
     if (sid) {
-      rejectSeqUpTo.set(sid, Math.max(lastFinalSeq.get(sid) ?? -1, curSentenceId ?? -1));
+      const prevLine = rejectSeqUpTo.get(sid) ?? -1;
+      rejectSeqUpTo.set(sid, Math.max(prevLine, lastFinalSeq.get(sid) ?? -1, curSentenceId ?? -1));
     }
     curSentenceId = null;
     curChunks = [];
@@ -4999,10 +8139,18 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     refActive = false;
     refChunks.length = 0;
     refTotal = 0;
-    engine.skip();
+    clearCaptionLinger();
+    captionPinned = false;
+    ui.captionLinger = false;
+    skippingAudio = true;
+    try {
+      engine.skip();
+    } finally {
+      skippingAudio = false;
+    }
     playingEndAt = 0;
   };
-  return {
+  const busApi = {
     get activeSessionId() {
       return activeSessionId;
     },
@@ -5025,11 +8173,43 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
           notify();
         }
       }, 5e3);
+      noticeTimer?.unref?.();
     },
     setUi,
+    dismissCaption() {
+      clearCaptionLinger();
+      captionPinned = false;
+      if (ui.captionLinger || !ui.playing && ui.playingCaption !== null) {
+        ui.captionLinger = false;
+        ui.playingCaption = null;
+        notify();
+      }
+    },
+    holdCaptionLinger(pinned) {
+      captionPinned = pinned;
+      if (pinned) {
+        clearCaptionLinger();
+      } else if (!ui.playing && ui.captionLinger) {
+        clearCaptionLinger();
+        captionLingerTimer = setTimeout(() => {
+          captionLingerTimer = null;
+          if (!ui.playing && !captionPinned) {
+            ui.captionLinger = false;
+            ui.playingCaption = null;
+            notify();
+          }
+        }, CAPTION_LINGER_MS);
+        captionLingerTimer?.unref?.();
+      }
+    },
     /** isPlaying 尾音截止墙钟：playing 或尾音宽限期内均视为「AI 正在朗读」。 */
     playingTailUntil() {
       return playingEndAt + ECHO_TAIL_MS + refDelaySamples / SAMPLE_RATE_16K * 1e3;
+    },
+    isPreemptedByOther(sessionId) {
+      if (voiceActive !== null && voiceActive !== sessionId) return true;
+      if (voiceOwnerTab !== null && voiceOwnerTab !== TAB_ID) return true;
+      return false;
     },
     async enter(sessionId) {
       engine.resetFallback();
@@ -5042,15 +8222,16 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
           // I-7：宿主无响应不再让按钮永久 pending
         });
         const out = await res.json();
-        activeSessionId = out.active === sessionId ? sessionId : null;
+        const owned = out.stale ? null : out.active === sessionId ? sessionId : null;
+        activeSessionId = owned;
         playingEndAt = 0;
         notify();
         if (!res.ok) return { ok: false, error: errorText(out, "enterFail") };
-        if (out.active === sessionId) setLastVoiceSession(sessionId);
+        if (owned === sessionId) setLastVoiceSession(sessionId);
         return {
-          ok: out.active === sessionId,
-          preempted: out.active !== null && out.active !== sessionId,
-          error: out.active === sessionId ? void 0 : t("enterFail")
+          ok: owned === sessionId,
+          preempted: !out.stale && out.active !== null && out.active !== sessionId,
+          error: owned === sessionId ? void 0 : t("enterFail")
         };
       } catch {
         void fetch(`${location.origin}${basePath}/toggle`, {
@@ -5079,8 +8260,10 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
           // I-7
         });
         await res.json();
-        activeSessionId = null;
-        notify();
+        if (activeSessionId === sessionId) {
+          activeSessionId = null;
+          notify();
+        }
       } catch {
       }
     },
@@ -5169,23 +8352,47 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
         signal: AbortSignal.timeout(3e3)
       }).catch(() => {
       });
+    },
+    dispose() {
+      if (noticeTimer) {
+        clearTimeout(noticeTimer);
+        noticeTimer = null;
+      }
+      clearCaptionLinger();
+      captionPinned = false;
+      ui.captionLinger = false;
+      source?.close();
+      source = null;
+      skippingAudio = true;
+      try {
+        engine.skip();
+      } finally {
+        skippingAudio = false;
+      }
+      listeners.clear();
+      audioListeners.clear();
     }
   };
+  return busApi;
 }
-var styleInjected = false;
+var styleRefCount = 0;
+var styleEl = null;
+var VOICE_CSS_ATTR = "data-dshvm-css";
 function useVoiceCss() {
   (0, import_react3.useEffect)(() => {
-    if (styleInjected) return;
-    styleInjected = true;
-    const el = document.createElement("style");
-    el.textContent = `
+    styleRefCount++;
+    if (!styleEl) {
+      document.head.querySelectorAll?.(`style[${VOICE_CSS_ATTR}]`).forEach?.((n) => n.remove());
+      const el = document.createElement("style");
+      el.setAttribute?.(VOICE_CSS_ATTR, "");
+      el.textContent = `
 @keyframes dshvm-fadein { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
 @keyframes dshvm-eq { 0%, 100% { transform: scaleY(0.35) } 50% { transform: scaleY(1) } }
 @keyframes dshvm-spin { to { transform: rotate(360deg) } }
-.dshvm-bar { width: 3px; border-radius: 99px; transition: height 0.08s linear, opacity 0.08s linear }
+.dshvm-bar, .dshvm-bar-bot { width: 3px; border-radius: 99px; transition: height 0.08s linear, opacity 0.08s linear }
 /* \u9EA6\u514B\u98CE\u6309\u94AE\u6240\u5728\u7684\u5BBF\u4E3B\u5BB9\u5668\u4E5F\u7981\u9009\uFF1A\u624B\u6307\u504F\u5927\u65F6\u957F\u6309\u53EF\u80FD\u547D\u4E2D\u6309\u94AE\u5916\u4FA7\u7684\u5BB9\u5668\u7559\u767D\uFF0C
    \u6D4F\u89C8\u5668\u5C31\u8FD1\u9009\u4E2D\u300C\u8BED\u97F3\u300D\u6807\u7B7E\u6587\u5B57\u3002 */
-:has(> [data-dshvm="mic"]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
+:has(> [data-dshvm="mic"]), :has(> [data-dshvm="mic-group"]) { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
 /* \u6309\u4F4F\u8BF4\u8BDD\u671F\u95F4\u6574\u9875\u7981\u9009\uFF08!important \u538B\u8FC7\u5BBF\u4E3B\u6837\u5F0F\uFF09\uFF1A\u5B89\u5353/\u684C\u9762\u5728\u957F\u6309\u6216\u6309\u4F4F\u5FAE\u62D6\u65F6
    \u4F1A\u4ECE\u6309\u94AE\u9644\u8FD1\u5F00\u59CB\u9009\u533A\uFF0C\u51FA\u73B0\u84DD\u8272\u9AD8\u4EAE\u548C\u9009\u62E9\u624B\u67C4\uFF0C\u5BFC\u81F4\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u4E0D\u53EF\u7528\u3002 */
 html.dshvm-holding, html.dshvm-holding * {
@@ -5193,8 +8400,23 @@ html.dshvm-holding, html.dshvm-holding * {
   user-select: none !important;
   -webkit-touch-callout: none !important;
 }
-/* \u6279 3\uFF1A\u5B57\u5E55\u4E2D\u6587\u957F\u8BCD/URL \u6362\u884C\uFF08\u5916\u5C42 maxHeight:30vh + overflow:hidden \u63A7\u5236\u9AD8\u5EA6\u4E0D\u6EA2\u51FA\uFF09\u3002 */
+/* \u6279 3\uFF1A\u5B57\u5E55\u4E2D\u6587\u957F\u8BCD/URL \u6362\u884C + \u5B89\u5168\u533A\u4E0E\u77EE\u5C4F\u52A8\u6001\u89C6\u53E3\u9002\u914D\u3002 */
 .dshvm-caption { word-break: break-word; overflow-wrap: anywhere; }
+.dshvm-caption-overlay {
+  right: max(16px, calc(env(safe-area-inset-right, 0px) + 12px)) !important;
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+}
+@supports (height: 100dvh) {
+  .dshvm-caption-overlay { max-height: 30dvh !important; }
+}
+@media (max-width: 520px) {
+  .dshvm-caption-overlay {
+    left: max(12px, env(safe-area-inset-left, 0px)) !important;
+    right: max(12px, env(safe-area-inset-right, 0px)) !important;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+    max-width: calc(100vw - 24px) !important;
+  }
+}
 /* \u9EA6\u514B\u98CE\u6309\u94AE\uFF08PR #16 by dyguests\uFF09\uFF1A\u72B6\u6001\u5168\u5728\u6309\u94AE\u4E0A\u2014\u2014\u989C\u8272\u533A\u5206\u6A21\u5F0F\uFF0C\u7AD6\u6761\u8DDF\u968F\u7535\u5E73\uFF0C
    \u7B49\u5F85\u8F6C\u5708\u3001\u6536\u5C3E\u5BF9\u52FE\u3001\u53F3\u4E0A\u6A59\u70B9=\u68C0\u6D4B\u5230\u8BF4\u8BDD\u3001\u5DE6\u4E0A\u7EA2\u70B9=\u51FA\u9519\u3002\u989C\u8272\u8D70 dsw \u53D8\u91CF\uFF0C\u65E7\u5BBF\u4E3B\u65E0\u53D8\u91CF\u65F6\u7528\u515C\u5E95\u8272\u3002 */
 .dshvm-mic {
@@ -5227,27 +8449,64 @@ html.dshvm-holding, html.dshvm-holding * {
 .dshvm-mic-timer { position: absolute; left: 50%; top: calc(100% + 2px); transform: translateX(-50%); padding: 0 3px; border-radius: 4px;
   background: var(--dsw-specific-input-major, transparent); font-size: 9.5px; line-height: 12px; color: var(--dsw-alias-label-tertiary, #8b949e);
   font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+.dshvm-mic-group { display: inline-flex; align-items: center; gap: 2px; position: relative; flex: none; }
+.dshvm-mic-more {
+  display: none; width: 26px; height: 34px; padding: 0; border: none; border-radius: 999px;
+  background: transparent; color: var(--dsw-alias-label-tertiary, #8b949e); cursor: pointer;
+  place-items: center; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.dshvm-mic-more:hover, .dshvm-mic-more[aria-expanded="true"] {
+  background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14));
+  color: var(--dsw-alias-label-primary, inherit);
+}
+.dshvm-mic-more:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary, #58a6ff); outline-offset: -2px; }
+@media (pointer: coarse), (hover: none) { .dshvm-mic-more { display: inline-grid; } }
 .dshvm-spin { animation: dshvm-spin 0.9s linear infinite; }
 .dshvm-menu { display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 10px;
+  max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box;
   background: var(--dsw-alias-bg-layer-3, #fff); border: 1px solid var(--dsw-alias-border-l2, rgba(139,148,158,.35));
-  box-shadow: 0 8px 24px rgba(15, 17, 21, 0.14); color: var(--dsw-alias-label-primary, inherit);
+  box-shadow: 0 8px 24px rgba(15, 17, 21, 0.14); color: var(--dsw-alias-label-primary, #1f2328);
   font-family: inherit; font-size: 12px; animation: dshvm-fadein 0.12s ease; }
 .dshvm-menu-label { padding: 2px 8px 4px; font-size: 11px; color: var(--dsw-alias-label-tertiary, #8b949e); }
 .dshvm-menu-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 5px 8px;
   border: none; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; text-align: left; }
-.dshvm-menu-item:hover, .dshvm-menu-item:focus-visible { background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14)); outline: none; }
+.dshvm-menu-item:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14)); }
+.dshvm-menu-item:focus-visible { background: var(--dsw-alias-interactive-bg-hover, rgba(139,148,158,.14)); outline: 1.5px solid var(--dsw-alias-state-business-primary, #58a6ff); outline-offset: -1.5px; }
+@media (pointer: coarse) { .dshvm-menu-item { padding: 9px 10px; font-size: 13px; } }
 .dshvm-menu-check { color: var(--dsw-alias-state-business-primary, #58a6ff); font-size: 11px; }
 .dshvm-menu-sep { height: 1px; margin: 4px 2px; background: var(--dsw-alias-border-l1, rgba(139,148,158,.25)); }
-@media (prefers-reduced-motion: reduce) { .dshvm-spin, .dshvm-menu { animation: none; } }
+.dshvm-statusbar-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 120px; min-width: 0; line-height: 18px; }
+@media (max-width: 520px) {
+  .dshvm-statusbar-text { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+}
+@media (prefers-reduced-motion: reduce) { .dshvm-spin, .dshvm-menu, .dshvm-eq-bar { animation: none !important; } }
 `;
-    document.head.appendChild(el);
+      document.head.appendChild(el);
+      styleEl = el;
+    }
+    return () => {
+      styleRefCount = Math.max(0, styleRefCount - 1);
+      if (styleRefCount === 0 && styleEl) {
+        styleEl.remove();
+        styleEl = null;
+      }
+    };
   }, []);
 }
+var noopSelectorHook = (_sel) => void 0;
 var IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
 var ONCE_SETTLE_MS = 1200;
 var ONCE_NO_START_MS = 3e4;
 var ONCE_STALL_MS = 1e4;
-function MicMenu({ scope, anchor, onClose }) {
+function MicMenu({
+  scope,
+  anchor,
+  ignoreTarget,
+  onClose
+}) {
+  const modeGroupId = React2.useId();
+  const readGroupId = React2.useId();
   const [snap, setSnap] = (0, import_react3.useState)(() => scope.getSnapshot());
   (0, import_react3.useEffect)(() => scope.subscribe(() => setSnap({ ...scope.getSnapshot() })), [scope]);
   const menuRef = (0, import_react3.useRef)(null);
@@ -5257,6 +8516,8 @@ function MicMenu({ scope, anchor, onClose }) {
       const el = menuRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
+      const vw2 = window.visualViewport?.width ?? window.innerWidth;
+      const vh2 = window.visualViewport?.height ?? window.innerHeight;
       const next = clampMenuRect({
         menuW: el.offsetWidth || 208,
         menuH: el.offsetHeight || 0,
@@ -5264,8 +8525,8 @@ function MicMenu({ scope, anchor, onClose }) {
         top: rect.top,
         right: rect.right,
         bottom: rect.bottom,
-        vw: window.innerWidth,
-        vh: window.innerHeight
+        vw: vw2,
+        vh: vh2
       });
       if (next.dx !== 0 || next.dy !== 0 || next.w !== 0) setAdj(next);
     });
@@ -5274,13 +8535,29 @@ function MicMenu({ scope, anchor, onClose }) {
   (0, import_react3.useEffect)(() => {
     menuRef.current?.querySelector("button")?.focus();
     const onDown = (e) => {
-      if (e.target instanceof Node && menuRef.current?.contains(e.target)) return;
+      if (e.target instanceof Node) {
+        if (menuRef.current?.contains(e.target)) return;
+        if (ignoreTarget?.contains(e.target)) return;
+      }
       onClose(false);
     };
     const onKey = (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         onClose(true);
+        return;
+      }
+      if (e.key === "Tab") {
+        onClose(false);
+        return;
+      }
+      if (e.key === "Home" || e.key === "End") {
+        const items2 = Array.from(menuRef.current?.querySelectorAll("button") ?? []);
+        if (items2.length > 0) {
+          e.preventDefault();
+          items2[e.key === "Home" ? 0 : items2.length - 1]?.focus();
+        }
         return;
       }
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
@@ -5296,40 +8573,55 @@ function MicMenu({ scope, anchor, onClose }) {
       document.removeEventListener("pointerdown", onDown, true);
       document.removeEventListener("keydown", onKey, true);
     };
-  }, [onClose]);
+  }, [onClose, ignoreTarget]);
   const v = snap.value ?? {};
   const width = 208;
+  const vw = typeof window !== "undefined" ? window.visualViewport?.width ?? window.innerWidth : 1024;
+  const vh = typeof window !== "undefined" ? window.visualViewport?.height ?? window.innerHeight : 768;
   const r = anchor?.getBoundingClientRect();
   const below = !r || r.top < 340;
   const pos = {
     position: "fixed",
     zIndex: 9999,
     width: adj?.w || width,
-    left: r ? Math.max(8, Math.min(window.innerWidth - width - 8, Math.round(r.right - width))) : 8,
-    ...below ? { top: r ? Math.round(r.bottom + 8) : 96 } : { bottom: Math.round(window.innerHeight - r.top + 8) },
+    left: r ? Math.max(8, Math.min(vw - width - 8, Math.round(r.right - width))) : 8,
+    ...below ? { top: r ? Math.round(r.bottom + 8) : 96 } : { bottom: Math.round(vh - r.top + 8) },
     ...adj && (adj.dx !== 0 || adj.dy !== 0) ? { transform: `translate(${adj.dx}px, ${adj.dy}px)` } : null
   };
-  const item = (role, checked, label, onPick) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("button", { type: "button", role, "aria-checked": checked, className: "dshvm-menu-item", onClick: onPick, children: [
+  const item = (role2, checked, label, onPick) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("button", { type: "button", role: role2, "aria-checked": checked, className: "dshvm-menu-item", onClick: onPick, children: [
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: label }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-menu-check", children: checked ? "\u2713" : "" })
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-menu-check", "aria-hidden": "true", children: checked ? "\u2713" : "" })
   ] }, label);
-  const set = (field, value) => void scope.set(field, value);
+  const set2 = (field, value) => {
+    void Promise.resolve(scope.set(field, value)).finally(() => {
+      if (field === "mode") {
+        try {
+          window.dispatchEvent(new Event("dshvm-settings-changed"));
+        } catch {
+        }
+      }
+    });
+  };
   const mode = v.mode === "hold" || v.mode === "once" ? v.mode : "toggle";
   const read = v.readAloud === "always" || v.readAloud === "off" ? v.readAloud : "voice";
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { ref: menuRef, className: "dshvm-menu", role: "menu", "aria-label": t("stateVoiceMode"), style: pos, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-label", children: t("modeLabel") }),
-    ["toggle", "hold", "once"].map(
-      (m) => item("menuitemradio", mode === m, t(m === "toggle" ? "modeToggle" : m === "hold" ? "modeHold" : "modeOnce"), () => set("mode", m))
-    ),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-sep" }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-label", children: t("readAloudLabel") }),
-    ["voice", "always", "off"].map(
-      (m) => item("menuitemradio", read === m, t(m === "voice" ? "readAloudVoice" : m === "always" ? "readAloudAlways" : "readAloudOff"), () => set("readAloud", m))
-    ),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-sep" }),
-    item("menuitemcheckbox", v.showCaptions !== false, t("showCaptionsLabel"), () => set("showCaptions", v.showCaptions === false)),
-    item("menuitemcheckbox", v.showStatusBar !== false, t("showStatusBarLabel"), () => set("showStatusBar", v.showStatusBar === false)),
-    item("menuitemcheckbox", v.autoSend !== false, t("autoSendLabel"), () => set("autoSend", v.autoSend === false))
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { role: "group", "aria-labelledby": modeGroupId, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { id: modeGroupId, className: "dshvm-menu-label", children: t("modeLabel") }),
+      ["toggle", "hold", "once"].map(
+        (m) => item("menuitemradio", mode === m, t(m === "toggle" ? "modeToggle" : m === "hold" ? "modeHold" : "modeOnce"), () => set2("mode", m))
+      )
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-sep", role: "separator" }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { role: "group", "aria-labelledby": readGroupId, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { id: readGroupId, className: "dshvm-menu-label", children: t("readAloudLabel") }),
+      ["voice", "always", "off"].map(
+        (m) => item("menuitemradio", read === m, t(m === "voice" ? "readAloudVoice" : m === "always" ? "readAloudAlways" : "readAloudOff"), () => set2("readAloud", m))
+      )
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "dshvm-menu-sep", role: "separator" }),
+    item("menuitemcheckbox", v.showCaptions !== false, t("showCaptionsLabel"), () => set2("showCaptions", v.showCaptions === false)),
+    item("menuitemcheckbox", v.showStatusBar !== false, t("showStatusBarLabel"), () => set2("showStatusBar", v.showStatusBar === false)),
+    item("menuitemcheckbox", v.autoSend !== false, t("autoSendLabel"), () => set2("autoSend", v.autoSend === false))
   ] });
 }
 function MicButton({
@@ -5344,8 +8636,10 @@ function MicButton({
   const [local, setLocal] = (0, import_react3.useState)("off");
   const localRef = (0, import_react3.useRef)("off");
   const sidRef = (0, import_react3.useRef)(sessionId);
+  const prevSidRef = (0, import_react3.useRef)(sessionId);
   const engineRef = (0, import_react3.useRef)(null);
   const micReadyRef = (0, import_react3.useRef)(false);
+  const hostEnteredRef = (0, import_react3.useRef)(false);
   const enterEpochRef = (0, import_react3.useRef)(0);
   const actionsRef = (0, import_react3.useRef)(inputActions);
   const submitTimerRef = (0, import_react3.useRef)(null);
@@ -5361,6 +8655,7 @@ function MicButton({
   const manualHoldRef = (0, import_react3.useRef)(false);
   const breakRef = (0, import_react3.useRef)(null);
   const pausedForHiddenRef = (0, import_react3.useRef)(false);
+  const hiddenFlushRef = (0, import_react3.useRef)(null);
   const focusOwnerRef = (0, import_react3.useRef)(null);
   if (focusOwnerRef.current === null) focusOwnerRef.current = `mic-${++focusOwnerSeq}`;
   const focusOwner = focusOwnerRef.current;
@@ -5402,7 +8697,7 @@ function MicButton({
   const uiKeyRef = (0, import_react3.useRef)("");
   (0, import_react3.useEffect)(
     () => bus.subscribe(({ active, ui: u }) => {
-      const key = `${active}|${u.state}|${u.error ?? ""}|${u.notice ?? ""}|${u.mode}|${u.wakeWord}|${u.ttsNotice ?? ""}|${u.playing}|${u.turn}|${u.sseDown}|${u.idleWarn}|${u.boot?.showStatusBar}`;
+      const key = `${active}|${u.state}|${u.error ?? ""}|${u.notice ?? ""}|${u.mode}|${u.wakeWord}|${u.ttsNotice ?? ""}|${u.playing}|${u.turn}|${u.sseDown}|${u.idleWarn}|${u.isSpeech}|${u.boot?.showStatusBar}`;
       if (key === uiKeyRef.current) return;
       uiKeyRef.current = key;
       bumpUi((t3) => t3 + 1);
@@ -5447,7 +8742,15 @@ function MicButton({
         // 批 B：5 ASR 字段透传（host /config handler 在 c2120d9 已透传 4 字段，本批补 senseVoice + 客户端白名单对齐）。
         // 类型校验严格 + 默认值兜底，与 src/index.ts VOICE_SETTINGS_DEFAULTS 对齐（plan §12 批 B 周全修复）。
         senseITN: c.senseITN === false ? false : true,
-        senseVoice: c.senseVoice === false ? false : true
+        senseVoice: c.senseVoice === false ? false : true,
+        // P1-2：引擎/预设透传（探针用；不改既有行为，缺省 undefined 时探针退回设置快照）。
+        ttsEngine: c.ttsEngine,
+        openaiPreset: typeof c.openaiPreset === "string" ? c.openaiPreset : "",
+        voice: typeof c.voice === "string" ? c.voice : cur.voice,
+        rate: typeof c.rate === "number" ? c.rate : cur.rate,
+        // 2026-11-20 UX：云朗读鉴权状态（缺 Key 时进模式常驻提示，不必等一轮无声）。
+        ttsNeedsKey: c.ttsNeedsKey === true,
+        ttsKeyPresent: c.ttsKeyPresent === true
       };
       if (next.shortcut && !parseShortcut(next.shortcut)) bus.setNotice(tk("shortcutInvalid"));
       bus.setUi({ boot: next, mode: next.mode, wakeWord: next.wakeWord });
@@ -5554,6 +8857,7 @@ function MicButton({
         const engine = engineRef.current;
         engineRef.current = null;
         micReadyRef.current = false;
+        hostEnteredRef.current = false;
         if (engine) void engine.stop();
         bus.resetTelemetry();
         bus.setUi({ state: "idle", partial: "", levels: [], botLevels: [], error: null, model: null, ttsNotice: null, isSpeech: void 0 });
@@ -5610,11 +8914,11 @@ function MicButton({
     const runSubmit = (submitText) => {
       submitInFlightRef.current = true;
       if (bootNow().mode === "once") beginOnceWait();
-      const snapshot = submitText.trim() || draftSnapshot;
+      const snapshot2 = submitText.trim() || draftSnapshot;
       let wroteBack = false;
-      if (snapshot !== draftSnapshot && typeof actions?.setDraft === "function") {
+      if (snapshot2 !== draftSnapshot && typeof actions?.setDraft === "function") {
         try {
-          actions.setDraft(snapshot);
+          actions.setDraft(snapshot2);
           wroteBack = true;
         } catch {
         }
@@ -5637,7 +8941,7 @@ function MicButton({
         submitTimerRef.current = setInterval(() => {
           retryCount++;
           const phase = phaseRef.current;
-          if (retryCount > 3 || phase === "submitting" || phase === "adjudicating" || draftRef.current.trim() !== (wroteBack ? snapshot : draftSnapshot)) {
+          if (retryCount > 3 || phase === "submitting" || phase === "adjudicating" || draftRef.current.trim() !== (wroteBack ? snapshot2 : draftSnapshot)) {
             cancelPendingSubmit();
             return;
           }
@@ -5645,10 +8949,10 @@ function MicButton({
         }, 500);
       };
       const sid = sidRef.current;
-      if (sid && shouldSteerSubmit(runningRef.current, snapshot)) {
-        void bus.steerSubmit(sid, snapshot).then((delivered) => {
+      if (sid && shouldSteerSubmit(runningRef.current, snapshot2)) {
+        void bus.steerSubmit(sid, snapshot2).then((delivered) => {
           if (delivered) {
-            if (draftRef.current.trim() === (wroteBack ? snapshot : draftSnapshot)) {
+            if (draftRef.current.trim() === (wroteBack ? snapshot2 : draftSnapshot)) {
               try {
                 actions?.setDraft?.("");
               } catch {
@@ -5743,12 +9047,14 @@ function MicButton({
     bus.setUi({ partial: "", levels: [], isSpeech: void 0, ttsDrained: false });
     checkOnce();
   };
-  const exitMode = async (reason) => {
+  const exitMode = async (reason, overrideSid) => {
     if (localRef.current === "off") return;
+    const sid = overrideSid ?? sidRef.current;
     pendingHoldRef.current = false;
     pendingHoldReleaseRef.current = false;
     clearHoldExit();
     setLocalMode("off");
+    hostEnteredRef.current = false;
     clearOnce();
     clearIdle();
     cancelPendingSubmit();
@@ -5769,10 +9075,16 @@ function MicButton({
     const engine = engineRef.current;
     engineRef.current = null;
     micReadyRef.current = false;
-    if (engine) await engine.stop();
+    const isSessionSwitch = Boolean(overrideSid && overrideSid !== sidRef.current);
+    if (engine) {
+      if (isSessionSwitch && typeof engine.flushAndStop === "function") {
+        await engine.flushAndStop(2500);
+      } else {
+        await engine.stop();
+      }
+    }
     bus.resetTelemetry();
     bus.setUi({ state: "idle", partial: "", levels: [], error: null, model: null, ttsNotice: null, isSpeech: void 0 });
-    const sid = sidRef.current;
     if (sid) await bus.exit(sid, reason === "typing");
   };
   const cancelPending = () => {
@@ -5785,6 +9097,7 @@ function MicButton({
     isSpeechTrueCount = 0;
     isSpeechFalseRun = 0;
     micReadyRef.current = false;
+    hostEnteredRef.current = false;
     setLocalMode("pending");
     const myEnter = ++enterEpochRef.current;
     try {
@@ -5802,15 +9115,87 @@ function MicButton({
         }
         return;
       }
+      hostEnteredRef.current = true;
       const cfg = await fetchConfig();
       if (enterEpochRef.current !== myEnter) {
         if (localRef.current === "off") void bus.exit(sid);
         return;
       }
       const basePath = cfg.basePath;
+      if (cfg.readAloud !== "off" && cfg.ttsNeedsKey === true && cfg.ttsKeyPresent === false) {
+        bus.setUi({ notice: t("ttsKeyMissingNotice") });
+      } else if (bus.ui.notice === t("ttsKeyMissingNotice")) {
+        bus.setUi({ notice: null });
+      }
       const silenceMs = cfg.silenceMs;
       const interruptLevel = cfg.interruptLevel;
       const confirmFrames = INT_CONFIRM_FRAMES[interruptLevel] ?? 2;
+      try {
+        const snap = scope?.getSnapshot?.();
+        const sv = snap && snap.status === "ready" && snap.value ? snap.value : {};
+        const eng = typeof cfg.ttsEngine === "string" ? cfg.ttsEngine : typeof sv.ttsEngine === "string" ? sv.ttsEngine : "";
+        let pv = resolvePresetVoice(cfg.voice, null);
+        if (!pv && typeof sv.voice === "string") pv = sv.voice.trim();
+        const presetId = typeof cfg.openaiPreset === "string" && cfg.openaiPreset ? cfg.openaiPreset : typeof sv.openaiPreset === "string" ? sv.openaiPreset : "";
+        const readAloudOff = (typeof cfg.readAloud === "string" ? cfg.readAloud : sv.readAloud) === "off";
+        const probeTtlMs = 10 * 60 * 1e3;
+        if (!readAloudOff && isCloudEngine(eng)) {
+          if (eng === "openai") {
+            pv = resolvePresetVoice(pv, presetId ? await fetchPresetVoice(presetId) : null);
+          }
+        }
+        const probeKey = `dshvm:ttsProbeAt:${eng}:${presetId}:${pv}`;
+        let recentProbe = false;
+        try {
+          const at = Number(sessionStorage.getItem(probeKey) ?? "0");
+          recentProbe = Number.isFinite(at) && at > 0 && Date.now() - at < probeTtlMs;
+        } catch {
+        }
+        if (!readAloudOff && !recentProbe && isCloudEngine(eng) && !pv) {
+          debugLog("tts-probe-skip", { reason: "no-voice", engine: eng });
+        } else if (!readAloudOff && recentProbe && isCloudEngine(eng)) {
+          debugLog("tts-probe-skip", { reason: "throttled", engine: eng });
+        }
+        if (!readAloudOff && !recentProbe && isCloudEngine(eng) && pv) {
+          const markProbe = (ok) => {
+            try {
+              sessionStorage.setItem(probeKey, String(ok ? Date.now() : Date.now() - probeTtlMs + 2 * 60 * 1e3));
+            } catch {
+            }
+          };
+          const rawRate = typeof cfg.rate === "number" ? cfg.rate : typeof sv.rate === "number" ? sv.rate : 1.1;
+          const pr = Math.min(2, Math.max(0.5, rawRate));
+          const myProbe = enterEpochRef.current;
+          const markDown = (msg) => {
+            if (enterEpochRef.current !== myProbe || localRef.current === "off") return;
+            bus.setUi({ ttsNotice: msg });
+          };
+          void fetch(`${location.origin}${basePath}/preview`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ voice: pv, rate: pr }),
+            signal: AbortSignal.timeout(3e4)
+          }).then(async (res) => {
+            const skipped = res.status === 429 || res.status === 403;
+            if (!res.ok && !skipped) {
+              let code = "";
+              try {
+                const body = await res.json();
+                code = typeof body?.code === "string" ? body.code : "";
+              } catch {
+              }
+              markDown(code === "preview_auth" ? t("ttsProbeAuthFail") : t("ttsProbeFail"));
+            }
+            markProbe(res.ok);
+            debugLog("tts-probe", { ok: res.ok, status: res.status, skipped, engine: eng });
+          }).catch((e) => {
+            markProbe(false);
+            debugLog("tts-probe", { ok: false, error: String(e).slice(0, 80), engine: eng });
+            markDown(t("ttsProbeFail"));
+          });
+        }
+      } catch {
+      }
       let bargeInMode = cfg.bargeInMode;
       let echoRejectStreak = 0;
       debugLog("enter", {
@@ -5823,7 +9208,7 @@ function MicButton({
         sessionId: sid
       });
       const hardBreak = async () => {
-        const resumeOnce = bootNow().mode === "once" && onceRef.current !== null;
+        const resumeOnce = (bootNow().mode === "once" || bootNow().mode === "hold") && onceRef.current !== null;
         if (resumeOnce) {
           clearOnce();
           resetIdle();
@@ -5855,11 +9240,12 @@ function MicButton({
           const eng = engineRef.current;
           void eng?.start().then(() => {
             if (engineRef.current !== eng || localRef.current !== "on" || !mountedRef.current) return;
-            if (manualHoldRef.current || toggleHoldRef.current) eng.beginHeld();
+            if (manualHoldRef.current || toggleHoldRef.current || holdPtrRef.current || holdCtrlRef.current) eng.beginHeld();
           }).catch(() => bus.setUi({ error: t("micUnavailable") }));
         } else if (engineRef.current && !engineRef.current.holding) await engineRef.current.discardSegment();
         await cancelP;
         bus.setUi({ partial: "\u2026" });
+        bus.setNotice(t("interruptedNotice"));
         if (breakDotsTimerRef.current) clearTimeout(breakDotsTimerRef.current);
         breakDotsTimerRef.current = setTimeout(() => {
           breakDotsTimerRef.current = null;
@@ -5958,6 +9344,7 @@ function MicButton({
           },
           onSessionExpired: async () => {
             if (localRef.current !== "on") return false;
+            if (bus.isPreemptedByOther?.(sid)) return false;
             if (Date.now() - lastReenterAt < 2e3) return false;
             lastReenterAt = Date.now();
             bus.setUi({ error: t("sessionExpired") });
@@ -6027,9 +9414,11 @@ function MicButton({
           if (lastPartialRef.current) {
             const composed = composeDraft(draftRef.current, lastPartialRef.current, "");
             lastPartialRef.current = "";
-            try {
-              actionsRef.current?.setDraft?.(composed);
-            } catch {
+            if (!shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
+              try {
+                actionsRef.current?.setDraft?.(composed);
+              } catch {
+              }
             }
           }
           bus.setUi({ partial: "" });
@@ -6055,8 +9444,8 @@ function MicButton({
         if (typeof partialActions?.setDraft !== "function") return;
         const composed = composeDraft(draftRef.current, lastPartialRef.current, text);
         if (!composed) return;
-        lastPartialRef.current = text.trim();
         if (shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) return;
+        lastPartialRef.current = text.trim();
         try {
           partialActions.setDraft(composed);
         } catch {
@@ -6067,6 +9456,24 @@ function MicButton({
         resetIdle();
         submitInFlightRef.current = false;
         bus.setUi({ partial: "" });
+        const actions = actionsRef.current;
+        const trimmed = text.trim();
+        if (!mountedRef.current || sidRef.current !== sid) {
+          if (trimmed) {
+            stashSessionDraft(sid, trimmed);
+            bus.setNotice(t("sessionSwitchFlushedNotice"));
+          }
+          return;
+        }
+        if (!trimmed) {
+          if (holdReleaseExitRef.current && meta?.force) {
+            clearHoldExit();
+            setTimeout(() => {
+              if (!holdPtrRef.current) void exitModeRef.current("manual");
+            }, 300);
+          }
+          return;
+        }
         if (holdReleaseExitRef.current && meta?.force) {
           clearHoldExit();
           if (bootNow().autoSend === false) {
@@ -6077,9 +9484,6 @@ function MicButton({
             beginOnceWait();
           }
         }
-        const actions = actionsRef.current;
-        const trimmed = text.trim();
-        if (!trimmed) return;
         let nextDraft = composeDraft(draftRef.current, lastPartialRef.current, trimmed);
         lastPartialRef.current = "";
         if (!shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
@@ -6091,6 +9495,11 @@ function MicButton({
             } catch {
             }
           }
+        }
+        if (meta?.flushed || typeof document !== "undefined" && document.hidden) {
+          cancelAutoSend();
+          bus.setNotice(t("tabSwitchFlushedNotice"));
+          return;
         }
         if (meta?.force) {
           cancelAutoSend();
@@ -6125,6 +9534,11 @@ function MicButton({
       micReadyRef.current = true;
       setLocalMode("on");
       resetIdle();
+      if (!bus.ui.error && !bus.ui.notice && takeOnceHint(FIRST_USE_HINT_KEY)) {
+        const wake = cfg.wakeWord.trim();
+        const guide = cfg.mode === "hold" ? t("firstUseHold") : wake ? t("firstUseWake", { wake }) : cfg.mode === "once" ? t("firstUseOnce") : t("firstUseToggle");
+        bus.setNotice(guide);
+      }
       if (pendingHoldRef.current) {
         pendingHoldRef.current = false;
         if (holdPtrRef.current) {
@@ -6172,10 +9586,34 @@ function MicButton({
   const exitModeRef = (0, import_react3.useRef)(exitMode);
   exitModeRef.current = exitMode;
   (0, import_react3.useEffect)(() => {
+    const fn = () => {
+      void exitModeRef.current("manual");
+    };
+    exitModeExternal = fn;
+    return () => {
+      if (exitModeExternal === fn) exitModeExternal = null;
+    };
+  }, []);
+  (0, import_react3.useEffect)(() => {
     actionsRef.current = inputActions;
   }, [inputActions]);
   (0, import_react3.useEffect)(() => {
+    const prevSid = prevSidRef.current;
+    prevSidRef.current = sessionId;
     sidRef.current = sessionId;
+    if (prevSid && prevSid !== sessionId && localRef.current !== "off") {
+      lastPartialRef.current = "";
+      void exitModeRef.current("manual", prevSid);
+    }
+    if (sessionId) {
+      const stashed = takeStashedSessionDraft(sessionId);
+      if (stashed && !shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
+        try {
+          actionsRef.current?.setDraft?.(composeDraft(draftRef.current, "", stashed));
+        } catch {
+        }
+      }
+    }
   }, [sessionId]);
   (0, import_react3.useEffect)(() => {
     const onChanged = () => {
@@ -6231,7 +9669,9 @@ function MicButton({
       });
     })();
   }, [sessionId]);
-  const runningSel = useSession ? useSession((s) => s === void 0 ? void 0 : s.running) : void 0;
+  const useSessionHook = useSession ?? noopSelectorHook;
+  const useInputHook = useInput ?? noopSelectorHook;
+  const runningSel = useSessionHook((s) => s === void 0 ? void 0 : s.running);
   const prevRunningRef = (0, import_react3.useRef)(false);
   (0, import_react3.useEffect)(() => {
     runningRef.current = runningSel === true;
@@ -6277,14 +9717,24 @@ function MicButton({
       }
       const sid = sidRef.current;
       if ((localRef.current === "on" || localRef.current === "pending") && sid) {
-        void engineRef.current?.stop();
-        void fetch(`${location.origin}${BASE_PATH2}/toggle`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sessionId: sid, on: false, tabId: TAB_ID }),
-          keepalive: true
-        }).catch(() => {
-        });
+        const wasOn = localRef.current === "on";
+        const eng = engineRef.current;
+        engineRef.current = null;
+        const sendToggleOff = () => {
+          void fetch(`${location.origin}${BASE_PATH2}/toggle`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ sessionId: sid, on: false, tabId: TAB_ID }),
+            keepalive: true
+          }).catch(() => {
+          });
+        };
+        if (wasOn && eng && typeof eng.flushAndStop === "function") {
+          void eng.flushAndStop(2500).finally(sendToggleOff);
+        } else {
+          void eng?.stop();
+          sendToggleOff();
+        }
       }
     };
   }, []);
@@ -6375,39 +9825,77 @@ function MicButton({
   }, []);
   (0, import_react3.useEffect)(() => {
     const onInput = (e) => {
-      const t3 = e.target;
-      if (!(t3 instanceof HTMLTextAreaElement)) return;
+      const target = e.target;
+      if (!target) return;
+      if (!(target instanceof HTMLTextAreaElement || target.isContentEditable)) return;
+      if (target.closest?.("[data-dshvm-settings]")) return;
       if (localRef.current !== "on") return;
       void exitModeRef.current("typing");
     };
     window.addEventListener("input", onInput, true);
     return () => window.removeEventListener("input", onInput, true);
   }, []);
+  const escAtRef = (0, import_react3.useRef)(0);
   (0, import_react3.useEffect)(() => {
     const onKeyDown = (e) => {
       if (e.key !== "Escape") return;
-      if (localRef.current !== "on" || bootNow().mode !== "hold") return;
-      engineRef.current?.endHeld(true);
-      holdCtrlRef.current = false;
-      setHolding(false);
-      bus.setUi({ partial: "" });
+      if (localRef.current !== "on") return;
+      const el = e.target;
+      if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable)) return;
+      e.preventDefault();
+      bus.skipAudio();
+      if (bootNow().mode === "hold") {
+        engineRef.current?.endHeld(true);
+        holdCtrlRef.current = false;
+        setHolding(false);
+        bus.setUi({ partial: "" });
+      }
+      const now = Date.now();
+      if (now - escAtRef.current < 600) {
+        escAtRef.current = 0;
+        void exitModeRef.current("manual");
+        return;
+      }
+      escAtRef.current = now;
     };
     const onVisibility = () => {
       if (document.hidden) {
         if (localRef.current === "on" && engineRef.current && !onceRef.current) {
-          if (bootNow().mode === "hold") {
-            engineRef.current?.endHeld(true);
-            holdCtrlRef.current = false;
-            setHolding(false);
-          }
+          holdCtrlRef.current = false;
+          setHolding(false);
+          cancelAutoSend();
           pausedForHiddenRef.current = true;
-          void engineRef.current.stop();
+          const eng = engineRef.current;
+          const flushSid = sidRef.current;
+          const p = typeof eng.flushAndStop === "function" ? eng.flushAndStop(3e3) : eng.stop().then(() => false);
+          hiddenFlushRef.current = p;
+          void p.then((flushed) => {
+            if (!flushed && lastPartialRef.current && sidRef.current === flushSid) {
+              const cleaned = composeDraft(draftRef.current, lastPartialRef.current, "");
+              lastPartialRef.current = "";
+              if (!shouldSkipDraftWriteback(quoteRef.current, attachRef.current)) {
+                try {
+                  actionsRef.current?.setDraft?.(cleaned);
+                } catch {
+                }
+              }
+            }
+            if (pausedForHiddenRef.current) bus.setUi({ partial: "", levels: [] });
+          }).finally(() => {
+            if (hiddenFlushRef.current === p) hiddenFlushRef.current = null;
+          });
         }
       } else if (pausedForHiddenRef.current && localRef.current === "on") {
-        pausedForHiddenRef.current = false;
-        void engineRef.current?.start().catch(() => {
-          void exitModeRef.current("manual");
-        });
+        const waitFlush = hiddenFlushRef.current;
+        const resumeMic = () => {
+          if (typeof document !== "undefined" && document.hidden || !pausedForHiddenRef.current || localRef.current !== "on") return;
+          pausedForHiddenRef.current = false;
+          void engineRef.current?.start().catch(() => {
+            void exitModeRef.current("manual");
+          });
+        };
+        if (waitFlush) void waitFlush.finally(resumeMic);
+        else resumeMic();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -6423,7 +9911,8 @@ function MicButton({
       if (localRef.current === "pending" || localRef.current === "on") {
         if (bus.activeSessionId === sid) {
           if (localRef.current === "on" || micReadyRef.current) setLocalMode("on");
-        } else if (localRef.current === "pending") {
+        } else if (localRef.current === "pending" && hostEnteredRef.current) {
+          hostEnteredRef.current = false;
           setLocalMode("off");
         }
       }
@@ -6432,11 +9921,11 @@ function MicButton({
   const on = local === "on";
   const busy = bus.ui.state === "transcribing" || bus.ui.state === "loading-model";
   const holdMode = bootNow().mode === "hold";
-  const liveDraft = useInput ? useInput((s) => s?.draft ?? "") : "";
+  const liveDraft = useInputHook((s) => s?.draft ?? "") ?? "";
   const draftRef = (0, import_react3.useRef)("");
   draftRef.current = liveDraft;
-  const liveQuoteCount = useInput ? useInput((s) => s?.quotes?.length ?? 0) : 0;
-  const liveAttachCount = useInput ? useInput((s) => s?.attachmentIds?.length ?? 0) : 0;
+  const liveQuoteCount = useInputHook((s) => s?.quotes?.length ?? 0) ?? 0;
+  const liveAttachCount = useInputHook((s) => s?.attachmentIds?.length ?? 0) ?? 0;
   const quoteRef = (0, import_react3.useRef)(0);
   quoteRef.current = liveQuoteCount;
   const attachRef = (0, import_react3.useRef)(0);
@@ -6444,7 +9933,7 @@ function MicButton({
   const lastPartialRef = (0, import_react3.useRef)("");
   const submitInFlightRef = (0, import_react3.useRef)(false);
   const correctCycleRef = (0, import_react3.useRef)(0);
-  const livePhase = useInput ? useInput((s) => s?.phase ?? "") : "";
+  const livePhase = useInputHook((s) => s?.phase ?? "") ?? "";
   const phaseRef = (0, import_react3.useRef)("");
   phaseRef.current = livePhase;
   const [holding, setHolding] = (0, import_react3.useState)(false);
@@ -6525,6 +10014,17 @@ function MicButton({
   };
   (0, import_react3.useEffect)(() => unlockSelection, []);
   const btnRef = (0, import_react3.useRef)(null);
+  const moreBtnRef = (0, import_react3.useRef)(null);
+  const menuTriggerRef = (0, import_react3.useRef)(null);
+  const touchMenuTimerRef = (0, import_react3.useRef)(null);
+  const touchMenuOpenedRef = (0, import_react3.useRef)(false);
+  const clearTouchMenuTimer = () => {
+    if (touchMenuTimerRef.current !== null) {
+      clearTimeout(touchMenuTimerRef.current);
+      touchMenuTimerRef.current = null;
+    }
+  };
+  (0, import_react3.useEffect)(() => clearTouchMenuTimer, []);
   (0, import_react3.useEffect)(() => {
     const el = btnRef.current;
     if (!el) return;
@@ -6557,12 +10057,19 @@ function MicButton({
       if (localRef.current === "on") {
         setHolding(true);
         const eng = engineRef.current;
-        eng?.beginHeld();
-        if (eng && bootNow().bargeInMode === "manual" && bus.ui.playing) {
+        if (onceRef.current) {
           breakTimerRef.current = setTimeout(() => {
             breakTimerRef.current = null;
-            if (holdPtrRef.current && bus.ui.playing) void breakRef.current?.();
+            if (holdPtrRef.current && onceRef.current) void breakRef.current?.();
           }, 250);
+        } else {
+          eng?.beginHeld();
+          if (eng && bootNow().bargeInMode === "manual" && bus.ui.playing) {
+            breakTimerRef.current = setTimeout(() => {
+              breakTimerRef.current = null;
+              if (holdPtrRef.current && bus.ui.playing) void breakRef.current?.();
+            }, 250);
+          }
         }
       }
     } else if (localRef.current === "on" && (bus.ui.playing && !onceRef.current || bootNow().mode === "once" && onceRef.current)) {
@@ -6574,11 +10081,31 @@ function MicButton({
         breakTimerRef.current = null;
         if (holdPtrRef.current && (bus.ui.playing || onceRef.current)) void breakRef.current?.();
       }, 250);
+    } else if (canTouchLongPressMenu({
+      pointerType: e.pointerType,
+      hasScope: Boolean(scope),
+      local: localRef.current,
+      mode: bootNow().mode,
+      playing: bus.ui.playing,
+      readingOutside: readingOutside()
+    })) {
+      clearTouchMenuTimer();
+      touchMenuTimerRef.current = setTimeout(() => {
+        touchMenuTimerRef.current = null;
+        if (!holdPtrRef.current || localRef.current !== "off") return;
+        touchMenuOpenedRef.current = true;
+        suppressClickUntilRef.current = Date.now() + 2e3;
+        menuTriggerRef.current = btnRef.current;
+        setMenuOpen(true);
+      }, TOUCH_MENU_HOLD_MS);
     }
   };
   const onPointerMove = (e) => {
     const p = holdPtrRef.current;
     if (!p || p.id !== e.pointerId) return;
+    if (touchMenuTimerRef.current !== null && Math.abs(e.clientY - p.y) >= 12) {
+      clearTouchMenuTimer();
+    }
     if (p.y - e.clientY >= 40) {
       holdPtrRef.current = null;
       toggleHoldRef.current = false;
@@ -6594,6 +10121,7 @@ function MicButton({
     const action = pointerUpAction(p, { id: e.pointerId, button: e.button });
     if (action === "ignore") return;
     holdPtrRef.current = null;
+    clearTouchMenuTimer();
     clearBreakTimer();
     if (action === "unarmed" || !p) return;
     setHolding(false);
@@ -6645,6 +10173,7 @@ function MicButton({
     }
   };
   const onPointerCancel = () => {
+    clearTouchMenuTimer();
     if (!holdPtrRef.current && !toggleHoldRef.current) return;
     holdPtrRef.current = null;
     toggleHoldRef.current = false;
@@ -6709,78 +10238,118 @@ function MicButton({
     return () => clearInterval(id);
   }, [showTimer]);
   const [menuOpen, setMenuOpen] = (0, import_react3.useState)(false);
-  const closeMenu = React.useCallback((refocus) => {
+  const closeMenu = React2.useCallback((refocus) => {
     setMenuOpen(false);
-    if (refocus) btnRef.current?.focus();
+    if (refocus) (menuTriggerRef.current ?? btnRef.current)?.focus();
   }, []);
   const title = bus.ui.error ? String(bus.ui.error) : reading ? t("stopReading") : on ? holdMode ? t("titleHold") : t("titleToggle") : t("titleEnter");
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-      "button",
-      {
-        type: "button",
-        className: "dshvm-mic",
-        "data-state": visual,
-        onClick: (e) => {
-          if (isAuxClickToIgnore(auxClickRef.current, e.detail)) {
-            auxClickRef.current = false;
-            return;
-          }
-          if (Date.now() < suppressClickUntilRef.current) return;
-          if (localRef.current === "on" && (bus.ui.playing || onceRef.current)) {
-            bus.stopReading(!!useSession);
-            void exitModeRef.current("manual");
-            return;
-          }
-          if (holdMode && !readingOutside()) {
-            if (e.detail !== 0) return;
-          }
-          toggle();
-        },
-        onMouseDown: (e) => {
-          e.preventDefault();
-        },
-        onPointerDown,
-        onPointerMove,
-        onPointerUp,
-        onPointerCancel,
-        onContextMenu: (e) => {
-          e.preventDefault();
-          const pt = e.nativeEvent.pointerType;
-          if (scope && pt !== "touch" && pt !== "pen") setMenuOpen(true);
-        },
-        ref: btnRef,
-        "data-dshvm": "mic",
-        "aria-label": reading ? t("stopReading") : on ? `${t("ariaActive")} \xB7 ${label}` : local === "pending" ? label : t("ariaEnter"),
-        "aria-pressed": on,
-        "aria-haspopup": scope ? "menu" : void 0,
-        "aria-expanded": scope ? menuOpen : void 0,
-        title,
-        children: [
-          visual !== "waiting" && bus.ui.isSpeech === true && on && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-mic-dot", "data-kind": "vad", title: t("vadDetected") }),
-          bus.ui.error && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-mic-dot", "data-kind": "error" }),
-          visual === "waiting" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 24 24", width: 16, height: 16, "aria-hidden": "true", className: "dshvm-spin", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("circle", { cx: 12, cy: 12, r: 8, fill: "none", stroke: "currentColor", strokeWidth: 2, opacity: 0.25 }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M12 4a8 8 0 0 1 8 8", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" })
-          ] }) : visual === "ending" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("svg", { viewBox: "0 0 24 24", width: 16, height: 16, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M5.5 12.5l4.2 4.2 8.8-8.8", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }) }) : eqKind ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: eqKind === "out" ? "dshvm-eq dshvm-eq-out" : "dshvm-eq", "aria-hidden": "true", children: (eqKind === "out" ? [6, 10, 14, 10, 6] : [6, 12, 8]).map((h, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("i", { style: { height: h } }, i)) }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 24 24", width: 16, height: 16, "aria-hidden": "true", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { fill: "currentColor", d: "M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              "path",
-              {
-                fill: "currentColor",
-                d: "M17.3 11a.9.9 0 0 0-1.8 0 3.5 3.5 0 0 1-7 0 .9.9 0 0 0-1.8 0 5.3 5.3 0 0 0 4.4 5.2v1.9h-1.7a.9.9 0 0 0 0 1.8h5.2a.9.9 0 0 0 0-1.8h-1.7v-1.9A5.3 5.3 0 0 0 17.3 11Z"
-              }
-            )
-          ] }),
-          showTimer && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "dshvm-mic-timer", "aria-hidden": "true", children: [
-            String(Math.floor(elapsed / 60)).padStart(2, "0"),
-            ":",
-            String(elapsed % 60).padStart(2, "0")
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "dshvm-mic-group", "data-dshvm": "mic-group", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+        "button",
+        {
+          type: "button",
+          className: "dshvm-mic",
+          "data-state": visual,
+          onClick: (e) => {
+            if (isAuxClickToIgnore(auxClickRef.current, e.detail)) {
+              auxClickRef.current = false;
+              return;
+            }
+            if (touchMenuOpenedRef.current) {
+              touchMenuOpenedRef.current = false;
+              return;
+            }
+            if (Date.now() < suppressClickUntilRef.current) return;
+            if (localRef.current === "on" && (bus.ui.playing || onceRef.current)) {
+              bus.stopReading(!!useSession);
+              void exitModeRef.current("manual");
+              return;
+            }
+            if (holdMode && !readingOutside()) {
+              if (e.detail !== 0) return;
+            }
+            toggle();
+          },
+          onMouseDown: (e) => {
+            e.preventDefault();
+          },
+          onPointerDown,
+          onPointerMove,
+          onPointerUp,
+          onPointerCancel,
+          onContextMenu: (e) => {
+            e.preventDefault();
+            const pt = e.nativeEvent.pointerType;
+            if (scope && pt !== "touch" && pt !== "pen") {
+              menuTriggerRef.current = btnRef.current;
+              setMenuOpen(true);
+            }
+          },
+          ref: btnRef,
+          "data-dshvm": "mic",
+          "aria-label": reading ? t("stopReading") : on ? `${t("ariaActive")} \xB7 ${label}` : local === "pending" ? `${label} \xB7 ${t("ariaPendingCancelHint")}` : t("ariaEnter"),
+          "aria-pressed": on,
+          "aria-haspopup": scope ? "menu" : void 0,
+          "aria-expanded": scope ? menuOpen : void 0,
+          title,
+          children: [
+            visual !== "waiting" && bus.ui.isSpeech === true && on && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-mic-dot", "data-kind": "vad", title: t("vadDetected") }),
+            bus.ui.error && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dshvm-mic-dot", "data-kind": "error" }),
+            visual === "waiting" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 24 24", width: 16, height: 16, "aria-hidden": "true", className: "dshvm-spin", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("circle", { cx: 12, cy: 12, r: 8, fill: "none", stroke: "currentColor", strokeWidth: 2, opacity: 0.25 }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M12 4a8 8 0 0 1 8 8", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" })
+            ] }) : visual === "ending" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("svg", { viewBox: "0 0 24 24", width: 16, height: 16, "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M5.5 12.5l4.2 4.2 8.8-8.8", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }) }) : eqKind ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: eqKind === "out" ? "dshvm-eq dshvm-eq-out" : "dshvm-eq", "aria-hidden": "true", children: (eqKind === "out" ? [6, 10, 14, 10, 6] : [6, 12, 8]).map((h, i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("i", { style: { height: h } }, i)) }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 24 24", width: 16, height: 16, "aria-hidden": "true", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { fill: "currentColor", d: "M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                "path",
+                {
+                  fill: "currentColor",
+                  d: "M17.3 11a.9.9 0 0 0-1.8 0 3.5 3.5 0 0 1-7 0 .9.9 0 0 0-1.8 0 5.3 5.3 0 0 0 4.4 5.2v1.9h-1.7a.9.9 0 0 0 0 1.8h5.2a.9.9 0 0 0 0-1.8h-1.7v-1.9A5.3 5.3 0 0 0 17.3 11Z"
+                }
+              )
+            ] }),
+            showTimer && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "dshvm-mic-timer", "aria-hidden": "true", children: [
+              String(Math.floor(elapsed / 60)).padStart(2, "0"),
+              ":",
+              String(elapsed % 60).padStart(2, "0")
+            ] })
+          ]
+        }
+      ),
+      scope && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "button",
+        {
+          ref: moreBtnRef,
+          type: "button",
+          className: "dshvm-mic-more",
+          "data-dshvm": "mic-more",
+          "aria-label": t("micMoreMenu"),
+          "aria-haspopup": "menu",
+          "aria-expanded": menuOpen,
+          title: t("micMoreMenu"),
+          onMouseDown: (e) => e.preventDefault(),
+          onClick: () => {
+            menuTriggerRef.current = moreBtnRef.current;
+            setMenuOpen((o) => !o);
+          },
+          children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { viewBox: "0 0 16 16", width: 14, height: 14, "aria-hidden": "true", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("circle", { cx: 3.5, cy: 8, r: 1.3, fill: "currentColor" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("circle", { cx: 8, cy: 8, r: 1.3, fill: "currentColor" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("circle", { cx: 12.5, cy: 8, r: 1.3, fill: "currentColor" })
           ] })
-        ]
+        }
+      )
+    ] }),
+    menuOpen && scope && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      MicMenu,
+      {
+        scope,
+        anchor: menuTriggerRef.current ?? btnRef.current,
+        ignoreTarget: moreBtnRef.current,
+        onClose: closeMenu
       }
     ),
-    menuOpen && scope && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MicMenu, { scope, anchor: btnRef.current, onClose: closeMenu }),
     micHint && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       "span",
       {
@@ -6791,10 +10360,14 @@ function MicButton({
         style: {
           fontSize: 11,
           color: micHintInfo ? "var(--dsw-alias-label-tertiary, #8b949e)" : "var(--dsw-alias-state-error-primary, #f85149)",
-          maxWidth: 240,
+          // A4 审计 Minor：原来 nowrap+ellipsis+固定 240px，长错误被截断且挤压同排输入控件。
+          maxWidth: "min(320px, 42vw)",
           overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap"
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          whiteSpace: "normal",
+          overflowWrap: "anywhere"
         },
         children: micHint
       }
@@ -6846,7 +10419,7 @@ function VoiceStatusBar({ bus, sessionId }) {
   }, [b.ui.state]);
   const isActive = b.active === sessionId;
   if (!isActive || b.ui.boot?.showStatusBar === false) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
-  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? transcribingSec >= 2 ? t("recognizingSec").replace("{sec}", String(transcribingSec)) : t("recognizing") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.playing ? t("reading") : b.ui.turn === "agent-speaking" ? t("thinking") : b.ui.mode === "hold" ? t("barHold") : t("barListening");
+  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? transcribingSec >= 2 ? t("recognizingSec").replace("{sec}", String(transcribingSec)) : t("recognizing") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.playing ? t("reading") : b.ui.turn === "agent-speaking" ? b.ui.ttsNotice || t("thinking") : b.ui.mode === "hold" ? t("barHold") : t("barListening");
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0);
   const botBars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.botLevels[i] ?? 0);
   const telParts = [];
@@ -6872,24 +10445,30 @@ function VoiceStatusBar({ bus, sessionId }) {
       `AEC delay=${Math.round(b.ui.echoDelayMs ?? 0)}ms floor=${el.floorRms.toFixed(4)} resid=${el.residualRms.toFixed(4)}`
     );
   }
+  const displayText = b.ui.error ? b.ui.error : b.ui.sseDown ? t("sseReconnect") : b.ui.notice ? b.ui.notice : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.state === "wake" && b.ui.partial ? `${stateText} \xB7 ${b.ui.partial}` : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText;
+  const hasBadges = b.ui.isSpeech === true || Boolean(b.ui.ttsNotice) || b.ui.aecOff === true;
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",
     {
+      "data-dshvm": "statusbar",
       style: {
         display: "flex",
         flexDirection: "column",
-        gap: 2,
+        gap: 4,
         padding: "6px 12px",
         borderRadius: 10,
         fontSize: 12,
         fontFamily: "system-ui, sans-serif",
-        color: "#3fb950",
-        background: "rgba(63, 185, 80, 0.08)",
-        border: "1px solid rgba(63, 185, 80, 0.25)",
-        animation: "dshvm-fadein 0.2s ease"
+        // 正常态正文走高对比度主文本色（解决浅色主题下 #3fb950 仅 ~2.1:1 对比度不可读问题），
+        // 语音激活氛围由浅绿底色与左侧声波表达；错误态在下方文本节点用 error token 覆盖。
+        color: "var(--dsw-alias-label-primary, #1f2328)",
+        background: "color-mix(in srgb, var(--dsw-alias-state-success-primary, #2ea043) 9%, var(--dsw-alias-bg-layer-2, transparent))",
+        border: "1px solid color-mix(in srgb, var(--dsw-alias-state-success-primary, #2ea043) 28%, var(--dsw-alias-border-l2, rgba(46, 160, 67, 0.3)))",
+        animation: "dshvm-fadein 0.2s ease",
+        minWidth: 0
       },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexWrap: "nowrap" }, children: [
           botBars.some((v) => v > 0) && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "span",
             {
@@ -6922,8 +10501,8 @@ function VoiceStatusBar({ bus, sessionId }) {
               className: "dshvm-bar",
               style: {
                 height: `${3 + v * 12}px`,
-                background: "#3fb950",
-                opacity: 0.4 + v * 0.6
+                background: "var(--dsw-alias-state-success-primary, #2ea043)",
+                opacity: 0.45 + v * 0.55
               }
             },
             i
@@ -6950,8 +10529,35 @@ function VoiceStatusBar({ bus, sessionId }) {
             "span",
             {
               "aria-hidden": "true",
-              style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexGrow: 1 },
-              children: b.ui.error ? b.ui.error : b.ui.sseDown ? t("sseReconnect") : b.ui.notice ? b.ui.notice : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.state === "wake" && b.ui.partial ? `${stateText} \xB7 ${b.ui.partial}` : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText
+              className: "dshvm-statusbar-text",
+              title: displayText,
+              style: {
+                color: b.ui.error ? "var(--dsw-alias-state-error-primary, #cf222e)" : void 0,
+                fontWeight: b.ui.error ? 500 : 400
+              },
+              children: displayText
+            }
+          ),
+          elapsedSec > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+            "span",
+            {
+              "aria-hidden": "true",
+              title: t("elapsedHint"),
+              style: {
+                flexShrink: 0,
+                padding: "0 4px",
+                borderRadius: 6,
+                fontSize: 10.5,
+                lineHeight: "16px",
+                color: "var(--dsw-alias-label-tertiary, #57606a)",
+                fontVariantNumeric: "tabular-nums",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace"
+              },
+              children: [
+                String(Math.floor(elapsedSec / 60)).padStart(2, "0"),
+                ":",
+                String(elapsedSec % 60).padStart(2, "0")
+              ]
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
@@ -6966,14 +10572,39 @@ function VoiceStatusBar({ bus, sessionId }) {
                 flexShrink: 0,
                 border: "none",
                 background: "transparent",
-                color: "var(--dsw-alias-label-tertiary)",
+                color: "var(--dsw-alias-label-tertiary, #57606a)",
                 cursor: "pointer",
-                padding: "0 4px",
+                padding: "2px 4px",
+                borderRadius: 4,
                 fontSize: 11
               },
               children: t("diagCopy")
             }
           ),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                if (exitModeExternal) exitModeExternal();
+                else void bus.exit(sessionId);
+              },
+              style: {
+                border: "none",
+                background: "transparent",
+                color: "var(--dsw-alias-label-secondary, #57606a)",
+                cursor: "pointer",
+                padding: "2px 4px",
+                borderRadius: 4,
+                fontSize: 12,
+                fontWeight: 500,
+                flexShrink: 0
+              },
+              children: t("exit")
+            }
+          )
+        ] }),
+        hasBadges && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, minWidth: 0 }, children: [
           b.ui.isSpeech === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "span",
             {
@@ -6983,11 +10614,11 @@ function VoiceStatusBar({ bus, sessionId }) {
                 flexShrink: 0,
                 padding: "0 6px",
                 borderRadius: 8,
-                fontSize: 10,
+                fontSize: 10.5,
                 lineHeight: "16px",
-                color: "#ffa657",
-                background: "rgba(255, 166, 87, 0.15)",
-                border: "1px solid rgba(255, 166, 87, 0.35)"
+                color: "var(--dsw-alias-state-warn-primary, #9a6700)",
+                background: "color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)"
               },
               children: t("vadDetected")
             }
@@ -6998,42 +10629,19 @@ function VoiceStatusBar({ bus, sessionId }) {
               "aria-hidden": "true",
               title: b.ui.ttsNotice,
               style: {
-                flexShrink: 0,
-                maxWidth: 200,
+                maxWidth: "100%",
                 padding: "0 6px",
                 borderRadius: 8,
-                fontSize: 10,
+                fontSize: 10.5,
                 lineHeight: "16px",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
-                color: "#ffa657",
-                background: "rgba(255, 166, 87, 0.15)",
-                border: "1px solid rgba(255, 166, 87, 0.35)"
+                color: "var(--dsw-alias-state-warn-primary, #9a6700)",
+                background: "color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)"
               },
               children: b.ui.ttsNotice
-            }
-          ),
-          elapsedSec > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-            "span",
-            {
-              "aria-hidden": "true",
-              title: t("elapsedHint"),
-              style: {
-                flexShrink: 0,
-                padding: "0 6px",
-                borderRadius: 8,
-                fontSize: 10,
-                lineHeight: "16px",
-                color: "#8b949e",
-                fontVariantNumeric: "tabular-nums",
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace"
-              },
-              children: [
-                String(Math.floor(elapsedSec / 60)).padStart(2, "0"),
-                ":",
-                String(elapsedSec % 60).padStart(2, "0")
-              ]
             }
           ),
           b.ui.aecOff === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
@@ -7042,33 +10650,19 @@ function VoiceStatusBar({ bus, sessionId }) {
               "aria-hidden": "true",
               title: b.ui.bargeInDetectFallback ? t("bargeInDetectFallback") : t("aecOffHint"),
               style: {
-                flexShrink: 0,
+                maxWidth: "100%",
                 padding: "0 6px",
                 borderRadius: 8,
-                fontSize: 10,
+                fontSize: 10.5,
                 lineHeight: "16px",
-                color: "#ffa657",
-                background: "rgba(255, 166, 87, 0.15)",
-                border: "1px solid rgba(255, 166, 87, 0.35)"
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                color: "var(--dsw-alias-state-warn-primary, #9a6700)",
+                background: "color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 15%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary, #d29922) 35%, transparent)"
               },
               children: b.ui.bargeInDetectFallback ? t("bargeInDetectFallback") : t("aecOff")
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-            "button",
-            {
-              onClick: () => {
-                void bus.exit(sessionId);
-              },
-              style: {
-                border: "none",
-                background: "transparent",
-                color: "#8b949e",
-                cursor: "pointer",
-                fontSize: 12,
-                flexShrink: 0
-              },
-              children: t("exit")
             }
           )
         ] }),
@@ -7078,7 +10672,7 @@ function VoiceStatusBar({ bus, sessionId }) {
             "aria-hidden": "true",
             style: {
               fontSize: 11,
-              color: "#8b949e",
+              color: "var(--dsw-alias-label-tertiary, #57606a)",
               fontVariantNumeric: "tabular-nums",
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
               whiteSpace: "nowrap",
@@ -7094,42 +10688,58 @@ function VoiceStatusBar({ bus, sessionId }) {
 function VoiceOverlay({ bus }) {
   useLang();
   const [b, setB] = (0, import_react3.useState)(() => ({ active: bus.activeSessionId, ui: bus.ui }));
+  const [expanded, setExpanded] = (0, import_react3.useState)(false);
   (0, import_react3.useEffect)(() => {
     return bus.subscribe(setB);
   }, [bus]);
-  if (!b.ui.playing || b.ui.boot?.showCaptions === false) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
+  const visible = (b.ui.playing || b.ui.captionLinger === true) && b.ui.boot?.showCaptions !== false;
+  (0, import_react3.useEffect)(() => {
+    if (!visible && expanded) {
+      setExpanded(false);
+      bus.holdCaptionLinger(false);
+    }
+  }, [visible, expanded, bus]);
+  if (!visible) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
+  const history = b.ui.captionHistory ?? [];
+  const pastItems = history.length > 1 ? history.slice(0, -1) : [];
+  const currentText = b.ui.playingCaption ?? history[history.length - 1] ?? t("reading");
+  const pillBtnStyle = {
+    border: "1px solid var(--dsw-alias-border-l2)",
+    background: "var(--dsw-alias-bg-layer-2)",
+    color: "var(--dsw-alias-label-primary)",
+    borderRadius: 999,
+    padding: "3px 10px",
+    fontSize: 11,
+    cursor: "pointer",
+    flexShrink: 0,
+    pointerEvents: "auto"
+  };
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",
     {
-      role: "status",
-      "aria-live": "polite",
+      "data-dshvm": "caption-overlay",
+      className: "dshvm-caption-overlay",
       style: {
         position: "fixed",
         right: 16,
         bottom: 96,
-        // 上移，避免盖住底部输入框/麦克风按钮
         zIndex: 9999,
         display: "flex",
-        alignItems: "center",
-        gap: 10,
+        flexDirection: "column",
+        gap: 6,
         padding: "8px 14px",
-        borderRadius: 999,
+        borderRadius: 16,
         // 批 3：4 档字号（0/1/2/3 → 12/14/18/24 px）。默认 0=12px 与现状字节等价。
         fontSize: [12, 14, 18, 24][b.ui.boot?.captionFontSize ?? 0],
         fontFamily: "system-ui, sans-serif",
-        // 批 G 任务 5：浮层默认 'auto'——触屏需要命中内部「跳过」按钮；外层无 cursor:
-        // default 由按钮自身 cursor:pointer 表达，文本区不显 pointer。
-        // touchAction: 'manipulation' 阻止双击放大与连续点击 300ms 延迟（保留手势语义）。
         pointerEvents: "auto",
         touchAction: "manipulation",
         cursor: "default",
-        // 批 H 任务 2：背景与文字走 dsw-alias 主题变量（与 settings-form.tsx:32 / :35 一致），
-        // 浅色主题下不再硬编码深色，a11y 与可读性同步提升。
         background: "var(--dsw-alias-bg-layer-3)",
         backdropFilter: "blur(14px)",
         WebkitBackdropFilter: "blur(14px)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
-        boxShadow: "0 8px 28px rgba(0, 0, 0, 0.4)",
+        border: "1px solid var(--dsw-alias-border-l2, rgba(139, 148, 158, 0.28))",
+        boxShadow: "0 8px 24px rgba(15, 17, 21, 0.18)",
         color: "var(--dsw-alias-label-primary)",
         // 批 3：3 档宽度（0/1/2 → 50vw/70vw/90vw）。默认 1=70vw。
         maxWidth: ["50vw", "70vw", "90vw"][b.ui.boot?.captionMaxWidth ?? 1],
@@ -7139,57 +10749,94 @@ function VoiceOverlay({ bus }) {
         animation: "dshvm-fadein 0.25s ease"
       },
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { display: "inline-flex", alignItems: "flex-end", gap: 2, height: 12, flexShrink: 0 }, children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "span",
+        expanded && pastItems.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "div",
           {
+            "data-dshvm": "caption-history",
             style: {
-              width: 3,
-              height: "100%",
-              borderRadius: 99,
-              background: "#2ea043",
-              transformOrigin: "bottom",
-              animation: `dshvm-eq 0.85s ease-in-out ${i * 0.18}s infinite`
-            }
-          },
-          i
-        )) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "span",
-          {
-            className: "dshvm-caption",
-            style: {
-              // 批 3：换行（中文长 URL 等场景）。注：whiteSpace:normal + overflowWrap:anywhere 与 ellipsis 互斥（nowrap 才需要 ellipsis），
-              //   接受换行后 ellipsis 失效——计划 §5.2 已显式声明。
-              whiteSpace: "normal",
-              overflowWrap: "anywhere",
-              wordBreak: "break-word",
-              flex: 1,
-              minWidth: 0
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              maxHeight: "14vh",
+              overflowY: "auto",
+              overscrollBehavior: "contain",
+              paddingBottom: 6,
+              borderBottom: "1px solid var(--dsw-alias-border-l1, rgba(139, 148, 158, 0.2))",
+              fontSize: "0.92em",
+              color: "var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))"
             },
-            children: b.ui.playingCaption ?? t("reading")
-          },
-          b.ui.playingCaption ?? "idle"
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "button",
-          {
-            onClick: () => bus.skipAudio(),
-            "aria-label": t("skipReading"),
-            style: {
-              border: "none",
-              background: "rgba(255, 255, 255, 0.14)",
-              color: "#fff",
-              borderRadius: 999,
-              padding: "3px 12px",
-              fontSize: 11,
-              cursor: "pointer",
-              flexShrink: 0,
-              pointerEvents: "auto"
-              // 仅此按钮可点
-            },
-            children: t("skipReading")
+            children: pastItems.map((line, idx) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.45 }, children: line }, idx))
           }
-        )
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, minWidth: 0, overflowY: "auto", overscrollBehavior: "contain" }, children: [
+          b.ui.playing && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { "aria-hidden": "true", style: { display: "inline-flex", alignItems: "flex-end", gap: 2, height: 12, flexShrink: 0 }, children: [0, 1, 2].map((i) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "span",
+            {
+              className: "dshvm-eq-bar",
+              style: {
+                width: 3,
+                height: "100%",
+                borderRadius: 99,
+                background: "#2ea043",
+                transformOrigin: "bottom",
+                animation: `dshvm-eq 0.85s ease-in-out ${i * 0.18}s infinite`
+              }
+            },
+            i
+          )) }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "span",
+            {
+              role: "status",
+              "aria-live": "polite",
+              className: "dshvm-caption",
+              style: {
+                whiteSpace: "normal",
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
+                flex: 1,
+                minWidth: 0,
+                lineHeight: 1.45
+              },
+              children: currentText
+            },
+            currentText
+          ),
+          pastItems.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "button",
+            {
+              type: "button",
+              "data-dshvm": "caption-history-toggle",
+              "aria-expanded": expanded,
+              onClick: () => {
+                const next = !expanded;
+                setExpanded(next);
+                bus.holdCaptionLinger(next);
+              },
+              style: { ...pillBtnStyle, color: "var(--dsw-alias-label-secondary)" },
+              children: expanded ? t("captionHistoryHide") : t("captionHistoryOpen", { count: pastItems.length })
+            }
+          ),
+          b.ui.playing ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "button",
+            {
+              type: "button",
+              onClick: () => bus.skipAudio(),
+              "aria-label": t("skipReading"),
+              style: pillBtnStyle,
+              children: t("skipReading")
+            }
+          ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "button",
+            {
+              type: "button",
+              onClick: () => bus.dismissCaption(),
+              "aria-label": t("captionDismiss"),
+              style: pillBtnStyle,
+              children: t("captionDismiss")
+            }
+          )
+        ] })
       ]
     }
   );

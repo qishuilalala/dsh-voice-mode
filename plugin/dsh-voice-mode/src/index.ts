@@ -44,13 +44,19 @@ import { createAsrRuntime, handleAsrRequest } from './asr-host.ts'
 import { AsrReplacementSchema, createAsrReplacer, type AsrReplacement } from './asr-replacements.ts'
 import { SentenceSegmenter } from './segmenter.ts'
 import { EdgeTtsEngine, TtsQueue, listEdgeVoices, type TtsEngine } from './tts-queue.ts'
+import { redactSecrets } from './redact.ts'
 import { createSherpaVitsEngine, createSherpaKokoroEngine, TTS_MODEL_REPO, kokoroModelDir, type KokoroModel } from './tts-local.ts'
 import { HOST_PRIMARY, validateModelHost } from './models.ts'
 import { isLoopbackRequest, sameOriginRequest, RateLimiter } from './security.ts'
 import type { HostErrorCode } from './errors.ts'
 import { en } from './strings.ts'
 import { correctText } from './llm-correct.ts'
-import { OpenAiTtsEngine } from './tts-openai.ts'
+import { OPENAI_PRESETS, OpenAiTtsEngine, presetRequiresKey } from './tts-openai.ts'
+import { resolveOnlineTts } from './online-tts.ts'
+import { engineRebuildReason } from './engine-rebuild.ts'
+import { applyClearSecrets, buildSettingsGetView, mergePresetApiKeys } from './settings-view.ts'
+import { asTtsEngineKind, isLocalEngine, TTS_ENGINE_KINDS, type TtsEngineKind } from './engine-kind.ts'
+import { MimoTtsEngine } from './tts-mimo.ts'
 import { normalizePromptLang, previewSample, spokenPrompt, type PromptLang } from './prompts.ts'
 import { pickKnownKeys, readLegacyVoiceSettings, readOverrides, settingsFilePath, unknownKeys, writeOverrides } from './settings-store.ts'
 
@@ -118,14 +124,17 @@ const BASE_PATH = '/voice-mode'
  * 引擎错误：本地模型下载/校验失败 / 子进程 init 失败 / 子进程崩溃
  * 文本错误：合成产出空/非法音频（音色-语种不匹配等）
  */
-type PreviewErrorCategory = 'network' | 'engine' | 'text' | 'unknown'
+type PreviewErrorCategory = 'network' | 'engine' | 'text' | 'auth' | 'unknown'
 
 const PREVIEW_NETWORK_PATTERN = /fetch failed|ECONN|ENOTFOUND|getaddrinfo|ETIMEDOUT|EAI_AGAIN|network|unreachable|socket hang up|aborted|WebSocket error/i
-const PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa|local Kokoro/i
-const PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat/i
+/** 鉴权类失败（401/403/无效 key）：必须与「网络坏/引擎坏」分开——否则用户不知道是 Key 问题。 */
+const PREVIEW_AUTH_PATTERN = /HTTP 401|HTTP 403|unauthorized|invalid[ _-]?api[ _-]?key|incorrect api key|authentication failed|missing api key/i
+const PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa|local Kokoro|closed|init cooldown/i
+const PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat|exceeds \d+ bytes|bad_payload|bad_audio|invalid base64|textual body/i
 
 function classifyPreviewError(msg: string): PreviewErrorCategory {
   if (PREVIEW_TEXT_PATTERN.test(msg)) return 'text'
+  if (PREVIEW_AUTH_PATTERN.test(msg)) return 'auth'
   if (PREVIEW_NETWORK_PATTERN.test(msg)) return 'network'
   if (PREVIEW_ENGINE_PATTERN.test(msg)) return 'engine'
   return 'unknown'
@@ -136,6 +145,7 @@ const PREVIEW_ERROR_CODES: Record<PreviewErrorCategory, HostErrorCode> = {
   network: 'preview_network',
   engine: 'preview_engine',
   text: 'preview_text',
+  auth: 'preview_auth',
   unknown: 'preview_unknown',
 }
 
@@ -192,7 +202,7 @@ const defaultModelCacheDir = (): string =>
  */
 export interface VoiceSettingsValue {
   /** 朗读引擎：edge 微软云端（默认）/ vits 本地中文 / kokoro 本地中英；设置面板即时切换。 */
-  ttsEngine: 'edge' | 'vits' | 'kokoro' | 'openai'
+  ttsEngine: TtsEngineKind
   /** Kokoro 模型精度（int8 默认 / fp32 音质更好；仅 kokoro 引擎生效，切换即时重建引擎）。 */
   kokoroModel: KokoroModel
   voice: string
@@ -249,10 +259,24 @@ export interface VoiceSettingsValue {
    *  「语音起始-250ms」起的音频并入新识别段，修「打断吃句」）。关 = 回退丢句现状
    *  （外放+无原生 AEC 等回声劣化环境的逃生口）。I10 有意豁免见 ADR-0012。 */
   bargeInSalvage: boolean
+  /** P1-3 用户纠错词表（默认空）：转写后替换 `[{from, to}]`，中间结果与定稿都生效；设置卡片可视化管理，命中计数见 /models/status。 */
+  asrReplacements: AsrReplacement[]
   /** Issue #15 批 4：LLM 纠错（默认 false = 关）。开 = 发送前对整条草稿做一次
    *  「只改错别字/同音字/标点，保持原意」的纠错（复用宿主已配置模型，不引入新凭据）；
    *  失败/无模型/空结果一律回退原文。默认关 = 未申报的 I10 豁免+每条多一次 RTT/token。 */
   llmCorrect: boolean
+  /** E1 在线预设 id（'' = 手动沿用 Config 文件；已知 id 见 tts-openai.ts OPENAI_PRESETS；用户覆盖层专属，无 Config 基线）。 */
+  openaiPreset: string
+  /** 在线 TTS 端点覆盖（空 = 用预设/配置文件）。设置卡片可直接填，不必改 profile YAML。 */
+  openaiBaseUrl: string
+  /** 在线 TTS 模型覆盖（空 = 用预设/配置文件）。 */
+  openaiModel: string
+  /** 在线 TTS 的 key（空 = 用配置文件 apiKeys[预设]/apiKey）。仅主机侧持久化，不回传浏览器。 */
+  openaiApiKey: string
+  /** 按预设存的在线 TTS key 表（Q2 Key 跟预设走；键为预设 id，空条目 = 该预设未在面板配 key）。仅主机侧持久化。 */
+  openaiApiKeys: Record<string, string>
+  /** MiMo 的 key（空 = 用配置文件 mimoTts.apiKey）。同样只存主机侧、不回传。 */
+  mimoApiKey: string
   /** 批 G 任务 3：让位窗口时长（ms，500-3000，默认 1500）。
    *  onBackchannel 命中后 TTS 丢帧持续时间；hold 期内用户真要说则原 hardBreak 接管。 */
   yieldMs: number
@@ -295,6 +319,16 @@ const VOICE_SETTINGS_DEFAULTS: VoiceSettingsValue = {
   bargeInSalvage: true,
   // Issue #15 批 4：LLM 纠错默认关（默认开=未申报的 I10 豁免+每条多一次 RTT/token）。
   llmCorrect: false,
+  // E1：在线预设默认空 = 手动（沿用 Config 文件值，零行为变化）。
+  openaiPreset: '',
+  openaiBaseUrl: '',
+  openaiModel: '',
+  openaiApiKey: '',
+  // Q2 Key 跟预设走：面板按预设存的 key 表（空对象 = 全未配）。
+  openaiApiKeys: {},
+  mimoApiKey: '',
+  // P1-3：纠错词表默认空（与 Config 层 asrReplacements 默认 [] 对齐）。
+  asrReplacements: [],
   // 批 G 任务 3：让位窗口默认 1500ms（与改造前批 5 行为字节等价；用户可调 500-3000ms）。
   yieldMs: 1500,
 }
@@ -332,6 +366,13 @@ const DESC = {
   backchannelYield: en.descBackchannelYield,
   bargeInSalvage: en.descBargeInSalvage,
   llmCorrect: en.descLlmCorrect,
+  openaiPreset: en.descOpenaiPreset,
+  openaiBaseUrl: en.descOpenaiBaseUrl,
+  openaiModel: en.descOpenaiModel,
+  openaiApiKey: en.descOpenaiApiKey,
+  openaiApiKeys: en.descOpenaiApiKeys,
+  mimoApiKey: en.descMimoApiKey,
+  asrReplacements: en.descAsrReplacements,
   yieldMs: en.descYieldMs,
 } as const
 
@@ -340,7 +381,8 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs }
   return z.object({
     ttsEngine: z
-      .union([z.const('vits'), z.const('kokoro'), z.const('edge'), z.const('openai')])
+      // 由 TTS_ENGINE_KINDS 派生：加新引擎只改 engine-kind.ts（Standards ⑤）。
+      .union(TTS_ENGINE_KINDS.map((k) => z.const(k)) as [z<TtsEngineKind>, ...Array<z<TtsEngineKind>>])
       .default(d.ttsEngine)
       .description(
         DESC.ttsEngine,
@@ -446,6 +488,29 @@ export function createVoiceSettingsSchema(defs?: Partial<VoiceSettingsValue>): z
       .description(
         DESC.llmCorrect,
       ),
+    // E1：在线预设 id（'' = 手动沿用 Config 文件；已知 id 见 tts-openai.ts OPENAI_PRESETS）。
+    openaiPreset: z
+      .string()
+      .default(d.openaiPreset)
+      .description(
+        DESC.openaiPreset,
+      ),
+    // 2026-11-19：在线 TTS 的 URL/模型/key 允许在设置卡片里填（不必改 profile YAML）。
+    openaiBaseUrl: z.string().default(d.openaiBaseUrl).description(DESC.openaiBaseUrl),
+    openaiModel: z.string().default(d.openaiModel).description(DESC.openaiModel),
+    // secret：GET /settings 会把它抹成空串，只回 hasOpenaiApiKey 布尔；POST 可写。
+    openaiApiKey: z.string().role('secret').default(d.openaiApiKey).description(DESC.openaiApiKey),
+    // Q2 Key 跟预设走：面板按预设存的 key 表（值须为字符串；非字符串由 zod 拒收回 400）。
+    openaiApiKeys: z.dict(z.string()).default(d.openaiApiKeys ?? {}).description(DESC.openaiApiKeys),
+    mimoApiKey: z.string().role('secret').default(d.mimoApiKey).description(DESC.mimoApiKey),
+    // P1-3：用户纠错词表（默认空；非法条目由 zod 整表拒绝，POST 回 400；上限 200 条与设置卡片一致，防超大覆盖层）。
+    asrReplacements: z
+      .array(AsrReplacementSchema)
+      .max(200)
+      .default(d.asrReplacements)
+      .description(
+        DESC.asrReplacements,
+      ),
     yieldMs: z
       .number()
       .min(500)
@@ -469,11 +534,13 @@ export interface Config {
   /** 模型上游 host；huggingface.co / hf-mirror.com 均可达（§4 已验证）。 */
   modelHost: string
   /** 朗读引擎：edge（微软云端，默认）/ vits（本地中文）/ kokoro（本地中英，回复文本不出本机）。 */
-  ttsEngine: 'edge' | 'vits' | 'kokoro' | 'openai'
+  ttsEngine: TtsEngineKind
   /** Kokoro 模型精度（int8 默认 / fp32 音质更好）。 */
   kokoroModel: KokoroModel
   /** ttsEngine=openai 时的远程服务（host-only；key 不下发到客户端）。 */
   openaiTts: OpenAiTtsConfig
+  /** ttsEngine=mimo 时的远程服务（host-only；**独立 key**，不与 openaiTts 共用）。 */
+  mimoTts: MimoTtsConfig
   /** 允许局域网访问 /voice-mode/*（默认仅回环；开启后建议前置认证门）。 */
   allowLan: boolean
   asrReplacements: AsrReplacement[] // 转写后替换表（人名/英文词听错时改写，中间结果与定稿都生效）
@@ -539,6 +606,12 @@ export interface Config {
 export interface OpenAiTtsConfig {
   baseUrl: string
   apiKey: string
+  /**
+   * 按预设 id 覆盖的 key（可选）。一个 key 字段无法服务多家服务商：
+   * 硅基流动/OpenRouter/OpenAI/自建各需自己的 key，切换预设时不换 key 必然 401（本轮实测痛点）。
+   * 优先级：apiKeys[预设 id] > apiKey。两者都 host-only，绝不下发浏览器。
+   */
+  apiKeys: Record<string, string>
   model: string
   voice: string
   instructions: string
@@ -553,6 +626,7 @@ export interface OpenAiTtsConfig {
 export const OpenAiTtsConfig: z<OpenAiTtsConfig> = z.object({
   baseUrl: z.string().default('').description('API base URL, e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1 or a self-hosted server.'),
   apiKey: z.string().role('secret').default('').description('Bearer key; leave empty for servers without auth.'),
+  apiKeys: z.dict(z.string().role('secret')).role('secret').default({}).description('Per-preset key override keyed by preset id (apiKeys[id] wins over apiKey). Keeps one credential per provider without editing the single key on every switch.'),
   model: z.string().default('').description('Model name sent to the server.'),
   voice: z.string().default('').description('Default voice name on the server (the voice setting overrides it).'),
   instructions: z.string().default('').description('Optional style instructions for models that accept them.'),
@@ -562,12 +636,42 @@ export const OpenAiTtsConfig: z<OpenAiTtsConfig> = z.object({
   fallbackVoice: z.string().default('').description('Voice for the fallback engine (empty = its default).'),
 })
 
+/**
+ * 小米 MiMo TTS 专属配置（A1 审计 Blocker：**绝不复用 openaiTts.apiKey**）。
+ * MiMo 用 `api-key` 头而非 Bearer，且端点属不同厂商——共用一份 key 等于一键切引擎就把
+ * 一家厂商的密钥交给另一家。用户需显式填写自己的 MiMo key。
+ */
+export interface MimoTtsConfig {
+  apiKey: string
+  baseUrl: string
+  model: string
+  voice: string
+  instructions: string
+  responseFormat: 'wav' | 'mp3'
+  timeoutMs: number
+  fallback: 'none' | 'vits' | 'kokoro'
+  fallbackVoice: string
+}
+
+export const MimoTtsConfig: z<MimoTtsConfig> = z.object({
+  apiKey: z.string().role('secret').default('').description('MiMo API key (sent as the api-key header; never reuse another vendor key here).'),
+  baseUrl: z.string().default('https://api.xiaomimimo.com/v1').description('MiMo API base URL; defaults to the official endpoint.'),
+  model: z.string().default('mimo-v2.5-tts').description('Model id: mimo-v2.5-tts / mimo-v2.5-tts-voicedesign / mimo-v2.5-tts-voiceclone.'),
+  voice: z.string().default('mimo_default').description('Preset voice id (the voice setting overrides it).'),
+  instructions: z.string().default('').description('Natural-language style instruction (emotion, dialect, pace).'),
+  responseFormat: z.union([z.const('wav'), z.const('mp3')]).default('wav').description('Container format; raw pcm is not supported because it cannot be labelled with a decodable MIME.'),
+  timeoutMs: z.number().min(1000).max(60000).default(8000).description('Per-sentence timeout; slower counts as unavailable.'),
+  fallback: z.union([z.const('none'), z.const('vits'), z.const('kokoro')]).default('none').description('Local engine used while the server is unreachable or slow.'),
+  fallbackVoice: z.string().default('').description('Voice for the fallback engine (empty = its default).'),
+})
+
 export const Config: z<Config> = z.object({
   enabled: z.boolean().default(true),
   cacheDir: z.string().default(defaultModelCacheDir()),
   modelHost: z.string().default('https://huggingface.co'),
-  ttsEngine: z.union([z.const('edge'), z.const('vits'), z.const('kokoro'), z.const('openai')]).default('edge'),
+  ttsEngine: z.union(TTS_ENGINE_KINDS.map((k) => z.const(k)) as [z<TtsEngineKind>, ...Array<z<TtsEngineKind>>]).default('edge'),
   openaiTts: OpenAiTtsConfig,
+  mimoTts: MimoTtsConfig,
   kokoroModel: z.union([z.const('int8'), z.const('fp32')]).default('int8'),
   allowLan: z.boolean().default(false),
   asrReplacements: z.array(AsrReplacementSchema).default([]),
@@ -631,12 +735,22 @@ function voiceSettingsFromConfig(config: Config): VoiceSettingsValue {
     idleTimeoutMinutes, modelHost, autoSend, autoResume, mode, readAloud, showCaptions, showStatusBar, bargeInMode,
     echoGateDb, shortcut, composerShortcut, spokenFormat, senseVoice, wakeWord, toolBeep,
     senseITN, captionFontSize, captionMaxWidth, backchannelYield, yieldMs, bargeInSalvage, llmCorrect,
+    asrReplacements,
   } = config
   return {
     ttsEngine, kokoroModel, voice, rate, interruptLevel, silenceMs,
     idleTimeoutMinutes, modelHost, autoSend, autoResume, mode, readAloud, showCaptions, showStatusBar, bargeInMode,
     echoGateDb, shortcut, composerShortcut, spokenFormat, senseVoice, wakeWord, toolBeep,
     senseITN, captionFontSize, captionMaxWidth, backchannelYield, yieldMs, bargeInSalvage, llmCorrect,
+    asrReplacements,
+    // E1：预设无 Config 基线（用户覆盖层专属），默认空 = 手动。
+    openaiPreset: '',
+    // 在线 TTS 的 UI 覆盖默认空：未填时按预设/配置文件走（零行为变化）。
+    openaiBaseUrl: '',
+    openaiModel: '',
+    openaiApiKey: '',
+    openaiApiKeys: {},
+    mimoApiKey: '',
   }
 }
 
@@ -767,9 +881,10 @@ export function apply(ctx: Context, config: Config): void {
     dropTurnTables(sessionId)
   }
 
-  /** 焦点离开即停止旧朗读；复用 cancel 的 epoch 和全局单调句号。 */
-  const stopFocusReading = (sessionId: string | null): void => {
+  /** 焦点离开即停止旧朗读；非语音所属标签页切换焦点不打断语音所属标签页的活跃朗读。 */
+  const stopFocusReading = (sessionId: string | null, fromTabId?: string | null): void => {
     if (sessionId === null) return
+    if (sessionId === activeVoiceSession && activeTabId !== null && fromTabId !== activeTabId) return
     queue.cancel(sessionId)
     // 失效旧 tap：即使切回同一会话，旧流的尾句也不得重新入队。
     turnGen.set(sessionId, (turnGen.get(sessionId) ?? 0) + 1)
@@ -909,23 +1024,35 @@ export function apply(ctx: Context, config: Config): void {
       NS_VOICE_MODE,
       createVoiceSettingsSchema(),
       {
-        base: {
-          ttsEngine: config.ttsEngine,
-          voice: config.voice,
-          rate: config.rate,
-          interruptLevel: config.interruptLevel,
-          silenceMs: config.silenceMs,
-          idleTimeoutMinutes: config.idleTimeoutMinutes,
-          modelHost: config.modelHost,
-        },
+        // base 用**全量** Config 映射：此前只给 7 键，其余落到 schema 默认值；旧宿主若 get() 返回
+        // 全量，config 基线（如 voice/rate 之外的 openaiPreset 等）会被默认值覆盖（A3 审计 Minor）。
+        base: voiceSettingsFromConfig(config),
       },
     )
-    vset = settingsScope.get()
+    // 旧宿主/部分实现可能只回已存键：经 schema 归一补齐默认值（否则新增设置键在此路径下 undefined）。
+    // 整份非法时**逐键**丢弃坏键（与路径 B 同口径）：一个越界值不得清空用户全部设置。
+    const fromScope = (settingsScope.get() ?? {}) as unknown as Record<string, unknown>
+    try {
+      vset = resolveSettings(fromScope)
+    } catch (e) {
+      console.warn(`[dsh-voice-mode] settings scope returned invalid values; keeping valid keys only: ${redactSecrets(e)}`)
+      const salvaged: Record<string, unknown> = {}
+      for (const k of SETTING_KEYS) {
+        if (!(k in fromScope)) continue
+        try {
+          resolveSettings({ [k]: fromScope[k] })
+          salvaged[k] = fromScope[k]
+        } catch {
+          console.warn(`[dsh-voice-mode] ignoring invalid setting from host scope: ${k}`)
+        }
+      }
+      vset = resolveSettings(salvaged)
+    }
     settingsScopeRef = settingsScope
   } else {
     // 路径 B 用户设置：Config 基线 ⊕ 覆盖层文件（settings-store.ts 文件头说明为何不走官方存储）。
     const loaded = readOverrides(settingsFile, SETTING_KEYS)
-    if (loaded.warn) console.warn(`[dsh-voice-mode] ignoring settings overlay ${settingsFile}: ${loaded.warn}`)
+    if (loaded.warn) console.warn(`[dsh-voice-mode] ignoring settings overlay ${settingsFile}: ${redactSecrets(loaded.warn)}`)
     // 首次运行（覆盖层文件尚不存在）：从 dsh ≤0.1.6 留下的 settings.yaml(.imported) 的 voice-mode 段迁移一次，
     // 落盘后即以覆盖层为准（要恢复默认请把文件内容改成 {}，勿删除，否则会再次迁移）。
     let migrated = false
@@ -943,7 +1070,7 @@ export function apply(ctx: Context, config: Config): void {
         resolveSettings({ [k]: v })
         valid[k] = v
       } catch (e) {
-        console.warn(`[dsh-voice-mode] ignoring invalid settings override "${k}" (falling back to the Config baseline): ${String(e).slice(0, 160)}`)
+        console.warn(`[dsh-voice-mode] ignoring invalid settings override "${k}" (falling back to the Config baseline): ${redactSecrets(e).slice(0, 160)}`)
       }
     }
     try {
@@ -954,15 +1081,28 @@ export function apply(ctx: Context, config: Config): void {
           writeOverrides(settingsFile, valid)
           console.log(`[dsh-voice-mode] migrated ${Object.keys(valid).length} setting(s) from the legacy settings.yaml to ${settingsFile}`)
         } catch (e) {
-          console.warn(`[dsh-voice-mode] legacy settings migration could not be saved (still in effect for this run): ${String(e)}`)
+          console.warn(`[dsh-voice-mode] legacy settings migration could not be saved (still in effect for this run): ${redactSecrets(e)}`)
         }
       }
     } catch (e) {
-      console.warn(`[dsh-voice-mode] settings overlay failed validation as a whole; falling back to the Config baseline: ${String(e)}`)
+      console.warn(`[dsh-voice-mode] settings overlay failed validation as a whole; falling back to the Config baseline: ${redactSecrets(e)}`)
       vset = voiceSettingsFromConfig(config)
     }
   }
 
+  /** P1-3 词表命中计数（本次生效以来；设置变更重建 replacer 即清零，UI 按此口径标注）。 */
+  let replacementHits: number[] = []
+  let replacementRuleCount = 0
+  /** 可热更换的 replacer 盒：feed 出口经 options.replaceText 每次调用读取，重建即生效，无需重建 asr runtime。 */
+  const replacerBox: { fn: (text: string, countHit?: boolean) => string } = { fn: (text: string) => text }
+  const rebuildReplacer = (rules: readonly AsrReplacement[]): void => {
+    replacementRuleCount = rules.length
+    replacementHits = new Array<number>(rules.length).fill(0)
+    replacerBox.fn = createAsrReplacer(rules, (i) => {
+      replacementHits[i] = (replacementHits[i] ?? 0) + 1
+    })
+  }
+  rebuildReplacer(vset.asrReplacements ?? [])
   // --- zipformer2 流式 ASR runtime（模型懒下载 + SHA256 校验，§8.3）。 ---
   // modelHost 用 getter：下载期读取最新设置（国内可切 hf-mirror，无需改 YAML）。
   const asr = createAsrRuntime({
@@ -988,10 +1128,18 @@ export function apply(ctx: Context, config: Config): void {
     // 待机态 push-to-talk 属产品决策（要改的是客户端手势开放条件），PM 已登记待用户拍板，
     // 此处不加功能；host 侧只保证「manual 时非按压帧不入流」这一既有语义不被悄悄扩大。
     bargeInMode: () => vset.bargeInMode,
-    replaceText: createAsrReplacer(config.asrReplacements ?? []),
+    replaceText: (text: string, isFinal?: boolean) => replacerBox.fn(text, isFinal !== false),
   })
-  // 卸载/热重载时释放 ASR runtime（清段 + 定时器，防悬挂）。
-  ctx.effect(() => () => asr.dispose())
+  // 卸载/热重载时释放 ASR runtime（清段 + 定时器，防悬挂）并作废在途 /toggle 预热（I14）。
+  let pluginDisposed = false
+  let toggleGen = 0
+  /** 正在 warmupSense 的进入请求（用于「同会话取消」与「无关 no-op 不得误杀」的区分）。 */
+  const enteringToggles = new Set<string>()
+  ctx.effect(() => () => {
+    pluginDisposed = true
+    toggleGen++
+    asr.dispose()
+  })
   // 预热 ASR 模型（后台非阻塞）：把「首次开语音 ~5s 模型加载」前移到 host 启动。
   // I1（Issue #15 审查 Important）：早年实现只写「仅本地模型已缓存才预热」，代码却
   // 无条件 `void asr.warmup()`——warmup 内部走 ensureModels()，缺文件即触发全量下载，
@@ -1009,16 +1157,54 @@ export function apply(ctx: Context, config: Config): void {
   warmupAsrIfCached()
 
   // --- TTS 引擎工厂（fork：edge 云端 / vits 本地中文 / kokoro 本地中英；设置面板即时切换）。 ---
-  const makeEngine = (kind: 'edge' | 'vits' | 'kokoro' | 'openai'): TtsEngine => {
-    if (kind === 'edge') return new EdgeTtsEngine(config.voice, config.rate)
+  const makeEngine = (kind: TtsEngineKind): TtsEngine => {
+    // 用 vset 而非 config：设置层覆盖过的音色/语速在构造期就正确（A3 审计 Minor）。
+    if (kind === 'edge') return new EdgeTtsEngine(vset.voice, vset.rate)
+    if (kind === 'mimo') {
+      // A1 审计 Blocker：独立 mimoTts 配置（绝不复用 openaiTts.apiKey，避免跨厂商密钥外泄）。
+      const m = config.mimoTts
+      const fb = m.fallback
+      return new MimoTtsEngine({
+        // 设置卡片里填的 key 优先（留空则回落到配置文件 mimoTts.apiKey）；key 只在宿主侧。
+        apiKey: (vset.mimoApiKey ?? '').trim() || m.apiKey,
+        baseUrl: m.baseUrl,
+        model: m.model,
+        voice: m.voice,
+        instructions: m.instructions,
+        responseFormat: m.responseFormat,
+        timeoutMs: m.timeoutMs,
+        fallback:
+          fb === 'none'
+            ? undefined
+            : () => {
+                const engine = makeEngine(fb === 'vits' ? 'vits' : 'kokoro')
+                if (m.fallbackVoice) engine.updateVoice(m.fallbackVoice, vset.rate)
+                return engine
+              },
+      })
+    }
     if (kind === 'openai') {
       const o = config.openaiTts
       const fallbackKind = o.fallback
+      // 构造期只计算「预设 > 配置文件」基线音色（voice 传 ''）；设置层自定义音色由外层
+      // queue.updateVoice(vset.voice, vset.rate) 统一叠加，确保清空自定义音色时能回落预设/默认而不残留旧值。
+      const resolved = resolveOnlineTts(
+        {
+          presetId: vset.openaiPreset ?? '',
+          baseUrl: vset.openaiBaseUrl ?? '',
+          model: vset.openaiModel ?? '',
+          apiKey: vset.openaiApiKey ?? '',
+          apiKeys: (vset.openaiApiKeys ?? {}) as Record<string, string>,
+          voice: '',
+        },
+        { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys },
+      )
       return new OpenAiTtsEngine({
-        baseUrl: o.baseUrl,
-        apiKey: o.apiKey || undefined,
-        model: o.model,
-        voice: o.voice,
+        baseUrl: resolved.baseUrl,
+        // E1 多 key：预设专属 key 优先（换服务商不必再手改单个 key）。key 始终只在宿主侧。
+        apiKey: resolved.apiKey || undefined,
+        model: resolved.model,
+        voice: resolved.voice,
         instructions: o.instructions || undefined,
         responseFormat: o.responseFormat,
         timeoutMs: o.timeoutMs,
@@ -1048,7 +1234,7 @@ export function apply(ctx: Context, config: Config): void {
       broadcast,
     })
   }
-  let engineKind: 'edge' | 'vits' | 'kokoro' | 'openai' = vset.ttsEngine ?? config.ttsEngine
+  let engineKind: TtsEngineKind = asTtsEngineKind(vset.ttsEngine ?? config.ttsEngine)
   let activeKokoroModel: KokoroModel = vset.kokoroModel
 
   // --- TTS 队列（§8.4）：逐句合成后经 SSE 广播；epoch 机制支撑打断。 ---
@@ -1058,6 +1244,7 @@ export function apply(ctx: Context, config: Config): void {
     // 单句重试耗尽被跳过：显式下行（客户端提示 + 诊断），不再静默丢句。
     // streak = 连续被跳过的句数：客户端据此区分偶发抖动与「云端整体不可用」（如服务端拒绝握手）。
     onSkip: (sessionId, text, streak) => broadcast('tts-skip', { sessionId, text: text.slice(0, 80), streak }),
+    onRetry: (sessionId, attempt, maxAttempts) => broadcast('tts-retry', { sessionId, attempt, maxAttempts }),
     onIdle: (sessionId) => broadcast('tts-idle', { sessionId, turn: turnOfSession.get(sessionId)?.turn }),
     // R15（Issue #15 Important-2 host 侧接线）：onIdle 降级为「候选空闲」——「队列排空」不等于
     // 「回合结束」。带工具调用的回合会在工具执行期间把队列排空一次，据此发 tts-idle 会让
@@ -1067,6 +1254,13 @@ export function apply(ctx: Context, config: Config): void {
   })
   // fork 修复：启动时把当前设置的音色/语速应用到引擎——
   // 此前引擎默认硬编码为素映雪，朗读直到"设置变化"才更新（重启后朗读一直女声的根因）。
+  /** 云朗读鉴权状态（仅供 UI 提示，不改变引擎行为）：是否需要 key、当前是否已有 key。 */
+  const ttsKeyState = (): { keyRequired: boolean; keyPresent: boolean } => {
+    const st = queue.status()
+    if (st.engine === 'mimo') return { keyRequired: true, keyPresent: st.keyPresent === true }
+    if (st.engine === 'openai') return { keyRequired: presetRequiresKey(vset.openaiPreset), keyPresent: st.keyPresent === true }
+    return { keyRequired: false, keyPresent: false }
+  }
   queue.updateVoice(vset.voice, vset.rate)
   const unsubscribe = queue.subscribe((frame) => broadcast('audio', frame))
   ctx.effect(() => unsubscribe)
@@ -1078,26 +1272,72 @@ export function apply(ctx: Context, config: Config): void {
   // 会导致 markStale 永远不被调）；ASR 字段（ITN/senseVoice）
   // 任一变化 → asr.markStale() 让现有 fingerprint-gated lazy 重建路径（asr-host.ts:396-401）
   // 下次自动触发，避开主动 free 破坏 I1 的反模式。
+  /**
+   * 远端引擎配置体检（启动 + 引擎重建时各一次）。
+   * 目的：配置漏填时**日志里能直接看到原因**（日志完备），与 UI 的可行动提示互相印证；
+   * 不是静默降级——引擎仍按既有语义报错/回退，这里只补一条可 grep 的线索。
+   * 注意：宿主日志**必须英文**（strings-coverage 的 CJK 红线：用户可见文案才走词典）。
+   */
+  const checkRemoteConfig = (kind: TtsEngineKind): void => {
+    if (kind === 'mimo' && !((vset.mimoApiKey ?? '').trim() || config.mimoTts?.apiKey)) {
+      console.warn('[dsh-voice-mode] tts engine is mimo but no key is configured (settings or mimoTts.apiKey): synthesis will fail (falls back to local if configured)')
+    } else if (kind === 'openai') {
+      const o = config.openaiTts
+      const r = resolveOnlineTts(
+        { presetId: vset.openaiPreset ?? '', baseUrl: vset.openaiBaseUrl ?? '', model: vset.openaiModel ?? '', apiKey: vset.openaiApiKey ?? '', apiKeys: (vset.openaiApiKeys ?? {}) as Record<string, string>, voice: vset.voice },
+        { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys },
+      )
+      if (!r.baseUrl || !r.model) {
+        console.warn('[dsh-voice-mode] tts engine is openai-compatible but baseUrl/model is missing: fill them in the settings card or the profile openaiTts block')
+      } else if (!r.voice) {
+        console.warn('[dsh-voice-mode] tts engine is openai-compatible but no voice is set: the server default voice will be used (set one in the settings card or via a preset)')
+      }
+    }
+  }
+
   // 路径 B（0.1.7+）无 watch：vset 取自 apply 时 config 快照，配置变更经 reload 重跑 apply 生效。
-  const applyVset = (next: VoiceSettingsValue): void => {
+  const applyVset = (incoming: VoiceSettingsValue): void => {
     const prev = vset
+    // 归一：宿主热更可能只给**已存键**。统一用归一化值做判定与下发，避免
+    // ① undefined 与 '' 永不相等 → 每次改设置都误重建引擎；
+    // ② next.voice 为 undefined 时把用户刚选的音色写回默认（真实风险）。
+    let next: VoiceSettingsValue
+    try {
+      next = resolveSettings(incoming as unknown as Record<string, unknown>)
+    } catch (e) {
+      console.warn(`[dsh-voice-mode] settings update rejected by schema; keeping previous values: ${redactSecrets(e)}`)
+      return
+    }
     vset = next
     // 显示类设置即时同步到所有标签页（不论从哪个标签页/哪条设置路径改的）。
     broadcast('display', displayOf(next))
-    if (next.ttsEngine !== engineKind) {
-      engineKind = next.ttsEngine
+    const reason = engineRebuildReason(prev, next, engineKind, activeKokoroModel)
+    if (reason === 'engine-switch') {
+      engineKind = next.ttsEngine as TtsEngineKind
+      // 切到 kokoro 时同步当前精度：否则紧接着的 updateVoice 之后再来一次无谓重建（A3 Minor）。
+      if (engineKind === 'kokoro') activeKokoroModel = next.kokoroModel
+      checkRemoteConfig(engineKind)
       queue.setEngine(makeEngine(engineKind))
-    } else if (engineKind === 'kokoro' && next.kokoroModel !== activeKokoroModel) {
+    } else if (reason === 'mimo-key') {
+      checkRemoteConfig('mimo')
+      queue.setEngine(makeEngine('mimo'))
+    } else if (reason === 'kokoro-model') {
       // Kokoro 精度切换：重建引擎指向另一模型目录（已缓存则即时，否则下次下载）。
       activeKokoroModel = next.kokoroModel
       queue.setEngine(makeEngine('kokoro'))
+    } else if (reason === 'openai-config') {
+      // E1：预设/端点/模型/key 任一变化重建远程引擎。
+      checkRemoteConfig('openai')
+      queue.setEngine(makeEngine('openai'))
     }
     queue.updateVoice(next.voice, next.rate)
-    if (
-      next.senseITN !== prev.senseITN ||
-      next.senseVoice !== prev.senseVoice
-    ) {
+    if (next.senseITN !== prev.senseITN || next.senseVoice !== prev.senseVoice) {
       asr.markStale()
+    }
+    // P1-3：词表变更热重建 replacer（命中计数随之清零，UI 标注“本次生效以来”）。
+    // JSON 比对（数组小）：不同路径 vset 对象恒新，引用比对恒真会误清零。
+    if (JSON.stringify(next.asrReplacements ?? []) !== JSON.stringify(prev.asrReplacements ?? [])) {
+      rebuildReplacer(next.asrReplacements ?? [])
     }
   }
   // 路径 B（0.1.7+）由 persistSettings 在写入覆盖层后同样调用 applyVset，热更换语义与路径 A 一致。
@@ -1111,9 +1351,12 @@ export function apply(ctx: Context, config: Config): void {
    * 路径 B：合并补丁 → schema 校验 → 原子落盘 → 热生效。非法值抛错（调用方回 400），落盘失败抛错（回 500）。
    * 路径 A 宿主不使用本函数（settingsScopeRef 非空，设置归 dsh 官方存储）。
    */
-  const persistSettings = (patch: Record<string, unknown>): Promise<VoiceSettingsValue> => {
+  const persistSettings = (patch: Record<string, unknown>, clearAllPresetKeys = false): Promise<VoiceSettingsValue> => {
     const run = async (): Promise<VoiceSettingsValue> => {
-      const candidate = { ...overrides, ...patch }
+      const candidate: Record<string, unknown> = { ...overrides, ...patch }
+      if ('openaiApiKeys' in patch || clearAllPresetKeys) {
+        candidate.openaiApiKeys = mergePresetApiKeys(overrides.openaiApiKeys, patch.openaiApiKeys, clearAllPresetKeys)
+      }
       const next = resolveSettings(candidate)
       writeOverrides(settingsFile, candidate)
       overrides = candidate
@@ -1128,7 +1371,8 @@ export function apply(ctx: Context, config: Config): void {
   const currentVoice = (): string => vset.voice
   const currentRate = (): number => vset.rate
   const currentInterrupt = (): 0 | 1 | 2 => vset.interruptLevel
-  const currentEngine = (): 'edge' | 'vits' | 'kokoro' | 'openai' => engineKind
+  const currentEngine = (): TtsEngineKind => engineKind
+  checkRemoteConfig(engineKind)
 
   /** B2：host 侧让出活跃会话（等价 /toggle off 的清理）。owner tab 失联超时调用。 */
   const yieldActiveSession = (expectedSid?: string | null): void => {
@@ -1301,16 +1545,33 @@ export function apply(ctx: Context, config: Config): void {
     }),
   )
 
+  // E1 预设单一真源：把 OPENAI_PRESETS（baseUrl/model/voice，均为非机密）下发给设置卡片，
+  // 避免客户端另抄一份表导致漂移（Spec 轴审查 #12），同时让用户在 UI 看到实际端点与模型（#2）。
+  ctx.effect(() =>
+    ctx.webServer.register({
+      kind: 'exact',
+      path: `${base}/presets`,
+      handler: (req, res: ServerResponse) => {
+        if (denyNonLoopback(req, res)) return
+        respondJson(res, 200, { presets: OPENAI_PRESETS })
+      },
+    }),
+  )
+
   ctx.effect(() =>
     ctx.webServer.register({
       kind: 'exact',
       path: `${base}/config`,
       handler: (req, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
+        const keyState = ttsKeyState()
         respondJson(res, 200, {
             basePath: base,
             rate: currentRate(),
             voice: currentVoice(),
+            // P1-2：入口探针还要判「预设音色」。ttsEngine 本就在下方载荷里；
+            // 此前探针只能读设置卡快照——0.1.7+ 只有首个订阅者才触发加载，未开过设置的用户
+            // 快照恒 loading，探针从未生效（T5 审计 B①）。这里补 openaiPreset 即可闭环。
             senseVoice: vset.senseVoice,
             interruptLevel: currentInterrupt(),
             silenceMs: vset.silenceMs,
@@ -1320,6 +1581,9 @@ export function apply(ctx: Context, config: Config): void {
             autoResume: vset.autoResume,
             mode: vset.mode,
             readAloud: vset.readAloud,
+            // 2026-11-20 UX：进模式前即可判断「云朗读缺 Key」，客户端据此常驻提示。
+            ttsNeedsKey: keyState.keyRequired,
+            ttsKeyPresent: keyState.keyPresent,
             showCaptions: vset.showCaptions,
             showStatusBar: vset.showStatusBar,
             bargeInMode: vset.bargeInMode,
@@ -1337,6 +1601,7 @@ export function apply(ctx: Context, config: Config): void {
             senseITN: vset.senseITN,
             cacheDir: config.cacheDir,
             ttsEngine: currentEngine(),
+            openaiPreset: vset.openaiPreset,
             audioMime: queue.mime,
             allowLan: config.allowLan,
           })
@@ -1386,7 +1651,7 @@ export function apply(ctx: Context, config: Config): void {
             respondJson(res, 400, { code: 'bad_request', error: 'voice too long' })
             return
           }
-          if (!voice) {
+          if (!voice && currentEngine() !== 'openai') {
             respondJson(res, 400, { code: 'bad_request', error: 'voice required' })
             return
           }
@@ -1404,8 +1669,12 @@ export function apply(ctx: Context, config: Config): void {
           // 试听例句由音色语种决定（prompts.ts previewSample）。
           const sample = previewSample(currentEngine(), voice)
           let buf: Buffer
+          let mime = queue.mime
           try {
-            buf = await queue.synthesize(sample, { voice, rate })
+            // 与朗读同口径：MIME 随这次合成的字节一起返回（并发试听/朗读不串味）。
+            const r = await queue.synthesizeWithMime(sample, { voice, rate })
+            buf = r.buf
+            mime = r.mime
           } catch (e) {
             // 批 I 任务 4/4：错误归类 + 诊断上下文（model 状态 / sample 长度 / attempt）；
             // 模式与 tts-queue.ts:418-422 pump catch（批 A：补 sessionId + err）一致——日志含上下文，UI 只拿归类提示。
@@ -1415,14 +1684,14 @@ export function apply(ctx: Context, config: Config): void {
             const engineStatus = queue.status()
             const sampleLen = sample.length
             console.warn(
-              `[dsh-voice-mode] preview synthesis failed: category=${category} engine=${engineName} engineReady=${engineStatus.ready} sampleLen=${sampleLen} attempt=1 voice=${voice} err=${errMsg}`,
+              `[dsh-voice-mode] preview synthesis failed: category=${category} engine=${engineName} engineReady=${engineStatus.ready} sampleLen=${sampleLen} attempt=1 voice=${redactSecrets(voice)} err=${redactSecrets(errMsg)}`,
             )
             // UI 端只暴露归类提示——不传 errMsg / 引擎 ready / sample 长度等诊断细节
             // （防止 errMsg 泄露模型路径 / 内部错误堆栈 / 第三方 SDK 字面量）。
             respondJson(res, 502, { code: PREVIEW_ERROR_CODES[category], error: `preview failed (${category})` })
             return
           }
-          res.writeHead(200, { 'content-type': queue.mime, 'cache-control': 'no-store' })
+          res.writeHead(200, { 'content-type': mime, 'cache-control': 'no-store' })
           res.end(buf)
         })
       },
@@ -1437,6 +1706,10 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/correct`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (req.method !== 'POST' && req.method !== 'GET') {
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'method not allowed' })
+          return
+        }
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -1491,6 +1764,10 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/toggle`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (req.method !== 'POST' && req.method !== 'GET') {
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'method not allowed' })
+          return
+        }
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
@@ -1507,7 +1784,7 @@ export function apply(ctx: Context, config: Config): void {
           } catch {
             // ignore malformed body
           }
-          if (!sessionId) {
+          if (typeof sessionId !== 'string' || !sessionId || sessionId.length > 128) {
             respondJson(res, 400, { code: 'bad_request', error: 'sessionId required' })
             return
           }
@@ -1542,10 +1819,21 @@ export function apply(ctx: Context, config: Config): void {
               respondJson(res, 403, { code: 'unknown_session', error: 'unknown session' })
               return
             }
+            // 代际只对「会真正改变状态」的请求推进：no-op off / 403 / disabled 不得误杀
+            // 正在 warmupSense 的合法 enter（2026-11-20 复核：off 'nope' 曾让 enter 返回 stale）。
+            const myToggleGen = ++toggleGen
+            enteringToggles.add(sessionId)
             // 批 E：SenseVoice 预热前置 enterMode（5s 上限）——让用户进 voice mode 时
             // 228MB SenseVoice worker 已就绪，避免冷启动撞 finalize 时 20s race timeout
             // 降级 zipformer 流式 token flush 不完整（B5 辅因候选 3）。失败/超时静默 fallback。
             await asr.warmupSense()
+            // I14：预热期间若发生更新的 /toggle（例如用户立即取消或切换他会话）或插件卸载，不再复活旧请求。
+            const enterStale = pluginDisposed || myToggleGen !== toggleGen
+            enteringToggles.delete(sessionId)
+            if (enterStale) {
+              respondJson(res, 200, { active: activeVoiceSession, stale: true })
+              return
+            }
             // B1：进入即清该会话可能残留的 host ASR 段（上次中途退出的旧 stream/旧文本），
             // 防重入后新句丢失/幽灵提交。
             asr.reset(sessionId)
@@ -1574,6 +1862,9 @@ export function apply(ctx: Context, config: Config): void {
             }
             broadcast('mode', { active: activeVoiceSession, ownerTabId: activeTabId })
           } else {
+            // 只有「真的会改变状态」的 off 才推进代际：同一会话的活跃/在途进入都可被取消；
+            // 对无关会话的 no-op off 不得误杀别人的在途 enter。
+            if (activeVoiceSession === sessionId || enteringToggles.has(sessionId)) toggleGen++
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null
               activeTabId = null
@@ -1605,7 +1896,12 @@ export function apply(ctx: Context, config: Config): void {
       handler: (req, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
         // 模型实时状态（设置面板轮询；无需语音模式）。
-        respondJson(res, 200, { ...asr.modelStatus(), tts: queue.status() })
+        respondJson(res, 200, {
+          ...asr.modelStatus(),
+          tts: { ...queue.status(), ...ttsKeyState() },
+          // P1-3：词表规则数与命中计数（本次生效以来；设置变更重建即清零）。
+          replacements: { rules: replacementRuleCount, hits: [...replacementHits] },
+        })
       },
     }),
   )
@@ -1624,6 +1920,15 @@ export function apply(ctx: Context, config: Config): void {
           return
         }
         if (denyCrossOrigin(req, res)) return
+        // I14 同口径：手动重试会触发约 388MB 模型下载/落盘，allowLan=true 时仍恒要求回环并限流。
+        if (!isLoopbackRequest(req)) {
+          respondJson(res, 403, { code: 'forbidden', error: 'model cache writes are loopback-only' })
+          return
+        }
+        if (!limiter.hit(`models-retry:${clientKey(req)}`, 6, 60000)) {
+          respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
+          return
+        }
         // 镜像切换/下载失败后手动重试（设置面板按钮）。禁用态不得触发 ~388MB 下载。
         if (!config.enabled) {
           respondJson(res, 403, { code: 'voice_disabled', error: 'voice mode disabled' })
@@ -1654,7 +1959,7 @@ export function apply(ctx: Context, config: Config): void {
               respondJson(res, 200, { ok: done, kind })
             })
             .catch((e) => {
-              console.warn(`[dsh-voice-mode] model retry failed: ${String(e)}`)
+              console.warn(`[dsh-voice-mode] model retry failed: ${redactSecrets(e)}`)
               respondJson(res, 500, { code: 'internal', error: 'model retry failed' })
             })
         })
@@ -1668,7 +1973,21 @@ export function apply(ctx: Context, config: Config): void {
       path: `${base}/models/clean`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
+        if (req.method !== 'POST') {
+          res.setHeader('allow', 'POST')
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'POST required' })
+          return
+        }
         if (denyCrossOrigin(req, res)) return
+        // I14：删除本地模型缓存属于磁盘破坏性操作，allowLan=true 时仍恒要求回环并限流。
+        if (!isLoopbackRequest(req)) {
+          respondJson(res, 403, { code: 'forbidden', error: 'model cache writes are loopback-only' })
+          return
+        }
+        if (!limiter.hit(`models-clean:${clientKey(req)}`, 6, 60000)) {
+          respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
+          return
+        }
         if (!config.enabled) {
           respondJson(res, 403, { code: 'voice_disabled', error: 'voice mode disabled' })
           return
@@ -1678,7 +1997,8 @@ export function apply(ctx: Context, config: Config): void {
           let engine: 'vits' | 'kokoro' = 'vits'
           try {
             const p = JSON.parse(body || '{}') as { engine?: unknown }
-            if (p.engine === 'kokoro' || p.engine === 'vits') engine = p.engine
+            // 本地引擎判定走单一真源（engine-kind）；加新本地引擎不必再改这里。
+            if (isLocalEngine(p.engine)) engine = p.engine as 'vits' | 'kokoro'
             else {
               respondJson(res, 400, { code: 'bad_request', error: 'invalid engine' })
               return
@@ -1706,7 +2026,7 @@ export function apply(ctx: Context, config: Config): void {
               respondJson(res, 200, { ok: true, engine })
             })
             .catch((e) => {
-              console.warn(`[dsh-voice-mode] models/download failed: ${String(e)}`)
+              console.warn(`[dsh-voice-mode] models/clean failed: ${redactSecrets(e)}`)
               respondJson(res, 500, { code: 'internal', error: 'internal error' })
             })
         })
@@ -1720,7 +2040,21 @@ export function apply(ctx: Context, config: Config): void {
       path: `${base}/models/download`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
+        if (req.method !== 'POST') {
+          res.setHeader('allow', 'POST')
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'POST required' })
+          return
+        }
         if (denyCrossOrigin(req, res)) return
+        // I14：触发大体积模型落盘同样恒要求回环并限流。
+        if (!isLoopbackRequest(req)) {
+          respondJson(res, 403, { code: 'forbidden', error: 'model cache writes are loopback-only' })
+          return
+        }
+        if (!limiter.hit(`models-download:${clientKey(req)}`, 6, 60000)) {
+          respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
+          return
+        }
         if (!config.enabled) {
           respondJson(res, 403, { code: 'voice_disabled', error: 'voice mode disabled' })
           return
@@ -1729,7 +2063,8 @@ export function apply(ctx: Context, config: Config): void {
           let engine: 'vits' | 'kokoro' = 'vits'
           try {
             const p = JSON.parse(body || '{}') as { engine?: unknown }
-            if (p.engine === 'kokoro' || p.engine === 'vits') engine = p.engine
+            // 本地引擎判定走单一真源（engine-kind）；加新本地引擎不必再改这里。
+            if (isLocalEngine(p.engine)) engine = p.engine as 'vits' | 'kokoro'
             else {
               respondJson(res, 400, { code: 'bad_request', error: 'invalid engine' })
               return
@@ -1747,7 +2082,7 @@ export function apply(ctx: Context, config: Config): void {
             .prepare()
             .then(() => respondJson(res, 200, { ok: true, engine }))
             .catch((e) => {
-              console.warn(`[dsh-voice-mode] model download failed: ${String(e)}`)
+              console.warn(`[dsh-voice-mode] model download failed: ${redactSecrets(e)}`)
               respondJson(res, 502, { code: 'model_download_failed', error: 'model download failed' })
             })
         })
@@ -1760,14 +2095,22 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/voices`,
       handler: async (req: IncomingMessage, res: ServerResponse) => {
+        if (req.method !== 'POST' && req.method !== 'GET') {
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'method not allowed' })
+          return
+        }
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
+        if (!limiter.hit(`voices:${clientKey(req)}`, 10, 60000)) {
+          respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
+          return
+        }
         // Edge 全量音色（设置面板选 Edge 时拉取；网络失败由 client 回退常用清单）。
         try {
           const voices = await listEdgeVoices()
           respondJson(res, 200, { voices })
         } catch (e) {
-          console.warn(`[dsh-voice-mode] listing Edge voices failed: ${String(e)}`)
+          console.warn(`[dsh-voice-mode] listing Edge voices failed: ${redactSecrets(e)}`)
           respondJson(res, 502, { code: 'internal', error: 'voice list unavailable' })
         }
       },
@@ -1813,11 +2156,13 @@ export function apply(ctx: Context, config: Config): void {
           respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
           return
         }
-        // P2-4：回合状态机 —— partial 到达 = listening；final=1 = finalizing。
+        // P2-4：回合状态机 —— partial 到达 = listening；final=1 = finalizing（I14：跳过 vadOnly/reset 探测与复位包）。
         if (sid && sid === activeVoiceSession) {
           try {
             const url = new URL(req.url ?? '/', 'http://localhost')
-            setTurn(sid, url.searchParams.get('final') === '1' ? 'finalizing' : 'listening')
+            if (url.searchParams.get('vadOnly') !== '1' && url.searchParams.get('reset') !== '1') {
+              setTurn(sid, url.searchParams.get('final') === '1' ? 'finalizing' : 'listening')
+            }
           } catch {
             // 忽略畸形 URL
           }
@@ -1832,6 +2177,10 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: `${base}/cancel`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
+        if (req.method !== 'POST' && req.method !== 'GET') {
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'method not allowed' })
+          return
+        }
         if (denyNonLoopback(req, res)) return
         if (denyCrossOrigin(req, res)) return
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -1893,7 +2242,10 @@ export function apply(ctx: Context, config: Config): void {
         if (denyNonLoopback(req, res)) return
         // GET：当前生效设置全量（设置页读取）。路径 A 宿主设置归 dsh 官方存储，此处只读。
         if (req.method === 'GET') {
-          respondJson(res, 200, { managedBy: settingsScopeRef ? 'dsh' : 'plugin', value: vset })
+          // 密钥字段**永不回传**（ADR-0013）：空串表示「未在此层覆盖」，由 has* 说明是否已配置。
+          // 组装逻辑收敛在 settings-view.buildSettingsGetView（行数守卫见 settings-store.test.mjs）。
+          const view = buildSettingsGetView(vset, config)
+          respondJson(res, 200, { managedBy: settingsScopeRef ? 'dsh' : 'plugin', ...view })
           return
         }
         // 同 I2 铁律：错误响应走 respondJson，不留隐式头三段式（第三方 gzip 包装器下断链）。
@@ -1905,6 +2257,17 @@ export function apply(ctx: Context, config: Config): void {
         if (denyCrossOrigin(req, res)) return
         if (settingsScopeRef) {
           respondJson(res, 409, { code: 'settings_managed', error: 'settings are managed by dsh on this host' })
+          return
+        }
+        // 写设置（含密钥/端点/引擎）**永远要求回环**：allowLan 只放宽只读与语音通道。
+        // A3 审计 Important：allowLan=true 时局域网任意主机都能改端点与密钥，可把 TTS 文本引向攻击者。
+        if (!isLoopbackRequest(req)) {
+          respondJson(res, 403, { code: 'forbidden', error: 'settings writes are loopback-only' })
+          return
+        }
+        // 写设置是重操作（原子落盘 + 引擎重建）：限 30 次/分钟（A3 审计：此前无限流）。
+        if (!limiter.hit(`settings:${clientKey(req)}`, 30, 60000)) {
+          respondJson(res, 429, { code: 'rate_limited', error: 'too many settings updates, retry in a minute' })
           return
         }
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
@@ -1919,18 +2282,32 @@ export function apply(ctx: Context, config: Config): void {
             respondJson(res, 400, { code: 'bad_request', error: 'body must be a JSON object' })
             return
           }
-          const unknown = unknownKeys(patch, SETTING_KEYS)
+          // clearSecrets：显式清除已保存的密钥（GET 不回传密钥，空串无法表达「清除」）。
+          const rawClear = (patch as { clearSecrets?: unknown }).clearSecrets
+          let cleared: Record<string, unknown>
+          try {
+            cleared = applyClearSecrets(patch as Record<string, unknown>, rawClear)
+          } catch (e) {
+            respondJson(res, 400, { code: 'bad_request', error: String((e as Error).message).slice(0, 120) })
+            return
+          }
+          // 未知键必须在**过滤前**判定：先 pickKnownKeys 再查等于恒空 → 错拼键静默丢失且回 200（A3 审计）。
+          const unknown = unknownKeys(cleared, SETTING_KEYS)
           if (unknown.length > 0) {
             respondJson(res, 400, { code: 'bad_request', error: `unknown settings: ${unknown.slice(0, 5).join(', ')}` })
             return
           }
+          const rest = { ...(pickKnownKeys(cleared, SETTING_KEYS) as Record<string, unknown>) }
+          const clearAllMap = Array.isArray(rawClear) && rawClear.includes('openaiApiKeys')
           try {
-            const next = await persistSettings(pickKnownKeys(patch, SETTING_KEYS))
-            respondJson(res, 200, { ok: true, managedBy: 'plugin', value: next })
+            const next = await persistSettings(rest as Partial<VoiceSettingsValue>, clearAllMap)
+            // Q2：回显同样抹掉 key 表（GET 同口径；值恒 {}）。
+            const out = { ...next, openaiApiKey: '', mimoApiKey: '', openaiApiKeys: {} as Record<string, string> }
+            respondJson(res, 200, { ok: true, managedBy: 'plugin', value: out })
           } catch (e) {
             // schema 校验失败 = 客户端输入问题（400）；其余（落盘等）= 500。不回显内部路径。
             const isValidation = e instanceof Error && e.name === 'ValidationError'
-            console.warn(`[dsh-voice-mode] settings update failed: ${String(e)}`)
+            console.warn(`[dsh-voice-mode] settings update failed: ${redactSecrets(e)}`)
             respondJson(res, isValidation ? 400 : 500, {
               code: isValidation ? 'bad_request' : 'internal',
               error: isValidation ? `invalid value: ${(e as Error).message.slice(0, 200)}` : 'settings update failed',
@@ -1947,7 +2324,21 @@ export function apply(ctx: Context, config: Config): void {
       path: `${base}/mode`,
       handler: (req: IncomingMessage, res: ServerResponse) => {
         if (denyNonLoopback(req, res)) return
+        if (req.method !== 'POST') {
+          res.setHeader('allow', 'POST')
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'POST required' })
+          return
+        }
         if (denyCrossOrigin(req, res)) return
+        // I14：/mode 同样持久化写用户设置，与 /settings 写同口径：恒要求回环并限流。
+        if (!isLoopbackRequest(req)) {
+          respondJson(res, 403, { code: 'forbidden', error: 'settings writes are loopback-only' })
+          return
+        }
+        if (!limiter.hit(`mode:${clientKey(req)}`, 30, 60000)) {
+          respondJson(res, 429, { code: 'rate_limited', error: 'rate limited' })
+          return
+        }
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let mode: 'toggle' | 'hold' | 'once' | undefined
           try {
@@ -1971,7 +2362,7 @@ export function apply(ctx: Context, config: Config): void {
               respondJson(res, 200, { ok: true, mode })
             })
             .catch((e: unknown) => {
-              console.warn(`[dsh-voice-mode] mode update failed: ${String(e)}`)
+              console.warn(`[dsh-voice-mode] mode update failed: ${redactSecrets(e)}`)
               respondJson(res, 500, { code: 'internal', error: 'mode update failed' })
             })
         })
@@ -2019,7 +2410,7 @@ export function apply(ctx: Context, config: Config): void {
           }
           // R15（Issue #15 Important-4）：焦点离开的会话不再是朗读对象 → 回收其表项。
           // 判据与守卫见 reclaimFocusState 声明处。
-          if (prevFocus !== null && prevFocus !== focusedSessionId) stopFocusReading(prevFocus)
+          if (prevFocus !== null && prevFocus !== focusedSessionId) stopFocusReading(prevFocus, tabId)
           if (prevFocus !== null && prevFocus !== focusedSessionId) reclaimFocusState(prevFocus)
           broadcast('focus', { sessionId: focusedSessionId, tabId: focusedTabId })
           respondJson(res, 200, { ok: true, sessionId: focusedSessionId, tabId: focusedTabId })
@@ -2038,6 +2429,11 @@ export function apply(ctx: Context, config: Config): void {
         // 因此是浏览器侧唯一「免预检就能建立长连接」的端点——缺校验时任意站点可用
         // <event-source src> 把本机 SSE 连接占到上限，把真正的客户端挤出去。
         if (denyCrossOrigin(req, res)) return
+        if (req.method && req.method !== 'GET') {
+          res.setHeader('allow', 'GET')
+          respondJson(res, 405, { code: 'method_not_allowed', error: 'GET required' })
+          return
+        }
         // B2：从查询串取 tabId（owner 探活归属）。
         let tabId: string | null = null
         try {
@@ -2083,7 +2479,15 @@ export function apply(ctx: Context, config: Config): void {
             res.destroy() // close 事件走 cleanup 摘除；客户端 EventSource 自动重连
           }
         }
+        let heartbeat: ReturnType<typeof setInterval> | null = null
         const end = (): void => {
+          // I14：被同 tab 顶替或插件卸载时立即清理心跳定时器，但不触发焦点/owner 断开逻辑
+          // （顶替时新连接尚未写入 latestConnByTab，不能让旧连接误清焦点）。
+          if (heartbeat) {
+            clearInterval(heartbeat)
+            heartbeat = null
+          }
+          sseClients.delete(client)
           try {
             res.end()
           } catch {
@@ -2102,7 +2506,7 @@ export function apply(ctx: Context, config: Config): void {
         send('mode', { active: activeVoiceSession, ownerTabId: activeTabId })
         send('focus', { sessionId: focusedSessionId, tabId: focusedTabId })
         send('display', displayOf(vset))
-        const heartbeat = setInterval(() => {
+        heartbeat = setInterval(() => {
           try {
             res.write(': hb\n')
           } catch {
@@ -2114,7 +2518,10 @@ export function apply(ctx: Context, config: Config): void {
         const cleanup = (): void => {
           if (cleaned) return
           cleaned = true
-          clearInterval(heartbeat)
+          if (heartbeat) {
+            clearInterval(heartbeat)
+            heartbeat = null
+          }
           sseClients.delete(client)
           // M5：仅「该 tab 的最新连接」断开才武装让出——重连时旧连接的迟到 close
           // 若也武装，会在新连接已取消计时之后再次武装，8s 后误让出健康 owner。
@@ -2126,8 +2533,7 @@ export function apply(ctx: Context, config: Config): void {
               const prevFocus = focusedSessionId
               focusedSessionId = null
               focusedTabId = null
-              // R15（Important-4）：焦点随标签页一起离开 → 该会话不再是朗读对象，回收其表项
-              // （与 /focus 清空同一条判据）。
+              // R15（Important-4）：焦点随标签页一起离开 → 回收表项（不取消在途合成，留给 3s 重连恢复，见 focus-switch.test）。
               reclaimFocusState(prevFocus)
               broadcast('focus', { sessionId: null, tabId: null })
             }

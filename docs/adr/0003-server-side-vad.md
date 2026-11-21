@@ -6,8 +6,8 @@
 - 前置：[ADR-0001](0001-native-aec-primary.md)
 
 > **命名纠正（2026-09-16）**：原文件名 `0003-client-side-vad.md` 暗示 VAD 已下沉到客户端，与实际不符。
-> 真实运行态：Silero VAD 位于 host 侧（`src/asr-host.ts:587-591` detect 区块内 `vad.acceptWaveform(inc)`（:588）→ `isSpeech = vad.isDetected()`（:591）；**原锚点 `:752-765`/`:758`/`:759`/`:763` 为 2026-10-21 前快照**——`f8a3268` 的锚点刷新写入了修复前源码，随 R15 各批重写已漂移，本轮按冻结后的工作区源码刷新），
-> 客户端只做计数（`src/client.tsx:60` `INT_CONFIRM_FRAMES`，:59 是其文档注释；原值 37/38 为 2026-10-21 前快照，已随 R15 各批重写漂移，本轮按冻结后的工作区源码刷新）。本 ADR 的「下沉」是**未实施的提议**，
+> 真实运行态：Silero VAD 位于 host 侧（`src/asr-host.ts:666-669` 与 detect 区块 `src/asr-host.ts:852-853` 内 `vad.acceptWaveform` → `isSpeech = vad.isDetected()`；**原锚点 `:613-617`/`:752-765` 为历史快照，已随 2026-11-20 深度审计修复漂移，本轮刷新**），
+> 客户端只做计数（`src/client.tsx` 的 `INT_CONFIRM_FRAMES`，:64 是其文档注释；原值 37/38 为 2026-10-21 前快照，已随 R15 各批重写漂移，本轮按冻结后的工作区源码刷新）。本 ADR 的「下沉」是**未实施的提议**，
 > 故重命名为 `0003-server-side-vad.md`，标题同步纠正；正文「决策（提议）」段保留原提议内容（搬迁方向与代价分析）。
 >
 > **批 7N 落地（2026-09-16）**：
@@ -25,7 +25,7 @@
   → 客户端连续 confirmFrames 次为真 → 回声门控 → hardBreak
 ```
 
-判定信号在 host 产生（`src/asr-host.ts:587-591`，detect 区块内 `vad.acceptWaveform(inc)`（:588）→ `isSpeech = vad.isDetected()`（:591）；**原锚点 `:752-765`/`:758`/`:759`/`:763` 为 2026-10-21 前快照，已随 R15 各批重写漂移，本轮按冻结后的工作区源码刷新**），客户端只做计数（`src/client.tsx:60` `INT_CONFIRM_FRAMES[interruptLevel]`，:59 是其文档注释；原值 37/38 已漂移）。
+判定信号在 host 产生（`src/asr-host.ts:666-669` 与 detect 区块 `src/asr-host.ts:852-853` 内 `vad.acceptWaveform` → `isSpeech = vad.isDetected()`；**原锚点 `:613-617`/`:752-765` 为历史快照，本轮刷新**），客户端只做计数（`src/client.tsx:65` `INT_CONFIRM_FRAMES[interruptLevel]`，:64 是其文档注释；原值 37/38 已漂移）。
 
 实测确认延迟 ≈525ms（CONTEXT.md 记录）。拆解：
 
@@ -33,7 +33,7 @@
 |---|---|---|
 | 轮询量化 | 平均 64ms（最坏 128ms） | 见下方「栅格更正」 |
 | 上行 + host 推理 + 下行 | 数十 ms | 回环 HTTP + JSON + Silero 推理 |
-| 确认帧 | **384 / 256 / 128ms** | `INT_CONFIRM_FRAMES = {0:3, 1:2, 2:1}`（`src/client.tsx:60`）× 128ms 栅格 |
+| 确认帧 | **384 / 256 / 128ms** | `INT_CONFIRM_FRAMES = {0:3, 1:2, 2:1}`（`INT_CONFIRM_FRAMES`）× 128ms 栅格 |
 | Silero 自身窗口 | ~32ms/帧 | 模型固有 |
 
 > **栅格更正（2026-09-02）**：本表初版把确认窗写成 300/200/100ms，**错了**。

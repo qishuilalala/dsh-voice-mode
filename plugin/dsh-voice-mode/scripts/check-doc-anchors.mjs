@@ -326,9 +326,24 @@ function loadFile(path) {
 for (const md of mdFiles) {
   const relMd = relative(ROOT, md).split(sep).join('/')
   const mdLines = readFileSync(md, 'utf8').split('\n')
+  let activeFence = null
   mdLines.forEach((text, i) => {
     const docLine = i + 1
-    // 去掉行内代码块（```），避免把代码示例里的 file:line 当真锚点
+    // 跨行围栏代码块（``` / ~~~）：围栏内全部跳过，避免把多行代码示例里的 file:line 当真锚点
+    const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(text)
+    if (fenceMatch) {
+      const marker = fenceMatch[1]
+      if (!activeFence) {
+        activeFence = { ch: marker[0], len: marker.length }
+        return
+      }
+      if (marker[0] === activeFence.ch && marker.length >= activeFence.len && /^\s*$/.test(text.slice(fenceMatch[0].length))) {
+        activeFence = null
+        return
+      }
+    }
+    if (activeFence) return
+    // 去掉行内三反引号代码块，避免把单行示例里的 file:line 当真锚点
     const stripped = text.replace(/```[\s\S]*?```/g, (m) => ' '.repeat(m.length))
     // **只认反引号里的文件引用**——散文里的 `Node.js` / `settings.yaml` 不是锚点
     const spans = []
@@ -521,6 +536,15 @@ for (const md of mdFiles) {
       else drifts.push(rec)
     }
   })
+  // 未闭合围栏会让「其后的全部行」被静默跳过、门禁假绿：显式报 ERROR。
+  if (activeFence) {
+    errors.push({
+      doc: relMd,
+      line: mdLines.length,
+      ref: 'unclosed code fence',
+      why: '代码围栏未闭合：本文件围栏之后的锚点会被静默跳过，必须先补齐闭合围栏',
+    })
+  }
 }
 
 const summary = {

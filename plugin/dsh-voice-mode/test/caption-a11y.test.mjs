@@ -13,6 +13,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { buildSync } from 'esbuild'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const root = join(here, '..')
@@ -125,6 +126,58 @@ t('mtime 守卫：lib/client.js mtime ≥ src/client.tsx mtime（防 build 漏�
   const libM = statSync(clientJs).mtimeMs
   const srcM = statSync(join(root, 'src', 'client.tsx')).mtimeMs
   assert.ok(libM >= srcM - 500, 'lib/client.js 早于 src/client.tsx（需 node build.mjs）')
+})
+
+// 4. Loop 3 #3：字幕安全区、30dvh 动态视口、余韵驻留与历史回看、live 区与操作按钮解耦
+console.log('Loop 3 #3：字幕安全区与回看')
+const gestureCode = buildSync({
+  entryPoints: [join(root, 'src', 'mic-gesture.ts')],
+  bundle: true,
+  write: false,
+  format: 'esm',
+  platform: 'node',
+}).outputFiles[0].text
+const { pushCaptionHistory, CAPTION_HISTORY_MAX, CAPTION_LINGER_MS } = await import(
+  `data:text/javascript;base64,${Buffer.from(gestureCode).toString('base64')}`
+)
+
+t('pushCaptionHistory：裁剪首尾空白、去重相邻同句、最多保留最近 CAPTION_HISTORY_MAX 句', () => {
+  assert.equal(CAPTION_HISTORY_MAX, 8)
+  assert.ok(CAPTION_LINGER_MS >= 2000 && CAPTION_LINGER_MS <= 6000)
+  let h = []
+  h = pushCaptionHistory(h, '   ')
+  assert.deepEqual(h, [])
+  h = pushCaptionHistory(h, ' 第一句 ')
+  h = pushCaptionHistory(h, '第一句')
+  assert.deepEqual(h, ['第一句'], '相邻重复句不应二次入栈')
+  for (let i = 2; i <= 10; i++) h = pushCaptionHistory(h, `第${i}句`)
+  assert.equal(h.length, CAPTION_HISTORY_MAX)
+  assert.equal(h[0], '第3句')
+  assert.equal(h[h.length - 1], '第10句')
+})
+
+t('安全区与矮屏动态视口：safe-area-inset + 30dvh + 520px 窄屏全宽回退', () => {
+  assert.ok(clientBundle.includes('safe-area-inset-bottom'), '缺 safe-area-inset-bottom 适配')
+  assert.ok(clientBundle.includes('safe-area-inset-right'), '缺 safe-area-inset-right 适配')
+  assert.ok(clientBundle.includes('30dvh'), '缺 @supports 30dvh 动态视口上限')
+  assert.ok(clientBundle.includes('calc(100vw - 24px)'), '缺窄屏全宽回退')
+})
+
+t('回看抽屉与播毕余韵驻留：caption-history + caption-history-toggle + dismissCaption + holdCaptionLinger', () => {
+  assert.ok(clientBundle.includes('caption-history-toggle'), '缺回看展开按钮 data-dshvm="caption-history-toggle"')
+  assert.ok(clientBundle.includes('caption-history'), '缺历史列表容器 data-dshvm="caption-history"')
+  assert.ok(clientBundle.includes('dismissCaption') && clientBundle.includes('holdCaptionLinger'), '缺余韵驻留控制方法')
+  assert.ok(clientBundle.includes('captionDismiss'), '缺收起字幕按钮文案引用')
+})
+
+t('a11y live 区只包字幕正文：外层容器不再挂 role="status"，避免每句顺带重念按钮文案', () => {
+  const overlaySrc = clientSrc.split('export function VoiceOverlay')[1] ?? ''
+  assert.ok(overlaySrc.length > 0, '未定位到 VoiceOverlay')
+  const outerTag = overlaySrc.match(/<div\s+data-dshvm="caption-overlay"[\s\S]*?>/)?.[0] ?? ''
+  assert.ok(outerTag.length > 0, '未定位到 caption-overlay 外层标签')
+  assert.ok(!outerTag.includes('role="status"'), '外层容器不应挂 role="status"（会把回看/跳过按钮一起放进 live 区）')
+  const captionSpan = overlaySrc.match(/<span[\s\S]*?className="dshvm-caption"[\s\S]*?>/)?.[0] ?? ''
+  assert.ok(captionSpan.includes('role="status"') && captionSpan.includes('aria-live="polite"'), '字幕 span 应挂 role="status" aria-live="polite"')
 })
 
 console.log(`\ncaption-a11y：${passed} 项通过`)

@@ -148,7 +148,30 @@ await t('定稿缓存重试同样改写（缓存存原文，重试走出口改�
   assert.equal(cached.text, 'Sakina，今天天气怎么样')
   rt.dispose()
 })
+await t('同 epoch 二次 final 真命中缓存（改识别结果也不变），且缓存原文仍走出口改写', async () => {
+  // T6 审查指出：原用例是「partial→final」，并未真正进入 finalized 缓存分支。
+  // 真命中缓存的判定：final 二次调用时**换掉识别器输出**，若文本不变 = 走了缓存。
+  const rt = makeRuntime(createAsrReplacer([{ from: ['ski男'], to: 'Sakina' }]))
+  globalThis.__heard = 'ski男，今天天气怎么样'
+  await rt.feed('s-cache', pcm(), false, 0, 0)
+  const firstFinal = await rt.feed('s-cache', new Float32Array(0), true, 1600, 0)
+  assert.equal(firstFinal.text, 'Sakina，今天天气怎么样')
+
+  globalThis.__heard = '完全不同的识别结果'
+  const secondFinal = await rt.feed('s-cache', new Float32Array(0), true, 1600, 0)
+  assert.equal(secondFinal.text, 'Sakina，今天天气怎么样', '第二次 final 应命中缓存；若变了说明重新识别了')
+
+  rt.dispose()
+})
+
+await t('替换目标含 $& / $1 时按字面量输出（函数式替换，不做正则展开）', () => {
+  const rep = createAsrReplacer([{ from: ['price'], to: '价格 $& $1 $$' }])
+  assert.equal(rep('price 很高'), '价格 $& $1 $$ 很高')
+})
+
 await t('不配替换表时原样返回', async () => {
+  // 前面的缓存用例会改全局识别输出，这里显式复位（用例间不共享隐式状态）
+  globalThis.__heard = 'ski男，今天天气怎么样'
   const rt = makeRuntime()
   const partial = await rt.feed('s2', pcm(), false, 0, 0)
   assert.equal(partial.text, 'ski男，今天天气怎么样')
@@ -162,6 +185,79 @@ await t('asrReplacements 默认空数组，并接受 from 列表 + to', () => {
   assert.deepEqual(Config({}).asrReplacements, [])
   const cfg = Config({ asrReplacements: [{ from: ['ski男', 'sina'], to: 'Sakina' }] })
   assert.deepEqual(cfg.asrReplacements, [{ from: ['ski男', 'sina'], to: 'Sakina' }])
+})
+
+console.log('onHit 命中计数')
+
+await t('每次实际替换按规则序号回调（含重复命中）', () => {
+  const calls = []
+  const rep = createAsrReplacer(
+    [
+      { from: ['ski男'], to: 'Sakina' },
+      { from: ['sina'], to: 'Sinatra' },
+    ],
+    (i) => calls.push(i),
+  )
+  assert.equal(rep('ski男爱听sina和小sina'), 'Sakina爱听Sinatra和小Sinatra')
+  assert.deepEqual(calls, [0, 1, 1])
+})
+
+await t('未命中不回调；同写法多规则只有首胜计数', () => {
+  const calls = []
+  const rep = createAsrReplacer(
+    [
+      { from: ['sina'], to: 'Sinatra' },
+      { from: ['sina'], to: 'Later' },
+    ],
+    (i) => calls.push(i),
+  )
+  assert.equal(rep('今天天气不错'), '今天天气不错')
+  assert.deepEqual(calls, [])
+  assert.equal(rep('sina来了'), 'Sinatra来了')
+  assert.deepEqual(calls, [0])
+})
+
+console.log('词表体积预检（按 UTF-8 字节）')
+
+await t('中文规则按 UTF-8 字节计（每字 3 字节）：字节数严格大于字符数', async () => {
+  const { replacementsPayloadBytes } = await import('../src/asr-replacements.ts')
+  const rules = Array.from({ length: 200 }, (_, i) => ({ from: [`错别字${i}`], to: `正确写法${i}` }))
+  const chars = JSON.stringify(rules).length
+  const bytes = replacementsPayloadBytes(rules)
+  assert.ok(bytes > chars, `字节数应大于字符数（中文 3 字节/字）：${bytes} vs ${chars}`)
+})
+
+await t('超限词表被预检拦下（按字符计会漏放，最终 413）', async () => {
+  const { REPLACEMENTS_MAX_PAYLOAD_BYTES, replacementsPayloadBytes } = await import('../src/asr-replacements.ts')
+  // 构造一组“字符数未超限、但字节数已超限”的词表：这正是按字符预检会漏放的形态。
+  // 用递增规则数搜索（中文密度固定），避免把断言写死在某个手工数字上。
+  const make = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      from: [`听错的写法示例第${i}条`],
+      to: `正确的写法示例第${i}条`,
+    }))
+  let chars = 0
+  let bytes = 0
+  let found = false
+  for (let n = 50; n <= 200; n += 5) {
+    const rules = make(n)
+    chars = JSON.stringify(rules).length
+    bytes = replacementsPayloadBytes(rules)
+    if (chars < REPLACEMENTS_MAX_PAYLOAD_BYTES && bytes > REPLACEMENTS_MAX_PAYLOAD_BYTES) {
+      found = true
+      break
+    }
+  }
+  assert.ok(
+    found,
+    `未找到“字符未超限但字节超限”的样本（chars=${chars} bytes=${bytes}）——若中文规则确实无法触发，则应重新审视该预检是否有意义`,
+  )
+})
+
+await t('小词表通过预检；空/undefined 计 2 字节', async () => {
+  const { REPLACEMENTS_MAX_PAYLOAD_BYTES, replacementsPayloadBytes } = await import('../src/asr-replacements.ts')
+  assert.ok(replacementsPayloadBytes([{ from: ['ski男'], to: 'Sakina' }]) < REPLACEMENTS_MAX_PAYLOAD_BYTES)
+  assert.equal(replacementsPayloadBytes(undefined), new TextEncoder().encode('[]').length)
 })
 
 rmSync(tmp, { recursive: true, force: true })

@@ -6,6 +6,51 @@ import { rm } from "node:fs/promises";
 
 // src/asr-host.ts
 import { statSync } from "node:fs";
+
+// src/redact.ts
+var PREFIXED = [
+  { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
+  { re: /\b(Basic\s+)[A-Za-z0-9+/=-]{8,}/gi, to: "$1<redacted>" },
+  { re: /\b((?:api[-_]?key|x-api-key)\s*[:=]\s*)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
+  // URL 内嵌凭据（https://user:pass@host）与查询参数密钥（?api_key=... / &token=... / &key=...）
+  { re: /(https?:\/\/)([^:@/\s]+:[^@/\s]+)(@)/gi, to: "$1<redacted>$3" },
+  { re: /([?&](?:api[_-]?key|access_token|token|key)=)([^&\s#]+)/gi, to: "$1<redacted>" },
+  // JSON 形态：{"apiKey":"..."} / {"mimoApiKey":"..."} / {"openaiApiKey":"..."} / {"token":"..."}（只遮引号内的值）
+  {
+    re: /("(?:[a-zA-Z0-9_-]*?(?:api[_-]?key|token|secret|password))"\s*:\s*")([^"\\]{6,})(")/gi,
+    to: "$1<redacted>$3"
+  }
+];
+var BARE = [
+  /\bsk[-_][A-Za-z0-9._-]{8,}/g,
+  // 更多厂商前缀（2026-11-20 审计实测：Groq 的 gsk_ 原样漏出，而 Groq 就在本仓预设里）。
+  /\bgsk_[A-Za-z0-9._-]{8,}/g,
+  /\bsk-(?:proj|live|test)-[A-Za-z0-9._-]{8,}/g,
+  /\brk_(?:live|test)_[A-Za-z0-9]{8,}/g,
+  /\bAIza[A-Za-z0-9._-]{10,}/g,
+  /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
+  // 通用兜底：≥20 连续 base64-ish 字符，要求**同时含大写、小写与数字**（真密钥的典型特征），
+  // 且排除纯十六进制（SHA256/MD5 是排障信息）。这样不会吃掉全小写的模型名、
+  // 也不会吃掉被 - / 分隔的 UUID 与路径。
+  // 注意：字符类**不含 '/'**——路径与 provider/model:voice 形态都靠 '/' 分隔，含进来会误伤排障信息。
+  // 豁免仅限 64 位 sha256（模型摘要）；32 位 hex 也可能是 key（审计实测漏遮）。
+  /\b(?![0-9a-fA-F]{64}\b)(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[0-9])[A-Za-z0-9+=_-]{20,}\b/g,
+  // 32 位 hex（md5 形状）也可能是 key：通用规则要求大小写混合，纯小写 hex 会被漏掉。
+  // 64 位 sha256 不在此列（模型摘要要保留排障）。
+  /\b[0-9a-f]{32}\b/gi
+];
+function redactSecrets(text) {
+  let out = typeof text === "string" ? text : String(text ?? "");
+  for (const { re, to } of PREFIXED) out = out.replace(re, to);
+  for (const re of BARE) out = out.replace(re, "<redacted>");
+  return out;
+}
+function redactBodySnippet(body, n = 200) {
+  const raw = typeof body === "string" ? body : String(body ?? "");
+  return redactSecrets(raw.slice(0, n + 128)).slice(0, n);
+}
+
+// src/asr-host.ts
 import { join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
@@ -32,7 +77,11 @@ function createSenseWorkerClient(worker) {
     if (!p) return;
     pending.delete(msg.id);
     if (!msg.ok) {
-      p.resolve(null);
+      if (p.op === "create") {
+        p.reject(new Error(msg.error ?? "sense worker create failed"));
+      } else {
+        p.resolve(null);
+      }
       return;
     }
     p.resolve(p.op === "create" ? true : msg.text ?? "");
@@ -189,9 +238,15 @@ var MODEL_FETCH_HEADERS_TIMEOUT_MS = 6e4;
 var MODEL_BODY_IDLE_TIMEOUT_MS = 12e4;
 function makeIdleWatch(ac, ms) {
   let t;
-  const stop = () => clearTimeout(t);
+  let stopped = false;
+  const stop = () => {
+    stopped = true;
+    clearTimeout(t);
+    t = void 0;
+  };
   const kick = () => {
-    stop();
+    if (stopped) return;
+    clearTimeout(t);
     t = setTimeout(() => ac.abort(new Error("model download idle timeout")), ms);
   };
   return { kick, stop };
@@ -258,8 +313,12 @@ async function downloadVerified(opts) {
     if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;
     const res = await fetchWithHeadersTimeout(url, { headers, redirect: "follow" }, ac);
     idle.kick();
-    if (!redirectHostAllowed(res.url, allowCustomHost)) return false;
+    if (!redirectHostAllowed(res.url, allowCustomHost)) {
+      await res.body?.cancel().catch(() => void 0);
+      return false;
+    }
     if (res.status === 416) {
+      await res.body?.cancel().catch(() => void 0);
       if (await sha256OfFile(partPath).catch(() => "") === spec.sha256) {
         await rename(partPath, localPath);
         return true;
@@ -267,7 +326,10 @@ async function downloadVerified(opts) {
       await unlink(partPath).catch(() => void 0);
       return false;
     }
-    if (res.status !== 200 && res.status !== 206) return false;
+    if (res.status !== 200 && res.status !== 206) {
+      await res.body?.cancel().catch(() => void 0);
+      return false;
+    }
     const resume = res.status === 206 ? resumeFrom : 0;
     const total = Number(res.headers.get("content-length") ?? 0) + resume;
     const src = res.body;
@@ -276,17 +338,39 @@ async function downloadVerified(opts) {
     const reader = src.getReader();
     let received = resume;
     await new Promise((resolve, reject) => {
-      sink.on("error", (e) => reject(e));
+      let failed = false;
+      let wakeDrain = null;
+      sink.on("error", (e) => {
+        if (failed) return;
+        failed = true;
+        ac.abort(e);
+        wakeDrain?.();
+        wakeDrain = null;
+        void reader.cancel(e).catch(() => void 0);
+        reject(e);
+      });
       sink.on("finish", () => resolve());
       void (async () => {
         try {
           for (; ; ) {
+            if (failed) return;
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done || failed) break;
             idle.kick();
             received += value.byteLength;
             if (!sink.write(value)) {
-              await new Promise((r) => sink.once("drain", r));
+              await new Promise((r) => {
+                if (failed) {
+                  r();
+                  return;
+                }
+                wakeDrain = r;
+                sink.once("drain", () => {
+                  wakeDrain = null;
+                  r();
+                });
+              });
+              if (failed) return;
               idle.kick();
             }
             if (total > 0) {
@@ -296,10 +380,14 @@ async function downloadVerified(opts) {
               });
             }
           }
-          sink.end();
+          if (!failed) sink.end();
         } catch (e) {
-          sink.destroy(e);
-          reject(e);
+          if (!failed) {
+            failed = true;
+            sink.destroy(e);
+            void reader.cancel(e).catch(() => void 0);
+            reject(e);
+          }
         }
       })();
     });
@@ -354,17 +442,33 @@ async function ensureModelTree(opts) {
   await mkdir(subRoot, { recursive: true }).catch(() => void 0);
   let tree = [];
   for (const host of hosts) {
+    if (opts.signal?.aborted) break;
+    const listAc = new AbortController();
+    const onListAbort = () => listAc.abort(opts.signal?.reason);
+    if (opts.signal?.aborted) onListAbort();
+    else opts.signal?.addEventListener("abort", onListAbort, { once: true });
+    const listIdle = makeIdleWatch(listAc, opts.idleTimeoutMs ?? MODEL_BODY_IDLE_TIMEOUT_MS);
     try {
       const res = await fetchWithHeadersTimeout(host + "/api/models/" + repo + "?blobs=true", {
         headers: { "user-agent": "dsh-voice-mode" }
-      });
-      if (!redirectHostAllowed(res.url, allowCustomHost)) continue;
+      }, listAc);
+      if (!redirectHostAllowed(res.url, allowCustomHost)) {
+        await res.body?.cancel().catch(() => void 0);
+        continue;
+      }
       if (res.ok) {
+        listIdle.kick();
         const j = await res.json();
         tree = (j.siblings ?? []).map((s) => s.rfilename ?? "").filter((f) => isSafeModelRel(f, subdir));
         if (tree.length > 0) break;
+      } else {
+        await res.body?.cancel().catch(() => void 0);
       }
     } catch {
+      if (opts.signal?.aborted) break;
+    } finally {
+      listIdle.stop();
+      opts.signal?.removeEventListener("abort", onListAbort);
     }
   }
   if (tree.length === 0) return false;
@@ -377,7 +481,8 @@ async function ensureModelTree(opts) {
       if (rel === void 0) return;
       const localPath = join(repoDir, rel);
       const partPath = localPath + ".part";
-      if ((await stat(localPath).catch(() => null))?.isFile() && (await stat(localPath)).size > 0) {
+      const localSt = await stat(localPath).catch(() => null);
+      if (localSt?.isFile() && localSt.size > 0) {
         done++;
         continue;
       }
@@ -385,7 +490,8 @@ async function ensureModelTree(opts) {
       let ok = false;
       for (const host of hosts) {
         try {
-          const url = host + "/" + repo + "/resolve/main/" + encodeURIComponent(rel);
+          const encodedRel = rel.split("/").map(encodeURIComponent).join("/");
+          const url = host + "/" + repo + "/resolve/main/" + encodedRel;
           const ac = new AbortController();
           const onAbort = () => ac.abort(opts.signal?.reason);
           if (opts.signal?.aborted) onAbort();
@@ -393,32 +499,64 @@ async function ensureModelTree(opts) {
           const idle = makeIdleWatch(ac, opts.idleTimeoutMs ?? MODEL_BODY_IDLE_TIMEOUT_MS);
           try {
             const res = await fetchWithHeadersTimeout(url, { headers: { "user-agent": "dsh-voice-mode" }, redirect: "follow" }, ac);
-            if (!redirectHostAllowed(res.url, allowCustomHost)) continue;
-            if (res.status !== 200) continue;
+            if (!redirectHostAllowed(res.url, allowCustomHost)) {
+              await res.body?.cancel().catch(() => void 0);
+              continue;
+            }
+            if (res.status !== 200) {
+              await res.body?.cancel().catch(() => void 0);
+              continue;
+            }
             idle.kick();
             const reader = res.body?.getReader();
             if (!reader) continue;
             const sink = createWriteStream(partPath);
             let size = 0;
             await new Promise((resolve, reject) => {
-              sink.on("error", reject);
+              let failed = false;
+              let wakeDrain = null;
+              sink.on("error", (e) => {
+                if (failed) return;
+                failed = true;
+                ac.abort(e);
+                wakeDrain?.();
+                wakeDrain = null;
+                void reader.cancel(e).catch(() => void 0);
+                reject(e);
+              });
               sink.on("finish", resolve);
               void (async () => {
                 try {
                   for (; ; ) {
+                    if (failed) return;
                     const r = await reader.read();
-                    if (r.done) break;
+                    if (r.done || failed) break;
                     idle.kick();
                     size += r.value.byteLength;
                     if (!sink.write(r.value)) {
-                      await new Promise((r2) => sink.once("drain", r2));
+                      await new Promise((r2) => {
+                        if (failed) {
+                          r2();
+                          return;
+                        }
+                        wakeDrain = r2;
+                        sink.once("drain", () => {
+                          wakeDrain = null;
+                          r2();
+                        });
+                      });
+                      if (failed) return;
                       idle.kick();
                     }
                   }
-                  sink.end();
+                  if (!failed) sink.end();
                 } catch (e) {
-                  sink.destroy(e);
-                  reject(e);
+                  if (!failed) {
+                    failed = true;
+                    sink.destroy(e);
+                    void reader.cancel(e).catch(() => void 0);
+                    reject(e);
+                  }
                 }
               })();
             });
@@ -475,9 +613,27 @@ var SENSE_FILES = [
   { file: "model.int8.onnx", sha256: "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51" },
   { file: "tokens.txt", sha256: "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc" }
 ];
+var DECODE_YIELD_EVERY = 8;
+var yieldToLoop = () => new Promise((resolve) => setImmediate(resolve));
 function pcmToSamples(buf) {
   if (buf.length % 4 !== 0) return null;
-  return new Float32Array(buf.buffer, buf.byteOffset, buf.length / 4);
+  const len = buf.length / 4;
+  const out = new Float32Array(len);
+  if (buf.byteOffset % 4 === 0) {
+    out.set(new Float32Array(buf.buffer, buf.byteOffset, len));
+  } else {
+    const aligned = Buffer.from(buf);
+    out.set(new Float32Array(aligned.buffer, aligned.byteOffset, len));
+  }
+  let bad = 0;
+  for (let i = 0; i < out.length; i++) {
+    if (!Number.isFinite(out[i])) {
+      out[i] = 0;
+      bad++;
+    }
+  }
+  if (bad > 0) console.warn(`[dsh-voice-mode] pcm contained ${bad} non-finite sample(s); coerced to 0`);
+  return out;
 }
 var MAX_ASR_BYTES = 4 * 1024 * 1024;
 var SEGMENT_IDLE_MS = 9e4;
@@ -510,6 +666,36 @@ function createAsrRuntime(options) {
   const vadDir = join2(cacheDir, VAD_REPO);
   const senseDir = join2(cacheDir, SENSE_REPO);
   const normalizedModelHost = () => validateModelHost(modelHost(), allowCustomHost) ?? HOST_PRIMARY;
+  const freeSegment = (s) => {
+    if (s.freed) return;
+    s.freed = true;
+    try {
+      s.vad?.free?.();
+    } catch {
+    }
+    try {
+      s.stream.free();
+    } catch {
+    }
+  };
+  const dlAbort = new AbortController();
+  const segChains = /* @__PURE__ */ new Map();
+  const withSegLock = async (key, fn) => {
+    const prev = segChains.get(key) ?? Promise.resolve();
+    let release;
+    const next = new Promise((r) => {
+      release = r;
+    });
+    const tail = prev.then(() => next);
+    segChains.set(key, tail);
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (segChains.get(key) === tail) segChains.delete(key);
+    }
+  };
   const segments = /* @__PURE__ */ new Map();
   const finalized = /* @__PURE__ */ new Map();
   const finalizing = /* @__PURE__ */ new Map();
@@ -525,7 +711,7 @@ function createAsrRuntime(options) {
     if (!modelsLoading) {
       modelsLoading = (async () => {
         for (const f of MODEL_FILES) {
-          if (!await ensureModelFile({ repo: MODEL_REPO, repoDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast })) {
+          if (!await ensureModelFile({ repo: MODEL_REPO, repoDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast, signal: dlAbort.signal })) {
             asrFailAt = Date.now() + 6e4;
             broadcast("asr-error", { file: f.file });
             return false;
@@ -571,7 +757,7 @@ function createAsrRuntime(options) {
     if (!vadLoading) {
       vadLoading = (async () => {
         for (const f of VAD_FILES) {
-          if (!await ensureModelFile({ repo: VAD_REPO, repoDir: vadDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast })) {
+          if (!await ensureModelFile({ repo: VAD_REPO, repoDir: vadDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast, signal: dlAbort.signal })) {
             vadFailAt = Date.now() + 6e4;
             return null;
           }
@@ -601,19 +787,24 @@ function createAsrRuntime(options) {
     bufferSizeInSeconds: 30
   });
   const ensureSessionVad = async (seg) => {
+    if (seg.freed || recognizerDisposed) return null;
     if (seg.vad) return seg.vad;
     const vadPath = await ensureVadModel();
-    if (!vadPath) return null;
+    if (!vadPath || seg.freed || recognizerDisposed) return null;
+    if (seg.vad) return seg.vad;
     seg.vad = newVad(vadPath, 0.5, silenceMs() / 1e3);
     return seg.vad;
   };
   const detectVads = /* @__PURE__ */ new Map();
   const detectVadLastUse = /* @__PURE__ */ new Map();
   const ensureDetectVad = async (sessionId) => {
+    if (recognizerDisposed) return null;
     const existing = detectVads.get(sessionId);
     if (existing) return existing;
     const vadPath = await ensureVadModel();
-    if (!vadPath) return null;
+    if (!vadPath || recognizerDisposed) return null;
+    const existingAfter = detectVads.get(sessionId);
+    if (existingAfter) return existingAfter;
     const vad = newVad(vadPath, 0.35);
     detectVads.set(sessionId, vad);
     return vad;
@@ -621,13 +812,14 @@ function createAsrRuntime(options) {
   let senseModelReady = false;
   let senseLoading = null;
   let senseFailAt = 0;
+  let senseWorkerFailAt = 0;
   const ensureSenseModel = async () => {
     if (senseModelReady) return join2(senseDir, SENSE_FILES[0].file);
     if (Date.now() < senseFailAt) return null;
     if (!senseLoading) {
       senseLoading = (async () => {
         for (const f of SENSE_FILES) {
-          if (!await ensureModelFile({ repo: SENSE_REPO, repoDir: senseDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast })) {
+          if (!await ensureModelFile({ repo: SENSE_REPO, repoDir: senseDir, spec: f, primaryHost: normalizedModelHost(), allowCustomHost, broadcast: localBroadcast, signal: dlAbort.signal })) {
             senseFailAt = Date.now() + 6e4;
             return null;
           }
@@ -647,19 +839,22 @@ function createAsrRuntime(options) {
   let senseDisposed = false;
   const getSenseWorker = async () => {
     if (!senseVoice()) return null;
+    if (senseDisposed) return null;
     const langKey = `auto\0${senseITN() ? "1" : "0"}`;
     if (senseWorker && langKey !== senseWorkerLangKey) {
       void senseWorker.terminate();
       senseWorker = null;
       senseWorkerSyncing = null;
     }
-    senseWorkerLangKey = langKey;
     if (senseWorker) return senseWorker;
-    if (senseWorkerSyncing) return senseWorkerSyncing;
-    senseWorkerSyncing = (async () => {
+    if (Date.now() < senseWorkerFailAt) return null;
+    if (senseWorkerSyncing && langKey === senseWorkerLangKey) return senseWorkerSyncing;
+    const myLangKey = langKey;
+    senseWorkerLangKey = myLangKey;
+    const syncP = (async () => {
       if (senseDisposed) return null;
       const sensePath = await ensureSenseModel();
-      if (!sensePath) return null;
+      if (!sensePath || senseDisposed || senseWorkerLangKey !== myLangKey) return null;
       try {
         const workerPath = fileURLToPath(new URL("./sense-worker.mjs", import.meta.url));
         const w = new Worker(workerPath, {
@@ -667,33 +862,38 @@ function createAsrRuntime(options) {
             sherpaModule: "sherpa-onnx",
             modelDir: senseDir,
             language: "auto",
-            useITN: senseITN() ? 1 : 0
+            useITN: myLangKey.endsWith("1") ? 1 : 0
           }
         });
         const client = createSenseWorkerClient(w);
         client.onDeath(() => {
-          senseWorker = null;
-          senseWorkerSyncing = null;
-          senseWorkerLangKey = "";
+          if (senseWorker === client) {
+            senseWorker = null;
+            senseWorkerSyncing = null;
+            senseWorkerLangKey = "";
+          }
         });
         if (!await client.request("create")) {
           await client.terminate();
-          return null;
+          throw new Error("sense worker create returned false");
         }
-        if (senseDisposed) {
+        if (senseDisposed || senseWorkerLangKey !== myLangKey) {
           await client.terminate();
           return null;
         }
         senseWorker = client;
         return client;
       } catch (e) {
-        console.warn("[dsh-voice-mode] SenseVoice worker init failed: " + String(e));
+        senseWorkerFailAt = Date.now() + 6e4;
+        console.warn("[dsh-voice-mode] SenseVoice worker init failed: " + redactSecrets(e));
+        broadcast?.("asr-notice", { code: "sense_degraded" });
         return null;
       }
     })().finally(() => {
-      if (!senseWorker || senseDisposed) senseWorkerSyncing = null;
+      if (senseWorkerSyncing === syncP && (!senseWorker || senseDisposed)) senseWorkerSyncing = null;
     });
-    return senseWorkerSyncing;
+    senseWorkerSyncing = syncP;
+    return syncP;
   };
   const senseTranscribe = async (allSamples) => {
     try {
@@ -709,7 +909,7 @@ function createAsrRuntime(options) {
       }
       return await worker.request("decode", buf);
     } catch (e) {
-      console.warn("[dsh-voice-mode] SenseVoice re-transcribe failed: " + String(e));
+      console.warn("[dsh-voice-mode] SenseVoice re-transcribe failed: " + redactSecrets(e));
       return null;
     }
   };
@@ -719,143 +919,173 @@ function createAsrRuntime(options) {
     }
     const rec = await getRecognizer();
     if (!rec) return { text: "", loading: true };
+    if (recognizerDisposed) return { text: "" };
     if (!final && senseVoice()) {
       void getSenseWorker().catch(() => {
       });
     }
-    let finMap = finalized.get(sessionId);
-    const myGen = resetGen.get(sessionId) ?? 0;
-    const cached2 = finMap?.get(epoch);
-    if (cached2 !== void 0) return { text: cached2 };
-    let sessSegs = segments.get(sessionId);
-    if (!sessSegs) {
-      sessSegs = /* @__PURE__ */ new Map();
-      segments.set(sessionId, sessSegs);
-    }
-    let seg = sessSegs.get(epoch);
-    if (!seg) {
-      if (samples.length === 0 && final) return { text: "" };
-      seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: "", allSamples: [], lastActivity: Date.now() };
-      sessSegs.set(epoch, seg);
-    }
-    seg.lastActivity = Date.now();
-    let endpoint = false;
-    let text = "";
-    let isSpeech;
-    if (offset + samples.length > seg.fed) {
-      const skip = Math.max(seg.fed - offset, 0);
-      const inc = samples.subarray(skip);
-      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc);
-      seg.fed = offset + samples.length;
-      if (seg.fed <= rec.config.featConfig.sampleRate * 60) seg.allSamples.push(inc);
-      while (rec.isReady(seg.stream)) rec.decode(seg.stream);
-      text = rec.getResult(seg.stream).text;
-      seg.lastText = text;
-      if (!final) {
-        const vad = await ensureSessionVad(seg);
-        if (vad) {
-          if (seg.pendingEndpoint) {
-            const now = Date.now();
-            const rms = rmsOf(inc);
-            if (rms > VAD_CONTINUE_RMS) {
-              seg.pendingEndpoint = null;
-            } else if (now - seg.pendingEndpoint.at >= CONFIRM_MIN_MS && text === seg.pendingEndpoint.textAtPending) {
-              seg.pendingEndpoint = null;
-              endpoint = true;
-            } else if (now - seg.pendingEndpoint.at >= seg.pendingEndpoint.confirmMs) {
-              seg.pendingEndpoint = null;
-              endpoint = true;
-            }
+    return withSegLock(`${sessionId}\0${epoch}`, async () => {
+      if (recognizerDisposed) return { text: "" };
+      const finMap = finalized.get(sessionId);
+      const myGen = resetGen.get(sessionId) ?? 0;
+      const cached2 = finMap?.get(epoch);
+      if (cached2 !== void 0) return { text: cached2 };
+      const existingInflight = finalizing.get(sessionId)?.get(epoch);
+      if (final && existingInflight) return { text: await existingInflight };
+      let sessSegs = segments.get(sessionId);
+      if (!sessSegs) {
+        sessSegs = /* @__PURE__ */ new Map();
+        segments.set(sessionId, sessSegs);
+      }
+      let seg = sessSegs.get(epoch);
+      if (!seg) {
+        if (samples.length === 0 && final) return { text: "" };
+        seg = { stream: rec.createStream(), fed: 0, vad: null, pendingEndpoint: null, lastText: "", allSamples: [], lastActivity: Date.now(), freed: false };
+        sessSegs.set(epoch, seg);
+      }
+      seg.lastActivity = Date.now();
+      let endpoint = false;
+      let text = "";
+      let isSpeech;
+      if (offset + samples.length > seg.fed) {
+        const skip = Math.max(seg.fed - offset, 0);
+        const inc = samples.subarray(skip);
+        if (seg.freed || recognizerDisposed) return { text: "" };
+        seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, inc);
+        seg.fed = offset + samples.length;
+        if (seg.fed <= rec.config.featConfig.sampleRate * 60) seg.allSamples.push(inc);
+        {
+          let n = 0;
+          while (!seg.freed && !recognizerDisposed && rec.isReady(seg.stream)) {
+            rec.decode(seg.stream);
+            if (++n % DECODE_YIELD_EVERY === 0) await yieldToLoop();
           }
-          vad.acceptWaveform(inc);
-          isSpeech = vad.isDetected();
-          if (!vad.isEmpty()) {
-            let spokenMs = 0;
-            while (!vad.isEmpty()) {
-              const sp = vad.front();
-              spokenMs = sp.samples.length / 16e3 * 1e3;
-              vad.pop();
+        }
+        if (seg.freed || recognizerDisposed) return { text: "" };
+        text = rec.getResult(seg.stream).text;
+        seg.lastText = text;
+        if (!final) {
+          const vad = await ensureSessionVad(seg);
+          if (seg.freed || recognizerDisposed) return { text: "" };
+          if (vad) {
+            if (seg.pendingEndpoint) {
+              const now = Date.now();
+              const rms = rmsOf(inc);
+              if (rms > VAD_CONTINUE_RMS) {
+                seg.pendingEndpoint = null;
+              } else if (now - seg.pendingEndpoint.at >= seg.pendingEndpoint.confirmMs) {
+                seg.pendingEndpoint = null;
+                endpoint = true;
+              }
             }
-            const confirmMs = endpointConfirmMs(seg.lastText, spokenMs);
-            if (confirmMs <= 0) {
-              endpoint = true;
-            } else {
-              seg.pendingEndpoint = { at: Date.now(), confirmMs, textAtPending: seg.lastText };
+            vad.acceptWaveform(inc);
+            isSpeech = vad.isDetected();
+            if (!vad.isEmpty()) {
+              let spokenMs = 0;
+              while (!vad.isEmpty()) {
+                const sp = vad.front();
+                spokenMs = sp.samples.length / 16e3 * 1e3;
+                vad.pop();
+              }
+              const confirmMs = endpointConfirmMs(seg.lastText, spokenMs);
+              if (confirmMs <= 0) {
+                endpoint = true;
+              } else {
+                seg.pendingEndpoint = { at: Date.now(), confirmMs, textAtPending: seg.lastText };
+              }
             }
           }
         }
       }
-    }
-    if (!final) return { text, endpoint, isSpeech };
-    const inflightMap = finalizing.get(sessionId);
-    const inflightP = inflightMap?.get(epoch);
-    if (inflightP) return { text: await inflightP };
-    sessSegs.delete(epoch);
-    if (sessSegs.size === 0) segments.delete(sessionId);
-    const finalizeP = (async () => {
-      const all = seg.allSamples;
-      let senseTimer = null;
-      const senseP = all.length > 0 ? Promise.race([
-        senseTranscribe(all),
-        new Promise((resolve) => {
-          senseTimer = setTimeout(() => resolve(null), 2e4);
-        })
-      ]).finally(() => {
-        if (senseTimer) clearTimeout(senseTimer);
-      }) : Promise.resolve(null);
-      const pad = new Float32Array(rec.config.featConfig.sampleRate / 2);
-      seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad);
-      while (rec.isReady(seg.stream)) rec.decode(seg.stream);
-      const settled = rec.getResult(seg.stream).text;
-      try {
-        seg.vad?.free?.();
-      } catch {
+      if (!final) return { text, endpoint, isSpeech };
+      if (seg.freed || recognizerDisposed) return { text: "" };
+      const inflightMap = finalizing.get(sessionId);
+      const inflightP = inflightMap?.get(epoch);
+      if (inflightP) return { text: await inflightP };
+      sessSegs.delete(epoch);
+      if (sessSegs.size === 0) segments.delete(sessionId);
+      const evictWedgedSenseWorker = () => {
+        const wedged = senseWorker;
+        if (wedged) {
+          senseWorker = null;
+          senseWorkerSyncing = null;
+          void wedged.terminate().catch(() => void 0);
+        }
+      };
+      const finalizeP = (async () => {
+        const all = seg.allSamples;
+        let senseTimer = null;
+        const senseP = all.length > 0 ? Promise.race([
+          senseTranscribe(all),
+          new Promise((resolve) => {
+            senseTimer = setTimeout(() => {
+              evictWedgedSenseWorker();
+              resolve(null);
+            }, 2e4);
+          })
+        ]).finally(() => {
+          if (senseTimer) clearTimeout(senseTimer);
+        }) : Promise.resolve(null);
+        let settled = seg.lastText;
+        try {
+          if (!seg.freed && !recognizerDisposed) {
+            const pad = new Float32Array(rec.config.featConfig.sampleRate / 2);
+            seg.stream.acceptWaveform(rec.config.featConfig.sampleRate, pad);
+            let n = 0;
+            while (!seg.freed && !recognizerDisposed && rec.isReady(seg.stream)) {
+              rec.decode(seg.stream);
+              if (++n % DECODE_YIELD_EVERY === 0) await yieldToLoop();
+            }
+            if (!seg.freed && !recognizerDisposed) {
+              settled = rec.getResult(seg.stream).text;
+            }
+          }
+        } finally {
+          freeSegment(seg);
+        }
+        const sense = await senseP;
+        return (sense && sense.trim() ? sense : settled) || "";
+      })().then((finalText) => {
+        if ((resetGen.get(sessionId) ?? 0) !== myGen) return finalText;
+        let fm = finalized.get(sessionId);
+        if (!fm) {
+          fm = /* @__PURE__ */ new Map();
+          finalized.set(sessionId, fm);
+        }
+        fm.set(epoch, finalText);
+        if (fm.size > 32) {
+          const busy = finalizing.get(sessionId);
+          for (const [k] of fm) {
+            if (busy?.has(k)) continue;
+            fm.delete(k);
+            break;
+          }
+        }
+        const ff = finalizing.get(sessionId);
+        ff?.delete(epoch);
+        if (ff && ff.size === 0) finalizing.delete(sessionId);
+        return finalText;
+      }).catch((e) => {
+        if ((resetGen.get(sessionId) ?? 0) !== myGen) return "";
+        const ff = finalizing.get(sessionId);
+        ff?.delete(epoch);
+        if (ff && ff.size === 0) finalizing.delete(sessionId);
+        console.warn("[dsh-voice-mode] finalize failed: " + redactSecrets(e));
+        return "";
+      });
+      if (!inflightMap) {
+        finalizing.set(sessionId, /* @__PURE__ */ new Map());
       }
-      seg.stream.free();
-      const sense = await senseP;
-      return (sense && sense.trim() ? sense : settled) || "";
-    })().then((finalText) => {
-      if ((resetGen.get(sessionId) ?? 0) !== myGen) return finalText;
-      let fm = finalized.get(sessionId);
-      if (!fm) {
-        fm = /* @__PURE__ */ new Map();
-        finalized.set(sessionId, fm);
-      }
-      fm.set(epoch, finalText);
-      if (fm.size > 32) {
-        const first = fm.keys().next().value;
-        if (first !== void 0) fm.delete(first);
-      }
-      const ff = finalizing.get(sessionId);
-      ff?.delete(epoch);
-      if (ff && ff.size === 0) finalizing.delete(sessionId);
-      return finalText;
-    }).catch((e) => {
-      const ff = finalizing.get(sessionId);
-      ff?.delete(epoch);
-      if (ff && ff.size === 0) finalizing.delete(sessionId);
-      console.warn("[dsh-voice-mode] finalize failed: " + String(e));
-      return "";
+      finalizing.get(sessionId).set(epoch, finalizeP);
+      return { text: await finalizeP };
     });
-    if (!inflightMap) {
-      finalizing.set(sessionId, /* @__PURE__ */ new Map());
-    }
-    finalizing.get(sessionId).set(epoch, finalizeP);
-    return { text: await finalizeP };
   };
   const sweep = () => {
     const now = Date.now();
     for (const [sid, sessSegs] of segments) {
       for (const [epoch, s] of sessSegs) {
         if (now - s.lastActivity > SEGMENT_IDLE_MS) {
-          try {
-            s.vad?.free?.();
-          } catch {
-          }
-          try {
-            s.stream.free();
-          } catch {
-          }
+          freeSegment(s);
           sessSegs.delete(epoch);
         }
       }
@@ -867,11 +1097,6 @@ function createAsrRuntime(options) {
     for (const sid of finalized.keys()) {
       if (segments.has(sid) || finalizing.has(sid)) continue;
       finalized.delete(sid);
-      resetGen.delete(sid);
-    }
-    for (const sid of resetGen.keys()) {
-      if (segments.has(sid) || finalizing.has(sid)) continue;
-      resetGen.delete(sid);
     }
     for (const [sid, at] of detectVadLastUse) {
       if (now - at > SEGMENT_IDLE_MS) {
@@ -887,7 +1112,8 @@ function createAsrRuntime(options) {
   const sweepTimer = setInterval(sweep, 3e4);
   const feed = async (...args) => {
     const out = await feedRaw(...args);
-    return options.replaceText && out.text ? { ...out, text: options.replaceText(out.text) } : out;
+    const isFinal = Boolean(args[2]);
+    return options.replaceText && out.text ? { ...out, text: options.replaceText(out.text, isFinal) } : out;
   };
   return {
     feed,
@@ -904,14 +1130,7 @@ function createAsrRuntime(options) {
       const sessSegs = segments.get(sessionId);
       if (sessSegs) {
         for (const [, s] of sessSegs) {
-          try {
-            s.vad?.free?.();
-          } catch {
-          }
-          try {
-            s.stream.free();
-          } catch {
-          }
+          freeSegment(s);
         }
         segments.delete(sessionId);
       }
@@ -930,6 +1149,7 @@ function createAsrRuntime(options) {
     },
     dispose: () => {
       clearInterval(sweepTimer);
+      dlAbort.abort(new Error("asr runtime disposed"));
       senseDisposed = true;
       recognizerDisposed = true;
       let w = senseWorker;
@@ -938,14 +1158,7 @@ function createAsrRuntime(options) {
       if (w) void w.terminate();
       for (const [, sessSegs] of segments) {
         for (const [, s] of sessSegs) {
-          try {
-            s.vad?.free?.();
-          } catch {
-          }
-          try {
-            s.stream.free();
-          } catch {
-          }
+          freeSegment(s);
         }
       }
       segments.clear();
@@ -990,6 +1203,7 @@ function createAsrRuntime(options) {
     // （getSenseWorker:396-401）下次自然触发重建。
     markStale: () => {
       senseWorkerLangKey = "";
+      senseWorkerFailAt = 0;
     },
     modelStatus: () => {
       const asrFiles = MODEL_FILES.map((n) => ({
@@ -1023,6 +1237,14 @@ function createAsrRuntime(options) {
           return 0;
         }
       })();
+      const senseAllExist = SENSE_FILES.every((f) => {
+        try {
+          const st = statSync(join2(senseDir, f.file));
+          return st.isFile() && st.size > 0;
+        } catch {
+          return false;
+        }
+      });
       return {
         // ready 语义 = 文件可用（exists），而非进程内是否已实例化——
         // 重启后文件齐全却显示「未下载」会误导用户（体验修复）。
@@ -1040,9 +1262,9 @@ function createAsrRuntime(options) {
         },
         sense: {
           repo: SENSE_REPO,
-          ready: senseSize > 0,
+          ready: senseAllExist,
           size: senseSize,
-          failLatchMs: Math.max(0, senseFailAt - Date.now()),
+          failLatchMs: Math.max(0, Math.max(senseFailAt, senseWorkerFailAt) - Date.now()),
           enabled: senseVoice()
         },
         progress: lastProgress
@@ -1056,6 +1278,7 @@ function createAsrRuntime(options) {
       if (kind === "sense") {
         if (!senseVoice()) return false;
         senseFailAt = 0;
+        senseWorkerFailAt = 0;
         return !!await ensureSenseModel();
       }
       if (modelsReady) return true;
@@ -1065,6 +1288,7 @@ function createAsrRuntime(options) {
   };
 }
 var respondJson = (res, status, payload) => {
+  if (res.writableEnded || res.destroyed) return;
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(payload));
 };
@@ -1072,19 +1296,30 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
   const chunks = [];
   let received = 0;
   let tooLarge = false;
+  req.on("error", () => {
+    if (!res.writableEnded && !res.destroyed) res.destroy();
+  });
   req.on("data", (c) => {
     if (tooLarge) return;
     received += c.length;
     if (received > MAX_ASR_BYTES) {
       tooLarge = true;
+      req.pause?.();
       respondJson(res, 413, { code: "payload_too_large", error: "pcm payload too large" });
+      req.resume?.();
       return;
     }
     chunks.push(c);
   });
   req.on("end", () => {
     if (tooLarge) return;
-    const url = new URL(req.url ?? "/", "http://localhost");
+    let url;
+    try {
+      url = new URL(req.url ?? "/", "http://localhost");
+    } catch {
+      respondJson(res, 400, { code: "bad_request", error: "invalid url" });
+      return;
+    }
     const sessionId = url.searchParams.get("sessionId") ?? "";
     const final = url.searchParams.get("final") === "1";
     const reset = url.searchParams.get("reset") === "1";
@@ -1122,7 +1357,7 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
       void asr.detect(sessionId, samples).then((out) => {
         respondJson(res, 200, { isSpeech: out.isSpeech });
       }).catch((e) => {
-        console.warn(`[dsh-voice-mode] asr detect failed: ${String(e)}`);
+        console.warn(`[dsh-voice-mode] asr detect failed: ${redactSecrets(e)}`);
         respondJson(res, 500, { code: "internal", error: "internal error" });
       });
       return;
@@ -1137,7 +1372,7 @@ function handleAsrRequest(asr, activeSessionId, req, res) {
       if (out.isSpeech !== void 0) body.isSpeech = out.isSpeech;
       respondJson(res, 200, body);
     }).catch((e) => {
-      console.warn(`[dsh-voice-mode] asr decode failed: ${String(e)}`);
+      console.warn(`[dsh-voice-mode] asr decode failed: ${redactSecrets(e)}`);
       respondJson(res, 500, { code: "internal", error: "internal error" });
     });
   });
@@ -1174,24 +1409,35 @@ function patternOf(heard) {
   const tail = ASCII_WORD.test(last) ? "(?![A-Za-z0-9])" : "";
   return `${head}${body}${tail}`;
 }
-function createAsrReplacer(rules) {
+function createAsrReplacer(rules, onHit) {
   const entries = [];
-  for (const rule of rules) {
-    if (!rule.to) continue;
+  rules.forEach((rule, ruleIndex) => {
+    if (!rule.to) return;
     for (const heard of rule.from) {
       const pattern = patternOf(heard);
       if (!pattern) continue;
-      entries.push({ pattern, key: heard.replace(/\s+/g, "").toLowerCase(), to: rule.to, length: heard.replace(/\s+/g, "").length });
+      entries.push({
+        pattern,
+        key: heard.replace(/\s+/g, "").toLowerCase(),
+        to: rule.to,
+        length: heard.replace(/\s+/g, "").length,
+        ruleIndex
+      });
     }
-  }
+  });
   if (entries.length === 0) return (text) => text;
   entries.sort((a, b) => b.length - a.length);
   const targets = /* @__PURE__ */ new Map();
-  for (const e of entries) if (!targets.has(e.key)) targets.set(e.key, e.to);
-  const regex = new RegExp(entries.map((e) => `(${e.pattern})`).join("|"), "giu");
-  return (text) => {
+  for (const e of entries) if (!targets.has(e.key)) targets.set(e.key, { to: e.to, ruleIndex: e.ruleIndex });
+  const regex = new RegExp(entries.map((e) => `(?:${e.pattern})`).join("|"), "giu");
+  return (text, countHit = true) => {
     if (!text) return text;
-    return text.replace(regex, (match) => targets.get(match.replace(/\s+/g, "").toLowerCase()) ?? match);
+    return text.replace(regex, (match) => {
+      const hit = targets.get(match.replace(/\s+/g, "").toLowerCase());
+      if (!hit) return match;
+      if (onHit && countHit) onHit(hit.ruleIndex);
+      return hit.to;
+    });
   };
 }
 
@@ -1340,14 +1586,27 @@ var STRIP_RE = new RegExp(EMOTION_TAG_PATTERN, "gi");
 function stripEmotionTags(raw) {
   return raw.replace(STRIP_RE, " ");
 }
+var MAX_BREAK_MS = 5e3;
+var MAX_TOTAL_BREAK_MS = 1e4;
 function parseEmotionTags(raw) {
   const out = [];
   let buf = "";
   let whisper = false;
   let pendingBreakMs = 0;
+  let totalBreakMs = 0;
+  let sawInlineTag = false;
+  const appendText = (chunk) => {
+    if (chunk.length === 0) return;
+    if (sawInlineTag && /[A-Za-z0-9]$/.test(buf) && /^[A-Za-z0-9]/.test(chunk)) {
+      buf += " ";
+    }
+    sawInlineTag = false;
+    buf += chunk;
+  };
   const flush = () => {
     const t = buf.trim();
     buf = "";
+    sawInlineTag = false;
     if (t.length === 0) return;
     const seg = { text: t, whisper };
     out.push(seg);
@@ -1355,12 +1614,19 @@ function parseEmotionTags(raw) {
   let lastEnd = 0;
   for (const m of raw.matchAll(TAG_RE)) {
     const idx = m.index ?? 0;
-    buf += raw.slice(lastEnd, idx);
+    appendText(raw.slice(lastEnd, idx));
     lastEnd = idx + m[0].length;
     const tag = (m[1] ?? "").toLowerCase().trim();
     if (tag.startsWith("break")) {
-      const ms = Number(m.groups?.ms ?? 0);
-      if (!Number.isFinite(ms) || ms <= 0) continue;
+      const rawMs = Number(m.groups?.ms ?? 0);
+      if (!Number.isFinite(rawMs) || rawMs <= 0) continue;
+      const remaining = Math.max(0, MAX_TOTAL_BREAK_MS - totalBreakMs);
+      const ms = Math.min(rawMs, MAX_BREAK_MS, remaining);
+      if (ms <= 0) {
+        if (buf.trim().length > 0) flush();
+        continue;
+      }
+      totalBreakMs += ms;
       if (buf.trim().length > 0) {
         flush();
       }
@@ -1378,9 +1644,10 @@ function parseEmotionTags(raw) {
       flush();
       whisper = false;
     } else {
+      sawInlineTag = true;
     }
   }
-  buf += raw.slice(lastEnd);
+  appendText(raw.slice(lastEnd));
   flush();
   if (pendingBreakMs > 0) {
     const last = out[out.length - 1];
@@ -1421,9 +1688,29 @@ function isEmptyAudio(buf) {
 var EdgeTtsEngine = class {
   voice;
   rate;
-  constructor(voice = "zh-CN-XiaoxiaoNeural", rate) {
+  /** 在途连接→每调用独立中止态：并发试听与朗读不互相清零 aborted，interrupt/close 即时生效（I9）。 */
+  active = /* @__PURE__ */ new Map();
+  /** 便于单测注入打桩（默认真实 msedge-tts）。 */
+  createTts;
+  constructor(voice = "zh-CN-XiaoxiaoNeural", rate, createTts) {
     this.voice = voice;
     this.rate = rate;
+    this.createTts = createTts ?? (() => new MsEdgeTTS());
+  }
+  /**
+   * 立刻中止在途合成：关闭底层连接并置位每调用中止标志 → audioStream 结束 → synthesize 必以错误返回。
+   * 此前该引擎没有 interrupt，cancel 只能等库超时（连接 10s / 合成无活动 60s），
+   * 「停止朗读」后最长 60s 仍在合成。
+   */
+  interrupt() {
+    for (const [t, state] of this.active) {
+      state.aborted = true;
+      try {
+        void t.close();
+      } catch {
+      }
+    }
+    this.active.clear();
   }
   mime = "audio/mpeg";
   updateVoice(voice, rate) {
@@ -1433,20 +1720,28 @@ var EdgeTtsEngine = class {
   async synthesize(text, options = {}) {
     const spoken = escapeXmlText(stripEmotionTags(text));
     if (spoken.trim() === "") return Buffer.alloc(0);
-    const tts = new MsEdgeTTS();
+    const tts = this.createTts();
+    const state = { aborted: false };
+    this.active.set(tts, state);
     try {
       await tts.setMetadata(
         options.voice ?? this.voice,
         OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3,
         TTS_METADATA
       );
+      if (state.aborted) throw new Error("tts interrupted");
       const { audioStream } = tts.toStream(spoken, prosodyFromRate(options.rate ?? this.rate));
       const chunks = [];
-      for await (const chunk of audioStream) chunks.push(chunk);
+      for await (const chunk of audioStream) {
+        if (state.aborted) throw new Error("tts interrupted");
+        chunks.push(chunk);
+      }
+      if (state.aborted) throw new Error("tts interrupted");
       const buf = Buffer.concat(chunks);
       if (!isValidMp3(buf)) throw new Error("empty or invalid audio");
       return buf;
     } finally {
+      this.active.delete(tts);
       try {
         await tts.close();
       } catch {
@@ -1454,6 +1749,7 @@ var EdgeTtsEngine = class {
     }
   }
   async close() {
+    this.interrupt();
   }
 };
 var edgeVoicesCache = null;
@@ -1521,12 +1817,11 @@ var TtsQueue = class {
   engine;
   /** TTS 全体不可达通知（每会话去重，成功后复位）。 */
   onError;
-  /** 单句合成重试耗尽被跳过通知（每句一次；此前是静默丢句——真机「回复偶尔不朗读」根因之一）。 */
+  /** 单句合成重试耗尽被跳过通知；onRetry 为单句重试进度通知，synthBudgetMs 为单句重试总预算。 */
   onSkip;
-  /** 某会话队列跑空（无在途、无积压）：「说完就关」据此判定朗读真正结束——客户端只能看到
-   *  句间的播放空档，分不清「后面还有句子在合成」与「已全部读完」。
-   *
-   *  R15（Issue #15 Important-2）：本回调的口径取决于 awaitTurnEnd，见下方 openTurns。 */
+  onRetry;
+  synthBudgetMs;
+  /** 某会话队列跑空（无在途、无积压）：「说完就关」据此判定朗读真正结束；口径见 openTurns。 */
   onIdle;
   /**
    * R15（Issue #15 Important-2）：回合闸门——「队列排空」≠「回合结束」。
@@ -1573,21 +1868,33 @@ var TtsQueue = class {
    * 前三处：asr-host senseP、listEdgeVoices、warmupSense；第四处 backoffTimers）。
    */
   retryTimers = /* @__PURE__ */ new Set();
-  /** R13：可取消的重试 sleep——句柄入集供 close() 取消；落定即自摘。 */
+  clearBackoff(q) {
+    if (q.backoffTimer !== void 0) {
+      clearTimeout(q.backoffTimer);
+      this.backoffTimers.delete(q.backoffTimer);
+      q.backoffTimer = void 0;
+    }
+  }
+  /** R13 + I8：可取消的重试 sleep——句柄入集供 close() 取消并立刻 resolve，防止 pump 永久挂死。 */
   retrySleep(ms) {
     if (this.closed) return Promise.resolve();
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.retryTimers.delete(timer);
-        resolve();
-      }, ms);
-      this.retryTimers.add(timer);
+      const entry = {
+        timer: setTimeout(() => {
+          this.retryTimers.delete(entry);
+          resolve();
+        }, ms),
+        resolve
+      };
+      this.retryTimers.add(entry);
     });
   }
   constructor(options) {
     this.engine = options.engine;
     this.onError = options.onError;
     this.onSkip = options.onSkip;
+    this.onRetry = options.onRetry;
+    this.synthBudgetMs = options.synthBudgetMs ?? 6e3;
     this.onIdle = options.onIdle;
     this.awaitTurnEnd = options.awaitTurnEnd === true;
   }
@@ -1603,8 +1910,8 @@ var TtsQueue = class {
   noteTurnEnd(sessionId) {
     if (this.closed) return;
     this.openTurns.delete(sessionId);
-    if (!this.awaitTurnEnd) return;
-    if (!this.isIdle(sessionId)) return;
+    if (this.isIdle(sessionId)) this.queues.delete(sessionId);
+    if (!this.awaitTurnEnd || !this.isIdle(sessionId)) return;
     try {
       this.onIdle?.(sessionId);
     } catch {
@@ -1641,6 +1948,7 @@ var TtsQueue = class {
    */
   abandonTurn(sessionId) {
     this.openTurns.delete(sessionId);
+    if (this.isIdle(sessionId)) this.queues.delete(sessionId);
   }
   /** 当前引擎音频 MIME（/preview 的 Content-Type 也用它）。 */
   get mime() {
@@ -1667,8 +1975,12 @@ var TtsQueue = class {
     const old = this.engine;
     this.engine = engine;
     for (const q of this.queues.values()) {
+      this.clearBackoff(q);
       q.epoch++;
       q.pending.length = 0;
+      q.failStreak = 0;
+      q.errorNotified = false;
+      q.backoff = 0;
     }
     void old.close().catch(() => {
     });
@@ -1695,6 +2007,17 @@ var TtsQueue = class {
   async synthesize(text, options = {}) {
     if (this.closed) throw new Error("tts queue closed");
     return this.engine.synthesize(text, options);
+  }
+  /**
+   * 一次性合成并返回 MIME（试听/自测用）。
+   * A2 审计 Important：不能 await 之后再读 engine.mime——引擎级「最近一次」状态在
+   * 试听与朗读并发时会串味，客户端按错容器解码，整句无声。
+   */
+  async synthesizeWithMime(text, options = {}) {
+    if (this.closed) throw new Error("tts queue closed");
+    const withMime = this.engine.synthesizeWithMime;
+    if (withMime) return withMime.call(this.engine, text, options);
+    return { buf: await this.engine.synthesize(text, options), mime: this.engine.mime };
   }
   subscribe(listener) {
     this.listeners.add(listener);
@@ -1736,16 +2059,20 @@ var TtsQueue = class {
    */
   cancel(sessionId) {
     const q = this.queues.get(sessionId);
+    const wasBusy = Boolean(q?.busy);
     if (q) {
+      this.clearBackoff(q);
       q.epoch++;
       q.pending.length = 0;
     }
-    if (![...this.queues].some(([sid, other]) => sid !== sessionId && other.busy)) this.engine.interrupt?.();
+    const othersBusy = [...this.queues].some(([sid, other]) => sid !== sessionId && other.busy);
+    if (wasBusy && !othersBusy) this.engine.interrupt?.();
   }
   /** 会话退出/被抢占时彻底清理其队列（防止 Map 长期累积）。 */
   prune(sessionId) {
     const q = this.queues.get(sessionId);
     if (q) {
+      this.clearBackoff(q);
       q.epoch++;
       q.pending.length = 0;
     }
@@ -1753,24 +2080,41 @@ var TtsQueue = class {
     this.queues.delete(sessionId);
   }
   async pump(sessionId, q) {
-    if (this.closed || q.busy) return;
+    if (this.closed || q.busy || q.backoffTimer !== void 0) return;
     q.busy = true;
     try {
       while (q.pending.length > 0) {
         if (this.closed) break;
         const item = q.pending.shift();
         const MAX_SYNTH_ATTEMPTS = 3;
+        const startedAt = Date.now();
         let buf = null;
+        let frameMime = null;
         for (let attempt = 0; attempt < MAX_SYNTH_ATTEMPTS; attempt++) {
           if (item.epoch !== q.epoch) break;
           if (this.closed) break;
           try {
-            buf = await this.engine.synthesize(item.text);
+            const withMime = this.engine.synthesizeWithMime;
+            if (withMime) {
+              const r = await withMime.call(this.engine, item.text);
+              buf = r.buf;
+              frameMime = r.mime;
+            } else {
+              buf = await this.engine.synthesize(item.text);
+            }
             break;
           } catch (e) {
-            console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${String(e)}`);
-            if (attempt < MAX_SYNTH_ATTEMPTS - 1) {
-              await this.retrySleep(400 * (attempt + 1));
+            console.warn(`[dsh-voice-mode] synthesis failed (${attempt + 1}/${MAX_SYNTH_ATTEMPTS}): ${redactSecrets(e)}`);
+            if (item.epoch !== q.epoch || this.closed) break;
+            const sleepMs = 400 * (attempt + 1);
+            if (attempt < MAX_SYNTH_ATTEMPTS - 1 && Date.now() - startedAt + sleepMs < this.synthBudgetMs) {
+              try {
+                this.onRetry?.(sessionId, attempt + 2, MAX_SYNTH_ATTEMPTS);
+              } catch {
+              }
+              await this.retrySleep(sleepMs);
+            } else {
+              break;
             }
           }
         }
@@ -1779,6 +2123,10 @@ var TtsQueue = class {
         if (buf === null) {
           q.failStreak++;
           this.onSkip?.(sessionId, item.text, q.failStreak);
+          if (q.failStreak >= 2) {
+            q.errorNotified = true;
+            break;
+          }
           continue;
         }
         if (isEmptyAudio(buf)) continue;
@@ -1786,7 +2134,7 @@ var TtsQueue = class {
         q.failStreak = 0;
         q.backoff = 0;
         const sentenceId = this.seq++;
-        const mime = this.engine.mime;
+        const mime = frameMime ?? this.engine.mime;
         const dataFrame = {
           sessionId,
           sentenceId,
@@ -1818,7 +2166,7 @@ var TtsQueue = class {
         }
       }
     } catch (e) {
-      console.warn(`[dsh-voice-mode] TTS unavailable: sid=${sessionId} err=${String(e)}`);
+      console.warn(`[dsh-voice-mode] TTS unavailable: sid=${sessionId} err=${redactSecrets(e)}`);
       if (!q.errorNotified) {
         q.errorNotified = true;
         this.onError?.(sessionId);
@@ -1834,15 +2182,17 @@ var TtsQueue = class {
           } catch {
           }
         }
-        this.queues.delete(sessionId);
+        if (!this.openTurns.has(sessionId)) this.queues.delete(sessionId);
       } else {
-        const delay = q.errorNotified ? q.backoff : 0;
+        const delay = q.errorNotified ? Math.max(1e3, q.backoff) : 0;
         q.backoff = Math.min(8e3, delay + 1e3);
         if (delay > 0) {
           const timer = setTimeout(() => {
             this.backoffTimers.delete(timer);
+            if (q.backoffTimer === timer) q.backoffTimer = void 0;
             void this.pump(sessionId, q);
           }, delay);
+          q.backoffTimer = timer;
           this.backoffTimers.add(timer);
         } else void this.pump(sessionId, q);
       }
@@ -1851,9 +2201,13 @@ var TtsQueue = class {
   async close() {
     this.closed = true;
     this.openTurns.clear();
+    for (const q of this.queues.values()) q.backoffTimer = void 0;
     for (const timer of this.backoffTimers) clearTimeout(timer);
     this.backoffTimers.clear();
-    for (const timer of this.retryTimers) clearTimeout(timer);
+    for (const entry of this.retryTimers) {
+      clearTimeout(entry.timer);
+      entry.resolve();
+    }
     this.retryTimers.clear();
     await this.engine.close();
   }
@@ -1907,7 +2261,7 @@ function resolveNativeRuntime(opts = {}) {
     }
     result = execPath ? { execPath, env: childEnv } : null;
   }
-  if (useCache) cached = result;
+  if (useCache && result !== null) cached = result;
   return result;
 }
 
@@ -2166,7 +2520,9 @@ function createSherpaLocalEngine(options) {
   let closed = false;
   const dlAbort = new AbortController();
   let starting = false;
-  const respawnChild = async () => {
+  let initInterrupted = false;
+  const respawnChild = async (userInterrupt = false) => {
+    if (starting && userInterrupt) initInterrupted = true;
     if (child) {
       child.kill();
       child = null;
@@ -2207,11 +2563,19 @@ function createSherpaLocalEngine(options) {
       p.reject(e);
     }
   };
+  let initFailUntil = 0;
+  let initFailError = null;
+  const initCooldownMs = options.initFailureCooldownMs ?? 6e4;
   const ensureReady = () => {
     if (ready && child) return ready;
+    if (ready && !child && !starting) ready = null;
+    if (Date.now() < initFailUntil) {
+      return Promise.reject(initFailError ?? new Error("local TTS engine is in failure cooldown"));
+    }
     if (!ready) {
       ready = (async () => {
         starting = true;
+        initInterrupted = false;
         engineLoading = true;
         engineError = void 0;
         engineErrorCode = void 0;
@@ -2314,6 +2678,10 @@ function createSherpaLocalEngine(options) {
         },
         (e) => {
           ready = null;
+          if (!initInterrupted && !closed) {
+            initFailUntil = Date.now() + initCooldownMs;
+            initFailError = e instanceof Error ? e : new Error(String(e));
+          }
           throw e;
         }
       );
@@ -2358,7 +2726,11 @@ function createSherpaLocalEngine(options) {
       };
     },
     // 设置面板「下载」按钮：无文本也触发模型下载 + 子进程初始化（与首次合成路径一致）。
-    prepare: () => ensureReady(),
+    prepare: () => {
+      initFailUntil = 0;
+      initFailError = null;
+      return ensureReady();
+    },
     async synthesize(text, opts = {}) {
       if (closed) throw new Error("local TTS engine closed");
       await ensureReady();
@@ -2427,7 +2799,7 @@ function createSherpaLocalEngine(options) {
       ready = null;
     },
     interrupt() {
-      void respawnChild();
+      void respawnChild(true);
     }
   };
 }
@@ -2445,6 +2817,8 @@ function isLoopbackRequest(req) {
   return LOOPBACK_ADDRESSES.has(addr);
 }
 function sameOriginRequest(req) {
+  const sfs = req.headers["sec-fetch-site"];
+  if (typeof sfs === "string" && sfs.toLowerCase() === "cross-site") return false;
   const origin = req.headers.origin;
   if (!origin) return true;
   try {
@@ -2459,6 +2833,8 @@ function sameOriginRequest(req) {
 }
 var RateLimiter = class {
   buckets = /* @__PURE__ */ new Map();
+  /** 每个 key 的窗口（回收到期键时按桶自身窗口判断；修复短窗请求误清长窗桶，2026-11-20 复核）。 */
+  windows = /* @__PURE__ */ new Map();
   maxKeys;
   constructor(maxKeys = 1e4) {
     this.maxKeys = maxKeys;
@@ -2469,21 +2845,27 @@ var RateLimiter = class {
     const cutoff = now - windowMs;
     let bucket = this.buckets.get(key);
     if (!bucket) {
+      if (this.buckets.size >= this.maxKeys) this.prune(now);
       if (this.buckets.size >= this.maxKeys) return false;
       bucket = [];
       this.buckets.set(key, bucket);
     }
+    const prevWindow = this.windows.get(key) ?? 0;
+    if (windowMs > prevWindow) this.windows.set(key, windowMs);
     while (bucket.length > 0 && bucket[0] <= cutoff) bucket.shift();
     if (bucket.length >= maxHits) return false;
     bucket.push(now);
     return true;
   }
-  /** 定期清理（由调用方在低频路径触发即可）。 */
-  prune(now = Date.now(), windowMs) {
-    const cutoff = now - windowMs;
+  /** 定期清理（由调用方在低频路径触发即可）：每个桶按自身窗口判断是否全过期。 */
+  prune(now = Date.now(), fallbackWindowMs = 6e4) {
     for (const [key, bucket] of this.buckets) {
+      const cutoff = now - (this.windows.get(key) ?? fallbackWindowMs);
       while (bucket.length > 0 && bucket[0] <= cutoff) bucket.shift();
-      if (bucket.length === 0) this.buckets.delete(key);
+      if (bucket.length === 0) {
+        this.buckets.delete(key);
+        this.windows.delete(key);
+      }
     }
   }
 };
@@ -2494,6 +2876,7 @@ var en = {
   ttsNoticeFail: "Read-aloud connection failed: retrying\u2026",
   ttsSkipNotice: "One sentence failed to read and was skipped (resend the message to retry)",
   ttsUnavailableNotice: "Read-aloud keeps failing: cloud TTS is unavailable. Try again later, or switch the read-aloud engine to local VITS / Kokoro in settings",
+  ttsProbeFail: "Read-aloud self-check failed: the cloud endpoint may have changed, or the network is down. Switch to local/another engine in settings, then run Self-test",
   enterFail: "Failed to enter voice mode",
   disabled: "Voice mode disabled (plugin enabled=false)",
   sendFailKept: "Send failed; text kept in draft",
@@ -2513,6 +2896,7 @@ var en = {
   voiceBtn: "Voice",
   ariaActive: "Voice mode active",
   ariaEnter: "Enter voice mode",
+  ariaPendingCancelHint: "activate again to cancel",
   titleHold: "Voice mode \xB7 hold to talk, release to send; tap to exit; Esc/blur cancels; Ctrl+Shift+V exits",
   titleToggle: "Voice mode \xB7 click to exit (Ctrl+Shift+V) \xB7 hold Ctrl while speaking to send now",
   titleEnter: "Enter voice mode (Ctrl+Shift+V)",
@@ -2525,6 +2909,10 @@ var en = {
   sayWake: 'Say "{wake}" to start',
   reading: "Reading aloud\u2026",
   recognitionFail: "Recognition failed, try again",
+  holdTrimmedNotice: "Hold-to-talk exceeded about 48 s: only the last part was recognised (earlier audio was dropped)",
+  utteranceTooLong: "That utterance was too long (over the per-utterance limit, about a minute): skipped \u2014 please speak it again in shorter parts",
+  interruptedNotice: "Playback interrupted \u2014 go ahead",
+  senseDegradedNotice: "Final-pass model failed to load; temporarily using the backup recogniser (accuracy may drop slightly)",
   partialFail: "Live captions temporarily unavailable (recognition channel error, retrying)",
   detectFail: "Break-in detection temporarily unavailable (detect channel error, retrying)",
   sseReconnect: "State sync disconnected, reconnecting\u2026",
@@ -2537,6 +2925,7 @@ var en = {
   startFail: "Voice mode failed to start: {err}",
   holdDots: "Hold to talk\u2026",
   exit: "Exit",
+  micMoreMenu: "Voice quick settings",
   configUnavailableNote: " (settings document not ready; retrying \u2014 the panel will appear when it is).",
   previewNameFirst: "Enter a voice ShortName first",
   previewDisabled: "Voice mode disabled (plugin enabled=false); preview unavailable",
@@ -2551,23 +2940,123 @@ var en = {
   previewBtnTitle: "Preview voice (current rate)",
   synthesizing: "Synthesizing\u2026",
   preview: "Preview",
+  // E1 online presets.
+  openaiPresetLabel: "Online preset",
+  descOpenaiPreset: "Pick a preset to auto-fill base URL and model (usually just enter the API key); choose Custom to enter your own URL/model, or Follow config file to use profile openaiTts values. Click Test read-aloud to test inline",
+  presetCustom: "Follow the config file",
+  presetCustomCustom: "Custom (fill below)",
+  presetCustomHint: "With this selected, configure any OpenAI-compatible service in the Endpoint / Model / API key fields below",
+  openaiAdvancedShow: "Custom endpoint / fallback API key",
+  openaiAdvancedHide: "Hide advanced overrides",
+  voiceServerDefaultOption: "Server default voice",
+  presetCosy: "SiliconFlow \xB7 CosyVoice2",
+  presetFish: "SiliconFlow \xB7 Fish Speech 1.5",
+  presetCosyNote: "About $7.15 per million UTF-8 bytes, ~150ms; text goes to api.siliconflow.cn",
+  presetFishNote: "About $15 per million UTF-8 bytes (billed per UTF-8 byte); text goes to api.siliconflow.cn",
+  presetOpenrouter: "OpenRouter \xB7 OpenAI TTS",
+  presetOpenrouterNote: "Billed through the selected model; text goes to openrouter.ai; OpenAI terms require disclosing that the voice is AI-generated",
+  presetOpenaiOfficial: "OpenAI official \xB7 gpt-4o-mini-tts",
+  presetOpenaiOfficialNote: "Billed at OpenAI list prices; text goes to api.openai.com; OpenAI terms require disclosing that the voice is AI-generated",
+  presetGroq: "Groq \xB7 PlayAI TTS",
+  presetGroqNote: "Billed at Groq prices; text goes to api.groq.com; English voices such as Fritz-PlayAI",
+  presetSelfKokoro: "Self-hosted \xB7 Kokoro-FastAPI",
+  presetSelfKokoroNote: "Local server (default 127.0.0.1:8880); no per-call fee; text stays on your network. You must deploy it first",
+  presetSelfVllm: "Self-hosted \xB7 vLLM-Omni",
+  presetSelfVllmNote: "Local server (default 127.0.0.1:8000); no per-call fee; text stays on your network. You must deploy it first",
+  presetKeyNote: "After picking one, fill the API Key field below (the profile openaiTts.apiKey/apiKeys still work). The key stays on the host and is never sent back to the browser",
+  presetKeySaved: "Saved (panel)",
+  presetKeyFromConfig: "Configured (profile)",
+  presetKeyMissing: "No key",
+  presetDataMissing: "Preset data not loaded (host /presets unavailable): restart the host or reload the page",
+  presetReload: "Reload presets",
+  // 2026-11-19: online TTS is configurable from the settings card (URL/model/key), no profile YAML edit needed.
+  openaiBaseUrlLabel: "Endpoint (base URL)",
+  descOpenaiBaseUrl: "OpenAI-compatible endpoint, usually ending in /v1 (the plugin appends /audio/speech). Empty = use the preset or the profile openaiTts.baseUrl",
+  openaiModelLabel: "Model",
+  descOpenaiModel: "TTS model on that endpoint, e.g. gpt-4o-mini-tts or FunAudioLLM/CosyVoice2-0.5B. Empty = use the preset or the profile",
+  openaiApiKeyLabel: "API key",
+  descOpenaiApiKey: "The key stays on the host (0600 settings file); it is never sent back to the browser and never logged. Empty = use the profile openaiTts.apiKeys[preset]/apiKey; a value here overrides it",
+  openaiApiKeysLabel: "Per-preset keys (follow the preset)",
+  descOpenaiApiKeys: "One key per online preset: whichever preset is selected uses its own key. Empty entries fall back to the global key above, then the profile. Host-side only",
+  mimoApiKeyLabel: "MiMo API key",
+  descMimoApiKey: "Xiaomi MiMo key (sent as the api-key header, not Bearer). Host-side only; empty = use the profile mimoTts.apiKey",
+  secretSaved: "Saved",
+  secretSaveFailed: "Save failed: the host did not accept it (check for policy restrictions)",
+  secretKeep: "Saved (leave empty to keep)",
+  secretClear: "Clear",
+  secretClearing: "Clearing\u2026",
+  secretHintBrowser: "Typed values go straight to the local host and are stored with 0600; never written to chat or logs",
+  secretPlaceholderEmpty: "Paste the key (after saving only Saved is shown)",
+  secretCleared: "Cleared",
+  secretClearedConfigRemains: "Removed the key from settings; the config file (openaiTts/mimoTts) still has one and will keep using it",
+  // P1-4 dictation-only preset.
+  // P1-3 correction wordlist.
+  replTitle: "Correction wordlist",
+  replFromPh: "Misheard spellings, comma-separated",
+  replToPh: "Wanted spelling",
+  replAdd: "Add",
+  replDelete: "Del",
+  replEmpty: "No rules yet",
+  replHits: "hits",
+  replExport: "Export",
+  replImport: "Import",
+  replInvalid: "Invalid rule: non-empty from and to, comma-separate multiple spellings",
+  replBadFile: "File is not a valid wordlist JSON (array [{from[], to}], max 200 rules)",
+  replUnreadable: "The stored wordlist is unreadable or over the limit; editing is disabled to avoid overwriting it. Export a backup first, then import a new wordlist",
+  replSaveFail: "Save failed (nothing was written); rules unchanged. Check whether the plugin is disabled or the settings store is read-only",
+  replTooLarge: "Wordlist is too large (over ~12KB): reduce the number of rules or shorten the spellings",
+  // P1-1 self-test: separate synthesis / playback verdicts.
+  selftestTitle: "Test read-aloud",
+  selftestHint: "Synthesize and play once: it speaks on success, and points to the engine, key or network on failure",
+  selftestRun: "Test read-aloud",
+  selftestRunning: "Testing\u2026",
+  selftestSynth: "Synthesis",
+  selftestPlay: "Playback",
+  selftestOk: "OK",
+  selftestFail: "Failed",
+  selftestCheck: "Self-test failed: check network, engine status, or voice name",
+  selftestTimeout: "Synthesis timed out: model still loading, retry self-test in a few seconds",
+  selftestAutoplay: "Browser blocked autoplay \u2014 run self-test again",
+  selftestRateLimited: "Preview requests are rate limited (20/min shared with Preview): wait a few seconds and run self-test again",
+  selftestDisabled: "Voice mode is disabled (plugin enabled=false), so the self-test cannot run",
+  switchToLocalTts: "Switch to local Kokoro (first use downloads ~109MB, then works offline)",
   custom: "Custom",
   voicePrev: "Previous voice",
   voiceNext: "Next voice",
   descVoice: "Edge cloud voices (auto-loads all Microsoft voices; common Chinese voices pinned on top; \u25C0\u25B6 or dropdown; custom ShortName allowed)",
   descVoiceLocal: "Local voice (vits, all 5 speakers listed; dropdown or \u25C0\u25B6; no custom needed)",
-  descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft) / OpenAI-compatible server (self-hosted or hosted, text sent to the configured URL)",
+  descTtsEngine: "Local VITS (Chinese only) / Local Kokoro (Chinese + English) / Edge cloud (most natural, text sent to Microsoft) / OpenAI-compatible server (self-hosted or hosted, text sent to the configured URL) / Xiaomi MiMo (TTS series free for a limited time, text sent to Xiaomi)",
   engineVits: "Local VITS",
   engineKokoro: "Local Kokoro",
   engineEdge: "Edge cloud",
   engineOpenai: "OpenAI-compatible",
-  descVoiceOpenai: "Voice name on the server (empty = openaiTts.voice from the config)",
+  engineMimo: "Xiaomi MiMo",
+  descVoiceOpenai: "Pick the online preset above first, then pick a voice from that service list below; for a custom endpoint, empty means the server default voice. A typed value overrides the list",
+  descVoiceMimo: "MiMo preset voice id (empty = mimoTts.voice from the config, default mimo_default). Presets: mimo_default, Mia, Chloe, Milo, Dean, plus four Chinese-named voices (Bingtang/Moli/Suda/Baihua) \u2014 enter them by their native Chinese names as listed on the MiMo docs",
   engineRemoteDown: "server unavailable",
+  errMimoKeyMissing: "MiMo API key is not configured: enter it in this settings card or set mimoTts.apiKey in the profile",
+  engineUnavailableShort: "Unavailable",
+  errOpenaiConfigMissing: "Endpoint is not configured yet: pick a provider under Online preset (usually only the key is needed), or choose Custom and fill the endpoint and model",
+  engineMissingKey: "API key missing",
+  rowInfo: "Details",
+  voiceDefaultOption: "Default ({name})",
+  voiceCurrentOption: "Current ({name})",
+  segInput: "Voice input",
+  segReadAloud: "Read aloud",
+  segDisplay: "Display & interaction",
+  segAdvanced: "Advanced",
+  segListLabel: "Settings sections",
+  segTuning: "Tuning & troubleshooting",
+  segReplacements: "Corrections",
+  errApiKeyMissingHint: "Read-aloud requires an API key: fill the key above and click Test read-aloud, or switch to a local engine",
+  ttsKeyMissingNotice: "Online read-aloud has no API key: recognition and captions work, but speech will fail. Fill the key under Settings \u2192 Voice mode, or switch to a local engine (Edge / local VITS / Kokoro)",
+  ttsProbeAuthFail: "The service rejected read-aloud (usually a missing or invalid API key): fill or update the key under Settings \u2192 Voice mode, or switch to a local engine",
+  previewAuth: "The server rejected authentication: API key missing or invalid",
   errRemoteTts: "The TTS server is unreachable, failing or too slow; the local fallback reads aloud meanwhile if one is configured",
   descVoiceKokoro: "Kokoro zh-en voices (103; \u25C0\u25B6 to cycle; 48-51 named Chinese, others numbered with measured gender; mixed zh-en supported)",
   descRate: "Speech rate (0.5 slow \u2013 2.0 fast, 1.1 default; more compact replies)",
   descInterrupt: "Interrupt sensitivity (0 high \u22480.3 s confirm / 1 medium \u22480.2 s / 2 low \u22480.1 s, most responsive); lower = higher barrier = harder to interrupt",
-  descBargeIn: "Barge-in mode (detect: auto-probe native echo cancellation, fall back to hold-to-talk when inactive \u2014 default; auto: force interrupt by speaking \u2014 headphones/quiet; manual: for loudspeaker, no echo-triggered self-interrupt \u2014 hold mic/Ctrl to interrupt). Note: in manual mode (including detect falling back to manual on machines without native echo cancellation) audio outside a press is not recognized \u2014 in toggle mode you can long-press to speak only while the agent is playing; when idle there is no voice input, so use hold mode or switch to auto/detect",
+  descBargeIn: "Barge-in mode (detect: auto-probe native echo cancellation and switch playback to hold-to-interrupt when inactive \u2014 default; auto: force interrupt by speaking \u2014 headphones/quiet; manual: recommended for speakers \u2014 speak directly or say the wake word when idle, and hold mic/Ctrl to interrupt while the agent is playing so speaker echo never self-interrupts)",
   bargeInDetect: "Auto-detect",
   bargeInAuto: "Auto",
   bargeInManual: "Manual",
@@ -2577,7 +3066,7 @@ var en = {
   aecOff: "Native AEC off",
   aecOffHint: "Native echo cancellation is not active (speaker echo may self-interrupt); use headphones or Manual barge-in",
   // 批 7O（ADR-0006）：detect 模式第一级探测降级提示（英文）。
-  bargeInDetectFallback: "Native echo cancellation is off \u2014 switched to hold-to-talk barge-in",
+  bargeInDetectFallback: "Native echo cancellation is off: speak directly when idle, hold to interrupt playback",
   // R1 收尾（fix-client 直连 tk() 调用）：连续 3 次回声拒断的解释出口 + 快捷键非法停用提示。
   echoRejectHint: "Strong echo detected \u2014 barge-in is limited by echo protection. Use headphones or switch to manual barge-in",
   shortcutInvalid: "Invalid shortcut, disabled. Fix it in settings (e.g. Ctrl+Shift+V); leave empty to use the mic button only",
@@ -2623,9 +3112,21 @@ var en = {
   captionWidth70: "Medium",
   captionWidth90: "Wide",
   skipReading: "Skip this sentence",
+  captionHistoryOpen: "History ({count})",
+  captionHistoryHide: "Collapse",
+  captionDismiss: "Close captions",
+  tabSwitchFlushedNotice: "Speech before tab switch was finalized into draft",
+  sessionSwitchFlushedNotice: "Speech from previous session saved; restores to draft on return",
+  ttsRetryingNotice: "Retrying read-aloud ({attempt}/{max})\u2026",
+  tabPreemptedNotice: "Voice mode was taken over by another tab",
+  firstUseToggle: "Speak directly \u2014 pauses commit and send; speak or hold the mic to interrupt replies",
+  firstUseHold: "Hold the mic button or Ctrl to speak, release to send, or slide up to cancel",
+  firstUseOnce: "Speak one request \u2014 it sends after a pause and exits once the reply finishes reading",
+  firstUseWake: 'Say the wake word "{wake}" to start speaking (or say it together with your request)',
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",
+  descAsrReplacements: 'User correction wordlist (JSON array [{from:["misheard"],to:"wanted"}], rewritten after transcription; add/remove and import/export in the settings card. The number after each rule is its hit count since the last apply)',
   descLlmCorrect: "Before sending, run one LLM pass over the whole transcribed text (typos/homophones/punctuation only, meaning preserved; requires a default model configured in the host \u2014 otherwise the original text is sent as-is). On = one extra correction round trip per message: usually under 1 second, at most ~10 seconds; at most 10 times per minute \u2014 when voice mode is off or the limit is hit, the original text is sent. Failed or abnormal output also falls back to the original text",
   descYieldMs: "How long (ms) to drop frames after a yield trigger (500-3000, default 1500; within the window the existing hardBreak takes over if the user really wants to speak; auto-resume after the window expires). Hold-to-talk mode only, during playback",
   descMode: "Interaction mode (toggle: continuous listen + auto-send / hold: press to talk / once: one utterance, then exit after the reply is read aloud)",
@@ -2642,9 +3143,9 @@ var en = {
   descShowCaptions: "Show a floating caption of the current sentence while reading aloud",
   showStatusBarLabel: "Status bar",
   descShowStatusBar: "Show the voice status bar above the composer (waveform, transcript, timer, notices, exit); when off, state shows only on the mic button",
-  descWakeWord: 'Wake word (default off; e.g. "Hey D"): recognition starts only after you say it, to avoid accidental triggers. You may say it together with your command ("Hey D, check the weather" \u2014 the wake word is stripped and never sent); it must be repeated after each utterance split or barge-in; toggle mode only (inactive in hold / manual barge-in \u2014 and equally inactive when the detect probe fails and falls back to manual, the default on machines without native echo cancellation such as Safari); saying it while the agent is reading does not trigger (barge-in stays VAD-based). Fault-tolerant matching (homophones / leading fillers); 3-4 characters recommended; not a dedicated KWS engine \u2014 noisy environments may delay or falsely trigger',
+  descWakeWord: 'Wake word (default off; e.g. "Hey D"): recognition starts only after you say it, to avoid accidental triggers. You may say it together with your command ("Hey D, check the weather" \u2014 the wake word is stripped and never sent); it must be repeated after each utterance split or barge-in; inactive in hold-to-talk mode (in manual barge-in or when detect falls back to manual, the wake word still works when idle while playback requires holding mic/Ctrl to interrupt). Fault-tolerant matching (homophones / leading fillers); 3-4 characters recommended; not a dedicated KWS engine \u2014 noisy environments may delay or falsely trigger',
   wakePlaceholder: "e.g. Hey D",
-  settingsCardDesc: "Engine / voice / rate / interrupt / barge-in / echo gate / silence / idle / model host / auto-send / read replies / status bar / caption overlay / auto-resume / mode / wake word / tool beep / ITN / caption font / caption width / yielding / yield window / barge-in salvage / LLM correction",
+  settingsCardDesc: "Local recognition plus sentence-by-sentence read-aloud; speak to interrupt. Four sections: voice input, read aloud, display & interaction, advanced. Changes apply instantly.",
   settingsEffectiveNote: "When settings apply, in four tiers: \u2460 immediately \u2014 engine / voice / rate / Kokoro model precision (immediate when cached, else next download) / spoken format (applies to later replies) / read replies / status bar / caption overlay / model mirror (next download attempt); \u2461 next recognition \u2014 finalization re-transcription (SenseVoice) / ITN; \u2462 next utterance \u2014 silence threshold (endpoint; the send wait stays a fixed 1.2s); \u2463 next time you enter voice mode \u2014 interrupt sensitivity / barge-in mode / echo gate / shortcut / auto-send / auto-resume / interaction mode / wake word / tool beep / caption font / caption width / backchannel yielding / yield window / barge-in salvage / LLM correction / idle timeout. Items that take effect next time you enter voice mode are listed at the top of this card with their current effective values.",
   effectivePending: "{count} change(s) will apply next time you enter voice mode: {items}",
   valueOn: "On",
@@ -2674,6 +3175,7 @@ var en = {
   modelsRetrying: "Retrying\u2026",
   modelsRetryHint: "Click to retry now after switching mirror or a failure",
   modelsHint: "Live download state; failures auto-backoff 60s. After switching the mirror, click Retry to take effect immediately; npm run prefetch pre-downloads.",
+  modelActionFailed: "Action did not take effect: the host rejected it (retry later or check host logs)",
   engineLoading: "loading\u2026",
   engineReady: "ready",
   engineError: "failed",
@@ -2684,7 +3186,7 @@ var en = {
   ttsDownloading: "Downloading\u2026",
   ttsDeleting: "Deleting\u2026",
   ttsDownloadHint: "Download this engine's local model; becomes ready immediately after",
-  dataFlowHint: "Data flow: ASR recognition (zipformer2+SenseVoice) is always local; TTS playback depends on engine (edge=Microsoft cloud, vits/kokoro=local)",
+  dataFlowHint: "Data flow: ASR recognition (zipformer2+SenseVoice) is always local; TTS playback depends on engine (edge=Microsoft cloud, openai/mimo=third-party cloud, vits/kokoro=local)",
   ttsDeleteHint: "Delete local models (frees space; auto re-downloads on next use)",
   kokoroModelInt8: "int8 (default)",
   kokoroModelFp32: "fp32 (better quality)",
@@ -2814,18 +3316,30 @@ async function correctText(ctx, text, lang) {
     const sel = ctx?.get?.("agentDefaultModel")?.currentSelection?.();
     if (!llm || typeof llm.stream !== "function") return text;
     if (!sel?.provider || !sel?.model) return text;
-    const stream = llm.stream({
-      provider: sel.provider,
-      model: sel.model,
-      system: correctionSystem(lang),
-      // host 侧自弃 10s（早于客户端 12s，审查 M3）：超时后流抛错→catch→回退原文，
-      // 客户端不必等自己的 AbortSignal.timeout 才拿到响应（省 token 与等待）。
-      signal: AbortSignal.timeout(1e4),
-      messages: [{ role: "user", content: [{ type: "text", text: trimmed }] }]
-    });
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(new Error("llm correction timeout")), 1e4);
+    const maxAllowed = Math.max(trimmed.length * 3, trimmed.length + 24);
     let out = "";
-    for await (const chunk of stream) {
-      if (chunk && chunk.type === "text-delta" && typeof chunk.text === "string") out += chunk.text;
+    try {
+      const stream = llm.stream({
+        provider: sel.provider,
+        model: sel.model,
+        system: correctionSystem(lang),
+        // host 侧自弃 10s（早于客户端 12s，审查 M3）：超时或输出失控超长均立即 abort。
+        signal: ac.signal,
+        messages: [{ role: "user", content: [{ type: "text", text: trimmed }] }]
+      });
+      for await (const chunk of stream) {
+        if (chunk && chunk.type === "text-delta" && typeof chunk.text === "string") {
+          out += chunk.text;
+          if (out.length > maxAllowed + 32) {
+            ac.abort(new Error("llm correction output exceeded max length"));
+            return text;
+          }
+        }
+      }
+    } finally {
+      clearTimeout(timer);
     }
     const corrected = out.trim();
     if (corrected.length > Math.max(trimmed.length * 3, trimmed.length + 24)) return text;
@@ -2843,13 +3357,114 @@ async function correctText(ctx, text, lang) {
       if (CORRECTION_PREAMBLE_RE.test(noFiller)) return text;
     }
     return corrected || text;
-  } catch {
+  } catch (e) {
+    console.warn(`[dsh-voice-mode] llm correction failed: ${redactSecrets(e)}`);
     return text;
   }
 }
 
+// src/audio-format.ts
+function sniffAudioMime(buf, fallback) {
+  if (buf.length >= 12 && buf.subarray(0, 4).toString("latin1") === "RIFF" && buf.subarray(8, 12).toString("latin1") === "WAVE") {
+    return "audio/wav";
+  }
+  if (buf.length >= 4 && buf.subarray(0, 4).toString("latin1") === "OggS") return "audio/ogg";
+  if (buf.length >= 4 && buf.subarray(0, 4).toString("latin1") === "fLaC") return "audio/flac";
+  if (buf.length >= 3 && buf[0] === 73 && buf[1] === 68 && buf[2] === 51) return "audio/mpeg";
+  if (buf.length >= 7 && buf[0] === 255 && (buf[1] & 246) === 240) return "audio/aac";
+  if (buf.length >= 3 && buf[0] === 255 && (buf[1] & 224) === 224 && (buf[1] & 24) !== 8 && ((buf[1] & 6) === 2 || (buf[1] & 6) === 4) && (buf[2] & 240) !== 240 && (buf[2] & 12) !== 12) {
+    return "audio/mpeg";
+  }
+  return fallback;
+}
+
+// src/online-tts.ts
+var CUSTOM_PRESET_ID = "custom";
+var trim = (v) => typeof v === "string" ? v.trim() : "";
+function lookupPreset(presetId) {
+  const id = trim(presetId);
+  if (!id || id === CUSTOM_PRESET_ID) return null;
+  return Object.hasOwn(OPENAI_PRESETS, id) ? OPENAI_PRESETS[id] : null;
+}
+function resolveOnlineTts(overrides, config) {
+  const preset = lookupPreset(overrides.presetId);
+  const settingBase = trim(overrides.baseUrl);
+  const presetBase = trim(preset?.baseUrl);
+  const configBase = trim(config.baseUrl);
+  const baseUrl = settingBase || presetBase || configBase;
+  const settingModel = trim(overrides.model);
+  const presetModel = trim(preset?.model);
+  const configModel = trim(config.model);
+  const model = settingModel || presetModel || configModel;
+  const settingVoice = trim(overrides.voice);
+  const presetVoice = trim(preset?.voice);
+  const configVoice = trim(config.voice);
+  const voice = settingVoice || presetVoice || configVoice;
+  const settingKey = trim(overrides.apiKey);
+  const presetId = trim(overrides.presetId);
+  const settingsPresetKey = preset !== null && presetId && Object.hasOwn(overrides.apiKeys ?? {}, presetId) && typeof overrides.apiKeys?.[presetId] === "string" ? trim(overrides.apiKeys?.[presetId]) : "";
+  const presetKey = presetId && presetId !== "__proto__" && presetId !== "constructor" && presetId !== "prototype" && config.apiKeys && Object.hasOwn(config.apiKeys, presetId) && typeof config.apiKeys[presetId] === "string" ? trim(config.apiKeys[presetId]) : "";
+  const configKey = trim(config.apiKey);
+  const apiKey = settingsPresetKey || settingKey || presetKey || configKey;
+  return {
+    presetId,
+    baseUrl,
+    model,
+    voice,
+    apiKey,
+    from: {
+      baseUrl: settingBase ? "settings" : presetBase ? "preset" : configBase ? "config" : "none",
+      model: settingModel ? "settings" : presetModel ? "preset" : configModel ? "config" : "none",
+      voice: settingVoice ? "settings" : presetVoice ? "preset" : configVoice ? "config" : "none",
+      apiKey: settingsPresetKey ? "settingsPreset" : settingKey ? "settings" : presetKey ? "presetKey" : configKey ? "configKey" : "none"
+    }
+  };
+}
+
 // src/tts-openai.ts
 var MIME = { mp3: "audio/mpeg", wav: "audio/wav" };
+var MAX_AUDIO_BYTES = 16 * 1024 * 1024;
+var MAX_ERROR_BYTES = 8 * 1024;
+async function readResponseBytes(res, maxBytes, truncate) {
+  const lenHeader = Number(res.headers.get("content-length") ?? 0);
+  if (!truncate && Number.isFinite(lenHeader) && lenHeader > maxBytes) {
+    await res.body?.cancel().catch(() => void 0);
+    throw new OpenAiTtsError("openai_too_large", `audio response exceeds ${maxBytes} bytes`);
+  }
+  if (res.body && typeof res.body.getReader === "function") {
+    const reader = res.body.getReader();
+    const chunks = [];
+    let total = 0;
+    try {
+      for (; ; ) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value || value.byteLength === 0) continue;
+        if (total + value.byteLength > maxBytes) {
+          if (truncate) {
+            const take = maxBytes - total;
+            if (take > 0) chunks.push(value.subarray(0, take));
+            await reader.cancel().catch(() => void 0);
+            break;
+          }
+          await reader.cancel().catch(() => void 0);
+          throw new OpenAiTtsError("openai_too_large", `audio response exceeds ${maxBytes} bytes`);
+        }
+        chunks.push(value);
+        total += value.byteLength;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    return Buffer.concat(chunks);
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > maxBytes) {
+    if (truncate) return buf.subarray(0, maxBytes);
+    throw new OpenAiTtsError("openai_too_large", `audio response exceeds ${maxBytes} bytes`);
+  }
+  return buf;
+}
 var OpenAiTtsError = class extends Error {
   code;
   constructor(code, message) {
@@ -2862,6 +3477,9 @@ function speechUrl(baseUrl) {
   const url = new URL(baseUrl.trim());
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new OpenAiTtsError("openai_bad_url", "baseUrl must be http(s)");
+  }
+  if (url.username || url.password) {
+    throw new OpenAiTtsError("openai_bad_url", "baseUrl must not include credentials");
   }
   const noSlash = url.pathname.replace(/\/+$/, "");
   const base = noSlash.endsWith("/audio/speech") ? noSlash.slice(0, -"/audio/speech".length) : noSlash;
@@ -2880,6 +3498,7 @@ var OpenAiTtsEngine = class {
   now;
   fallbackEngine = null;
   inflight = /* @__PURE__ */ new Set();
+  closed = false;
   downUntil = 0;
   lastError;
   lastMime;
@@ -2903,32 +3522,38 @@ var OpenAiTtsEngine = class {
     this.now = options.now ?? Date.now;
     this.lastMime = MIME[this.format];
   }
-  /** 最近一次成功合成所用格式（远程或回退引擎的 MIME 可能不同；队列在 synthesize 之后读取）。 */
+  /** 最近一次成功合成所用格式（远程或回退引擎的 MIME 可能不同；并发请用 synthesizeWithMime）。 */
   get mime() {
     return this.lastMime;
   }
   updateVoice(voice, rate) {
-    this.voice = voice || this.options.voice;
+    this.voice = voice.trim() || this.options.voice;
     if (rate !== void 0 && Number.isFinite(rate)) this.rate = rate;
   }
   async synthesize(text, options = {}) {
+    return (await this.synthesizeWithMime(text, options)).buf;
+  }
+  /** 合成并**随结果返回**本句专属 MIME（B6：不从共享 this.lastMime 事后回读，并发异构容器不串味）。 */
+  async synthesizeWithMime(text, options = {}) {
+    if (this.closed) throw new OpenAiTtsError("openai_closed", "remote TTS engine closed");
     const input = stripEmotionTags(text).replace(/\s+/g, " ").trim();
-    if (input === "") return Buffer.alloc(0);
+    if (input === "") return { buf: Buffer.alloc(0), mime: this.lastMime };
     if (this.now() >= this.downUntil) {
       try {
-        const buf = await this.remote(input, options);
+        const res = await this.remote(input, options);
         this.lastError = void 0;
-        this.lastMime = MIME[this.format];
-        return buf;
+        return res;
       } catch (e) {
+        if (this.closed) throw new OpenAiTtsError("openai_closed", "remote TTS engine closed");
         if (e.name === "AbortError" && !(e instanceof OpenAiTtsError)) throw e;
         const err = e instanceof OpenAiTtsError ? e : new OpenAiTtsError("openai_unreachable", String(e));
         this.lastError = err;
         this.downUntil = this.now() + this.cooldownMs;
         if (!this.options.fallback) throw err;
-        console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${err.message}`);
+        console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${redactSecrets(err)}`);
       }
     }
+    if (this.closed) throw new OpenAiTtsError("openai_closed", "remote TTS engine closed");
     return this.viaFallback(text, options);
   }
   async remote(input, options) {
@@ -2936,9 +3561,10 @@ var OpenAiTtsEngine = class {
     const body = {
       model: this.options.model,
       input,
-      voice: options.voice || this.voice,
       response_format: this.format
     };
+    const voice = (options.voice || this.voice || "").trim();
+    if (voice) body.voice = voice;
     const rate = options.rate ?? this.rate;
     if (rate !== void 0 && rate > 0 && rate !== 1) body.speed = rate;
     if (this.options.instructions) body.instructions = this.options.instructions;
@@ -2952,14 +3578,36 @@ var OpenAiTtsEngine = class {
     }, this.timeoutMs);
     this.inflight.add(ac);
     try {
-      const res = await this.fetchImpl(this.url, { method: "POST", headers, body: JSON.stringify(body), signal: ac.signal });
+      const res = await this.fetchImpl(this.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: ac.signal,
+        redirect: "error"
+      });
       if (!res.ok) {
-        const detail = (await res.text().catch(() => "")).slice(0, 200);
+        const rawErr = await readResponseBytes(res, MAX_ERROR_BYTES, true).then((b) => b.toString("utf8"), () => "");
+        const detail = redactBodySnippet(rawErr);
         throw new OpenAiTtsError("openai_http_error", `HTTP ${res.status}${detail ? `: ${detail}` : ""}`);
       }
-      const buf = Buffer.from(await res.arrayBuffer());
+      const ctype = (res.headers.get("content-type") ?? "").toLowerCase();
+      const buf = await readResponseBytes(res, MAX_AUDIO_BYTES, false);
       if (buf.length === 0) throw new OpenAiTtsError("openai_empty_audio", "empty audio");
-      return buf;
+      const sniffed = sniffAudioMime(buf, "");
+      let mime;
+      if (sniffed) {
+        mime = sniffed;
+      } else if (ctype.startsWith("audio/")) {
+        const head = buf.subarray(0, 64).toString("utf8").trimStart();
+        if (head.startsWith("<") || head.startsWith("{") || head.startsWith("[")) {
+          throw new OpenAiTtsError("openai_bad_payload", "audio content-type but textual body");
+        }
+        mime = ctype.split(";")[0].trim();
+      } else {
+        throw new OpenAiTtsError("openai_bad_payload", `non-audio response (content-type: ${ctype || "none"})`);
+      }
+      this.lastMime = mime;
+      return { buf, mime };
     } catch (e) {
       if (timedOut) throw new OpenAiTtsError("openai_timeout", `no audio within ${this.timeoutMs} ms`);
       throw e;
@@ -2969,13 +3617,16 @@ var OpenAiTtsEngine = class {
     }
   }
   async viaFallback(text, options) {
+    if (this.closed) throw new OpenAiTtsError("openai_closed", "remote TTS engine closed");
     if (!this.options.fallback) {
       throw this.lastError ?? new OpenAiTtsError("openai_unreachable", "remote TTS unavailable");
     }
     this.fallbackEngine ??= this.options.fallback();
-    const buf = await this.fallbackEngine.synthesize(text, { rate: options.rate ?? this.rate });
-    this.lastMime = this.fallbackEngine.mime;
-    return buf;
+    const fb = this.fallbackEngine;
+    const rateOpt = { rate: options.rate ?? this.rate };
+    const res = fb.synthesizeWithMime ? await fb.synthesizeWithMime(text, rateOpt) : { buf: await fb.synthesize(text, rateOpt), mime: fb.mime };
+    this.lastMime = res.mime;
+    return res;
   }
   interrupt() {
     for (const ac of this.inflight) ac.abort();
@@ -2991,16 +3642,203 @@ var OpenAiTtsEngine = class {
       ready: !fallingBack && !this.configError,
       loading: false,
       error: this.lastError?.message,
-      errorCode: this.lastError?.code
+      errorCode: this.lastError?.code,
+      // 2026-11-20 UX：只回布尔——状态卡据此提示「缺 API Key」，绝不回传 key。
+      keyPresent: Boolean(this.options.apiKey && this.options.apiKey.trim().length > 0)
     };
   }
   async close() {
+    this.closed = true;
     this.interrupt();
     const fb = this.fallbackEngine;
     this.fallbackEngine = null;
     await fb?.close();
   }
 };
+function presetRequiresKey(presetId) {
+  if (!presetId) return false;
+  if (!Object.prototype.hasOwnProperty.call(OPENAI_PRESETS, presetId)) return false;
+  return !presetId.startsWith("selfhosted-");
+}
+var SILICONFLOW_SYSTEM_VOICES = ["alex", "benjamin", "charles", "david", "anna", "bella", "claire", "diana"];
+var OPENAI_API_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "marin", "cedar", "nova", "onyx", "sage", "shimmer"];
+var OPENAI_PRESETS = {
+  "siliconflow-cosyvoice2": {
+    baseUrl: "https://api.siliconflow.cn/v1",
+    model: "FunAudioLLM/CosyVoice2-0.5B",
+    voice: "FunAudioLLM/CosyVoice2-0.5B:alex",
+    voices: SILICONFLOW_SYSTEM_VOICES.map((v) => `FunAudioLLM/CosyVoice2-0.5B:${v}`)
+  },
+  "siliconflow-fish": {
+    baseUrl: "https://api.siliconflow.cn/v1",
+    model: "fishaudio/fish-speech-1.5",
+    voice: "fishaudio/fish-speech-1.5:anna",
+    voices: SILICONFLOW_SYSTEM_VOICES.map((v) => `fishaudio/fish-speech-1.5:${v}`)
+  },
+  // OpenRouter 官方 TTS 文档（2026-05-01 公告）：POST /api/v1/audio/speech，
+  // 示例模型 slug 为带日期的 `openai/gpt-4o-mini-tts-2025-12-15`、voice `alloy`、response_format mp3。
+  // OpenRouter 透传 OpenAI 语音名，故沿用 OpenAI 全量音色表。
+  "openrouter-openai": {
+    baseUrl: "https://openrouter.ai/api/v1",
+    model: "openai/gpt-4o-mini-tts-2025-12-15",
+    voice: "alloy",
+    voices: [...OPENAI_API_VOICES]
+  },
+  // OpenAI 官方（docs: /v1/audio/speech，模型 gpt-4o-mini-tts，官方推荐 marin/cedar 音质最佳）。
+  "openai-official": {
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4o-mini-tts",
+    voice: "marin",
+    voices: [...OPENAI_API_VOICES]
+  },
+  // 自建示例（本机地址为占位；无鉴权时 key 留空即可）：
+  //   Kokoro-FastAPI / LocalAI 的 OpenAI 兼容面，Kokoro 音色名取自本插件本地目录（zf_xiaobei 等）。
+  //   仅收录命名中文音色（与本地 Kokoro 一致）；其余 100+ 数字 sid 音色走「自定义手输」。
+  "selfhosted-kokoro": {
+    baseUrl: "http://127.0.0.1:8880/v1",
+    model: "kokoro",
+    voice: "zf_xiaobei",
+    voices: ["zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi"]
+  },
+  // Groq 官方 API Reference「Create speech」：POST /openai/v1/audio/speech（base 为
+  // https://api.groq.com/openai/v1），模型 playai-tts，音色列表形如 Fritz-PlayAI。
+  // 注意（2026-11-20 核实）：上游已有仓库把 playai-tts 标记为 decommissioned 并迁移到 Orpheus；
+  // 此处仅保留文档示例音色 + 自定义手输，若 Groq 下线该模型，用户切 Orpheus 端点手填即可。
+  "groq-playai": {
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "playai-tts",
+    voice: "Fritz-PlayAI",
+    voices: ["Fritz-PlayAI"]
+  },
+  //   vLLM-Omni（ADR-0013 实测过 VoxCPM2 / Qwen3-TTS 部署）。音色名取决于部署的模型，保留默认 + 手输。
+  "selfhosted-vllm": {
+    baseUrl: "http://127.0.0.1:8000/v1",
+    model: "tts-1",
+    voice: "default",
+    voices: ["default"]
+  }
+};
+
+// src/engine-rebuild.ts
+function stableApiKeys(m) {
+  if (m === null || typeof m !== "object" || Array.isArray(m)) return "";
+  const rec = m;
+  const keys = Object.keys(rec).filter((k) => typeof rec[k] === "string").sort();
+  return JSON.stringify(keys.map((k) => [k, rec[k]]));
+}
+function engineRebuildReason(prev, next, engineKind, activeKokoroModel) {
+  if (next.ttsEngine !== engineKind) return "engine-switch";
+  if (engineKind === "mimo" && next.mimoApiKey !== prev.mimoApiKey) return "mimo-key";
+  if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) return "kokoro-model";
+  if (engineKind === "openai" && (next.openaiPreset !== prev.openaiPreset || next.openaiBaseUrl !== prev.openaiBaseUrl || next.openaiModel !== prev.openaiModel || next.openaiApiKey !== prev.openaiApiKey || stableApiKeys(next.openaiApiKeys) !== stableApiKeys(prev.openaiApiKeys))) {
+    return "openai-config";
+  }
+  return null;
+}
+
+// src/settings-view.ts
+var SECRET_SETTING_KEYS = ["openaiApiKey", "mimoApiKey", "openaiApiKeys"];
+function publicSettingsView(vset, presence, fromConfig) {
+  return {
+    value: { ...vset, openaiApiKey: "", mimoApiKey: "", openaiApiKeys: {} },
+    keys: { openaiApiKey: Boolean(presence.openaiApiKey), mimoApiKey: Boolean(presence.mimoApiKey), openaiApiKeys: boolMap(presence.openaiApiKeys) },
+    keysFromConfig: {
+      openaiApiKey: Boolean(fromConfig?.openaiApiKey),
+      mimoApiKey: Boolean(fromConfig?.mimoApiKey),
+      openaiApiKeys: boolMap(fromConfig?.openaiApiKeys)
+    }
+  };
+}
+function applyClearSecrets(patch, clearList) {
+  const { clearSecrets: _ignored, ...rest } = patch;
+  if (clearList !== void 0 && !Array.isArray(clearList)) {
+    throw new Error("clearSecrets must be an array");
+  }
+  const list = clearList ?? [];
+  const out = { ...rest };
+  for (const item of list) {
+    if (typeof item !== "string") continue;
+    if (!SECRET_SETTING_KEYS.includes(item)) {
+      throw new Error(`unknown secret: ${item}`);
+    }
+    out[item] = item === "openaiApiKeys" ? {} : "";
+  }
+  return out;
+}
+function mergePresetApiKeys(existing, patchMap, clearAll = false) {
+  const out = {};
+  if (!clearAll) {
+    const base = readKeyMap(existing);
+    for (const id of Object.keys(base)) {
+      if (id === "__proto__" || id === "constructor" || id === "prototype") continue;
+      const v = base[id];
+      if (typeof v === "string" && v.trim().length > 0) out[id] = v.trim();
+    }
+  }
+  const inc = readKeyMap(patchMap);
+  for (const id of Object.keys(inc)) {
+    if (id === "__proto__" || id === "constructor" || id === "prototype") continue;
+    const v = inc[id];
+    if (typeof v !== "string") continue;
+    if (v.trim().length > 0) out[id] = v.trim();
+    else delete out[id];
+  }
+  return out;
+}
+function hasSecret(value, ...fallbacks) {
+  const nonEmpty = (v) => typeof v === "string" && v.trim().length > 0;
+  return nonEmpty(value) || fallbacks.some(nonEmpty);
+}
+function boolMap(v) {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return {};
+  const out = {};
+  for (const k of Object.keys(v)) out[k] = Boolean(v[k]);
+  return out;
+}
+function readKeyMap(v) {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return {};
+  return v;
+}
+function buildPresetKeyPresence(settingsMap, configMap) {
+  const s = readKeyMap(settingsMap);
+  const c = readKeyMap(configMap);
+  const ids = /* @__PURE__ */ new Set([...Object.keys(s), ...Object.keys(c)]);
+  const presence = {};
+  const fromConfig = {};
+  for (const id of ids) {
+    if (id === "__proto__" || id === "constructor" || id === "prototype") continue;
+    presence[id] = hasSecret(s[id], c[id]);
+    fromConfig[id] = hasSecret(c[id]);
+  }
+  return { presence, fromConfig };
+}
+function buildSettingsGetView(vset, config) {
+  const cfgKey = hasSecret(config.openaiTts?.apiKey);
+  const cfgMimo = hasSecret(config.mimoTts?.apiKey);
+  const presetKeys = buildPresetKeyPresence(vset.openaiApiKeys, config.openaiTts?.apiKeys);
+  return publicSettingsView(
+    vset,
+    {
+      openaiApiKey: hasSecret(vset.openaiApiKey, config.openaiTts?.apiKey),
+      mimoApiKey: hasSecret(vset.mimoApiKey, config.mimoTts?.apiKey),
+      openaiApiKeys: presetKeys.presence
+    },
+    { openaiApiKey: cfgKey, mimoApiKey: cfgMimo, openaiApiKeys: presetKeys.fromConfig }
+  );
+}
+
+// src/engine-kind.ts
+var TTS_ENGINE_KINDS = ["vits", "kokoro", "edge", "openai", "mimo"];
+var LOCAL_ENGINE_KINDS = ["vits", "kokoro"];
+function asTtsEngineKind(value) {
+  return TTS_ENGINE_KINDS.includes(value) ? value : "vits";
+}
+function isLocalEngine(value) {
+  return LOCAL_ENGINE_KINDS.includes(value);
+}
+function usesBilingualSample(value) {
+  return value === "kokoro" || value === "openai" || value === "mimo";
+}
 
 // src/prompts.ts
 var ZH = "\u3010\u8BED\u97F3\u6A21\u5F0F\u3011\u5F53\u524D\u56DE\u590D\u4F1A\u88AB\u8BED\u97F3\u6717\u8BFB\uFF0C\u8BF7\u59CB\u7EC8\u7528\u7528\u6237\u6240\u7528\u8BED\u8A00\u3001\u4EE5\u53E3\u8BED\u5316\u7684\u77ED\u53E5\u76F4\u63A5\u56DE\u7B54\uFF0C\u50CF\u9762\u5BF9\u9762\u804A\u5929\u4E00\u6837\u81EA\u7136\uFF0C\u907F\u514D\u4E66\u9762\u8BED\u548C\u957F\u96BE\u53E5\u3002\u4E0D\u8981\u4F7F\u7528\u4EFB\u4F55 Markdown \u6216\u6392\u7248\u7B26\u53F7\uFF08\u661F\u53F7\u3001\u4E0B\u5212\u7EBF\u3001\u53CD\u5F15\u53F7\u3001\u4E95\u53F7\u3001\u5217\u8868\u4E0E\u8868\u683C\u6807\u8BB0\u3001\u4EE3\u7801\u5757\u7B49\uFF09\u3002\u9700\u8981\u5206\u70B9\u8BF4\u660E\u65F6\u7528\u300C\u7B2C\u4E00\u3001\u7B2C\u4E8C\u300D\u6216\u8FDE\u8D2F\u7684\u77ED\u53E5\u8868\u8FBE\uFF1B\u9664\u975E\u7528\u6237\u660E\u786E\u8981\u6C42\uFF0C\u4E0D\u8981\u8F93\u51FA\u4EE3\u7801\u7247\u6BB5\u3001\u5B8C\u6574 URL \u6216\u5197\u957F\u5B9A\u4E49\uFF0C\u7528\u4E00\u4E24\u53E5\u8BDD\u6982\u62EC\u542B\u4E49\u5373\u53EF\u3002\u56DE\u7B54\u7B80\u6D01\u76F4\u63A5\uFF0C\u4E0D\u8981\u91CD\u590D\u548C\u5BD2\u6684\u3002\u5982\u679C\u7528\u6237\u5728\u4F60\u6717\u8BFB\u65F6\u63D2\u8BDD\uFF08\u54EA\u6015\u53EA\u662F\u300C\u55EF/\u5BF9\u300D\u8FD9\u6837\u7684\u77ED\u5E94\u7B54\uFF09\uFF0C\u7ACB\u5373\u505C\u6B62\u5F53\u524D\u53E5\uFF0C\u628A\u8BDD\u8F6E\u8BA9\u7ED9\u7528\u6237\uFF1B\u56DE\u7B54\u540E\u7559\u51FA\u505C\u987F\uFF0C\u4E0D\u8981\u8FDE\u95EE\u4E24\u4E2A\u95EE\u9898\uFF1B\u7528\u6237\u6C89\u9ED8\u65F6\u4E0D\u8981\u4E3B\u52A8\u627E\u65B0\u8BDD\u9898\u3002";
@@ -3008,7 +3846,7 @@ var EN = '[Voice mode] Your reply will be read aloud. Always answer in the langu
 var spokenPrompt = (lang) => lang === "en" ? EN : ZH;
 function normalizePromptLang(raw) {
   if (typeof raw !== "string" || raw === "" || raw.length > 32) return "zh";
-  return /^zh\b/i.test(raw) ? "zh" : "en";
+  return /^zh(?:[-_]|$)/i.test(raw) ? "zh" : "en";
 }
 var SAMPLE_ZH = "\u4F60\u597D\uFF0C\u6B22\u8FCE\u4F7F\u7528\u8BED\u97F3\u6A21\u5F0F\u3002";
 var SAMPLE_EN = "Hello, welcome to voice mode.";
@@ -3024,15 +3862,294 @@ var SAMPLE_BY_LANG = {
   it: "Ciao, benvenuto nella modalit\xE0 vocale.",
   ru: "\u0417\u0434\u0440\u0430\u0432\u0441\u0442\u0432\u0443\u0439\u0442\u0435, \u0434\u043E\u0431\u0440\u043E \u043F\u043E\u0436\u0430\u043B\u043E\u0432\u0430\u0442\u044C \u0432 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u043E\u0439 \u0440\u0435\u0436\u0438\u043C."
 };
+function mimoSpeedInstruction(rate) {
+  return rate > 1 ? `\u8BED\u901F\u52A0\u5FEB\u5230\u7EA6 ${rate} \u500D` : `\u8BED\u901F\u653E\u6162\u5230\u7EA6 ${rate} \u500D`;
+}
 function previewSample(engine, voice) {
-  if (engine === "kokoro" || engine === "openai") return `${SAMPLE_ZH}${SAMPLE_EN}`;
+  if (usesBilingualSample(engine)) return `${SAMPLE_ZH}${SAMPLE_EN}`;
   if (engine === "vits") return SAMPLE_ZH;
   const m = /^([a-z]{2,3})-/i.exec(voice);
   return m && SAMPLE_BY_LANG[m[1].toLowerCase()] || SAMPLE_EN;
 }
 
+// src/tts-mimo.ts
+var MIME2 = {
+  wav: "audio/wav",
+  mp3: "audio/mpeg"
+};
+var MAX_JSON_BYTES = 24 * 1024 * 1024;
+var MAX_ERROR_BYTES2 = 8 * 1024;
+async function readMimoBytes(res, maxBytes, truncate) {
+  const lenHeader = Number(res.headers.get("content-length") ?? 0);
+  if (!truncate && Number.isFinite(lenHeader) && lenHeader > maxBytes) {
+    await res.body?.cancel().catch(() => void 0);
+    throw new MimoTtsError("mimo_too_large", `response exceeds ${maxBytes} bytes`);
+  }
+  if (res.body && typeof res.body.getReader === "function") {
+    const reader = res.body.getReader();
+    const chunks = [];
+    let total = 0;
+    try {
+      for (; ; ) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value || value.byteLength === 0) continue;
+        if (total + value.byteLength > maxBytes) {
+          if (truncate) {
+            const take = maxBytes - total;
+            if (take > 0) chunks.push(value.subarray(0, take));
+            await reader.cancel().catch(() => void 0);
+            break;
+          }
+          await reader.cancel().catch(() => void 0);
+          throw new MimoTtsError("mimo_too_large", `response exceeds ${maxBytes} bytes`);
+        }
+        chunks.push(value);
+        total += value.byteLength;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    return Buffer.concat(chunks);
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > maxBytes) {
+    if (truncate) return buf.subarray(0, maxBytes);
+    throw new MimoTtsError("mimo_too_large", `response exceeds ${maxBytes} bytes`);
+  }
+  return buf;
+}
+var MimoTtsError = class extends Error {
+  code;
+  constructor(code, message) {
+    super(message);
+    this.name = "MimoTtsError";
+    this.code = code;
+  }
+};
+var MIMO_DEFAULT_BASE_URL = "https://api.xiaomimimo.com/v1";
+var MIMO_DEFAULT_MODEL = "mimo-v2.5-tts";
+var MIMO_DEFAULT_VOICE = "mimo_default";
+function mimoChatUrl(baseUrl) {
+  const url = new URL(baseUrl.trim());
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new MimoTtsError("mimo_bad_url", "baseUrl must be http(s)");
+  }
+  if (url.username || url.password) {
+    throw new MimoTtsError("mimo_bad_url", "baseUrl must not include credentials");
+  }
+  const suffix = "/chat/completions";
+  const noSlash = url.pathname.replace(/\/+$/, "");
+  const base = noSlash.endsWith(suffix) ? noSlash.slice(0, -suffix.length) : noSlash;
+  url.pathname = `${base}${suffix}`;
+  return url.toString();
+}
+function extractMimoAudio(body) {
+  if (typeof body !== "object" || body === null) return null;
+  const choices = body.choices;
+  if (!Array.isArray(choices) || choices.length === 0) return null;
+  const message = choices[0].message;
+  if (typeof message !== "object" || message === null) return null;
+  const audio = message.audio;
+  if (typeof audio !== "object" || audio === null) return null;
+  const data = audio.data;
+  return typeof data === "string" && data.length > 0 ? data : null;
+}
+function decodeBase64Audio(data) {
+  const raw = data.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  if (raw.length === 0 || raw.length % 4 === 1) {
+    throw new MimoTtsError("mimo_bad_audio", "audio payload is not valid base64");
+  }
+  const padLen = raw.length % 4 === 0 ? 0 : 4 - raw.length % 4;
+  const clean = padLen > 0 ? raw + "=".repeat(padLen) : raw;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(clean)) {
+    throw new MimoTtsError("mimo_bad_audio", "audio payload is not valid base64");
+  }
+  return Buffer.from(clean, "base64");
+}
+var MimoTtsEngine = class {
+  voice;
+  rate;
+  url;
+  configError;
+  format;
+  timeoutMs;
+  cooldownMs;
+  fetchImpl;
+  now;
+  fallbackEngine = null;
+  inflight = /* @__PURE__ */ new Set();
+  closed = false;
+  downUntil = 0;
+  lastError;
+  lastMime;
+  options;
+  constructor(options) {
+    this.options = options;
+    let url = null;
+    try {
+      if (!options.apiKey?.trim()) {
+        throw new MimoTtsError("mimo_not_configured", "mimo apiKey is not configured");
+      }
+      url = mimoChatUrl(options.baseUrl?.trim() || MIMO_DEFAULT_BASE_URL);
+    } catch (e) {
+      this.configError = e instanceof MimoTtsError ? e : new MimoTtsError("mimo_bad_url", "bad baseUrl");
+      url = null;
+    }
+    this.url = url;
+    this.voice = (options.voice ?? "").trim() || MIMO_DEFAULT_VOICE;
+    this.format = options.responseFormat ?? "wav";
+    this.timeoutMs = options.timeoutMs ?? 8e3;
+    this.cooldownMs = options.cooldownMs ?? 3e4;
+    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.now = options.now ?? Date.now;
+    this.lastMime = MIME2[this.format];
+  }
+  get mime() {
+    return this.lastMime;
+  }
+  updateVoice(voice, rate) {
+    this.voice = voice.trim() || this.options.voice?.trim() || MIMO_DEFAULT_VOICE;
+    if (rate !== void 0 && Number.isFinite(rate)) this.rate = rate;
+  }
+  /** 合成并**随结果返回**本句专属 MIME（B6：不从共享 this.lastMime 事后回读，并发异构容器不串味）。 */
+  async synthesizeWithMime(text, options = {}) {
+    if (this.closed) throw new MimoTtsError("mimo_closed", "remote TTS engine closed");
+    const input = stripEmotionTags(text).replace(/\s+/g, " ").trim();
+    if (input === "") return { buf: Buffer.alloc(0), mime: this.lastMime };
+    if (this.now() >= this.downUntil) {
+      try {
+        const res = await this.remote(input, options);
+        this.lastError = void 0;
+        return res;
+      } catch (e) {
+        if (this.closed) throw new MimoTtsError("mimo_closed", "remote TTS engine closed");
+        if (e.name === "AbortError" && !(e instanceof MimoTtsError)) throw e;
+        const err = e instanceof MimoTtsError ? e : new MimoTtsError("mimo_unreachable", String(e));
+        this.lastError = err;
+        this.downUntil = this.now() + this.cooldownMs;
+        if (!this.options.fallback) throw err;
+        console.warn(`[dsh-voice-mode] remote TTS failed, using the local fallback for ${this.cooldownMs} ms: ${redactSecrets(err)}`);
+      }
+    }
+    if (this.closed) throw new MimoTtsError("mimo_closed", "remote TTS engine closed");
+    return this.viaFallback(text, options);
+  }
+  async synthesize(text, options = {}) {
+    return (await this.synthesizeWithMime(text, options)).buf;
+  }
+  /** 自然语言风格指令：配置的 instructions + 语速（MiMo 无 speed 字段，语速走风格控制）。 */
+  styleInstruction(rate) {
+    const parts = [];
+    const base = (this.options.instructions ?? "").trim();
+    if (base) parts.push(base);
+    if (rate !== void 0 && Number.isFinite(rate) && rate > 0 && rate !== 1) {
+      parts.push(mimoSpeedInstruction(rate));
+    }
+    return parts.join("; ");
+  }
+  async remote(input, options) {
+    if (this.url === null) throw this.configError;
+    const messages = [];
+    const instruction = this.styleInstruction(options.rate ?? this.rate);
+    if (instruction) messages.push({ role: "user", content: instruction });
+    messages.push({ role: "assistant", content: input });
+    const body = {
+      model: (this.options.model ?? "").trim() || MIMO_DEFAULT_MODEL,
+      messages,
+      audio: { voice: (options.voice || this.voice).trim(), format: this.format },
+      stream: false
+    };
+    const headers = { "content-type": "application/json" };
+    headers["api-key"] = (this.options.apiKey ?? "").trim();
+    const ac = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ac.abort();
+    }, this.timeoutMs);
+    this.inflight.add(ac);
+    try {
+      const res = await this.fetchImpl(this.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: ac.signal,
+        redirect: "error"
+      });
+      if (!res.ok) {
+        const rawErr = await readMimoBytes(res, MAX_ERROR_BYTES2, true).then((b) => b.toString("utf8"), () => "");
+        const detail = redactBodySnippet(rawErr);
+        throw new MimoTtsError("mimo_http_error", `HTTP ${res.status}${detail ? `: ${detail}` : ""}`);
+      }
+      const rawJson = (await readMimoBytes(res, MAX_JSON_BYTES, false)).toString("utf8");
+      let parsed;
+      try {
+        parsed = JSON.parse(rawJson);
+      } catch {
+        throw new MimoTtsError("mimo_bad_payload", "non-JSON response from MiMo TTS");
+      }
+      const data = extractMimoAudio(parsed);
+      if (!data) throw new MimoTtsError("mimo_empty_audio", "empty audio");
+      const buf = decodeBase64Audio(data);
+      if (buf.length === 0) throw new MimoTtsError("mimo_empty_audio", "empty audio");
+      const ctype = (res.headers.get("content-type") ?? "").toLowerCase();
+      const sniffed = sniffAudioMime(buf, "");
+      let mime;
+      if (sniffed) mime = sniffed;
+      else if (ctype.startsWith("audio/")) mime = ctype.split(";")[0].trim();
+      else throw new MimoTtsError("mimo_bad_payload", `non-audio response (content-type: ${ctype || "none"})`);
+      this.lastMime = mime;
+      return { buf, mime };
+    } catch (e) {
+      if (timedOut) throw new MimoTtsError("mimo_timeout", `no audio within ${this.timeoutMs} ms`);
+      throw e;
+    } finally {
+      clearTimeout(timer);
+      this.inflight.delete(ac);
+    }
+  }
+  async viaFallback(text, options) {
+    if (this.closed) throw new MimoTtsError("mimo_closed", "remote TTS engine closed");
+    if (!this.options.fallback) {
+      throw this.lastError ?? new MimoTtsError("mimo_unreachable", "remote TTS unavailable");
+    }
+    this.fallbackEngine ??= this.options.fallback();
+    const fb = this.fallbackEngine;
+    const rateOpt = { rate: options.rate ?? this.rate };
+    const res = fb.synthesizeWithMime ? await fb.synthesizeWithMime(text, rateOpt) : { buf: await fb.synthesize(text, rateOpt), mime: fb.mime };
+    this.lastMime = res.mime;
+    return res;
+  }
+  interrupt() {
+    for (const ac of this.inflight) ac.abort();
+    this.inflight.clear();
+    this.fallbackEngine?.interrupt?.();
+  }
+  status() {
+    const err = this.lastError ?? this.configError;
+    const fallingBack = this.now() < this.downUntil;
+    return {
+      engine: "mimo",
+      // 冷却期（远程失败后走本地回退）同样视为非就绪，与 openai 引擎同口径。
+      ready: !fallingBack && !this.configError,
+      loading: false,
+      error: err?.message,
+      errorCode: err?.code,
+      keyPresent: Boolean(this.options.apiKey && this.options.apiKey.trim().length > 0)
+    };
+  }
+  async close() {
+    this.closed = true;
+    this.interrupt();
+    const fb = this.fallbackEngine;
+    this.fallbackEngine = null;
+    await fb?.close();
+  }
+};
+
 // src/settings-store.ts
-import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join as join4 } from "node:path";
 var SETTINGS_FILE_NAME = "voice-mode.settings.json";
@@ -3074,12 +4191,20 @@ function readOverrides(file, keys) {
 function writeOverrides(file, values) {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-  writeFileSync(tmp, JSON.stringify(values, null, 2) + "\n", { encoding: "utf8", mode: 384 });
   try {
-    chmodSync(tmp, 384);
-  } catch {
+    writeFileSync(tmp, JSON.stringify(values, null, 2) + "\n", { encoding: "utf8", mode: 384 });
+    try {
+      chmodSync(tmp, 384);
+    } catch {
+    }
+    renameSync(tmp, file);
+  } catch (e) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+    }
+    throw e;
   }
-  renameSync(tmp, file);
 }
 function parseLegacyVoiceSection(text) {
   const out = {};
@@ -3132,10 +4257,12 @@ var NS_VOICE_MODE = "voice-mode";
 var MUTED_STREAMS_WITHOUT_TURN = 4;
 var BASE_PATH = "/voice-mode";
 var PREVIEW_NETWORK_PATTERN = /fetch failed|ECONN|ENOTFOUND|getaddrinfo|ETIMEDOUT|EAI_AGAIN|network|unreachable|socket hang up|aborted|WebSocket error/i;
-var PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa|local Kokoro/i;
-var PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat/i;
+var PREVIEW_AUTH_PATTERN = /HTTP 401|HTTP 403|unauthorized|invalid[ _-]?api[ _-]?key|incorrect api key|authentication failed|missing api key/i;
+var PREVIEW_ENGINE_PATTERN = /model download|model verify|init failed|child exited|tts child|local TTS|prepare|sherpa|local Kokoro|closed|init cooldown/i;
+var PREVIEW_TEXT_PATTERN = /empty or invalid audio|invalid audio|invalid text|too long|truncat|exceeds \d+ bytes|bad_payload|bad_audio|invalid base64|textual body/i;
 function classifyPreviewError(msg) {
   if (PREVIEW_TEXT_PATTERN.test(msg)) return "text";
+  if (PREVIEW_AUTH_PATTERN.test(msg)) return "auth";
   if (PREVIEW_NETWORK_PATTERN.test(msg)) return "network";
   if (PREVIEW_ENGINE_PATTERN.test(msg)) return "engine";
   return "unknown";
@@ -3144,6 +4271,7 @@ var PREVIEW_ERROR_CODES = {
   network: "preview_network",
   engine: "preview_engine",
   text: "preview_text",
+  auth: "preview_auth",
   unknown: "preview_unknown"
 };
 var respondJson2 = (res, status, payload) => {
@@ -3189,6 +4317,16 @@ var VOICE_SETTINGS_DEFAULTS = {
   bargeInSalvage: true,
   // Issue #15 批 4：LLM 纠错默认关（默认开=未申报的 I10 豁免+每条多一次 RTT/token）。
   llmCorrect: false,
+  // E1：在线预设默认空 = 手动（沿用 Config 文件值，零行为变化）。
+  openaiPreset: "",
+  openaiBaseUrl: "",
+  openaiModel: "",
+  openaiApiKey: "",
+  // Q2 Key 跟预设走：面板按预设存的 key 表（空对象 = 全未配）。
+  openaiApiKeys: {},
+  mimoApiKey: "",
+  // P1-3：纠错词表默认空（与 Config 层 asrReplacements 默认 [] 对齐）。
+  asrReplacements: [],
   // 批 G 任务 3：让位窗口默认 1500ms（与改造前批 5 行为字节等价；用户可调 500-3000ms）。
   yieldMs: 1500
 };
@@ -3221,12 +4359,19 @@ var DESC = {
   backchannelYield: en.descBackchannelYield,
   bargeInSalvage: en.descBargeInSalvage,
   llmCorrect: en.descLlmCorrect,
+  openaiPreset: en.descOpenaiPreset,
+  openaiBaseUrl: en.descOpenaiBaseUrl,
+  openaiModel: en.descOpenaiModel,
+  openaiApiKey: en.descOpenaiApiKey,
+  openaiApiKeys: en.descOpenaiApiKeys,
+  mimoApiKey: en.descMimoApiKey,
+  asrReplacements: en.descAsrReplacements,
   yieldMs: en.descYieldMs
 };
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
   return z2.object({
-    ttsEngine: z2.union([z2.const("vits"), z2.const("kokoro"), z2.const("edge"), z2.const("openai")]).default(d.ttsEngine).description(
+    ttsEngine: z2.union(TTS_ENGINE_KINDS.map((k) => z2.const(k))).default(d.ttsEngine).description(
       DESC.ttsEngine
     ),
     kokoroModel: z2.union([z2.const("int8"), z2.const("fp32")]).default(d.kokoroModel).description(
@@ -3277,6 +4422,22 @@ function createVoiceSettingsSchema(defs) {
     llmCorrect: z2.boolean().default(d.llmCorrect).description(
       DESC.llmCorrect
     ),
+    // E1：在线预设 id（'' = 手动沿用 Config 文件；已知 id 见 tts-openai.ts OPENAI_PRESETS）。
+    openaiPreset: z2.string().default(d.openaiPreset).description(
+      DESC.openaiPreset
+    ),
+    // 2026-11-19：在线 TTS 的 URL/模型/key 允许在设置卡片里填（不必改 profile YAML）。
+    openaiBaseUrl: z2.string().default(d.openaiBaseUrl).description(DESC.openaiBaseUrl),
+    openaiModel: z2.string().default(d.openaiModel).description(DESC.openaiModel),
+    // secret：GET /settings 会把它抹成空串，只回 hasOpenaiApiKey 布尔；POST 可写。
+    openaiApiKey: z2.string().role("secret").default(d.openaiApiKey).description(DESC.openaiApiKey),
+    // Q2 Key 跟预设走：面板按预设存的 key 表（值须为字符串；非字符串由 zod 拒收回 400）。
+    openaiApiKeys: z2.dict(z2.string()).default(d.openaiApiKeys ?? {}).description(DESC.openaiApiKeys),
+    mimoApiKey: z2.string().role("secret").default(d.mimoApiKey).description(DESC.mimoApiKey),
+    // P1-3：用户纠错词表（默认空；非法条目由 zod 整表拒绝，POST 回 400；上限 200 条与设置卡片一致，防超大覆盖层）。
+    asrReplacements: z2.array(AsrReplacementSchema).max(200).default(d.asrReplacements).description(
+      DESC.asrReplacements
+    ),
     yieldMs: z2.number().min(500).max(3e3).default(d.yieldMs).description(
       DESC.yieldMs
     )
@@ -3286,6 +4447,7 @@ var VoiceSettingsSchema = createVoiceSettingsSchema();
 var OpenAiTtsConfig = z2.object({
   baseUrl: z2.string().default("").description("API base URL, e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1 or a self-hosted server."),
   apiKey: z2.string().role("secret").default("").description("Bearer key; leave empty for servers without auth."),
+  apiKeys: z2.dict(z2.string().role("secret")).role("secret").default({}).description("Per-preset key override keyed by preset id (apiKeys[id] wins over apiKey). Keeps one credential per provider without editing the single key on every switch."),
   model: z2.string().default("").description("Model name sent to the server."),
   voice: z2.string().default("").description("Default voice name on the server (the voice setting overrides it)."),
   instructions: z2.string().default("").description("Optional style instructions for models that accept them."),
@@ -3294,12 +4456,24 @@ var OpenAiTtsConfig = z2.object({
   fallback: z2.union([z2.const("none"), z2.const("vits"), z2.const("kokoro")]).default("none").description("Local engine used while the server is unreachable or slow."),
   fallbackVoice: z2.string().default("").description("Voice for the fallback engine (empty = its default).")
 });
+var MimoTtsConfig = z2.object({
+  apiKey: z2.string().role("secret").default("").description("MiMo API key (sent as the api-key header; never reuse another vendor key here)."),
+  baseUrl: z2.string().default("https://api.xiaomimimo.com/v1").description("MiMo API base URL; defaults to the official endpoint."),
+  model: z2.string().default("mimo-v2.5-tts").description("Model id: mimo-v2.5-tts / mimo-v2.5-tts-voicedesign / mimo-v2.5-tts-voiceclone."),
+  voice: z2.string().default("mimo_default").description("Preset voice id (the voice setting overrides it)."),
+  instructions: z2.string().default("").description("Natural-language style instruction (emotion, dialect, pace)."),
+  responseFormat: z2.union([z2.const("wav"), z2.const("mp3")]).default("wav").description("Container format; raw pcm is not supported because it cannot be labelled with a decodable MIME."),
+  timeoutMs: z2.number().min(1e3).max(6e4).default(8e3).description("Per-sentence timeout; slower counts as unavailable."),
+  fallback: z2.union([z2.const("none"), z2.const("vits"), z2.const("kokoro")]).default("none").description("Local engine used while the server is unreachable or slow."),
+  fallbackVoice: z2.string().default("").description("Voice for the fallback engine (empty = its default).")
+});
 var Config = z2.object({
   enabled: z2.boolean().default(true),
   cacheDir: z2.string().default(defaultModelCacheDir()),
   modelHost: z2.string().default("https://huggingface.co"),
-  ttsEngine: z2.union([z2.const("edge"), z2.const("vits"), z2.const("kokoro"), z2.const("openai")]).default("edge"),
+  ttsEngine: z2.union(TTS_ENGINE_KINDS.map((k) => z2.const(k))).default("edge"),
   openaiTts: OpenAiTtsConfig,
+  mimoTts: MimoTtsConfig,
   kokoroModel: z2.union([z2.const("int8"), z2.const("fp32")]).default("int8"),
   allowLan: z2.boolean().default(false),
   asrReplacements: z2.array(AsrReplacementSchema).default([]),
@@ -3380,7 +4554,8 @@ function voiceSettingsFromConfig(config) {
     backchannelYield,
     yieldMs,
     bargeInSalvage,
-    llmCorrect
+    llmCorrect,
+    asrReplacements
   } = config;
   return {
     ttsEngine,
@@ -3411,7 +4586,16 @@ function voiceSettingsFromConfig(config) {
     backchannelYield,
     yieldMs,
     bargeInSalvage,
-    llmCorrect
+    llmCorrect,
+    asrReplacements,
+    // E1：预设无 Config 基线（用户覆盖层专属），默认空 = 手动。
+    openaiPreset: "",
+    // 在线 TTS 的 UI 覆盖默认空：未填时按预设/配置文件走（零行为变化）。
+    openaiBaseUrl: "",
+    openaiModel: "",
+    openaiApiKey: "",
+    openaiApiKeys: {},
+    mimoApiKey: ""
   };
 }
 function apply(ctx, config) {
@@ -3445,8 +4629,9 @@ function apply(ctx, config) {
     if (sessionId === null || sessionId === activeVoiceSession || tapInFlight.has(sessionId)) return;
     dropTurnTables(sessionId);
   };
-  const stopFocusReading = (sessionId) => {
+  const stopFocusReading = (sessionId, fromTabId) => {
     if (sessionId === null) return;
+    if (sessionId === activeVoiceSession && activeTabId !== null && fromTabId !== activeTabId) return;
     queue.cancel(sessionId);
     turnGen.set(sessionId, (turnGen.get(sessionId) ?? 0) + 1);
   };
@@ -3517,22 +4702,32 @@ function apply(ctx, config) {
       NS_VOICE_MODE,
       createVoiceSettingsSchema(),
       {
-        base: {
-          ttsEngine: config.ttsEngine,
-          voice: config.voice,
-          rate: config.rate,
-          interruptLevel: config.interruptLevel,
-          silenceMs: config.silenceMs,
-          idleTimeoutMinutes: config.idleTimeoutMinutes,
-          modelHost: config.modelHost
-        }
+        // base 用**全量** Config 映射：此前只给 7 键，其余落到 schema 默认值；旧宿主若 get() 返回
+        // 全量，config 基线（如 voice/rate 之外的 openaiPreset 等）会被默认值覆盖（A3 审计 Minor）。
+        base: voiceSettingsFromConfig(config)
       }
     );
-    vset = settingsScope.get();
+    const fromScope = settingsScope.get() ?? {};
+    try {
+      vset = resolveSettings(fromScope);
+    } catch (e) {
+      console.warn(`[dsh-voice-mode] settings scope returned invalid values; keeping valid keys only: ${redactSecrets(e)}`);
+      const salvaged = {};
+      for (const k of SETTING_KEYS) {
+        if (!(k in fromScope)) continue;
+        try {
+          resolveSettings({ [k]: fromScope[k] });
+          salvaged[k] = fromScope[k];
+        } catch {
+          console.warn(`[dsh-voice-mode] ignoring invalid setting from host scope: ${k}`);
+        }
+      }
+      vset = resolveSettings(salvaged);
+    }
     settingsScopeRef = settingsScope;
   } else {
     const loaded = readOverrides(settingsFile, SETTING_KEYS);
-    if (loaded.warn) console.warn(`[dsh-voice-mode] ignoring settings overlay ${settingsFile}: ${loaded.warn}`);
+    if (loaded.warn) console.warn(`[dsh-voice-mode] ignoring settings overlay ${settingsFile}: ${redactSecrets(loaded.warn)}`);
     let migrated = false;
     if (!loaded.exists) {
       const legacy = readLegacyVoiceSettings(dirname2(settingsFile), SETTING_KEYS);
@@ -3547,7 +4742,7 @@ function apply(ctx, config) {
         resolveSettings({ [k]: v });
         valid[k] = v;
       } catch (e) {
-        console.warn(`[dsh-voice-mode] ignoring invalid settings override "${k}" (falling back to the Config baseline): ${String(e).slice(0, 160)}`);
+        console.warn(`[dsh-voice-mode] ignoring invalid settings override "${k}" (falling back to the Config baseline): ${redactSecrets(e).slice(0, 160)}`);
       }
     }
     try {
@@ -3558,14 +4753,25 @@ function apply(ctx, config) {
           writeOverrides(settingsFile, valid);
           console.log(`[dsh-voice-mode] migrated ${Object.keys(valid).length} setting(s) from the legacy settings.yaml to ${settingsFile}`);
         } catch (e) {
-          console.warn(`[dsh-voice-mode] legacy settings migration could not be saved (still in effect for this run): ${String(e)}`);
+          console.warn(`[dsh-voice-mode] legacy settings migration could not be saved (still in effect for this run): ${redactSecrets(e)}`);
         }
       }
     } catch (e) {
-      console.warn(`[dsh-voice-mode] settings overlay failed validation as a whole; falling back to the Config baseline: ${String(e)}`);
+      console.warn(`[dsh-voice-mode] settings overlay failed validation as a whole; falling back to the Config baseline: ${redactSecrets(e)}`);
       vset = voiceSettingsFromConfig(config);
     }
   }
+  let replacementHits = [];
+  let replacementRuleCount = 0;
+  const replacerBox = { fn: (text) => text };
+  const rebuildReplacer = (rules) => {
+    replacementRuleCount = rules.length;
+    replacementHits = new Array(rules.length).fill(0);
+    replacerBox.fn = createAsrReplacer(rules, (i) => {
+      replacementHits[i] = (replacementHits[i] ?? 0) + 1;
+    });
+  };
+  rebuildReplacer(vset.asrReplacements ?? []);
   const asr = createAsrRuntime({
     cacheDir: config.cacheDir,
     modelHost: () => vset.modelHost,
@@ -3589,9 +4795,16 @@ function apply(ctx, config) {
     // 待机态 push-to-talk 属产品决策（要改的是客户端手势开放条件），PM 已登记待用户拍板，
     // 此处不加功能；host 侧只保证「manual 时非按压帧不入流」这一既有语义不被悄悄扩大。
     bargeInMode: () => vset.bargeInMode,
-    replaceText: createAsrReplacer(config.asrReplacements ?? [])
+    replaceText: (text, isFinal) => replacerBox.fn(text, isFinal !== false)
   });
-  ctx.effect(() => () => asr.dispose());
+  let pluginDisposed = false;
+  let toggleGen = 0;
+  const enteringToggles = /* @__PURE__ */ new Set();
+  ctx.effect(() => () => {
+    pluginDisposed = true;
+    toggleGen++;
+    asr.dispose();
+  });
   const warmupAsrIfCached = () => {
     if (!config.enabled) return;
     const st = asr.modelStatus();
@@ -3601,15 +4814,46 @@ function apply(ctx, config) {
   };
   warmupAsrIfCached();
   const makeEngine = (kind) => {
-    if (kind === "edge") return new EdgeTtsEngine(config.voice, config.rate);
+    if (kind === "edge") return new EdgeTtsEngine(vset.voice, vset.rate);
+    if (kind === "mimo") {
+      const m = config.mimoTts;
+      const fb = m.fallback;
+      return new MimoTtsEngine({
+        // 设置卡片里填的 key 优先（留空则回落到配置文件 mimoTts.apiKey）；key 只在宿主侧。
+        apiKey: (vset.mimoApiKey ?? "").trim() || m.apiKey,
+        baseUrl: m.baseUrl,
+        model: m.model,
+        voice: m.voice,
+        instructions: m.instructions,
+        responseFormat: m.responseFormat,
+        timeoutMs: m.timeoutMs,
+        fallback: fb === "none" ? void 0 : () => {
+          const engine = makeEngine(fb === "vits" ? "vits" : "kokoro");
+          if (m.fallbackVoice) engine.updateVoice(m.fallbackVoice, vset.rate);
+          return engine;
+        }
+      });
+    }
     if (kind === "openai") {
       const o = config.openaiTts;
       const fallbackKind = o.fallback;
+      const resolved = resolveOnlineTts(
+        {
+          presetId: vset.openaiPreset ?? "",
+          baseUrl: vset.openaiBaseUrl ?? "",
+          model: vset.openaiModel ?? "",
+          apiKey: vset.openaiApiKey ?? "",
+          apiKeys: vset.openaiApiKeys ?? {},
+          voice: ""
+        },
+        { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys }
+      );
       return new OpenAiTtsEngine({
-        baseUrl: o.baseUrl,
-        apiKey: o.apiKey || void 0,
-        model: o.model,
-        voice: o.voice,
+        baseUrl: resolved.baseUrl,
+        // E1 多 key：预设专属 key 优先（换服务商不必再手改单个 key）。key 始终只在宿主侧。
+        apiKey: resolved.apiKey || void 0,
+        model: resolved.model,
+        voice: resolved.voice,
         instructions: o.instructions || void 0,
         responseFormat: o.responseFormat,
         timeoutMs: o.timeoutMs,
@@ -3636,7 +4880,7 @@ function apply(ctx, config) {
       broadcast
     });
   };
-  let engineKind = vset.ttsEngine ?? config.ttsEngine;
+  let engineKind = asTtsEngineKind(vset.ttsEngine ?? config.ttsEngine);
   let activeKokoroModel = vset.kokoroModel;
   const queue = new TtsQueue({
     engine: makeEngine(engineKind),
@@ -3644,6 +4888,7 @@ function apply(ctx, config) {
     // 单句重试耗尽被跳过：显式下行（客户端提示 + 诊断），不再静默丢句。
     // streak = 连续被跳过的句数：客户端据此区分偶发抖动与「云端整体不可用」（如服务端拒绝握手）。
     onSkip: (sessionId, text, streak) => broadcast("tts-skip", { sessionId, text: text.slice(0, 80), streak }),
+    onRetry: (sessionId, attempt, maxAttempts) => broadcast("tts-retry", { sessionId, attempt, maxAttempts }),
     onIdle: (sessionId) => broadcast("tts-idle", { sessionId, turn: turnOfSession.get(sessionId)?.turn }),
     // R15（Issue #15 Important-2 host 侧接线）：onIdle 降级为「候选空闲」——「队列排空」不等于
     // 「回合结束」。带工具调用的回合会在工具执行期间把队列排空一次，据此发 tts-idle 会让
@@ -3651,24 +4896,65 @@ function apply(ctx, config) {
     // 只在 host 经 `agent/turn-stopping` 确认回合真正结束后才发（见下方钩子）。
     awaitTurnEnd: true
   });
+  const ttsKeyState = () => {
+    const st = queue.status();
+    if (st.engine === "mimo") return { keyRequired: true, keyPresent: st.keyPresent === true };
+    if (st.engine === "openai") return { keyRequired: presetRequiresKey(vset.openaiPreset), keyPresent: st.keyPresent === true };
+    return { keyRequired: false, keyPresent: false };
+  };
   queue.updateVoice(vset.voice, vset.rate);
   const unsubscribe = queue.subscribe((frame) => broadcast("audio", frame));
   ctx.effect(() => unsubscribe);
   ctx.effect(() => () => void queue.close());
-  const applyVset = (next) => {
+  const checkRemoteConfig = (kind) => {
+    if (kind === "mimo" && !((vset.mimoApiKey ?? "").trim() || config.mimoTts?.apiKey)) {
+      console.warn("[dsh-voice-mode] tts engine is mimo but no key is configured (settings or mimoTts.apiKey): synthesis will fail (falls back to local if configured)");
+    } else if (kind === "openai") {
+      const o = config.openaiTts;
+      const r = resolveOnlineTts(
+        { presetId: vset.openaiPreset ?? "", baseUrl: vset.openaiBaseUrl ?? "", model: vset.openaiModel ?? "", apiKey: vset.openaiApiKey ?? "", apiKeys: vset.openaiApiKeys ?? {}, voice: vset.voice },
+        { baseUrl: o.baseUrl, model: o.model, voice: o.voice, apiKey: o.apiKey, apiKeys: o.apiKeys }
+      );
+      if (!r.baseUrl || !r.model) {
+        console.warn("[dsh-voice-mode] tts engine is openai-compatible but baseUrl/model is missing: fill them in the settings card or the profile openaiTts block");
+      } else if (!r.voice) {
+        console.warn("[dsh-voice-mode] tts engine is openai-compatible but no voice is set: the server default voice will be used (set one in the settings card or via a preset)");
+      }
+    }
+  };
+  const applyVset = (incoming) => {
     const prev = vset;
+    let next;
+    try {
+      next = resolveSettings(incoming);
+    } catch (e) {
+      console.warn(`[dsh-voice-mode] settings update rejected by schema; keeping previous values: ${redactSecrets(e)}`);
+      return;
+    }
     vset = next;
     broadcast("display", displayOf(next));
-    if (next.ttsEngine !== engineKind) {
+    const reason = engineRebuildReason(prev, next, engineKind, activeKokoroModel);
+    if (reason === "engine-switch") {
       engineKind = next.ttsEngine;
+      if (engineKind === "kokoro") activeKokoroModel = next.kokoroModel;
+      checkRemoteConfig(engineKind);
       queue.setEngine(makeEngine(engineKind));
-    } else if (engineKind === "kokoro" && next.kokoroModel !== activeKokoroModel) {
+    } else if (reason === "mimo-key") {
+      checkRemoteConfig("mimo");
+      queue.setEngine(makeEngine("mimo"));
+    } else if (reason === "kokoro-model") {
       activeKokoroModel = next.kokoroModel;
       queue.setEngine(makeEngine("kokoro"));
+    } else if (reason === "openai-config") {
+      checkRemoteConfig("openai");
+      queue.setEngine(makeEngine("openai"));
     }
     queue.updateVoice(next.voice, next.rate);
     if (next.senseITN !== prev.senseITN || next.senseVoice !== prev.senseVoice) {
       asr.markStale();
+    }
+    if (JSON.stringify(next.asrReplacements ?? []) !== JSON.stringify(prev.asrReplacements ?? [])) {
+      rebuildReplacer(next.asrReplacements ?? []);
     }
   };
   if (settingsScopeRef) {
@@ -3676,9 +4962,12 @@ function apply(ctx, config) {
     ctx.effect(() => scopeRef.watch(applyVset));
   }
   let settingsWriteChain = Promise.resolve();
-  const persistSettings = (patch) => {
+  const persistSettings = (patch, clearAllPresetKeys = false) => {
     const run = async () => {
       const candidate = { ...overrides, ...patch };
+      if ("openaiApiKeys" in patch || clearAllPresetKeys) {
+        candidate.openaiApiKeys = mergePresetApiKeys(overrides.openaiApiKeys, patch.openaiApiKeys, clearAllPresetKeys);
+      }
       const next = resolveSettings(candidate);
       writeOverrides(settingsFile, candidate);
       overrides = candidate;
@@ -3693,6 +4982,7 @@ function apply(ctx, config) {
   const currentRate = () => vset.rate;
   const currentInterrupt = () => vset.interruptLevel;
   const currentEngine = () => engineKind;
+  checkRemoteConfig(engineKind);
   const yieldActiveSession = (expectedSid) => {
     ownerYieldTimer = null;
     const sid = activeVoiceSession;
@@ -3779,13 +5069,27 @@ function apply(ctx, config) {
   ctx.effect(
     () => ctx.webServer.register({
       kind: "exact",
+      path: `${base}/presets`,
+      handler: (req, res) => {
+        if (denyNonLoopback(req, res)) return;
+        respondJson2(res, 200, { presets: OPENAI_PRESETS });
+      }
+    })
+  );
+  ctx.effect(
+    () => ctx.webServer.register({
+      kind: "exact",
       path: `${base}/config`,
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
+        const keyState = ttsKeyState();
         respondJson2(res, 200, {
           basePath: base,
           rate: currentRate(),
           voice: currentVoice(),
+          // P1-2：入口探针还要判「预设音色」。ttsEngine 本就在下方载荷里；
+          // 此前探针只能读设置卡快照——0.1.7+ 只有首个订阅者才触发加载，未开过设置的用户
+          // 快照恒 loading，探针从未生效（T5 审计 B①）。这里补 openaiPreset 即可闭环。
           senseVoice: vset.senseVoice,
           interruptLevel: currentInterrupt(),
           silenceMs: vset.silenceMs,
@@ -3795,6 +5099,9 @@ function apply(ctx, config) {
           autoResume: vset.autoResume,
           mode: vset.mode,
           readAloud: vset.readAloud,
+          // 2026-11-20 UX：进模式前即可判断「云朗读缺 Key」，客户端据此常驻提示。
+          ttsNeedsKey: keyState.keyRequired,
+          ttsKeyPresent: keyState.keyPresent,
           showCaptions: vset.showCaptions,
           showStatusBar: vset.showStatusBar,
           bargeInMode: vset.bargeInMode,
@@ -3812,6 +5119,7 @@ function apply(ctx, config) {
           senseITN: vset.senseITN,
           cacheDir: config.cacheDir,
           ttsEngine: currentEngine(),
+          openaiPreset: vset.openaiPreset,
           audioMime: queue.mime,
           allowLan: config.allowLan
         });
@@ -3849,7 +5157,7 @@ function apply(ctx, config) {
             respondJson2(res, 400, { code: "bad_request", error: "voice too long" });
             return;
           }
-          if (!voice) {
+          if (!voice && currentEngine() !== "openai") {
             respondJson2(res, 400, { code: "bad_request", error: "voice required" });
             return;
           }
@@ -3859,8 +5167,11 @@ function apply(ctx, config) {
           }
           const sample = previewSample(currentEngine(), voice);
           let buf;
+          let mime = queue.mime;
           try {
-            buf = await queue.synthesize(sample, { voice, rate });
+            const r = await queue.synthesizeWithMime(sample, { voice, rate });
+            buf = r.buf;
+            mime = r.mime;
           } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
             const category = classifyPreviewError(errMsg);
@@ -3868,12 +5179,12 @@ function apply(ctx, config) {
             const engineStatus = queue.status();
             const sampleLen = sample.length;
             console.warn(
-              `[dsh-voice-mode] preview synthesis failed: category=${category} engine=${engineName} engineReady=${engineStatus.ready} sampleLen=${sampleLen} attempt=1 voice=${voice} err=${errMsg}`
+              `[dsh-voice-mode] preview synthesis failed: category=${category} engine=${engineName} engineReady=${engineStatus.ready} sampleLen=${sampleLen} attempt=1 voice=${redactSecrets(voice)} err=${redactSecrets(errMsg)}`
             );
             respondJson2(res, 502, { code: PREVIEW_ERROR_CODES[category], error: `preview failed (${category})` });
             return;
           }
-          res.writeHead(200, { "content-type": queue.mime, "cache-control": "no-store" });
+          res.writeHead(200, { "content-type": mime, "cache-control": "no-store" });
           res.end(buf);
         });
       }
@@ -3884,6 +5195,10 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/correct`,
       handler: (req, res) => {
+        if (req.method !== "POST" && req.method !== "GET") {
+          respondJson2(res, 405, { code: "method_not_allowed", error: "method not allowed" });
+          return;
+        }
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -3920,6 +5235,10 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/toggle`,
       handler: (req, res) => {
+        if (req.method !== "POST" && req.method !== "GET") {
+          respondJson2(res, 405, { code: "method_not_allowed", error: "method not allowed" });
+          return;
+        }
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
@@ -3935,7 +5254,7 @@ function apply(ctx, config) {
             tabId = typeof parsed.tabId === "string" && parsed.tabId.length <= 64 ? parsed.tabId : void 0;
           } catch {
           }
-          if (!sessionId) {
+          if (typeof sessionId !== "string" || !sessionId || sessionId.length > 128) {
             respondJson2(res, 400, { code: "bad_request", error: "sessionId required" });
             return;
           }
@@ -3960,7 +5279,15 @@ function apply(ctx, config) {
               respondJson2(res, 403, { code: "unknown_session", error: "unknown session" });
               return;
             }
+            const myToggleGen = ++toggleGen;
+            enteringToggles.add(sessionId);
             await asr.warmupSense();
+            const enterStale = pluginDisposed || myToggleGen !== toggleGen;
+            enteringToggles.delete(sessionId);
+            if (enterStale) {
+              respondJson2(res, 200, { active: activeVoiceSession, stale: true });
+              return;
+            }
             asr.reset(sessionId);
             queue.cancel(sessionId);
             const previous = activeVoiceSession;
@@ -3978,6 +5305,7 @@ function apply(ctx, config) {
             }
             broadcast("mode", { active: activeVoiceSession, ownerTabId: activeTabId });
           } else {
+            if (activeVoiceSession === sessionId || enteringToggles.has(sessionId)) toggleGen++;
             if (activeVoiceSession === sessionId) {
               activeVoiceSession = null;
               activeTabId = null;
@@ -4002,7 +5330,12 @@ function apply(ctx, config) {
       path: `${base}/models/status`,
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
-        respondJson2(res, 200, { ...asr.modelStatus(), tts: queue.status() });
+        respondJson2(res, 200, {
+          ...asr.modelStatus(),
+          tts: { ...queue.status(), ...ttsKeyState() },
+          // P1-3：词表规则数与命中计数（本次生效以来；设置变更重建即清零）。
+          replacements: { rules: replacementRuleCount, hits: [...replacementHits] }
+        });
       }
     })
   );
@@ -4018,6 +5351,14 @@ function apply(ctx, config) {
           return;
         }
         if (denyCrossOrigin(req, res)) return;
+        if (!isLoopbackRequest(req)) {
+          respondJson2(res, 403, { code: "forbidden", error: "model cache writes are loopback-only" });
+          return;
+        }
+        if (!limiter.hit(`models-retry:${clientKey(req)}`, 6, 6e4)) {
+          respondJson2(res, 429, { code: "rate_limited", error: "rate limited" });
+          return;
+        }
         if (!config.enabled) {
           respondJson2(res, 403, { code: "voice_disabled", error: "voice mode disabled" });
           return;
@@ -4040,7 +5381,7 @@ function apply(ctx, config) {
           void asr.retryModel(kind).then((done) => {
             respondJson2(res, 200, { ok: done, kind });
           }).catch((e) => {
-            console.warn(`[dsh-voice-mode] model retry failed: ${String(e)}`);
+            console.warn(`[dsh-voice-mode] model retry failed: ${redactSecrets(e)}`);
             respondJson2(res, 500, { code: "internal", error: "model retry failed" });
           });
         });
@@ -4053,7 +5394,20 @@ function apply(ctx, config) {
       path: `${base}/models/clean`,
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
+        if (req.method !== "POST") {
+          res.setHeader("allow", "POST");
+          respondJson2(res, 405, { code: "method_not_allowed", error: "POST required" });
+          return;
+        }
         if (denyCrossOrigin(req, res)) return;
+        if (!isLoopbackRequest(req)) {
+          respondJson2(res, 403, { code: "forbidden", error: "model cache writes are loopback-only" });
+          return;
+        }
+        if (!limiter.hit(`models-clean:${clientKey(req)}`, 6, 6e4)) {
+          respondJson2(res, 429, { code: "rate_limited", error: "rate limited" });
+          return;
+        }
         if (!config.enabled) {
           respondJson2(res, 403, { code: "voice_disabled", error: "voice mode disabled" });
           return;
@@ -4062,7 +5416,7 @@ function apply(ctx, config) {
           let engine = "vits";
           try {
             const p = JSON.parse(body || "{}");
-            if (p.engine === "kokoro" || p.engine === "vits") engine = p.engine;
+            if (isLocalEngine(p.engine)) engine = p.engine;
             else {
               respondJson2(res, 400, { code: "bad_request", error: "invalid engine" });
               return;
@@ -4079,7 +5433,7 @@ function apply(ctx, config) {
             }
             respondJson2(res, 200, { ok: true, engine });
           }).catch((e) => {
-            console.warn(`[dsh-voice-mode] models/download failed: ${String(e)}`);
+            console.warn(`[dsh-voice-mode] models/clean failed: ${redactSecrets(e)}`);
             respondJson2(res, 500, { code: "internal", error: "internal error" });
           });
         });
@@ -4092,7 +5446,20 @@ function apply(ctx, config) {
       path: `${base}/models/download`,
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
+        if (req.method !== "POST") {
+          res.setHeader("allow", "POST");
+          respondJson2(res, 405, { code: "method_not_allowed", error: "POST required" });
+          return;
+        }
         if (denyCrossOrigin(req, res)) return;
+        if (!isLoopbackRequest(req)) {
+          respondJson2(res, 403, { code: "forbidden", error: "model cache writes are loopback-only" });
+          return;
+        }
+        if (!limiter.hit(`models-download:${clientKey(req)}`, 6, 6e4)) {
+          respondJson2(res, 429, { code: "rate_limited", error: "rate limited" });
+          return;
+        }
         if (!config.enabled) {
           respondJson2(res, 403, { code: "voice_disabled", error: "voice mode disabled" });
           return;
@@ -4101,7 +5468,7 @@ function apply(ctx, config) {
           let engine = "vits";
           try {
             const p = JSON.parse(body || "{}");
-            if (p.engine === "kokoro" || p.engine === "vits") engine = p.engine;
+            if (isLocalEngine(p.engine)) engine = p.engine;
             else {
               respondJson2(res, 400, { code: "bad_request", error: "invalid engine" });
               return;
@@ -4115,7 +5482,7 @@ function apply(ctx, config) {
             return;
           }
           void queue.prepare().then(() => respondJson2(res, 200, { ok: true, engine })).catch((e) => {
-            console.warn(`[dsh-voice-mode] model download failed: ${String(e)}`);
+            console.warn(`[dsh-voice-mode] model download failed: ${redactSecrets(e)}`);
             respondJson2(res, 502, { code: "model_download_failed", error: "model download failed" });
           });
         });
@@ -4127,13 +5494,21 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/voices`,
       handler: async (req, res) => {
+        if (req.method !== "POST" && req.method !== "GET") {
+          respondJson2(res, 405, { code: "method_not_allowed", error: "method not allowed" });
+          return;
+        }
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
+        if (!limiter.hit(`voices:${clientKey(req)}`, 10, 6e4)) {
+          respondJson2(res, 429, { code: "rate_limited", error: "rate limited" });
+          return;
+        }
         try {
           const voices = await listEdgeVoices();
           respondJson2(res, 200, { voices });
         } catch (e) {
-          console.warn(`[dsh-voice-mode] listing Edge voices failed: ${String(e)}`);
+          console.warn(`[dsh-voice-mode] listing Edge voices failed: ${redactSecrets(e)}`);
           respondJson2(res, 502, { code: "internal", error: "voice list unavailable" });
         }
       }
@@ -4164,7 +5539,9 @@ function apply(ctx, config) {
         if (sid && sid === activeVoiceSession) {
           try {
             const url = new URL(req.url ?? "/", "http://localhost");
-            setTurn(sid, url.searchParams.get("final") === "1" ? "finalizing" : "listening");
+            if (url.searchParams.get("vadOnly") !== "1" && url.searchParams.get("reset") !== "1") {
+              setTurn(sid, url.searchParams.get("final") === "1" ? "finalizing" : "listening");
+            }
           } catch {
           }
         }
@@ -4177,6 +5554,10 @@ function apply(ctx, config) {
       kind: "exact",
       path: `${base}/cancel`,
       handler: (req, res) => {
+        if (req.method !== "POST" && req.method !== "GET") {
+          respondJson2(res, 405, { code: "method_not_allowed", error: "method not allowed" });
+          return;
+        }
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
         collectBody(req, res, MAX_JSON_BODY, (body) => {
@@ -4212,7 +5593,8 @@ function apply(ctx, config) {
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
         if (req.method === "GET") {
-          respondJson2(res, 200, { managedBy: settingsScopeRef ? "dsh" : "plugin", value: vset });
+          const view = buildSettingsGetView(vset, config);
+          respondJson2(res, 200, { managedBy: settingsScopeRef ? "dsh" : "plugin", ...view });
           return;
         }
         if (req.method !== "POST") {
@@ -4223,6 +5605,14 @@ function apply(ctx, config) {
         if (denyCrossOrigin(req, res)) return;
         if (settingsScopeRef) {
           respondJson2(res, 409, { code: "settings_managed", error: "settings are managed by dsh on this host" });
+          return;
+        }
+        if (!isLoopbackRequest(req)) {
+          respondJson2(res, 403, { code: "forbidden", error: "settings writes are loopback-only" });
+          return;
+        }
+        if (!limiter.hit(`settings:${clientKey(req)}`, 30, 6e4)) {
+          respondJson2(res, 429, { code: "rate_limited", error: "too many settings updates, retry in a minute" });
           return;
         }
         collectBody(req, res, MAX_JSON_BODY, async (body) => {
@@ -4237,17 +5627,28 @@ function apply(ctx, config) {
             respondJson2(res, 400, { code: "bad_request", error: "body must be a JSON object" });
             return;
           }
-          const unknown = unknownKeys(patch, SETTING_KEYS);
+          const rawClear = patch.clearSecrets;
+          let cleared;
+          try {
+            cleared = applyClearSecrets(patch, rawClear);
+          } catch (e) {
+            respondJson2(res, 400, { code: "bad_request", error: String(e.message).slice(0, 120) });
+            return;
+          }
+          const unknown = unknownKeys(cleared, SETTING_KEYS);
           if (unknown.length > 0) {
             respondJson2(res, 400, { code: "bad_request", error: `unknown settings: ${unknown.slice(0, 5).join(", ")}` });
             return;
           }
+          const rest = { ...pickKnownKeys(cleared, SETTING_KEYS) };
+          const clearAllMap = Array.isArray(rawClear) && rawClear.includes("openaiApiKeys");
           try {
-            const next = await persistSettings(pickKnownKeys(patch, SETTING_KEYS));
-            respondJson2(res, 200, { ok: true, managedBy: "plugin", value: next });
+            const next = await persistSettings(rest, clearAllMap);
+            const out = { ...next, openaiApiKey: "", mimoApiKey: "", openaiApiKeys: {} };
+            respondJson2(res, 200, { ok: true, managedBy: "plugin", value: out });
           } catch (e) {
             const isValidation = e instanceof Error && e.name === "ValidationError";
-            console.warn(`[dsh-voice-mode] settings update failed: ${String(e)}`);
+            console.warn(`[dsh-voice-mode] settings update failed: ${redactSecrets(e)}`);
             respondJson2(res, isValidation ? 400 : 500, {
               code: isValidation ? "bad_request" : "internal",
               error: isValidation ? `invalid value: ${e.message.slice(0, 200)}` : "settings update failed"
@@ -4263,7 +5664,20 @@ function apply(ctx, config) {
       path: `${base}/mode`,
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
+        if (req.method !== "POST") {
+          res.setHeader("allow", "POST");
+          respondJson2(res, 405, { code: "method_not_allowed", error: "POST required" });
+          return;
+        }
         if (denyCrossOrigin(req, res)) return;
+        if (!isLoopbackRequest(req)) {
+          respondJson2(res, 403, { code: "forbidden", error: "settings writes are loopback-only" });
+          return;
+        }
+        if (!limiter.hit(`mode:${clientKey(req)}`, 30, 6e4)) {
+          respondJson2(res, 429, { code: "rate_limited", error: "rate limited" });
+          return;
+        }
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let mode;
           try {
@@ -4279,7 +5693,7 @@ function apply(ctx, config) {
           void persistMode.then(() => {
             respondJson2(res, 200, { ok: true, mode });
           }).catch((e) => {
-            console.warn(`[dsh-voice-mode] mode update failed: ${String(e)}`);
+            console.warn(`[dsh-voice-mode] mode update failed: ${redactSecrets(e)}`);
             respondJson2(res, 500, { code: "internal", error: "mode update failed" });
           });
         });
@@ -4318,7 +5732,7 @@ function apply(ctx, config) {
             focusedSessionId = null;
             focusedTabId = null;
           }
-          if (prevFocus !== null && prevFocus !== focusedSessionId) stopFocusReading(prevFocus);
+          if (prevFocus !== null && prevFocus !== focusedSessionId) stopFocusReading(prevFocus, tabId);
           if (prevFocus !== null && prevFocus !== focusedSessionId) reclaimFocusState(prevFocus);
           broadcast("focus", { sessionId: focusedSessionId, tabId: focusedTabId });
           respondJson2(res, 200, { ok: true, sessionId: focusedSessionId, tabId: focusedTabId });
@@ -4333,6 +5747,11 @@ function apply(ctx, config) {
       handler: (req, res) => {
         if (denyNonLoopback(req, res)) return;
         if (denyCrossOrigin(req, res)) return;
+        if (req.method && req.method !== "GET") {
+          res.setHeader("allow", "GET");
+          respondJson2(res, 405, { code: "method_not_allowed", error: "GET required" });
+          return;
+        }
         let tabId = null;
         try {
           const u = new URL(req.url ?? "/", "http://localhost");
@@ -4371,7 +5790,13 @@ data: ${JSON.stringify(payload)}
             res.destroy();
           }
         };
+        let heartbeat = null;
         const end = () => {
+          if (heartbeat) {
+            clearInterval(heartbeat);
+            heartbeat = null;
+          }
+          sseClients.delete(client);
           try {
             res.end();
           } catch {
@@ -4387,7 +5812,7 @@ data: ${JSON.stringify(payload)}
         send("mode", { active: activeVoiceSession, ownerTabId: activeTabId });
         send("focus", { sessionId: focusedSessionId, tabId: focusedTabId });
         send("display", displayOf(vset));
-        const heartbeat = setInterval(() => {
+        heartbeat = setInterval(() => {
           try {
             res.write(": hb\n");
           } catch {
@@ -4398,7 +5823,10 @@ data: ${JSON.stringify(payload)}
         const cleanup = () => {
           if (cleaned) return;
           cleaned = true;
-          clearInterval(heartbeat);
+          if (heartbeat) {
+            clearInterval(heartbeat);
+            heartbeat = null;
+          }
           sseClients.delete(client);
           if (tabId !== null && latestConnByTab.get(tabId) === client) {
             latestConnByTab.delete(tabId);
@@ -4496,6 +5924,7 @@ async function* tapActiveStream(sessionId, inner, queue, broadcast, onTurn, spea
 }
 export {
   Config,
+  MimoTtsConfig,
   OpenAiTtsConfig,
   VoiceSettingsSchema,
   apply,

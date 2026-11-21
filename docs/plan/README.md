@@ -14,6 +14,9 @@
 | [reviewer-prompt.md](reviewer-prompt.md) | 审查 agent 提示词（六轴框架 / 固定桶输出 / 不修复纪律 / 与执行者关系） |
 | [beautification-plan-2026-09-16.md](beautification-plan-2026-09-16.md) | 项目美化计划（6 角色协同：README + 截图 + 仓库 + 索引 + 文案 + demo） |
 | [COLLABORATION.md](COLLABORATION.md) | 开发协作推进体系（角色分工 + 四阶段流程 + 固定门禁 + goal 长任务协作） |
+| [master-plan-2026-11-18.md](master-plan-2026-11-18.md) | **P1 + TTS 扩张总纲（现行开工入口）**：用户已拍板口径，旅程×痛点、能力矩阵、分批验收、门禁 |
+| [voice-direction-decision-2026-11-18.md](voice-direction-decision-2026-11-18.md) | 方向决策记录（含已作废的下一项目三候选归档） |
+| [tts-expansion-2026-11-18.md](tts-expansion-2026-11-18.md) | TTS 扩张计划（一手接口形状 + E0–E3 分批） |
 | [R15-remaining-work.md](R15-remaining-work.md) | **R15 阶段收尾交接件**（2026-10-21）：剩余待办队列（P0 回填 130 处行号 / 重跑第三轮验真 sweep）、已定性不再重查的事实（`s.running` 回合级等）、接手纪律与快速开始 |
 
 ## 维护纪律

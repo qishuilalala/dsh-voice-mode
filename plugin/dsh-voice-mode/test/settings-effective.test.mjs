@@ -74,19 +74,25 @@ t('runtime-boot 模块存在且客户端 fetchConfig 刷新镜像', () => {
   assert.ok(/setRuntimeBoot\(next as unknown as Record<string, unknown>\)/.test(cli), 'fetchConfig 成功未刷新镜像')
 })
 
-t('settings-form（审查 M-4）：pending 列表有 ready 门控（加载中 value={} 不全量误报）', () => {
+t('settings-form（审查 M-4 + T6）：pending 判定走可测模块，且 ready 门控在位', () => {
   assert.ok(formSrc.includes("ready={snap?.status === 'ready'}"), '缺 ready 门控——HttpScope 初始空值会把全部字段误判 pending')
-  assert.ok(/if \(!ready \|\| !effective\) return null/.test(formSrc), 'EffectivePending 未用 ready 门控')
+  // 判定逻辑已抽到 effective-pending.ts（真实计算由 test/effective-pending.test.mjs 覆盖 8 项）
+  assert.ok(formSrc.includes('computePendingFields(effective, value, ready === true)'), '未把 ready 传入判定函数')
+  const mod = read('src/effective-pending.ts')
+  assert.ok(/if \(!ready \|\| !effective\) return \[\]/.test(mod), '模块缺 ready/effective 门控')
 })
 
-t('settings-form：NEXT_ENTRY_FIELDS 清单 + EffectivePending 渲染', () => {
-  assert.ok(formSrc.includes('const NEXT_ENTRY_FIELDS'), '缺下次进入字段清单')
+t('settings-form：字段清单在模块、展示映射在 UI、提示块已渲染', () => {
+  const mod = read('src/effective-pending.ts')
+  assert.ok(mod.includes('NEXT_ENTRY_FIELD_SPECS'), '缺下次进入字段清单')
   // 白名单字段必须在清单里（字幕字号/让位窗口/打断抢救/LLM 纠错）
   for (const k of ['captionFontSize', 'yieldMs', 'bargeInSalvage', 'llmCorrect', 'autoSend', 'wakeWord', 'idleTimeoutMinutes', 'shortcut']) {
-    assert.ok(formSrc.includes(`key: '${k}'`), `清单缺 ${k}——该字段的生效反馈不显示`)
+    assert.ok(mod.includes("key: '" + k + "'"), '清单缺 ' + k + '——该字段的生效反馈不显示')
   }
+  assert.ok(formSrc.includes('NEXT_ENTRY_FMT'), 'UI 层缺展示映射（文案要走 tr）')
   assert.ok(formSrc.includes('function EffectivePending'), '缺提示块组件')
-  assert.ok(formSrc.includes('<EffectivePending effective={getRuntimeBoot()} value={value} ready={snap?.status === \'ready\'} />'), '卡片体未渲染提示块')
+  // 用反引号模板避免内嵌单引号把 JS 字符串弄断
+  assert.ok(formSrc.includes(`<EffectivePending effective={getRuntimeBoot()} value={value} ready={snap?.status === 'ready'} />`), '卡片体未渲染提示块')
 })
 
 t('README：设置入口引导 + 四档生效时机', () => {
@@ -105,12 +111,15 @@ t('settings-form（R1 I-1）：NEXT_ENTRY_FIELDS 五项枚举/数字字段全部
     captionFontSize: ['captionSizeS', 'captionSizeM', 'captionSizeL', 'captionSizeXL'],
     captionMaxWidth: ['captionWidth50', 'captionWidth70', 'captionWidth90'],
   }
+  // T6 重构后：字段清单在 effective-pending.ts，fmt 映射在 settings-form.tsx 的 NEXT_ENTRY_FMT。
+  const mod = read('src/effective-pending.ts')
+  const fmtLines = formSrc.split('\n')
   for (const [k, keys] of Object.entries(expect)) {
-    const m = new RegExp(`\\{ key: '${k}'[^\\n]*\\}`).exec(formSrc)
-    assert.ok(m, `清单缺 ${k}`)
-    assert.ok(/fmt:/.test(m[0]), `${k} 缺 fmt——裸 String() 回落会把内部值直出到界面`)
+    assert.ok(mod.includes("key: '" + k + "'"), '清单缺 ' + k)
+    const line = fmtLines.find((l) => l.trimStart().startsWith(k + ':'))
+    assert.ok(line, k + ' 缺 fmt 映射——裸 String() 会把内部值直出界面')
     for (const dk of keys) {
-      assert.ok(m[0].includes(`'${dk}'`), `${k} 的 fmt 未映射词典键 ${dk}`)
+      assert.ok(line.includes("'" + dk + "'"), k + ' 的 fmt 未映射词典键 ' + dk)
     }
   }
   // M-1：单位一律走词典（中文界面不得出现「1500 ms」这类硬编码英文单位）。
@@ -121,6 +130,38 @@ t('settings-form（R1 I-1）：NEXT_ENTRY_FIELDS 五项枚举/数字字段全部
   }
 })
 
+
+t('strings（T6 补强）：死键扫描的匹配器自测', () => {
+  // 死键扫描靠一条正则判断「键是否被 t()/tr()/tk() 字面量引用」。正则改了却没人测它，
+  // 就会出现「扫描恒过」的假绿。这里对匹配器做自测（引号/三元/前缀/注释四类）。
+  const Q = String.fromCharCode(39) // '
+  const RE = (k) => new RegExp('\\b(?:t|tr|tk)\\([^()]*([' + Q + '\"])' + k + '\\1')
+  const hit = (src, k) => RE(k).test(src)
+  assert.equal(hit('tr(' + Q + 'fooBar' + Q + ')', 'fooBar'), true, '单引号引用应命中')
+  assert.equal(hit('t("fooBar")', 'fooBar'), true, '双引号引用应命中')
+  assert.equal(hit('tr(cond ? ' + Q + 'fooBar' + Q + ' : ' + Q + 'x' + Q + ')', 'fooBar'), true, '三元分支应命中')
+  assert.equal(hit('tr(' + Q + 'fooBarBaz' + Q + ')', 'fooBar'), false, '前缀相同但键不同不得误判')
+  assert.equal(hit('// 注释里写 fooBar', 'fooBar'), false, '纯注释不算引用')
+})
+
+t('settings-form（R5 Important）：字段清单与 fmt 映射**键集合完全一致**（漏配会退回裸 String()）', () => {
+  const mod = read('src/effective-pending.ts')
+  const specKeys = [...mod.matchAll(/\{ key: '([a-zA-Z][a-zA-Z0-9]*)', label:/g)].map((m) => m[1])
+  const sfSrc2 = read('src/settings-form.tsx')
+  const fmtStart = sfSrc2.indexOf('const NEXT_ENTRY_FMT')
+  assert.ok(fmtStart > 0, '找不到 NEXT_ENTRY_FMT')
+  const fmtBlock = sfSrc2.slice(fmtStart, sfSrc2.indexOf('\n}', fmtStart))
+  const fmtKeys = [...fmtBlock.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*): \(v\) =>/gm)].map((m) => m[1])
+  assert.ok(specKeys.length >= 10, '清单键解析异常：' + specKeys.length)
+  assert.deepEqual(
+    [...fmtKeys].sort(),
+    [...specKeys].sort(),
+    '字段清单与 fmt 映射不一致（多配/漏配都会让提示显示内部值或 undefined）：清单=' +
+      specKeys.join(',') +
+      ' / fmt=' +
+      fmtKeys.join(','),
+  )
+})
 t('strings（R1 M-2）：*Label 孪生 base 键零死键（批 C 双轨残留清零）', () => {
   // 孪生 base 键（X 与 X+'Label' 同在词典）只应经 t()/tr() 消费；0 引用 = 死键。
   const zhBlock = stringsSrc.slice(stringsSrc.indexOf('export const zh = {'), stringsSrc.indexOf('} as const'))
@@ -192,41 +233,28 @@ t('strings（R1 M-2 补强，R2 Minor-1）：全量零引用死键扫描（动�
   assert.deepEqual(scanDead(['zzFakeLabel']), ['zzFakeLabel'], '无 base Row/field 的假 *Label 键未被报出——白名单仍是 blanket 豁免')
 })
 
-t('strings（R1 M-3/M-4/文案 8）：effectiveNote 补 Kokoro 即时档、cardDesc 补两项、尾句收窄', () => {
-  const note = /settingsEffectiveNote: '([^']*)'/.exec(stringsSrc)[1]
-  assert.ok(/即时[^；]*Kokoro 模型精度/.test(note), 'Kokoro 模型精度应归①即时档（applyVset 重建引擎，已缓存则即时）')
-  const card = /settingsCardDesc: '([^']*)'/.exec(stringsSrc)[1]
-  for (const k of ['打断语音抢救', 'LLM 纠错']) {
-    assert.ok(card.includes(k), `插件摘要卡漏列 ${k}（批 1/批 4 新增项）`)
-  }
-  assert.ok(note.includes('下次进入语音模式才生效的项会列在卡片顶部'), 'effectiveNote 尾句未收窄（tier② 字段不进待生效列表）')
-  assert.ok(!note.includes('已保存但未生效'), 'effectiveNote 仍有旧尾句')
-})
-
-t('strings（R2 Minor B）：settingsCardDesc 补 PR #16 三个新设置（与 settingsEffectiveNote 内部一致）', () => {
-  // 插件列表摘要行（client.tsx:528 渲染 settingsCardDesc）此前漏列 PR #16 的
-  // 朗读回复 / 状态条 / 字幕浮层，而生效说明（settingsEffectiveNote）已列——
-  // 两条文案内部不一致：用户从摘要行看不出这三个设置存在。
+t('strings（R6 UI 重做）：摘要卡改为「一句话说明」，不再罗列字段名', () => {
+  // 2026-11-20 用户反馈「非常丑陋拥挤」：旧 settingsCardDesc 把 24 个字段名用「 / 」拼成一行，
+  // 既是整张卡片最丑的一行，也在窄容器里被截断成乱码。设计改为：
+  //   ① 展开态：一句人话说明这张卡能做什么；
+  //   ② 折叠态：引擎 · 音色 · 就绪状态（由 settings-form 现场拼，不走词典）。
   const cardZh = /settingsCardDesc: '([^']*)'/.exec(stringsSrc)[1]
-  for (const k of ['朗读回复', '状态条', '字幕浮层']) {
-    assert.ok(cardZh.includes(k), `插件摘要卡漏列 ${k}（PR #16 新增设置）`)
-  }
+  assert.ok(cardZh.length <= 90, 'settingsCardDesc 太长（应为一句话，≤90 字）：' + cardZh.length)
+  assert.ok(!cardZh.includes(' / '), 'settingsCardDesc 又变成字段名罗列了（出现过「 / 」分隔）')
   const enBlock = stringsSrc.slice(stringsSrc.indexOf('export const en'))
   const cardEn = /settingsCardDesc: '([^']*)'/.exec(enBlock)[1]
-  for (const k of ['read replies', 'status bar', 'caption overlay']) {
-    assert.ok(cardEn.includes(k), `en 插件摘要卡漏列 ${k}（PR #16 新增设置）`)
-  }
-  // 内部一致性：这三项在生效说明里必须在（对照锚点，防止两边再次漂移）。
-  const note = /settingsEffectiveNote: '([^']*)'/.exec(stringsSrc)[1]
-  for (const k of ['朗读回复', '状态条', '字幕浮层']) {
-    assert.ok(note.includes(k), `settingsEffectiveNote 未列 ${k}（对照锚点缺失）`)
-  }
+  assert.ok(cardEn.length <= 220, 'en settingsCardDesc 太长：' + cardEn.length)
+  assert.ok(!cardEn.includes(' / '), 'en settingsCardDesc 又变成字段名罗列了')
+  // 折叠态摘要必须由「引擎名 + 音色 + 就绪状态」构成（源码级守卫，防回退成罗列）
+  const sf = read('src/settings-form.tsx')
+  assert.ok(/ENGINE_NAME\[engine\]\(\)/.test(sf), '折叠摘要缺引擎名')
+  assert.ok(/tr\('engineReady'\)/.test(sf), '折叠摘要缺就绪状态')
 })
 
 t('strings（R1 文案修正）：hold-only 披露 / detect 回落 / Ctrl 措辞 / 批次号清零 / 跳过本句 / 纠错口径', () => {
   assert.ok(stringsSrc.includes('仅「按住说话」模式播放期可触发'), 'backchannelYield/让位窗口缺 hold-only 如实披露（UX-I2：默认开但在 toggle 是结构性死路）')
   assert.ok(stringsSrc.includes('持续聆听」模式播放期不识别语音'), '缺「toggle 播放期不识别语音」披露')
-  assert.ok(stringsSrc.includes('回落 manual 时同样不生效'), 'descWakeWord 缺 detect 回落 manual 披露（UX-I3）')
+  assert.ok(stringsSrc.includes('回落 manual 时，空闲期唤醒词照常生效'), 'descWakeWord 应说明 manual/detect 回落时空闲期唤醒词照常生效')
   assert.ok(stringsSrc.includes('说话过程中按住 Ctrl 可立即发送'), 'descAutoSend 的 Ctrl 措辞过度承诺未修（仅说话过程中有效）')
   assert.ok(!stringsSrc.includes('批 G 任务 2 已加'), 'descIdle 仍泄漏内部批次号')
   assert.ok(!stringsSrc.includes('pre-batch-5'), 'en descBackchannelYield 仍泄漏内部批次号')
@@ -235,9 +263,9 @@ t('strings（R1 文案修正）：hold-only 披露 / detect 回落 / Ctrl 措辞
   assert.ok(stringsSrc.includes('每分钟最多 10 次'), 'descLlmCorrect 缺限流口径')
   assert.ok(stringsSrc.includes('语音模式关闭或触发限流时按原文发送'), 'descLlmCorrect 未区分两种失败（enabled=false→403 / 限流→429，均带原文回退，fix-host 终态）')
   assert.ok(stringsSrc.includes('需宿主已配置默认模型'), 'descLlmCorrect 缺默认模型前提')
-  // R1 收尾（fix-host 指名 I5）：descBargeIn 披露 toggle+manual 待机态无法语音输入。
-  assert.ok(stringsSrc.includes('toggle 模式仅播放中可长按说话，待机时无法语音输入'), 'descBargeIn 缺 I5 披露（manual 非按压期不识别语音，toggle 待机按不住）')
-  assert.ok(stringsSrc.includes('in toggle mode you can long-press to speak only while the agent is playing'), 'en descBargeIn 缺 I5 披露')
+  // Loop 3 #5：manual 作用域收窄到播放期——空闲可直接说话，朗读中按住打断。
+  assert.ok(stringsSrc.includes('空闲时可直接说话或说唤醒词，AI 朗读中仅按住麦克风/Ctrl 才打断并收音'), 'descBargeIn 应说明 manual 空闲可直接说、朗读中按住打断')
+  assert.ok(stringsSrc.includes('speak directly or say the wake word when idle, and hold mic/Ctrl to interrupt while the agent is playing'), 'en descBargeIn 应说明 manual 空闲可直接说、朗读中按住打断')
 })
 
 t('strings（R1 收尾）：fix-client 直连 tk() 调用的两个键双语落地（strings-coverage 的 t()/tr() 字面量扫描不覆盖 tk()）', () => {

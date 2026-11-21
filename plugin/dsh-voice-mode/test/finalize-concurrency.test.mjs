@@ -386,10 +386,33 @@ await t('asr.ts 不得再用「世代快照」判定本段作废（该判定把�
   )
 })
 
-await t('asr.ts：弃段令牌递增点恰为 7 处（clearWake/短噪声/stop/start/beginHeld/discard/取消）', async () => {
+await t('asr.ts：弃段令牌递增点恰为 7 处且落在预期函数内（AST 定位，挪进死代码会失败）', async () => {
   const src = readFileSync(join(here, '..', 'src', 'asr.ts'), 'utf8')
-  const n = (src.match(/discardGen\+\+/g) ?? []).length
-  assert.equal(n, 7, `弃段令牌递增点应为 7 处（实际 ${n} 处）——多一处会误杀在途定稿，少一处会漏作废`)
+  // A2 审计：单纯 `discardGen++` 计数在「挪进死代码/不可达分支」时仍然绿。
+  // 改为 AST 定位：每个递增点必须位于预期函数体内（函数名白名单），且总数 7。
+  const ts = await import('typescript')
+  const sf = ts.createSourceFile('asr.ts', src, ts.ScriptTarget.Latest, true)
+  // 实际作用域（AST 实测）：短噪声弃段在 handleAudio、松手在 endHeld、退出在 stopRecorder。
+  const expected = new Set(['clearWakeSegment', 'handleAudio', 'stopRecorder', 'start', 'beginHeld', 'discardSegment', 'endHeld'])
+  const found = []
+  const visit = (node, fnName) => {
+    let name = fnName
+    if (ts.isFunctionDeclaration(node) && node.name) name = node.name.text
+    else if ((ts.isMethodDeclaration(node) || ts.isPropertyDeclaration(node)) && node.name && ts.isIdentifier(node.name)) name = node.name.text
+    else if ((ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) name = node.parent.name.text
+    if (ts.isPostfixUnaryExpression(node) && node.operator === ts.SyntaxKind.PlusPlusToken && ts.isIdentifier(node.operand) && node.operand.text === 'discardGen') {
+      found.push(name)
+    }
+    ts.forEachChild(node, (c) => visit(c, name))
+  }
+  visit(sf, '<top>')
+  assert.equal(found.length, 7, `弃段令牌递增点应为 7 处（实际 ${found.length} 处）——多一处会误杀在途定稿，少一处会漏作废`)
+  for (const name of found) {
+    assert.ok(expected.has(name), `discardGen++ 出现在非预期作用域 \`${name}\`（可能被挪进死代码/临时分支）`)
+  }
+  for (const name of expected) {
+    assert.ok(found.includes(name), `预期函数 \`${name}\` 内没有 discardGen++（漏作废路径）`)
+  }
 })
 
 // ---------------------------------------------------------------- ⑦ 悬挂回归：403 恢复回调 onSessionExpired 永不 resolve

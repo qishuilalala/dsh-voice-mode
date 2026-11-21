@@ -23,7 +23,9 @@ export type HostErrorCode =
   | 'preview_network'
   | 'preview_engine'
   | 'preview_text'
+  | 'preview_auth'
   | 'preview_unknown'
+  | 'sense_degraded'
   | 'internal'
 
 /** 错误码 → 词典键（zh/en 均有对应文案）。 */
@@ -42,7 +44,9 @@ export const ERROR_I18N_KEY: Readonly<Record<HostErrorCode, TKey>> = {
   preview_network: 'previewNetwork',
   preview_engine: 'previewEngine',
   preview_text: 'previewText',
+  preview_auth: 'previewAuth',
   preview_unknown: 'previewCheck',
+  sense_degraded: 'senseDegradedNotice',
   internal: 'errInternal',
 }
 

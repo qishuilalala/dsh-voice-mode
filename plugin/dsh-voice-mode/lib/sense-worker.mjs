@@ -20,7 +20,11 @@ function createSenseWorkerClient(worker) {
     if (!p) return;
     pending.delete(msg.id);
     if (!msg.ok) {
-      p.resolve(null);
+      if (p.op === "create") {
+        p.reject(new Error(msg.error ?? "sense worker create failed"));
+      } else {
+        p.resolve(null);
+      }
       return;
     }
     p.resolve(p.op === "create" ? true : msg.text ?? "");

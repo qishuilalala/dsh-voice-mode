@@ -105,6 +105,12 @@ export interface LocalEngineOptions {
   modelHost: () => string
   allowCustomHost: boolean
   broadcast: (event: string, payload: unknown) => void
+  /**
+   * 初始化失败后的冷却时长（毫秒；缺省 60s）。
+   * A2 审计 Minor：模型缺失时每句 3 次重试各自重跑 ensureReady（重新哈希/甚至重下 109-311MB），
+   * 长回复会空转占泵。冷却期内后续句子立即失败，不再重跑校验。
+   */
+  initFailureCooldownMs?: number
 }
 
 interface WorkerResponse {
@@ -242,9 +248,14 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
   /** I-10：ensureReady 的 IIFE 是否在途。在途时 respawn/interrupt 不得清 ready，
    *  否则冷启动窗内并发的下一次 ensureReady 会再起一个 IIFE → 双 init、旧引擎不 free。 */
   let starting = false
+  /** I10：标记本轮冷启动是否被主动打断，避免用户 barge-in 误触发 60s 初始化失败断路器。 */
+  let initInterrupted = false
 
   /** 杀掉子进程（下一句合成时自动重启）。 */
-  const respawnChild = async (): Promise<void> => {
+  const respawnChild = async (userInterrupt = false): Promise<void> => {
+    // 只有「用户主动打断」才豁免断路器；call 超时/空闲回收触发的重建属于真实故障，
+    // 必须走 initFailUntil 冷却，否则 init 卡死会变成每句 3×120s 的重试风暴（2026-11-20 复核）。
+    if (starting && userInterrupt) initInterrupted = true
     if (child) {
       child.kill()
       child = null
@@ -299,11 +310,22 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
     }
   }
 
+  /** 初始化失败冷却（断路器）：此刻之前 ensureReady 立即失败，不重跑模型校验/下载。 */
+  let initFailUntil = 0
+  let initFailError: Error | null = null
+  const initCooldownMs = options.initFailureCooldownMs ?? 60000
+
   const ensureReady = (): Promise<void> => {
     if (ready && child) return ready
+    // I10：若上轮初始化已结束（!starting）但 child 已被清空，清掉陈旧 ready 句柄，避免永久返回已 resolve 的空壳。
+    if (ready && !child && !starting) ready = null
+    if (Date.now() < initFailUntil) {
+      return Promise.reject(initFailError ?? new Error('local TTS engine is in failure cooldown'))
+    }
     if (!ready) {
       ready = (async () => {
         starting = true
+        initInterrupted = false
         engineLoading = true
         engineError = undefined
         engineErrorCode = undefined
@@ -444,7 +466,12 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
           return v
         },
         (e) => {
-          ready = null // 失败：弃句柄，下次 ensureReady 重新走下载/init
+          ready = null // 失败：弃句柄，冷却结束后再重走下载/init
+          // 断路器：真实初始化失败进入冷却；主动打断（interrupt）或关闭（close）不计为故障。
+          if (!initInterrupted && !closed) {
+            initFailUntil = Date.now() + initCooldownMs
+            initFailError = e instanceof Error ? e : new Error(String(e))
+          }
           throw e
         },
       )
@@ -493,7 +520,12 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
       }
     },
     // 设置面板「下载」按钮：无文本也触发模型下载 + 子进程初始化（与首次合成路径一致）。
-    prepare: () => ensureReady(),
+    prepare: () => {
+      // 用户显式点「下载」= 明确重试意图：清冷却后重走校验/下载。
+      initFailUntil = 0
+      initFailError = null
+      return ensureReady()
+    },
     async synthesize(text: string, opts: { voice?: string; rate?: number } = {}): Promise<Buffer> {
       // R14：post-close 调用直接抛错——与 TtsQueue.synthesize() 的早返语义对齐
       // （那一处 reject，此处同样 reject；调用方本就在 await）。
@@ -602,7 +634,7 @@ export function createSherpaLocalEngine(options: LocalEngineOptions): TtsEngine 
       // 打断时立刻杀子进程：在途合成句已被作废，杀掉立即释放满核 CPU
       // （否则会饿死主进程的 ASR 解码——打断后定稿等待分钟级的实测根因）。
       // 下一句合成自动重建（约 1 秒模型加载）。
-      void respawnChild()
+      void respawnChild(true)
     },
   }
 }

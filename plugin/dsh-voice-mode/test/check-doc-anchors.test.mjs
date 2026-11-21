@@ -46,6 +46,8 @@ try {
   check('docs/rules/archive/old.md', '`sample.ts`\n', 0, 'pathRefs', ['sample.ts'])
   check('docs/rules/archive/old.md', '`sample.ts` 的 `missingSymbol`\n', 1, 'errors', ['sample.ts'])
   check('docs/research/old.md', stale, 0, 'research', ['sample.ts:15'])
+  // 跨行围栏代码块内的伪锚点不得误报 DRIFT 或 ERROR
+  check('docs/rules/fenced.md', '```md\n`sample.ts:15` 的 `anchorValue`\n`sample.ts` 的 `missingSymbol`\n```\n', 0)
   console.log(`check-doc-anchors：${count} 项通过`)
 } finally {
   rmSync(fixture, { recursive: true, force: true })

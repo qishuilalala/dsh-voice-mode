@@ -121,12 +121,12 @@ dsh plugin --profile web add dsh-voice-mode
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
-| `ttsEngine` | `edge` | 朗读引擎：`edge` 微软云端（默认，快）/ `vits` 本地中文 / `kokoro` 本地中英 / `openai` 任意 OpenAI 兼容服务（见下文）；**即时生效** |
+| `ttsEngine` | `edge` | 朗读引擎：`edge` 微软云端（默认，快）/ `vits` 本地中文 / `kokoro` 本地中英 / `openai` 任意 OpenAI 兼容服务 / `mimo` 小米 MiMo（独立 `mimoTts.apiKey`）；**即时生效** |
 | `kokoroModel` | `int8` | Kokoro 模型精度：`int8`（默认，109MB，纯 CPU/低带宽推荐）/ `fp32`（311MB，音质更好，独显/大内存推荐）；两档共用 103 音色，**即时生效** |
 | `voice` | 按引擎 | 音色：VITS 五说话人；Kokoro 103 个（下拉+◀▶，62 深沉/68 浑厚/75 清亮/76 磁性置顶）；Edge 进入时自动加载全量 322 个。行内「试听」可即时预览 |
 | `rate` | `1.1` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
 | `interruptLevel` | `0` | 发声打断灵敏度（服务端 VAD 帧级检测 + 回声门控）：0 高门槛（3 帧）/ 1 中（2 帧）/ 2 低（1 帧） |
-| `bargeInMode` | `detect` | 打断方式：`detect` 自动探测本机原生回声消除状态（默认；未生效时切为长按打断）/ `auto` 强制开口即打断（耳机、安静环境推荐）/ `manual` 长按打断（外放推荐）。批 7O 默认，I10 豁免（ADR-0006） |
+| `bargeInMode` | `detect` | 打断方式：`detect` 自动探测本机原生回声消除状态（默认；未生效时朗读期切为长按打断）/ `auto` 强制开口即打断（耳机、安静环境推荐）/ `manual` 手动打断（外放推荐：空闲时可直接说话或说唤醒词，AI 朗读中按住麦克风/Ctrl 打断）。批 7O 默认，I10 豁免（ADR-0006） |
 | `echoGateDb` | `6` | 无原生 AEC 时的回声门兜底阈值；原生 AEC 有效时不参与。仅在兜底路径中，增大更保守、减小更易触发；先确认设备与打断模式 |
 | `silenceMs` | `1500` | 说完整一句的静音停顿毫秒数 |
 | `idleTimeoutMinutes` | `5` | 无活动自动退出语音模式的分钟数（朗读计为活动） |
@@ -139,10 +139,17 @@ dsh plugin --profile web add dsh-voice-mode
 | `showCaptions` | `true` | 朗读时的字幕浮层 |
 | `shortcut` | `Ctrl+Shift+V` | 进入 / 退出语音模式的快捷键（修饰键 Ctrl/Shift/Alt/Meta + 一个字母 / 数字 / Enter / Space / Tab）；设置页「快捷键」分组里可点「录制」直接按组合键录入（`Esc` 取消、`Backspace` 清空，缺修饰键或方向键 / F 键等不支持的键会提示）；**留空 = 禁用快捷键**，改用麦克风按钮；**即时生效** |
 | `composerShortcut` | `Alt+Enter` | 光标在输入框里时切换语音模式的快捷键（Mac 上即 Option+Enter），不插入换行；格式与录制方式同 `shortcut`；**留空 = 禁用**；设置卡片自己的输入框不拦截；`Cmd/Ctrl+Enter` 不占用；**即时生效**。「恢复默认」把两项快捷键恢复为 `Ctrl+Shift+V` 与 `Alt+Enter` |
-| `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭。**可与命令连说**，词头自动剥掉不进消息；匹配带容错（编辑距离 ≤1 + 前 3 字符前导窗口，吸收同音字/语气词）；**建议 3-4 字**——单字词无容错、2 字词的容错会连带吸收所有同首字的 2 字词（如「小莫」也会唤醒「小张」），介意误唤醒用 3 字以上；每句断句或打断后回待机需重说；**仅 toggle 模式生效**（hold / 手动打断下不生效）；朗读期说唤醒词不触发 |
+| `wakeWord` | 空（关） | 唤醒词（如「你好小D」）：进入后先说唤醒词激活，避免误触；空 = 关闭。**可与命令连说**，词头自动剥掉不进消息；匹配带容错（编辑距离 ≤1 + 前 3 字符前导窗口，吸收同音字/语气词）；**建议 3-4 字**——单字词无容错、2 字词的容错会连带吸收所有同首字的 2 字词（如「小莫」也会唤醒「小张」），介意误唤醒用 3 字以上；每句断句或打断后回待机需重说；**按住说话 hold 模式下不生效**（`manual` 手动打断与 `detect` 回落 `manual` 时空闲期照常生效）；朗读期说唤醒词不触发 |
 | `toolBeep` | `false` | 工具调用提示音（默认关）：开启后 AI 调用工具时「滴」一声；关闭则全程静默 |
 | `spokenFormat` | `true` | 语音会话注入口语化提示词：开启后**仅当前语音会话**的回复被注入「口语化短句、不用 Markdown 排版符号」提示词（朗读更顺），**即时生效** |
 | `senseITN` | `true` | SenseVoice 逆文本归一化（数字/日期/货币规范化；默认开） |
+| `openaiPreset` | 空（手动） | 在线 TTS 预设：`siliconflow-cosyvoice2` / `siliconflow-fish` / `openrouter-openai` / `openai-official` / `selfhosted-kokoro` / `selfhosted-vllm`。选中后按预设的 baseUrl/model 走，**音色留空时回落预设音色**；key 用 `openaiTts.apiKey`，或按预设用 `openaiTts.apiKeys[预设 id]` 分别配（**推荐：多家服务商各配一把，切预设不必再手改**）。注意：`apiKeys` 属宿主配置文件，改完需重启宿主;；卡片可点「测试朗读」就地试合成；**即时生效** |
+| `openaiBaseUrl` | 空（跟随预设/配置文件） | 在线 TTS 端点：**设置卡片里直接填**（无需改 profile YAML）；优先级 设置 > 预设 > `openaiTts.baseUrl`；配合「自定义」可接任意 OpenAI 兼容平台；**即时生效** |
+| `openaiModel` | 空 | 在线 TTS 模型名覆盖（同上优先级）；预设没列出的平台选「自定义」后填这里 |
+| `openaiApiKey` | 空（回落配置文件） | 在线 TTS 的 key：卡片里填，存宿主 0600 设置文件，**永不回传浏览器**；优先级 面板按预设key > 设置全局key > `openaiTts.apiKeys[预设id]` > `openaiTts.apiKey`；卡片「清除」显式清空；**即时生效** |
+| `openaiApiKeys` | `{}`（全未配） | Q2 Key 跟预设走：面板按预设 id 存的 key 表；选中哪个预设用哪把，切预设不再 401；空条目回落全局 key；**只回布尔表、不回传明文**；**即时生效**（保存刷新即用新 key） |
+| `mimoApiKey` | 空（回落配置文件） | 小米 MiMo 的 key（走 `api-key` 头）：卡片里填，同样只存宿主、不回传；留空回落 `mimoTts.apiKey` |
+| `asrReplacements` | `[]` | 纠错词表 `[{from:[听错写法],to:想要写法}]`（≤200 条 / ≤12KB UTF-8）：转写后统一改写（中间结果+定稿）；卡片显示「本次生效以来」命中次数；与 LLM 纠错串联；**即时生效** |
 | `senseVoice` | `true` | 定稿是否用 SenseVoice 重译（带标点 + 数字归一化，更准；默认开）。**关闭可省 ~228MB 模型**，只走流式识别（更快、精度下降） |
 | `captionFontSize` | `0` | 字幕字号档位 0=12px / 1=14px / 2=18px / 3=24px（默认 0 与现状字节等价） |
 | `captionMaxWidth` | `1` | 字幕宽度档位 0=50vw / 1=70vw / 2=90vw（视口 <686px 窄于 480px，≈686px 接近 480px，>686px 宽于 480px） |
@@ -213,7 +220,11 @@ dsh plugin --profile web add dsh-voice-mode
     voice: vivian                       # 服务端的音色名；留空 = openaiTts.voice
     openaiTts:
       baseUrl: http://gpu-box:8091/v1   # OpenRouter: https://openrouter.ai/api/v1，OpenAI: https://api.openai.com/v1
-      apiKey: ''                        # Bearer key，服务无鉴权时留空
+      apiKey: ''                        # Bearer key（未按预设配置时的兜底；服务无鉴权可留空）
+      apiKeys:                          # 可选：按预设 id 分别配 key，切预设不必再手改上面的 apiKey
+        siliconflow-cosyvoice2: ''      # 硅基流动
+        openrouter-openai: ''           # OpenRouter
+        openai-official: ''             # OpenAI 官方
       model: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
       voice: vivian
       responseFormat: mp3               # mp3 | wav
@@ -225,7 +236,68 @@ dsh plugin --profile web add dsh-voice-mode
 
 每句一个请求（队列本来就在回复还在生成时逐句合成，句内流式不会让播放更早开始）。`rate` 不为 1 时作为 `speed` 发送。配置了 `fallback` 时，请求失败或超时的那句（以及之后 30 秒）改用本地引擎，然后再试服务，服务挂掉不会让每句都等一次超时。被朗读的文本会发到 `baseUrl`，请选你信得过的服务。
 
+## 在线 TTS 怎么配（2026-11-19 起）
+
+设置卡片 →「朗读引擎」选 `openai`（OpenAI 兼容）或 `mimo`（小米 MiMo）：
+
+1. **有预设的平台**：在「在线预设」里选一家（硅基流动 CosyVoice2 / 硅基流动 Fish / OpenRouter / OpenAI 官方 / Groq PlayAI / 自建 Kokoro-FastAPI / 自建 vLLM-Omni），只在「API Key」里填 key 即可，地址与模型自动带出。
+2. **列表里没有的平台**：预设选「自定义（下方手填）」，然后填三个框——**接口地址（Base URL）**、**模型名**、**API Key**（音色用上面「朗读音色」那栏填）。
+3. **想改某个预设的地址/模型**：选预设后直接在 URL/模型框里填，覆盖预设值即可（留空 = 用预设值）。
+
+优先级：**设置卡片 > 内置预设 > profile 配置文件**。key 只存宿主（0600 设置文件），GET 设置接口永不回传；卡片上的「清除」用于显式清空。
+
+验证：填完点「测试朗读」，成功会直接出声并就地提示；失败按限流/禁用/引擎/网络/Key 分类给出下一步。
+
+### 小米 MiMo 语音合成（`ttsEngine: mimo`）
+
+小米 MiMo 的 TTS 走 **Chat Completions 形态**（`POST /v1/chat/completions`，音频以 base64 放在 `choices[0].message.audio.data`），不是 OpenAI 的 `/audio/speech`，所以有独立配置块。**与 OpenAI 兼容引擎各用各的 key**（`mimoTts.apiKey` 不借用 `openaiTts.apiKey`，避免把一家的凭据发给另一家）：
+
+```yaml
+- id: voice-mode
+  name: dsh-voice-mode
+  config:
+    ttsEngine: mimo
+    voice: 冰糖                      # 预置音色：mimo_default / 冰糖 / 茉莉 / 苏打 / 白桦 / Mia / Chloe / Milo / Dean；留空 = mimoTts.voice
+    mimoTts:
+      apiKey: ''                     # 必填；走 api-key 头（不是 Bearer），key 只在宿主侧
+      baseUrl: https://api.xiaomimimo.com/v1
+      model: mimo-v2.5-tts           # 现行仍是 v2.5 系列（V2.6 指的是 Pro/Flash 推理模型）
+      voice: mimo_default
+      instructions: ''               # 可选：自然语言风格说明（如「温和一些」）
+      responseFormat: wav            # wav | mp3
+      timeoutMs: 8000                # 单句超时（默认 8000ms）
+      fallback: kokoro               # none | vits | kokoro：失败或超时后 30 秒内用本地引擎
+      fallbackVoice: zf_xiaobei
+```
+
+MiMo **没有 `speed` 字段**：`rate` 不为 1 时会译成自然语言风格指令（「语速加快到约 1.2 倍」）随请求下发。失败/超时同样进入 30 秒冷却并回退本地，打断（barge-in）不记为失败。官方文档：<https://mimo.mi.com>。
+
+
+**真实链路实测（2026-11-19，真 key）**：
+
+- 鉴权头是 `api-key: sk-…`（官方 curl 示例口径，非 `Authorization: Bearer`）；key 从控制台「API Keys」创建。
+- 可用模型 `mimo-v2.5-tts`（V2.5-TTS 系列未随 V2.5-Pro 下线）。
+- 返回为 base64，解码后是 **WAV：单声道 / 24kHz / 16bit**；实测约 30 字一句话得 5.8s 音频，合成耗时 2~5s。
+- **请求 `audio.format: mp3` 时服务端仍返回 WAV**（200 OK）。引擎按响应字节嗅探容器格式（`sniffAudioMime`），不信配置值，避免把 WAV 当 MP3 解码而播不出声。
+- 401 错误体是 JSON（`type: invalid_key`），错误消息经脱敏后才进日志。
+- 预置音色实测可用：`mimo_default`（中国集群落「冰糖」）、`冰糖`、`苏打`、`茉莉`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。
 ### 纠正听错的词（`asrReplacements`）
+### 宿主级端到端验证（2026-11-19，隔离 profile）
+
+在 `/tmp` 下新建独立 `DSH_HOME` + `mt` profile（`dsh plugin --profile mt add <本地插件目录>` 装成本地 link），patch 用 `!!js process.env.MIMO_API_KEY` 引用 `.env` 里的真 key，`--port 3098` 起独立实例（不碰 3018）：
+
+| 验证点 | 结果 |
+|---|---|
+| 组合配置 | `--dump-config` 显示 `id: voice-mode` 段被 patch 覆盖，条目 id 是 `voice-mode`（`dsh-voice-mode` 是 name） |
+| 引擎选择 | `GET /voice-mode/config` → `ttsEngine: mimo`；`GET /voice-mode/models/status` → `tts: {engine: mimo, ready: true}` |
+| 真实合成 | `POST /voice-mode/preview {voice: mimo_default}` → **HTTP 200 / content-type: audio/wav / 199,724 B / WAV 24kHz 单声道 16bit / 4.16s / RMS 3561（有声）** |
+| MIME 修正生效 | `/config` 的 `audioMime: audio/wav`（嗅探结果，而非配置里的 wav 巧合） |
+| 路由无泄漏 | `GET /voice-mode/presets` 只含 baseUrl/model/voice 三字段（ADR-0013 边界，线上实证） |
+
+验证后已 `kill` 实例并删除临时 `DSH_HOME` 与 `mimotest` profile，端口 3098/3099 已释放。
+
+**仍未做（需人）**：把正在跑的 web profile（3018）从 npm 0.7.35 换成本地构建并重启服务——重启会断开当前页面连接，需你决定时机。
+
 
 识别器会把中文里夹的人名、英文词听错（例如「Sakina」听成「ski男」）。常规办法热词在这里用不上：sherpa-onnx 只有 transducer 模型支持热词，流式 zipformer 以汉字为单位、写不出英文词，出定稿的 SenseVoice 又没有热词入口。在有热词能力的模型能覆盖之前，替换表是权宜办法：识别之后改写文本，中间结果和定稿都改，所以字幕、草稿和唤醒词看到的都是改好的文本。
 

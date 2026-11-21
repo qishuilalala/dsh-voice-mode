@@ -92,7 +92,7 @@ export function lang(): 'zh' | 'en' {
 }
 
 const interpolate = (template: string, params?: Params): string =>
-  params ? template.replace(/\{(\w+)\}/g, (m, name: string) => (name in params ? String(params[name]) : m)) : template
+  params ? template.replace(/\{(\w+)\}/g, (m, name: string) => (Object.hasOwn(params, name) ? String(params[name]) : m)) : template
 
 /**
  * 翻译。官方服务可用时走其 `bind(ns)`（含语言包与 en 回退）；否则本地词典。

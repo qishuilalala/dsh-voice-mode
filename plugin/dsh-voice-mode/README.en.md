@@ -131,16 +131,16 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 - On dsh 0.1.7+ the values are stored in the plugin's own file `~/.dsh/voice-mode.settings.json` (under `$DSH_HOME`) and take precedence over same-named keys in the profile config. The first run migrates the old `voice-mode:` block from `settings.yaml(.imported)` once. To reset, set the file's content to `{}` (do not delete it).
 
 
-### Full 25-key settings table
+### Full 35-key settings table
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `ttsEngine` | `edge` | Read-aloud engine: `edge` Microsoft cloud (default, fast) / `vits` local Chinese / `kokoro` local zh+en / `openai` any OpenAI-compatible server (see below); **applies live** |
+| `ttsEngine` | `edge` | Read-aloud engine: `edge` Microsoft cloud (default, fast) / `vits` local Chinese / `kokoro` local zh+en / `openai` any OpenAI-compatible server / `mimo` Xiaomi MiMo (independent `mimoTts.apiKey`, see below); **applies live** |
 | `kokoroModel` | `int8` | Kokoro precision: `int8` (default, 109 MB, CPU/low-bandwidth) / `fp32` (311 MB, better quality, GPU/large memory); same 103 voices; **applies live** |
 | `voice` | per engine | Voice: 5 VITS speakers; 103 Kokoro voices (◀▶ stepper; 62/68/75/76 favourite males pinned); Edge ShortNames below. The inline "试听" button previews it at the current rate |
 | `rate` | `1.1` | Reading speed multiplier (0.5 slow ～ 2.0 fast), **applies live** (batch J 1.0→1.1) |
 | `interruptLevel` | `0` | Barge-in sensitivity (host-side VAD frame detection + echo gate): 0 high threshold (3 frames) / 1 medium (2 frames) / 2 low (1 frame) |
-| `bargeInMode` | `detect` | Barge-in mode: `detect` auto-probes native echo cancellation (default; falls back to hold-to-talk when it is not in effect) / `auto` force interrupt as soon as you speak (headphones / quiet rooms) / `manual` hold-to-talk (recommended on loudspeakers). Batch 7O default, I10-exempt (ADR-0006) |
+| `bargeInMode` | `detect` | Barge-in mode: `detect` auto-probes native echo cancellation (default; switches playback to hold-to-interrupt when inactive) / `auto` force interrupt as soon as you speak (headphones / quiet rooms) / `manual` manual interrupt (recommended on loudspeakers: speak directly or say the wake word when idle, and hold mic/Ctrl to interrupt during playback). Batch 7O default, I10-exempt (ADR-0006) |
 | `echoGateDb` | `6` | Fallback echo-gate threshold when native AEC is unavailable. Inactive with native AEC. Only on the fallback path, a higher value is more conservative; verify the device and barge-in mode before tuning |
 | `silenceMs` | `1500` | Silence pause in ms that marks the end of a complete sentence |
 | `idleTimeoutMinutes` | `5` | Minutes of inactivity before auto-exiting voice mode (reading, speech and a running turn renew the timer, subject to a two-hour cap since the last user activity) |
@@ -153,11 +153,18 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | `autoResume` | `false` | Auto-restore voice mode when switching back to your last voice session (off by default). When on: the next time you enter that session it auto-enters voice mode and restores it; when off, press `Ctrl+Shift+V` manually. While it is off, switching back to your last voice session shows a short grey hint about this next to the input box, once per browser |
 | `shortcut` | `Ctrl+Shift+V` | Shortcut to enter / exit voice mode (modifiers Ctrl/Shift/Alt/Meta + one letter / digit / Enter / Space / Tab). In the "Shortcuts" group of the settings page, click "Record" and press the combo (`Esc` cancels, `Backspace` clears; a missing modifier or an unsupported key such as arrows / F-keys is flagged); **empty = disabled**, use the mic button instead; **applies immediately** |
 | `composerShortcut` | `Alt+Enter` | Shortcut that toggles voice mode while the caret is in the composer (Option+Enter on Mac), no newline inserted; same format and recording as `shortcut`; **empty = disabled**; the settings card's own inputs are not intercepted; `Cmd/Ctrl+Enter` is not used; **applies immediately**. "Restore defaults" resets both shortcuts to `Ctrl+Shift+V` and `Alt+Enter` |
-| `wakeWord` | empty (off) | Wake word (e.g. `你好小D`): speak it after entering to activate; empty = off. **May be said together with your command** — the wake word is stripped and never sent; fault-tolerant matching (edit distance ≤1 + a 3-char leading window absorbs homophones/fillers); **3-4 characters recommended** (single-char words get no tolerance; a 2-char word also absorbs any same-first-char 2-char word); must be repeated after each utterance split or barge-in; **toggle mode only**; not triggered while the agent is reading |
+| `wakeWord` | empty (off) | Wake word (e.g. `你好小D`): speak it after entering to activate; empty = off. **May be said together with your command** — the wake word is stripped and never sent; fault-tolerant matching (edit distance ≤1 + a 3-char leading window absorbs homophones/fillers); **3-4 characters recommended** (single-char words get no tolerance; a 2-char word also absorbs any same-first-char 2-char word); must be repeated after each utterance split or barge-in; **inactive in hold-to-talk mode** (works normally when idle under `manual` or `detect` fallback); not triggered while the agent is reading |
 | `spokenFormat` | `true` | Spoken-format system prompt: inject "short natural sentences, no Markdown decoration" into voice-mode replies only, **applies live** |
 | `senseVoice` | `true` | Re-transcribe the finalized utterance with SenseVoice (punctuation + number normalization, more accurate; on by default). **Turning it off saves ~228 MB of models** and uses streaming recognition only (faster, less accurate) |
 | `toolBeep` | `false` | Tool-call beep (off by default): when on, a short beep plays each time the agent calls a tool; off = silent |
 | `senseITN` | `true` | SenseVoice inverse text normalization (number / date / currency; on by default) |
+| `openaiPreset` | empty (manual) | Online TTS preset id (`siliconflow-cosyvoice2` / `siliconflow-fish` / `openrouter-openai` / `openai-official` / `groq-playai` / `selfhosted-kokoro` / `selfhosted-vllm`, or `custom`). Fills baseUrl/model and falls back to the preset voice when `voice` is empty; keys prefer settings card > `openaiTts.apiKeys[preset]` > `openaiTts.apiKey`; **applies live** |
+| `openaiBaseUrl` | empty (preset/config) | Online TTS endpoint override configurable directly in the settings card (priority: settings > preset > `openaiTts.baseUrl`); pair with `custom` preset for any OpenAI-compatible server; **applies live** |
+| `openaiModel` | empty | Online TTS model override (same priority as `openaiBaseUrl`); **applies live** |
+| `openaiApiKey` | empty (config fallback) | Online TTS API key entered in the settings card; stored in the host-side `0600` settings file and **never sent back to the browser** (`GET /voice-mode/settings` returns empty string + `keys.*` booleans); priority: per-preset key > global key > `openaiTts.apiKeys[preset]` > `openaiTts.apiKey`; **applies live** |
+| `openaiApiKeys` | `{}` (none) | Per-preset keys (Q2: key follows the preset): `{presetId: key}` map in the settings card; whichever preset is selected uses its own key; empty entries fall back to the global key; **booleans only, never the plaintext**; **applies live** (refresh to use the new key) |
+| `mimoApiKey` | empty (config fallback) | Xiaomi MiMo API key (`api-key` header) entered in the settings card; host-only `0600` storage, never sent back to the browser; falls back to `mimoTts.apiKey`; **applies live** |
+| `asrReplacements` | `[]` | Post-recognition correction table `[{from:[misheard], to:wanted}]` (≤200 rules / ≤12 KB UTF-8); applies to both partials and finals, editable in the settings card with hit counters; **applies live** |
 | `captionFontSize` | `0` | Caption font tier 0=12px / 1=14px / 2=18px / 3=24px (default 0 is byte-equivalent to legacy) |
 | `captionMaxWidth` | `1` | Caption width tier 0=50vw / 1=70vw / 2=90vw |
 | `backchannelYield` | `true` | Yield semantics (ADR-0008); saying `嗯 / 对` while reading auto-pauses for 1.5 s; genuine speech still triggers hard barge-in; off = behavior identical to pre-change |
@@ -214,9 +221,9 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
 > (`enabled/cacheDir` remain bundle-config-only).
 > The plugin HTTP namespace is fixed to `/voice-mode` (matching the client bundle contract; not configurable).
 
-### OpenAI-compatible TTS server (`ttsEngine: openai`)
+### OpenAI-compatible & Xiaomi MiMo TTS (`ttsEngine: openai` / `mimo`)
 
-Any server that implements OpenAI's `POST /v1/audio/speech` can read replies aloud: a self-hosted one on a GPU machine ([vLLM-Omni](https://github.com/vllm-project/vllm-omni), [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), LocalAI, ...) or a hosted API such as OpenAI or [OpenRouter](https://openrouter.ai/docs/guides/overview/multimodal/tts). The server is set in the bundle config (it is host-only; the key never reaches the browser), and the engine is picked in the settings panel like the others:
+Any server that implements OpenAI's `POST /v1/audio/speech` can read replies aloud: a self-hosted one on a GPU machine ([vLLM-Omni](https://github.com/vllm-project/vllm-omni), [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), LocalAI, ...) or a hosted API such as SiliconFlow, OpenAI, [OpenRouter](https://openrouter.ai/docs/guides/overview/multimodal/tts), or Groq PlayAI. You can pick one of the **7 built-in presets** (or `custom`) and enter `openaiBaseUrl` / `openaiModel` / `openaiApiKey` directly in the **Settings card** (priority: settings card > preset > bundle config), or seed them in the bundle config below; keys remain host-only (`0600`) and are never returned to the browser. Xiaomi MiMo (`ttsEngine: mimo`) uses its own independent key (`mimoApiKey` in the card or `mimoTts.apiKey` in config) so keys never leak across providers:
 
 ```yaml
 - id: voice-mode
