@@ -995,8 +995,8 @@ export function apply(ctx: Context, config: Config): void {
   //   VoiceSettingsValue 逐字段一一对应），业务插件「直接读自己的 Config 引用」
   //   （官方 README + dsh-agent-default-model 源码实证）。此时 vset 由 config 派生；
   //   配置经 profile patch 持久化，apply 随 reload 重跑即读到新值。
-  //   已知差异：0.1.7+ 无 settingsScope.watch，引擎/音色/语速的即时热更换需等下次
-  //   进入语音模式（其余字段本就「下次进入生效」），已登记为 Known Limitation。
+  //   热生效对齐：0.1.7+ 无 settingsScope.watch，改由 persistSettings 落盘覆盖层后
+  //   同步调用 applyVset，引擎/音色/语速/词表等即时热更换行为与 ≤0.1.6 完全一致。
   // 注意：register 必须 bind 宿主对象后调用——其内部读 this.registrations，
   // 裸调（const f = obj.register; f(...)）会丢 this 而抛 TypeError（0.1.5-rc.3 实测）。
   const legacySettings = ctx.settings as { register?: LegacySettingsRegister } | undefined

@@ -17,7 +17,6 @@
  *   { type: 'close', id }                    → 回 { id, ok }
  */
 import sherpa_onnx from 'sherpa-onnx'
-import sherpa_node from 'sherpa-onnx-node'
 import { sanitizeForTts } from './segmenter.ts'
 
 interface WasmTts {
@@ -30,13 +29,25 @@ interface NativeTts {
   free(): void
 }
 
+interface NativeSherpa {
+  OfflineTts: new (config: Record<string, unknown>) => NativeTts
+  GenerationConfig: new (opts: Record<string, unknown>) => unknown
+}
+
 const { createOfflineTts } = sherpa_onnx as unknown as {
   createOfflineTts(config: Record<string, unknown>): WasmTts
 }
 
-const { OfflineTts, GenerationConfig } = sherpa_node as unknown as {
-  OfflineTts: new (config: Record<string, unknown>) => NativeTts
-  GenerationConfig: new (opts: Record<string, unknown>) => unknown
+let cachedNativeSherpa: NativeSherpa | null = null
+async function loadNativeSherpa(): Promise<NativeSherpa> {
+  if (cachedNativeSherpa) return cachedNativeSherpa
+  const mod = await import('sherpa-onnx-node')
+  const resolved = ((mod as unknown as { default?: unknown }).default ?? mod) as NativeSherpa
+  if (!resolved || typeof resolved.OfflineTts !== 'function') {
+    throw new Error('sherpa-onnx-node native addon is unavailable on this platform')
+  }
+  cachedNativeSherpa = resolved
+  return resolved
 }
 
 const send = (msg: Record<string, unknown>): void => {
@@ -48,8 +59,9 @@ let nativeTts: NativeTts | null = null
 let initKind: 'vits' | 'kokoro' = 'vits'
 let initPaths: Record<string, string> = {}
 
-function createEngine(): void {
+async function createEngine(): Promise<void> {
   if (initKind === 'kokoro') {
+    const { OfflineTts } = await loadNativeSherpa()
     nativeTts = new OfflineTts({
       model: {
         kokoro: {
@@ -92,12 +104,12 @@ function reply(id: unknown, payload: Record<string, unknown>): void {
   send({ id: typeof id === 'number' ? id : 0, ...payload })
 }
 
-process.on('message', (msg: Record<string, unknown>) => {
+async function handleMessage(msg: Record<string, unknown>): Promise<void> {
   try {
     if (msg.type === 'init') {
       initKind = msg.kind === 'kokoro' ? 'kokoro' : 'vits'
       initPaths = msg.paths as Record<string, string>
-      createEngine()
+      await createEngine()
       reply(msg.id, { ok: true })
       return
     }
@@ -130,6 +142,7 @@ process.on('message', (msg: Record<string, unknown>) => {
           reply(msg.id, { ok: false, error: 'tts child not initialized' })
           return
         }
+        const { GenerationConfig } = await loadNativeSherpa()
         const gc = new GenerationConfig({ sid, speed, silenceScale: 0.2 })
         audio = nativeTts.generate({ text, generationConfig: gc })
       } else {
@@ -165,4 +178,9 @@ process.on('message', (msg: Record<string, unknown>) => {
   } catch (e) {
     reply(typeof msg?.id === 'number' ? msg.id : 0, { ok: false, error: String(e) })
   }
+}
+
+let msgChain: Promise<void> = Promise.resolve()
+process.on('message', (msg: Record<string, unknown>) => {
+  msgChain = msgChain.then(() => handleMessage(msg))
 })

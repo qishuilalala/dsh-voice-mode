@@ -28,7 +28,18 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8'))
 const anchors = pkg?.dsh?.client?.inject ?? []
-const targets = process.argv.slice(2).length ? process.argv.slice(2) : ['0.1.1-rc.2', '0.1.2-alpha.4']
+const DEFAULT_TARGETS = [
+  '0.1.1-rc.2',
+  '0.1.2-rc.1',
+  '0.1.5-rc.3',
+  '0.1.6-alpha.2',
+  '0.1.7-rc.2',
+  '0.2.0-rc.2',
+  '0.2.1-rc.5',
+  '0.2.2-rc.1',
+  '0.2.2-rc.5',
+]
+const targets = process.argv.slice(2).length ? process.argv.slice(2) : DEFAULT_TARGETS
 
 if (anchors.length === 0) {
   console.error('package.json 未声明 dsh.client.inject 锚点')

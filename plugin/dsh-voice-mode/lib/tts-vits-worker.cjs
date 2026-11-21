@@ -24,7 +24,6 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // src/tts-vits-worker.ts
 var import_sherpa_onnx = __toESM(require("sherpa-onnx"), 1);
-var import_sherpa_onnx_node = __toESM(require("sherpa-onnx-node"), 1);
 
 // src/segmenter.ts
 function sanitizeForTts(text) {
@@ -33,7 +32,17 @@ function sanitizeForTts(text) {
 
 // src/tts-vits-worker.ts
 var { createOfflineTts } = import_sherpa_onnx.default;
-var { OfflineTts, GenerationConfig } = import_sherpa_onnx_node.default;
+var cachedNativeSherpa = null;
+async function loadNativeSherpa() {
+  if (cachedNativeSherpa) return cachedNativeSherpa;
+  const mod = await import("sherpa-onnx-node");
+  const resolved = mod.default ?? mod;
+  if (!resolved || typeof resolved.OfflineTts !== "function") {
+    throw new Error("sherpa-onnx-node native addon is unavailable on this platform");
+  }
+  cachedNativeSherpa = resolved;
+  return resolved;
+}
 var send = (msg) => {
   if (typeof process.send === "function") process.send(msg);
 };
@@ -41,8 +50,9 @@ var wasmTts = null;
 var nativeTts = null;
 var initKind = "vits";
 var initPaths = {};
-function createEngine() {
+async function createEngine() {
   if (initKind === "kokoro") {
+    const { OfflineTts } = await loadNativeSherpa();
     nativeTts = new OfflineTts({
       model: {
         kokoro: {
@@ -83,12 +93,12 @@ function createEngine() {
 function reply(id, payload) {
   send({ id: typeof id === "number" ? id : 0, ...payload });
 }
-process.on("message", (msg) => {
+async function handleMessage(msg) {
   try {
     if (msg.type === "init") {
       initKind = msg.kind === "kokoro" ? "kokoro" : "vits";
       initPaths = msg.paths;
-      createEngine();
+      await createEngine();
       reply(msg.id, { ok: true });
       return;
     }
@@ -113,6 +123,7 @@ process.on("message", (msg) => {
           reply(msg.id, { ok: false, error: "tts child not initialized" });
           return;
         }
+        const { GenerationConfig } = await loadNativeSherpa();
         const gc = new GenerationConfig({ sid, speed, silenceScale: 0.2 });
         audio = nativeTts.generate({ text, generationConfig: gc });
       } else {
@@ -144,4 +155,8 @@ process.on("message", (msg) => {
   } catch (e) {
     reply(typeof msg?.id === "number" ? msg.id : 0, { ok: false, error: String(e) });
   }
+}
+var msgChain = Promise.resolve();
+process.on("message", (msg) => {
+  msgChain = msgChain.then(() => handleMessage(msg));
 });

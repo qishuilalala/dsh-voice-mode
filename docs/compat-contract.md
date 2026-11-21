@@ -1,27 +1,31 @@
-# dsh-voice-mode 双向兼容性契约与对抗性审查报告
+# dsh-voice-mode 宿主与平台兼容性契约
 
-> 使用口径：本文按日期和版本保留历史验证，不代表所有宿主/平台已测。当前包声明 `>=0.1.1-rc.2 <0.3.0-0`，具体已验证对象见各节；main 与 npm 发布状态见[首页](../README.md)。旧节的类型、端点和行号应按其版本解读。
+> 使用口径：本文按日期和版本记录真实回归结果，不代表未测宿主或硬件自动通过。当前包声明 `>=0.1.1-rc.2 <0.3.0-0`；现行发布状态见[首页](../README.md)。历史小节中的类型、端点和行号按其记录时点解读。
 
-> 生成：2026-09-02 · 目标：保持对旧 dsh 0.1.1 与新版 0.1.2（及后续）的双向兼容，持续跟上 dsh 步伐。
-> 方法：第一性原理枚举 voice-mode 全部「接口面」（契约点），逐点用**实际类型面**（`npm pack` 各版本子包的 `.d.ts`/`.js`）核对 0.1.1-rc.2 vs 0.1.2-alpha.4，不凭记忆。
+## 现行验证集与跨平台矩阵（2026-11-21）
 
-## 现行验证集与历史档案（2026-11-18）
+默认验证集取 **engines.dsh 下界 + 当前已验证上界 + 每条小版本线最新已验证版本 + 上游当前 latest/next** 去重。当前下界为 `0.1.1-rc.2`、已验证上界为 `0.2.2-rc.5`（registry 当前 `latest=0.2.2-rc.5`、`next=0.2.2-rc.5`、`alpha=0.2.2-alpha.3`）。
 
-按治理决策 5，默认集合取 **engines.dsh 下界 + 当前已验证上界 + 每条小版本线最新一个已验证版本 + 上游当前 latest/next**，去重。这里的小版本线按 `0.1.1`、`0.1.2` 等完整三段分组。当前下界为 `0.1.1-rc.2`、已验证上界为 `0.2.2-rc.3`；registry 当日 `latest=0.2.2-rc.1`、`next=0.2.2-rc.3`。
+默认 9 版：`0.1.1-rc.2`、`0.1.2-rc.1`、`0.1.5-rc.3`、`0.1.6-alpha.2`、`0.1.7-rc.2`、`0.2.0-rc.2`、`0.2.1-rc.5`、`0.2.2-rc.1`、`0.2.2-rc.5`（以 `scripts/verify-dual.sh` 的 `DEFAULT_VERSIONS` 为单一真源，`scripts/check-anchors.mjs` 默认目标与 `.github/workflows/ci.yml` 类型矩阵同步对齐）。每版检查 9 个 `dsh.client.inject` 锚点和 host/client 双端类型；其中 8 个核心做隔离 runtime 冒烟（`0.1.2-rc.1` 历史未入核心冒烟，如实保留边界）。历史全集共 **27 版**锚点/双端类型 + **24 个核心**隔离冒烟；每日上游版本巡检由 `.github/workflows/dsh-version-check.yml` 自动比对。
 
-默认 9 版：`0.1.1-rc.2`、`0.1.2-rc.1`、`0.1.5-rc.3`、`0.1.6-alpha.2`、`0.1.7-rc.2`、`0.2.0-rc.2`、`0.2.1-rc.5`、`0.2.2-rc.1`、`0.2.2-rc.5`（以 `scripts/verify-dual.sh` 的 `DEFAULT_VERSIONS` 为真源）。每版继续检查 9 个锚点和 host/client 两套类型；其中 8 个核心继续完整 runtime 冒烟。`0.1.2-rc.1` 原本没有纳入核心冒烟，不把该缺口记成通过。CI 类型检查采用这 9 版，脚本列表是真源，步骤名与实参一致。
+### 运行时、架构与客户端兼容边界
 
-新上游版本先补锚点、双类型及隔离核心/浏览器验证，必要时补 cordis 映射并保留旧映射；实证与未完成层分别记入本文。补验通过后更新脚本中的现行集合与历史全集、CI 和当前兼容说明；若替换某线最新版本，旧版转档案，仍是区间端点或 latest/next 的版本除外。不运行时自动追浮动标签，不因纯补验发版，不删除下方任何历史实证。alpha 等其它标签仍由巡检对历史全集核查，latest/next 则必须在现行集合中。
+| 维度 | 支持范围与机制 | 降级与已知边界 |
+| --- | --- | --- |
+| **dsh 宿主版本** | `>=0.1.1-rc.2 <0.3.0-0`（现行 9 版 CI 类型矩阵与锚点守卫，历史 27 版归档） | `≤0.1.6` 走 `ctx.settings.register`；`≥0.1.7` 走 `$DSH_HOME/voice-mode.settings.json` 覆盖层与 `/voice-mode/settings`，热切换行为一致；`<0.3.0-0` 防止未验证大版本预发布被自动放行 |
+| **Node.js 运行时** | `>=18.0.0`（CI 实测 Node 18 / 22 安装与导入，发布环境 Node 24；仓库单测直引 `.ts` 需 Node ≥22.18） | 官方 Electron 桌面端内运行本地 `kokoro` 时自动探测系统 `PATH` 或 `DSHVM_NODE` 上的独立 Node ≥18 子进程；未安装独立 Node 时返回 `kokoro_needs_node` 可操作提示 |
+| **操作系统与 CPU 架构** | WASM 识别（zipformer2 + Silero VAD + SenseVoice）与纯 WASM 本地 `vits` 跨平台通用；原生 `kokoro`（`sherpa-onnx-node`）预编译覆盖 macOS `arm64/x64`、Linux `x64/arm64`（glibc）、Windows `x64/ia32` | `sherpa-onnx-node` 仅在选择 `kokoro` 时按需动态加载：Windows `arm64` 或 Linux `musl` 等无预编译原生插件的平台不会拖崩 `vits` 或在线引擎 |
+| **桌面端与浏览器** | DSH 官方桌面端（Electron）、Chrome / Edge 103+、Firefox 100+、Safari 16+（要求安全上下文 `localhost` / `HTTPS` / `dsh-app://`） | 采集优先 `AudioWorklet`、自动回退 `ScriptProcessor` 并按实际采样率重采样；Safari/耳机无原生 `echoCancellation` 时自动启用 `NlmsAec` 并在 `detect` 档回落朗读期手动打断；macOS 兼容 `ctrl+click` 右键防误触；触屏粗指针自动展示旁侧 `⋯` 快捷菜单 |
 
 在插件目录手工复验：
 
 ```bash
-bash scripts/verify-dual.sh --list          # 当前默认集合
-bash scripts/verify-dual.sh --list --full   # 24 版历史全集
-bash scripts/ensure-core.sh 0.1.5-rc.2      # 准备隔离核心
-bash scripts/verify-dual.sh 0.1.5-rc.2      # 显式历史版本（也可多个）
-bash scripts/verify-dual.sh --full         # 原 24 版锚点/双类型 + 21 核心冒烟
-bash scripts/typecheck-dual.sh 0.1.5-rc.2   # 只复验该版 host/client 类型
+bash scripts/verify-dual.sh --list          # 当前默认 9 版集合
+bash scripts/verify-dual.sh --list --full   # 27 版历史全集
+bash scripts/ensure-core.sh 0.2.2-rc.5      # 准备指定版本隔离核心
+bash scripts/verify-dual.sh 0.2.2-rc.5      # 复验指定版本（锚点 + 双端类型 + 隔离冒烟）
+bash scripts/verify-dual.sh --full          # 27 版锚点/双端类型 + 24 核心冒烟
+bash scripts/typecheck-dual.sh 0.2.2-rc.5   # 仅复验该版 host/client 类型
 ```
 
 核心路径可用 `DSHVM_CORE_ROOT` 指向测试目录；单个自定义入口仍用 `smoke-runtime.sh <bin.js> <port>`。历史 `0.1.2-rc.1`、`0.1.5-rc.1`、`0.1.7-alpha.1` 在全集台架里只有锚点/类型层；历史 L3 客户端环境缺口和 L4/真机未验项仍以各节记录为准。默认选版缩减不等于补齐证据，支持声明与运行时默认值均不改变。

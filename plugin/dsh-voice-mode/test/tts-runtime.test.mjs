@@ -4,6 +4,12 @@
  * `External buffers are not allowed`；需改用真 Node 起子进程，找不到则明确报错。
  */
 import assert from 'node:assert/strict'
+import { fork } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { build } from 'esbuild'
 import { resolveNativeRuntime, NATIVE_RUNTIME_UNAVAILABLE, NativeRuntimeUnavailableError } from '../src/tts-runtime.ts'
 
 let n = 0
@@ -64,4 +70,77 @@ t('NativeRuntimeUnavailableError：稳定错误码 kokoro_needs_node + 英文机
   assert.ok(e instanceof Error)
   assert.equal(e.message, NATIVE_RUNTIME_UNAVAILABLE)
 })
+
+// 跨架构降级隔离：无预编译 sherpa-onnx-node 的平台（如 Windows arm64 / Linux musl）启动子进程时，
+// 纯 WASM 的本地 vits 必须正常初始化与合成，且 kokoro 按需加载失败回传结构化错误而非启动即崩溃。
+{
+  const here = fileURLToPath(new URL('.', import.meta.url))
+  const tmp = mkdtempSync(join(tmpdir(), 'dsh-tts-worker-lazy-'))
+  try {
+    const wasmStub = join(tmp, 'sherpa-wasm-stub.cjs')
+    const brokenNativeStub = join(tmp, 'sherpa-native-missing.cjs')
+    const workerOut = join(tmp, 'tts-vits-worker.cjs')
+    writeFileSync(
+      wasmStub,
+      `module.exports = {
+        createOfflineTts() {
+          return {
+            generate() { return { samples: new Float32Array([0.1, -0.1]), sampleRate: 24000 } },
+            free() {},
+          }
+        },
+      }`,
+    )
+    writeFileSync(brokenNativeStub, `const err = new Error("Cannot find module 'sherpa-onnx-linux-musl'"); err.code = 'MODULE_NOT_FOUND'; throw err;`)
+    await build({
+      entryPoints: [join(here, '..', 'src', 'tts-vits-worker.ts')],
+      outfile: workerOut,
+      bundle: true,
+      format: 'cjs',
+      platform: 'node',
+      plugins: [
+        {
+          name: 'stub-sherpa',
+          setup(b) {
+            b.onResolve({ filter: /^sherpa-onnx$/ }, () => ({ path: wasmStub }))
+            b.onResolve({ filter: /^sherpa-onnx-node$/ }, () => ({ path: brokenNativeStub }))
+          },
+        },
+      ],
+      logLevel: 'silent',
+    })
+    const child = fork(workerOut, [], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] })
+    const rpc = (msg) =>
+      new Promise((resolve, reject) => {
+        const onMsg = (reply) => {
+          if (reply?.id === msg.id) {
+            child.off('message', onMsg)
+            resolve(reply)
+          }
+        }
+        child.once('exit', (code) => reject(new Error(`worker exited prematurely: ${code}`)))
+        child.on('message', onMsg)
+        child.send(msg)
+      })
+    try {
+      const initVits = await rpc({ id: 1, type: 'init', kind: 'vits', paths: { model: 'm', lexicon: 'l', tokens: 't', date: 'd', phone: 'p', number: 'n' } })
+      assert.equal(initVits.ok, true, '缺少 sherpa-onnx-node 时纯 WASM vits 初始化必须成功')
+      const synthVits = await rpc({ id: 2, type: 'synth', text: '跨平台兼容性测试', sid: 0, speed: 1 })
+      assert.equal(synthVits.ok, true, '缺少 sherpa-onnx-node 时纯 WASM vits 合成必须成功')
+      assert.equal(synthVits.sampleRate, 24000)
+
+      const initKokoro = await rpc({ id: 3, type: 'init', kind: 'kokoro', paths: { model: 'm', voices: 'v', tokens: 't', dataDir: 'd', lexicon: 'l' } })
+      assert.equal(initKokoro.ok, false, '缺少 sherpa-onnx-node 时 kokoro 应通过 IPC 返回 ok:false 而非退出崩溃')
+      assert.match(String(initKokoro.error), /sherpa-onnx/)
+      await rpc({ id: 4, type: 'close' })
+      n++
+      console.log('  ✓ 缺少 sherpa-onnx-node 原生包时：vits 纯 WASM 正常合成，kokoro 结构化回传错误不崩溃')
+    } finally {
+      child.kill()
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+}
+
 console.log(`\ntts-runtime：${n} 项通过`)
