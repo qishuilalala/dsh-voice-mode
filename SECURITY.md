@@ -2,8 +2,8 @@
 
 ## 支持的版本 / Supported versions
 
-仅最新发布版本接受安全修复。**0.7.17 及更早版本**存在已知的安装/加载缺陷（见 `CHANGELOG.md` 0.7.18），已在 npm 标记为 deprecated，请升级到最新版本。
-Only the latest release receives security fixes. Versions **0.7.17 and earlier** have a known install/load defect (see `CHANGELOG.md` 0.7.18) and are deprecated on npm — please upgrade.
+仅最新发布版本接受安全修复。**0.7.23 及更早版本**存在已知的安装/加载或上游默认语音握手退役缺陷（见 `CHANGELOG.md` 0.7.18 与 0.7.24），已在 npm 标记为 deprecated，请升级到最新版本。
+Only the latest release receives security fixes. Versions **0.7.23 and earlier** have known install/load or retired upstream Edge TTS handshake defects (see `CHANGELOG.md` 0.7.18 and 0.7.24) and are deprecated on npm — please upgrade.
 
 ## 报告漏洞 / Reporting a vulnerability
 
@@ -12,8 +12,8 @@ Please do **not** disclose vulnerability details in a public issue. Use GitHub's
 
 ## 范围与威胁模型 / Scope
 
-插件的 HTTP 面（`/voice-mode/*`）遵循宿主安全模型：默认仅回环访问（显式开放 LAN 时需部署侧鉴权，且设置与密钥写入始终要求回环）、同源与跨站请求头校验、请求体大小上限、按端点限流及会话存在性校验；在线 TTS 密钥仅以权限 0600 保存在宿主侧覆盖层文件，读取接口永不回传明文，远程合成请求禁用跨源重定向并拒绝内嵌凭据的地址；模型下载限制目标主机，主要模型文件按固定 SHA256 校验，辅助目录文件使用文件清单与本地存在性检查。权限与数据流的完整披露见 [中文使用说明](plugin/dsh-voice-mode/README.md) 的「权限与数据流声明」。
-The plugin's HTTP surface (`/voice-mode/*`) follows the host security model: loopback by default (explicit LAN exposure requires deployment authentication, while settings and secret writes always require loopback), same-origin and cross-site fetch checks, body-size caps, per-endpoint rate limiting, and session existence checks; online TTS API keys are stored host-side only with 0600 permissions and never returned in plaintext, and remote synthesis requests disallow redirects and reject embedded URL credentials; model downloads restrict destination hosts, with pinned SHA256 digests for primary model files and manifest/presence checks for auxiliary directories. See "Permissions and data flow" in [English Documentation](plugin/dsh-voice-mode/README.en.md) for the full disclosure.
+插件的 HTTP 面（`/voice-mode/*`）遵循宿主安全模型：默认仅回环访问（显式开放 LAN 时需部署侧鉴权，且设置与密钥写入始终要求回环）、同源与跨站请求头校验、请求体大小上限、按端点限流及会话存在性校验；在线 TTS 密钥仅以权限 0600 保存在宿主侧覆盖层文件，读取接口永不回传明文，远程合成请求禁用跨源重定向并拒绝内嵌凭据的地址；模型下载限制目标主机，主要模型文件按固定 SHA256 校验，辅助目录文件使用文件清单与本地存在性检查。权限与数据流的完整披露见 [中文使用说明](plugin/dsh-voice-mode/README.md) 的「权限、隐私与安全边界」。
+The plugin's HTTP surface (`/voice-mode/*`) follows the host security model: loopback by default (explicit LAN exposure requires deployment authentication, while settings and secret writes always require loopback), same-origin and cross-site fetch checks, body-size caps, per-endpoint rate limiting, and session existence checks; online TTS API keys are stored host-side only with 0600 permissions and never returned in plaintext, and remote synthesis requests disallow redirects and reject embedded URL credentials; model downloads restrict destination hosts, with pinned SHA256 digests for primary model files and manifest/presence checks for auxiliary directories. See "Permissions, Privacy & Security" in [English Documentation](plugin/dsh-voice-mode/README.en.md) for the full disclosure.
 
 ## 历史扫描命中与处置（HOL Plugin Scanner）
 
