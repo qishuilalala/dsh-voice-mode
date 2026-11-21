@@ -41,7 +41,7 @@
 2. **L1+L2**：`node scripts/check-anchors.mjs <ver>` → `bash scripts/typecheck-dual.sh <ver>`（cordis 未映射则按提示补表）
 3. **L3+L4**：`bash scripts/full-e2e.sh /tmp/dshcore/dsh-<ver>/node_modules/@deepseek-ai/dsh/lib/bin.js <port>`
 4. **矩阵扩展**：`verify-dual.sh` 默认列表加该版本（字面量！`check-dsh-version.sh` 用 awk 提取字面版本，变量会被漏掉）
-5. **发版**：按发版纪律走（源码 commit → BUILD_TAG 对齐 → npm + tag + release，见 COLLABORATION.md §三-4；BUSINESS 源码零变更时仍建议发 patch 版固化矩阵）
+5. **发版**：按发版纪律走（源码 commit → BUILD_TAG 对齐 → npm + tag + release，见归档文档 `docs/archive/plans/COLLABORATION.md` §三-4；BUSINESS 源码零变更时仍建议发 patch 版固化矩阵）
 
 ## 四、反馈闭环（证据落盘位置）
 

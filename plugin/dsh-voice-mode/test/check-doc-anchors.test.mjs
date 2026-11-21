@@ -43,6 +43,8 @@ try {
   check('docs/rules/active.md', stale, 2, 'drift', ['sample.ts:15'])
   check('docs/rules/archive-other/old.md', stale, 2, 'drift', ['sample.ts:15'])
   check('docs/other/archive/old.md', stale, 2, 'drift', ['sample.ts:15'])
+  check('docs/archive/reviews/old.md', stale, 0, 'historical', ['sample.ts:15'])
+  check('docs/archive-other/old.md', stale, 2, 'drift', ['sample.ts:15'])
   check('docs/rules/archive/old.md', '`sample.ts`\n', 0, 'pathRefs', ['sample.ts'])
   check('docs/rules/archive/old.md', '`sample.ts` 的 `missingSymbol`\n', 1, 'errors', ['sample.ts'])
   check('docs/research/old.md', stale, 0, 'research', ['sample.ts:15'])

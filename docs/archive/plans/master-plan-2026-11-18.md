@@ -51,7 +51,7 @@
 
 ## 5. 文档治理
 
-- 总纲本文件；方向 [voice-direction-decision](voice-direction-decision-2026-11-18.md)；TTS [tts-expansion](tts-expansion-2026-11-18.md)；对抗 [../review-2026-11-18-plan.md](../review-2026-11-18-plan.md)；ADR-0014（本轮）/0013/0004 等。
+- 总纲本文件；方向 [voice-direction-decision](voice-direction-decision-2026-11-18.md)；TTS [tts-expansion](tts-expansion-2026-11-18.md)；对抗 [../reviews/review-2026-11-18-plan.md](../reviews/review-2026-11-18-plan.md)；ADR-0014（本轮）/0013/0004 等。
 - 取证底稿在 gitignored `docs/research/`（T1/T2-final/T3-final/interim），不入库；结论以本目录为准。
 - ADR 索引已核对并回填：0014 转「已接受」、0015（asrReplacements，来自 PR68）标题更正为 ADR-0015（原误写 0014）。
 

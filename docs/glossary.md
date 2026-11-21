@@ -88,11 +88,11 @@ AI 被自己的回声打断——本项目最严重的体验故障，ADR-0001 �
 **自聊（self-talk）**
 TTS 回声被识别成用户输入并自动发送，形成 AI 与自己对话。防护：朗读期语音帧不入段，且朗读期的 finalize 一律丢弃（`src/asr.ts` `finalizeSegment` 的播放门）。
 
-**toggle / hold**
-两种交互模式。`toggle` 持续聆听、停顿自动断句；`hold` 按住说话、松手即发（绕过 VAD 门控）。
+**toggle / hold / once**
+三种交互模式。`toggle` 持续聆听、停顿自动断句；`hold` 按住说话（按住麦克风按钮或键盘 `Ctrl` / Mac `⌃ Control`）、松手即发；`once` 说一句并在本轮回复自然朗读结束后自动退出。
 
-**bargeInMode: auto / manual**
-`auto` 声学自动打断；`manual` 长按显式打断。**外放且原生 AEC 失效时 `manual` 是正解而非降级**——见 ADR-0001 的物理边界。
+**bargeInMode: detect / auto / manual**
+`detect` 自动探测浏览器原生 AEC（生效则走 `auto`，未生效则在朗读播放期回落 `manual`）；`auto` 声学自动打断；`manual` 空闲期正常说话或触发唤醒词，仅朗读播放期需按住麦克风或 `Ctrl` 显式打断。**外放且原生 AEC 失效时 `manual` 是合理选择而非缺陷**——见 ADR-0001 的物理边界。
 
 **唤醒词门（wake gate）**
 配置 `wakeWord` 后先进 `wake` 待机态，partial 命中唤醒词才正式开口。仅 `toggle` 模式生效。
@@ -105,7 +105,7 @@ TTS 回声被识别成用户输入并自动发送，形成 AI 与自己对话。
 ## 合成与播放
 
 **TTS 引擎**
-`edge`（微软云端，默认，MP3）｜`vits`（本地纯中文，WAV）｜`kokoro`（本地中英混读，int8 默认 / fp32，WAV）。统一在 `TtsEngine` 接口后（`src/tts-queue.ts`）。
+`edge`（微软云端，默认，MP3）｜`vits`（本地纯中文，WAV）｜`kokoro`（本地中英混读，int8 默认 / fp32，WAV）｜`openai`（OpenAI 兼容 `POST /v1/audio/speech` 服务，含内置预设与自定义端点）｜`mimo`（小米 MiMo 语音合成，独立密钥）。统一在 `TtsEngine` 接口后（`src/tts-queue.ts`）。
 
 **句帧（TtsChunkFrame）**
 TTS 下行单元：`sentenceId`（句序）+ `chunkId`（句内块序）+ `final`（末块携带字幕文本）+ base64 音频。**协议支持分块，当前实现只发单块**（整句合成完才下发）——见评审 §2.3 I2。
@@ -154,7 +154,7 @@ TTS 下行单元：`sentenceId`（句序）+ `chunkId`（句内块序）+ `final
 
 ## 相关文档
 
-- [评审：当前得失与推进方向](review-2026-08-30.md)
+- [历史评审：早期得失与推进方向](archive/reviews/review-2026-08-30.md)
 - [ADR-0001 回声消除以浏览器原生 AEC 为主](adr/0001-native-aec-primary.md)
 - [ADR-0002 客户端注入锚点取新旧版本交集](adr/0002-dual-version-compat.md)
 - [ADR-0003 打断 VAD 服务端 Silero（提议下沉客户端）](adr/0003-server-side-vad.md)

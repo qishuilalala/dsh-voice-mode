@@ -1,48 +1,36 @@
 # dsh-voice-mode 文档索引
 
-当前任务与发布状态以[当前恢复点](rules/STATE.md)为准，执行顺序见[11 月规划](plan/plan-2026-11.md)。[根 CONTEXT.md](../CONTEXT.md) 是现行开发者上下文，[docs/CONTEXT.md](CONTEXT.md) 是跨文档索引与历史基线；两者冲突以根文件为准。历史计划不自动构成交付承诺。
+当前发布与任务状态以[当前恢复点](rules/STATE.md)为准，近期迭代安排见[11 月实施规划](plan/plan-2026-11.md)与[产品路线图](plan/roadmap-2026-10.md)。仓库根 [CONTEXT.md](../CONTEXT.md) 是现行开发者上下文与 35 项设置语义唯一真源，[docs/CONTEXT.md](CONTEXT.md) 是跨文档速查入口。
 
-> 面向开发者与高级用户的项目文档总览。
-> 终端用户请先读仓库根 [README.md](../README.md) / [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)。
+> 终端用户请直接阅读仓库根 [README.md](../README.md)、[plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md) 或 [English README](../plugin/dsh-voice-mode/README.en.md)。
 
-## 用户旅程
+## 快速导航
 
-1. 安装 → [README.md](../README.md) / [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)
-2. 配置 → [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)（「设置」一节的完整设置表）
-3. 使用 → [plugin/dsh-voice-mode/README.md 完整使用说明](../plugin/dsh-voice-mode/README.md)
-4. 故障 → [README.md](../README.md)（「故障排查」一节） + [docs/qa/real-machine-acceptance-checklist.md](qa/real-machine-acceptance-checklist.md)
-5. 开发 → [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)（「开发」一节） + [当前路线图](plan/roadmap-2026-10.md)
-6. 架构 → [docs/adr/](adr/README.md) 12 个 ADR + [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)（「工作原理」一节）
+1. **安装与上手** → [README.md](../README.md) / [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)
+2. **快捷键与设置项** → [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)（「操作手势与快捷键」「设置」两节）
+3. **宿主与平台兼容性** → [docs/compat-contract.md](compat-contract.md)
+4. **故障排查与真机验收** → [README.md](../README.md)（「故障排查」）+ [docs/qa/real-machine-acceptance-checklist.md](qa/real-machine-acceptance-checklist.md)
+5. **架构与设计决策** → [CONTEXT.md](../CONTEXT.md) + [docs/adr/](adr/README.md)（15 篇 ADR）+ [docs/glossary.md](glossary.md)
+6. **本地开发与贡献** → [CONTRIBUTING.md](../CONTRIBUTING.md) + [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)（「开发」一节）
 
 ## 文档目录
 
 | 目录 | 说明 |
 | --- | --- |
-| [adr/](adr/README.md) | 架构决策记录（0001-0012）—— 12 个 ADR 的背景 / 决策 / 后果 |
-| [competitive/](competitive/README.md) | 按日期归档的竞品调研与历史 backlog |
-| [findings/](findings/README.md) | 真机测量与发现（fixture verdict / 竞品 baseline / 多语 a11y） |
-| [plan/](plan/README.md) | 当前路线图与历史实施计划/执行提示词 |
-| [qa/](qa/README.md) | 真机验收清单与测试体系 |
-| ~~research/~~ | 调研资料（gitignored；本地参考，不入库） |
-| [rules/](rules/README.md) | 当前恢复点与历史档案（STATE 按状态重写） |
+| [adr/](adr/README.md) | 架构决策记录（ADR 0001–0015）：关键技术方案的背景、取舍与后果 |
+| [plan/](plan/README.md) | 现行[产品路线图](plan/roadmap-2026-10.md)与[近期实施规划](plan/plan-2026-11.md) |
+| [qa/](qa/README.md) | 测试分层体系、离线基准门禁与真机验收清单 |
+| [findings/](findings/README.md) | 声学测量、运行时行为分析与真机录制结论 |
+| [competitive/](competitive/README.md) | 同类语音方案调研与长期需求备忘 |
+| [governance/](governance/2026-11-12.md) | 项目治理记录与阶段决策纪要 |
+| [rules/](rules/README.md) | [当前恢复点](rules/STATE.md)与早期进度归档 |
+| [archive/](archive/README.md) | 已完成阶段的历史实施计划与专项审查归档 |
+| ~~research/~~ | 本地临时调研底稿（gitignored，不纳入公开仓库） |
 
-## 按角色
+## 核心参考文件
 
-- **终端用户**：[README.md](../README.md) → [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md) → 故障排查 → [CHANGELOG.md](../CHANGELOG.md)
-- **开发者**：[CONTEXT.md](../CONTEXT.md) → [plugin/dsh-voice-mode/README.md §开发](../plugin/dsh-voice-mode/README.md) → [docs/adr/](adr/README.md) → [当前路线图](plan/roadmap-2026-10.md)
-- **维护者**：[docs/rules/STATE.md](rules/STATE.md) → [docs/competitive/backlog.md](competitive/backlog.md) → [docs/competitive/scan-2026-09.md](competitive/scan-2026-09.md)
-
-## 其他资料
-
-- [2026-11-12 三视角治理审计](governance/2026-11-12.md) —— 基线复核、分阶段路线与待维护者拍板事项
-
-- [docs/compat-contract.md](compat-contract.md) —— dsh 多版本兼容契约（schema 实证表 / 9 个 inject 锚点 / 逐版本记录，非所有未来版本保证）
-- [docs/glossary.md](glossary.md) —— 项目词汇表
-- [docs/fixture-recording.md](fixture-recording.md) —— 真机录制开关与方法
-- [docs/mkdocs.yml](mkdocs.yml) —— GitHub Pages 部署配置（**未启用 CI**，仅文档）
-- [docs/review-2026-08-30.md](review-2026-08-30.md) —— 历史大版本 review
-- [docs/migrate-alpha-012.md](migrate-alpha-012.md) —— alpha → 0.1.2 迁移记录
-
----
-
-> **维护纪律**：本目录索引及子目录 README 由项目美化批次（2026-09-16）补齐；后续内容更新以 [docs/rules/STATE.md](rules/STATE.md) 当前恢复点为准。
+- [docs/compat-contract.md](compat-contract.md) —— DeepSeek Harness 多版本兼容记录、跨平台运行时支持矩阵与验证边界
+- [docs/dependency-policy.md](dependency-policy.md) —— 运行时依赖、内联第三方包与版本锁定策略
+- [docs/glossary.md](glossary.md) —— 声学、识别、打断与播放链路术语表
+- [docs/fixture-recording.md](fixture-recording.md) —— 本地声学调试录制开关与离线分析用法
+- [docs/mkdocs.yml](mkdocs.yml) —— 文档站构建配置（本地按需构建，未接入自动部署）

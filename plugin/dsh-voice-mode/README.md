@@ -5,7 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/dsh-voice-mode?style=flat-square&color=orange)](https://www.npmjs.com/package/dsh-voice-mode)
 [![CI](https://github.com/qishuilalala/dsh-voice-mode/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/qishuilalala/dsh-voice-mode/actions/workflows/ci.yml)
 
-DeepSeek Harness 语音双工对话模式：会话内一键进入 → 边说边出字的流式识别 → 停顿自动发送 → 最终答复按句合成后播放 + 实时字幕，开口即可打断（真 barge-in）。默认语音路径无需额外语音 API Key，识别在宿主端推理；宿主 LLM 的配置与费用另计。
+DeepSeek Harness 语音双工对话插件：会话内一键进入 → 边说边出字的本地流式识别 → 停顿自动发送 → 最终答复按句合成播放 + 实时字幕，支持发声或按键打断。默认语音路径无需额外语音 API Key，识别在宿主端本地运行；宿主大模型的连接与费用由宿主自身配置决定。
 
 **中文** · [English](https://github.com/qishuilalala/dsh-voice-mode/blob/HEAD/plugin/dsh-voice-mode/README.en.md)
 
@@ -29,11 +29,9 @@ dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`）�
 - 状态条与字幕默认开启；两项都关掉即上图的「全部收进按钮」形态，此时录音计时显示在按钮下方、提示文字显示在按钮旁
 
 
-> **当前状态（2026-11-21）**：v0.7.40 新增 7 家在线 TTS 预设与逐预设密钥、小米 MiMo 朗读引擎、纠错词表可视化管理，并完成设置面板四分段重塑与触屏菜单、切页定稿、字幕回看等体验升级；可安装版本以 npm 徽章与 Releases 为准。
-
-兼容跟进：最新 dsh 0.2.2-rc.5 的锚点、类型与隔离运行时复核通过（含客户端侧）；完整证据和未验收层见[兼容契约](../../docs/compat-contract.md)。
+> **当前状态**：支持 7 家在线 TTS 预设与逐预设独立密钥、小米 MiMo 语音合成、识别纠错词表可视化编辑、四分段设置面板，以及全模式键位提示（含 macOS 键帽本地化展示与 `220ms` 键盘按住说话）与跨平台兼容加固；可安装版本以 npm 徽章与 [Releases](https://github.com/qishuilalala/dsh-voice-mode/releases) 为准。
 >
-> CI 通过不代表真实听感、所有硬件或所有宿主版本均已验证。详见 [CHANGELOG](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md)、[兼容证据](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md)和[后续路线图](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md)。包声明范围为 `>=0.1.1-rc.2 <0.3.0-0`，未测版本不保证。
+> **兼容与验证边界**：最新 `dsh 0.2.2-rc.5` 的客户端注入锚点、双端类型检查与隔离运行态验证均已通过；完整版本矩阵、跨平台支持表与未覆盖边界见[兼容契约](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md)。CI 通过不替代真实麦克风听感与全硬件验收；详见 [CHANGELOG](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md) 与[产品路线图](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md)。包声明范围为 `>=0.1.1-rc.2 <0.3.0-0`，未测版本不做兼容保证。
 
 
 ---
@@ -47,7 +45,7 @@ dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`）�
   - 本地 Kokoro（**中英混读**，103 音色；`int8` 默认约 109MB / 可选 `fp32` 约 311MB 的较大模型），经 `sherpa-onnx-node` **原生 addon** 运行（原生运行时，实际资源占用与稳定性需按设备验证）；
   - Edge 云端为默认朗读引擎，也可在设置中重新选择（设置 `ttsEngine: edge`）；设置面板「朗读引擎」热切换。
 - **Kokoro 音色全量 103 个**（F0 实测标定性别），四个常用男声置顶带编号；音色面板用 **下拉列表 + ◀▶ 步进**切换；
-- **增量传输**：partial 只传新增 0.9 秒，长段按住说话松手**秒出定稿**（不再整段重传重解码）；
+- **增量传输**：partial 只传新增 0.9 秒，长段按住说话松手后**快速完成定稿**（不再整段重传重解码）；
 - **交互增强**：输入框旁**模式切换按钮**（持续聆听 ⇄ 按住说话，保存到设置）；按住说模式下**按住才录、不按住不打断**；
 - **长段支持**：持续聆听连续多段自动拼成一条消息（内部按 30s 分块识别，跨块累积拼接），静音断句默认 1500 毫秒；按住说停顿不断句；
 - **朗读稳定性**：打断即终止在途合成释放 CPU；合成不阻塞宿主主线程，句间等待取决于模型与硬件；长朗读不触发空闲下线；
@@ -59,11 +57,11 @@ dsh ≥0.1.7 上按钮挂在发送键左侧（`conversation.input.activity`）�
 
 ## ✨ 功能
 
-- **语音模式**：输入框工具排麦克风按钮或全局快捷键 `Ctrl+Shift+V` 进入/退出；光标在输入框里时还可按 `Alt+Enter`（Mac 为 `Option+Enter`）切换（不插入换行）；全局单活（同一时刻仅一个会话处于语音模式，切换会话自动让出）
-- **三种交互模式（右键麦克风或设置可切换，切换即持久化）**：
-  - `toggle`（默认）持续聆听：RMS VAD 分段 → zipformer2 流式识别（边说边出字，实时字幕预览）→ 静音约 1500 毫秒断句进草稿，连续多段拼成一条消息，再静音约 1.2 秒（合计约 2.7 秒）自动发送；按住 `Ctrl` 强制立即发送
-  - `hold` 按住说话：空闲时**直接按住麦克风按钮就开始录音、松手即发**（不必先点一下进入；短按仍是进入/退出）；发出后等回复结束（开朗读则读完）自动退出语音模式；关闭自动发送时松手只把文字留在输入框、不发送并直接退出；按住时没说话约 25 秒后兜底退出；滑出取消、`Esc`/失焦放弃本段；按住期间停顿不断句（上限 10 分钟）；`Ctrl` 按住即录、松开即发
-  - `once` 说完就关：像 `toggle` 一样说一段，发出后关麦，等回复自然朗读完自动退出语音模式；长按麦克风或按 Ctrl 打断后恢复收音、留在语音模式，下一轮自然读完再退出（关闭自动发送时：说完这一段即退出，文字留在草稿）
+- **语音模式**：输入框工具栏麦克风按钮或全局快捷键 `Ctrl+Shift+V`（macOS 为 `⌃ Control + ⇧ Shift + V`）进入/退出；光标在输入框里时还可按 `Alt+Enter`（macOS 为 `⌥ Option + Return`）切换（不插入换行）；全局单活（同一时刻仅一个会话处于语音模式，切换会话自动让出）
+- **三种交互模式（右键麦克风、触屏 `⋯` 菜单或设置页可切换，切换即持久化）**：
+  - `toggle`（默认）持续聆听：RMS VAD 分段 → zipformer2 流式识别（边说边出字，实时字幕预览）→ 静音约 1500 毫秒断句进草稿，连续多段拼成一条消息，再静音约 1.2 秒（合计约 2.7 秒）自动发送；说话时按住 `Ctrl`（macOS 为 `⌃ Control`）强制立即发送
+  - `hold` 按住说话：空闲时**直接按住麦克风按钮就开始录音、松手即发**（不必先点一下进入；短按仍是进入/退出）；已进入语音模式时也可**长按键盘 `Ctrl`（macOS 为 `⌃ Control`，约 0.22 秒起录，注意不是 `⌘ Command`）** 说话、松开即发；发出后等本轮回复结束（开朗读则读完）自动退出语音模式；关闭自动发送时松手只把文字留在输入框、不发送并直接退出；按住时没说话约 25 秒后兜底退出；上滑取消、`Esc`/失焦/组合按其他键自动放弃本段；按住期间停顿不断句（单次上限约 95 秒音频）
+  - `once` 说完就关：像 `toggle` 一样说一段，发出后关麦，等回复自然朗读完自动退出语音模式；长按麦克风或按 `Ctrl`（macOS `⌃ Control`）打断后恢复收音、留在语音模式，下一轮自然读完再退出（关闭自动发送时：说完这一段即退出，文字留在草稿）
 - **朗读范围**（`readAloud`）：`voice`（默认）只朗读语音模式下的回复；`always` 当前可见会话的所有回复都朗读（含打字发的；同一会话开多个标签页只在最后看的那个上播；切换会话立即停下原会话朗读，待播内容一并作废）；`off` 从不朗读
 - **唤醒词（可选，默认关）**：设置 `wakeWord` 后进入待机态，说出唤醒词才开始识别（如「你好小D」）。**可直接与命令连说**（「你好小D，帮我查天气」）——唤醒词会在定稿/字幕里自动剥掉、不进消息；匹配带容错（同音字替换「小莫→小墨」、首字错、前置语气词「呃/喂/我说」），建议 3-4 字；待机态状态条实时显示「说『x』开始 · 它听到的转写」，唤醒成败可自查。边界（重要）：**仅 `toggle` 模式生效**（`hold` / 手动打断下唤醒词静默失效）；**说完整一句后回到待机态需重说唤醒词**（只喊唤醒词、还没说命令时保持聆听，可停顿想好再说）；**朗读期说唤醒词不触发**（打断由 VAD 开口即触发，与唤醒词无关）
 - **字幕档位**：`captionFontSize` 4 档（0=12px / 1=14px / 2=18px / 3=24px）+ `captionMaxWidth` 3 档（0=50vw / 1=70vw / 2=90vw），窄屏自适应
@@ -94,19 +92,18 @@ dsh plugin --profile web add dsh-voice-mode
 
 ---
 
-## ⌨️ 操作手势
+## ⌨️ 操作手势与快捷键
 
-| 手势 | 作用 |
-| --- | --- |
-| `Ctrl+Shift+V` | 进入 / 退出语音模式（应用内） |
-| 输入框内 `Alt+Enter`（Mac 为 `Option+Enter`） | 光标在输入框里时进入 / 退出语音模式，不插入换行；长按不重复切换；设置卡片自己的输入框不拦截；`Cmd/Ctrl+Enter` 不占用（宿主用来发送） |
-| 直接说话 | `toggle`：边说边出字，停顿约 1500 毫秒断句进草稿、再静音约 1.2 秒（合计约 2.7 秒）自动发送；按住 `Ctrl` 强制立即发送 |
-| 按住麦克风按钮 | `hold`：空闲时直接按住即开始录音，松手发送并在回复结束后自动退出；短按仍是进入 / 退出；滑出 / `Esc` / 失焦放弃本段；右键只开快捷菜单 |
-| 点输入框旁模式按钮 | 在「持续聆听 ⇄ 按住说」间切换（保存到设置） |
-| 说唤醒词 | 待机态激活识别（配置后） |
-| AI 朗读时开口说话 | 打断朗读并取消当前回合 |
-| 点状态条「退出」 | 退出语音模式 |
-| 点字幕浮层「跳过」 | 跳过当前句朗读 |
+| 场景 / 手势 | Windows / Linux | macOS | 作用说明 |
+| --- | --- | --- | --- |
+| 进入 / 退出语音模式 | `Ctrl+Shift+V` | `⌃ Control + ⇧ Shift + V` | 应用内切换（注意 macOS 默认是 `Control` 而非 `⌘ Command`；可在设置页点「录制」修改或留空停用） |
+| 输入框内快速切换 | `Alt+Enter` | `⌥ Option + Return` | 光标在聊天输入框里时进入 / 退出语音模式，不插入换行；长按不重复切换；不占用 `Ctrl/⌘ + Enter` 发送键 |
+| 持续聆听（`toggle`） | 直接说话；按住 `Ctrl` 立即发 | 直接说话；按住 `⌃ Control` 立即发 | 边说边出字，停顿约 1500ms 断句进草稿、再静音约 1.2 秒自动发送；说话时按住 `Ctrl` / `⌃ Control` ≥250ms 松开可立即发送 |
+| 按住说话（`hold`）鼠标/触屏 | 按住麦克风按钮 | 按住麦克风按钮 | 未进入语音模式时**直接按住麦克风按钮即开始收音**，松手发送并在本轮回复结束后自动退出；短按仍是进入 / 退出；上滑或按 `Esc` 放弃本段 |
+| 按住说话（`hold`）键盘 | 进入后长按 `Ctrl`（≥220ms） | 进入后长按 `⌃ Control`（≥220ms） | 已处于语音模式时按住 `Ctrl` / `⌃ Control` 说话、松开即发；按 `Esc`、切走窗口或组合按其他键会自动取消本段 |
+| 手动打断 / 停止朗读 | 开口说话 / 按住 `Ctrl` / `Esc` | 开口说话 / 按住 `⌃ Control` / `Esc` | 自动打断下开口即停；手动打断（`manual`）下朗读期按住麦克风或 `Ctrl` / `⌃ Control` 打断；按一次 `Esc` 停播，连按两次 `Esc` 退出语音模式 |
+| 快捷菜单 | 右键点击麦克风按钮（或菜单键） | 右键 / 双指点按麦克风按钮 | 触屏端可点麦克风旁 `⋯` 按钮（或空闲非按住态长按 450ms），快速切换交互模式、朗读范围、字幕、状态条与自动发送 |
+| 跳过单句 / 退出 | 点字幕「跳过本句」/ 状态条「退出」 | 点字幕「跳过本句」/ 状态条「退出」 | 「跳过本句」仅跳过当前正在播的一句，不中断后续句子 |
 
 ---
 
@@ -126,7 +123,7 @@ dsh plugin --profile web add dsh-voice-mode
 | `voice` | 按引擎 | 音色：VITS 五说话人；Kokoro 103 个（下拉+◀▶，62 深沉/68 浑厚/75 清亮/76 磁性置顶）；Edge 进入时自动加载全量 322 个。行内「试听」可即时预览 |
 | `rate` | `1.1` | 朗读语速倍率（0.5 慢速 ～ 2.0 快速），**即时生效** |
 | `interruptLevel` | `0` | 发声打断灵敏度（服务端 VAD 帧级检测 + 回声门控）：0 高门槛（3 帧）/ 1 中（2 帧）/ 2 低（1 帧） |
-| `bargeInMode` | `detect` | 打断方式：`detect` 自动探测本机原生回声消除状态（默认；未生效时朗读期切为长按打断）/ `auto` 强制开口即打断（耳机、安静环境推荐）/ `manual` 手动打断（外放推荐：空闲时可直接说话或说唤醒词，AI 朗读中按住麦克风/Ctrl 打断）。批 7O 默认，I10 豁免（ADR-0006） |
+| `bargeInMode` | `detect` | 打断方式：`detect` 自动探测本机原生回声消除状态（默认；未生效时朗读期切为长按打断）/ `auto` 强制开口即打断（耳机、安静环境推荐）/ `manual` 手动打断（外放推荐：空闲时可直接说话或说唤醒词，AI 朗读中按住麦克风/`Ctrl` 打断；参见 ADR-0006） |
 | `echoGateDb` | `6` | 无原生 AEC 时的回声门兜底阈值；原生 AEC 有效时不参与。仅在兜底路径中，增大更保守、减小更易触发；先确认设备与打断模式 |
 | `silenceMs` | `1500` | 说完整一句的静音停顿毫秒数 |
 | `idleTimeoutMinutes` | `5` | 无活动自动退出语音模式的分钟数（朗读计为活动） |
@@ -147,15 +144,15 @@ dsh plugin --profile web add dsh-voice-mode
 | `openaiBaseUrl` | 空（跟随预设/配置文件） | 在线 TTS 端点：**设置卡片里直接填**（无需改 profile YAML）；优先级 设置 > 预设 > `openaiTts.baseUrl`；配合「自定义」可接任意 OpenAI 兼容平台；**即时生效** |
 | `openaiModel` | 空 | 在线 TTS 模型名覆盖（同上优先级）；预设没列出的平台选「自定义」后填这里 |
 | `openaiApiKey` | 空（回落配置文件） | 在线 TTS 的 key：卡片里填，存宿主 0600 设置文件，**永不回传浏览器**；优先级 面板按预设key > 设置全局key > `openaiTts.apiKeys[预设id]` > `openaiTts.apiKey`；卡片「清除」显式清空；**即时生效** |
-| `openaiApiKeys` | `{}`（全未配） | Q2 Key 跟预设走：面板按预设 id 存的 key 表；选中哪个预设用哪把，切预设不再 401；空条目回落全局 key；**只回布尔表、不回传明文**；**即时生效**（保存刷新即用新 key） |
+| `openaiApiKeys` | `{}`（全未配） | 按预设独立保存的密钥表：面板按预设 id 分别存 key，选中哪个预设自动使用对应密钥，切换预设不再因串用密钥报 401；空条目回落全局 key；**接口只返回是否已配置布尔表、永不回传明文**；**即时生效** |
 | `mimoApiKey` | 空（回落配置文件） | 小米 MiMo 的 key（走 `api-key` 头）：卡片里填，同样只存宿主、不回传；留空回落 `mimoTts.apiKey` |
 | `asrReplacements` | `[]` | 纠错词表 `[{from:[听错写法],to:想要写法}]`（≤200 条 / ≤12KB UTF-8）：转写后统一改写（中间结果+定稿）；卡片显示「本次生效以来」命中次数；与 LLM 纠错串联；**即时生效** |
 | `senseVoice` | `true` | 定稿是否用 SenseVoice 重译（带标点 + 数字归一化，更准；默认开）。**关闭可省 ~228MB 模型**，只走流式识别（更快、精度下降） |
 | `captionFontSize` | `0` | 字幕字号档位 0=12px / 1=14px / 2=18px / 3=24px（默认 0 与现状字节等价） |
 | `captionMaxWidth` | `1` | 字幕宽度档位 0=50vw / 1=70vw / 2=90vw（视口 <686px 窄于 480px，≈686px 接近 480px，>686px 宽于 480px） |
 | `backchannelYield` | `true` | 让位语义（ADR-0008）；朗读期说「嗯/对」自动让位 1.5s + 真要说走硬打断；关 = 行为等同改造前 |
-| `bargeInSalvage` | `true` | 打断语音抢救（Issue #15 批 1 / ADR-0012）：AI 朗读时你开口打断，自动保留从开口到打断生效之间你说的话，并入识别继续发送（修「打断吃句」；关 = 丢弃打断前语音——仅外放且无回声消除的环境建议关） |
-| `llmCorrect` | `false` | LLM 纠错（Issue #15 批 4，默认关）：发送前用大模型对整条语音文本做一次纠错（只改错别字/同音字/标点，保持原意；复用宿主已配置模型。开 = 每条消息多一次约 1 秒的纠错等待；纠错失败自动用原文；模型改成回答你而非纠错时同样回退原文） |
+| `bargeInSalvage` | `true` | 打断语音抢救（ADR-0012）：AI 朗读时你开口打断，自动保留从开口到打断生效之间你说的话，并入识别继续发送（避免打断瞬间吞字；关 = 丢弃打断前语音——仅外放且无回声消除的环境建议关） |
+| `llmCorrect` | `false` | LLM 纠错（默认关）：发送前用大模型对整条语音文本做一次纠错（只改错别字/同音字/标点，保持原意；复用宿主已配置模型。开 = 每条消息多一次约 1 秒的纠错等待；纠错失败自动用原文；模型改成回答你而非纠错时同样回退原文） |
 | `yieldMs` | `1500` | 让位窗口时长（ms，500-3000）：`backchannelYield` 命中后 TTS 丢帧持续时长；窗口内用户真要说则由原 `hardBreak` 接管，窗口到点自动恢复播放 |
 
 生效时机分四档：① 即时——快捷键 / 输入框快捷键 / 交互模式 / 朗读范围 / 自动发送 / 字幕浮层 / 状态条 / 朗读引擎 / 音色 / 语速 / 口语化提示词（对后续回复生效）/ 模型镜像（下次下载尝试即生效）；② 下次识别时——定稿重译（SenseVoice）/ 逆文本归一化；③ 下一段话——静音判定时长（断句端点；发送等待固定 1.2 秒不受影响）；④ 下次进入语音模式——打断灵敏度 / 打断方式 / 回声门控 / 自动恢复 / 唤醒词 / 工具提示音 / 字幕字号 / 字幕宽度 / 短应答让位 / 让位窗口 / 打断语音抢救 / LLM 纠错 / 空闲时长。已保存但未生效的项会列在设置卡片顶部（含当前生效值）。设置项默认值由插件配置（`base` 层）提供。
@@ -273,30 +270,14 @@ dsh plugin --profile web add dsh-voice-mode
 MiMo **没有 `speed` 字段**：`rate` 不为 1 时会译成自然语言风格指令（「语速加快到约 1.2 倍」）随请求下发。失败/超时同样进入 30 秒冷却并回退本地，打断（barge-in）不记为失败。官方文档：<https://mimo.mi.com>。
 
 
-**真实链路实测（2026-11-19，真 key）**：
+**接入与协议说明**：
 
-- 鉴权头是 `api-key: sk-…`（官方 curl 示例口径，非 `Authorization: Bearer`）；key 从控制台「API Keys」创建。
-- 可用模型 `mimo-v2.5-tts`（V2.5-TTS 系列未随 V2.5-Pro 下线）。
-- 返回为 base64，解码后是 **WAV：单声道 / 24kHz / 16bit**；实测约 30 字一句话得 5.8s 音频，合成耗时 2~5s。
-- **请求 `audio.format: mp3` 时服务端仍返回 WAV**（200 OK）。引擎按响应字节嗅探容器格式（`sniffAudioMime`），不信配置值，避免把 WAV 当 MP3 解码而播不出声。
-- 401 错误体是 JSON（`type: invalid_key`），错误消息经脱敏后才进日志。
-- 预置音色实测可用：`mimo_default`（中国集群落「冰糖」）、`冰糖`、`苏打`、`茉莉`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。
+- 鉴权请求头为 `api-key: sk-…`（非 `Authorization: Bearer`），密钥可在 MiMo 控制台创建。
+- 可用模型为 `mimo-v2.5-tts`；预置音色包括 `mimo_default`、`冰糖`、`苏打`、`茉莉`、`白桦`、`Mia`、`Chloe`、`Milo`、`Dean`。
+- 服务端实际返回单声道 24kHz 16bit WAV 音频（即使请求 `mp3` 也可能返回 WAV），插件会按响应头字节自动嗅探真实音频格式（`sniffAudioMime`），确保浏览器正常解码播放。
+- 鉴权或接口报错消息均经过密钥脱敏后再记入宿主日志。
+
 ### 纠正听错的词（`asrReplacements`）
-### 宿主级端到端验证（2026-11-19，隔离 profile）
-
-在 `/tmp` 下新建独立 `DSH_HOME` + `mt` profile（`dsh plugin --profile mt add <本地插件目录>` 装成本地 link），patch 用 `!!js process.env.MIMO_API_KEY` 引用 `.env` 里的真 key，`--port 3098` 起独立实例（不碰 3018）：
-
-| 验证点 | 结果 |
-|---|---|
-| 组合配置 | `--dump-config` 显示 `id: voice-mode` 段被 patch 覆盖，条目 id 是 `voice-mode`（`dsh-voice-mode` 是 name） |
-| 引擎选择 | `GET /voice-mode/config` → `ttsEngine: mimo`；`GET /voice-mode/models/status` → `tts: {engine: mimo, ready: true}` |
-| 真实合成 | `POST /voice-mode/preview {voice: mimo_default}` → **HTTP 200 / content-type: audio/wav / 199,724 B / WAV 24kHz 单声道 16bit / 4.16s / RMS 3561（有声）** |
-| MIME 修正生效 | `/config` 的 `audioMime: audio/wav`（嗅探结果，而非配置里的 wav 巧合） |
-| 路由无泄漏 | `GET /voice-mode/presets` 只含 baseUrl/model/voice 三字段（ADR-0013 边界，线上实证） |
-
-验证后已 `kill` 实例并删除临时 `DSH_HOME` 与 `mimotest` profile，端口 3098/3099 已释放。
-
-**仍未做（需人）**：把正在跑的 web profile（3018）从 npm 0.7.35 换成本地构建并重启服务——重启会断开当前页面连接，需你决定时机。
 
 
 识别器会把中文里夹的人名、英文词听错（例如「Sakina」听成「ski男」）。常规办法热词在这里用不上：sherpa-onnx 只有 transducer 模型支持热词，流式 zipformer 以汉字为单位、写不出英文词，出定稿的 SenseVoice 又没有热词入口。在有热词能力的模型能覆盖之前，替换表是权宜办法：识别之后改写文本，中间结果和定稿都改，所以字幕、草稿和唤醒词看到的都是改好的文本。
@@ -361,6 +342,8 @@ flowchart LR
         Edge[Edge 云端]
         Vits[本地 VITS WASM]
         Kokoro[本地 Kokoro<br/>原生 addon]
+        OpenAI[OpenAI 兼容端点]
+        MiMo[小米 MiMo 语音]
     end
 
     UI -->|audio f32 PCM<br/>POST /voice-mode/asr| ASR
@@ -373,17 +356,21 @@ flowchart LR
     TTS -->|edge| Edge
     TTS -->|vits| Vits
     TTS -->|kokoro| Kokoro
+    TTS -->|openai| OpenAI
+    TTS -->|mimo| MiMo
     Edge -.->|SSE audio frame| UI
     Vits -.->|SSE audio frame| UI
     Kokoro -.->|SSE audio frame| UI
+    OpenAI -.->|SSE audio frame| UI
+    MiMo -.->|SSE audio frame| UI
     VAD -.->|唤醒词/打断| Q
 ```
 
 - 识别在 **host 端本地运行**（zipformer2 中文 int8 WASM + SenseVoice 定稿，模型懒下载），音频不上传第三方；识别定稿由 SenseVoice 补标点；
-- 朗读默认 **Edge 云端**；本地 VITS 纯中文 / Kokoro 原生中英（跑在独立子进程、崩溃自愈）可选（隐私优先）；
+- 朗读默认 **Edge 云端**；可选离线本地引擎 VITS（纯中文）/ Kokoro（原生中英混读，跑在独立子进程、按需隔离加载原生模块），也可配置自备密钥的 OpenAI 兼容端点或小米 MiMo（失败自动回退本地）；
 - 同一时间仅一个会话处于语音模式（全局单活）；LLM 流被无损观察（不阻塞）。
 
-详细架构决策：见 [`docs/adr/`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/adr/README.md) 12 个 ADR。
+详细架构决策：见 [`docs/adr/`](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/adr/README.md) 15 个 ADR。
 
 ---
 
@@ -393,7 +380,7 @@ flowchart LR
 | --- | --- | --- |
 | 识别模型 | 云端 API（需 key） | **本地 zipformer2 + SenseVoice**（零 key） |
 | 多语种 | 英文为主 | **SenseVoice 自动识别（zh/en/ja/ko/yue）+ ITN** |
-| 朗读引擎 | 云端 TTS | **Edge 云端 + 本地 VITS/Kokoro** 三选一 |
+| 朗读引擎 | 云端 TTS | **Edge 云端 + 本地 VITS/Kokoro + OpenAI 兼容 / 小米 MiMo** 五类可选 |
 | 打断检测 | 基础 VAD | **三档灵敏度 + 回声门控 + 让位语义** |
 | 字幕 a11y | 无 | **4 档字号 + 3 档宽度 + 主题跟随** |
 | 唤醒词 | 无 | **轻量流式匹配 + 前缀语气词白名单** |
@@ -407,8 +394,8 @@ flowchart LR
 
 | 类别 | 具体行为 | 数据去向 |
 | --- | --- | --- |
-| **network** | Edge 将待朗读文本发往微软在线服务；`ttsEngine: openai` 时将待朗读文本发往配置的 `openaiTts.baseUrl`（不发往别处）；本地模型从官方源或配置镜像下载，主要模型及清单内支持文件做摘要校验，辅助目录用清单/存在性检查；插件在宿主注册 `/voice-mode/*` 路由 | 浏览器音频发送到所连接的 dsh 宿主识别，不使用独立云 ASR；提交文本及可选 LLM 纠错遵循宿主配置。切换本地 TTS 不会让宿主 LLM 自动离线 |
-| **fs-read / fs-write** | 模型缓存（Linux/macOS `~/.cache/dsh-voice-mode/models/`，Windows `%LOCALAPPDATA%\dsh-voice-mode\models\`）；dsh 0.1.7+ 的设置覆盖层 `$DSH_HOME/voice-mode.settings.json`；**不读写你的工作区文件** | 全部在本机 |
+| **network** | `ttsEngine: edge` 将待朗读文本发往微软在线服务；`ttsEngine: openai` 将待朗读文本发往配置的预设或 `openaiBaseUrl` / `openaiTts.baseUrl`；`ttsEngine: mimo` 将待朗读文本发往 `mimoTts.baseUrl`（默认 `https://api.xiaomimimo.com/v1`）；本地 VITS / Kokoro 下载完成后在宿主本机离线合成；本地模型首次从官方源或配置镜像下载并校验主文件 SHA256；插件在宿主注册 `/voice-mode/*` 路由 | 浏览器音频仅发送到所连接的 dsh 宿主识别，不使用独立云 ASR；提交文本及可选 `llmCorrect` 纠错遵循宿主已配置的大模型。切换本地 TTS 不会让宿主大模型自动离线 |
+| **fs-read / fs-write** | 模型缓存（Linux/macOS `~/.cache/dsh-voice-mode/models/`，Windows `%LOCALAPPDATA%\dsh-voice-mode\models\`）；dsh 0.1.7+ 的设置覆盖层 `$DSH_HOME/voice-mode.settings.json`（权限 `0600`，API 密钥只写宿主侧、永不回传浏览器）；**不读写你的工作区文件** | 全部在本机 |
 | **shell（子进程）** | 本地 TTS 合成跑在独立子进程（`child_process.fork` → `lib/tts-vits-worker.cjs`）；宿主为 Electron（官方桌面端）时，为 Kokoro 额外探测并启动一个真正的 Node.js（`node -p …` 探测版本，见 ADR/兼容契约）。**不执行用户输入、不经 shell 拼接命令** | 本机 |
 | **env** | 使用目录和运行时定位相关环境设置，如 `DSH_HOME`、`LOCALAPPDATA`、`PATH` 和可选 `DSHVM_NODE`；默认语音路径无需额外语音服务密钥 | 宿主 LLM 的配置和费用另计 |
 
@@ -456,8 +443,8 @@ flowchart LR
 | 识别到但不是我要说的 | 环境噪声或唤醒词误判：减少噪声并对比实时转写和定稿；`interruptLevel` 只影响打断，不提高识别准确率 |
 | 唤醒词唤不醒 | 先看待机态状态条的实时转写（它听到了什么）：同音字 1 字内已自动容错；停顿约 1.5 秒（= 静音断句时长）再说，清掉待机段残留语音、从段首重新匹配；换一个转写稳定的词（建议 3-4 字） |
 | 打断后说话没反应（开了唤醒词） | 唤醒词只管「开始识别」的门：打断/每句断句后回到待机态，**需重说唤醒词**再继续说；待机态状态条会显示「说『x』开始」提示 |
-| 唤醒词完全没反应 | ① 确认交互模式是 `toggle`（`hold` 与手动打断下唤醒词不生效）；② 确认 `bargeInMode`：`manual`（或 `detect` 在本机无原生回声消除时自动落 manual）会关闭常驻聆听 → 唤醒词失效，改回 `auto` 或按住麦克风/Ctrl；③ 朗读期说唤醒词不触发（先等 AI 说完）；④ 看待机态实时转写，确认它听到了什么（同音字 1 字内已容错，建议 3-4 字词） |
-| 按住说话松手后没反应 | 确认交互模式为「按住说」且按住期间按钮高亮；松手后识别定稿约 1 秒内进入草稿 |
+| 唤醒词完全没反应 | ① 确认交互模式是 `toggle`（`hold` 按住说话模式下唤醒词不生效；`manual` 手动打断与 `detect` 回落 `manual` 时空闲期唤醒词照常生效）；② 朗读期说唤醒词不触发（朗读期打断只看 VAD 或手动长按）；③ 看待机态状态条实时转写，确认识别到的字词（同音字 1 字内已容错，建议设置 3–4 字唤醒词） |
+| 按住说话不知道按哪个键 / 松手后没反应 | 可直接**按住麦克风按钮**说话；用键盘时须先进入语音模式，再长按 **`Ctrl`（macOS 为 `⌃ Control`，注意不是 `⌘ Command`）** ≥0.22 秒，状态条提示「正在收音，松开发送」后再说话，松手约 1 秒内定稿进草稿 |
 | 打不断（朗读中开口无反应） | 将 `interruptLevel` 向 2 调整（2 最敏感，0 高门槛），确认麦克风与回声消除；仍不可靠时用按住说话。原生 AEC 有效时 `echoGateDb` 不参与门控，无原生 AEC 时才是兜底参数 |
 | 官方桌面端上选本地 Kokoro，设置里显示「加载失败」并提示需要 Node.js | 桌面端宿主是 Electron，Kokoro 的原生 addon 在其中不可用：在系统 PATH 上安装 Node.js ≥18（或设环境变量 `DSHVM_NODE` 指向它）后重试；或改用默认的 Edge / 本地 VITS（桌面端不受影响） |
 | 字幕被输入框挡住 | 默认 `captionMaxWidth=1`（70vw）+ `captionFontSize=0`（12px）在窄屏可能与底部输入框重叠；调高档位或点字幕浮层「×」收起 |

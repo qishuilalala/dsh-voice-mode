@@ -16,11 +16,9 @@ interrupts playback and the running turn. No additional speech-service API key i
 
 ![Real recording: streaming transcription → auto-send → sentence-by-sentence read-aloud with live captions](https://raw.githubusercontent.com/qishuilalala/dsh-voice-mode/HEAD/plugin/dsh-voice-mode/assets/demo-voice-flow.gif)
 
-> **Current status (2026-11-21):** v0.7.40 adds 7 online TTS presets with per-preset API keys, Xiaomi MiMo TTS, visual ASR replacement rules, a redesigned 4-tab settings panel, touch quick-settings menu, tab-switch draft finalization, and caption history. Check npm and Releases for availability.
-
-Host compatibility check: anchors, types and isolated runtime checks passed for dsh 0.2.2-rc.5 (including the client side). See the [compatibility record](../../docs/compat-contract.md) for evidence and unverified layers; this does not establish microphone or cross-platform acceptance.
+> **Current status:** Supports 7 built-in online TTS presets with per-preset API keys, Xiaomi MiMo TTS, editable post-ASR replacement rules, a 4-tab settings panel, localized keyboard/touch guidance (including macOS keycap badges and `220ms` keyboard push-to-talk), and cross-platform worker isolation. Check npm and [Releases](https://github.com/qishuilalala/dsh-voice-mode/releases) for published versions.
 >
-> CI results do not establish real-device audio quality or compatibility with every host version. See the [changelog](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md), [compatibility evidence](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md), and [roadmap](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md). The declared dsh range is `>=0.1.1-rc.2 <0.3.0-0`; untested versions are not guaranteed.
+> **Compatibility & verification boundaries:** Client injection anchors, host/client typechecks, and isolated runtime checks pass through `dsh 0.2.2-rc.5`. See the [compatibility contract](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/compat-contract.md) for the full host/OS/browser matrix and unverified layers, the [changelog](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CHANGELOG.md), and the [roadmap](https://github.com/qishuilalala/dsh-voice-mode/blob/main/docs/plan/roadmap-2026-10.md). CI does not replace real-device microphone or acoustic acceptance; the declared `dsh` range is `>=0.1.1-rc.2 <0.3.0-0`, and untested host versions are not guaranteed.
 
 
 ---
@@ -40,15 +38,15 @@ Host compatibility check: anchors, types and isolated runtime checks passed for 
 
 ## ✨ Features
 
-- **Voice mode**: toggle with the microphone button in the input toolbar or the global shortcut `Ctrl+Shift+V`; with the caret in the composer, `Alt+Enter` (`Option+Enter` on Mac) toggles it too, without inserting a newline; globally single-active (only one session is in voice mode at a time; switching sessions yields automatically)
-- **Three interaction modes (switchable in settings or by right-clicking the mic)**:
-  - `toggle` (default) continuous listening: RMS VAD segmentation → streaming zipformer2 ASR (words appear as you speak, live caption preview) → automatic sentence split after 1500 ms of silence into the draft, consecutive segments joined into one message, then auto-sent after ~1.2 s more of silence (≈2.7 s total); hold `Ctrl` to force an immediate send
-  - `hold` push-to-talk: from idle, **just hold the mic button to start recording and release to send** (no need to tap in first; a short tap still enters/exits); after sending, voice mode exits on its own once the reply finishes (read aloud, if on); with auto-send off, releasing only leaves the text in the composer (not sent) and exits; if you hold without speaking it exits after ~25 s; (swipe up to cancel, `Esc`/blur abandons the segment; pauses do not split while held, up to 10 min); hold `Ctrl` to record-by-keyboard, release to send
-  - `once` one-shot: talk like `toggle`; after sending, the mic turns off and voice mode exits once the reply finishes naturally; holding the mic button or pressing Ctrl interrupts the reply, resumes the mic, and keeps voice mode on for another utterance (with auto-send off: exits after the utterance, text stays in the draft)
+- **Voice mode**: toggle with the microphone button in the input toolbar or the global shortcut `Ctrl+Shift+V` (`⌃ Control + ⇧ Shift + V` on macOS — note `Control`, not `⌘ Command`); with the caret in the composer, `Alt+Enter` (`⌥ Option + Return` on macOS) toggles it too, without inserting a newline; globally single-active (only one session is in voice mode at a time; switching sessions yields automatically)
+- **Three interaction modes (switchable in settings, right-click menu, or touch `⋯` menu)**:
+  - `toggle` (default) continuous listening: RMS VAD segmentation → streaming zipformer2 ASR (words appear as you speak, live caption preview) → automatic sentence split after 1500 ms of silence into the draft, consecutive segments joined into one message, then auto-sent after ~1.2 s more of silence (≈2.7 s total); hold `Ctrl` (`⌃ Control` on macOS) while speaking to force an immediate send
+  - `hold` push-to-talk: from idle, **just hold the mic button to start recording and release to send** (no need to tap in first; a short tap still enters/exits); while voice mode is active, you can also **hold `Ctrl` (`⌃ Control` on macOS, ≥220 ms)** to record by keyboard and release to send; after sending, voice mode exits on its own once the reply finishes (read aloud, if on); with auto-send off, releasing only leaves the text in the composer (not sent) and exits; if you hold without speaking it exits after ~25 s; swipe up, `Esc`, window blur, or pressing another key combo cancels the segment; pauses do not split while held
+  - `once` one-shot: talk like `toggle`; after sending, the mic turns off and voice mode exits once the reply finishes naturally; holding the mic button or pressing `Ctrl` (`⌃ Control` on macOS) interrupts the reply, resumes the mic, and keeps voice mode on for another utterance (with auto-send off: exits after the utterance, text stays in the draft)
 - **Read-aloud scope** (`readAloud`): `voice` (default) only replies in voice mode; `always` every reply in the visible session, typed ones included (with the session open in several tabs, only the last-viewed tab plays; switching sessions immediately stops the previous session and discards its queued speech); `off` never
-- **The mic button is the status panel** (PR #16 by [@dyguests](https://github.com/dyguests)): green bars follow your voice while listening, blue bars follow playback while reading, a spinner while `once` waits for the reply, a check mark before it exits; orange dot = speech detected, red dot = error (hover for details). Right-click (or the keyboard menu key) for quick settings; touch long-press stays push-to-talk. Turn off the status bar and captions to keep all voice UI on the button
-- **Wake word (optional, off by default)**: after setting `wakeWord`, entering voice mode starts in standby, and recognition only begins once the wake word is spoken (e.g. `你好小D`). **You may say it together with your command** ("wake word, check the weather") — the wake word is stripped from the transcript/caption and never sent; matching is fault-tolerant (homophone substitutions, a wrong first char, leading fillers); 3-4 characters recommended; in standby the status bar live-shows "say '<word>' · what it heard". Boundaries (important): **toggle mode only** (inactive with `hold` / manual barge-in); **it must be repeated after each completed utterance or barge-in** (if you only said the wake word, the engine keeps listening so you may pause before the command); **saying it while the agent is reading does not trigger** (barge-in is VAD-based and unrelated to the wake word)
-- **Caption tiers (batch 3)**: `captionFontSize` 4 levels (0=12px / 1=14px / 2=18px / 3=24px) + `captionMaxWidth` 3 levels (0=50vw / 1=70vw / 2=90vw); adapts to narrow viewports
+- **The mic button is the status panel** (PR #16 by [@dyguests](https://github.com/dyguests)): green bars follow your voice while listening, blue bars follow playback while reading, a spinner while `once` waits for the reply, a check mark before it exits; orange dot = speech detected, red dot = error (hover for details). Right-click (or keyboard menu key) on desktop, or tap the `⋯` button (or 450 ms idle long-press outside `hold` mode) on touch devices for quick settings. Turn off the status bar and captions to keep all voice UI on the button
+- **Wake word (optional, off by default)**: after setting `wakeWord`, entering voice mode starts in standby, and recognition only begins once the wake word is spoken (e.g. `你好小D`). **You may say it together with your command** ("wake word, check the weather") — the wake word is stripped from the transcript/caption and never sent; matching is fault-tolerant (homophone substitutions, a wrong first char, leading fillers); 3-4 characters recommended; in standby the status bar live-shows "say '<word>' · what it heard". Boundaries (important): **toggle mode only** (inactive in `hold` mode; works normally when idle under `manual` or `detect` fallback); **it must be repeated after each completed utterance or barge-in** (if you only said the wake word, the engine keeps listening so you may pause before the command); **saying it while the agent is reading does not trigger** (barge-in is VAD-based and unrelated to the wake word)
+- **Caption tiers**: `captionFontSize` 4 levels (0=12px / 1=14px / 2=18px / 3=24px) + `captionMaxWidth` 3 levels (0=50vw / 1=70vw / 2=90vw); adapts to narrow viewports and safe areas, with recent-sentence history after playback
 - **Yield semantics (ADR-0008)**: `backchannelYield` on by default — saying `嗯 / 对 / right` while the AI is reading auto-pauses for 1.5 s; genuine speech still triggers hard barge-in; lets the LLM yield the turn
 - **Output pipeline**: only the final answer's `text-delta` is read (reasoning/tool calls are skipped), streamed sentence-by-sentence (Edge cloud by default; local VITS / Kokoro, int8/fp32, optional) with a live caption overlay at the bottom-right; tool calls trigger a beep; the full text is still written to the chat; in voice mode a spoken-format system prompt is injected (short natural sentences, no Markdown decoration), and the reader side strips markers as well for a smoother listening experience
 - **Barge-in**: three sensitivity levels of voice-onset detection → local mute + host synth queue invalidation (epoch) + running turn cancellation (the half-finished part is kept and naturally flows into your new message). With a wake word set, barge-in **remains speak-to-interrupt** (the gate is the VAD, not the wake word; the engine returns to standby afterwards)
@@ -60,21 +58,20 @@ Host compatibility check: anchors, types and isolated runtime checks passed for 
 
 ---
 
-## ⌨️ Interaction gestures
+## ⌨️ Interaction gestures & shortcuts
 
-Speaking to trigger a hard interruption stops playback and requests cancellation of the current running turn. The separate “stop reading” action only stops read-aloud; these are different actions.
+Speaking to trigger a hard interruption stops playback and requests cancellation of the current running turn. Pressing `Esc` once (or clicking stop) stops read-aloud only; double-pressing `Esc` exits voice mode.
 
-| Gesture | Behaviour |
-| --- | --- |
-| Click the mic button / `Ctrl+Shift+V` | Enter / exit voice mode (clicking the button does not steal composer focus; while waiting for a reply or reading, one click stops reading and exits completely) |
-| `Alt+Enter` (`Option+Enter` on Mac) in the composer | Toggle voice mode with the caret in the input, no newline inserted; holding the key does not re-toggle; the settings card's own inputs are not intercepted; `Cmd/Ctrl+Enter` is left alone (the host uses it to send) |
-| Just speak, pause ~1500 ms (toggle) | Accumulate into draft, auto-send after ~2.7 s of quiet |
-| Hold `Ctrl` (toggle, ≥250 ms speech) | Force-send the current segment immediately |
-| **Hold the mic button (hold)** | From idle, hold to start recording right away, release to send and exit after the reply ends; swipe up / `Esc` / blur abandons the segment; <250 ms tap enters/exits; right-click only opens the quick menu |
-| Hold `Ctrl` (hold, ≥600 ms) | Keyboard push-to-talk, release to send |
-| Speak the wake word first (if configured) | Activate from standby into listening (then recognition and sending begin) |
-| Speak while AI is reading | Interrupt playback and cancel the running turn |
-| Type in the input box | Auto-exit voice mode (draft is kept) |
+| Action | Windows / Linux | macOS | Behaviour |
+| --- | --- | --- | --- |
+| Enter / exit voice mode | `Ctrl+Shift+V` | `⌃ Control + ⇧ Shift + V` | App-wide toggle (note: `Control` on macOS, not `⌘ Command`; customizable or clearable in Settings → Shortcuts). Clicking the mic button does not steal composer focus |
+| Toggle from composer | `Alt+Enter` | `⌥ Option + Return` | Toggles voice mode while the caret is in the chat input without inserting a newline; leaves `Ctrl/⌘ + Enter` intact for sending |
+| Continuous listening (`toggle`) | Speak directly; hold `Ctrl` to send now | Speak directly; hold `⌃ Control` to send now | Splits into draft after ~1500 ms silence and auto-sends after ~2.7 s total quiet; holding `Ctrl` / `⌃ Control` ≥250 ms while speaking sends immediately on release |
+| Push-to-talk (`hold`) — pointer/touch | Hold the mic button | Hold the mic button | From idle, hold the mic button directly to record and release to send (auto-exits once the reply finishes); swipe up or press `Esc` to cancel; short tap enters/exits |
+| Push-to-talk (`hold`) — keyboard | Hold `Ctrl` (≥220 ms) | Hold `⌃ Control` (≥220 ms) | While in voice mode, hold `Ctrl` / `⌃ Control` to record and release to send; pressing `Esc`, blurring the window, or pressing another key combo discards the segment |
+| Interrupt / stop reading | Speak / hold `Ctrl` / `Esc` | Speak / hold `⌃ Control` / `Esc` | Under `auto`, speaking interrupts immediately; under `manual` (or `detect` without native AEC), hold mic or `Ctrl` / `⌃ Control` during playback to interrupt; `Esc` stops reading, double-`Esc` exits |
+| Quick settings menu | Right-click mic (or Menu key) | Right-click / two-finger click mic | On touch devices, tap `⋯` next to the mic (or 450 ms idle long-press outside `hold` mode) |
+| Type in the input box | Type in composer | Type in composer | Auto-exits voice mode while preserving the current draft |
 
 ---
 
@@ -138,9 +135,9 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | `ttsEngine` | `edge` | Read-aloud engine: `edge` Microsoft cloud (default, fast) / `vits` local Chinese / `kokoro` local zh+en / `openai` any OpenAI-compatible server / `mimo` Xiaomi MiMo (independent `mimoTts.apiKey`, see below); **applies live** |
 | `kokoroModel` | `int8` | Kokoro precision: `int8` (default, 109 MB, CPU/low-bandwidth) / `fp32` (311 MB, better quality, GPU/large memory); same 103 voices; **applies live** |
 | `voice` | per engine | Voice: 5 VITS speakers; 103 Kokoro voices (◀▶ stepper; 62/68/75/76 favourite males pinned); Edge ShortNames below. The inline "试听" button previews it at the current rate |
-| `rate` | `1.1` | Reading speed multiplier (0.5 slow ～ 2.0 fast), **applies live** (batch J 1.0→1.1) |
+| `rate` | `1.1` | Reading speed multiplier (0.5 slow ～ 2.0 fast), **applies live** |
 | `interruptLevel` | `0` | Barge-in sensitivity (host-side VAD frame detection + echo gate): 0 high threshold (3 frames) / 1 medium (2 frames) / 2 low (1 frame) |
-| `bargeInMode` | `detect` | Barge-in mode: `detect` auto-probes native echo cancellation (default; switches playback to hold-to-interrupt when inactive) / `auto` force interrupt as soon as you speak (headphones / quiet rooms) / `manual` manual interrupt (recommended on loudspeakers: speak directly or say the wake word when idle, and hold mic/Ctrl to interrupt during playback). Batch 7O default, I10-exempt (ADR-0006) |
+| `bargeInMode` | `detect` | Barge-in mode: `detect` auto-probes native echo cancellation (default; switches playback to hold-to-interrupt when inactive) / `auto` force interrupt as soon as you speak (headphones / quiet rooms) / `manual` manual interrupt (recommended on loudspeakers: speak directly or say the wake word when idle, and hold mic/`Ctrl` to interrupt during playback; see ADR-0006) |
 | `echoGateDb` | `6` | Fallback echo-gate threshold when native AEC is unavailable. Inactive with native AEC. Only on the fallback path, a higher value is more conservative; verify the device and barge-in mode before tuning |
 | `silenceMs` | `1500` | Silence pause in ms that marks the end of a complete sentence |
 | `idleTimeoutMinutes` | `5` | Minutes of inactivity before auto-exiting voice mode (reading, speech and a running turn renew the timer, subject to a two-hour cap since the last user activity) |
@@ -162,14 +159,14 @@ If a wake word is configured, you land in standby first (the status bar prompts 
 | `openaiBaseUrl` | empty (preset/config) | Online TTS endpoint override configurable directly in the settings card (priority: settings > preset > `openaiTts.baseUrl`); pair with `custom` preset for any OpenAI-compatible server; **applies live** |
 | `openaiModel` | empty | Online TTS model override (same priority as `openaiBaseUrl`); **applies live** |
 | `openaiApiKey` | empty (config fallback) | Online TTS API key entered in the settings card; stored in the host-side `0600` settings file and **never sent back to the browser** (`GET /voice-mode/settings` returns empty string + `keys.*` booleans); priority: per-preset key > global key > `openaiTts.apiKeys[preset]` > `openaiTts.apiKey`; **applies live** |
-| `openaiApiKeys` | `{}` (none) | Per-preset keys (Q2: key follows the preset): `{presetId: key}` map in the settings card; whichever preset is selected uses its own key; empty entries fall back to the global key; **booleans only, never the plaintext**; **applies live** (refresh to use the new key) |
+| `openaiApiKeys` | `{}` (none) | Per-preset API keys: `{presetId: key}` map in the settings card; whichever preset is selected uses its own key without 401 mismatches when switching presets; empty entries fall back to the global key; **booleans only, never plaintext**; **applies live** |
 | `mimoApiKey` | empty (config fallback) | Xiaomi MiMo API key (`api-key` header) entered in the settings card; host-only `0600` storage, never sent back to the browser; falls back to `mimoTts.apiKey`; **applies live** |
 | `asrReplacements` | `[]` | Post-recognition correction table `[{from:[misheard], to:wanted}]` (≤200 rules / ≤12 KB UTF-8); applies to both partials and finals, editable in the settings card with hit counters; **applies live** |
 | `captionFontSize` | `0` | Caption font tier 0=12px / 1=14px / 2=18px / 3=24px (default 0 is byte-equivalent to legacy) |
 | `captionMaxWidth` | `1` | Caption width tier 0=50vw / 1=70vw / 2=90vw |
 | `backchannelYield` | `true` | Yield semantics (ADR-0008); saying `嗯 / 对` while reading auto-pauses for 1.5 s; genuine speech still triggers hard barge-in; off = behavior identical to pre-change |
-| `bargeInSalvage` | `true` | Barge-in salvage (Issue #15 batch 1 / ADR-0012): when you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation) |
-| `llmCorrect` | `false` | LLM correction (Issue #15 batch 4, off by default): before sending, run one LLM pass over the whole transcribed text (typos/homophones/punctuation only, meaning preserved; reuses the host configured model). On = about one extra second per message; falls back to the original text if correction fails or the model answers you instead of correcting |
+| `bargeInSalvage` | `true` | Barge-in salvage (ADR-0012): when you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (prevents swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation) |
+| `llmCorrect` | `false` | LLM correction (off by default): before sending, run one LLM pass over the whole transcribed text (typos/homophones/punctuation only, meaning preserved; reuses the host configured model). On = about one extra second per message; falls back to the original text if correction fails or the model answers you instead of correcting |
 | `yieldMs` | `1500` | Yield-window length (ms, 500-3000): how long TTS frames are dropped after `backchannelYield` triggers; if you really want to speak in the window the normal `hardBreak` takes over, and playback resumes when the window ends |
 
 Effect timing, in four tiers: ① immediately — shortcut / composer shortcut / interaction mode / read-aloud scope / auto-send / captions / status bar / engine / voice / rate / spoken format (applies to later replies) / model mirror (next download attempt); ② next recognition — finalization re-transcription (SenseVoice) / ITN; ③ next utterance — silence threshold (endpoint; the send wait stays a fixed 1.2 s); ④ next time you enter voice mode — interrupt sensitivity / barge-in mode / echo gate / auto-resume / wake word / tool beep / caption font / caption width / backchannel yielding / yield window / barge-in salvage / LLM correction / idle timeout. Saved-but-not-yet-effective items are listed at the top of the settings card with their current effective values. Defaults come from the plugin config (`base` layer) — they follow the config unless explicitly changed.
@@ -209,10 +206,10 @@ You can also edit the `voice-mode:` section of `~/.dsh/settings.yaml` directly (
     cacheDir: ~/.cache/dsh-voice-mode/models   # overridable; platform default otherwise
     # Defaults seeded for the settings (the settings panel overrides; the panel is authoritative):
     voice: zh-CN-XiaoxiaoNeural
-    rate: 1.1                     # batch J 1.0→1.1
+    rate: 1.1
     interruptLevel: 0
     silenceMs: 1500
-    idleTimeoutMinutes: 5         # batch J 10→5
+    idleTimeoutMinutes: 5
     modelHost: https://huggingface.co
 ```
 
@@ -309,6 +306,8 @@ flowchart LR
         Edge[Edge cloud]
         Vits[Local VITS WASM]
         Kokoro[Local Kokoro<br/>native addon]
+        OpenAI[OpenAI-compatible TTS]
+        MiMo[Xiaomi MiMo TTS]
     end
 
     UI -->|audio f32 PCM<br/>POST /voice-mode/asr| ASR
@@ -321,16 +320,20 @@ flowchart LR
     TTS -->|edge| Edge
     TTS -->|vits| Vits
     TTS -->|kokoro| Kokoro
+    TTS -->|openai| OpenAI
+    TTS -->|mimo| MiMo
     Edge -.->|SSE audio frame| UI
     Vits -.->|SSE audio frame| UI
     Kokoro -.->|SSE audio frame| UI
+    OpenAI -.->|SSE audio frame| UI
+    MiMo -.->|SSE audio frame| UI
     VAD -.->|wake-word / barge-in| Q
 ```
 
 - Speech and reading only happen for the session pointed to by the global single-active pointer `activeVoiceSession`; other sessions pass through `llm/stream` with zero overhead (mode isolation)
 - The `llm/stream` tap is lossless: every chunk passes through unchanged; segmentation/synthesis only observe and never block the model stream
 - ASR runs host-side (sherpa-onnx WASM, zipformer2 Chinese streaming + SenseVoice finalization which adds punctuation); the browser only captures audio (`getUserMedia` 16k mono) and does endpoint detection
-- Local TTS (VITS / native Kokoro) runs in an isolated child process (fork, auto-restart); barge-in kills the in-flight synthesis to release its worker resources
+- Local TTS (VITS / lazily-loaded native Kokoro) runs in an isolated child process (fork, auto-restart); barge-in kills the in-flight synthesis to release its worker resources
 - The TTS queue is per-session with an epoch version: old frames are all invalidated after a barge-in, so it is truly silent
 
 ---
@@ -341,7 +344,7 @@ flowchart LR
 | --- | --- | --- |
 | Recognition model | Cloud API (needs key) | **Local zipformer2 + SenseVoice** (zero key) |
 | Multi-language | English-first | **SenseVoice auto-recognition + ITN** |
-| TTS engine | Cloud TTS | **Edge cloud + local VITS/Kokoro** (three-way switch) |
+| TTS engine | Cloud TTS | **Edge cloud + local VITS/Kokoro + OpenAI-compatible / Xiaomi MiMo** |
 | Barge-in detection | Basic VAD | **3 sensitivity levels + echo gate + yield semantics** |
 | Caption a11y | None | **4 font tiers + 3 width tiers + theme-following** |
 | Wake word | None | **Lightweight streaming match + prefix filler whitelist** |
@@ -355,8 +358,8 @@ An honest disclosure of what the plugin does (mapped to the awesome-dsh-plugin c
 
 | Category | What it does | Where data goes |
 | --- | --- | --- |
-| **network** | (1) The default read-aloud engine **Edge** sends the **reply text to be spoken** over WebSocket to Microsoft `speech.platform.bing.com` (cloud synthesis — local VITS / Kokoro avoids this TTS request after its models are ready; host LLM traffic is separate); (2) downloads local models on first use from `huggingface.co` (or your configured mirror `hf-mirror.com`) with host restrictions and pinned digests for primary/listed files; auxiliary directories use manifest/presence checks; (3) with `ttsEngine: openai`, sends the text to be spoken to the configured `openaiTts.baseUrl` (and to nothing else); (4) registers loopback HTTP routes `/voice-mode/*` on the dsh host (loopback only by default; LAN needs `allowLan`) | Browser audio is sent to the configured dsh host for recognition; the plugin does not use an independent cloud ASR. Edge sends text to Microsoft. Submitted transcripts and optional LLM correction follow the host LLM configuration |
-| **fs-read / fs-write** | Model cache (Linux/macOS `~/.cache/dsh-voice-mode/models/`, Windows `%LOCALAPPDATA%\dsh-voice-mode\models\`); the dsh 0.1.7+ settings overlay `$DSH_HOME/voice-mode.settings.json`; **never touches your workspace files** | All local |
+| **network** | (1) Default **Edge** TTS sends spoken reply text over WebSocket to Microsoft `speech.platform.bing.com`; (2) `ttsEngine: openai` sends spoken text to the selected preset or configured `openaiBaseUrl` / `openaiTts.baseUrl`; (3) `ttsEngine: mimo` sends spoken text to `mimoTts.baseUrl` (`https://api.xiaomimimo.com/v1` by default); (4) local VITS / Kokoro synthesize offline once models are downloaded from `huggingface.co` (or configured `hf-mirror.com`) with SHA256 digest checks; (5) registers loopback HTTP routes `/voice-mode/*` on the dsh host (loopback only by default; LAN needs `allowLan`) | Browser audio is sent only to the connected dsh host for local recognition (no third-party cloud ASR). Submitted transcripts and optional `llmCorrect` follow the host LLM configuration |
+| **fs-read / fs-write** | Model cache (Linux/macOS `~/.cache/dsh-voice-mode/models/`, Windows `%LOCALAPPDATA%\dsh-voice-mode\models\`); the dsh 0.1.7+ settings overlay `$DSH_HOME/voice-mode.settings.json` (`0600`, API keys remain host-only and are never returned to the browser); **never touches your workspace files** | All local |
 | **shell (child processes)** | Local TTS synthesis runs in a separate child process (`child_process.fork` → `lib/tts-vits-worker.cjs`); when the host is Electron (the official desktop app), it additionally probes and launches a real Node.js for Kokoro (`node -p …` to check the version). **It never executes user input and never builds shell command strings** | Local |
 | **env** | Uses directory/runtime environment settings such as `DSH_HOME`, `LOCALAPPDATA`, `PATH` and optional `DSHVM_NODE`; this default speech path does not require an extra speech-service API key | — |
 
@@ -441,7 +444,7 @@ After changing dependencies run `npm pack --dry-run`, `npm test` and `bash scrip
 
 ```sh
 pnpm install && pnpm build    # esbuild: lib/index.js (host) + lib/client.js (browser) + lib/msedge-tts.cjs
-pnpm test                     # 53 test files chained: unit tests + harnesses (fake browser driving the real engine) + structure guards + pre-release self-check (no network)
+pnpm test                     # runs unit tests, harnesses, structure guards, and pre-release checks via scripts/run-tests.mjs
 bash scripts/smoke-runtime.sh <dsh-core-bin.js> <port>   # boot an isolated dsh core: endpoints, mic button, settings page, i18n
 bash scripts/full-e2e.sh <dsh-core-bin.js> <port>        # real-LLM end to end: create → toggle → prompt → SSE audio frames
 systemctl restart dsh         # Linux; restart the dsh process on other platforms
@@ -479,3 +482,5 @@ Integration probes (`hold-e2e.js`, `spoken-prompt-rpc.sh`, `spoken-toggle-ui-che
 ## 📄 License
 
 [MIT](./LICENSE)
+
+> Portions derived from [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice) (see [`LICENSE`](./LICENSE)).

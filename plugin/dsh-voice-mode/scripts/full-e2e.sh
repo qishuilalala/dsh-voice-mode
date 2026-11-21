@@ -40,12 +40,16 @@ fi
 echo "   内存检查通过：available ${MEM_AVAIL_MB}MB"
 
 # 凭据注入：值只进本进程与 dsh 子进程 env；不写入任何文件 / 日志
-# 已在环境里（如 DEEPSEEK_API_KEY=… bash scripts/full-e2e.sh …）则直接用，否则读 /root/.env
+# 已在环境里（如 DEEPSEEK_API_KEY=… bash scripts/full-e2e.sh …）则直接用，否则按 DSHVM_ENV_FILE 或本地未入库 .env 读取
 if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
-  if ! grep -q '^DEEPSEEK_API_KEY=' /root/.env 2>/dev/null; then
-    echo "✗ 环境变量与 /root/.env 均无 DEEPSEEK_API_KEY"; exit 2
+  ENV_FILE="${DSHVM_ENV_FILE:-.env}"
+  if [ ! -f "$ENV_FILE" ] && [ -f "$HOME/.env" ]; then
+    ENV_FILE="$HOME/.env"
   fi
-  DEEPSEEK_API_KEY="$(grep '^DEEPSEEK_API_KEY=' /root/.env | cut -d= -f2-)"
+  if ! grep -q '^DEEPSEEK_API_KEY=' "$ENV_FILE" 2>/dev/null; then
+    echo "✗ 环境变量与本地 .env 均无 DEEPSEEK_API_KEY（可通过 DEEPSEEK_API_KEY=... 或 DSHVM_ENV_FILE=... 传入）"; exit 2
+  fi
+  DEEPSEEK_API_KEY="$(grep '^DEEPSEEK_API_KEY=' "$ENV_FILE" | cut -d= -f2-)"
 fi
 export DEEPSEEK_API_KEY
 

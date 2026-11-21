@@ -1,24 +1,9 @@
-# mkdocs.yml —— dsh-voice-mode 文档站（GitHub Pages，仅文档，不引入 CI）
-# 部署：本地 `mkdocs build` 产出 site/，由人工或一次性 `mkdocs gh-deploy` 推送 gh-pages 分支
-# 真源数字：v0.7.28 · 854 测试 · 兼容 dsh 0.2.1-rc.2（2026-10-22 刷新，R16 批落库后）
-# docs_dir / site_dir（2026-10-21 修，导航不可达缺陷）：
-#   本文件位于 docs/ 之下，而 mkdocs 的 docs_dir 默认值 'docs' 是**相对配置文件所在目录**解析的
-#   → 默认取 docs/docs/（不存在，`mkdocs build` 直接报错）。旧配置未设 docs_dir，且 nav 混用两套口径：
-#   4 条顶层条目（README.md / CONTEXT.md / glossary.md / compat-contract.md）是 docs_dir 相对、
-#   36 条子目录条目（docs/adr/… / docs/plan/… / docs/qa/… / docs/rules/… / docs/competitive/… /
-#   docs/findings/… / docs/review-2026-10-19-full-audit.md）是仓库根相对。
-#   → docs_dir=docs/ 时 36 条解析到不存在的 docs/docs/…；docs_dir=仓库根 时 4 条顶层解析到根级文件
-#   （且 docs_dir=仓库根 会把整仓（含 lib/ 与 node_modules/）纳入站点源目录）。
-#   **不存在任何单一 docs_dir 能让 40 条同时解析**（影响：导航丢失 6 个分区 = 架构决策/实施计划/
-#   真机验收/规则/竞品/发现）。
-#   修法（口径统一）：显式设 `docs_dir: .`（= <repo>/docs/），并把 36 条子目录条目**去掉 docs/ 前缀**，
-#   使全部 40 条统一以 docs/ 为根 → 40 条全部可解析、6 个分区恢复可达。
-#   site_dir 显式设 ../site：产物留在仓库根（与本文件头部「mkdocs build 产出 site/」的描述一致），
-#   避免把 site/ 写进 docs_dir 自身。
+# mkdocs.yml —— dsh-voice-mode 文档站配置（本地按需构建，未接入自动部署）
+# 用法：在仓库根目录或 docs/ 下运行 `mkdocs build -f docs/mkdocs.yml`，产物输出到 site/
 docs_dir: .
 site_dir: ../site
 site_name: dsh-voice-mode
-site_description: DeepSeek Harness 全双工语音插件文档 —— 边说边出字 · 按句朗读 · 开口即打断
+site_description: DeepSeek Harness 全双工语音插件文档 —— 边说边出字 · 按句朗读 · 发声打断
 site_author: qishuilalala
 site_url: https://qishuilalala.github.io/dsh-voice-mode/
 repo_url: https://github.com/qishuilalala/dsh-voice-mode
@@ -30,7 +15,6 @@ copyright: Copyright &copy; 2026 dsh-voice-mode contributors · MIT License
 theme:
   name: material
   language: zh
-  # GitHub 深色风，与 social preview 配色一致（#0d1117 / #2ea043 / #58a6ff）
   palette:
     scheme: slate
     primary: green
@@ -49,9 +33,10 @@ theme:
 
 nav:
   - 首页: README.md
-  - 项目上下文: CONTEXT.md
+  - 架构速查: CONTEXT.md
   - 词汇表: glossary.md
   - 兼容契约: compat-contract.md
+  - 依赖策略: dependency-policy.md
   - 架构决策:
       - adr/README.md
       - adr/0001-native-aec-primary.md
@@ -66,34 +51,39 @@ nav:
       - adr/0010-i18n-official-locale.md
       - adr/0011-bundle-msedge-tts-inline.md
       - adr/0012-barge-in-salvage.md
-  - 实施计划:
+      - adr/0013-remote-tts-trust-boundary.md
+      - adr/0014-voice-direction-2026-11.md
+      - adr/0015-asr-replacements-stopgap.md
+  - 路线与规划:
       - plan/README.md
-      - plan/implementation-plan-2026-09-14.md
-      - plan/beautification-plan-2026-09-16.md
-  - 真机验收:
+      - plan/roadmap-2026-10.md
+      - plan/plan-2026-11.md
+  - 质量与验收:
       - qa/README.md
+      - qa/TEST-SYSTEM.md
+      - qa/offline-gates.md
       - qa/real-machine-acceptance-checklist.md
       - qa/must-verify-manually.md
-      - review-2026-10-19-full-audit.md
-  - 规则:
+  - 状态与归档:
       - rules/README.md
       - rules/STATE.md
-  - 竞品:
-      - competitive/README.md
-      - competitive/competitive-tts-landscape-2026-05.md
-      - competitive/scan-2026-09.md
-      - competitive/round6-summary.md
-      - competitive/backlog.md
-  - 发现:
+      - archive/README.md
+  - 调研与测量:
       - findings/README.md
       - findings/2026-09-02-barge-in-latency-stall.md
       - findings/2026-09-02-echo-gate-ratchet.md
       - findings/2026-09-14-fixture-verdict.md
       - findings/2026-09-15-sleeping-capabilities-audit.md
       - findings/2026-09-15-yield-semantics-research.md
+      - findings/2026-11-02-voice-engines-first-principles.md
       - findings/baseline-review-p0-a1-a10.md
       - findings/dsh-llm-runtime-inventory-2026-09.md
       - findings/multilang-a11y-compliance-baseline.md
+      - competitive/README.md
+      - competitive/competitive-tts-landscape-2026-05.md
+      - competitive/scan-2026-09.md
+      - competitive/round6-summary.md
+      - competitive/backlog.md
 
 markdown_extensions:
   - admonition

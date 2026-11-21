@@ -116,7 +116,7 @@ npm run verify:dual        # 一键全量（锚点 + typecheck + 双版本 runti
 
 1. 读 dsh release notes，重点看**客户端锚点包**与 **dsh-settings/session 导出**的增删改。
 2. 一条命令全量回归：`npm run verify:dual`（默认 0.1.1 + 0.1.2）；对新版本则 `check-anchors.mjs <新版>`、`typecheck-dual.sh 0.1.1 <新版>`、`smoke-runtime.sh <新版核心> <port>`。
-3. 更新本文件与 `docs/migrate-alpha-012.md` 的契约点结论。
+3. 更新本文件与 `docs/archive/reviews/migrate-alpha-012.md` 的契约点结论。
 
 > 类型证据（本机核对用，可再生成）：0.1.1 各子包 `.d.ts` 经 `npm pack @deepseek-ai/<pkg>@0.1.1-rc.2` 解包比对。
 
@@ -753,7 +753,7 @@ class AgentDefaultModelConfig extends Service {
 
 ### 遗留（未跑层，如实登记）
 
-- **L4 真 LLM 端到端本轮无法完成——环境/凭据侧原因，与版本无关**：rc.3 上跑 `full-e2e.sh` 得「RPC 三步全 ok、accepted:true，但 SSE 音频帧 0、回复正文为空」；**rc.2 对照组用同一脚本、同一凭据得到完全相同的结果**（排除版本回归）。根因直查到位：隔离 profile 使用的 `DEEPSEEK_API_KEY`（取自 `/root/.env`）直连 `api.deepseek.com` 返回 **HTTP 402 `Insufficient Balance`**（2026-10-26 实测，密钥值不落盘/不进文档）→ **L4 仍为未覆盖层**，待密钥恢复后补跑 rc.3。
+- **L4 真 LLM 端到端本轮无法完成——环境/凭据侧原因，与版本无关**：rc.3 上跑 `full-e2e.sh` 得「RPC 三步全 ok、accepted:true，但 SSE 音频帧 0、回复正文为空」；**rc.2 对照组用同一脚本、同一凭据得到完全相同的结果**（排除版本回归）。根因直查到位：隔离 profile 使用的 `DEEPSEEK_API_KEY`（取自本机环境变量）直连 `api.deepseek.com` 返回 **HTTP 402 `Insufficient Balance`**（2026-10-26 实测，密钥值不落盘/不进文档）→ **L4 仍为未覆盖层**，待密钥恢复后补跑 rc.3。
 - **L4 真实语音闭环（`DSHVM_VOICE_LOOP=1`）未跑**：需本机已缓存 VITS/zipformer 模型（实测本机无模型缓存，缺失时会触发数百 MB 下载）。
 - **桌面端 Electron 冒烟（真 Electron + Xvfb / Windows 宿主）未跑**：本服务器无桌面环境，沿用历史先例登记到 `docs/qa/must-verify-manually.md`，交用户侧补跑（0.2.1-rc.3 核心）。
 

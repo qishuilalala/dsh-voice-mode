@@ -1,6 +1,6 @@
 /**
  * 音色解析单一真源（voice-resolution.ts）——锁住「设置优先、空则回落预设」这一口径。
- * 回归背景：三处各写一遍时漂移过一次（只选预设不填音色 → 400），见 docs/review-2026-11-19-audits.md（A3）。
+ * 回归背景：三处各写一遍时漂移过一次（只选预设不填音色 → 400），见 docs/archive/reviews/review-2026-11-19-audits.md（A3）。
  */
 import assert from 'node:assert/strict'
 import { resolvePresetVoice } from '../src/voice-resolution.ts'

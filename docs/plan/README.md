@@ -1,27 +1,14 @@
-# docs/plan/ —— 实施计划
+# `docs/plan/` —— 路线图与实施规划
 
-> 当前实施优先级见[路线图](roadmap-2026-10.md)。本目录其余带日期计划与执行提示词保留历史范围，不可直接当作现行授权或待办。
+本目录保留**当前有效**的产品路线图与近期排期文档。已收口的历史阶段计划、议题专项拆解与早期流程文档统一归档在 [`../archive/plans/`](../archive/plans/)（说明见 [`../archive/README.md`](../archive/README.md)）。
 
-> 项目分批次实施计划 + 执行 / 审查 agent 提示词 + 项目美化计划。
-
-## 文件清单
+## 现行文件
 
 | 文件 | 说明 |
 | --- | --- |
-| [plan-2026-11.md](plan-2026-11.md) | **当前 11 月排期入口**：承接 R0–R5 原则与 11 月治理决策，列明两周 PR、年底目标、长期启动/放弃条件、维护者事项及五项度量；冲突按本文依据表处理。 |
-| [implementation-plan-2026-09-14.md](implementation-plan-2026-09-14.md) | 11 批次周全修复主计划（批 1 P0 热词 → 批 7K 收口，commit 历程可回溯） |
-| [executor-prompt.md](executor-prompt.md) | 执行 agent 提示词（铁律 10 条 / PoC 前置 / 四连验证 / 失败报告与简报格式 / 禁令清单） |
-| [reviewer-prompt.md](reviewer-prompt.md) | 审查 agent 提示词（六轴框架 / 固定桶输出 / 不修复纪律 / 与执行者关系） |
-| [beautification-plan-2026-09-16.md](beautification-plan-2026-09-16.md) | 项目美化计划（6 角色协同：README + 截图 + 仓库 + 索引 + 文案 + demo） |
-| [COLLABORATION.md](COLLABORATION.md) | 开发协作推进体系（角色分工 + 四阶段流程 + 固定门禁 + goal 长任务协作） |
-| [master-plan-2026-11-18.md](master-plan-2026-11-18.md) | **P1 + TTS 扩张总纲（现行开工入口）**：用户已拍板口径，旅程×痛点、能力矩阵、分批验收、门禁 |
-| [voice-direction-decision-2026-11-18.md](voice-direction-decision-2026-11-18.md) | 方向决策记录（含已作废的下一项目三候选归档） |
-| [tts-expansion-2026-11-18.md](tts-expansion-2026-11-18.md) | TTS 扩张计划（一手接口形状 + E0–E3 分批） |
-| [R15-remaining-work.md](R15-remaining-work.md) | **R15 阶段收尾交接件**（2026-10-21）：剩余待办队列（P0 回填 130 处行号 / 重跑第三轮验真 sweep）、已定性不再重查的事实（`s.running` 回合级等）、接手纪律与快速开始 |
+| [`roadmap-2026-10.md`](roadmap-2026-10.md) | **产品路线图**：长期优先级原则（R0–R5）、候选能力准入条件、五个核心指标与明确不纳入范围的边界 |
+| [`plan-2026-11.md`](plan-2026-11.md) | **近期实施规划**：承接路线图与治理决议的分阶段任务、验收标准及真机验证分工 |
 
-## 维护纪律
+## 历史归档入口
 
-- 主计划（implementation-plan-2026-09-14.md）已 11 批收口（pass-with-minor），不再新增批次
-- 后续任务在新主计划起草前，旧文件作为历史保留
-- 执行 / 审查提示词修改需通过对抗性审查（不留 zombie 提示）
-- 项目美化计划完成后归档，作为示例供后续批次参考
+- [`../archive/plans/`](../archive/plans/) —— 2026 年 9–11 月各阶段历史实施计划（含早期 11 批次修复计划、Issue #10/#15 专项方案、P1 与在线 TTS 扩张计划等），仅供历史回溯，不作为当前待办依据。

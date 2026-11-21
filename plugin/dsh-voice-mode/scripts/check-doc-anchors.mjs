@@ -365,9 +365,9 @@ for (const md of mdFiles) {
         continue
       }
 
-      // 规则档案保留历史快照，带行号引用不再参与现行锚点校验。
-      if (relMd.startsWith('docs/rules/archive/') && ln1 !== undefined) {
-        historical.push({ doc: relMd, line: docLine, ref: full, why: '规则档案历史快照：行号锚点不再维护，仅列备查' })
+      // 归档档案保留历史快照，带行号引用不再参与现行锚点校验。
+      if ((relMd.startsWith('docs/rules/archive/') || relMd.startsWith('docs/archive/')) && ln1 !== undefined) {
+        historical.push({ doc: relMd, line: docLine, ref: full, why: '归档历史快照：行号锚点不再维护，仅列备查' })
         continue
       }
 

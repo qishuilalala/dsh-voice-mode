@@ -113,7 +113,7 @@
 ---
 
 ## 五、缺口与 Open（登记）
-- **Issue #15（用户体验反馈）遗留**：该 issue 已于 2026-10-26 收口关闭；十项反馈的逐条处置见 `docs/plan/issue-15-ux-feedback.md`（权威计划文档）与 issue 内各次回复。**仍未做的活跃项四条**：① **真全双工**（播放期持续识别，与「AI 自聊防护」结构性冲突，需先重做回声隔离，见 ADR-0008）；② **LLM 纠错前后的对比确认 UI**（`llm-correct.ts` 的 `correctText` 已有相似度与寒暄护栏，确认 UI 未做）；③ **云端 ASR provider**（用户原建议，需单独评估延迟/费用/隐私三账）；④ **自定义热词词典**（sherpa WASM 支持待核，需重启加载的强证据）。其余（乐观发送/语义断句/fs.watch/标点升档/silenceMs 真热生效等）已在计划文档「明确不做」段记录在案。
+- **Issue #15（用户体验反馈）遗留**：该 issue 已于 2026-10-26 收口关闭；十项反馈的逐条处置见 `docs/archive/plans/issue-15-ux-feedback.md`（历史计划归档）与 issue 内各次回复。**仍未做的活跃项四条**：① **真全双工**（播放期持续识别，与「AI 自聊防护」结构性冲突，需先重做回声隔离，见 ADR-0008）；② **LLM 纠错前后的对比确认 UI**（`llm-correct.ts` 的 `correctText` 已有相似度与寒暄护栏，确认 UI 未做）；③ **云端 ASR provider**（用户原建议，需单独评估延迟/费用/隐私三账）；④ **自定义热词词典**（sherpa WASM 支持待核，需重启加载的强证据）。其余（乐观发送/语义断句/fs.watch/标点升档/silenceMs 真热生效等）已在计划文档「明确不做」段记录在案。
 
 - **4 缺口测试已全补**：`zh-60s.wav` fixture（批 7N `b0e45fe`）/ `backchannel-yield` 守卫（批 7N `ee4312b`）/ `yieldMs` wiring E2E（批 7N `58f6d77`）/ `preview-error-classify`（批 7O `cbcdd61`）+ `settings-load` zod strip（批 7O `390f292`）。
 - **Q1**：旧 settings 持久化文件含已砍键时 zod strip 行为——批 7O 已补 `test/settings-load.test.mjs` 自动化断言；生产环境亲跑仍待用户实测。

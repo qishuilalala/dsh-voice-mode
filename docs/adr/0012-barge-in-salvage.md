@@ -2,12 +2,12 @@
 
 - 状态：已接受
 - 日期：2026-10-19
-- 决策人：主会话（计划维护者）+ 用户（Issue #15 指令：全部问题深化并逐个修复）；审查：多 agent 对抗审查 R2 最小性轴裁决压量
+- 决策人：项目维护者（依据 GitHub Issue #15 用户反馈与代码审查收敛）
 
 ## 背景
 
 - GitHub Issue #15（第三方用户真机反馈）：AI 朗读时用户开口打断，打断能生效，但**用户刚说的内容整段或丢开头**——既不回填输入框也不发送，长段落尤其明显。用户标为最严重问题。
-- 根因（第一性原理取证，`docs/plan/issue-15-ux-feedback.md` §1/§2.A）：播放期（isPlaying）AEC 后帧只进 detectChunks 做 VAD 打断检测、不进识别 segment（自聊防护，asr.ts:985-986 `detectChunks.push` / 985-997 isPlaying 不入段分支）；hardBreak 确认（真机 confirmMs 252~597ms）后，非 hold 路径 host 端 `asr.reset(sessionId)`（index.ts:1548，/cancel handler 1545-1583——原值 1466 / 1442-1471 已漂移 Δ82 / Δ103）+ 客户端 `discardSegment()`（client.tsx:2460，hardBreak 2392-2424；原值 1976 / 1946-1986 已漂移 Δ446 / Δ446；2026-10-21 按符号定位刷新，绑定 HEAD 080da15），新段从零开始——**打断开口到打断生效之间说的全部语音从未进入识别路径**。
+- 根因（`docs/archive/plans/issue-15-ux-feedback.md` §1/§2.A）：播放期（isPlaying）AEC 后帧只进 detectChunks 做 VAD 打断检测、不进识别 segment（自聊防护，asr.ts:985-986 `detectChunks.push` / 985-997 isPlaying 不入段分支）；hardBreak 确认（真机 confirmMs 252~597ms）后，非 hold 路径 host 端 `asr.reset(sessionId)`（index.ts:1548，/cancel handler 1545-1583——原值 1466 / 1442-1471 已漂移 Δ82 / Δ103）+ 客户端 `discardSegment()`（client.tsx:2460，hardBreak 2392-2424；原值 1976 / 1946-1986 已漂移 Δ446 / Δ446；2026-10-21 按符号定位刷新，绑定 HEAD 080da15），新段从零开始——**打断开口到打断生效之间说的全部语音从未进入识别路径**。
 - 修复设计：asr.ts 维护 AEC 后墙钟 preRoll 环（固定 PRE_ROLL_MS=2000，从 detect 响应 isSpeech 前沿自跟踪语音起始时刻）；hardBreak 弃段时把环内「起始时刻-250ms」起的音频并入新识别段（absorbPreRoll），后续 partial/定稿走既有增量上行与 host fed 去重链路（asr-host.ts:537-541；2026-10-20 10:30 实测刷新），epoch/resetGate 机制零改动。
 - 冲突：本仓库不变量 I10（新设置默认值必须让未配置用户行为逐字节不变）要求默认守恒；但**本 issue 的存在原因就是默认体验破损**—— salvage 默认关闭等于不修，与用户指令「逐个去执行修复」直接矛盾。
 
@@ -28,6 +28,6 @@
 
 ## 依据
 
-- `docs/plan/issue-15-ux-feedback.md` §1/§2.A（根因证据链与设计选项对抗评估）、§6（PRE_ROLL_MS=2000 推导）、§7（R2 审查裁决）；
+- `docs/archive/plans/issue-15-ux-feedback.md` §1/§2.A（根因证据链与设计选项评估）、§6（PRE_ROLL_MS=2000 推导）、§7（审查裁决）；
 - 真机基线：CONTEXT.md:37/42（confirmMs 252~597ms、检测通道 p99≈430ms）；
 - 台架：`test/wake-flow.test.mjs` 扩展（vadOnly 可编程响应 + hardBreak 序列 + 抢救内容进定稿断言，先红后修，反向断言防回归）。
