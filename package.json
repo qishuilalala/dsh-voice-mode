@@ -1,6 +1,6 @@
 {
   "name": "dsh-voice-mode",
-  "version": "0.7.40",
+  "version": "0.7.41",
   "description": "Voice plugin for DeepSeek Harness: local streaming speech recognition into editable drafts, sentence-by-sentence read-aloud with captions, and voice interruption. Supports Edge, OpenAI-compatible, Xiaomi MiMo, and local VITS/Kokoro TTS; host compatibility is bounded by engines.dsh.",
   "license": "MIT",
   "type": "module",
