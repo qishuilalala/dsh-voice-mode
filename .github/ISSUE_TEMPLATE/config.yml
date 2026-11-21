@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 🔒 安全漏洞私密报告 / Report a Security Vulnerability
+    url: https://github.com/qishuilalala/dsh-voice-mode/security/advisories/new
+    about: 请勿在公开 Issue 中披露可利用的安全漏洞细节，请在此私密提交 / Please report security issues privately here
+  - name: 📖 使用文档与常见问题排查 / Documentation & Troubleshooting
+    url: https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/README.md
+    about: 查看 Windows/macOS 快捷键、在线与本地朗读配置及常见故障排查 / Check shortcuts, TTS setup, and troubleshooting

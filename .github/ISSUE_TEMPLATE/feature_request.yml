@@ -1,0 +1,29 @@
+name: 功能建议与体验改进 / Feature or UX improvement
+description: 提出具体的交互体验改进、兼容性适配或功能建议 / Suggest a concrete UX or feature improvement
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 使用场景与当前痛点 / Use case & current friction
+      description: 你在什么具体场景下遇到了不便？当前是怎么绕过的？
+      placeholder: 例如：在 macOS 笔记本外放场景下切换按住说话时，希望……
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的行为或改进建议 / Proposed behavior
+      description: 你希望界面、快捷键、识别或朗读怎样工作？
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: 边界与补充说明（可选）/ Constraints & notes (optional)
+      description: 是否涉及特定宿主版本、浏览器、延迟要求或离线隐私限制？
+    validations:
+      required: false

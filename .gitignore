@@ -17,7 +17,7 @@ CLAUDE.md
 .install/
 pai3/
 # 本机/维护者专属流程与手册（不进 Git）
-# 原则：能不提交都不提交，能不公开都不公开。
+# 维护者本机发布与运维辅助文件（不纳入版本控制）
 docs/RELEASE-WORKFLOW.md
 docs/codex-native-imagegen-handoff.md
 docs/storefront-assets.md

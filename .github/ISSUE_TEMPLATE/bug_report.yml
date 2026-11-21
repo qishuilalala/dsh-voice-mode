@@ -1,102 +1,128 @@
 name: 缺陷报告 / Bug report
-description: 报告语音模式的问题（识别、朗读、打断、字幕、设置等）
+description: 报告语音模式的问题（识别、朗读、打断、快捷键、字幕、设置等）/ Report a bug in voice mode
 title: "[Bug] "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        感谢反馈！语音问题多半与**环境**（浏览器 AEC、麦克风、外放/耳机）强相关，
-        请尽量填全下面的诊断信息，能显著加快定位。
+        感谢反馈！语音问题通常与运行环境（桌面端或浏览器、麦克风权限、扬声器外放/耳机、所选朗读引擎）直接相关，填写下方信息有助于快速复现和定位。
+        请勿粘贴任何真实 API Key、访问令牌或私人对话敏感内容。
 
   - type: textarea
     id: what-happened
     attributes:
-      label: 现象
-      description: 发生了什么？你期望发生什么？
-      placeholder: 例如：AI 朗读到第三句时突然没声音，字幕仍在走。
+      label: 现象与期望结果 / What happened & expected behavior
+      description: 实际发生了什么？你期望的正常表现是什么？
+      placeholder: 例如：切换到「按住说话」模式后，长按键盘快捷键没有开始收音；或朗读到第二句中断无声。
     validations:
       required: true
 
   - type: textarea
     id: steps
     attributes:
-      label: 复现步骤
-      description: 越具体越好（说了什么、当时在朗读还是聆听、是否外放）
+      label: 复现步骤 / Steps to reproduce
+      description: 请尽量写明交互模式、朗读引擎及具体操作顺序
       placeholder: |
-        1. 进入语音模式
-        2. 说「……」
-        3. 观察到 ……
+        1. 打开会话并进入语音模式
+        2. 交互模式选择「…」，朗读引擎选择「…」
+        3. 执行「…」后观察到「…」
     validations:
       required: true
 
   - type: input
     id: plugin-version
     attributes:
-      label: 插件版本 / build
-      description: '状态条诊断行或控制台里的 `build=<短哈希>`；也可填设置页显示的版本号'
-      placeholder: "v0.7.11 build=46e0988"
+      label: 插件版本 / Plugin version
+      description: 可在设置面板「复制诊断」输出或包管理列表中查看
+      placeholder: "0.7.41"
     validations:
       required: true
 
   - type: input
     id: dsh-version
     attributes:
-      label: dsh 版本
-      description: '`dsh --version` 的输出（兼容性问题高度依赖版本）'
-      placeholder: "0.1.5-rc.2"
+      label: DeepSeek Harness 版本 / dsh version
+      description: "`dsh --version` 或桌面端「关于」页面显示的版本号"
+      placeholder: "0.2.2-rc.5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统 / OS
+      options:
+        - macOS (Apple Silicon / Intel)
+        - Windows (x64 / ARM64)
+        - Linux
+        - iOS / iPadOS
+        - Android
+        - 其他（请在补充信息注明）
     validations:
       required: true
 
   - type: dropdown
     id: browser
     attributes:
-      label: 浏览器
+      label: 客户端形态 / Client environment
       options:
+        - DeepSeek Harness 官方桌面端 (Electron)
         - Chrome / Edge (Chromium)
-        - Safari
+        - Safari (macOS)
         - Firefox
         - iOS Safari
-        - 其他（请在下方补充）
+        - 其他（请在补充信息注明）
     validations:
       required: true
 
   - type: dropdown
     id: audio-route
     attributes:
-      label: 音频输出方式
-      description: 打断与回声门控的行为高度依赖这一项
+      label: 音频输出方式 / Audio output
+      description: 发声打断与回声消除行为高度依赖此项
       options:
-        - 外放（扬声器）
-        - 耳机
-        - 不确定
+        - 扬声器外放 / Loudspeakers
+        - 有线或蓝牙耳机 / Headphones
+        - 不确定 / Unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: interaction-mode
+    attributes:
+      label: 交互模式 / Interaction mode
+      options:
+        - toggle（持续聆听）
+        - hold（按住说话）
+        - once（说完就关）
+        - 未进入语音模式（如总是朗读 / 设置面板）
     validations:
       required: true
 
   - type: dropdown
     id: tts-engine
     attributes:
-      label: 朗读引擎
+      label: 朗读引擎 / TTS engine
       options:
-        - edge（云端默认）
-        - vits（本地）
-        - kokoro（本地）
-        - 不确定
+        - edge（微软在线默认）
+        - openai（OpenAI 兼容预设或自定义端点）
+        - mimo（小米 MiMo）
+        - vits（本地离线中文）
+        - kokoro（本地离线中英）
+        - off（关闭朗读 / 只听写）
+        - 不确定 / Unknown
     validations:
       required: true
 
   - type: textarea
     id: telemetry
     attributes:
-      label: 诊断日志（强烈建议）
+      label: 诊断快照或控制台日志（推荐）/ Diagnostics (optional)
       description: |
-        在页面控制台执行下面一行后**刷新页面**，再复现一次问题，把控制台里 `[dsh-voice]` 开头的日志贴进来：
+        推荐方式：打开 **设置 → 语音模式 → 高级**，点击 **「复制诊断」** 粘贴到此处（仅含版本、状态、非敏感设置快照与耗时，**不含任何转写原文或密钥**）。
 
-        ```js
-        localStorage.setItem('dsh-voice-mode.telemetry','1')
-        ```
-
-        状态条上的诊断行（delay / floor / resid / peak）也请一并附上。
+        如需采集详细声学或阶段日志，可在浏览器控制台执行 `localStorage.setItem('dsh-voice-mode.telemetry','1')` 后刷新复现，粘贴 `[dsh-voice]` 开头的日志。
       render: text
     validations:
       required: false
@@ -104,17 +130,17 @@ body:
   - type: textarea
     id: extra
     attributes:
-      label: 补充信息
-      description: 截图 / 录屏 / 其他设置项（如 `interruptLevel`、`bargeInMode`、`wakeWord`）
+      label: 补充信息 / Additional context
+      description: 截图、错误提示文案或其他相关配置（如唤醒词、打断方式等）
     validations:
       required: false
 
   - type: checkboxes
     id: checks
     attributes:
-      label: 提交前确认
+      label: 提交前确认 / Pre-submission checklist
       options:
-        - label: 我已搜索过现有 issue，确认不是重复报告
+        - label: 我已搜索现有 Issue，确认不是重复报告 / I searched existing issues to avoid duplicates
           required: true
-        - label: 我已附上插件版本与 dsh 版本
+        - label: 我已确认提交内容不包含任何 API Key 或私人敏感信息 / No API keys or private data are included
           required: true

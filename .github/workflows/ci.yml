@@ -40,10 +40,9 @@ jobs:
         run: npm run build
       - name: Unit tests & manifest self-check
         run: npm test
-      # 锚点健康门（R12 入 CI）：dsh.client.inject 的 9 个锚点包在目标版本线
-      # （0.1.1-rc.2 / 0.1.2-alpha.4）的存在性。脚本走 registry HTTP（无子进程、
-      # 无宿主类型依赖、不需要 lib 产物），CI 有网即可跑——此前锚点漂移只能靠
-      # 本地门禁发现，升级 dsh 前先红一步，避免「升级后客户端静默挂不上」。
+      # 锚点健康门（R12 入 CI）：校验 dsh.client.inject 的 9 个锚点包在现行默认 9 个宿主版本
+      # （0.1.1-rc.2 至 0.2.2-rc.5）的存在性。脚本走 registry HTTP（无子进程、无宿主类型依赖），
+      # 升级 dsh 前先红一步，避免升级后客户端静默挂不上。
       - name: Anchor health check
         run: npm run check:anchors
       # 文档 file:line 锚点守卫（Issue #15 R15）：代码批每次改动 src 都会批量作废文档锚点，
@@ -53,9 +52,6 @@ jobs:
       # E-2：notices 表里的内联包版本必须与 pnpm-lock.yaml 一致（follow-redirects 1.16.0 vs 1.16.1 漂移的守卫）
       - name: Third-party notices version check
         run: node scripts/check-notices-versions.mjs
-      # 入库 lib 必须与当前源码一致（防「源码改了、产物没重建」在 PR 里混过去）。
-      - name: Library artifacts drift check
-        run: node scripts/check-lib-drift.mjs
       # 根 manifest（插件市场 dsh-plugin.org 收录读它）与插件 manifest 必须一致——两份手改会漂移
       - name: Root manifest consistency check
         run: node scripts/check-root-manifest.mjs

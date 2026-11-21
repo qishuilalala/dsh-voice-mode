@@ -166,7 +166,7 @@ flowchart LR
 
 ## 参与贡献、许可证与致谢
 
-- **贡献指南**：提交 Issue 或 Pull Request 前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，架构背景见 [CONTEXT.md](CONTEXT.md) 与 [docs/adr/](docs/adr/README.md)。
+- **贡献指南与行为准则**：提交 Issue 或 Pull Request 前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)，架构背景见 [CONTEXT.md](CONTEXT.md) 与 [docs/adr/](docs/adr/README.md)。
 - **开源许可**：[MIT License](LICENSE)（第三方内联依赖声明见 [THIRD_PARTY_NOTICES.md](plugin/dsh-voice-mode/THIRD_PARTY_NOTICES.md)，首次运行时按需下载的语音模型遵循其各自上游许可证）。
 - **致谢**：
   - 早期上游项目：[haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)
