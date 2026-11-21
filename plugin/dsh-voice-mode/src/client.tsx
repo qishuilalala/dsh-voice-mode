@@ -4875,16 +4875,16 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
     ? b.ui.error
     : b.ui.sseDown
       ? t('sseReconnect')
-      : b.ui.notice
-        ? b.ui.notice
-        : b.ui.idleWarn
-          ? t('idleWarn30s')
-          : b.ui.state === 'loading-model' || b.ui.model
-            ? b.ui.model
-              ? `${t('loadingModel')} ${b.ui.model.file} ${b.ui.model.percent}%`
-              : stateText
-            : b.ui.holding
-              ? b.ui.partial || stateText
+      : b.ui.state === 'loading-model' || b.ui.model
+        ? b.ui.model
+          ? `${t('loadingModel')} ${b.ui.model.file} ${b.ui.model.percent}%`
+          : stateText
+        : b.ui.holding
+          ? b.ui.partial || stateText
+          : b.ui.notice
+            ? b.ui.notice
+            : b.ui.idleWarn
+              ? t('idleWarn30s')
               : b.ui.playing || b.ui.turn === 'agent-speaking'
                 ? stateText
                 : b.ui.state === 'wake' && b.ui.partial

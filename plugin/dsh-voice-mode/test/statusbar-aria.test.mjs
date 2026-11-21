@@ -27,4 +27,6 @@ ok(!bar.includes('#8b949e'), '状态条内计时/退出/遥测不应硬编码低
 ok(bar.includes('className="dshvm-statusbar-text"') && bar.includes('title={displayText}'), '可视状态文本应支持窄屏重排与完整悬停 title')
 ok(src.includes('@media (max-width: 520px)') && src.includes('-webkit-line-clamp: 2'), '窄屏状态条文本应放宽至两行避免压成 0 宽')
 ok(bar.includes('hasBadges && ('), '角标组应独立换行展示，避免在 360px 窄屏挤扁主转写文本')
+const dt = bar.slice(bar.indexOf('const displayText ='), bar.indexOf('const showAecBadge ='))
+ok(dt.indexOf('b.ui.holding') > 0 && dt.indexOf('b.ui.holding') < dt.indexOf('b.ui.notice'), '按住收音态（holding）优先级须高于瞬态引导/打断提示（notice），避免首次引导遮挡「正在收音」与实时字幕')
 console.log(`statusbar-aria：${n} 项通过，0 项失败`)

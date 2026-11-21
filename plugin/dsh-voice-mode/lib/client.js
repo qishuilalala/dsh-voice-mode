@@ -7160,7 +7160,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "deb71da";
+var BUILD_TAG = "7436342";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = (() => {
   try {
@@ -10567,7 +10567,7 @@ function VoiceStatusBar({ bus, sessionId }) {
       `AEC delay=${Math.round(b.ui.echoDelayMs ?? 0)}ms floor=${el.floorRms.toFixed(4)} resid=${el.residualRms.toFixed(4)}`
     );
   }
-  const displayText = b.ui.error ? b.ui.error : b.ui.sseDown ? t("sseReconnect") : b.ui.notice ? b.ui.notice : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.holding ? b.ui.partial || stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.state === "wake" && b.ui.partial ? `${stateText} \xB7 ${b.ui.partial}` : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText;
+  const displayText = b.ui.error ? b.ui.error : b.ui.sseDown ? t("sseReconnect") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.holding ? b.ui.partial || stateText : b.ui.notice ? b.ui.notice : b.ui.idleWarn ? t("idleWarn30s") : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.state === "wake" && b.ui.partial ? `${stateText} \xB7 ${b.ui.partial}` : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText;
   const showAecBadge = b.ui.aecOff === true && b.ui.boot?.bargeInMode !== "manual";
   const hasBadges = b.ui.isSpeech === true || Boolean(b.ui.ttsNotice) || showAecBadge;
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
