@@ -1996,17 +1996,28 @@ var zh = {
   ariaActive: "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D",
   ariaEnter: "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F",
   ariaPendingCancelHint: "\u518D\u6309\u4E00\u6B21\u53D6\u6D88",
-  titleHold: "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u6309\u4F4F\u8BF4\u8BDD\u3001\u677E\u624B\u53D1\u9001\uFF1B\u77ED\u6309\u9000\u51FA\uFF1BEsc/\u5931\u53BB\u7126\u70B9\u653E\u5F03\uFF1BCtrl+Shift+V \u9000\u51FA",
-  titleToggle: "\u8BED\u97F3\u6A21\u5F0F\u8FDB\u884C\u4E2D \xB7 \u70B9\u51FB\u9000\u51FA\uFF08Ctrl+Shift+V\uFF09\xB7 \u8BF4\u8BDD\u65F6\u6309\u4F4F Ctrl \u7ACB\u5373\u53D1\u9001",
-  titleEnter: "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F\uFF08Ctrl+Shift+V\uFF09",
+  titleHold: "\u6309\u4F4F\u8BF4\u8BDD\u6A21\u5F0F \xB7 \u6309\u4F4F\u9EA6\u514B\u98CE\u6216\u957F\u6309 Ctrl \u8BF4\u8BDD\uFF0C\u677E\u5F00\u53D1\u9001\uFF1BEsc \u653E\u5F03\u672C\u53E5\uFF0C\u53CC\u51FB Esc \u9000\u51FA",
+  titleHoldMac: "\u6309\u4F4F\u8BF4\u8BDD\u6A21\u5F0F \xB7 \u6309\u4F4F\u9EA6\u514B\u98CE\u6216\u957F\u6309 \u2303 Control \u8BF4\u8BDD\uFF0C\u677E\u5F00\u53D1\u9001\uFF1BEsc \u653E\u5F03\u672C\u53E5\uFF0C\u53CC\u51FB Esc \u9000\u51FA",
+  titleToggle: "\u6301\u7EED\u8046\u542C\u4E2D \xB7 \u8BF4\u8BDD\u65F6\u6309\u4F4F Ctrl \u677E\u5F00\u53EF\u7ACB\u5373\u53D1\u9001\uFF1B\u5355\u51FB Esc \u505C\u8BFB\uFF0C\u70B9\u51FB\u6216\u53CC\u51FB Esc \u9000\u51FA",
+  titleToggleMac: "\u6301\u7EED\u8046\u542C\u4E2D \xB7 \u8BF4\u8BDD\u65F6\u6309\u4F4F \u2303 Control \u677E\u5F00\u53EF\u7ACB\u5373\u53D1\u9001\uFF1B\u5355\u51FB Esc \u505C\u8BFB\uFF0C\u70B9\u51FB\u6216\u53CC\u51FB Esc \u9000\u51FA",
+  titleOnce: "\u8BF4\u5B8C\u5C31\u5173 \xB7 \u8BF4\u5B8C\u81EA\u52A8\u53D1\u9001\uFF0C\u56DE\u590D\u6717\u8BFB\u5B8C\u6BD5\u81EA\u52A8\u9000\u51FA\uFF1B\u5355\u51FB\u9EA6\u514B\u98CE\u6216\u53CC\u51FB Esc \u9000\u51FA",
+  titleEnter: "\u8FDB\u5165\u8BED\u97F3\u5BF9\u8BDD\u6A21\u5F0F",
+  titleEnterHold: "\u6309\u4F4F\u8BF4\u8BDD\uFF1A\u76F4\u63A5\u6309\u4F4F\u9EA6\u514B\u98CE\u5373\u53EF\u8BF4\u8BDD\uFF08\u677E\u624B\u53D1\u9001\uFF09\uFF0C\u6216\u6309\u5FEB\u6377\u952E\u8FDB\u5165\u8BED\u97F3\u6A21\u5F0F",
+  titleShortcutSuffix: "\uFF08\u5FEB\u6377\u952E\uFF1A{keys}\uFF09",
+  titleShortcutComposerSuffix: "\uFF08\u5FEB\u6377\u952E\uFF1A{keys}\uFF1B\u8F93\u5165\u6846\u5185\uFF1A{composerKeys}\uFF09",
   loadingModel: "\u6B63\u5728\u52A0\u8F7D\u6A21\u578B\u2026",
   listening: "\u8046\u542C\u4E2D\u2026",
   thinking: "\u601D\u8003\u4E2D\u2026",
-  barHold: "\u8BED\u97F3\u6A21\u5F0F \xB7 \u6309\u4F4F\u8BF4\u8BDD\uFF08\u77ED\u6309\u9000\u51FA\uFF09",
+  barHold: "\u6309\u4F4F\u8BF4\u8BDD \xB7 \u6309\u4F4F\u9EA6\u514B\u98CE\u6309\u94AE\u6216\u957F\u6309 Ctrl \u8BF4\u8BDD\uFF0C\u677E\u5F00\u53D1\u9001\uFF08Esc \u53D6\u6D88\uFF09",
+  barHoldMac: "\u6309\u4F4F\u8BF4\u8BDD \xB7 \u6309\u4F4F\u9EA6\u514B\u98CE\u6309\u94AE\u6216\u957F\u6309 \u2303 Control \u8BF4\u8BDD\uFF0C\u677E\u5F00\u53D1\u9001\uFF08Esc \u53D6\u6D88\uFF09",
+  barHolding: "\u6B63\u5728\u6536\u97F3\uFF0C\u677E\u5F00\u53D1\u9001\uFF08\u4E0A\u6ED1\u6216\u6309 Esc \u53D6\u6D88\uFF09",
+  barOnce: "\u8BF4\u5B8C\u5C31\u5173 \xB7 \u76F4\u63A5\u8BF4\u51FA\u4E00\u53E5\uFF0C\u505C\u987F\u81EA\u52A8\u53D1\u9001\uFF0C\u8BFB\u5B8C\u81EA\u52A8\u9000\u51FA",
   barListening: "\u8BED\u97F3\u6A21\u5F0F \xB7 \u8046\u542C\u4E2D\u2026",
   wakeWord: "\u5524\u9192\u8BCD",
   sayWake: "\u8BF4\u300C{wake}\u300D\u5F00\u59CB",
   reading: "\u6717\u8BFB\u4E2D\u2026",
+  readingManual: "\u6717\u8BFB\u4E2D \xB7 \u6309\u4F4F\u9EA6\u514B\u98CE\u6216 Ctrl \u6253\u65AD",
+  readingManualMac: "\u6717\u8BFB\u4E2D \xB7 \u6309\u4F4F\u9EA6\u514B\u98CE\u6216 \u2303 Control \u6253\u65AD",
   recognitionFail: "\u8BC6\u522B\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
   holdTrimmedNotice: "\u6309\u4F4F\u8BF4\u8BDD\u8D85\u8FC7\u7EA6 48 \u79D2\uFF1A\u53EA\u8BC6\u522B\u4E86\u6700\u540E\u4E00\u6BB5\uFF08\u524D\u9762\u7684\u97F3\u9891\u5DF2\u4E22\u5F03\uFF09",
   utteranceTooLong: "\u8FD9\u6B21\u8BF4\u8BDD\u592A\u957F\uFF08\u8D85\u8FC7\u5355\u6B21\u4E0A\u9650\uFF0C\u7EA6 1 \u5206\u949F\uFF09\uFF1A\u5DF2\u8DF3\u8FC7\uFF0C\u8BF7\u5206\u6BB5\u518D\u8BF4\u4E00\u6B21",
@@ -2222,9 +2233,21 @@ var zh = {
   ttsRetryingNotice: "\u6717\u8BFB\u91CD\u8BD5\u4E2D\uFF08{attempt}/{max}\uFF09\u2026",
   tabPreemptedNotice: "\u8BED\u97F3\u6A21\u5F0F\u5DF2\u88AB\u53E6\u4E00\u6807\u7B7E\u9875\u63A5\u7BA1",
   firstUseToggle: "\u76F4\u63A5\u5F00\u53E3\u8BF4\u8BDD\uFF0C\u505C\u987F\u81EA\u52A8\u586B\u5165\u5E76\u53D1\u9001\uFF1BAI \u6717\u8BFB\u65F6\u5F00\u53E3\u6216\u957F\u6309\u9EA6\u514B\u98CE\u5373\u53EF\u6253\u65AD",
-  firstUseHold: "\u6309\u4F4F\u9EA6\u514B\u98CE\u6216 Ctrl \u8BF4\u8BDD\uFF0C\u677E\u624B\u53D1\u9001\uFF1B\u6309\u4F4F\u5411\u4E0A\u6ED1\u52A8\u53EF\u53D6\u6D88\u672C\u53E5",
+  firstUseHold: "\u6309\u4F4F\u9EA6\u514B\u98CE\u6309\u94AE\u6216\u957F\u6309 Ctrl \u8BF4\u8BDD\uFF0C\u677E\u5F00\u53D1\u9001\uFF1B\u6309 Esc \u6216\u4E0A\u6ED1\u53EF\u53D6\u6D88\u672C\u53E5",
+  firstUseHoldMac: "\u6309\u4F4F\u9EA6\u514B\u98CE\u6309\u94AE\uFF0C\u6216\u957F\u6309\u952E\u76D8\u5DE6\u4E0B\u89D2 \u2303 Control\uFF08Ctrl\uFF0C\u975E \u2318 Command\uFF09\u8BF4\u8BDD\uFF0C\u677E\u5F00\u53D1\u9001\uFF1BEsc \u53D6\u6D88",
   firstUseOnce: "\u76F4\u63A5\u8BF4\u51FA\u4E00\u53E5\uFF0C\u505C\u987F\u81EA\u52A8\u53D1\u9001\uFF0CAI \u6717\u8BFB\u5B8C\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F",
   firstUseWake: "\u5148\u8BF4\u5524\u9192\u8BCD\u300C{wake}\u300D\u5F00\u542F\u8BC6\u522B\uFF08\u4E5F\u53EF\u8FDE\u7740\u6307\u4EE4\u4E00\u8D77\u8BF4\uFF09",
+  modeInlineToggle: "\u8FDB\u5165\u540E\u76F4\u63A5\u5F00\u53E3\u8BF4\u8BDD\uFF0C\u505C\u987F\u81EA\u52A8\u53D1\u9001\uFF1B\u8BF4\u8BDD\u65F6\u6309\u4F4F Ctrl \u677E\u5F00\u53EF\u7ACB\u5373\u53D1\u9001",
+  modeInlineToggleMac: "\u8FDB\u5165\u540E\u76F4\u63A5\u5F00\u53E3\u8BF4\u8BDD\uFF0C\u505C\u987F\u81EA\u52A8\u53D1\u9001\uFF1B\u8BF4\u8BDD\u65F6\u6309\u4F4F \u2303 Control \u677E\u5F00\u53EF\u7ACB\u5373\u53D1\u9001",
+  modeInlineHold: "\u672A\u5F00\u542F\u65F6\u53EF\u76F4\u63A5\u6309\u4F4F\u9EA6\u514B\u98CE\u8BF4\u8BDD\uFF1B\u5F00\u542F\u540E\u4E5F\u53EF\u957F\u6309\u952E\u76D8 Ctrl \u8BF4\u8BDD\u3001\u677E\u5F00\u53D1\u9001\uFF0CEsc \u53D6\u6D88",
+  modeInlineHoldMac: "\u672A\u5F00\u542F\u65F6\u53EF\u76F4\u63A5\u6309\u4F4F\u9EA6\u514B\u98CE\u8BF4\u8BDD\uFF1B\u5F00\u542F\u540E\u4E5F\u53EF\u957F\u6309\u952E\u76D8\u5DE6\u4E0B\u89D2 \u2303 Control\uFF08\u975E \u2318 Command\uFF09\u8BF4\u8BDD\u3001\u677E\u5F00\u53D1\u9001\uFF0CEsc \u53D6\u6D88",
+  modeInlineOnce: "\u8FDB\u5165\u540E\u8BF4\u51FA\u4E00\u53E5\u5373\u81EA\u52A8\u53D1\u9001\uFF0C\u7B49\u672C\u8F6E\u56DE\u590D\u6717\u8BFB\u5B8C\u6BD5\u540E\u81EA\u52A8\u9000\u51FA\u8BED\u97F3\u6A21\u5F0F",
+  bargeInInlineDetect: "\u81EA\u52A8\u68C0\u6D4B\u672C\u673A\u6D88\u56DE\u58F0\uFF1A\u8033\u673A/\u539F\u751F\u6D88\u56DE\u58F0\u6B63\u5E38\u65F6\u5F00\u53E3\u5373\u6253\u65AD\uFF0C\u5916\u653E\u65E0\u6D88\u56DE\u58F0\u65F6\u81EA\u52A8\u5207\u4E3A\u957F\u6309\u6253\u65AD",
+  bargeInInlineAuto: "\u64AD\u653E\u56DE\u590D\u65F6\u76F4\u63A5\u5F00\u53E3\u8BF4\u8BDD\u5373\u53EF\u6253\u65AD\uFF08\u63A8\u8350\u4F69\u6234\u8033\u673A\u6216\u5B89\u9759\u73AF\u5883\u4F7F\u7528\uFF09",
+  bargeInInlineManual: "\u5916\u653E\u63A8\u8350\uFF1A\u5E73\u65F6\u76F4\u63A5\u8BF4\u8BDD\uFF0CAI \u6717\u8BFB\u671F\u95F4\u9700\u6309\u4F4F\u9EA6\u514B\u98CE\u6216 Ctrl \u624D\u6253\u65AD\uFF0C\u907F\u514D\u626C\u58F0\u5668\u56DE\u58F0\u81EA\u6253\u65AD",
+  bargeInInlineManualMac: "\u5916\u653E\u63A8\u8350\uFF1A\u5E73\u65F6\u76F4\u63A5\u8BF4\u8BDD\uFF0CAI \u6717\u8BFB\u671F\u95F4\u9700\u6309\u4F4F\u9EA6\u514B\u98CE\u6216 \u2303 Control \u624D\u6253\u65AD\uFF0C\u907F\u514D\u626C\u58F0\u5668\u56DE\u58F0\u81EA\u6253\u65AD",
+  shortcutBuiltInNote: "\u5185\u7F6E\u6309\u952E\uFF1A\u6309\u4F4F\u8BF4\u8BDD\u4E0B\u957F\u6309 Ctrl \u8BF4\u8BDD\u3001\u677E\u5F00\u53D1\u9001\uFF1B\u6301\u7EED\u8046\u542C\u4E0B\u6309\u4F4F Ctrl \u677E\u5F00\u7ACB\u5373\u53D1\u9001\uFF1B\u5355\u51FB Esc \u505C\u6B62\u6717\u8BFB/\u53D6\u6D88\u672C\u53E5\uFF0C\u53CC\u51FB Esc \u9000\u51FA\u3002",
+  shortcutBuiltInNoteMac: "\u5185\u7F6E\u6309\u952E\uFF08Mac\uFF09\uFF1A\u6309\u4F4F\u8BF4\u8BDD\u4E0B\u957F\u6309\u5DE6\u4E0B\u89D2 \u2303 Control\uFF08\u975E \u2318 Command\uFF09\u8BF4\u8BDD\u3001\u677E\u5F00\u53D1\u9001\uFF1B\u6301\u7EED\u8046\u542C\u4E0B\u6309\u4F4F \u2303 Control \u677E\u5F00\u7ACB\u5373\u53D1\u9001\uFF1B\u5355\u51FB Esc \u505C\u8BFB/\u53D6\u6D88\uFF0C\u53CC\u51FB Esc \u9000\u51FA\u3002",
   descBackchannelYield: "\u6717\u8BFB\u671F\u7528\u6237\u8BF4\u300C\u55EF/\u5BF9\u300D\u7B49\u77ED\u5E94\u7B54\u65F6\u81EA\u52A8\u8BA9\u4F4D\uFF08\u8DF3\u8FC7\u5F53\u524D TTS \u53E5 + \u77ED\u6682\u4E22\u5E27 1.5s\uFF1B\u771F\u8981\u8BF4\u5219\u539F hardBreak \u63A5\u7BA1\uFF1B\u5173 = \u4E0D\u8BA9\u4F4D\uFF0C\u884C\u4E3A\u7B49\u540C\u6539\u9020\u524D\uFF09\u3002\u4EC5\u300C\u6309\u4F4F\u8BF4\u8BDD\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u53EF\u89E6\u53D1\uFF1A\u300C\u6301\u7EED\u8046\u542C\u300D\u6A21\u5F0F\u64AD\u653E\u671F\u4E0D\u8BC6\u522B\u8BED\u97F3\uFF0C\u5F00\u53E3\u8BF4\u8BDD\u6309\u6253\u65AD\u5904\u7406",
   // Issue #15 批 1 / ADR-0012：打断语音抢救。
   descBargeInSalvage: "AI \u6717\u8BFB\u65F6\u4F60\u5F00\u53E3\u6253\u65AD\uFF1A\u81EA\u52A8\u4FDD\u7559\u4ECE\u5F00\u53E3\u5230\u6253\u65AD\u751F\u6548\u4E4B\u95F4\u4F60\u8BF4\u7684\u8BDD\uFF0C\u5E76\u5165\u8BC6\u522B\u7EE7\u7EED\u53D1\u9001\uFF08\u4FEE\u300C\u6253\u65AD\u5403\u53E5\u300D\uFF1B\u5173 = \u4E22\u5F03\u6253\u65AD\u524D\u8BED\u97F3\u2014\u2014\u4EC5\u5916\u653E\u4E14\u65E0\u56DE\u58F0\u6D88\u9664\u7684\u73AF\u5883\u5EFA\u8BAE\u5173\uFF09",
@@ -2410,17 +2433,28 @@ var en = {
   ariaActive: "Voice mode active",
   ariaEnter: "Enter voice mode",
   ariaPendingCancelHint: "activate again to cancel",
-  titleHold: "Voice mode \xB7 hold to talk, release to send; tap to exit; Esc/blur cancels; Ctrl+Shift+V exits",
-  titleToggle: "Voice mode \xB7 click to exit (Ctrl+Shift+V) \xB7 hold Ctrl while speaking to send now",
-  titleEnter: "Enter voice mode (Ctrl+Shift+V)",
+  titleHold: "Hold-to-talk mode \xB7 hold mic or Ctrl to speak, release to send; Esc cancels, double-Esc exits",
+  titleHoldMac: "Hold-to-talk mode \xB7 hold mic or \u2303 Control to speak, release to send; Esc cancels, double-Esc exits",
+  titleToggle: "Continuous listening \xB7 hold and release Ctrl while speaking to send now; Esc stops playback, click or double-Esc exits",
+  titleToggleMac: "Continuous listening \xB7 hold and release \u2303 Control while speaking to send now; Esc stops playback, click or double-Esc exits",
+  titleOnce: "One-shot mode \xB7 speak once to auto-send, exits after the reply finishes reading; click or double-Esc to exit",
+  titleEnter: "Enter voice mode",
+  titleEnterHold: "Hold to talk: press and hold the mic directly to speak (release to send), or use the shortcut to enter",
+  titleShortcutSuffix: " (shortcut: {keys})",
+  titleShortcutComposerSuffix: " (shortcut: {keys}; in composer: {composerKeys})",
   loadingModel: "Loading model\u2026",
   listening: "Listening\u2026",
   thinking: "Thinking\u2026",
-  barHold: "Voice mode \xB7 hold to talk (tap to exit)",
+  barHold: "Hold to talk \xB7 hold the mic button or Ctrl to speak, release to send (Esc cancels)",
+  barHoldMac: "Hold to talk \xB7 hold the mic button or \u2303 Control to speak, release to send (Esc cancels)",
+  barHolding: "Recording \u2014 release to send (slide up or press Esc to cancel)",
+  barOnce: "One-shot \xB7 speak your request; sends on pause and exits after reading",
   barListening: "Voice mode \xB7 listening\u2026",
   wakeWord: "Wake word",
   sayWake: 'Say "{wake}" to start',
   reading: "Reading aloud\u2026",
+  readingManual: "Reading aloud \xB7 hold mic or Ctrl to interrupt",
+  readingManualMac: "Reading aloud \xB7 hold mic or \u2303 Control to interrupt",
   recognitionFail: "Recognition failed, try again",
   holdTrimmedNotice: "Hold-to-talk exceeded about 48 s: only the last part was recognised (earlier audio was dropped)",
   utteranceTooLong: "That utterance was too long (over the per-utterance limit, about a minute): skipped \u2014 please speak it again in shorter parts",
@@ -2633,9 +2667,21 @@ var en = {
   ttsRetryingNotice: "Retrying read-aloud ({attempt}/{max})\u2026",
   tabPreemptedNotice: "Voice mode was taken over by another tab",
   firstUseToggle: "Speak directly \u2014 pauses commit and send; speak or hold the mic to interrupt replies",
-  firstUseHold: "Hold the mic button or Ctrl to speak, release to send, or slide up to cancel",
+  firstUseHold: "Hold the mic button or Ctrl to speak, release to send; press Esc or slide up to cancel",
+  firstUseHoldMac: "Hold the mic button or \u2303 Control (Ctrl, not \u2318 Command) to speak, release to send; Esc cancels",
   firstUseOnce: "Speak one request \u2014 it sends after a pause and exits once the reply finishes reading",
   firstUseWake: 'Say the wake word "{wake}" to start speaking (or say it together with your request)',
+  modeInlineToggle: "Speak directly after entering \u2014 pauses auto-send; hold and release Ctrl while speaking to send now",
+  modeInlineToggleMac: "Speak directly after entering \u2014 pauses auto-send; hold and release \u2303 Control while speaking to send now",
+  modeInlineHold: "Hold the mic directly from idle, or enter voice mode and hold Ctrl to speak, release to send, Esc to cancel",
+  modeInlineHoldMac: "Hold the mic directly from idle, or enter voice mode and hold \u2303 Control (not \u2318 Command) to speak, release to send, Esc to cancel",
+  modeInlineOnce: "Speak one request to auto-send; exits voice mode automatically once the reply finishes reading",
+  bargeInInlineDetect: "Probes native echo cancellation: speak to interrupt when active; switches to hold-to-interrupt on open speakers",
+  bargeInInlineAuto: "Speak directly to interrupt playback (recommended with headphones or in quiet rooms)",
+  bargeInInlineManual: "Best for speakers: speak normally when idle; hold mic or Ctrl during playback to interrupt without echo false triggers",
+  bargeInInlineManualMac: "Best for speakers: speak normally when idle; hold mic or \u2303 Control during playback to interrupt without echo false triggers",
+  shortcutBuiltInNote: "Built-in keys: hold Ctrl to speak in Hold-to-talk (release sends); hold and release Ctrl in Continuous mode to send now; Esc stops playback/cancels, double-Esc exits.",
+  shortcutBuiltInNoteMac: "Built-in keys (Mac): hold \u2303 Control (not \u2318 Command) to speak in Hold-to-talk; hold and release \u2303 Control in Continuous mode to send now; Esc stops/cancels, double-Esc exits.",
   descBackchannelYield: 'When the user says a short answer like "mm-hmm/right" while the agent is reading aloud, yield automatically (skip the current TTS sentence + drop frames for 1.5s; if the user really wants to speak, the existing hardBreak takes over; off = no yielding, behavior matches before this change). Only triggers in hold-to-talk mode: in continuous-listening mode speech is not recognized during playback (speaking is treated as an interrupt)',
   // Issue #15 batch 1 / ADR-0012: barge-in speech salvage.
   descBargeInSalvage: "When you speak to interrupt while the agent is reading aloud, keep what you said from speech onset to break confirmation and merge it into recognition (fixes swallowed break-in speech; off = discard pre-break audio; recommended off only on speakers without echo cancellation)",
@@ -3114,6 +3160,40 @@ function pushCaptionHistory(history, text, max = CAPTION_HISTORY_MAX) {
 }
 function shouldSkipDraftWriteback(quoteCount, attachCount) {
   return quoteCount > 0 || attachCount > 0;
+}
+var FIRST_USE_HINT_BASE = "dshvm-first-use-hint-seen";
+function firstUseHintKey(mode, base = FIRST_USE_HINT_BASE) {
+  if (mode === "hold") return `${base}:hold`;
+  if (mode === "once") return `${base}:once`;
+  return base;
+}
+function formatShortcutForDisplay(raw, isMac) {
+  const clean2 = String(raw ?? "").trim();
+  if (!clean2) return "";
+  const parts = clean2.split("+").map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return "";
+  const mapped = parts.map((p) => {
+    const low = p.toLowerCase();
+    if (isMac) {
+      if (low === "ctrl" || low === "control") return "\u2303 Control";
+      if (low === "alt" || low === "option") return "\u2325 Option";
+      if (low === "shift") return "\u21E7 Shift";
+      if (low === "cmd" || low === "meta" || low === "command") return "\u2318 Command";
+      if (low === "enter" || low === "return") return "Return";
+      if (low === "space") return "Space";
+      if (low === "tab") return "Tab";
+      return p.length === 1 ? p.toUpperCase() : p;
+    }
+    if (low === "ctrl" || low === "control") return "Ctrl";
+    if (low === "alt" || low === "option") return "Alt";
+    if (low === "shift") return "Shift";
+    if (low === "cmd" || low === "meta" || low === "command") return "Win/Super";
+    if (low === "enter" || low === "return") return "Enter";
+    if (low === "space") return "Space";
+    if (low === "tab") return "Tab";
+    return p.length === 1 ? p.toUpperCase() : p;
+  });
+  return mapped.join(isMac ? " + " : "+");
 }
 
 // src/engine-kind.ts
@@ -4284,6 +4364,7 @@ function presetVoiceLabel(full) {
   const i = full.lastIndexOf(":");
   return i >= 0 ? full.slice(i + 1) || full : full;
 }
+var IS_MAC_UI = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
 var t2 = {
   bg: "var(--dsw-alias-bg-layer-3)",
   bgOpen: "var(--dsw-alias-bg-layer-2)",
@@ -5030,7 +5111,23 @@ function ShortcutField({
           },
           children: recording ? t("shortcutCancel") : t("shortcutRecord")
         }
-      )
+      ),
+      IS_MAC_UI && draft.trim() ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "kbd",
+        {
+          style: {
+            fontSize: 11,
+            lineHeight: "20px",
+            padding: "2px 7px",
+            borderRadius: 6,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            color: "var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))",
+            background: "color-mix(in srgb, var(--dsw-alias-label-tertiary) 10%, transparent)",
+            border: `1px solid ${t2.border}`
+          },
+          children: formatShortcutForDisplay(draft, true)
+        }
+      ) : null
     ] }),
     err || recording ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "span",
@@ -6509,19 +6606,22 @@ function VoiceSettingsCard({
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SegmentTabs, { active: tab, onChange: setTab }),
         tab === "input" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { role: "tabpanel", "aria-label": t("segInput"), children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { first: true, children: t("secInteraction") }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "mode", desc: t("descMode"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            SegGroup,
-            {
-              score: scope,
-              field: "mode",
-              value: value.mode,
-              options: [
-                { v: "toggle", label: t("modeToggle") },
-                { v: "hold", label: t("modeHold") },
-                { v: "once", label: t("modeOnce") }
-              ]
-            }
-          ) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Row, { name: "mode", desc: t("descMode"), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              SegGroup,
+              {
+                score: scope,
+                field: "mode",
+                value: value.mode,
+                options: [
+                  { v: "toggle", label: t("modeToggle") },
+                  { v: "hold", label: t("modeHold") },
+                  { v: "once", label: t("modeOnce") }
+                ]
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11.5, lineHeight: "17px", color: t2.term }, children: value.mode === "hold" ? IS_MAC_UI ? t("modeInlineHoldMac") : t("modeInlineHold") : value.mode === "once" ? t("modeInlineOnce") : IS_MAC_UI ? t("modeInlineToggleMac") : t("modeInlineToggle") })
+          ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "wakeWord", desc: t("descWakeWord"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TextField, { score: scope, field: "wakeWord", value: value.wakeWord ?? "", placeholder: t("wakePlaceholder") }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "autoSend", desc: t("descAutoSend"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CheckRow, { field: "autoSend", checked: value.autoSend !== false, score: scope }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("secInterrupt") }),
@@ -6538,25 +6638,31 @@ function VoiceSettingsCard({
               ]
             }
           ) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "bargeInMode", desc: t("descBargeIn"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            SegGroup,
-            {
-              score: scope,
-              field: "bargeInMode",
-              value: value.bargeInMode,
-              options: [
-                { v: "detect", label: t("bargeInDetect") },
-                { v: "auto", label: t("bargeInAuto") },
-                { v: "manual", label: t("bargeInManual") }
-              ]
-            }
-          ) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Row, { name: "bargeInMode", desc: t("descBargeIn"), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              SegGroup,
+              {
+                score: scope,
+                field: "bargeInMode",
+                value: value.bargeInMode,
+                options: [
+                  { v: "detect", label: t("bargeInDetect") },
+                  { v: "auto", label: t("bargeInAuto") },
+                  { v: "manual", label: t("bargeInManual") }
+                ]
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11.5, lineHeight: "17px", color: t2.term }, children: value.bargeInMode === "auto" ? t("bargeInInlineAuto") : value.bargeInMode === "manual" ? IS_MAC_UI ? t("bargeInInlineManualMac") : t("bargeInInlineManual") : t("bargeInInlineDetect") })
+          ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "silenceMs", desc: t("descSilence"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumberField, { score: scope, field: "silenceMs", value: value.silenceMs ?? 1500, min: 500, max: 3e4, step: 100 }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupTitle, { children: t("secShortcut") }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "shortcut", desc: t("descShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShortcutField, { score: scope, field: "shortcut", value: value.shortcut ?? "" }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { name: "composerShortcut", desc: t("descComposerShortcut"), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShortcutField, { score: scope, field: "composerShortcut", value: value.composerShortcut ?? "Alt+Enter" }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "flex-start", gap: 10, padding: "2px 0 6px" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, fontSize: 11, lineHeight: "17px", color: "var(--dsw-alias-label-tertiary)" }, children: t("shortcutNote") }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, fontSize: 11, lineHeight: "17px", color: "var(--dsw-alias-label-tertiary)", display: "flex", flexDirection: "column", gap: 3 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: t("shortcutNote") }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: IS_MAC_UI ? t("shortcutBuiltInNoteMac") : t("shortcutBuiltInNote") })
+            ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
               {
@@ -7054,7 +7160,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "9823946";
+var BUILD_TAG = "118c5b9";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = (() => {
   try {
@@ -9534,9 +9640,9 @@ function MicButton({
       micReadyRef.current = true;
       setLocalMode("on");
       resetIdle();
-      if (!bus.ui.error && !bus.ui.notice && takeOnceHint(FIRST_USE_HINT_KEY)) {
+      if (!bus.ui.error && !bus.ui.notice && takeOnceHint(firstUseHintKey(cfg.mode, FIRST_USE_HINT_KEY))) {
         const wake = cfg.wakeWord.trim();
-        const guide = cfg.mode === "hold" ? t("firstUseHold") : wake ? t("firstUseWake", { wake }) : cfg.mode === "once" ? t("firstUseOnce") : t("firstUseToggle");
+        const guide = cfg.mode === "hold" ? IS_MAC ? t("firstUseHoldMac") : t("firstUseHold") : wake ? t("firstUseWake", { wake }) : cfg.mode === "once" ? t("firstUseOnce") : t("firstUseToggle");
         bus.setNotice(guide);
       }
       if (pendingHoldRef.current) {
@@ -9781,7 +9887,7 @@ function MicButton({
             holdCtrlRef.current = true;
             setHolding(true);
             eng.beginHeld();
-          }, 600);
+          }, 220);
         } else if (bootNow().bargeInMode === "manual" && bus.ui.playing || bootNow().mode === "once" && onceRef.current) {
           manualHoldRef.current = true;
           setHolding(true);
@@ -9795,6 +9901,12 @@ function MicButton({
         if (ctrlTimer) {
           clearTimeout(ctrlTimer);
           ctrlTimer = null;
+        }
+        if (holdCtrlRef.current) {
+          holdCtrlRef.current = false;
+          setHolding(false);
+          engineRef.current?.endHeld(true);
+          bus.setUi({ partial: "" });
         }
       }
     };
@@ -9937,6 +10049,12 @@ function MicButton({
   const phaseRef = (0, import_react3.useRef)("");
   phaseRef.current = livePhase;
   const [holding, setHolding] = (0, import_react3.useState)(false);
+  (0, import_react3.useEffect)(() => {
+    bus.setUi({ holding });
+    return () => {
+      bus.setUi({ holding: false });
+    };
+  }, [bus, holding]);
   const reading = local === "off" && bus.ui.playing;
   const showTurn = onceWaiting || bootNow().showStatusBar === false && bus.ui.state !== "speech" && (bus.ui.playing || bus.ui.turn === "agent-speaking");
   const label = on && showTurn ? bus.ui.playing ? t("reading") : t("thinking") : reading ? t("stopReading") : on ? busy ? (
@@ -10242,7 +10360,10 @@ function MicButton({
     setMenuOpen(false);
     if (refocus) (menuTriggerRef.current ?? btnRef.current)?.focus();
   }, []);
-  const title = bus.ui.error ? String(bus.ui.error) : reading ? t("stopReading") : on ? holdMode ? t("titleHold") : t("titleToggle") : t("titleEnter");
+  const shortcutDisp = formatShortcutForDisplay(bootNow().shortcut, IS_MAC);
+  const composerDisp = formatShortcutForDisplay(bootNow().composerShortcut, IS_MAC);
+  const shortcutSuffix = shortcutDisp && composerDisp ? t("titleShortcutComposerSuffix", { keys: shortcutDisp, composerKeys: composerDisp }) : shortcutDisp ? t("titleShortcutSuffix", { keys: shortcutDisp }) : composerDisp ? t("titleShortcutSuffix", { keys: composerDisp }) : "";
+  const title = bus.ui.error ? String(bus.ui.error) : reading ? t("stopReading") : on ? `${holdMode ? IS_MAC ? t("titleHoldMac") : t("titleHold") : bootNow().mode === "once" ? t("titleOnce") : IS_MAC ? t("titleToggleMac") : t("titleToggle")}${shortcutDisp ? t("titleShortcutSuffix", { keys: shortcutDisp }) : ""}` : `${holdMode ? t("titleEnterHold") : t("titleEnter")}${shortcutSuffix}`;
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "dshvm-mic-group", "data-dshvm": "mic-group", children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
@@ -10419,7 +10540,8 @@ function VoiceStatusBar({ bus, sessionId }) {
   }, [b.ui.state]);
   const isActive = b.active === sessionId;
   if (!isActive || b.ui.boot?.showStatusBar === false) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, {});
-  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? transcribingSec >= 2 ? t("recognizingSec").replace("{sec}", String(transcribingSec)) : t("recognizing") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.playing ? t("reading") : b.ui.turn === "agent-speaking" ? b.ui.ttsNotice || t("thinking") : b.ui.mode === "hold" ? t("barHold") : t("barListening");
+  const manualBargeIn = b.ui.boot?.bargeInMode === "manual" || b.ui.bargeInDetectFallback === true;
+  const stateText = b.ui.state === "loading-model" ? t("loadingModel") : b.ui.state === "transcribing" ? transcribingSec >= 2 ? t("recognizingSec").replace("{sec}", String(transcribingSec)) : t("recognizing") : b.ui.holding ? t("barHolding") : b.ui.state === "wake" ? t("sayWake").replace("{wake}", b.ui.wakeWord || t("wakeWord")) : b.ui.state === "speech" ? b.ui.mode === "hold" ? t("holdDots") : t("listening") : b.ui.playing ? manualBargeIn ? IS_MAC ? t("readingManualMac") : t("readingManual") : t("reading") : b.ui.turn === "agent-speaking" ? b.ui.ttsNotice || t("thinking") : b.ui.mode === "hold" ? IS_MAC ? t("barHoldMac") : t("barHold") : b.ui.mode === "once" ? t("barOnce") : t("barListening");
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0);
   const botBars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.botLevels[i] ?? 0);
   const telParts = [];
@@ -10445,8 +10567,9 @@ function VoiceStatusBar({ bus, sessionId }) {
       `AEC delay=${Math.round(b.ui.echoDelayMs ?? 0)}ms floor=${el.floorRms.toFixed(4)} resid=${el.residualRms.toFixed(4)}`
     );
   }
-  const displayText = b.ui.error ? b.ui.error : b.ui.sseDown ? t("sseReconnect") : b.ui.notice ? b.ui.notice : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.state === "wake" && b.ui.partial ? `${stateText} \xB7 ${b.ui.partial}` : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText;
-  const hasBadges = b.ui.isSpeech === true || Boolean(b.ui.ttsNotice) || b.ui.aecOff === true;
+  const displayText = b.ui.error ? b.ui.error : b.ui.sseDown ? t("sseReconnect") : b.ui.notice ? b.ui.notice : b.ui.idleWarn ? t("idleWarn30s") : b.ui.state === "loading-model" || b.ui.model ? b.ui.model ? `${t("loadingModel")} ${b.ui.model.file} ${b.ui.model.percent}%` : stateText : b.ui.holding ? b.ui.partial || stateText : b.ui.playing || b.ui.turn === "agent-speaking" ? stateText : b.ui.state === "wake" && b.ui.partial ? `${stateText} \xB7 ${b.ui.partial}` : b.ui.partial ? b.ui.partial : b.ui.ttsNotice ? b.ui.ttsNotice : stateText;
+  const showAecBadge = b.ui.aecOff === true && b.ui.boot?.bargeInMode !== "manual";
+  const hasBadges = b.ui.isSpeech === true || Boolean(b.ui.ttsNotice) || showAecBadge;
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
     "div",
     {
@@ -10644,7 +10767,7 @@ function VoiceStatusBar({ bus, sessionId }) {
               children: b.ui.ttsNotice
             }
           ),
-          b.ui.aecOff === true && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          showAecBadge && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "span",
             {
               "aria-hidden": "true",

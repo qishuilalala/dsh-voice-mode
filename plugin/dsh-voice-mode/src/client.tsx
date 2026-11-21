@@ -21,7 +21,7 @@ import {
   applyTurnEvent,
   auxClickPending,
   cancelPayload,
-  clampMenuRect, canTouchLongPressMenu, TOUCH_MENU_HOLD_MS, pushCaptionHistory, CAPTION_LINGER_MS,
+  clampMenuRect, canTouchLongPressMenu, TOUCH_MENU_HOLD_MS, pushCaptionHistory, CAPTION_LINGER_MS, formatShortcutForDisplay, firstUseHintKey,
   createScopeBridge,
   decayConfirmCount,
   eqPaintMode,
@@ -132,7 +132,7 @@ interface VoiceUiState {
   captionHistory: string[]
   /** 末句自然播完后的短暂驻留标记（避免短句一闪而过看清前就消失）。 */
   captionLinger?: boolean
-  playing: boolean
+  playing: boolean; holding?: boolean
   /** 模型下载进度（host asr-progress 事件写入）。 */
   model: { file: string; percent: number } | null
   /** TTS 不可达的暂时提示（host tts-error 事件写入，下一帧成功即清）。 */
@@ -3587,11 +3587,13 @@ export function MicButton({
       micReadyRef.current = true
       setLocalMode('on')
       resetIdle()
-      if (!bus.ui.error && !bus.ui.notice && takeOnceHint(FIRST_USE_HINT_KEY)) {
+      if (!bus.ui.error && !bus.ui.notice && takeOnceHint(firstUseHintKey(cfg.mode, FIRST_USE_HINT_KEY))) {
         const wake = cfg.wakeWord.trim()
         const guide =
           cfg.mode === 'hold'
-            ? t('firstUseHold')
+            ? IS_MAC
+              ? t('firstUseHoldMac')
+              : t('firstUseHold')
             : wake
               ? t('firstUseWake', { wake })
               : cfg.mode === 'once'
@@ -3893,17 +3895,16 @@ export function MicButton({
       }
       const eng = engineRef.current
       if (e.key === 'Control' && !e.shiftKey && !e.altKey && !e.metaKey && !e.repeat && eng && (!onceRef.current || bootNow().mode === 'once')) {
-        // 单独 Ctrl 按下：记录起点；hold 模式起 600ms 定时器，toggle 模式延迟到 keyup 判定。
+        // 单独 Ctrl 按下：记录起点；hold 模式起 220ms 定时器（兼顾防吃词与防组合键误触），toggle 模式延迟到 keyup 判定。
         ctrlHoldStart = Date.now()
         otherKeyDuringCtrl = false
         if (bootNow().mode === 'hold') {
-          // hold：600ms 阈值后视为按住说话（避免组合快捷键按下时序误触发）
           ctrlTimer = setTimeout(() => {
             ctrlTimer = null
             holdCtrlRef.current = true
             setHolding(true)
             eng.beginHeld()
-          }, 600)
+          }, 220)
         } else if ((bootNow().bargeInMode === 'manual' && bus.ui.playing) || (bootNow().mode === 'once' && onceRef.current)) {
           // 手动打断（外放）：按住 Ctrl 立即停 AI + 接管收音（不依赖 VAD，回声无关）。
           manualHoldRef.current = true
@@ -3913,12 +3914,18 @@ export function MicButton({
         }
         return
       }
-      // I1：Ctrl 按住期间按下任何其它键 → 标记并作废 hold 定时器（防 Ctrl+C/V/W 误触发）。
+      // I1：Ctrl 按住期间按下任何其它键 → 标记并作废 hold 定时器；若已进入按住收音则同步丢弃不发送（防慢速 Ctrl+C/V/W 误发）。
       if (ctrlHoldStart > 0 && e.key !== 'Control') {
         otherKeyDuringCtrl = true
         if (ctrlTimer) {
           clearTimeout(ctrlTimer)
           ctrlTimer = null
+        }
+        if (holdCtrlRef.current) {
+          holdCtrlRef.current = false
+          setHolding(false)
+          engineRef.current?.endHeld(true)
+          bus.setUi({ partial: '' })
         }
       }
     }
@@ -4111,8 +4118,14 @@ export function MicButton({
   const livePhase = useInputHook((s: any) => (s?.phase as string) ?? '') ?? ''
   const phaseRef = useRef('')
   phaseRef.current = livePhase
-  /** 按住说话中（录音态视觉反馈）。 */
+  /** 按住说话中（录音态视觉反馈，同步进 bus.ui 供状态条即时展示「正在收音，松开发送」）。 */
   const [holding, setHolding] = useState(false)
+  useEffect(() => {
+    bus.setUi({ holding })
+    return () => {
+      bus.setUi({ holding: false })
+    }
+  }, [bus, holding])
   const reading = local === 'off' && bus.ui.playing
   // once 等待中、或状态条被关掉时，按钮自己报「思考中/朗读中」（用户在说话时让位给聆听态）。
   const showTurn =
@@ -4547,15 +4560,33 @@ export function MicButton({
     if (refocus) (menuTriggerRef.current ?? btnRef.current)?.focus()
   }, [])
 
+  const shortcutDisp = formatShortcutForDisplay(bootNow().shortcut, IS_MAC)
+  const composerDisp = formatShortcutForDisplay(bootNow().composerShortcut, IS_MAC)
+  const shortcutSuffix =
+    shortcutDisp && composerDisp
+      ? t('titleShortcutComposerSuffix', { keys: shortcutDisp, composerKeys: composerDisp })
+      : shortcutDisp
+        ? t('titleShortcutSuffix', { keys: shortcutDisp })
+        : composerDisp
+          ? t('titleShortcutSuffix', { keys: composerDisp })
+          : ''
   const title = bus.ui.error
     ? String(bus.ui.error)
     : reading
       ? t('stopReading')
       : on
-        ? holdMode
-          ? t('titleHold')
-          : t('titleToggle')
-        : t('titleEnter')
+        ? `${
+            holdMode
+              ? IS_MAC
+                ? t('titleHoldMac')
+                : t('titleHold')
+              : bootNow().mode === 'once'
+                ? t('titleOnce')
+                : IS_MAC
+                  ? t('titleToggleMac')
+                  : t('titleToggle')
+          }${shortcutDisp ? t('titleShortcutSuffix', { keys: shortcutDisp }) : ''}`
+        : `${holdMode ? t('titleEnterHold') : t('titleEnter')}${shortcutSuffix}`
 
   return (
     <>
@@ -4775,6 +4806,7 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
   const isActive = b.active === sessionId
   if (!isActive || b.ui.boot?.showStatusBar === false) return <></>
 
+  const manualBargeIn = b.ui.boot?.bargeInMode === 'manual' || b.ui.bargeInDetectFallback === true
   const stateText =
     b.ui.state === 'loading-model'
       ? t('loadingModel')
@@ -4782,19 +4814,29 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
         ? transcribingSec >= 2
           ? t('recognizingSec').replace('{sec}', String(transcribingSec))
           : t('recognizing')
-        : b.ui.state === 'wake'
-          ? t('sayWake').replace('{wake}', b.ui.wakeWord || t('wakeWord'))
-          : b.ui.state === 'speech'
-            ? b.ui.mode === 'hold'
-              ? t('holdDots')
-              : t('listening')
-            : b.ui.playing // Fix：TTS 播放時顯示「朗讀中…」，防用戶誤以為系統無響應
-              ? t('reading')
-              : b.ui.turn === 'agent-speaking'
-                ? b.ui.ttsNotice || t('thinking')
-                : b.ui.mode === 'hold'
-                  ? t('barHold')
-                  : t('barListening')
+        : b.ui.holding
+          ? t('barHolding')
+          : b.ui.state === 'wake'
+            ? t('sayWake').replace('{wake}', b.ui.wakeWord || t('wakeWord'))
+            : b.ui.state === 'speech'
+              ? b.ui.mode === 'hold'
+                ? t('holdDots')
+                : t('listening')
+              : b.ui.playing // Fix：TTS 播放時顯示「朗讀中…」，防用戶誤以為系統無響應
+                ? manualBargeIn
+                  ? IS_MAC
+                    ? t('readingManualMac')
+                    : t('readingManual')
+                  : t('reading')
+                : b.ui.turn === 'agent-speaking'
+                  ? b.ui.ttsNotice || t('thinking')
+                  : b.ui.mode === 'hold'
+                    ? IS_MAC
+                      ? t('barHoldMac')
+                      : t('barHold')
+                    : b.ui.mode === 'once'
+                      ? t('barOnce')
+                      : t('barListening')
 
   const bars = Array.from({ length: WAVE_BARS }, (_, i) => b.ui.levels[i] ?? 0)
   // P0-UX 双条 SVG 波形：第二组柱形表示 AI 朗读端电平
@@ -4841,16 +4883,19 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
             ? b.ui.model
               ? `${t('loadingModel')} ${b.ui.model.file} ${b.ui.model.percent}%`
               : stateText
-            : b.ui.playing || b.ui.turn === 'agent-speaking'
-              ? stateText
-              : b.ui.state === 'wake' && b.ui.partial
-                ? `${stateText} · ${b.ui.partial}`
-                : b.ui.partial
-                  ? b.ui.partial
-                  : b.ui.ttsNotice
-                    ? b.ui.ttsNotice
-                    : stateText
-  const hasBadges = b.ui.isSpeech === true || Boolean(b.ui.ttsNotice) || b.ui.aecOff === true
+            : b.ui.holding
+              ? b.ui.partial || stateText
+              : b.ui.playing || b.ui.turn === 'agent-speaking'
+                ? stateText
+                : b.ui.state === 'wake' && b.ui.partial
+                  ? `${stateText} · ${b.ui.partial}`
+                  : b.ui.partial
+                    ? b.ui.partial
+                    : b.ui.ttsNotice
+                      ? b.ui.ttsNotice
+                      : stateText
+  const showAecBadge = b.ui.aecOff === true && b.ui.boot?.bargeInMode !== 'manual'
+  const hasBadges = b.ui.isSpeech === true || Boolean(b.ui.ttsNotice) || showAecBadge
 
   return (
     <div
@@ -5046,7 +5091,7 @@ export function VoiceStatusBar({ bus, sessionId }: StatusBarProps): React.ReactE
               {b.ui.ttsNotice}
             </span>
           )}
-          {b.ui.aecOff === true && (
+          {showAecBadge && (
             <span
               aria-hidden="true"
               title={b.ui.bargeInDetectFallback ? t('bargeInDetectFallback') : t('aecOffHint')}

@@ -30,6 +30,9 @@ import { asTtsEngineKind, isCloudEngine, isThirdPartyEngine, TTS_ENGINE_KINDS, t
 import { resolvePresetVoice } from './voice-resolution.ts'
 import { computePendingFields } from './effective-pending.ts'
 import { REPLACEMENTS_MAX_PAYLOAD_BYTES, replacementsPayloadBytes } from './asr-replacements.ts'
+import { formatShortcutForDisplay } from './mic-gesture.ts'
+
+const IS_MAC_UI = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '')
 
 interface ScopeController {
   getSnapshot(): {
@@ -903,6 +906,22 @@ function ShortcutField({
         >
           {recording ? tr('shortcutCancel') : tr('shortcutRecord')}
         </button>
+        {IS_MAC_UI && draft.trim() ? (
+          <kbd
+            style={{
+              fontSize: 11,
+              lineHeight: '20px',
+              padding: '2px 7px',
+              borderRadius: 6,
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              color: 'var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary))',
+              background: 'color-mix(in srgb, var(--dsw-alias-label-tertiary) 10%, transparent)',
+              border: `1px solid ${t.border}`,
+            }}
+          >
+            {formatShortcutForDisplay(draft, true)}
+          </kbd>
+        ) : null}
       </span>
       {err || recording ? (
         <span
@@ -2817,6 +2836,17 @@ export function VoiceSettingsCard({
                       { v: 'once', label: tr('modeOnce') },
                     ]}
                   />
+                  <span style={{ fontSize: 11.5, lineHeight: '17px', color: t.term }}>
+                    {value.mode === 'hold'
+                      ? IS_MAC_UI
+                        ? tr('modeInlineHoldMac')
+                        : tr('modeInlineHold')
+                      : value.mode === 'once'
+                        ? tr('modeInlineOnce')
+                        : IS_MAC_UI
+                          ? tr('modeInlineToggleMac')
+                          : tr('modeInlineToggle')}
+                  </span>
                 </Row>
                 <Row name="wakeWord" desc={tr('descWakeWord')}>
                   <TextField score={scope} field="wakeWord" value={value.wakeWord ?? ''} placeholder={tr('wakePlaceholder')} />
@@ -2848,6 +2878,15 @@ export function VoiceSettingsCard({
                       { v: 'manual', label: tr('bargeInManual') },
                     ]}
                   />
+                  <span style={{ fontSize: 11.5, lineHeight: '17px', color: t.term }}>
+                    {value.bargeInMode === 'auto'
+                      ? tr('bargeInInlineAuto')
+                      : value.bargeInMode === 'manual'
+                        ? IS_MAC_UI
+                          ? tr('bargeInInlineManualMac')
+                          : tr('bargeInInlineManual')
+                        : tr('bargeInInlineDetect')}
+                  </span>
                 </Row>
                 <Row name="silenceMs" desc={tr('descSilence')}>
                   <NumberField score={scope} field="silenceMs" value={value.silenceMs ?? 1500} min={500} max={30000} step={100} />
@@ -2860,7 +2899,10 @@ export function VoiceSettingsCard({
                   <ShortcutField score={scope} field="composerShortcut" value={value.composerShortcut ?? 'Alt+Enter'} />
                 </Row>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '2px 0 6px' }}>
-                  <div style={{ flex: 1, fontSize: 11, lineHeight: '17px', color: 'var(--dsw-alias-label-tertiary)' }}>{tr('shortcutNote')}</div>
+                  <div style={{ flex: 1, fontSize: 11, lineHeight: '17px', color: 'var(--dsw-alias-label-tertiary)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span>{tr('shortcutNote')}</span>
+                    <span>{IS_MAC_UI ? tr('shortcutBuiltInNoteMac') : tr('shortcutBuiltInNote')}</span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {

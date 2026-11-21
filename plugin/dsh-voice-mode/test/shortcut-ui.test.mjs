@@ -14,6 +14,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { formatShortcutForDisplay, firstUseHintKey } from '../src/mic-gesture.ts'
 
 const root = join(import.meta.dirname, '..')
 const read = (f) => readFileSync(join(root, f), 'utf8')
@@ -161,6 +162,24 @@ t('录制器拒绝 parseShortcut 不认的键（方向键/F 键）', () => {
 t('enterMode 失败清掉待决按住状态', () => {
   const i = client.indexOf('// getUserMedia 被拒等：留在 off')
   has(client.slice(i - 80, i + 200), 'pendingHoldRef.current = false', 'enterMode catch')
+})
+t('macOS / Win 键位可读展示与跨模式首次引导分键', () => {
+  assert.equal(formatShortcutForDisplay('Ctrl+Shift+V', true), '⌃ Control + ⇧ Shift + V')
+  assert.equal(formatShortcutForDisplay('Alt+Enter', true), '⌥ Option + Return')
+  assert.equal(formatShortcutForDisplay('Cmd+Space', true), '⌘ Command + Space')
+  assert.equal(formatShortcutForDisplay('Ctrl+Shift+V', false), 'Ctrl+Shift+V')
+  assert.equal(formatShortcutForDisplay('Alt+Enter', false), 'Alt+Enter')
+  assert.equal(formatShortcutForDisplay('   ', true), '')
+  assert.equal(firstUseHintKey('toggle', 'k'), 'k')
+  assert.equal(firstUseHintKey('hold', 'k'), 'k:hold')
+  assert.equal(firstUseHintKey('once', 'k'), 'k:once')
+})
+t('键盘按住 Control 说话：220ms 快速响应、按它键立即丢弃、holding 同步状态条且手动打断压制矛盾 aecOff 角标', () => {
+  has(client, '}, 220)', 'client hold Control timer')
+  has(client, 'if (holdCtrlRef.current) {\n          holdCtrlRef.current = false\n          setHolding(false)\n          engineRef.current?.endHeld(true)', 'client otherKeyDuringCtrl discard')
+  has(client, 'bus.setUi({ holding })', 'client sync holding to status bar')
+  has(client, "const showAecBadge = b.ui.aecOff === true && b.ui.boot?.bargeInMode !== 'manual'", 'VoiceStatusBar manual barge-in suppresses contradictory aecOff badge')
+  has(form, 'formatShortcutForDisplay(draft, true)', 'ShortcutField Mac keycap preview')
 })
 
 console.log(`shortcut-ui：${passed} 项通过`)

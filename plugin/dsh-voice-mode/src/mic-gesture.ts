@@ -646,3 +646,42 @@ export function pushCaptionHistory(history: readonly string[], text: string, max
 export function shouldSkipDraftWriteback(quoteCount: number, attachCount: number): boolean {
   return quoteCount > 0 || attachCount > 0
 }
+
+export const FIRST_USE_HINT_BASE = 'dshvm-first-use-hint-seen'
+
+/** 按交互模式隔离首次使用引导存储键：toggle 复用历史键免打扰老用户，hold/once 首次切换时独立展示引导。 */
+export function firstUseHintKey(mode: string, base = FIRST_USE_HINT_BASE): string {
+  if (mode === 'hold') return `${base}:hold`
+  if (mode === 'once') return `${base}:once`
+  return base
+}
+
+/** 将存储格式快捷键（如 Ctrl+Shift+V / Alt+Enter）转换为当前系统的可读键位串，消除 Mac 上 Ctrl 与 Cmd 混淆。 */
+export function formatShortcutForDisplay(raw: string, isMac: boolean): string {
+  const clean = String(raw ?? '').trim()
+  if (!clean) return ''
+  const parts = clean.split('+').map((p) => p.trim()).filter(Boolean)
+  if (parts.length === 0) return ''
+  const mapped = parts.map((p) => {
+    const low = p.toLowerCase()
+    if (isMac) {
+      if (low === 'ctrl' || low === 'control') return '\u2303 Control'
+      if (low === 'alt' || low === 'option') return '\u2325 Option'
+      if (low === 'shift') return '\u21e7 Shift'
+      if (low === 'cmd' || low === 'meta' || low === 'command') return '\u2318 Command'
+      if (low === 'enter' || low === 'return') return 'Return'
+      if (low === 'space') return 'Space'
+      if (low === 'tab') return 'Tab'
+      return p.length === 1 ? p.toUpperCase() : p
+    }
+    if (low === 'ctrl' || low === 'control') return 'Ctrl'
+    if (low === 'alt' || low === 'option') return 'Alt'
+    if (low === 'shift') return 'Shift'
+    if (low === 'cmd' || low === 'meta' || low === 'command') return 'Win/Super'
+    if (low === 'enter' || low === 'return') return 'Enter'
+    if (low === 'space') return 'Space'
+    if (low === 'tab') return 'Tab'
+    return p.length === 1 ? p.toUpperCase() : p
+  })
+  return mapped.join(isMac ? ' + ' : '+')
+}
