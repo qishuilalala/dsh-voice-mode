@@ -329,7 +329,7 @@ packages:
     resolution: {integrity: sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==}
 
   '@voice-mode/core@file:vendor/voice-mode-core-0.1.0.tgz':
-    resolution: {integrity: sha512-B3ESlrTFoKd4bWwe9H+CFPGUNQB3uT7vROs2zrWggXdHwtKQmSLrWbYPPBxQfIObOOvIKWsGClB2cB0uwohsIQ==, tarball: file:vendor/voice-mode-core-0.1.0.tgz}
+    resolution: {integrity: sha512-/nI1MWeUvOvDxUpqfecRYc39UatLaqIxaO2HCVTc69yO0Xmr4oNA3djIGSbIFTyOpH3oNdkfQKq3DpxQXcgBiQ==, tarball: file:vendor/voice-mode-core-0.1.0.tgz}
     version: 0.1.0
 
   agent-base@6.0.0:
