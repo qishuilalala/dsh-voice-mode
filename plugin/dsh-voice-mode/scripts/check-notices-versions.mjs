@@ -8,7 +8,8 @@ import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 
 const root = join(dirname(new URL(import.meta.url).pathname), '..')
-const lock = readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8')
+const lock = readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8').replace(/\r\n/g, '\n')
+const packages = lock.split(/^packages:\n/m, 2)[1]?.split(/^snapshots:\n/m, 1)[0] ?? ''
 const { devDependencies } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const rows = [...readFileSync(join(root, 'THIRD_PARTY_NOTICES.md'), 'utf8').matchAll(/^\| (\S+) \| (\S+) \| [^|]+ \|$/gm)]
   .filter((r) => r[1] !== 'Package' && !/^-+$/.test(r[1]))
@@ -17,7 +18,11 @@ const bad = rows.filter(([, name, version]) => {
   const specifier = devDependencies[name]
   if (specifier?.startsWith('file:./vendor/')) {
     const resolution = specifier.replace('file:./', 'file:')
-    return !resolution.endsWith(`-${version}.tgz`) || !lock.includes(`\n  '${name}@${resolution}':`)
+    const [, entry] = packages.split(`\n  '${name}@${resolution}':\n`, 2)
+    if (!entry) return true
+    const fields = entry.split(/\n  \S/, 1)[0].split('\n')
+    return !fields.includes(`    version: ${version}`) ||
+      !fields.some((field) => field.startsWith('    resolution: {') && field.endsWith(`, tarball: ${resolution}}`))
   }
   return !new RegExp(`^  '?${name.replace(/[/.]/g, '\\$&')}@${version.replace(/\./g, '\\.')}[('\\s:]`, 'm').test(lock)
 })
