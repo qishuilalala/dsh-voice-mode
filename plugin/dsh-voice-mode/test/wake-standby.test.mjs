@@ -122,7 +122,7 @@ t('② wake 分支三条真机不变量（自聊守卫 / prePad 起始音 / 尾�
     'wake 分支缺 isPlaying 自聊守卫——TTS 回声进待机段，朗读后首次 partial 上传「AI 的话+唤醒词」，头部锚定必失配',
   )
   assert.ok(
-    /for \(const p of prePad\) segment\.push\(p\)/.test(block),
+    /for \(const (\w+) of prePad\) segment\.push\(\1\)/.test(block),
     'wake 分支缺 prePad 起始音补齐——唤醒词弱起音会被门限切掉',
   )
   assert.ok(

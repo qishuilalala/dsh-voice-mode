@@ -59,44 +59,386 @@ function resampleLinear(src, srcRate, dstRate) {
   return out;
 }
 
-// src/redact.ts
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/asr-replacements.js
+var REPLACEMENTS_MAX_PAYLOAD_BYTES = 12e3;
+var UTF8_ENCODER = new TextEncoder();
+function replacementsPayloadBytes(rules) {
+  return UTF8_ENCODER.encode(JSON.stringify(rules ?? [])).length;
+}
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/emotion.js
+var EMOTION_TAG_PATTERN = "<\\s*(break\\s+(?<ms>\\d+)\\s*ms|whisper|\\/whisper|laugh|sigh|emphasis)\\s*>";
+var TAG_RE = new RegExp(EMOTION_TAG_PATTERN, "gi");
+var STRIP_RE = new RegExp(EMOTION_TAG_PATTERN, "gi");
+var ANY_EMOTION_CUE_RE = new RegExp(EMOTION_TAG_PATTERN, "i");
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/redact.js
 var PREFIXED = [
   { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
   { re: /\b(Basic\s+)[A-Za-z0-9+/=-]{8,}/gi, to: "$1<redacted>" },
   { re: /\b((?:api[-_]?key|x-api-key)\s*[:=]\s*)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
-  // URL 内嵌凭据（https://user:pass@host）与查询参数密钥（?api_key=... / &token=... / &key=...）
   { re: /(https?:\/\/)([^:@/\s]+:[^@/\s]+)(@)/gi, to: "$1<redacted>$3" },
   { re: /([?&](?:api[_-]?key|access_token|token|key)=)([^&\s#]+)/gi, to: "$1<redacted>" },
-  // JSON 形态：{"apiKey":"..."} / {"mimoApiKey":"..."} / {"openaiApiKey":"..."} / {"token":"..."}（只遮引号内的值）
+  // Matches both complete JSON string values and values truncated before the closing quote.
   {
-    re: /("(?:[a-zA-Z0-9_-]*?(?:api[_-]?key|token|secret|password))"\s*:\s*")([^"\\]{6,})(")/gi,
+    re: /("(?:[a-zA-Z0-9_-]*?(?:api[_-]?key|token|secret|password))"\s*:\s*")([^"\\]{6,})("|$)/gi,
     to: "$1<redacted>$3"
   }
 ];
 var BARE = [
+  /\bsk-(?:proj|live|test|ant)-[A-Za-z0-9._-]{8,}/g,
   /\bsk[-_][A-Za-z0-9._-]{8,}/g,
-  // 更多厂商前缀（2026-11-20 审计实测：Groq 的 gsk_ 原样漏出，而 Groq 就在本仓预设里）。
   /\bgsk_[A-Za-z0-9._-]{8,}/g,
-  /\bsk-(?:proj|live|test)-[A-Za-z0-9._-]{8,}/g,
-  /\brk_(?:live|test)_[A-Za-z0-9]{8,}/g,
+  /\brk_(?:live|test)_[A-Za-z0-9._-]{8,}/g,
   /\bAIza[A-Za-z0-9._-]{10,}/g,
-  /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
-  // 通用兜底：≥20 连续 base64-ish 字符，要求**同时含大写、小写与数字**（真密钥的典型特征），
-  // 且排除纯十六进制（SHA256/MD5 是排障信息）。这样不会吃掉全小写的模型名、
-  // 也不会吃掉被 - / 分隔的 UUID 与路径。
-  // 注意：字符类**不含 '/'**——路径与 provider/model:voice 形态都靠 '/' 分隔，含进来会误伤排障信息。
-  // 豁免仅限 64 位 sha256（模型摘要）；32 位 hex 也可能是 key（审计实测漏遮）。
+  /\bgh[pousr]_[A-Za-z0-9_]{10,}/g,
+  // Mixed-case + digit high-entropy token (>=20 chars); excludes 64-hex SHA256 digests and '/' paths.
   /\b(?![0-9a-fA-F]{64}\b)(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[0-9])[A-Za-z0-9+=_-]{20,}\b/g,
-  // 32 位 hex（md5 形状）也可能是 key：通用规则要求大小写混合，纯小写 hex 会被漏掉。
-  // 64 位 sha256 不在此列（模型摘要要保留排障）。
+  // 32-hex keys (MD5-shaped secrets); 64-hex SHA256 digests remain intact.
   /\b[0-9a-f]{32}\b/gi
 ];
+function coerceText(value) {
+  if (typeof value === "string")
+    return value;
+  if (value === null || value === void 0)
+    return "";
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  if (value instanceof Error)
+    return value.message;
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return "";
+  }
+}
 function redactSecrets(text) {
-  let out = typeof text === "string" ? text : String(text ?? "");
-  for (const { re, to } of PREFIXED) out = out.replace(re, to);
-  for (const re of BARE) out = out.replace(re, "<redacted>");
+  let out = coerceText(text);
+  for (const { re, to } of PREFIXED)
+    out = out.replace(re, to);
+  for (const re of BARE)
+    out = out.replace(re, "<redacted>");
   return out;
 }
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/engine-kind.js
+var CLOUD_TTS_ENGINE_KINDS = ["openai-compat", "mimo"];
+function isCloudTtsEngine(value) {
+  return CLOUD_TTS_ENGINE_KINDS.includes(value);
+}
+function isThirdPartyTtsEngine(value) {
+  return value === "openai-compat" || value === "mimo";
+}
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/voice-catalog.js
+var MIMO_VOICES = [
+  "mimo_default",
+  "\u51B0\u7CD6",
+  "\u8309\u8389",
+  "\u82CF\u6253",
+  "\u767D\u6866",
+  "Mia",
+  "Chloe",
+  "Milo",
+  "Dean"
+];
+var VITS_SPEAKERS = [
+  { name: "suyingxue", sid: 0, zh: "\u7D20\u6620\u96EA", en: "Su Yingxue", gender: "F" },
+  { name: "gunian", sid: 1, zh: "\u987E\u5FF5", en: "Gu Nian", gender: "M" },
+  { name: "fushiyu", sid: 2, zh: "\u5085\u65AF\u9047", en: "Fu Siyu", gender: "F" },
+  { name: "bingjiao", sid: 3, zh: "\u51B0\u5A07", en: "Bing Jiao", gender: "M" },
+  { name: "bazong", sid: 4, zh: "\u9738\u603B", en: "Ba Zong", gender: "M" }
+];
+var KOKORO_F0 = [
+  224,
+  189,
+  154,
+  261,
+  226,
+  222,
+  220,
+  229,
+  198,
+  186,
+  212,
+  293,
+  233,
+  161,
+  247,
+  207,
+  218,
+  216,
+  220,
+  238,
+  242,
+  229,
+  198,
+  286,
+  211,
+  190,
+  264,
+  261,
+  226,
+  147,
+  216,
+  240,
+  233,
+  188,
+  222,
+  247,
+  253,
+  270,
+  276,
+  276,
+  279,
+  320,
+  247,
+  296,
+  276,
+  235,
+  139,
+  240,
+  282,
+  282,
+  238,
+  226,
+  273,
+  216,
+  286,
+  270,
+  198,
+  179,
+  117,
+  130,
+  114,
+  128,
+  108,
+  106,
+  122,
+  136,
+  190,
+  112,
+  108,
+  128,
+  131,
+  111,
+  110,
+  132,
+  138,
+  189,
+  137,
+  148,
+  151,
+  127,
+  135,
+  111,
+  138,
+  114,
+  125,
+  158,
+  128,
+  156,
+  132,
+  162,
+  131,
+  136,
+  142,
+  124,
+  129,
+  136,
+  126,
+  135,
+  161,
+  150,
+  124,
+  104,
+  124
+];
+var KOKORO_NAMED = {
+  48: { name: "zf_xiaobei", zh: "\u5C0F\u5317", en: "Xiaobei" },
+  49: { name: "zf_xiaoni", zh: "\u5C0F\u59AE", en: "Xiaoni" },
+  50: { name: "zf_xiaoxiao", zh: "\u5C0F\u5C0F", en: "Xiaoxiao" },
+  51: { name: "zf_xiaoyi", zh: "\u5C0F\u827A", en: "Xiaoyi" }
+};
+var KOKORO_POPULAR_MALE = {
+  62: "deep",
+  68: "rich",
+  75: "clear",
+  76: "magnetic"
+};
+var KOKORO_PINNED = [62, 68, 75, 76];
+var KOKORO_VOICES = [
+  ...KOKORO_PINNED.map((sid) => ({ name: KOKORO_NAMED[sid]?.name ?? String(sid), sid })),
+  ...KOKORO_F0.map((_, sid) => ({ name: KOKORO_NAMED[sid]?.name ?? String(sid), sid })).filter((v) => !KOKORO_PINNED.includes(v.sid))
+];
+var SILICONFLOW_SYSTEM_VOICES = [
+  "alex",
+  "benjamin",
+  "charles",
+  "david",
+  "anna",
+  "bella",
+  "claire",
+  "diana"
+];
+var OPENAI_API_VOICES = [
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "fable",
+  "marin",
+  "cedar",
+  "nova",
+  "onyx",
+  "sage",
+  "shimmer"
+];
+var TTS_OPENAI_PRESETS = {
+  "siliconflow-cosyvoice2": {
+    id: "siliconflow-cosyvoice2",
+    label: "SiliconFlow \xB7 CosyVoice2",
+    region: "cn",
+    baseUrl: "https://api.siliconflow.cn/v1",
+    model: "FunAudioLLM/CosyVoice2-0.5B",
+    voice: "FunAudioLLM/CosyVoice2-0.5B:alex",
+    voices: SILICONFLOW_SYSTEM_VOICES.map((v) => `FunAudioLLM/CosyVoice2-0.5B:${v}`),
+    requiresKey: true
+  },
+  "siliconflow-fish": {
+    id: "siliconflow-fish",
+    label: "SiliconFlow \xB7 Fish Speech 1.5",
+    region: "cn",
+    baseUrl: "https://api.siliconflow.cn/v1",
+    model: "fishaudio/fish-speech-1.5",
+    voice: "fishaudio/fish-speech-1.5:anna",
+    voices: SILICONFLOW_SYSTEM_VOICES.map((v) => `fishaudio/fish-speech-1.5:${v}`),
+    requiresKey: true
+  },
+  "openrouter-openai": {
+    id: "openrouter-openai",
+    label: "OpenRouter \xB7 GPT-4o Mini TTS",
+    region: "global",
+    baseUrl: "https://openrouter.ai/api/v1",
+    model: "openai/gpt-4o-mini-tts-2025-12-15",
+    voice: "alloy",
+    voices: [...OPENAI_API_VOICES],
+    requiresKey: true
+  },
+  "openai-official": {
+    id: "openai-official",
+    label: "OpenAI \xB7 GPT-4o Mini TTS",
+    region: "global",
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4o-mini-tts",
+    voice: "marin",
+    voices: [...OPENAI_API_VOICES],
+    requiresKey: true
+  },
+  "groq-playai": {
+    id: "groq-playai",
+    label: "Groq \xB7 PlayAI TTS",
+    region: "global",
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "playai-tts",
+    voice: "Fritz-PlayAI",
+    voices: ["Fritz-PlayAI"],
+    requiresKey: true
+  },
+  "selfhosted-kokoro": {
+    id: "selfhosted-kokoro",
+    label: "Self-hosted \xB7 Kokoro-FastAPI",
+    region: "local",
+    baseUrl: "http://127.0.0.1:8880/v1",
+    model: "kokoro",
+    voice: "zf_xiaobei",
+    voices: ["zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi"],
+    requiresKey: false
+  },
+  "selfhosted-vllm": {
+    id: "selfhosted-vllm",
+    label: "Self-hosted \xB7 vLLM-Omni",
+    region: "local",
+    baseUrl: "http://127.0.0.1:8000/v1",
+    model: "tts-1",
+    voice: "default",
+    voices: ["default"],
+    requiresKey: false
+  }
+};
+var EDGE_COMMON_VOICES = [
+  { v: "zh-CN-XiaoxiaoNeural", zh: "\u6653\u6653", en: "Xiaoxiao", gender: "F", accent: "mandarin" },
+  { v: "zh-CN-XiaoyiNeural", zh: "\u6653\u4F0A", en: "Xiaoyi", gender: "F", accent: "mandarin" },
+  { v: "zh-CN-YunxiNeural", zh: "\u4E91\u5E0C", en: "Yunxi", gender: "M", accent: "mandarin" },
+  { v: "zh-CN-YunjianNeural", zh: "\u4E91\u5065", en: "Yunjian", gender: "M", accent: "mandarin" },
+  { v: "zh-CN-YunyangNeural", zh: "\u4E91\u626C", en: "Yunyang", gender: "M", accent: "mandarin" },
+  { v: "zh-CN-YunxiaNeural", zh: "\u4E91\u590F", en: "Yunxia", gender: "M", accent: "mandarin" },
+  { v: "zh-CN-liaoning-XiaobeiNeural", zh: "\u5C0F\u5317", en: "Xiaobei", gender: "F", accent: "northeast" },
+  { v: "zh-CN-shaanxi-XiaoniNeural", zh: "\u5C0F\u59AE", en: "Xiaoni", gender: "F", accent: "shaanxi" },
+  { v: "zh-HK-HiuMaanNeural", zh: "\u6653\u66FC", en: "HiuMaan", gender: "F", accent: "cantonese" },
+  { v: "zh-HK-WanLungNeural", zh: "\u4E91\u9F99", en: "WanLung", gender: "M", accent: "cantonese" },
+  { v: "zh-TW-HsiaoYuNeural", zh: "\u5C0F\u96E8", en: "HsiaoYu", gender: "F", accent: "taiwan" },
+  { v: "zh-TW-YunJheNeural", zh: "\u4E91\u54F2", en: "YunJhe", gender: "M", accent: "taiwan" },
+  { v: "en-US-AriaNeural", zh: "Aria", en: "Aria", gender: "F", accent: "english" },
+  { v: "en-US-GuyNeural", zh: "Guy", en: "Guy", gender: "M", accent: "english" }
+];
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/model-manifest.js
+var UTF8_DECODER = new TextDecoder("utf-8");
+var NODE_PATH_TARGET = ["var nodePath=req", 'uire("path");'].join("");
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/http-stream.js
+var UTF8_DECODER2 = new TextDecoder("utf-8");
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/llm-router.js
+var p = (id, label, protocol, defaultBaseUrl, defaultModel, requiresKey) => ({ id, label, protocol, defaultBaseUrl, defaultModel, requiresKey });
+var LLM_PRESETS = {
+  deepseek: p("deepseek", "DeepSeek", "openai-compat", "https://api.deepseek.com/v1", "deepseek-chat", true),
+  "dashscope-qwen": p("dashscope-qwen", "DashScope (Qwen)", "openai-compat", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus", true),
+  "volcengine-doubao": p("volcengine-doubao", "Volcengine Ark (Doubao)", "openai-compat", "https://ark.cn-beijing.volces.com/api/v3", "doubao-seed-1-6-250615", true),
+  "moonshot-kimi": p("moonshot-kimi", "Moonshot (Kimi)", "openai-compat", "https://api.moonshot.cn/v1", "moonshot-v1-8k", true),
+  siliconflow: p("siliconflow", "SiliconFlow", "openai-compat", "https://api.siliconflow.cn/v1", "Qwen/Qwen2.5-7B-Instruct", true),
+  openrouter: p("openrouter", "OpenRouter", "openai-compat", "https://openrouter.ai/api/v1", "openai/gpt-4o-mini", true),
+  openai: p("openai", "OpenAI", "openai-compat", "https://api.openai.com/v1", "gpt-4o-mini", true),
+  anthropic: p("anthropic", "Anthropic", "anthropic-messages", "https://api.anthropic.com/v1", "claude-sonnet-4-5", true),
+  ollama: p("ollama", "Ollama (Local)", "openai-compat", "http://127.0.0.1:11434/v1", "qwen2.5:7b", false),
+  lmstudio: p("lmstudio", "LM Studio (Local)", "openai-compat", "http://127.0.0.1:1234/v1", "local-model", false),
+  custom: p("custom", "Custom", "openai-compat", "", "", false)
+};
+var MAX_ERROR_BYTES = 8 * 1024;
+var MAX_FALLBACK_CONTENT_LENGTH = 1024 * 1024;
+var CORRECTION_FILLER_WORDS = "\u5F53\u7136\u53EF\u4EE5|\u5F53\u7136|\u597D\u5427|\u597D\u7684?|\u884C\u5427|\u884C|\u662F\u7684|\u55EF|\u6536\u5230|\u660E\u767D\u4E86|\u77E5\u9053\u4E86|Thank you|Of course|Got it|OK|Okay|Sure|Certainly|Alright|Understood|Hello|Hi|Yes|Thanks";
+var CORRECTION_FILLER_PREFIX_RE = new RegExp(`^(?:(?:${CORRECTION_FILLER_WORDS})(?:\\s*[,\uFF0C\u3001:\uFF1A.\u3002!\uFF01?\uFF1F)\uFF09]|\\s))+`, "i");
+var CORRECTION_PURE_FILLER_RE = new RegExp(`^(?:(?:${CORRECTION_FILLER_WORDS})(?:\\s*[,\uFF0C\u3001:\uFF1A.\u3002!\uFF01?\uFF1F)\uFF09]\\s*|\\s+))*(?:${CORRECTION_FILLER_WORDS})\\s*$`, "i");
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/tts-engines.js
+var MAX_AUDIO_BYTES = 16 * 1024 * 1024;
+var MAX_MIMO_JSON_BYTES = 24 * 1024 * 1024;
+var MAX_TTS_ERROR_BYTES = 8 * 1024;
+var UTF8_DECODER3 = new TextDecoder("utf-8");
+var B64_TABLE = (() => {
+  const table = new Int8Array(128).fill(-1);
+  const std = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  for (let i = 0; i < std.length; i += 1) {
+    table[std.charCodeAt(i)] = i;
+  }
+  table[45] = 62;
+  table[95] = 63;
+  return table;
+})();
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/asr-engines.js
+var MAX_ASR_AUDIO_BYTES = 25 * 1024 * 1024;
+var MAX_ASR_RESPONSE_BYTES = 1 * 1024 * 1024;
+var MAX_ASR_ERROR_BYTES = 8 * 1024;
+var UTF8_ENCODER2 = new TextEncoder();
+var UTF8_DECODER4 = new TextDecoder("utf-8");
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/daemon-client.js
+var MAX_HEALTH_BYTES = 64 * 1024;
+var UTF8_DECODER5 = new TextDecoder("utf-8");
 
 // src/wakeword.ts
 var WAKE_LEAD_CHARS = 3;
@@ -131,10 +473,10 @@ function wakePrefixLength(text, wakeWord) {
   if (!w || w.length < 2) return 0;
   const raw = String(text ?? "");
   for (let i = 1; i <= raw.length; i++) {
-    const p = normalizeWake(raw.slice(0, i));
-    if (p.length < w.length) continue;
-    if (p.length > w.length + WAKE_MAX_EDITS) break;
-    if (editDistanceWithin(p, w, WAKE_MAX_EDITS) <= WAKE_MAX_EDITS) return i;
+    const p2 = normalizeWake(raw.slice(0, i));
+    if (p2.length < w.length) continue;
+    if (p2.length > w.length + WAKE_MAX_EDITS) break;
+    if (editDistanceWithin(p2, w, WAKE_MAX_EDITS) <= WAKE_MAX_EDITS) return i;
   }
   return 0;
 }
@@ -147,18 +489,18 @@ function stripWakePrefix(text, wakeWord) {
 function matchWakeWord(partial, wakeWord) {
   const w = normalizeWake(wakeWord);
   if (!w) return false;
-  const p = normalizeWake(partial);
-  if (!p) return false;
-  if (p.startsWith(w)) return true;
+  const p2 = normalizeWake(partial);
+  if (!p2) return false;
+  if (p2.startsWith(w)) return true;
   if (w.length < 2) return false;
-  const maxStart = Math.min(WAKE_LEAD_CHARS, p.length - 1);
+  const maxStart = Math.min(WAKE_LEAD_CHARS, p2.length - 1);
   for (let start = 0; start <= maxStart; start++) {
-    const available = p.length - start;
+    const available = p2.length - start;
     const minLen = Math.max(1, w.length - WAKE_MAX_EDITS);
     const maxLen = Math.min(w.length + WAKE_MAX_EDITS, available);
     for (let len = minLen; len <= maxLen; len++) {
       if (len < 2 && w.length >= 2) continue;
-      const window2 = p.slice(start, start + len);
+      const window2 = p2.slice(start, start + len);
       if (editDistanceWithin(window2, w, WAKE_MAX_EDITS) <= WAKE_MAX_EDITS) return true;
     }
   }
@@ -480,9 +822,9 @@ function normalizeBackchannel(text) {
   return String(text ?? "").replace(/[\s\u3000]+/g, "").toLowerCase().replace(/[，。！？!?；;、,.]/g, "");
 }
 function matchBackchannel(partial) {
-  const p = normalizeBackchannel(partial);
-  if (!p || p.length > 4) return false;
-  return BACKCHANNEL_WORDS.has(p);
+  const p2 = normalizeBackchannel(partial);
+  if (!p2 || p2.length > 4) return false;
+  return BACKCHANNEL_WORDS.has(p2);
 }
 var SAMPLE_RATE2 = 16e3;
 var SPEECH_RMS = 0.015;
@@ -1196,7 +1538,7 @@ function createAsrEngine(config, sessionId) {
         prePad = [];
       } else if (rms > SPEECH_RMS) {
         if (segment.length === 0) {
-          for (const p of prePad) segment.push(p);
+          for (const p2 of prePad) segment.push(p2);
         }
         prePad = [];
         segmentMs += durationMs;
@@ -1224,7 +1566,7 @@ function createAsrEngine(config, sessionId) {
           detectGeneration++;
           utteranceEndAt = null;
           setState("speech");
-          for (const p of prePad) segment.push(p);
+          for (const p2 of prePad) segment.push(p2);
           prePad = [];
         }
         speechMs += durationMs;
@@ -3170,10 +3512,10 @@ function firstUseHintKey(mode, base = FIRST_USE_HINT_BASE) {
 function formatShortcutForDisplay(raw, isMac) {
   const clean2 = String(raw ?? "").trim();
   if (!clean2) return "";
-  const parts = clean2.split("+").map((p) => p.trim()).filter(Boolean);
+  const parts = clean2.split("+").map((p2) => p2.trim()).filter(Boolean);
   if (parts.length === 0) return "";
-  const mapped = parts.map((p) => {
-    const low = p.toLowerCase();
+  const mapped = parts.map((p2) => {
+    const low = p2.toLowerCase();
     if (isMac) {
       if (low === "ctrl" || low === "control") return "\u2303 Control";
       if (low === "alt" || low === "option") return "\u2325 Option";
@@ -3182,7 +3524,7 @@ function formatShortcutForDisplay(raw, isMac) {
       if (low === "enter" || low === "return") return "Return";
       if (low === "space") return "Space";
       if (low === "tab") return "Tab";
-      return p.length === 1 ? p.toUpperCase() : p;
+      return p2.length === 1 ? p2.toUpperCase() : p2;
     }
     if (low === "ctrl" || low === "control") return "Ctrl";
     if (low === "alt" || low === "option") return "Alt";
@@ -3191,22 +3533,30 @@ function formatShortcutForDisplay(raw, isMac) {
     if (low === "enter" || low === "return") return "Enter";
     if (low === "space") return "Space";
     if (low === "tab") return "Tab";
-    return p.length === 1 ? p.toUpperCase() : p;
+    return p2.length === 1 ? p2.toUpperCase() : p2;
   });
   return mapped.join(isMac ? " + " : "+");
 }
 
 // src/engine-kind.ts
-var TTS_ENGINE_KINDS = ["vits", "kokoro", "edge", "openai", "mimo"];
-var CLOUD_ENGINE_KINDS = ["edge", "openai", "mimo"];
-function asTtsEngineKind(value) {
-  return TTS_ENGINE_KINDS.includes(value) ? value : "vits";
+var TTS_ENGINE_KINDS2 = ["vits", "kokoro", "edge", "openai", "mimo"];
+var DSH_TO_CORE_TTS = {
+  vits: "vits-wasm",
+  kokoro: "kokoro-daemon",
+  openai: "openai-compat",
+  mimo: "mimo"
+};
+function toCoreTtsKind(value) {
+  return typeof value === "string" && Object.hasOwn(DSH_TO_CORE_TTS, value) ? DSH_TO_CORE_TTS[value] : void 0;
+}
+function asTtsEngineKind2(value) {
+  return TTS_ENGINE_KINDS2.includes(value) ? value : "vits";
 }
 function isCloudEngine(value) {
-  return CLOUD_ENGINE_KINDS.includes(value);
+  return value === "edge" || isCloudTtsEngine(toCoreTtsKind(value));
 }
 function isThirdPartyEngine(value) {
-  return value === "openai" || value === "mimo";
+  return isThirdPartyTtsEngine(toCoreTtsKind(value));
 }
 
 // src/voice-resolution.ts
@@ -3229,166 +3579,6 @@ function getRuntimeBoot() {
 // src/settings-form.tsx
 var React = __toESM(require("react"), 1);
 var import_react2 = require("react");
-
-// src/voice-catalog.ts
-var MIMO_VOICES = [
-  "mimo_default",
-  "\u51B0\u7CD6",
-  "\u8309\u8389",
-  "\u82CF\u6253",
-  "\u767D\u6866",
-  "Mia",
-  "Chloe",
-  "Milo",
-  "Dean"
-];
-var EDGE_COMMON_VOICES = [
-  { v: "zh-CN-XiaoxiaoNeural", zh: "\u6653\u6653", en: "Xiaoxiao", gender: "F", accent: "mandarin" },
-  { v: "zh-CN-XiaoyiNeural", zh: "\u6653\u4F0A", en: "Xiaoyi", gender: "F", accent: "mandarin" },
-  { v: "zh-CN-YunxiNeural", zh: "\u4E91\u5E0C", en: "Yunxi", gender: "M", accent: "mandarin" },
-  { v: "zh-CN-YunjianNeural", zh: "\u4E91\u5065", en: "Yunjian", gender: "M", accent: "mandarin" },
-  { v: "zh-CN-YunyangNeural", zh: "\u4E91\u626C", en: "Yunyang", gender: "M", accent: "mandarin" },
-  { v: "zh-CN-YunxiaNeural", zh: "\u4E91\u590F", en: "Yunxia", gender: "M", accent: "mandarin" },
-  { v: "zh-CN-liaoning-XiaobeiNeural", zh: "\u5C0F\u5317", en: "Xiaobei", gender: "F", accent: "northeast" },
-  { v: "zh-CN-shaanxi-XiaoniNeural", zh: "\u5C0F\u59AE", en: "Xiaoni", gender: "F", accent: "shaanxi" },
-  { v: "zh-HK-HiuMaanNeural", zh: "\u6653\u66FC", en: "HiuMaan", gender: "F", accent: "cantonese" },
-  { v: "zh-HK-WanLungNeural", zh: "\u4E91\u9F99", en: "WanLung", gender: "M", accent: "cantonese" },
-  { v: "zh-TW-HsiaoYuNeural", zh: "\u5C0F\u96E8", en: "HsiaoYu", gender: "F", accent: "taiwan" },
-  { v: "zh-TW-YunJheNeural", zh: "\u4E91\u54F2", en: "YunJhe", gender: "M", accent: "taiwan" },
-  { v: "en-US-AriaNeural", zh: "Aria", en: "Aria", gender: "F", accent: "english" },
-  { v: "en-US-GuyNeural", zh: "Guy", en: "Guy", gender: "M", accent: "english" }
-];
-var VITS_SPEAKERS = [
-  { name: "suyingxue", sid: 0, zh: "\u7D20\u6620\u96EA", en: "Su Yingxue", gender: "F" },
-  { name: "gunian", sid: 1, zh: "\u987E\u5FF5", en: "Gu Nian", gender: "M" },
-  { name: "fushiyu", sid: 2, zh: "\u5085\u65AF\u9047", en: "Fu Siyu", gender: "F" },
-  { name: "bingjiao", sid: 3, zh: "\u51B0\u5A07", en: "Bing Jiao", gender: "M" },
-  { name: "bazong", sid: 4, zh: "\u9738\u603B", en: "Ba Zong", gender: "M" }
-];
-var KOKORO_F0 = [
-  224,
-  189,
-  154,
-  261,
-  226,
-  222,
-  220,
-  229,
-  198,
-  186,
-  212,
-  293,
-  233,
-  161,
-  247,
-  207,
-  218,
-  216,
-  220,
-  238,
-  242,
-  229,
-  198,
-  286,
-  211,
-  190,
-  264,
-  261,
-  226,
-  147,
-  216,
-  240,
-  233,
-  188,
-  222,
-  247,
-  253,
-  270,
-  276,
-  276,
-  279,
-  320,
-  247,
-  296,
-  276,
-  235,
-  139,
-  240,
-  282,
-  282,
-  238,
-  226,
-  273,
-  216,
-  286,
-  270,
-  198,
-  179,
-  117,
-  130,
-  114,
-  128,
-  108,
-  106,
-  122,
-  136,
-  190,
-  112,
-  108,
-  128,
-  131,
-  111,
-  110,
-  132,
-  138,
-  189,
-  137,
-  148,
-  151,
-  127,
-  135,
-  111,
-  138,
-  114,
-  125,
-  158,
-  128,
-  156,
-  132,
-  162,
-  131,
-  136,
-  142,
-  124,
-  129,
-  136,
-  126,
-  135,
-  161,
-  150,
-  124,
-  104,
-  124
-];
-var KOKORO_NAMED = {
-  48: { name: "zf_xiaobei", zh: "\u5C0F\u5317", en: "Xiaobei" },
-  49: { name: "zf_xiaoni", zh: "\u5C0F\u59AE", en: "Xiaoni" },
-  50: { name: "zf_xiaoxiao", zh: "\u5C0F\u5C0F", en: "Xiaoxiao" },
-  51: { name: "zf_xiaoyi", zh: "\u5C0F\u827A", en: "Xiaoyi" }
-};
-var KOKORO_POPULAR_MALE = {
-  62: "deep",
-  68: "rich",
-  75: "clear",
-  76: "magnetic"
-};
-var KOKORO_PINNED = [62, 68, 75, 76];
-var KOKORO_VOICES = [
-  ...KOKORO_PINNED.map((sid) => ({ name: KOKORO_NAMED[sid]?.name ?? String(sid), sid })),
-  ...KOKORO_F0.map((_, sid) => ({ name: KOKORO_NAMED[sid]?.name ?? String(sid), sid })).filter(
-    (v) => !KOKORO_PINNED.includes(v.sid)
-  )
-];
 
 // src/voice-labels.ts
 var SEP = " \xB7 ";
@@ -4353,10 +4543,6 @@ var AsrReplacementSchema = Schema.object({
   from: Schema.array(Schema.string()).description('Spellings the recognizer produces, e.g. ["sakeena"]; case-insensitive, whitespace between Latin and CJK text ignored.'),
   to: Schema.string().description('The spelling you want, e.g. "Sakina".')
 });
-var REPLACEMENTS_MAX_PAYLOAD_BYTES = 12e3;
-function replacementsPayloadBytes(rules) {
-  return new TextEncoder().encode(JSON.stringify(rules ?? [])).length;
-}
 
 // src/settings-form.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
@@ -6526,7 +6712,7 @@ function VoiceSettingsCard({
   (0, import_react2.useEffect)(() => {
     refreshSecretKeys();
   }, [value.ttsEngine]);
-  const engine = asTtsEngineKind(value.ttsEngine);
+  const engine = asTtsEngineKind2(value.ttsEngine);
   const [edgeRaw, setEdgeRaw] = (0, import_react2.useState)(null);
   (0, import_react2.useEffect)(() => {
     if (engine !== "edge") return;
@@ -6715,7 +6901,7 @@ function VoiceSettingsCard({
               score: scope,
               field: "ttsEngine",
               value: engine,
-              options: TTS_ENGINE_KINDS.map((k) => ({ v: k, label: ENGINE_NAME[k]() })),
+              options: TTS_ENGINE_KINDS2.map((k) => ({ v: k, label: ENGINE_NAME[k]() })),
               onSelect: (v) => {
                 if (v !== engine) {
                   void scope.set("voice", ENGINE_DEFAULT_VOICE[String(v)] ?? "zh-CN-XiaoxiaoNeural");
@@ -7060,9 +7246,9 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
         if (!ok && !disposed && writing === 0) await load();
         return ok;
       };
-      const p = writeChain.then(runPost, runPost);
-      writeChain = p.then(() => void 0, () => void 0);
-      return p;
+      const p2 = writeChain.then(runPost, runPost);
+      writeChain = p2.then(() => void 0, () => void 0);
+      return p2;
     },
     dispose: () => {
       disposed = true;
@@ -7125,8 +7311,8 @@ async function fetchPresetVoice(presetId) {
       if (!res.ok) return null;
       const data = await res.json();
       const next = {};
-      for (const [id, p] of Object.entries(data.presets ?? {})) {
-        if (typeof p?.voice === "string") next[id] = p.voice;
+      for (const [id, p2] of Object.entries(data.presets ?? {})) {
+        if (typeof p2?.voice === "string") next[id] = p2.voice;
       }
       presetVoiceCache = next;
     } catch {
@@ -7160,7 +7346,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "438f500";
+var BUILD_TAG = "3ce4714";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = (() => {
   try {
@@ -8062,8 +8248,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
     source.addEventListener("asr-progress", (e) => {
       try {
-        const p = JSON.parse(e.data);
-        ui.model = { file: p.file ?? "", percent: p.percent ?? 0 };
+        const p2 = JSON.parse(e.data);
+        ui.model = { file: p2.file ?? "", percent: p2.percent ?? 0 };
         notify();
       } catch {
       }
@@ -8076,9 +8262,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
     source.addEventListener("asr-notice", (e) => {
       try {
-        const p = JSON.parse(e.data);
+        const p2 = JSON.parse(e.data);
         if (!activeSessionId) return;
-        if (p.code === "sense_degraded") {
+        if (p2.code === "sense_degraded") {
           busApi.setNotice(t("senseDegradedNotice"));
         }
       } catch {
@@ -8086,9 +8272,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
     source.addEventListener("asr-error", (e) => {
       try {
-        const p = JSON.parse(e.data);
+        const p2 = JSON.parse(e.data);
         if (!activeSessionId) return;
-        ui.error = t("modelDownloadFail").replace("{file}", p.file ?? "");
+        ui.error = t("modelDownloadFail").replace("{file}", p2.file ?? "");
         ui.model = null;
         notify();
       } catch {
@@ -8096,23 +8282,23 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
     source.addEventListener("tts-retry", (e) => {
       try {
-        const p = JSON.parse(e.data);
-        if (p.sessionId !== activeSessionId) return;
+        const p2 = JSON.parse(e.data);
+        if (p2.sessionId !== activeSessionId) return;
         ttsRetryActive = true;
-        ui.ttsNotice = t("ttsRetryingNotice", { attempt: p.attempt ?? 2, max: p.maxAttempts ?? 3 });
+        ui.ttsNotice = t("ttsRetryingNotice", { attempt: p2.attempt ?? 2, max: p2.maxAttempts ?? 3 });
         notify();
       } catch {
       }
     });
     source.addEventListener("tts-skip", (e) => {
       try {
-        const p = JSON.parse(e.data);
-        if (p.sessionId !== activeSessionId) return;
+        const p2 = JSON.parse(e.data);
+        if (p2.sessionId !== activeSessionId) return;
         ttsRetryActive = false;
-        const down = (p.streak ?? 1) >= 2;
+        const down = (p2.streak ?? 1) >= 2;
         const msg = down ? t("ttsUnavailableNotice") : t("ttsSkipNotice");
         ui.ttsNotice = msg;
-        if (down && p.streak === 2) {
+        if (down && p2.streak === 2) {
           ui.error = msg;
           setTimeout(() => {
             if (ui.error === msg) {
@@ -8122,14 +8308,14 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
           }, 8e3);
         }
         notify();
-        debugLog("tts-skip", { text: (p.text ?? "").slice(0, 40), streak: p.streak });
+        debugLog("tts-skip", { text: (p2.text ?? "").slice(0, 40), streak: p2.streak });
       } catch {
       }
     });
     source.addEventListener("tts-error", (e) => {
       try {
-        const p = JSON.parse(e.data);
-        if (p.sessionId === activeSessionId) {
+        const p2 = JSON.parse(e.data);
+        if (p2.sessionId === activeSessionId) {
           const failMsg = t("ttsNoticeFail");
           ui.ttsNotice = failMsg;
           ui.error = failMsg;
@@ -8146,9 +8332,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
     source.addEventListener("tool", (e) => {
       try {
-        const p = JSON.parse(e.data);
-        if (p.sessionId) toolPending.add(p.sessionId);
-        if (p.sessionId === activeSessionId && ui.boot.toolBeep === true) playToolBeep();
+        const p2 = JSON.parse(e.data);
+        if (p2.sessionId) toolPending.add(p2.sessionId);
+        if (p2.sessionId === activeSessionId && ui.boot.toolBeep === true) playToolBeep();
       } catch {
       }
     });
@@ -9979,9 +10165,9 @@ function MicButton({
           pausedForHiddenRef.current = true;
           const eng = engineRef.current;
           const flushSid = sidRef.current;
-          const p = typeof eng.flushAndStop === "function" ? eng.flushAndStop(3e3) : eng.stop().then(() => false);
-          hiddenFlushRef.current = p;
-          void p.then((flushed) => {
+          const p2 = typeof eng.flushAndStop === "function" ? eng.flushAndStop(3e3) : eng.stop().then(() => false);
+          hiddenFlushRef.current = p2;
+          void p2.then((flushed) => {
             if (!flushed && lastPartialRef.current && sidRef.current === flushSid) {
               const cleaned = composeDraft(draftRef.current, lastPartialRef.current, "");
               lastPartialRef.current = "";
@@ -9994,7 +10180,7 @@ function MicButton({
             }
             if (pausedForHiddenRef.current) bus.setUi({ partial: "", levels: [] });
           }).finally(() => {
-            if (hiddenFlushRef.current === p) hiddenFlushRef.current = null;
+            if (hiddenFlushRef.current === p2) hiddenFlushRef.current = null;
           });
         }
       } else if (pausedForHiddenRef.current && localRef.current === "on") {
@@ -10219,12 +10405,12 @@ function MicButton({
     }
   };
   const onPointerMove = (e) => {
-    const p = holdPtrRef.current;
-    if (!p || p.id !== e.pointerId) return;
-    if (touchMenuTimerRef.current !== null && Math.abs(e.clientY - p.y) >= 12) {
+    const p2 = holdPtrRef.current;
+    if (!p2 || p2.id !== e.pointerId) return;
+    if (touchMenuTimerRef.current !== null && Math.abs(e.clientY - p2.y) >= 12) {
       clearTouchMenuTimer();
     }
-    if (p.y - e.clientY >= 40) {
+    if (p2.y - e.clientY >= 40) {
       holdPtrRef.current = null;
       toggleHoldRef.current = false;
       clearBreakTimer();
@@ -10235,15 +10421,15 @@ function MicButton({
     }
   };
   const onPointerUp = (e) => {
-    const p = holdPtrRef.current;
-    const action = pointerUpAction(p, { id: e.pointerId, button: e.button });
+    const p2 = holdPtrRef.current;
+    const action = pointerUpAction(p2, { id: e.pointerId, button: e.button });
     if (action === "ignore") return;
     holdPtrRef.current = null;
     clearTouchMenuTimer();
     clearBreakTimer();
-    if (action === "unarmed" || !p) return;
+    if (action === "unarmed" || !p2) return;
     setHolding(false);
-    const ms = Date.now() - p.t;
+    const ms = Date.now() - p2.t;
     if (pendingHoldRef.current) {
       pendingHoldReleaseRef.current = true;
       if (ms >= 250) {

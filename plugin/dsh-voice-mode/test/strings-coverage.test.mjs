@@ -281,8 +281,6 @@ const CJK_EXEMPT = {
   'strings.ts': '词典本身（zh 键值就是文案）',
   'asr.ts': '中文附和词表（运行时数据）',
   'prompts.ts': '中文提示词（发往模型的固定文案）',
-  'llm-correct.ts': '中文纠错提示词（发往模型的固定文案）',
-  'voice-catalog.ts': '中文音色名（运行时数据）',
   'tts-vits-worker.ts': '替换串里的中文顿号',
   'fixture-recorder.ts': '开发者录制工具（中文标注）',
 }

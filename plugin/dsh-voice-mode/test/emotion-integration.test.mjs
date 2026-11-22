@@ -30,7 +30,7 @@ await build({
     join(here, '..', 'src', 'segmenter.ts'),
   ],
   outdir: tmp,
-  bundle: false,
+  bundle: true,
   format: 'esm',
   platform: 'node',
   logLevel: 'silent',

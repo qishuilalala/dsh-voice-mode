@@ -18,7 +18,7 @@ const out = join(tmp, 'emotion.mjs')
 await build({
   entryPoints: [join(here, '..', 'src', 'emotion.ts')],
   outfile: out,
-  bundle: false,
+  bundle: true,
   format: 'esm',
   platform: 'node',
   logLevel: 'silent',

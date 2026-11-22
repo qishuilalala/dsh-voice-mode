@@ -109,6 +109,7 @@
     "@deepseek-ai/dsh-system-prompt": "0.1.5-rc.3",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
+    "@voice-mode/core": "file:./vendor/voice-mode-core-0.1.0.tgz",
     "esbuild": "^0.28.2",
     "msedge-tts": "^2.1.1",
     "playwright-core": "1.65.1",

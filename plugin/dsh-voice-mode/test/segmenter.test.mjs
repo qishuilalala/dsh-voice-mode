@@ -116,10 +116,10 @@ test('跨 delta 的小数和版本号不被拆句，流结束时输出悬挂句�
   assert.deepEqual(s.feed(' 然后继续。'), ['结果为3.', '然后继续。'])
 })
 
-test('英文缩写和 URL 仍按原有规则切句', () => {
+test('英文缩写切句与裸 URL 剥离（不把 URL 逐字符读出）', () => {
   const s = new SentenceSegmenter()
   assert.deepEqual(s.feed('See e.g. examples at https://a.b/c. Next'), [
-    'See e.g.', 'examples at https://a.b/c.',
+    'See e.g.', 'examples at',
   ])
   assert.deepEqual(s.flush(), ['Next'])
 })
@@ -156,12 +156,12 @@ t('流式切碎的 ``` 代码块整块不读（含跨 delta 的反引号与语�
   assert.ok(!/const|console/.test(all), `代码被念出：${all}`)
   assert.ok(all.includes('看下面的代码') && all.includes('改好了') && all.includes('下一步'), `正文丢失：${all}`)
 })
-t('未闭合代码块到流结束回退输出（不丢正文），且不影响下一回合', () => {
+t('未闭合代码块到流结束回退输出（剥离语言标识行、不丢正文），且不影响下一回合', () => {
   const s = new SentenceSegmenter()
   // 围栏内的内容在 feed 阶段不输出（未闭合 ≠ 已确认是代码块），块前文字先成句
   assert.deepEqual(s.feed('先说一句。```js\nlet x = 1;\n'), ['先说一句。'])
-  // 整回合未见闭合 → 流结束时把被抑制的内容回退输出，正文一句不丢
-  assert.deepEqual(s.flush(), ['js\nlet x 1;']) // `=` 由 sanitizeForTts 剔除，与正文路径同源
+  // 整回合未见闭合 → 流结束时把被抑制的内容回退输出（剥除首行语言标识 js），正文一句不丢
+  assert.deepEqual(s.flush(), ['let x 1;']) // `=` 由 sanitizeForTts 剔除，与正文路径同源
   assert.deepEqual(s.feed('新回合。'), ['新回合。'])
 })
 t('整块落在单个 delta、闭合围栏恰在末尾时不卡死（曾吞掉本回合剩余正文）', () => {
@@ -209,26 +209,26 @@ t('未配对围栏在流结束回退输出被抑制内容（不丢正文）', ()
   assert.deepEqual(s.feed('三个反引号'), [])
   assert.deepEqual(s.feed('```js\nlet x = 1;\n'), ['三个反引号']) // 围栏处补的换行让块前文字先成句
   assert.deepEqual(s.feed('这句话很重要。'), [])
-  assert.deepEqual(s.flush(), ['js\nlet x 1;\n这句话很重要。'])
+  assert.deepEqual(s.flush(), ['let x 1;', '这句话很重要。'])
 })
 t('围栏回退输出与正文同源走 plainText：emotion 标签保留、HTML 标签照剥', () => {
   const s = new SentenceSegmenter()
   assert.deepEqual(s.feed('```js\n<b>x</b> <laugh>'), [])
-  assert.deepEqual(s.flush(), ['js x <laugh>'])
+  assert.deepEqual(s.flush(), ['x <laugh>'])
 })
-t('~~~ 波浪号围栏：plainText 从未支持（内容照常朗读），且不污染反引号围栏状态机', () => {
+t('~~~ 波浪号围栏：与反引号围栏同样整块不读，且两类围栏状态机互不串扰', () => {
   const s = new SentenceSegmenter()
   const out = []
   for (const d of ['说：', '~~~', 'js\nconst a = 1;\n', '~~~', '\n改好了。']) out.push(...s.feed(d))
   for (const d of ['看：', '```', 'ts\nlet y = 2;\n', '```', '\n收尾。']) out.push(...s.feed(d))
   out.push(...s.flush())
-  assert.deepEqual(out, ['说： js', 'const a 1;', '改好了。', '看：', '收尾。'])
+  assert.deepEqual(out, ['说：', '改好了。', '看：', '收尾。'])
 })
 t('已闭合代码块的内容不会因后续未闭合围栏而回吐', () => {
   const s = new SentenceSegmenter()
   assert.deepEqual(s.feed('看：```js\nlet a = 1;\n```\n好了。'), ['看：', '好了。'])
   assert.deepEqual(s.feed('再。```js\nlet b = 2;\n'), ['再。'])
-  assert.deepEqual(s.flush(), ['js\nlet b 2;']) // 只有未闭合块回吐，第一个已闭合块不泄漏
+  assert.deepEqual(s.flush(), ['let b 2;']) // 只有未闭合块回吐，第一个已闭合块不泄漏
 })
 t('未闭合围栏 + 超长内容 → flush() 按安全阀逐段输出（每段不超长、内容不丢）', () => {
   const s = new SentenceSegmenter({ maxSentenceChars: 100 })

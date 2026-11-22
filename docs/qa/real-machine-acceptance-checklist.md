@@ -136,7 +136,7 @@
   3. 听 TTS 朗读顺序
 - **预期顺序**：「你好」→ ~300ms 静音 → 「世界」（顺序正确）
 - **失败信号**：先 ~300ms 静音 → 然后「你好」+「世界」连读（**错位**）
-- **回退**：检查 `src/tts-local.ts` 的 `segments` 处理顺序 + `src/segmenter.ts:14` `plainText` 是否豁免 emotion 标签
+- **回退**：检查 `src/tts-local.ts` 的 `segments` 处理顺序 + `src/segmenter.ts:6` `plainText` 是否豁免 emotion 标签
 - **时间**：2 分钟
 
 ### [ ] 4.2 `<whisper>悄悄话</whisper>` 增益降低
@@ -157,7 +157,7 @@
   2. 听朗读 + 看字幕
 - **预期**：TTS 不读出「laugh」「sigh」字面（直接跳过）；TTS 不读「emphasis」字面
 - **失败信号**：听到「laugh」「sigh」「emphasis」字面被朗读
-- **回退**：检查 `src/tts-local.ts` 的 `parseEmotionTags` 调用点 + `src/segmenter.ts:14` `plainText` 配对式剥离链路（`stripEmotionTags` 已于 2d247f6 删除，切勿按旧名回查）
+- **回退**：检查 `src/tts-local.ts` 的 `parseEmotionTags` 调用点 + `src/segmenter.ts:6` `plainText` 配对式剥离链路（`stripEmotionTags` 已于 2d247f6 删除，切勿按旧名回查）
 - **时间**：1.5 分钟
 
 ---

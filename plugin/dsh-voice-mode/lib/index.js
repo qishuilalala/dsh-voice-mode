@@ -7,48 +7,1176 @@ import { rm } from "node:fs/promises";
 // src/asr-host.ts
 import { statSync } from "node:fs";
 
-// src/redact.ts
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/segmenter.js
+var DEFAULT_TABLE_PLACEHOLDER = "\u6B64\u5904\u7701\u7565\u4E00\u4E2A\u8868\u683C\u3002";
+var SKIP_PREFIX = /^[\s.,，、:：;；!?！？)\]）"'”’〉》】]+$/;
+var INLINE_SENTENCE_END_RE = /[。！？!?；;…]/;
+var TABLE_DELIM_CELL_RE = /^:?-+:?$/;
+var TABLE_DELIM_CHARS_RE = /^[\s|:-]*$/;
+var UNESCAPED_PIPE_RE = /(?:^|[^\\])\|/;
+var FRONTMATTER_BLOCK_RE = /^(?:\uFEFF)?---[ \t]*\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/;
+var FENCE_LANG_PREFIX_RE = /^[ \t]*[A-Za-z0-9_+.#-]{1,32}[ \t]*\r?\n/;
+function hasNonDecimalPeriodEnd(text) {
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) !== 46)
+      continue;
+    const prev = i > 0 ? text.charCodeAt(i - 1) : -1;
+    if (prev >= 48 && prev <= 57)
+      continue;
+    if (i + 1 === text.length || /\s/.test(text[i + 1]))
+      return true;
+  }
+  return false;
+}
+function hasOpenInlineConstruct(text, maxOpenWindow) {
+  const limit = Math.max(16, Math.min(maxOpenWindow, 160));
+  const openWiki = text.lastIndexOf("[[");
+  if (openWiki !== -1 && text.indexOf("]]", openWiki + 2) === -1 && text.length - openWiki < limit && !/[。！？\n]/.test(text.slice(openWiki + 2))) {
+    return true;
+  }
+  const openLinkParen = text.lastIndexOf("](");
+  if (openLinkParen !== -1 && text.indexOf(")", openLinkParen + 2) === -1 && text.length - openLinkParen < limit && !/[\s\n]/.test(text.slice(openLinkParen + 2))) {
+    return true;
+  }
+  const openBracket = text.lastIndexOf("[");
+  if (openBracket !== -1 && text.indexOf("]", openBracket + 1) === -1 && text.length - openBracket < limit && !/[。！？\n]/.test(text.slice(openBracket + 1)) && !hasNonDecimalPeriodEnd(text.slice(openBracket + 1))) {
+    return true;
+  }
+  const openAngleUrl = text.lastIndexOf("<http");
+  if (openAngleUrl !== -1 && text.indexOf(">", openAngleUrl + 5) === -1 && text.length - openAngleUrl < limit && !/[\s\n]/.test(text.slice(openAngleUrl + 5))) {
+    return true;
+  }
+  const bareUrlMatch = /https?:\/\/[^\s<>()[\]"'”’），。！？、；：]*$/.exec(text);
+  if (bareUrlMatch && bareUrlMatch[0].length < limit)
+    return true;
+  return false;
+}
+function isTableDelimiterLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed || !trimmed.includes("|"))
+    return false;
+  const stripped = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  const cells = stripped.split("|").map((c) => c.trim());
+  if (cells.length === 0)
+    return false;
+  return cells.every((cell) => TABLE_DELIM_CELL_RE.test(cell));
+}
+function isTableRowLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed)
+    return false;
+  const withoutWikilinks = trimmed.replace(/\[\[[^\]]*\]\]/g, "");
+  return UNESCAPED_PIPE_RE.test(withoutWikilinks);
+}
+function stripMarkdownTables(text, options = {}) {
+  const policy = options.policy ?? "skip";
+  const placeholder = options.placeholder ?? DEFAULT_TABLE_PLACEHOLDER;
+  const lines = String(text).split(/\r?\n/);
+  const out = [];
+  let fenceChar = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trimStart();
+    const fenceMatch = /^(`{3,}|~{3,})/.exec(trimmed);
+    if (fenceMatch) {
+      const ch = fenceMatch[1][0];
+      if (fenceChar === null)
+        fenceChar = ch;
+      else if (fenceChar === ch)
+        fenceChar = null;
+      out.push(line);
+      continue;
+    }
+    if (fenceChar !== null) {
+      out.push(line);
+      continue;
+    }
+    if (isTableRowLine(line) && i + 1 < lines.length && isTableDelimiterLine(lines[i + 1])) {
+      i += 1;
+      while (i + 1 < lines.length && isTableRowLine(lines[i + 1])) {
+        i += 1;
+      }
+      if (policy === "placeholder" && placeholder.trim()) {
+        out.push(placeholder);
+      } else {
+        out.push("");
+      }
+      continue;
+    }
+    if (isTableDelimiterLine(line)) {
+      out.push("");
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+function plainText(text, options = {}) {
+  const withoutFrontmatter = String(text).replace(FRONTMATTER_BLOCK_RE, "");
+  const withoutFences = withoutFrontmatter.replace(/`{3,}[\s\S]*?`{3,}/g, " ").replace(/~{3,}[\s\S]*?~{3,}/g, " ");
+  const withoutMath = withoutFences.replace(/\$\$[\s\S]*?\$\$/g, " ");
+  const withoutTables = stripMarkdownTables(withoutMath, options);
+  return withoutTables.replace(/`([^`]*)`/g, "$1").replace(/!\[\[[^\]]*\]\]/g, " ").replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/<https?:\/\/[^\s<>]+>/gi, " ").replace(/https?:\/\/[^\s<>()[\]"'”’），。！？、；：]+/gi, " ").replace(/^[ \t]*>[ \t]*\[![A-Za-z0-9_-]+\][+-]?(?:[ \t]+(.*))?$/gm, "$1").replace(/^#{1,6}\s+/gm, "").replace(/^(?:[ \t]*>[ \t]?)+/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/^[-*+]\s+/gm, "").replace(/^\d+\.\s+/gm, "").replace(/^[-*_]{3,}\s*$/gm, " ").replace(/<\/?(?:b|i|u|br|p|span|div|strong|em|s|sub|sup|h[1-6]|ul|ol|li|a|img|code|pre|blockquote|hr|table|tr|td|th)\b[^>]*>/gi, " ");
+}
+function sanitizeForTts(text) {
+  return String(text).replace(/[*_#|^=+~`]/g, " ").replace(/\s{2,}/g, " ").replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g, "$1").trim();
+}
+function splitSentences(chunk) {
+  const sentences = [];
+  let start = 0;
+  const re = /[。！？!?；;…\n]+|\.(?=\s|$)/g;
+  let m;
+  let lastEnd = 0;
+  while ((m = re.exec(chunk)) !== null) {
+    const end = m.index + m[0].length;
+    if (m[0] === "." && end === chunk.length && /\d/.test(chunk[m.index - 1] ?? ""))
+      continue;
+    sentences.push(chunk.slice(start, end));
+    start = end;
+    lastEnd = end;
+  }
+  return { sentences, tail: chunk.slice(lastEnd) };
+}
+function isHighSurrogate(code) {
+  return code >= 55296 && code <= 56319;
+}
+function isLowSurrogate(code) {
+  return code >= 56320 && code <= 57343;
+}
+function cutHead(text, max) {
+  if (!text || !Number.isFinite(max) || max <= 0)
+    return ["", text];
+  if (text.length <= max)
+    return [text, ""];
+  let idx = -1;
+  for (let i = Math.min(Math.floor(max), text.length) - 1; i > 0; i--) {
+    if (/[，,、\s]/.test(text[i])) {
+      idx = i + 1;
+      break;
+    }
+  }
+  if (idx <= 0)
+    idx = Math.max(1, Math.floor(max / 2));
+  if (idx > 0 && idx < text.length && isHighSurrogate(text.charCodeAt(idx - 1)) && isLowSurrogate(text.charCodeAt(idx))) {
+    idx = idx > 1 ? idx - 1 : Math.min(2, text.length);
+  }
+  return [text.slice(0, idx), text.slice(idx)];
+}
+var SentenceSegmenter = class {
+  rawBuffer = "";
+  maxChars;
+  tablePolicy;
+  tablePlaceholder;
+  // YAML frontmatter state (document start only)
+  docStartChecked = false;
+  inFrontmatter = false;
+  frontmatterBuf = "";
+  // Cross-delta code fence state (` ``` ` and `~~~`)
+  fenceChar = null;
+  hangChars = "";
+  fenced = "";
+  // Cross-delta block math state (`$$...$$`)
+  inMath = false;
+  hangDollar = "";
+  mathBuf = "";
+  // Cross-delta Markdown pipe table state
+  inTable = false;
+  tableHintEmitted = false;
+  pendingHeader = null;
+  lineBuf = "";
+  lineCommitted = false;
+  constructor(options = {}) {
+    const requested = options.maxSentenceChars ?? 200;
+    this.maxChars = Number.isFinite(requested) ? Math.max(2, Math.floor(requested)) : 200;
+    this.tablePolicy = options.tablePolicy ?? "skip";
+    this.tablePlaceholder = options.tablePlaceholder ?? DEFAULT_TABLE_PLACEHOLDER;
+  }
+  emitTableBoundary() {
+    if (this.tablePolicy === "placeholder" && !this.tableHintEmitted && this.tablePlaceholder.trim()) {
+      this.tableHintEmitted = true;
+      return `${this.tablePlaceholder}
+`;
+    }
+    return "\n";
+  }
+  /** Strip leading YAML frontmatter (`--- ... ---`) across deltas; falls back cleanly on flush if unclosed. */
+  dropFrontmatter(chunk) {
+    if (this.docStartChecked && !this.inFrontmatter)
+      return chunk;
+    this.frontmatterBuf = (this.frontmatterBuf + chunk).replace(/\r\n/g, "\n");
+    if (!this.docStartChecked) {
+      const probe = this.frontmatterBuf.replace(/^\uFEFF/, "");
+      if (probe.length === 0)
+        return "";
+      const nl = probe.indexOf("\n");
+      if (nl === -1) {
+        if (/^-{1,3}[ \t]*\r?$/.test(probe))
+          return "";
+        this.docStartChecked = true;
+        const released = this.frontmatterBuf;
+        this.frontmatterBuf = "";
+        return released;
+      }
+      const firstLine = probe.slice(0, nl);
+      this.docStartChecked = true;
+      if (/^---[ \t]*$/.test(firstLine)) {
+        this.inFrontmatter = true;
+        this.frontmatterBuf = probe.slice(nl + 1);
+      } else {
+        const released = this.frontmatterBuf;
+        this.frontmatterBuf = "";
+        return released;
+      }
+    }
+    const closeMatch = /(?:^|\n)(?:---|\.\.\.)[ \t]*\n/.exec(this.frontmatterBuf);
+    if (!closeMatch)
+      return "";
+    const rest = this.frontmatterBuf.slice(closeMatch.index + closeMatch[0].length);
+    this.inFrontmatter = false;
+    this.frontmatterBuf = "";
+    return rest;
+  }
+  /** Cross-delta fenced code block filter supporting both ` ``` ` and `~~~`. */
+  dropFences(chunk) {
+    let s = this.hangChars + chunk;
+    this.hangChars = "";
+    const trail = /(`+|~+)$/.exec(s);
+    const hang = trail ? trail[0] : "";
+    if (hang.length > 0 && hang.length <= 2) {
+      this.hangChars = hang;
+      s = s.slice(0, -hang.length);
+    }
+    let out = "";
+    for (; ; ) {
+      const m = this.fenceChar === null ? /(`{3,}|~{3,})/.exec(s) : this.fenceChar === "`" ? /`{3,}/.exec(s) : /~{3,}/.exec(s);
+      if (!m) {
+        if (this.fenceChar !== null)
+          this.fenced += s;
+        else
+          out += s;
+        return out;
+      }
+      if (this.fenceChar !== null) {
+        this.fenced += s.slice(0, m.index);
+        this.fenceChar = null;
+        this.fenced = "";
+      } else {
+        out += s.slice(0, m.index) + "\n";
+        this.fenceChar = m[0][0];
+      }
+      s = s.slice(m.index + m[0].length);
+    }
+  }
+  /** Cross-delta block math (`$$...$$`) filter. */
+  dropBlockMath(chunk) {
+    let s = this.hangDollar + chunk;
+    this.hangDollar = "";
+    if (s.endsWith("$") && !s.endsWith("$$")) {
+      this.hangDollar = "$";
+      s = s.slice(0, -1);
+    }
+    let out = "";
+    for (; ; ) {
+      const idx = s.indexOf("$$");
+      if (idx === -1) {
+        if (this.inMath)
+          this.mathBuf += s;
+        else
+          out += s;
+        return out;
+      }
+      if (this.inMath) {
+        this.mathBuf = "";
+        this.inMath = false;
+        out += " ";
+      } else {
+        out += s.slice(0, idx) + " ";
+        this.inMath = true;
+      }
+      s = s.slice(idx + 2);
+    }
+  }
+  /** Cross-delta Markdown pipe table filter with zero latency for regular prose lines. */
+  filterTables(chunk) {
+    const normalized = chunk.replace(/\r\n/g, "\n");
+    let out = "";
+    let pos = 0;
+    while (pos < normalized.length) {
+      const nl = normalized.indexOf("\n", pos);
+      if (nl !== -1) {
+        const segment = normalized.slice(pos, nl);
+        pos = nl + 1;
+        if (this.lineCommitted) {
+          out += segment + "\n";
+          this.lineCommitted = false;
+          continue;
+        }
+        const line = this.lineBuf + segment;
+        this.lineBuf = "";
+        out += this.handleCompleteLine(line);
+      } else {
+        const rest = normalized.slice(pos);
+        pos = normalized.length;
+        if (this.lineCommitted) {
+          out += rest;
+          continue;
+        }
+        this.lineBuf += rest;
+        if (this.inTable) {
+          continue;
+        }
+        if (this.pendingHeader !== null) {
+          if (!TABLE_DELIM_CHARS_RE.test(this.lineBuf)) {
+            const releasedHeader = this.pendingHeader;
+            this.pendingHeader = null;
+            out += releasedHeader + "\n";
+            this.tryFlushRegularLineBuf((chunkOut) => {
+              out += chunkOut;
+            });
+          }
+          continue;
+        }
+        this.tryFlushRegularLineBuf((chunkOut) => {
+          out += chunkOut;
+        });
+      }
+    }
+    return out;
+  }
+  tryFlushRegularLineBuf(emit) {
+    if (hasOpenInlineConstruct(this.lineBuf, this.maxChars))
+      return;
+    if (isTableRowLine(this.lineBuf))
+      return;
+    const shouldFlush = INLINE_SENTENCE_END_RE.test(this.lineBuf) || hasNonDecimalPeriodEnd(this.lineBuf) || this.lineBuf.length >= this.maxChars;
+    if (shouldFlush) {
+      emit(this.lineBuf);
+      this.lineBuf = "";
+      this.lineCommitted = true;
+    }
+  }
+  handleCompleteLine(line) {
+    if (this.inTable) {
+      if (isTableRowLine(line) || isTableDelimiterLine(line)) {
+        return "";
+      }
+      this.inTable = false;
+      this.tableHintEmitted = false;
+      if (!line.trim())
+        return "\n";
+      return line + "\n";
+    }
+    if (this.pendingHeader !== null) {
+      const header = this.pendingHeader;
+      this.pendingHeader = null;
+      if (isTableDelimiterLine(line)) {
+        this.inTable = true;
+        this.tableHintEmitted = false;
+        return this.emitTableBoundary();
+      }
+      const emitted = header + "\n";
+      if (isTableRowLine(line)) {
+        this.pendingHeader = line;
+        return emitted;
+      }
+      return emitted + line + "\n";
+    }
+    if (isTableDelimiterLine(line)) {
+      return "\n";
+    }
+    if (isTableRowLine(line)) {
+      this.pendingHeader = line;
+      return "";
+    }
+    return line + "\n";
+  }
+  flushTableState() {
+    let out = "";
+    if (this.inTable) {
+      if (this.lineBuf && !isTableRowLine(this.lineBuf) && !isTableDelimiterLine(this.lineBuf)) {
+        out += this.lineBuf;
+      }
+    } else if (this.pendingHeader !== null) {
+      if (this.lineBuf && isTableDelimiterLine(this.lineBuf)) {
+        out += this.emitTableBoundary();
+      } else {
+        out += this.pendingHeader + "\n";
+        if (this.lineBuf && !isTableDelimiterLine(this.lineBuf)) {
+          out += this.lineBuf;
+        }
+      }
+    } else if (this.lineBuf && !isTableDelimiterLine(this.lineBuf)) {
+      out += this.lineBuf;
+    }
+    this.inTable = false;
+    this.tableHintEmitted = false;
+    this.pendingHeader = null;
+    this.lineBuf = "";
+    this.lineCommitted = false;
+    return out;
+  }
+  cleanCompleteText(raw) {
+    return plainText(raw, {
+      policy: this.tablePolicy,
+      placeholder: this.tablePlaceholder
+    });
+  }
+  capSentence(s, out) {
+    let rest = s;
+    while (rest.length > this.maxChars) {
+      const [head, tail] = cutHead(rest, this.maxChars);
+      if (!head)
+        break;
+      rest = tail;
+      const t2 = sanitizeForTts(head).trim();
+      if (t2 && !SKIP_PREFIX.test(t2))
+        out.push(t2);
+    }
+    const t = sanitizeForTts(rest).trim();
+    if (t && !SKIP_PREFIX.test(t))
+      out.push(t);
+  }
+  /** Split `rawBuffer` at complete sentence boundaries, running `plainText()` per complete sentence. */
+  drainRawBuffer(out, isFinal) {
+    if (!this.rawBuffer)
+      return;
+    if (!isFinal && hasOpenInlineConstruct(this.rawBuffer, this.maxChars)) {
+      const lastNl = this.rawBuffer.lastIndexOf("\n");
+      if (lastNl === -1)
+        return;
+      const readyPrefix = this.rawBuffer.slice(0, lastNl + 1);
+      this.rawBuffer = this.rawBuffer.slice(lastNl + 1);
+      const cleaned = this.cleanCompleteText(readyPrefix);
+      const { sentences: sentences2, tail: tail2 } = splitSentences(cleaned);
+      for (const s of sentences2)
+        this.capSentence(s, out);
+      if (tail2.trim())
+        this.capSentence(tail2, out);
+      return;
+    }
+    const { sentences, tail } = splitSentences(this.rawBuffer);
+    this.rawBuffer = tail;
+    for (const rawSentence of sentences) {
+      const cleaned = this.cleanCompleteText(rawSentence);
+      if (!cleaned)
+        continue;
+      const sub = splitSentences(cleaned);
+      for (const s of sub.sentences)
+        this.capSentence(s, out);
+      if (sub.tail.trim())
+        this.capSentence(sub.tail, out);
+    }
+    if (!isFinal) {
+      while (this.rawBuffer.length > this.maxChars && !hasOpenInlineConstruct(this.rawBuffer, this.maxChars)) {
+        const cleaned = this.cleanCompleteText(this.rawBuffer);
+        if (cleaned.length <= this.maxChars) {
+          this.rawBuffer = cleaned;
+          break;
+        }
+        const [head, rest] = cutHead(cleaned, this.maxChars);
+        if (!head)
+          break;
+        this.rawBuffer = rest;
+        const t = sanitizeForTts(head).trim();
+        if (t && !SKIP_PREFIX.test(t))
+          out.push(t);
+      }
+      return;
+    }
+    if (this.rawBuffer) {
+      const cleaned = this.cleanCompleteText(this.rawBuffer);
+      this.rawBuffer = "";
+      if (cleaned) {
+        const sub = splitSentences(cleaned);
+        for (const s of sub.sentences)
+          this.capSentence(s, out);
+        if (sub.tail.trim())
+          this.capSentence(sub.tail, out);
+      }
+    }
+  }
+  /** Feed a raw streaming delta and return all completed sentences. */
+  feed(chunk) {
+    if (!chunk)
+      return [];
+    const noFrontmatter = this.dropFrontmatter(chunk);
+    const noFence = noFrontmatter ? this.dropFences(noFrontmatter) : "";
+    const noMath = noFence ? this.dropBlockMath(noFence) : "";
+    const noTable = noMath ? this.filterTables(noMath) : "";
+    if (!noTable)
+      return [];
+    this.rawBuffer += noTable;
+    const out = [];
+    this.drainRawBuffer(out, false);
+    return out;
+  }
+  /** Flush remaining buffered text at end-of-stream and reset internal state. */
+  flush() {
+    let tailRaw = "";
+    if (!this.docStartChecked && this.frontmatterBuf) {
+      tailRaw += this.frontmatterBuf;
+    } else if (this.inFrontmatter && this.frontmatterBuf) {
+      const eofClose = /(?:^|\n)(?:---|\.\.\.)[ \t]*\r?$/.exec(this.frontmatterBuf);
+      if (!eofClose) {
+        tailRaw += this.frontmatterBuf;
+      }
+    }
+    this.docStartChecked = false;
+    this.inFrontmatter = false;
+    this.frontmatterBuf = "";
+    if (this.hangChars) {
+      if (this.fenceChar !== null)
+        this.fenced += this.hangChars;
+      else
+        tailRaw += this.hangChars;
+      this.hangChars = "";
+    }
+    if (this.hangDollar) {
+      if (this.inMath)
+        this.mathBuf += this.hangDollar;
+      else
+        tailRaw += this.hangDollar;
+      this.hangDollar = "";
+    }
+    if (this.inMath) {
+      tailRaw += this.mathBuf;
+      this.inMath = false;
+      this.mathBuf = "";
+    }
+    if (tailRaw) {
+      const filtered = this.filterTables(tailRaw);
+      if (filtered)
+        this.rawBuffer += filtered;
+    }
+    const trailingTable = this.flushTableState();
+    if (trailingTable)
+      this.rawBuffer += trailingTable;
+    if (this.fenceChar !== null) {
+      const restored = this.fenced.replace(FENCE_LANG_PREFIX_RE, "");
+      this.rawBuffer += restored;
+      this.fenceChar = null;
+      this.fenced = "";
+    }
+    const out = [];
+    this.drainRawBuffer(out, true);
+    this.rawBuffer = "";
+    return out;
+  }
+};
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/asr-replacements.js
+var UTF8_ENCODER = new TextEncoder();
+var ASCII_WORD = /[A-Za-z0-9]/;
+var escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function compilePattern(heard) {
+  const trimmedStr = heard.replace(/\s+/g, " ").trim();
+  const chars = [...trimmedStr];
+  if (chars.length === 0)
+    return null;
+  let body = "";
+  let prev = "";
+  let spaced = false;
+  for (const ch of chars) {
+    if (ch === " ") {
+      spaced = true;
+      continue;
+    }
+    if (prev && (spaced || ASCII_WORD.test(prev) !== ASCII_WORD.test(ch)))
+      body += "\\s*";
+    body += escapeRegExp(ch);
+    prev = ch;
+    spaced = false;
+  }
+  const first = chars[0];
+  const last = chars[chars.length - 1];
+  const requireLeftBound = ASCII_WORD.test(first);
+  const tail = ASCII_WORD.test(last) ? "(?![A-Za-z0-9])" : "";
+  return { pattern: `${body}${tail}`, requireLeftBound };
+}
+function createAsrReplacer(rules, onHit) {
+  const entries = [];
+  rules.forEach((rule, ruleIndex) => {
+    if (!rule.to)
+      return;
+    for (const heard of rule.from) {
+      const compiled = compilePattern(heard);
+      if (!compiled)
+        continue;
+      const compact = heard.replace(/\s+/g, "");
+      entries.push({
+        pattern: compiled.pattern,
+        key: compact.toLowerCase(),
+        to: rule.to,
+        length: [...compact].length,
+        ruleIndex,
+        requireLeftBound: compiled.requireLeftBound
+      });
+    }
+  });
+  if (entries.length === 0)
+    return (text) => text;
+  entries.sort((a, b) => b.length - a.length);
+  const targets = /* @__PURE__ */ new Map();
+  for (const e of entries) {
+    if (!targets.has(e.key)) {
+      targets.set(e.key, {
+        to: e.to,
+        ruleIndex: e.ruleIndex,
+        requireLeftBound: e.requireLeftBound
+      });
+    }
+  }
+  const source = entries.map((e) => `(?:${e.pattern})`).join("|");
+  return (text, countHit = true) => {
+    if (!text)
+      return text;
+    const regex = new RegExp(source, "giu");
+    let out = "";
+    let cursor = 0;
+    let m;
+    while ((m = regex.exec(text)) !== null) {
+      const match = m[0];
+      const offset = m.index;
+      if (match.length === 0) {
+        regex.lastIndex = offset + 1;
+        continue;
+      }
+      const hit = targets.get(match.replace(/\s+/g, "").toLowerCase());
+      if (!hit) {
+        regex.lastIndex = offset + 1;
+        continue;
+      }
+      if (hit.requireLeftBound && offset > 0 && ASCII_WORD.test(text[offset - 1])) {
+        regex.lastIndex = offset + 1;
+        continue;
+      }
+      out += text.slice(cursor, offset) + hit.to;
+      if (onHit && countHit)
+        onHit(hit.ruleIndex);
+      cursor = offset + match.length;
+      regex.lastIndex = cursor;
+    }
+    return cursor === 0 ? text : out + text.slice(cursor);
+  };
+}
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/emotion.js
+var EMOTION_TAG_PATTERN = "<\\s*(break\\s+(?<ms>\\d+)\\s*ms|whisper|\\/whisper|laugh|sigh|emphasis)\\s*>";
+var TAG_RE = new RegExp(EMOTION_TAG_PATTERN, "gi");
+var STRIP_RE = new RegExp(EMOTION_TAG_PATTERN, "gi");
+var MAX_BREAK_MS = 5e3;
+var MAX_TOTAL_BREAK_MS = 1e4;
+function stripEmotionTags(raw) {
+  return String(raw).replace(STRIP_RE, " ");
+}
+function parseEmotionTags(raw) {
+  const input = String(raw);
+  const out = [];
+  let buf = "";
+  let whisper = false;
+  let pendingBreakMs = 0;
+  let totalBreakMs = 0;
+  let sawInlineTag = false;
+  const appendText = (chunk) => {
+    if (chunk.length === 0)
+      return;
+    if (sawInlineTag && /[A-Za-z0-9]$/.test(buf) && /^[A-Za-z0-9]/.test(chunk)) {
+      buf += " ";
+    }
+    sawInlineTag = false;
+    buf += chunk;
+  };
+  const flush = () => {
+    const text = buf.trim();
+    buf = "";
+    sawInlineTag = false;
+    if (text.length === 0)
+      return;
+    out.push({ text, whisper });
+  };
+  let lastEnd = 0;
+  for (const m of input.matchAll(TAG_RE)) {
+    const idx = m.index ?? 0;
+    appendText(input.slice(lastEnd, idx));
+    lastEnd = idx + m[0].length;
+    const tag = (m[1] ?? "").toLowerCase().trim();
+    if (tag.startsWith("break")) {
+      const rawMs = Number(m.groups?.ms ?? 0);
+      if (!Number.isFinite(rawMs) || rawMs <= 0) {
+        sawInlineTag = true;
+        continue;
+      }
+      const remaining = Math.max(0, MAX_TOTAL_BREAK_MS - totalBreakMs);
+      const ms = Math.min(rawMs, MAX_BREAK_MS, remaining);
+      if (ms <= 0) {
+        if (buf.trim().length > 0)
+          flush();
+        continue;
+      }
+      totalBreakMs += ms;
+      if (buf.trim().length > 0) {
+        flush();
+      }
+      const last = out[out.length - 1];
+      if (last) {
+        last.preBreakMs = (last.preBreakMs ?? 0) + ms;
+      } else {
+        pendingBreakMs += ms;
+      }
+    } else if (tag === "whisper") {
+      flush();
+      whisper = true;
+    } else if (tag === "/whisper") {
+      flush();
+      whisper = false;
+    } else {
+      sawInlineTag = true;
+    }
+  }
+  appendText(input.slice(lastEnd));
+  flush();
+  if (pendingBreakMs > 0) {
+    const first = out[0];
+    if (first) {
+      first.preBreakMs = (first.preBreakMs ?? 0) + pendingBreakMs;
+    }
+    pendingBreakMs = 0;
+  }
+  if (whisper) {
+    for (const seg of out)
+      seg.whisper = false;
+  }
+  return out;
+}
+var ANY_EMOTION_CUE_RE = new RegExp(EMOTION_TAG_PATTERN, "i");
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/redact.js
 var PREFIXED = [
   { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
   { re: /\b(Basic\s+)[A-Za-z0-9+/=-]{8,}/gi, to: "$1<redacted>" },
   { re: /\b((?:api[-_]?key|x-api-key)\s*[:=]\s*)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
-  // URL 内嵌凭据（https://user:pass@host）与查询参数密钥（?api_key=... / &token=... / &key=...）
   { re: /(https?:\/\/)([^:@/\s]+:[^@/\s]+)(@)/gi, to: "$1<redacted>$3" },
   { re: /([?&](?:api[_-]?key|access_token|token|key)=)([^&\s#]+)/gi, to: "$1<redacted>" },
-  // JSON 形态：{"apiKey":"..."} / {"mimoApiKey":"..."} / {"openaiApiKey":"..."} / {"token":"..."}（只遮引号内的值）
+  // Matches both complete JSON string values and values truncated before the closing quote.
   {
-    re: /("(?:[a-zA-Z0-9_-]*?(?:api[_-]?key|token|secret|password))"\s*:\s*")([^"\\]{6,})(")/gi,
+    re: /("(?:[a-zA-Z0-9_-]*?(?:api[_-]?key|token|secret|password))"\s*:\s*")([^"\\]{6,})("|$)/gi,
     to: "$1<redacted>$3"
   }
 ];
 var BARE = [
+  /\bsk-(?:proj|live|test|ant)-[A-Za-z0-9._-]{8,}/g,
   /\bsk[-_][A-Za-z0-9._-]{8,}/g,
-  // 更多厂商前缀（2026-11-20 审计实测：Groq 的 gsk_ 原样漏出，而 Groq 就在本仓预设里）。
   /\bgsk_[A-Za-z0-9._-]{8,}/g,
-  /\bsk-(?:proj|live|test)-[A-Za-z0-9._-]{8,}/g,
-  /\brk_(?:live|test)_[A-Za-z0-9]{8,}/g,
+  /\brk_(?:live|test)_[A-Za-z0-9._-]{8,}/g,
   /\bAIza[A-Za-z0-9._-]{10,}/g,
-  /\bgh[pousr]_[A-Za-z0-9]{10,}/g,
-  // 通用兜底：≥20 连续 base64-ish 字符，要求**同时含大写、小写与数字**（真密钥的典型特征），
-  // 且排除纯十六进制（SHA256/MD5 是排障信息）。这样不会吃掉全小写的模型名、
-  // 也不会吃掉被 - / 分隔的 UUID 与路径。
-  // 注意：字符类**不含 '/'**——路径与 provider/model:voice 形态都靠 '/' 分隔，含进来会误伤排障信息。
-  // 豁免仅限 64 位 sha256（模型摘要）；32 位 hex 也可能是 key（审计实测漏遮）。
+  /\bgh[pousr]_[A-Za-z0-9_]{10,}/g,
+  // Mixed-case + digit high-entropy token (>=20 chars); excludes 64-hex SHA256 digests and '/' paths.
   /\b(?![0-9a-fA-F]{64}\b)(?=[A-Za-z0-9+=_-]*[A-Z])(?=[A-Za-z0-9+=_-]*[a-z])(?=[A-Za-z0-9+=_-]*[0-9])[A-Za-z0-9+=_-]{20,}\b/g,
-  // 32 位 hex（md5 形状）也可能是 key：通用规则要求大小写混合，纯小写 hex 会被漏掉。
-  // 64 位 sha256 不在此列（模型摘要要保留排障）。
+  // 32-hex keys (MD5-shaped secrets); 64-hex SHA256 digests remain intact.
   /\b[0-9a-f]{32}\b/gi
 ];
+function coerceText(value) {
+  if (typeof value === "string")
+    return value;
+  if (value === null || value === void 0)
+    return "";
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  if (value instanceof Error)
+    return value.message;
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return "";
+  }
+}
 function redactSecrets(text) {
-  let out = typeof text === "string" ? text : String(text ?? "");
-  for (const { re, to } of PREFIXED) out = out.replace(re, to);
-  for (const re of BARE) out = out.replace(re, "<redacted>");
+  let out = coerceText(text);
+  for (const { re, to } of PREFIXED)
+    out = out.replace(re, to);
+  for (const re of BARE)
+    out = out.replace(re, "<redacted>");
   return out;
 }
-function redactBodySnippet(body, n = 200) {
-  const raw = typeof body === "string" ? body : String(body ?? "");
-  return redactSecrets(raw.slice(0, n + 128)).slice(0, n);
+function redactBodySnippet(body, maxLength = 200) {
+  const raw = coerceText(body);
+  if (maxLength <= 0)
+    return "";
+  const preWindow = Math.max(maxLength * 4, 2048);
+  return redactSecrets(raw.slice(0, preWindow)).slice(0, maxLength);
 }
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/engine-kind.js
+var LOCAL_TTS_ENGINE_KINDS = ["system", "vits-wasm", "kokoro-daemon"];
+function isLocalTtsEngine(value) {
+  return LOCAL_TTS_ENGINE_KINDS.includes(value);
+}
+function usesBilingualSample(value) {
+  return value === "kokoro-daemon" || value === "openai-compat" || value === "mimo";
+}
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/voice-catalog.js
+var VITS_SPEAKERS = [
+  { name: "suyingxue", sid: 0, zh: "\u7D20\u6620\u96EA", en: "Su Yingxue", gender: "F" },
+  { name: "gunian", sid: 1, zh: "\u987E\u5FF5", en: "Gu Nian", gender: "M" },
+  { name: "fushiyu", sid: 2, zh: "\u5085\u65AF\u9047", en: "Fu Siyu", gender: "F" },
+  { name: "bingjiao", sid: 3, zh: "\u51B0\u5A07", en: "Bing Jiao", gender: "M" },
+  { name: "bazong", sid: 4, zh: "\u9738\u603B", en: "Ba Zong", gender: "M" }
+];
+var KOKORO_F0 = [
+  224,
+  189,
+  154,
+  261,
+  226,
+  222,
+  220,
+  229,
+  198,
+  186,
+  212,
+  293,
+  233,
+  161,
+  247,
+  207,
+  218,
+  216,
+  220,
+  238,
+  242,
+  229,
+  198,
+  286,
+  211,
+  190,
+  264,
+  261,
+  226,
+  147,
+  216,
+  240,
+  233,
+  188,
+  222,
+  247,
+  253,
+  270,
+  276,
+  276,
+  279,
+  320,
+  247,
+  296,
+  276,
+  235,
+  139,
+  240,
+  282,
+  282,
+  238,
+  226,
+  273,
+  216,
+  286,
+  270,
+  198,
+  179,
+  117,
+  130,
+  114,
+  128,
+  108,
+  106,
+  122,
+  136,
+  190,
+  112,
+  108,
+  128,
+  131,
+  111,
+  110,
+  132,
+  138,
+  189,
+  137,
+  148,
+  151,
+  127,
+  135,
+  111,
+  138,
+  114,
+  125,
+  158,
+  128,
+  156,
+  132,
+  162,
+  131,
+  136,
+  142,
+  124,
+  129,
+  136,
+  126,
+  135,
+  161,
+  150,
+  124,
+  104,
+  124
+];
+var KOKORO_NAMED = {
+  48: { name: "zf_xiaobei", zh: "\u5C0F\u5317", en: "Xiaobei" },
+  49: { name: "zf_xiaoni", zh: "\u5C0F\u59AE", en: "Xiaoni" },
+  50: { name: "zf_xiaoxiao", zh: "\u5C0F\u5C0F", en: "Xiaoxiao" },
+  51: { name: "zf_xiaoyi", zh: "\u5C0F\u827A", en: "Xiaoyi" }
+};
+var KOKORO_PINNED = [62, 68, 75, 76];
+var KOKORO_VOICES = [
+  ...KOKORO_PINNED.map((sid) => ({ name: KOKORO_NAMED[sid]?.name ?? String(sid), sid })),
+  ...KOKORO_F0.map((_, sid) => ({ name: KOKORO_NAMED[sid]?.name ?? String(sid), sid })).filter((v) => !KOKORO_PINNED.includes(v.sid))
+];
+var SILICONFLOW_SYSTEM_VOICES = [
+  "alex",
+  "benjamin",
+  "charles",
+  "david",
+  "anna",
+  "bella",
+  "claire",
+  "diana"
+];
+var OPENAI_API_VOICES = [
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "fable",
+  "marin",
+  "cedar",
+  "nova",
+  "onyx",
+  "sage",
+  "shimmer"
+];
+var TTS_OPENAI_PRESETS = {
+  "siliconflow-cosyvoice2": {
+    id: "siliconflow-cosyvoice2",
+    label: "SiliconFlow \xB7 CosyVoice2",
+    region: "cn",
+    baseUrl: "https://api.siliconflow.cn/v1",
+    model: "FunAudioLLM/CosyVoice2-0.5B",
+    voice: "FunAudioLLM/CosyVoice2-0.5B:alex",
+    voices: SILICONFLOW_SYSTEM_VOICES.map((v) => `FunAudioLLM/CosyVoice2-0.5B:${v}`),
+    requiresKey: true
+  },
+  "siliconflow-fish": {
+    id: "siliconflow-fish",
+    label: "SiliconFlow \xB7 Fish Speech 1.5",
+    region: "cn",
+    baseUrl: "https://api.siliconflow.cn/v1",
+    model: "fishaudio/fish-speech-1.5",
+    voice: "fishaudio/fish-speech-1.5:anna",
+    voices: SILICONFLOW_SYSTEM_VOICES.map((v) => `fishaudio/fish-speech-1.5:${v}`),
+    requiresKey: true
+  },
+  "openrouter-openai": {
+    id: "openrouter-openai",
+    label: "OpenRouter \xB7 GPT-4o Mini TTS",
+    region: "global",
+    baseUrl: "https://openrouter.ai/api/v1",
+    model: "openai/gpt-4o-mini-tts-2025-12-15",
+    voice: "alloy",
+    voices: [...OPENAI_API_VOICES],
+    requiresKey: true
+  },
+  "openai-official": {
+    id: "openai-official",
+    label: "OpenAI \xB7 GPT-4o Mini TTS",
+    region: "global",
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4o-mini-tts",
+    voice: "marin",
+    voices: [...OPENAI_API_VOICES],
+    requiresKey: true
+  },
+  "groq-playai": {
+    id: "groq-playai",
+    label: "Groq \xB7 PlayAI TTS",
+    region: "global",
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "playai-tts",
+    voice: "Fritz-PlayAI",
+    voices: ["Fritz-PlayAI"],
+    requiresKey: true
+  },
+  "selfhosted-kokoro": {
+    id: "selfhosted-kokoro",
+    label: "Self-hosted \xB7 Kokoro-FastAPI",
+    region: "local",
+    baseUrl: "http://127.0.0.1:8880/v1",
+    model: "kokoro",
+    voice: "zf_xiaobei",
+    voices: ["zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi"],
+    requiresKey: false
+  },
+  "selfhosted-vllm": {
+    id: "selfhosted-vllm",
+    label: "Self-hosted \xB7 vLLM-Omni",
+    region: "local",
+    baseUrl: "http://127.0.0.1:8000/v1",
+    model: "tts-1",
+    voice: "default",
+    voices: ["default"],
+    requiresKey: false
+  }
+};
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/model-manifest.js
+var UTF8_DECODER = new TextDecoder("utf-8");
+var NODE_PATH_TARGET = ["var nodePath=req", 'uire("path");'].join("");
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/http-stream.js
+var UTF8_DECODER2 = new TextDecoder("utf-8");
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/llm-router.js
+var p = (id, label, protocol, defaultBaseUrl, defaultModel, requiresKey) => ({ id, label, protocol, defaultBaseUrl, defaultModel, requiresKey });
+var LLM_PRESETS = {
+  deepseek: p("deepseek", "DeepSeek", "openai-compat", "https://api.deepseek.com/v1", "deepseek-chat", true),
+  "dashscope-qwen": p("dashscope-qwen", "DashScope (Qwen)", "openai-compat", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus", true),
+  "volcengine-doubao": p("volcengine-doubao", "Volcengine Ark (Doubao)", "openai-compat", "https://ark.cn-beijing.volces.com/api/v3", "doubao-seed-1-6-250615", true),
+  "moonshot-kimi": p("moonshot-kimi", "Moonshot (Kimi)", "openai-compat", "https://api.moonshot.cn/v1", "moonshot-v1-8k", true),
+  siliconflow: p("siliconflow", "SiliconFlow", "openai-compat", "https://api.siliconflow.cn/v1", "Qwen/Qwen2.5-7B-Instruct", true),
+  openrouter: p("openrouter", "OpenRouter", "openai-compat", "https://openrouter.ai/api/v1", "openai/gpt-4o-mini", true),
+  openai: p("openai", "OpenAI", "openai-compat", "https://api.openai.com/v1", "gpt-4o-mini", true),
+  anthropic: p("anthropic", "Anthropic", "anthropic-messages", "https://api.anthropic.com/v1", "claude-sonnet-4-5", true),
+  ollama: p("ollama", "Ollama (Local)", "openai-compat", "http://127.0.0.1:11434/v1", "qwen2.5:7b", false),
+  lmstudio: p("lmstudio", "LM Studio (Local)", "openai-compat", "http://127.0.0.1:1234/v1", "local-model", false),
+  custom: p("custom", "Custom", "openai-compat", "", "", false)
+};
+var MAX_ERROR_BYTES = 8 * 1024;
+var MAX_FALLBACK_CONTENT_LENGTH = 1024 * 1024;
+var CORRECTION_PREAMBLE_RE = /^(?:以下是|这是|已|文本)?(?:修正|纠正|更正|纠错)|^(?:here(?:'s| is) (?:the |an |a )?|i have |text after )?(?:corrected|correction)\b/i;
+var CORRECTION_FILLER_WORDS = "\u5F53\u7136\u53EF\u4EE5|\u5F53\u7136|\u597D\u5427|\u597D\u7684?|\u884C\u5427|\u884C|\u662F\u7684|\u55EF|\u6536\u5230|\u660E\u767D\u4E86|\u77E5\u9053\u4E86|Thank you|Of course|Got it|OK|Okay|Sure|Certainly|Alright|Understood|Hello|Hi|Yes|Thanks";
+var CORRECTION_FILLER_PREFIX_RE = new RegExp(`^(?:(?:${CORRECTION_FILLER_WORDS})(?:\\s*[,\uFF0C\u3001:\uFF1A.\u3002!\uFF01?\uFF1F)\uFF09]|\\s))+`, "i");
+var CORRECTION_PURE_FILLER_RE = new RegExp(`^(?:(?:${CORRECTION_FILLER_WORDS})(?:\\s*[,\uFF0C\u3001:\uFF1A.\u3002!\uFF01?\uFF1F)\uFF09]\\s*|\\s+))*(?:${CORRECTION_FILLER_WORDS})\\s*$`, "i");
+var CORRECTION_MIN_SIMILARITY = 0.45;
+var SIMILARITY_MAX_CHARS = 1500;
+function normalizedSimilarity(a, b) {
+  const norm = (s) => Array.from(s.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, ""));
+  const x = norm(a);
+  const y = norm(b);
+  const n = Math.max(x.length, y.length);
+  if (n === 0 || n > SIMILARITY_MAX_CHARS)
+    return 1;
+  let prev = Array.from({ length: y.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= x.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= y.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return 1 - prev[y.length] / n;
+}
+function correctionSystem(lang) {
+  return lang === "en" ? "You are a speech-recognition corrector. Make only minimal fixes: correct typos/homophones and punctuation, preserving original meaning and style. Do not rewrite, add content, or answer questions. Output only the corrected text." : "\u4F60\u662F\u4E2D\u6587\u8BED\u97F3\u8BC6\u522B\u7EA0\u9519\u5668\u3002\u8BF7\u53EA\u505A\u6700\u5C0F\u4FEE\u6B63\uFF1A\u6539\u9519\u522B\u5B57/\u540C\u97F3\u5B57\u3001\u8865\u6807\u70B9\uFF0C\u4FDD\u6301\u539F\u610F\u4E0E\u53E3\u8BED\u98CE\u683C\uFF1B\u4E0D\u8981\u6539\u5199\u3001\u8865\u5145\u6216\u56DE\u7B54\u95EE\u9898\u3002\u53EA\u8F93\u51FA\u4FEE\u6B63\u540E\u7684\u6587\u672C\uFF0C\u4E0D\u8981\u4EFB\u4F55\u89E3\u91CA\u3002";
+}
+function applyCorrectionGuards(original, candidate) {
+  const trimmed = String(original ?? "").trim();
+  if (!trimmed)
+    return original;
+  const corrected = String(candidate ?? "").trim();
+  if (!corrected)
+    return original;
+  if (corrected.length > Math.max(trimmed.length * 3, trimmed.length + 24))
+    return original;
+  if (normalizedSimilarity(trimmed, corrected) < CORRECTION_MIN_SIMILARITY)
+    return original;
+  if (CORRECTION_PREAMBLE_RE.test(corrected))
+    return original;
+  let noFiller = corrected;
+  for (; ; ) {
+    const next = noFiller.replace(CORRECTION_FILLER_PREFIX_RE, "").trimStart();
+    const after = CORRECTION_PURE_FILLER_RE.test(next) ? "" : next;
+    if (after === noFiller)
+      break;
+    noFiller = after;
+  }
+  if (noFiller !== corrected && (noFiller === "" || CORRECTION_PREAMBLE_RE.test(noFiller)))
+    return original;
+  return corrected;
+}
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/tts-engines.js
+var MAX_AUDIO_BYTES = 16 * 1024 * 1024;
+var MAX_MIMO_JSON_BYTES = 24 * 1024 * 1024;
+var MAX_TTS_ERROR_BYTES = 8 * 1024;
+var UTF8_DECODER3 = new TextDecoder("utf-8");
+function sniffAudioMime(bytes, contentTypeHeader) {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0)
+    return null;
+  if (bytes.byteLength >= 12 && bytes[0] === 82 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 70 && bytes[8] === 87 && bytes[9] === 65 && bytes[10] === 86 && bytes[11] === 69) {
+    return "audio/wav";
+  }
+  if (bytes.byteLength >= 3 && bytes[0] === 73 && bytes[1] === 68 && bytes[2] === 51) {
+    return "audio/mpeg";
+  }
+  if (bytes.byteLength >= 2 && bytes[0] === 255) {
+    const b1 = bytes[1];
+    if ((b1 & 224) === 224 && (b1 & 24) !== 8 && (b1 & 6) !== 0) {
+      return "audio/mpeg";
+    }
+  }
+  if (bytes.byteLength >= 4 && bytes[0] === 79 && bytes[1] === 103 && bytes[2] === 103 && bytes[3] === 83) {
+    return "audio/ogg";
+  }
+  if (bytes.byteLength >= 4 && bytes[0] === 102 && bytes[1] === 76 && bytes[2] === 97 && bytes[3] === 67) {
+    return "audio/flac";
+  }
+  if (bytes.byteLength >= 4 && bytes[0] === 26 && bytes[1] === 69 && bytes[2] === 223 && bytes[3] === 163) {
+    return "audio/webm";
+  }
+  if (bytes.byteLength >= 8 && bytes[4] === 102 && bytes[5] === 116 && bytes[6] === 121 && bytes[7] === 112) {
+    return "audio/mp4";
+  }
+  if (!contentTypeHeader || typeof contentTypeHeader !== "string")
+    return null;
+  const mediaType = (contentTypeHeader.split(";")[0] ?? "").trim().toLowerCase();
+  if (!/^audio\/[a-z0-9][a-z0-9!#$&^_.+-]*$/.test(mediaType))
+    return null;
+  const prefix = UTF8_DECODER3.decode(bytes.subarray(0, 64)).trimStart();
+  if (prefix.startsWith("<") || prefix.startsWith("{") || prefix.startsWith("[")) {
+    return null;
+  }
+  return mediaType;
+}
+var B64_TABLE = (() => {
+  const table = new Int8Array(128).fill(-1);
+  const std = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  for (let i = 0; i < std.length; i += 1) {
+    table[std.charCodeAt(i)] = i;
+  }
+  table[45] = 62;
+  table[95] = 63;
+  return table;
+})();
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/asr-engines.js
+var MAX_ASR_AUDIO_BYTES = 25 * 1024 * 1024;
+var MAX_ASR_RESPONSE_BYTES = 1 * 1024 * 1024;
+var MAX_ASR_ERROR_BYTES = 8 * 1024;
+var UTF8_ENCODER2 = new TextEncoder();
+var UTF8_DECODER4 = new TextDecoder("utf-8");
+
+// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/daemon-client.js
+var MAX_HEALTH_BYTES = 64 * 1024;
+var UTF8_DECODER5 = new TextDecoder("utf-8");
 
 // src/asr-host.ts
 import { join as join2 } from "node:path";
@@ -73,29 +1201,29 @@ function createSenseWorkerClient(worker) {
     }
   };
   worker.on?.("message", (msg) => {
-    const p = pending.get(msg?.id);
-    if (!p) return;
+    const p2 = pending.get(msg?.id);
+    if (!p2) return;
     pending.delete(msg.id);
     if (!msg.ok) {
-      if (p.op === "create") {
-        p.reject(new Error(msg.error ?? "sense worker create failed"));
+      if (p2.op === "create") {
+        p2.reject(new Error(msg.error ?? "sense worker create failed"));
       } else {
-        p.resolve(null);
+        p2.resolve(null);
       }
       return;
     }
-    p.resolve(p.op === "create" ? true : msg.text ?? "");
+    p2.resolve(p2.op === "create" ? true : msg.text ?? "");
   });
   worker.on?.("error", (e) => {
     die();
     const err = new Error("sense worker error: " + String(e?.message ?? e));
-    for (const [, p] of pending) p.reject(err);
+    for (const [, p2] of pending) p2.reject(err);
     pending.clear();
   });
   worker.on?.("exit", () => {
     die();
     const err = new Error("sense worker exited");
-    for (const [, p] of pending) p.reject(err);
+    for (const [, p2] of pending) p2.reject(err);
     pending.clear();
   });
   const request = (op, samples) => {
@@ -121,7 +1249,7 @@ function createSenseWorkerClient(worker) {
     terminate: async () => {
       dead = true;
       const err = new Error("sense worker terminated");
-      for (const [, p] of pending) p.reject(err);
+      for (const [, p2] of pending) p2.reject(err);
       pending.clear();
       try {
         await worker.terminate?.();
@@ -194,8 +1322,8 @@ import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:
 import { join } from "node:path";
 var HOST_PRIMARY = "https://huggingface.co";
 var HOST_FALLBACK = "https://hf-mirror.com";
-var ALLOWED_MODEL_HOSTNAMES = ["huggingface.co", "hf.co", "hf-mirror.com"];
-function validateModelHost(raw, allowCustomHost) {
+var ALLOWED_MODEL_HOSTNAMES2 = ["huggingface.co", "hf.co", "hf-mirror.com"];
+function validateModelHost2(raw, allowCustomHost) {
   if (!raw) return null;
   let u;
   try {
@@ -205,12 +1333,12 @@ function validateModelHost(raw, allowCustomHost) {
   }
   if (u.protocol !== "https:") return null;
   const hostname = u.hostname.toLowerCase();
-  if (!ALLOWED_MODEL_HOSTNAMES.includes(hostname) && !allowCustomHost) {
+  if (!ALLOWED_MODEL_HOSTNAMES2.includes(hostname) && !allowCustomHost) {
     return null;
   }
   return `${u.protocol}//${u.hostname}${u.port ? `:${u.port}` : ""}`;
 }
-function redirectHostAllowed(finalUrl, allowCustomHost) {
+function redirectHostAllowed2(finalUrl, allowCustomHost) {
   try {
     const u = new URL(finalUrl);
     if (u.protocol !== "https:") return false;
@@ -313,7 +1441,7 @@ async function downloadVerified(opts) {
     if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;
     const res = await fetchWithHeadersTimeout(url, { headers, redirect: "follow" }, ac);
     idle.kick();
-    if (!redirectHostAllowed(res.url, allowCustomHost)) {
+    if (!redirectHostAllowed2(res.url, allowCustomHost)) {
       await res.body?.cancel().catch(() => void 0);
       return false;
     }
@@ -403,7 +1531,7 @@ async function downloadVerified(opts) {
     return true;
   }
 }
-function isSafeModelRel(rel, subdir) {
+function isSafeModelRel2(rel, subdir) {
   if (!rel.startsWith(subdir + "/")) return false;
   if (rel.includes("\\") || rel.includes("\0")) return false;
   return !rel.split("/").some((seg) => seg === "" || seg === "." || seg === "..");
@@ -452,14 +1580,14 @@ async function ensureModelTree(opts) {
       const res = await fetchWithHeadersTimeout(host + "/api/models/" + repo + "?blobs=true", {
         headers: { "user-agent": "dsh-voice-mode" }
       }, listAc);
-      if (!redirectHostAllowed(res.url, allowCustomHost)) {
+      if (!redirectHostAllowed2(res.url, allowCustomHost)) {
         await res.body?.cancel().catch(() => void 0);
         continue;
       }
       if (res.ok) {
         listIdle.kick();
         const j = await res.json();
-        tree = (j.siblings ?? []).map((s) => s.rfilename ?? "").filter((f) => isSafeModelRel(f, subdir));
+        tree = (j.siblings ?? []).map((s) => s.rfilename ?? "").filter((f) => isSafeModelRel2(f, subdir));
         if (tree.length > 0) break;
       } else {
         await res.body?.cancel().catch(() => void 0);
@@ -499,7 +1627,7 @@ async function ensureModelTree(opts) {
           const idle = makeIdleWatch(ac, opts.idleTimeoutMs ?? MODEL_BODY_IDLE_TIMEOUT_MS);
           try {
             const res = await fetchWithHeadersTimeout(url, { headers: { "user-agent": "dsh-voice-mode" }, redirect: "follow" }, ac);
-            if (!redirectHostAllowed(res.url, allowCustomHost)) {
+            if (!redirectHostAllowed2(res.url, allowCustomHost)) {
               await res.body?.cancel().catch(() => void 0);
               continue;
             }
@@ -665,7 +1793,7 @@ function createAsrRuntime(options) {
   const repoDir = join2(cacheDir, MODEL_REPO);
   const vadDir = join2(cacheDir, VAD_REPO);
   const senseDir = join2(cacheDir, SENSE_REPO);
-  const normalizedModelHost = () => validateModelHost(modelHost(), allowCustomHost) ?? HOST_PRIMARY;
+  const normalizedModelHost = () => validateModelHost2(modelHost(), allowCustomHost) ?? HOST_PRIMARY;
   const freeSegment = (s) => {
     if (s.freed) return;
     s.freed = true;
@@ -1384,286 +2512,12 @@ var AsrReplacementSchema = z.object({
   from: z.array(z.string()).description('Spellings the recognizer produces, e.g. ["sakeena"]; case-insensitive, whitespace between Latin and CJK text ignored.'),
   to: z.string().description('The spelling you want, e.g. "Sakina".')
 });
-var ASCII_WORD = /[A-Za-z0-9]/;
-var escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-function patternOf(heard) {
-  const chars = [...heard.replace(/\s+/g, " ").trim()];
-  if (chars.length === 0) return null;
-  let body = "";
-  let prev = "";
-  let spaced = false;
-  for (const ch of chars) {
-    if (ch === " ") {
-      spaced = true;
-      continue;
-    }
-    if (prev && (spaced || ASCII_WORD.test(prev) !== ASCII_WORD.test(ch))) body += "\\s*";
-    body += escapeRegExp(ch);
-    prev = ch;
-    spaced = false;
-  }
-  const first = [...heard.trim()][0];
-  const trimmed = [...heard.trim()];
-  const last = trimmed[trimmed.length - 1];
-  const head = ASCII_WORD.test(first) ? "(?<![A-Za-z0-9])" : "";
-  const tail = ASCII_WORD.test(last) ? "(?![A-Za-z0-9])" : "";
-  return `${head}${body}${tail}`;
+function createAsrReplacer2(rules, onHit) {
+  return createAsrReplacer(rules, onHit);
 }
-function createAsrReplacer(rules, onHit) {
-  const entries = [];
-  rules.forEach((rule, ruleIndex) => {
-    if (!rule.to) return;
-    for (const heard of rule.from) {
-      const pattern = patternOf(heard);
-      if (!pattern) continue;
-      entries.push({
-        pattern,
-        key: heard.replace(/\s+/g, "").toLowerCase(),
-        to: rule.to,
-        length: heard.replace(/\s+/g, "").length,
-        ruleIndex
-      });
-    }
-  });
-  if (entries.length === 0) return (text) => text;
-  entries.sort((a, b) => b.length - a.length);
-  const targets = /* @__PURE__ */ new Map();
-  for (const e of entries) if (!targets.has(e.key)) targets.set(e.key, { to: e.to, ruleIndex: e.ruleIndex });
-  const regex = new RegExp(entries.map((e) => `(?:${e.pattern})`).join("|"), "giu");
-  return (text, countHit = true) => {
-    if (!text) return text;
-    return text.replace(regex, (match) => {
-      const hit = targets.get(match.replace(/\s+/g, "").toLowerCase());
-      if (!hit) return match;
-      if (onHit && countHit) onHit(hit.ruleIndex);
-      return hit.to;
-    });
-  };
-}
-
-// src/segmenter.ts
-var SKIP_PREFIX = /^[\s.,，、:：;；!?！？)\]）"'”’〉》】]+$/;
-function plainText(text) {
-  return String(text).replace(/```[\s\S]*?```/g, " ").replace(/`([^`]*)`/g, "$1").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^#{1,6}\s+/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/^[-*+]\s+/gm, "").replace(/^\d+\.\s+/gm, "").replace(/<\/?(?:b|i|u|br|p|span|div|strong|em|s|sub|sup|h[1-6]|ul|ol|li|a|img|code|pre|blockquote|hr|table|tr|td|th)\b[^>]*>/gi, " ");
-}
-function sanitizeForTts(text) {
-  return String(text).replace(/[*_#|^=+~`]/g, " ").replace(/\s{2,}/g, " ").replace(/([\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g, "$1").trim();
-}
-function splitSentences(chunk) {
-  const sentences = [];
-  let start = 0;
-  const re = /[。！？!?；;…\n]+|\.(?=\s|$)/g;
-  let m;
-  let lastEnd = 0;
-  while ((m = re.exec(chunk)) !== null) {
-    const end = m.index + m[0].length;
-    if (m[0] === "." && end === chunk.length && /\d/.test(chunk[m.index - 1] ?? "")) continue;
-    sentences.push(chunk.slice(start, end));
-    start = end;
-    lastEnd = end;
-  }
-  return { sentences, tail: chunk.slice(lastEnd) };
-}
-function cutHead(text, max) {
-  let idx = -1;
-  for (let i = Math.min(max, text.length) - 1; i > 0; i--) {
-    if (/[，,、\s]/.test(text[i])) {
-      idx = i + 1;
-      break;
-    }
-  }
-  if (idx <= 0) idx = Math.max(1, Math.floor(max / 2));
-  return [text.slice(0, idx), text.slice(idx)];
-}
-var SentenceSegmenter = class {
-  buffer = "";
-  maxChars;
-  /** 是否处在 ``` 代码块内（跨 delta 有效：流式 delta 只有几个 token，代码块总是被切碎送达，
-   *  plainText 的整块正则匹配不到，代码会被逐句念出——「总是朗读」覆盖打字会话后尤其明显）。 */
-  inFence = false;
-  /** delta 末尾悬挂的 1-2 个反引号（被切开的 ``` 前半；连续 3 个及以上是完整围栏，不悬挂）。 */
-  ticks = "";
-  /** 围栏内被抑制的内容暂存：流结束时若仍未闭合则回退输出（宁可念代码，也不吞掉整回合正文）。 */
-  fenced = "";
-  constructor(options = {}) {
-    this.maxChars = options.maxSentenceChars ?? 200;
-  }
-  /** 去掉 ``` 代码块内容（状态跨 delta 保持）；进入代码块处补一个换行，让前面的文字先成句。 */
-  dropFences(chunk) {
-    let s = this.ticks + chunk;
-    this.ticks = "";
-    const trail = /`+$/.exec(s);
-    const hang = trail ? trail[0].length : 0;
-    if (hang > 0 && hang <= 2) {
-      this.ticks = s.slice(-hang);
-      s = s.slice(0, -hang);
-    }
-    let out = "";
-    for (; ; ) {
-      const m = /`{3,}/.exec(s);
-      if (!m) {
-        if (this.inFence) this.fenced += s;
-        else out += s;
-        return out;
-      }
-      if (this.inFence) this.fenced += s.slice(0, m.index);
-      else out += s.slice(0, m.index) + "\n";
-      this.inFence = !this.inFence;
-      if (!this.inFence) this.fenced = "";
-      s = s.slice(m.index + m[0].length);
-    }
-  }
-  /**
-   * 安全阀：把超过 maxChars 的文字墙切下一段（feed 与 flush 共用同一口径）。
-   * 切点取 ≤ maxChars 内**最后一个**「，,、\s」——取第一个会把无标点的英文/代码逐词切成
-   * 几十个小段；超长段必须 ≤ maxChars，否则阀形同虚设。没有可用分隔符时取一半。
-   */
-  cutWall() {
-    const [head, rest] = cutHead(this.buffer, this.maxChars);
-    this.buffer = rest;
-    return sanitizeForTts(head).trim();
-  }
-  /** 成句本身超过 maxChars（长逗号句）同样过安全阀，逐段输出。 */
-  capSentence(s, out) {
-    let rest = s;
-    while (rest.length > this.maxChars) {
-      const [head, tail] = cutHead(rest, this.maxChars);
-      rest = tail;
-      const t2 = sanitizeForTts(head).trim();
-      if (t2 && !SKIP_PREFIX.test(t2)) out.push(t2);
-    }
-    const t = sanitizeForTts(rest).trim();
-    if (t && !SKIP_PREFIX.test(t)) out.push(t);
-  }
-  /** 喂入一段 raw delta，返回它补全的完整句子。 */
-  feed(chunk) {
-    const cleaned = plainText(this.dropFences(chunk));
-    if (!cleaned) return [];
-    this.buffer += cleaned;
-    const { sentences, tail } = splitSentences(this.buffer);
-    this.buffer = tail;
-    const out = [];
-    for (const s of sentences) this.capSentence(s, out);
-    while (this.buffer.length > this.maxChars) {
-      const head = this.cutWall();
-      if (head && !SKIP_PREFIX.test(head)) out.push(head);
-    }
-    return out;
-  }
-  /**
-   * 收尾：flush 剩余缓冲（流结束）。
-   * 整回合未见闭合围栏 → 把围栏内被抑制的内容回退输出（v0.7.27 之前未配对围栏零损失，
-   * 全靠这一条守住；否则一个孤立的 ``` 会静默吞掉本回合剩余正文）。
-   *
-   * 过安全阀后的多段仍按「代码内容」朗读：既有取舍是「宁念代码不吞正文」，切分只改朗读粒度
-   * （每段一次合成请求）、不改取舍；段序 = 原文字序，段内容 = 原文字符的连续切片（切点沿用
-   * feed() 同一口径）。不回退成「整体不念」——那等于回到吞正文的老问题。
-   */
-  flush() {
-    if (this.inFence) this.buffer = plainText(this.buffer + this.fenced);
-    const out = [];
-    while (this.buffer.length > this.maxChars) {
-      const head = this.cutWall();
-      if (head && !SKIP_PREFIX.test(head)) out.push(head);
-    }
-    const t = sanitizeForTts(this.buffer).trim();
-    this.buffer = "";
-    this.inFence = false;
-    this.ticks = "";
-    this.fenced = "";
-    if (t && !SKIP_PREFIX.test(t)) out.push(t);
-    return out;
-  }
-};
 
 // src/tts-queue.ts
 import { MsEdgeTTS, OUTPUT_FORMAT } from "./msedge-tts.cjs";
-
-// src/emotion.ts
-var EMOTION_TAG_PATTERN = "<\\s*(break\\s+(?<ms>\\d+)\\s*ms|whisper|\\/whisper|laugh|sigh|emphasis)\\s*>";
-var TAG_RE = new RegExp(EMOTION_TAG_PATTERN, "gi");
-var STRIP_RE = new RegExp(EMOTION_TAG_PATTERN, "gi");
-function stripEmotionTags(raw) {
-  return raw.replace(STRIP_RE, " ");
-}
-var MAX_BREAK_MS = 5e3;
-var MAX_TOTAL_BREAK_MS = 1e4;
-function parseEmotionTags(raw) {
-  const out = [];
-  let buf = "";
-  let whisper = false;
-  let pendingBreakMs = 0;
-  let totalBreakMs = 0;
-  let sawInlineTag = false;
-  const appendText = (chunk) => {
-    if (chunk.length === 0) return;
-    if (sawInlineTag && /[A-Za-z0-9]$/.test(buf) && /^[A-Za-z0-9]/.test(chunk)) {
-      buf += " ";
-    }
-    sawInlineTag = false;
-    buf += chunk;
-  };
-  const flush = () => {
-    const t = buf.trim();
-    buf = "";
-    sawInlineTag = false;
-    if (t.length === 0) return;
-    const seg = { text: t, whisper };
-    out.push(seg);
-  };
-  let lastEnd = 0;
-  for (const m of raw.matchAll(TAG_RE)) {
-    const idx = m.index ?? 0;
-    appendText(raw.slice(lastEnd, idx));
-    lastEnd = idx + m[0].length;
-    const tag = (m[1] ?? "").toLowerCase().trim();
-    if (tag.startsWith("break")) {
-      const rawMs = Number(m.groups?.ms ?? 0);
-      if (!Number.isFinite(rawMs) || rawMs <= 0) continue;
-      const remaining = Math.max(0, MAX_TOTAL_BREAK_MS - totalBreakMs);
-      const ms = Math.min(rawMs, MAX_BREAK_MS, remaining);
-      if (ms <= 0) {
-        if (buf.trim().length > 0) flush();
-        continue;
-      }
-      totalBreakMs += ms;
-      if (buf.trim().length > 0) {
-        flush();
-      }
-      const last = out[out.length - 1];
-      if (last) {
-        ;
-        last.preBreakMs = (last.preBreakMs ?? 0) + ms;
-      } else {
-        pendingBreakMs += ms;
-      }
-    } else if (tag === "whisper") {
-      flush();
-      whisper = true;
-    } else if (tag === "/whisper") {
-      flush();
-      whisper = false;
-    } else {
-      sawInlineTag = true;
-    }
-  }
-  appendText(raw.slice(lastEnd));
-  flush();
-  if (pendingBreakMs > 0) {
-    const last = out[out.length - 1];
-    if (last) {
-      ;
-      last.preBreakMs = (last.preBreakMs ?? 0) + pendingBreakMs;
-    }
-    pendingBreakMs = 0;
-  }
-  if (whisper) {
-    for (const s of out) s.whisper = false;
-  }
-  return out;
-}
-
-// src/tts-queue.ts
 var MP3_MAGIC = 255;
 var TTS_METADATA = { wordBoundaryEnabled: false, sentenceBoundaryEnabled: false };
 var EDGE_VOICES_TIMEOUT_MS = 3e4;
@@ -2269,135 +3123,6 @@ function resolveNativeRuntime(opts = {}) {
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 import { join as join3 } from "node:path";
 import { statSync as statSync2 } from "node:fs";
-
-// src/voice-catalog.ts
-var VITS_SPEAKERS = [
-  { name: "suyingxue", sid: 0, zh: "\u7D20\u6620\u96EA", en: "Su Yingxue", gender: "F" },
-  { name: "gunian", sid: 1, zh: "\u987E\u5FF5", en: "Gu Nian", gender: "M" },
-  { name: "fushiyu", sid: 2, zh: "\u5085\u65AF\u9047", en: "Fu Siyu", gender: "F" },
-  { name: "bingjiao", sid: 3, zh: "\u51B0\u5A07", en: "Bing Jiao", gender: "M" },
-  { name: "bazong", sid: 4, zh: "\u9738\u603B", en: "Ba Zong", gender: "M" }
-];
-var KOKORO_F0 = [
-  224,
-  189,
-  154,
-  261,
-  226,
-  222,
-  220,
-  229,
-  198,
-  186,
-  212,
-  293,
-  233,
-  161,
-  247,
-  207,
-  218,
-  216,
-  220,
-  238,
-  242,
-  229,
-  198,
-  286,
-  211,
-  190,
-  264,
-  261,
-  226,
-  147,
-  216,
-  240,
-  233,
-  188,
-  222,
-  247,
-  253,
-  270,
-  276,
-  276,
-  279,
-  320,
-  247,
-  296,
-  276,
-  235,
-  139,
-  240,
-  282,
-  282,
-  238,
-  226,
-  273,
-  216,
-  286,
-  270,
-  198,
-  179,
-  117,
-  130,
-  114,
-  128,
-  108,
-  106,
-  122,
-  136,
-  190,
-  112,
-  108,
-  128,
-  131,
-  111,
-  110,
-  132,
-  138,
-  189,
-  137,
-  148,
-  151,
-  127,
-  135,
-  111,
-  138,
-  114,
-  125,
-  158,
-  128,
-  156,
-  132,
-  162,
-  131,
-  136,
-  142,
-  124,
-  129,
-  136,
-  126,
-  135,
-  161,
-  150,
-  124,
-  104,
-  124
-];
-var KOKORO_NAMED = {
-  48: { name: "zf_xiaobei", zh: "\u5C0F\u5317", en: "Xiaobei" },
-  49: { name: "zf_xiaoni", zh: "\u5C0F\u59AE", en: "Xiaoni" },
-  50: { name: "zf_xiaoxiao", zh: "\u5C0F\u5C0F", en: "Xiaoxiao" },
-  51: { name: "zf_xiaoyi", zh: "\u5C0F\u827A", en: "Xiaoyi" }
-};
-var KOKORO_PINNED = [62, 68, 75, 76];
-var KOKORO_VOICES = [
-  ...KOKORO_PINNED.map((sid) => ({ name: KOKORO_NAMED[sid]?.name ?? String(sid), sid })),
-  ...KOKORO_F0.map((_, sid) => ({ name: KOKORO_NAMED[sid]?.name ?? String(sid), sid })).filter(
-    (v) => !KOKORO_PINNED.includes(v.sid)
-  )
-];
-
-// src/tts-local.ts
 var TTS_MODEL_REPO = "csukuangfj/sherpa-onnx-vits-zh-ll";
 var KOKORO_MODEL_DIR_INT8 = "csukuangfj/kokoro-int8-multi-lang-v1_1";
 var KOKORO_MODEL_DIR_FP32 = "csukuangfj/kokoro-multi-lang-v1_1";
@@ -2557,10 +3282,10 @@ function createSherpaLocalEngine(options) {
     child.send({ id, ...msg });
   });
   const rejectAll = (e, owner) => {
-    for (const [id, p] of pending) {
-      if (owner && p.owner !== owner) continue;
+    for (const [id, p2] of pending) {
+      if (owner && p2.owner !== owner) continue;
       pending.delete(id);
-      p.reject(e);
+      p2.reject(e);
     }
   };
   let initFailUntil = 0;
@@ -2634,11 +3359,11 @@ function createSherpaLocalEngine(options) {
                 }
               });
               child.on("message", (m) => {
-                const p = pending.get(m.id);
-                if (!p) return;
+                const p2 = pending.get(m.id);
+                if (!p2) return;
                 pending.delete(m.id);
-                if (m.ok) p.resolve(m);
-                else p.reject(new Error(m.error ?? "tts child error"));
+                if (m.ok) p2.resolve(m);
+                else p2.reject(new Error(m.error ?? "tts child error"));
               });
               child.on("error", (e) => {
                 rejectAll(e instanceof Error ? e : new Error(String(e)), me);
@@ -2698,11 +3423,11 @@ function createSherpaLocalEngine(options) {
     },
     status() {
       const files = spec.files.map((f) => {
-        const p = join3(repoDir, f.file);
+        const p2 = join3(repoDir, f.file);
         let exists = false;
         let size = 0;
         try {
-          const st = statSync2(p);
+          const st = statSync2(p2);
           exists = st.isFile();
           size = st.size;
         } catch {
@@ -3299,38 +4024,6 @@ var en = {
 };
 
 // src/llm-correct.ts
-function correctionSystem(lang) {
-  return lang === "en" ? "You are a speech-recognition corrector. The user text comes from ASR and may contain homophone errors, typos, or missing/wrong punctuation. Make only minimal fixes: correct typos/homophones and fix punctuation, preserving the original meaning and colloquial style. Do not rewrite sentences, do not add content, do not answer questions, and do not alter numbers or proper nouns. Output only the corrected text, with no explanation. If the input has no obvious errors, return it unchanged." : "\u4F60\u662F\u4E2D\u6587\u8BED\u97F3\u8BC6\u522B\u7EA0\u9519\u5668\u3002\u7528\u6237\u7684\u8BDD\u6765\u81EA\u8BED\u97F3\u8BC6\u522B\uFF08ASR\uFF09\uFF0C\u53EF\u80FD\u6709\u540C\u97F3\u5B57\u3001\u9519\u522B\u5B57\u3001\u6807\u70B9\u7F3A\u5931\u6216\u9519\u8BEF\u3002\u8BF7\u53EA\u505A\u6700\u5C0F\u4FEE\u6B63\uFF1A\u6539\u9519\u522B\u5B57/\u540C\u97F3\u5B57\u3001\u8865\u6807\u70B9\uFF0C\u4FDD\u6301\u539F\u610F\u4E0E\u53E3\u8BED\u98CE\u683C\uFF1B\u4E0D\u8981\u6539\u5199\u53E5\u5B50\u3001\u4E0D\u8981\u8865\u5145\u5185\u5BB9\u3001\u4E0D\u8981\u56DE\u7B54\u95EE\u9898\u3001\u4E0D\u8981\u6539\u53D8\u6570\u5B57\u548C\u4E13\u4E1A\u672F\u8BED\u3002\u53EA\u8F93\u51FA\u4FEE\u6B63\u540E\u7684\u6587\u672C\uFF0C\u4E0D\u8981\u4EFB\u4F55\u89E3\u91CA\u3002\u5982\u679C\u539F\u6587\u6CA1\u6709\u660E\u663E\u9519\u8BEF\uFF0C\u539F\u6837\u8FD4\u56DE\u3002";
-}
-var CORRECTION_PREAMBLE_RE = /^(?:以下是|这是|已|文本)?(?:修正|纠正|更正|纠错)|^(?:here(?:'s| is) (?:the |an |a )?|i have |text after )?(?:corrected|correction)\b/i;
-var CORRECTION_MIN_SIMILARITY = 0.45;
-var SIMILARITY_MAX_CHARS = 1500;
-function normalizedSimilarity(a, b) {
-  const norm = (s) => Array.from(s.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, ""));
-  const x = norm(a);
-  const y = norm(b);
-  const n = Math.max(x.length, y.length);
-  if (n === 0) return 1;
-  if (n > SIMILARITY_MAX_CHARS) return 1;
-  let prev = Array.from({ length: y.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= x.length; i++) {
-    const cur = [i];
-    for (let j = 1; j <= y.length; j++) {
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
-    }
-    prev = cur;
-  }
-  return 1 - prev[y.length] / n;
-}
-var CORRECTION_FILLER_WORDS = "\u5F53\u7136\u53EF\u4EE5|\u5F53\u7136|\u597D\u5427|\u597D\u7684?|\u884C\u5427|\u884C|\u662F\u7684|\u55EF|\u6536\u5230|\u660E\u767D\u4E86|\u77E5\u9053\u4E86|Thank you|Of course|Got it|OK|Okay|Sure|Certainly|Alright|Understood|Hello|Hi|Yes|Thanks";
-var CORRECTION_FILLER_PREFIX_RE = new RegExp(
-  "^(?:(?:" + CORRECTION_FILLER_WORDS + ")(?:\\s*[,\uFF0C\u3001:\uFF1A.\u3002!\uFF01?\uFF1F)\uFF09]|\\s))+",
-  "i"
-);
-var CORRECTION_PURE_FILLER_RE = new RegExp(
-  "^(?:(?:" + CORRECTION_FILLER_WORDS + ")(?:\\s*[,\uFF0C\u3001:\uFF1A.\u3002!\uFF01?\uFF1F)\uFF09]\\s*|\\s+))*(?:" + CORRECTION_FILLER_WORDS + ")\\s*$",
-  "i"
-);
 async function correctText(ctx, text, lang) {
   const trimmed = String(text ?? "").trim();
   if (!trimmed) return text;
@@ -3348,7 +4041,6 @@ async function correctText(ctx, text, lang) {
         provider: sel.provider,
         model: sel.model,
         system: correctionSystem(lang),
-        // host 侧自弃 10s（早于客户端 12s，审查 M3）：超时或输出失控超长均立即 abort。
         signal: ac.signal,
         messages: [{ role: "user", content: [{ type: "text", text: trimmed }] }]
       });
@@ -3364,22 +4056,7 @@ async function correctText(ctx, text, lang) {
     } finally {
       clearTimeout(timer);
     }
-    const corrected = out.trim();
-    if (corrected.length > Math.max(trimmed.length * 3, trimmed.length + 24)) return text;
-    if (normalizedSimilarity(trimmed, corrected) < CORRECTION_MIN_SIMILARITY) return text;
-    if (CORRECTION_PREAMBLE_RE.test(corrected)) return text;
-    let noFiller = corrected;
-    for (; ; ) {
-      const next = noFiller.replace(CORRECTION_FILLER_PREFIX_RE, "").trimStart();
-      const after = CORRECTION_PURE_FILLER_RE.test(next) ? "" : next;
-      if (after === noFiller) break;
-      noFiller = after;
-    }
-    if (noFiller !== corrected) {
-      if (noFiller === "") return text;
-      if (CORRECTION_PREAMBLE_RE.test(noFiller)) return text;
-    }
-    return corrected || text;
+    return applyCorrectionGuards(text, out);
   } catch (e) {
     console.warn(`[dsh-voice-mode] llm correction failed: ${redactSecrets(e)}`);
     return text;
@@ -3387,18 +4064,16 @@ async function correctText(ctx, text, lang) {
 }
 
 // src/audio-format.ts
-function sniffAudioMime(buf, fallback) {
-  if (buf.length >= 12 && buf.subarray(0, 4).toString("latin1") === "RIFF" && buf.subarray(8, 12).toString("latin1") === "WAVE") {
-    return "audio/wav";
+function sniffAudioMime2(buf, fallback) {
+  if (buf.length === 0) return fallback;
+  if (buf[0] === 255) {
+    if (buf.length >= 7 && (buf[1] & 246) === 240) return "audio/aac";
+    if (buf.length >= 3 && (buf[1] & 224) === 224 && (buf[1] & 24) !== 8 && ((buf[1] & 6) === 2 || (buf[1] & 6) === 4) && (buf[2] & 240) !== 240 && (buf[2] & 12) !== 12) {
+      return "audio/mpeg";
+    }
+    return fallback;
   }
-  if (buf.length >= 4 && buf.subarray(0, 4).toString("latin1") === "OggS") return "audio/ogg";
-  if (buf.length >= 4 && buf.subarray(0, 4).toString("latin1") === "fLaC") return "audio/flac";
-  if (buf.length >= 3 && buf[0] === 73 && buf[1] === 68 && buf[2] === 51) return "audio/mpeg";
-  if (buf.length >= 7 && buf[0] === 255 && (buf[1] & 246) === 240) return "audio/aac";
-  if (buf.length >= 3 && buf[0] === 255 && (buf[1] & 224) === 224 && (buf[1] & 24) !== 8 && ((buf[1] & 6) === 2 || (buf[1] & 6) === 4) && (buf[2] & 240) !== 240 && (buf[2] & 12) !== 12) {
-    return "audio/mpeg";
-  }
-  return fallback;
+  return sniffAudioMime(buf) ?? fallback;
 }
 
 // src/online-tts.ts
@@ -3446,8 +4121,8 @@ function resolveOnlineTts(overrides, config) {
 
 // src/tts-openai.ts
 var MIME = { mp3: "audio/mpeg", wav: "audio/wav" };
-var MAX_AUDIO_BYTES = 16 * 1024 * 1024;
-var MAX_ERROR_BYTES = 8 * 1024;
+var MAX_AUDIO_BYTES2 = 16 * 1024 * 1024;
+var MAX_ERROR_BYTES2 = 8 * 1024;
 async function readResponseBytes(res, maxBytes, truncate) {
   const lenHeader = Number(res.headers.get("content-length") ?? 0);
   if (!truncate && Number.isFinite(lenHeader) && lenHeader > maxBytes) {
@@ -3609,14 +4284,14 @@ var OpenAiTtsEngine = class {
         redirect: "error"
       });
       if (!res.ok) {
-        const rawErr = await readResponseBytes(res, MAX_ERROR_BYTES, true).then((b) => b.toString("utf8"), () => "");
+        const rawErr = await readResponseBytes(res, MAX_ERROR_BYTES2, true).then((b) => b.toString("utf8"), () => "");
         const detail = redactBodySnippet(rawErr);
         throw new OpenAiTtsError("openai_http_error", `HTTP ${res.status}${detail ? `: ${detail}` : ""}`);
       }
       const ctype = (res.headers.get("content-type") ?? "").toLowerCase();
-      const buf = await readResponseBytes(res, MAX_AUDIO_BYTES, false);
+      const buf = await readResponseBytes(res, MAX_AUDIO_BYTES2, false);
       if (buf.length === 0) throw new OpenAiTtsError("openai_empty_audio", "empty audio");
-      const sniffed = sniffAudioMime(buf, "");
+      const sniffed = sniffAudioMime2(buf, "");
       let mime;
       if (sniffed) {
         mime = sniffed;
@@ -3683,20 +4358,20 @@ function presetRequiresKey(presetId) {
   if (!Object.prototype.hasOwnProperty.call(OPENAI_PRESETS, presetId)) return false;
   return !presetId.startsWith("selfhosted-");
 }
-var SILICONFLOW_SYSTEM_VOICES = ["alex", "benjamin", "charles", "david", "anna", "bella", "claire", "diana"];
-var OPENAI_API_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "marin", "cedar", "nova", "onyx", "sage", "shimmer"];
+var SILICONFLOW_SYSTEM_VOICES2 = ["alex", "benjamin", "charles", "david", "anna", "bella", "claire", "diana"];
+var OPENAI_API_VOICES2 = ["alloy", "ash", "ballad", "coral", "echo", "fable", "marin", "cedar", "nova", "onyx", "sage", "shimmer"];
 var OPENAI_PRESETS = {
   "siliconflow-cosyvoice2": {
     baseUrl: "https://api.siliconflow.cn/v1",
     model: "FunAudioLLM/CosyVoice2-0.5B",
     voice: "FunAudioLLM/CosyVoice2-0.5B:alex",
-    voices: SILICONFLOW_SYSTEM_VOICES.map((v) => `FunAudioLLM/CosyVoice2-0.5B:${v}`)
+    voices: SILICONFLOW_SYSTEM_VOICES2.map((v) => `FunAudioLLM/CosyVoice2-0.5B:${v}`)
   },
   "siliconflow-fish": {
     baseUrl: "https://api.siliconflow.cn/v1",
     model: "fishaudio/fish-speech-1.5",
     voice: "fishaudio/fish-speech-1.5:anna",
-    voices: SILICONFLOW_SYSTEM_VOICES.map((v) => `fishaudio/fish-speech-1.5:${v}`)
+    voices: SILICONFLOW_SYSTEM_VOICES2.map((v) => `fishaudio/fish-speech-1.5:${v}`)
   },
   // OpenRouter 官方 TTS 文档（2026-05-01 公告）：POST /api/v1/audio/speech，
   // 示例模型 slug 为带日期的 `openai/gpt-4o-mini-tts-2025-12-15`、voice `alloy`、response_format mp3。
@@ -3705,14 +4380,14 @@ var OPENAI_PRESETS = {
     baseUrl: "https://openrouter.ai/api/v1",
     model: "openai/gpt-4o-mini-tts-2025-12-15",
     voice: "alloy",
-    voices: [...OPENAI_API_VOICES]
+    voices: [...OPENAI_API_VOICES2]
   },
   // OpenAI 官方（docs: /v1/audio/speech，模型 gpt-4o-mini-tts，官方推荐 marin/cedar 音质最佳）。
   "openai-official": {
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-4o-mini-tts",
     voice: "marin",
-    voices: [...OPENAI_API_VOICES]
+    voices: [...OPENAI_API_VOICES2]
   },
   // 自建示例（本机地址为占位；无鉴权时 key 留空即可）：
   //   Kokoro-FastAPI / LocalAI 的 OpenAI 兼容面，Kokoro 音色名取自本插件本地目录（zf_xiaobei 等）。
@@ -3851,16 +4526,24 @@ function buildSettingsGetView(vset, config) {
 }
 
 // src/engine-kind.ts
-var TTS_ENGINE_KINDS = ["vits", "kokoro", "edge", "openai", "mimo"];
-var LOCAL_ENGINE_KINDS = ["vits", "kokoro"];
-function asTtsEngineKind(value) {
-  return TTS_ENGINE_KINDS.includes(value) ? value : "vits";
+var TTS_ENGINE_KINDS2 = ["vits", "kokoro", "edge", "openai", "mimo"];
+var DSH_TO_CORE_TTS = {
+  vits: "vits-wasm",
+  kokoro: "kokoro-daemon",
+  openai: "openai-compat",
+  mimo: "mimo"
+};
+function toCoreTtsKind(value) {
+  return typeof value === "string" && Object.hasOwn(DSH_TO_CORE_TTS, value) ? DSH_TO_CORE_TTS[value] : void 0;
+}
+function asTtsEngineKind2(value) {
+  return TTS_ENGINE_KINDS2.includes(value) ? value : "vits";
 }
 function isLocalEngine(value) {
-  return LOCAL_ENGINE_KINDS.includes(value);
+  return isLocalTtsEngine(toCoreTtsKind(value));
 }
-function usesBilingualSample(value) {
-  return value === "kokoro" || value === "openai" || value === "mimo";
+function usesBilingualSample2(value) {
+  return usesBilingualSample(toCoreTtsKind(value));
 }
 
 // src/prompts.ts
@@ -3889,7 +4572,7 @@ function mimoSpeedInstruction(rate) {
   return rate > 1 ? `\u8BED\u901F\u52A0\u5FEB\u5230\u7EA6 ${rate} \u500D` : `\u8BED\u901F\u653E\u6162\u5230\u7EA6 ${rate} \u500D`;
 }
 function previewSample(engine, voice) {
-  if (usesBilingualSample(engine)) return `${SAMPLE_ZH}${SAMPLE_EN}`;
+  if (usesBilingualSample2(engine)) return `${SAMPLE_ZH}${SAMPLE_EN}`;
   if (engine === "vits") return SAMPLE_ZH;
   const m = /^([a-z]{2,3})-/i.exec(voice);
   return m && SAMPLE_BY_LANG[m[1].toLowerCase()] || SAMPLE_EN;
@@ -3901,7 +4584,7 @@ var MIME2 = {
   mp3: "audio/mpeg"
 };
 var MAX_JSON_BYTES = 24 * 1024 * 1024;
-var MAX_ERROR_BYTES2 = 8 * 1024;
+var MAX_ERROR_BYTES3 = 8 * 1024;
 async function readMimoBytes(res, maxBytes, truncate) {
   const lenHeader = Number(res.headers.get("content-length") ?? 0);
   if (!truncate && Number.isFinite(lenHeader) && lenHeader > maxBytes) {
@@ -3950,9 +4633,9 @@ var MimoTtsError = class extends Error {
     this.code = code;
   }
 };
-var MIMO_DEFAULT_BASE_URL = "https://api.xiaomimimo.com/v1";
-var MIMO_DEFAULT_MODEL = "mimo-v2.5-tts";
-var MIMO_DEFAULT_VOICE = "mimo_default";
+var MIMO_DEFAULT_BASE_URL2 = "https://api.xiaomimimo.com/v1";
+var MIMO_DEFAULT_MODEL2 = "mimo-v2.5-tts";
+var MIMO_DEFAULT_VOICE2 = "mimo_default";
 function mimoChatUrl(baseUrl) {
   const url = new URL(baseUrl.trim());
   if (url.protocol !== "http:" && url.protocol !== "https:") {
@@ -3990,7 +4673,7 @@ function decodeBase64Audio(data) {
   }
   return Buffer.from(clean, "base64");
 }
-var MimoTtsEngine = class {
+var MimoTtsEngine2 = class {
   voice;
   rate;
   url;
@@ -4014,13 +4697,13 @@ var MimoTtsEngine = class {
       if (!options.apiKey?.trim()) {
         throw new MimoTtsError("mimo_not_configured", "mimo apiKey is not configured");
       }
-      url = mimoChatUrl(options.baseUrl?.trim() || MIMO_DEFAULT_BASE_URL);
+      url = mimoChatUrl(options.baseUrl?.trim() || MIMO_DEFAULT_BASE_URL2);
     } catch (e) {
       this.configError = e instanceof MimoTtsError ? e : new MimoTtsError("mimo_bad_url", "bad baseUrl");
       url = null;
     }
     this.url = url;
-    this.voice = (options.voice ?? "").trim() || MIMO_DEFAULT_VOICE;
+    this.voice = (options.voice ?? "").trim() || MIMO_DEFAULT_VOICE2;
     this.format = options.responseFormat ?? "wav";
     this.timeoutMs = options.timeoutMs ?? 8e3;
     this.cooldownMs = options.cooldownMs ?? 3e4;
@@ -4032,7 +4715,7 @@ var MimoTtsEngine = class {
     return this.lastMime;
   }
   updateVoice(voice, rate) {
-    this.voice = voice.trim() || this.options.voice?.trim() || MIMO_DEFAULT_VOICE;
+    this.voice = voice.trim() || this.options.voice?.trim() || MIMO_DEFAULT_VOICE2;
     if (rate !== void 0 && Number.isFinite(rate)) this.rate = rate;
   }
   /** 合成并**随结果返回**本句专属 MIME（B6：不从共享 this.lastMime 事后回读，并发异构容器不串味）。 */
@@ -4078,7 +4761,7 @@ var MimoTtsEngine = class {
     if (instruction) messages.push({ role: "user", content: instruction });
     messages.push({ role: "assistant", content: input });
     const body = {
-      model: (this.options.model ?? "").trim() || MIMO_DEFAULT_MODEL,
+      model: (this.options.model ?? "").trim() || MIMO_DEFAULT_MODEL2,
       messages,
       audio: { voice: (options.voice || this.voice).trim(), format: this.format },
       stream: false
@@ -4101,7 +4784,7 @@ var MimoTtsEngine = class {
         redirect: "error"
       });
       if (!res.ok) {
-        const rawErr = await readMimoBytes(res, MAX_ERROR_BYTES2, true).then((b) => b.toString("utf8"), () => "");
+        const rawErr = await readMimoBytes(res, MAX_ERROR_BYTES3, true).then((b) => b.toString("utf8"), () => "");
         const detail = redactBodySnippet(rawErr);
         throw new MimoTtsError("mimo_http_error", `HTTP ${res.status}${detail ? `: ${detail}` : ""}`);
       }
@@ -4117,7 +4800,7 @@ var MimoTtsEngine = class {
       const buf = decodeBase64Audio(data);
       if (buf.length === 0) throw new MimoTtsError("mimo_empty_audio", "empty audio");
       const ctype = (res.headers.get("content-type") ?? "").toLowerCase();
-      const sniffed = sniffAudioMime(buf, "");
+      const sniffed = sniffAudioMime2(buf, "");
       let mime;
       if (sniffed) mime = sniffed;
       else if (ctype.startsWith("audio/")) mime = ctype.split(";")[0].trim();
@@ -4394,7 +5077,7 @@ var DESC = {
 function createVoiceSettingsSchema(defs) {
   const d = { ...VOICE_SETTINGS_DEFAULTS, ...defs };
   return z2.object({
-    ttsEngine: z2.union(TTS_ENGINE_KINDS.map((k) => z2.const(k))).default(d.ttsEngine).description(
+    ttsEngine: z2.union(TTS_ENGINE_KINDS2.map((k) => z2.const(k))).default(d.ttsEngine).description(
       DESC.ttsEngine
     ),
     kokoroModel: z2.union([z2.const("int8"), z2.const("fp32")]).default(d.kokoroModel).description(
@@ -4494,7 +5177,7 @@ var Config = z2.object({
   enabled: z2.boolean().default(true),
   cacheDir: z2.string().default(defaultModelCacheDir()),
   modelHost: z2.string().default("https://huggingface.co"),
-  ttsEngine: z2.union(TTS_ENGINE_KINDS.map((k) => z2.const(k))).default("edge"),
+  ttsEngine: z2.union(TTS_ENGINE_KINDS2.map((k) => z2.const(k))).default("edge"),
   openaiTts: OpenAiTtsConfig,
   mimoTts: MimoTtsConfig,
   kokoroModel: z2.union([z2.const("int8"), z2.const("fp32")]).default("int8"),
@@ -4662,7 +5345,7 @@ function apply(ctx, config) {
   const limiter = new RateLimiter();
   const limiterPrune = setInterval(() => limiter.prune(Date.now(), 6e4), 6e4);
   ctx.effect(() => () => clearInterval(limiterPrune));
-  const normalizedModelHost = () => validateModelHost(vset.modelHost, config.allowCustomModelHost) ?? HOST_PRIMARY;
+  const normalizedModelHost = () => validateModelHost2(vset.modelHost, config.allowCustomModelHost) ?? HOST_PRIMARY;
   const denyNonLoopback = (req, res) => {
     if (!config.allowLan && !isLoopbackRequest(req)) {
       respondJson2(res, 403, { code: "forbidden", error: "loopback only (allowLan=false)" });
@@ -4790,7 +5473,7 @@ function apply(ctx, config) {
   const rebuildReplacer = (rules) => {
     replacementRuleCount = rules.length;
     replacementHits = new Array(rules.length).fill(0);
-    replacerBox.fn = createAsrReplacer(rules, (i) => {
+    replacerBox.fn = createAsrReplacer2(rules, (i) => {
       replacementHits[i] = (replacementHits[i] ?? 0) + 1;
     });
   };
@@ -4841,7 +5524,7 @@ function apply(ctx, config) {
     if (kind === "mimo") {
       const m = config.mimoTts;
       const fb = m.fallback;
-      return new MimoTtsEngine({
+      return new MimoTtsEngine2({
         // 设置卡片里填的 key 优先（留空则回落到配置文件 mimoTts.apiKey）；key 只在宿主侧。
         apiKey: (vset.mimoApiKey ?? "").trim() || m.apiKey,
         baseUrl: m.baseUrl,
@@ -4903,7 +5586,7 @@ function apply(ctx, config) {
       broadcast
     });
   };
-  let engineKind = asTtsEngineKind(vset.ttsEngine ?? config.ttsEngine);
+  let engineKind = asTtsEngineKind2(vset.ttsEngine ?? config.ttsEngine);
   let activeKokoroModel = vset.kokoroModel;
   const queue = new TtsQueue({
     engine: makeEngine(engineKind),
@@ -5389,10 +6072,10 @@ function apply(ctx, config) {
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let kind = "asr";
           try {
-            const p = JSON.parse(body || "{}");
-            if (p.kind === void 0) {
-            } else if (p.kind === "vad" || p.kind === "sense" || p.kind === "asr") {
-              kind = p.kind;
+            const p2 = JSON.parse(body || "{}");
+            if (p2.kind === void 0) {
+            } else if (p2.kind === "vad" || p2.kind === "sense" || p2.kind === "asr") {
+              kind = p2.kind;
             } else {
               respondJson2(res, 400, { code: "bad_request", error: "invalid kind" });
               return;
@@ -5438,8 +6121,8 @@ function apply(ctx, config) {
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let engine = "vits";
           try {
-            const p = JSON.parse(body || "{}");
-            if (isLocalEngine(p.engine)) engine = p.engine;
+            const p2 = JSON.parse(body || "{}");
+            if (isLocalEngine(p2.engine)) engine = p2.engine;
             else {
               respondJson2(res, 400, { code: "bad_request", error: "invalid engine" });
               return;
@@ -5490,8 +6173,8 @@ function apply(ctx, config) {
         collectBody(req, res, MAX_JSON_BODY, (body) => {
           let engine = "vits";
           try {
-            const p = JSON.parse(body || "{}");
-            if (isLocalEngine(p.engine)) engine = p.engine;
+            const p2 = JSON.parse(body || "{}");
+            if (isLocalEngine(p2.engine)) engine = p2.engine;
             else {
               respondJson2(res, 400, { code: "bad_request", error: "invalid engine" });
               return;

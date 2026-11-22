@@ -1,5 +1,6 @@
 node_modules/
 *.tgz
+!plugin/dsh-voice-mode/vendor/*.tgz
 *.log
 .DS_Store
 research/

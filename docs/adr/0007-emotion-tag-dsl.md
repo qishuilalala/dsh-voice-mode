@@ -67,7 +67,7 @@ export interface TtsEngine {
 
 **`src/index.ts` 的 `tapActiveStream` 定义**（`async function* tapActiveStream`；唯一调用点为 `apply` 内的 `return tapActiveStream(`；原写 `:1699`、以及 2026-10-21 前快照的 `src/index.ts:1883`、`:1000` 均已漂移——2026-10-21 R15-J 改按**符号锚**重锚，行号待最终 HEAD 稳定后统一回填）：
 - 在 `segmenter.feed(chunk.text)` 之前调 `normalizeEmotionTags(chunk.text, engine)`，把抽取到的情绪信息塞到 `enqueue` 路径
-- `SentenceSegmenter.feed` (`src/segmenter.ts:69` 类 / `:115` feed（`feed(chunk: string): string[]`，:116 调 `plainText`）) 内部 `plainText` 必须在情绪标签抽取之后调——**顺序敏感**（类锚点 `:69` 未漂移；feed 锚点原写 `:78` 已漂移 Δ37，该行实为 `private fenced = ''`）
+- `SentenceSegmenter.feed` (`src/segmenter.ts:8` `SentenceSegmenter` 重导出 `@voice-mode/core`；原 `:69` 类 / `:115` `feed(chunk: string): string[]` 调 `plainText` 为合入 core 前快照) 内部 `plainText` 必须在情绪标签抽取之后调——**顺序敏感**
 
 ### 4. 验收（必须达成）
 
@@ -132,7 +132,7 @@ export interface TtsEngine {
 
 4. **`<break N ms>` 语义落地** —— 段后置静音（EmotionSegment.preBreakMs 标在「break 之前的最后一段」上，语义 = 该段 PCM 合成完后插入的静音毫秒数）。sherpa-onnx 不支持 SSML 时段间停顿标签，落地通过 PCM 后处理实现（`src/tts-local.ts:519-523`（`preBreakMs`；原锚 476-481 已漂移））。
 
-5. **`<laugh>/<sigh>/<emphasis>` 剥离不读出** —— 在 `src/emotion.ts:54` `parseEmotionTags` 标签处理分支识别后丢弃（2026-10-20 收尾终检修正，原 :53 为文档注释收尾行），不进入段序列。LLM 端若需真实笑声/叹气/强调，等第二步 Edge `rawToFile/rawToStream` 路径（ADR-0007 落地顺序第 2 步，本批未实施）。
+5. **`<laugh>/<sigh>/<emphasis>` 剥离不读出** —— 在 `src/emotion.ts:9` `parseEmotionTags`（重导出 `@voice-mode/core`；原 `:54` 为合入 core 前快照）标签处理分支识别后丢弃，不进入段序列。LLM 端若需真实笑声/叹气/强调，等第二步 Edge `rawToFile/rawToStream` 路径（ADR-0007 落地顺序第 2 步，本批未实施）。
 
 **未实施的部分**（按 ADR-0007「落地顺序」第 2 步，留未来）：
 
