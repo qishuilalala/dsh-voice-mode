@@ -14,8 +14,82 @@ var INLINE_SENTENCE_END_RE = /[。！？!?；;…]/;
 var TABLE_DELIM_CELL_RE = /^:?-+:?$/;
 var TABLE_DELIM_CHARS_RE = /^[\s|:-]*$/;
 var UNESCAPED_PIPE_RE = /(?:^|[^\\])\|/;
-var FRONTMATTER_BLOCK_RE = /^(?:\uFEFF)?---[ \t]*\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/;
 var FENCE_LANG_PREFIX_RE = /^[ \t]*[A-Za-z0-9_+.#-]{1,32}[ \t]*\r?\n/;
+var MAX_FRONTMATTER_KEY_CHARS = 120;
+var YAML_CLOSE = /^(?:---|\.\.\.)[ \t]*$/;
+var YAML_HEADER = /^[ \t]*(?:-[ \t]+)?(?:[\p{L}\p{N}_.-]+|"(?:[^"\\]|\\.)*"|'(?:[^']|'')*')[ \t]*:/u;
+var YAML_KEY_PREFIX = /^[ \t]*(?:-[ \t]+)?(?:[\p{L}\p{N}_.-]+[ \t]*|"(?:[^"\\]|\\.)*(?:\\|"[ \t]*)?|'(?:[^']|'')*(?:'[ \t]*)?)$/u;
+function classifyFirstLine(line, complete) {
+  if (/^[ \t]*#/.test(line))
+    return "metadata";
+  if (/^[ \t]*$/.test(line))
+    return "pending";
+  const header = YAML_HEADER.exec(line.slice(0, MAX_FRONTMATTER_KEY_CHARS + 1));
+  if (header) {
+    const next = line[header[0].length];
+    if (next === void 0)
+      return complete ? "metadata" : "pending";
+    return next === " " || next === "	" ? "metadata" : "body";
+  }
+  if (!complete && YAML_CLOSE.test(line))
+    return "pending";
+  if (!complete && line.length <= MAX_FRONTMATTER_KEY_CHARS) {
+    if (isHighSurrogate(line.charCodeAt(line.length - 1)) || YAML_KEY_PREFIX.test(line))
+      return "pending";
+  }
+  return "body";
+}
+var LeadingFrontmatter = class {
+  phase = "opening";
+  partial = "";
+  held = "";
+  release(body) {
+    this.phase = "body";
+    this.partial = "";
+    this.held = "";
+    return body;
+  }
+  read(chunk, final = false) {
+    if (this.phase === "body")
+      return chunk;
+    let start = 0;
+    for (; ; ) {
+      const nl = chunk.indexOf("\n", start);
+      const complete = nl !== -1 || final;
+      this.partial += nl === -1 ? chunk.slice(start) : chunk.slice(start, nl);
+      if (!complete && this.phase === "metadata")
+        return "";
+      const line = this.partial.endsWith("\r") ? this.partial.slice(0, -1) : this.partial;
+      const rest = nl === -1 ? "" : chunk.slice(nl + 1);
+      if (this.phase === "opening") {
+        if (!complete && /^\uFEFF?(?:-{0,2}|---[ \t]*)$/.test(line))
+          return "";
+        if (nl === -1 || !/^\uFEFF?---[ \t]*$/.test(line)) {
+          return this.release(this.partial + (nl === -1 ? "" : "\n" + rest));
+        }
+        this.phase = "first";
+      } else {
+        if (complete && YAML_CLOSE.test(line))
+          return this.release(rest);
+        if (this.phase === "first") {
+          const kind = classifyFirstLine(line, complete);
+          if (kind === "body") {
+            return this.release(this.held + this.partial + (nl === -1 ? "" : "\n" + rest));
+          }
+          if (kind === "metadata")
+            this.phase = "metadata";
+        }
+        if (nl === -1)
+          return final ? this.release(this.held + this.partial) : "";
+        this.held += this.partial + "\n";
+      }
+      this.partial = "";
+      start = nl + 1;
+      if (start === chunk.length && !final)
+        return "";
+    }
+  }
+};
 function hasNonDecimalPeriodEnd(text) {
   for (let i = 0; i < text.length; i++) {
     if (text.charCodeAt(i) !== 46)
@@ -111,9 +185,8 @@ function stripMarkdownTables(text, options = {}) {
   }
   return out.join("\n");
 }
-function plainText(text, options = {}) {
-  const withoutFrontmatter = String(text).replace(FRONTMATTER_BLOCK_RE, "");
-  const withoutFences = withoutFrontmatter.replace(/`{3,}[\s\S]*?`{3,}/g, " ").replace(/~{3,}[\s\S]*?~{3,}/g, " ");
+function cleanMarkdownBody(text, options) {
+  const withoutFences = text.replace(/`{3,}[\s\S]*?`{3,}/g, " ").replace(/~{3,}[\s\S]*?~{3,}/g, " ");
   const withoutMath = withoutFences.replace(/\$\$[\s\S]*?\$\$/g, " ");
   const withoutTables = stripMarkdownTables(withoutMath, options);
   return withoutTables.replace(/`([^`]*)`/g, "$1").replace(/!\[\[[^\]]*\]\]/g, " ").replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/<https?:\/\/[^\s<>]+>/gi, " ").replace(/https?:\/\/[^\s<>()[\]"'”’），。！？、；：]+/gi, " ").replace(/^[ \t]*>[ \t]*\[![A-Za-z0-9_-]+\][+-]?(?:[ \t]+(.*))?$/gm, "$1").replace(/^#{1,6}\s+/gm, "").replace(/^(?:[ \t]*>[ \t]?)+/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/^[-*+]\s+/gm, "").replace(/^\d+\.\s+/gm, "").replace(/^[-*_]{3,}\s*$/gm, " ").replace(/<\/?(?:b|i|u|br|p|span|div|strong|em|s|sub|sup|h[1-6]|ul|ol|li|a|img|code|pre|blockquote|hr|table|tr|td|th)\b[^>]*>/gi, " ");
@@ -168,9 +241,7 @@ var SentenceSegmenter = class {
   tablePolicy;
   tablePlaceholder;
   // YAML frontmatter state (document start only)
-  docStartChecked = false;
-  inFrontmatter = false;
-  frontmatterBuf = "";
+  frontmatter = new LeadingFrontmatter();
   // Cross-delta code fence state (` ``` ` and `~~~`)
   fenceChar = null;
   hangChars = "";
@@ -198,43 +269,6 @@ var SentenceSegmenter = class {
 `;
     }
     return "\n";
-  }
-  /** Strip leading YAML frontmatter (`--- ... ---`) across deltas; falls back cleanly on flush if unclosed. */
-  dropFrontmatter(chunk) {
-    if (this.docStartChecked && !this.inFrontmatter)
-      return chunk;
-    this.frontmatterBuf = (this.frontmatterBuf + chunk).replace(/\r\n/g, "\n");
-    if (!this.docStartChecked) {
-      const probe = this.frontmatterBuf.replace(/^\uFEFF/, "");
-      if (probe.length === 0)
-        return "";
-      const nl = probe.indexOf("\n");
-      if (nl === -1) {
-        if (/^-{1,3}[ \t]*\r?$/.test(probe))
-          return "";
-        this.docStartChecked = true;
-        const released = this.frontmatterBuf;
-        this.frontmatterBuf = "";
-        return released;
-      }
-      const firstLine = probe.slice(0, nl);
-      this.docStartChecked = true;
-      if (/^---[ \t]*$/.test(firstLine)) {
-        this.inFrontmatter = true;
-        this.frontmatterBuf = probe.slice(nl + 1);
-      } else {
-        const released = this.frontmatterBuf;
-        this.frontmatterBuf = "";
-        return released;
-      }
-    }
-    const closeMatch = /(?:^|\n)(?:---|\.\.\.)[ \t]*\n/.exec(this.frontmatterBuf);
-    if (!closeMatch)
-      return "";
-    const rest = this.frontmatterBuf.slice(closeMatch.index + closeMatch[0].length);
-    this.inFrontmatter = false;
-    this.frontmatterBuf = "";
-    return rest;
   }
   /** Cross-delta fenced code block filter supporting both ` ``` ` and `~~~`. */
   dropFences(chunk) {
@@ -416,7 +450,7 @@ var SentenceSegmenter = class {
     return out;
   }
   cleanCompleteText(raw) {
-    return plainText(raw, {
+    return cleanMarkdownBody(raw, {
       policy: this.tablePolicy,
       placeholder: this.tablePlaceholder
     });
@@ -499,7 +533,7 @@ var SentenceSegmenter = class {
   feed(chunk) {
     if (!chunk)
       return [];
-    const noFrontmatter = this.dropFrontmatter(chunk);
+    const noFrontmatter = this.frontmatter.read(chunk);
     const noFence = noFrontmatter ? this.dropFences(noFrontmatter) : "";
     const noMath = noFence ? this.dropBlockMath(noFence) : "";
     const noTable = noMath ? this.filterTables(noMath) : "";
@@ -512,18 +546,8 @@ var SentenceSegmenter = class {
   }
   /** Flush remaining buffered text at end-of-stream and reset internal state. */
   flush() {
-    let tailRaw = "";
-    if (!this.docStartChecked && this.frontmatterBuf) {
-      tailRaw += this.frontmatterBuf;
-    } else if (this.inFrontmatter && this.frontmatterBuf) {
-      const eofClose = /(?:^|\n)(?:---|\.\.\.)[ \t]*\r?$/.exec(this.frontmatterBuf);
-      if (!eofClose) {
-        tailRaw += this.frontmatterBuf;
-      }
-    }
-    this.docStartChecked = false;
-    this.inFrontmatter = false;
-    this.frontmatterBuf = "";
+    let tailRaw = this.frontmatter.read("", true);
+    this.frontmatter = new LeadingFrontmatter();
     if (this.hangChars) {
       if (this.fenceChar !== null)
         this.fenced += this.hangChars;
@@ -1037,13 +1061,6 @@ var TTS_OPENAI_PRESETS = {
   }
 };
 
-// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/model-manifest.js
-var UTF8_DECODER = new TextDecoder("utf-8");
-var NODE_PATH_TARGET = ["var nodePath=req", 'uire("path");'].join("");
-
-// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/http-stream.js
-var UTF8_DECODER2 = new TextDecoder("utf-8");
-
 // node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/llm-router.js
 var p = (id, label, protocol, defaultBaseUrl, defaultModel, requiresKey) => ({ id, label, protocol, defaultBaseUrl, defaultModel, requiresKey });
 var LLM_PRESETS = {
@@ -1117,7 +1134,7 @@ function applyCorrectionGuards(original, candidate) {
 var MAX_AUDIO_BYTES = 16 * 1024 * 1024;
 var MAX_MIMO_JSON_BYTES = 24 * 1024 * 1024;
 var MAX_TTS_ERROR_BYTES = 8 * 1024;
-var UTF8_DECODER3 = new TextDecoder("utf-8");
+var UTF8_DECODER = new TextDecoder("utf-8");
 function sniffAudioMime(bytes, contentTypeHeader) {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0)
     return null;
@@ -1150,7 +1167,7 @@ function sniffAudioMime(bytes, contentTypeHeader) {
   const mediaType = (contentTypeHeader.split(";")[0] ?? "").trim().toLowerCase();
   if (!/^audio\/[a-z0-9][a-z0-9!#$&^_.+-]*$/.test(mediaType))
     return null;
-  const prefix = UTF8_DECODER3.decode(bytes.subarray(0, 64)).trimStart();
+  const prefix = UTF8_DECODER.decode(bytes.subarray(0, 64)).trimStart();
   if (prefix.startsWith("<") || prefix.startsWith("{") || prefix.startsWith("[")) {
     return null;
   }
@@ -1166,17 +1183,6 @@ var B64_TABLE = (() => {
   table[95] = 63;
   return table;
 })();
-
-// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/asr-engines.js
-var MAX_ASR_AUDIO_BYTES = 25 * 1024 * 1024;
-var MAX_ASR_RESPONSE_BYTES = 1 * 1024 * 1024;
-var MAX_ASR_ERROR_BYTES = 8 * 1024;
-var UTF8_ENCODER2 = new TextEncoder();
-var UTF8_DECODER4 = new TextDecoder("utf-8");
-
-// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/daemon-client.js
-var MAX_HEALTH_BYTES = 64 * 1024;
-var UTF8_DECODER5 = new TextDecoder("utf-8");
 
 // src/asr-host.ts
 import { join as join2 } from "node:path";
@@ -1322,8 +1328,8 @@ import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:
 import { join } from "node:path";
 var HOST_PRIMARY = "https://huggingface.co";
 var HOST_FALLBACK = "https://hf-mirror.com";
-var ALLOWED_MODEL_HOSTNAMES2 = ["huggingface.co", "hf.co", "hf-mirror.com"];
-function validateModelHost2(raw, allowCustomHost) {
+var ALLOWED_MODEL_HOSTNAMES = ["huggingface.co", "hf.co", "hf-mirror.com"];
+function validateModelHost(raw, allowCustomHost) {
   if (!raw) return null;
   let u;
   try {
@@ -1333,12 +1339,12 @@ function validateModelHost2(raw, allowCustomHost) {
   }
   if (u.protocol !== "https:") return null;
   const hostname = u.hostname.toLowerCase();
-  if (!ALLOWED_MODEL_HOSTNAMES2.includes(hostname) && !allowCustomHost) {
+  if (!ALLOWED_MODEL_HOSTNAMES.includes(hostname) && !allowCustomHost) {
     return null;
   }
   return `${u.protocol}//${u.hostname}${u.port ? `:${u.port}` : ""}`;
 }
-function redirectHostAllowed2(finalUrl, allowCustomHost) {
+function redirectHostAllowed(finalUrl, allowCustomHost) {
   try {
     const u = new URL(finalUrl);
     if (u.protocol !== "https:") return false;
@@ -1441,7 +1447,7 @@ async function downloadVerified(opts) {
     if (resumeFrom > 0) headers.range = `bytes=${resumeFrom}-`;
     const res = await fetchWithHeadersTimeout(url, { headers, redirect: "follow" }, ac);
     idle.kick();
-    if (!redirectHostAllowed2(res.url, allowCustomHost)) {
+    if (!redirectHostAllowed(res.url, allowCustomHost)) {
       await res.body?.cancel().catch(() => void 0);
       return false;
     }
@@ -1531,7 +1537,7 @@ async function downloadVerified(opts) {
     return true;
   }
 }
-function isSafeModelRel2(rel, subdir) {
+function isSafeModelRel(rel, subdir) {
   if (!rel.startsWith(subdir + "/")) return false;
   if (rel.includes("\\") || rel.includes("\0")) return false;
   return !rel.split("/").some((seg) => seg === "" || seg === "." || seg === "..");
@@ -1580,14 +1586,14 @@ async function ensureModelTree(opts) {
       const res = await fetchWithHeadersTimeout(host + "/api/models/" + repo + "?blobs=true", {
         headers: { "user-agent": "dsh-voice-mode" }
       }, listAc);
-      if (!redirectHostAllowed2(res.url, allowCustomHost)) {
+      if (!redirectHostAllowed(res.url, allowCustomHost)) {
         await res.body?.cancel().catch(() => void 0);
         continue;
       }
       if (res.ok) {
         listIdle.kick();
         const j = await res.json();
-        tree = (j.siblings ?? []).map((s) => s.rfilename ?? "").filter((f) => isSafeModelRel2(f, subdir));
+        tree = (j.siblings ?? []).map((s) => s.rfilename ?? "").filter((f) => isSafeModelRel(f, subdir));
         if (tree.length > 0) break;
       } else {
         await res.body?.cancel().catch(() => void 0);
@@ -1627,7 +1633,7 @@ async function ensureModelTree(opts) {
           const idle = makeIdleWatch(ac, opts.idleTimeoutMs ?? MODEL_BODY_IDLE_TIMEOUT_MS);
           try {
             const res = await fetchWithHeadersTimeout(url, { headers: { "user-agent": "dsh-voice-mode" }, redirect: "follow" }, ac);
-            if (!redirectHostAllowed2(res.url, allowCustomHost)) {
+            if (!redirectHostAllowed(res.url, allowCustomHost)) {
               await res.body?.cancel().catch(() => void 0);
               continue;
             }
@@ -1793,7 +1799,7 @@ function createAsrRuntime(options) {
   const repoDir = join2(cacheDir, MODEL_REPO);
   const vadDir = join2(cacheDir, VAD_REPO);
   const senseDir = join2(cacheDir, SENSE_REPO);
-  const normalizedModelHost = () => validateModelHost2(modelHost(), allowCustomHost) ?? HOST_PRIMARY;
+  const normalizedModelHost = () => validateModelHost(modelHost(), allowCustomHost) ?? HOST_PRIMARY;
   const freeSegment = (s) => {
     if (s.freed) return;
     s.freed = true;
@@ -5345,7 +5351,7 @@ function apply(ctx, config) {
   const limiter = new RateLimiter();
   const limiterPrune = setInterval(() => limiter.prune(Date.now(), 6e4), 6e4);
   ctx.effect(() => () => clearInterval(limiterPrune));
-  const normalizedModelHost = () => validateModelHost2(vset.modelHost, config.allowCustomModelHost) ?? HOST_PRIMARY;
+  const normalizedModelHost = () => validateModelHost(vset.modelHost, config.allowCustomModelHost) ?? HOST_PRIMARY;
   const denyNonLoopback = (req, res) => {
     if (!config.allowLan && !isLoopbackRequest(req)) {
       respondJson2(res, 403, { code: "forbidden", error: "loopback only (allowLan=false)" });

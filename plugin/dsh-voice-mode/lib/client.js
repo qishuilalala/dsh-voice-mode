@@ -66,12 +66,6 @@ function replacementsPayloadBytes(rules) {
   return UTF8_ENCODER.encode(JSON.stringify(rules ?? [])).length;
 }
 
-// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/emotion.js
-var EMOTION_TAG_PATTERN = "<\\s*(break\\s+(?<ms>\\d+)\\s*ms|whisper|\\/whisper|laugh|sigh|emphasis)\\s*>";
-var TAG_RE = new RegExp(EMOTION_TAG_PATTERN, "gi");
-var STRIP_RE = new RegExp(EMOTION_TAG_PATTERN, "gi");
-var ANY_EMOTION_CUE_RE = new RegExp(EMOTION_TAG_PATTERN, "i");
-
 // node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/redact.js
 var PREFIXED = [
   { re: /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, to: "$1<redacted>" },
@@ -385,61 +379,6 @@ var EDGE_COMMON_VOICES = [
   { v: "en-US-GuyNeural", zh: "Guy", en: "Guy", gender: "M", accent: "english" }
 ];
 
-// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/model-manifest.js
-var UTF8_DECODER = new TextDecoder("utf-8");
-var NODE_PATH_TARGET = ["var nodePath=req", 'uire("path");'].join("");
-
-// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/http-stream.js
-var UTF8_DECODER2 = new TextDecoder("utf-8");
-
-// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/llm-router.js
-var p = (id, label, protocol, defaultBaseUrl, defaultModel, requiresKey) => ({ id, label, protocol, defaultBaseUrl, defaultModel, requiresKey });
-var LLM_PRESETS = {
-  deepseek: p("deepseek", "DeepSeek", "openai-compat", "https://api.deepseek.com/v1", "deepseek-chat", true),
-  "dashscope-qwen": p("dashscope-qwen", "DashScope (Qwen)", "openai-compat", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus", true),
-  "volcengine-doubao": p("volcengine-doubao", "Volcengine Ark (Doubao)", "openai-compat", "https://ark.cn-beijing.volces.com/api/v3", "doubao-seed-1-6-250615", true),
-  "moonshot-kimi": p("moonshot-kimi", "Moonshot (Kimi)", "openai-compat", "https://api.moonshot.cn/v1", "moonshot-v1-8k", true),
-  siliconflow: p("siliconflow", "SiliconFlow", "openai-compat", "https://api.siliconflow.cn/v1", "Qwen/Qwen2.5-7B-Instruct", true),
-  openrouter: p("openrouter", "OpenRouter", "openai-compat", "https://openrouter.ai/api/v1", "openai/gpt-4o-mini", true),
-  openai: p("openai", "OpenAI", "openai-compat", "https://api.openai.com/v1", "gpt-4o-mini", true),
-  anthropic: p("anthropic", "Anthropic", "anthropic-messages", "https://api.anthropic.com/v1", "claude-sonnet-4-5", true),
-  ollama: p("ollama", "Ollama (Local)", "openai-compat", "http://127.0.0.1:11434/v1", "qwen2.5:7b", false),
-  lmstudio: p("lmstudio", "LM Studio (Local)", "openai-compat", "http://127.0.0.1:1234/v1", "local-model", false),
-  custom: p("custom", "Custom", "openai-compat", "", "", false)
-};
-var MAX_ERROR_BYTES = 8 * 1024;
-var MAX_FALLBACK_CONTENT_LENGTH = 1024 * 1024;
-var CORRECTION_FILLER_WORDS = "\u5F53\u7136\u53EF\u4EE5|\u5F53\u7136|\u597D\u5427|\u597D\u7684?|\u884C\u5427|\u884C|\u662F\u7684|\u55EF|\u6536\u5230|\u660E\u767D\u4E86|\u77E5\u9053\u4E86|Thank you|Of course|Got it|OK|Okay|Sure|Certainly|Alright|Understood|Hello|Hi|Yes|Thanks";
-var CORRECTION_FILLER_PREFIX_RE = new RegExp(`^(?:(?:${CORRECTION_FILLER_WORDS})(?:\\s*[,\uFF0C\u3001:\uFF1A.\u3002!\uFF01?\uFF1F)\uFF09]|\\s))+`, "i");
-var CORRECTION_PURE_FILLER_RE = new RegExp(`^(?:(?:${CORRECTION_FILLER_WORDS})(?:\\s*[,\uFF0C\u3001:\uFF1A.\u3002!\uFF01?\uFF1F)\uFF09]\\s*|\\s+))*(?:${CORRECTION_FILLER_WORDS})\\s*$`, "i");
-
-// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/tts-engines.js
-var MAX_AUDIO_BYTES = 16 * 1024 * 1024;
-var MAX_MIMO_JSON_BYTES = 24 * 1024 * 1024;
-var MAX_TTS_ERROR_BYTES = 8 * 1024;
-var UTF8_DECODER3 = new TextDecoder("utf-8");
-var B64_TABLE = (() => {
-  const table = new Int8Array(128).fill(-1);
-  const std = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  for (let i = 0; i < std.length; i += 1) {
-    table[std.charCodeAt(i)] = i;
-  }
-  table[45] = 62;
-  table[95] = 63;
-  return table;
-})();
-
-// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/asr-engines.js
-var MAX_ASR_AUDIO_BYTES = 25 * 1024 * 1024;
-var MAX_ASR_RESPONSE_BYTES = 1 * 1024 * 1024;
-var MAX_ASR_ERROR_BYTES = 8 * 1024;
-var UTF8_ENCODER2 = new TextEncoder();
-var UTF8_DECODER4 = new TextDecoder("utf-8");
-
-// node_modules/.pnpm/@voice-mode+core@file+vendor+voice-mode-core-0.1.0.tgz/node_modules/@voice-mode/core/dist/daemon-client.js
-var MAX_HEALTH_BYTES = 64 * 1024;
-var UTF8_DECODER5 = new TextDecoder("utf-8");
-
 // src/wakeword.ts
 var WAKE_LEAD_CHARS = 3;
 var WAKE_MAX_EDITS = 1;
@@ -473,10 +412,10 @@ function wakePrefixLength(text, wakeWord) {
   if (!w || w.length < 2) return 0;
   const raw = String(text ?? "");
   for (let i = 1; i <= raw.length; i++) {
-    const p2 = normalizeWake(raw.slice(0, i));
-    if (p2.length < w.length) continue;
-    if (p2.length > w.length + WAKE_MAX_EDITS) break;
-    if (editDistanceWithin(p2, w, WAKE_MAX_EDITS) <= WAKE_MAX_EDITS) return i;
+    const p = normalizeWake(raw.slice(0, i));
+    if (p.length < w.length) continue;
+    if (p.length > w.length + WAKE_MAX_EDITS) break;
+    if (editDistanceWithin(p, w, WAKE_MAX_EDITS) <= WAKE_MAX_EDITS) return i;
   }
   return 0;
 }
@@ -489,18 +428,18 @@ function stripWakePrefix(text, wakeWord) {
 function matchWakeWord(partial, wakeWord) {
   const w = normalizeWake(wakeWord);
   if (!w) return false;
-  const p2 = normalizeWake(partial);
-  if (!p2) return false;
-  if (p2.startsWith(w)) return true;
+  const p = normalizeWake(partial);
+  if (!p) return false;
+  if (p.startsWith(w)) return true;
   if (w.length < 2) return false;
-  const maxStart = Math.min(WAKE_LEAD_CHARS, p2.length - 1);
+  const maxStart = Math.min(WAKE_LEAD_CHARS, p.length - 1);
   for (let start = 0; start <= maxStart; start++) {
-    const available = p2.length - start;
+    const available = p.length - start;
     const minLen = Math.max(1, w.length - WAKE_MAX_EDITS);
     const maxLen = Math.min(w.length + WAKE_MAX_EDITS, available);
     for (let len = minLen; len <= maxLen; len++) {
       if (len < 2 && w.length >= 2) continue;
-      const window2 = p2.slice(start, start + len);
+      const window2 = p.slice(start, start + len);
       if (editDistanceWithin(window2, w, WAKE_MAX_EDITS) <= WAKE_MAX_EDITS) return true;
     }
   }
@@ -822,9 +761,9 @@ function normalizeBackchannel(text) {
   return String(text ?? "").replace(/[\s\u3000]+/g, "").toLowerCase().replace(/[，。！？!?；;、,.]/g, "");
 }
 function matchBackchannel(partial) {
-  const p2 = normalizeBackchannel(partial);
-  if (!p2 || p2.length > 4) return false;
-  return BACKCHANNEL_WORDS.has(p2);
+  const p = normalizeBackchannel(partial);
+  if (!p || p.length > 4) return false;
+  return BACKCHANNEL_WORDS.has(p);
 }
 var SAMPLE_RATE2 = 16e3;
 var SPEECH_RMS = 0.015;
@@ -1538,7 +1477,7 @@ function createAsrEngine(config, sessionId) {
         prePad = [];
       } else if (rms > SPEECH_RMS) {
         if (segment.length === 0) {
-          for (const p2 of prePad) segment.push(p2);
+          for (const p of prePad) segment.push(p);
         }
         prePad = [];
         segmentMs += durationMs;
@@ -1566,7 +1505,7 @@ function createAsrEngine(config, sessionId) {
           detectGeneration++;
           utteranceEndAt = null;
           setState("speech");
-          for (const p2 of prePad) segment.push(p2);
+          for (const p of prePad) segment.push(p);
           prePad = [];
         }
         speechMs += durationMs;
@@ -3512,10 +3451,10 @@ function firstUseHintKey(mode, base = FIRST_USE_HINT_BASE) {
 function formatShortcutForDisplay(raw, isMac) {
   const clean2 = String(raw ?? "").trim();
   if (!clean2) return "";
-  const parts = clean2.split("+").map((p2) => p2.trim()).filter(Boolean);
+  const parts = clean2.split("+").map((p) => p.trim()).filter(Boolean);
   if (parts.length === 0) return "";
-  const mapped = parts.map((p2) => {
-    const low = p2.toLowerCase();
+  const mapped = parts.map((p) => {
+    const low = p.toLowerCase();
     if (isMac) {
       if (low === "ctrl" || low === "control") return "\u2303 Control";
       if (low === "alt" || low === "option") return "\u2325 Option";
@@ -3524,7 +3463,7 @@ function formatShortcutForDisplay(raw, isMac) {
       if (low === "enter" || low === "return") return "Return";
       if (low === "space") return "Space";
       if (low === "tab") return "Tab";
-      return p2.length === 1 ? p2.toUpperCase() : p2;
+      return p.length === 1 ? p.toUpperCase() : p;
     }
     if (low === "ctrl" || low === "control") return "Ctrl";
     if (low === "alt" || low === "option") return "Alt";
@@ -3533,7 +3472,7 @@ function formatShortcutForDisplay(raw, isMac) {
     if (low === "enter" || low === "return") return "Enter";
     if (low === "space") return "Space";
     if (low === "tab") return "Tab";
-    return p2.length === 1 ? p2.toUpperCase() : p2;
+    return p.length === 1 ? p.toUpperCase() : p;
   });
   return mapped.join(isMac ? " + " : "+");
 }
@@ -7246,9 +7185,9 @@ function createHttpScope(origin = location.origin, fetchImpl = fetch, timeoutMs 
         if (!ok && !disposed && writing === 0) await load();
         return ok;
       };
-      const p2 = writeChain.then(runPost, runPost);
-      writeChain = p2.then(() => void 0, () => void 0);
-      return p2;
+      const p = writeChain.then(runPost, runPost);
+      writeChain = p.then(() => void 0, () => void 0);
+      return p;
     },
     dispose: () => {
       disposed = true;
@@ -7311,8 +7250,8 @@ async function fetchPresetVoice(presetId) {
       if (!res.ok) return null;
       const data = await res.json();
       const next = {};
-      for (const [id, p2] of Object.entries(data.presets ?? {})) {
-        if (typeof p2?.voice === "string") next[id] = p2.voice;
+      for (const [id, p] of Object.entries(data.presets ?? {})) {
+        if (typeof p?.voice === "string") next[id] = p.voice;
       }
       presetVoiceCache = next;
     } catch {
@@ -7346,7 +7285,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "5b17324";
+var BUILD_TAG = "e24c402";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = (() => {
   try {
@@ -8248,8 +8187,8 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
     source.addEventListener("asr-progress", (e) => {
       try {
-        const p2 = JSON.parse(e.data);
-        ui.model = { file: p2.file ?? "", percent: p2.percent ?? 0 };
+        const p = JSON.parse(e.data);
+        ui.model = { file: p.file ?? "", percent: p.percent ?? 0 };
         notify();
       } catch {
       }
@@ -8262,9 +8201,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
     source.addEventListener("asr-notice", (e) => {
       try {
-        const p2 = JSON.parse(e.data);
+        const p = JSON.parse(e.data);
         if (!activeSessionId) return;
-        if (p2.code === "sense_degraded") {
+        if (p.code === "sense_degraded") {
           busApi.setNotice(t("senseDegradedNotice"));
         }
       } catch {
@@ -8272,9 +8211,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
     source.addEventListener("asr-error", (e) => {
       try {
-        const p2 = JSON.parse(e.data);
+        const p = JSON.parse(e.data);
         if (!activeSessionId) return;
-        ui.error = t("modelDownloadFail").replace("{file}", p2.file ?? "");
+        ui.error = t("modelDownloadFail").replace("{file}", p.file ?? "");
         ui.model = null;
         notify();
       } catch {
@@ -8282,23 +8221,23 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
     source.addEventListener("tts-retry", (e) => {
       try {
-        const p2 = JSON.parse(e.data);
-        if (p2.sessionId !== activeSessionId) return;
+        const p = JSON.parse(e.data);
+        if (p.sessionId !== activeSessionId) return;
         ttsRetryActive = true;
-        ui.ttsNotice = t("ttsRetryingNotice", { attempt: p2.attempt ?? 2, max: p2.maxAttempts ?? 3 });
+        ui.ttsNotice = t("ttsRetryingNotice", { attempt: p.attempt ?? 2, max: p.maxAttempts ?? 3 });
         notify();
       } catch {
       }
     });
     source.addEventListener("tts-skip", (e) => {
       try {
-        const p2 = JSON.parse(e.data);
-        if (p2.sessionId !== activeSessionId) return;
+        const p = JSON.parse(e.data);
+        if (p.sessionId !== activeSessionId) return;
         ttsRetryActive = false;
-        const down = (p2.streak ?? 1) >= 2;
+        const down = (p.streak ?? 1) >= 2;
         const msg = down ? t("ttsUnavailableNotice") : t("ttsSkipNotice");
         ui.ttsNotice = msg;
-        if (down && p2.streak === 2) {
+        if (down && p.streak === 2) {
           ui.error = msg;
           setTimeout(() => {
             if (ui.error === msg) {
@@ -8308,14 +8247,14 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
           }, 8e3);
         }
         notify();
-        debugLog("tts-skip", { text: (p2.text ?? "").slice(0, 40), streak: p2.streak });
+        debugLog("tts-skip", { text: (p.text ?? "").slice(0, 40), streak: p.streak });
       } catch {
       }
     });
     source.addEventListener("tts-error", (e) => {
       try {
-        const p2 = JSON.parse(e.data);
-        if (p2.sessionId === activeSessionId) {
+        const p = JSON.parse(e.data);
+        if (p.sessionId === activeSessionId) {
           const failMsg = t("ttsNoticeFail");
           ui.ttsNotice = failMsg;
           ui.error = failMsg;
@@ -8332,9 +8271,9 @@ function createVoiceBus(basePath = BASE_PATH2, ctx) {
     });
     source.addEventListener("tool", (e) => {
       try {
-        const p2 = JSON.parse(e.data);
-        if (p2.sessionId) toolPending.add(p2.sessionId);
-        if (p2.sessionId === activeSessionId && ui.boot.toolBeep === true) playToolBeep();
+        const p = JSON.parse(e.data);
+        if (p.sessionId) toolPending.add(p.sessionId);
+        if (p.sessionId === activeSessionId && ui.boot.toolBeep === true) playToolBeep();
       } catch {
       }
     });
@@ -10165,9 +10104,9 @@ function MicButton({
           pausedForHiddenRef.current = true;
           const eng = engineRef.current;
           const flushSid = sidRef.current;
-          const p2 = typeof eng.flushAndStop === "function" ? eng.flushAndStop(3e3) : eng.stop().then(() => false);
-          hiddenFlushRef.current = p2;
-          void p2.then((flushed) => {
+          const p = typeof eng.flushAndStop === "function" ? eng.flushAndStop(3e3) : eng.stop().then(() => false);
+          hiddenFlushRef.current = p;
+          void p.then((flushed) => {
             if (!flushed && lastPartialRef.current && sidRef.current === flushSid) {
               const cleaned = composeDraft(draftRef.current, lastPartialRef.current, "");
               lastPartialRef.current = "";
@@ -10180,7 +10119,7 @@ function MicButton({
             }
             if (pausedForHiddenRef.current) bus.setUi({ partial: "", levels: [] });
           }).finally(() => {
-            if (hiddenFlushRef.current === p2) hiddenFlushRef.current = null;
+            if (hiddenFlushRef.current === p) hiddenFlushRef.current = null;
           });
         }
       } else if (pausedForHiddenRef.current && localRef.current === "on") {
@@ -10405,12 +10344,12 @@ function MicButton({
     }
   };
   const onPointerMove = (e) => {
-    const p2 = holdPtrRef.current;
-    if (!p2 || p2.id !== e.pointerId) return;
-    if (touchMenuTimerRef.current !== null && Math.abs(e.clientY - p2.y) >= 12) {
+    const p = holdPtrRef.current;
+    if (!p || p.id !== e.pointerId) return;
+    if (touchMenuTimerRef.current !== null && Math.abs(e.clientY - p.y) >= 12) {
       clearTouchMenuTimer();
     }
-    if (p2.y - e.clientY >= 40) {
+    if (p.y - e.clientY >= 40) {
       holdPtrRef.current = null;
       toggleHoldRef.current = false;
       clearBreakTimer();
@@ -10421,15 +10360,15 @@ function MicButton({
     }
   };
   const onPointerUp = (e) => {
-    const p2 = holdPtrRef.current;
-    const action = pointerUpAction(p2, { id: e.pointerId, button: e.button });
+    const p = holdPtrRef.current;
+    const action = pointerUpAction(p, { id: e.pointerId, button: e.button });
     if (action === "ignore") return;
     holdPtrRef.current = null;
     clearTouchMenuTimer();
     clearBreakTimer();
-    if (action === "unarmed" || !p2) return;
+    if (action === "unarmed" || !p) return;
     setHolding(false);
-    const ms = Date.now() - p2.t;
+    const ms = Date.now() - p.t;
     if (pendingHoldRef.current) {
       pendingHoldReleaseRef.current = true;
       if (ms >= 250) {
