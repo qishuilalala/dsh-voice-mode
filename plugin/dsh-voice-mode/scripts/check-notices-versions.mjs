@@ -8,11 +8,24 @@ import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 
 const root = join(dirname(new URL(import.meta.url).pathname), '..')
-const lock = readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8')
+const lock = readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8').replace(/\r\n/g, '\n')
+const packages = lock.split(/^packages:\n/m, 2)[1]?.split(/^snapshots:\n/m, 1)[0] ?? ''
+const { devDependencies } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const rows = [...readFileSync(join(root, 'THIRD_PARTY_NOTICES.md'), 'utf8').matchAll(/^\| (\S+) \| (\S+) \| [^|]+ \|$/gm)]
   .filter((r) => r[1] !== 'Package' && !/^-+$/.test(r[1]))
 if (!rows.length) { console.error('✗ notices 表格解析为空'); process.exit(1) }
-const bad = rows.filter(([, n, v]) => !new RegExp(`^  '?${n.replace(/[/.]/g, '\\$&')}@${v.replace(/\./g, '\\.')}[('\\s:]`, 'm').test(lock))
-  .map(([, n, v]) => `${n}@${v}`)
-if (bad.length) { console.error('✗ THIRD_PARTY_NOTICES.md 版本与 pnpm-lock.yaml 不一致：' + bad.join(', ') + '\n  → pnpm install && node build.mjs && node scripts/gen-third-party-notices.mjs'); process.exit(1) }
+const bad = rows.filter(([, name, version]) => {
+  const specifier = devDependencies[name]
+  if (specifier?.startsWith('file:./vendor/')) {
+    const resolution = specifier.replace('file:./', 'file:')
+    const [, entry] = packages.split(`\n  '${name}@${resolution}':\n`, 2)
+    if (!entry) return true
+    const fields = entry.split(/\n  \S/, 1)[0].split('\n')
+    return !fields.includes(`    version: ${version}`) ||
+      !fields.some((field) => field.startsWith('    resolution: {') && field.endsWith(`, tarball: ${resolution}}`))
+  }
+  return !new RegExp(`^  '?${name.replace(/[/.]/g, '\\$&')}@${version.replace(/\./g, '\\.')}[('\\s:]`, 'm').test(lock)
+})
+  .map(([, name, version]) => `${name}@${version}`)
+if (bad.length) { console.error('✗ THIRD_PARTY_NOTICES.md 版本与 pnpm-lock.yaml 不一致：' + bad.join(', ') + '\n  → pnpm install --frozen-lockfile && node build.mjs && node scripts/gen-third-party-notices.mjs'); process.exit(1) }
 console.log(`✓ notices ${rows.length} 个包版本与 pnpm-lock.yaml 一致`)

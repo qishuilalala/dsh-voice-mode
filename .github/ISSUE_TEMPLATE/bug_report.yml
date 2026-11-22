@@ -34,8 +34,8 @@ body:
     id: plugin-version
     attributes:
       label: 插件版本 / Plugin version
-      description: 可在设置面板「复制诊断」输出或包管理列表中查看
-      placeholder: "0.7.41"
+      description: 在宿主的已安装插件详情查看。源码安装请填写下方诊断信息里的构建哈希。 / Check the installed plugin details. For a source install, use the build hash from the diagnostics below.
+      placeholder: "0.7.44"
     validations:
       required: true
 
@@ -120,9 +120,11 @@ body:
     attributes:
       label: 诊断快照或控制台日志（推荐）/ Diagnostics (optional)
       description: |
-        推荐方式：打开 **设置 → 语音模式 → 高级**，点击 **「复制诊断」** 粘贴到此处（仅含版本、状态、非敏感设置快照与耗时，**不含任何转写原文或密钥**）。
+        在复现问题的会话中进入语音模式，点击输入框上方状态条的 **「复制诊断」** 后粘贴到此处。若状态条已隐藏，在 **设置 → 语音模式 → 显示与交互** 中打开状态条。快照包含构建哈希、运行状态、部分设置与可用的阶段耗时。
 
-        如需采集详细声学或阶段日志，可在浏览器控制台执行 `localStorage.setItem('dsh-voice-mode.telemetry','1')` 后刷新复现，粘贴 `[dsh-voice]` 开头的日志。
+        In the affected conversation, enter Voice Mode and click **Copy diagnostics** in the status bar above the chat input. To show the bar, use **Settings → Voice Mode → Display & interaction**. Paste the snapshot here.
+
+        如需详细阶段日志，可在浏览器控制台执行 `localStorage.setItem('dsh-voice-mode.telemetry','1')`，刷新后复现并粘贴 `[dsh-voice]` 开头的日志。提交前请检查并删除私人内容。
       render: text
     validations:
       required: false

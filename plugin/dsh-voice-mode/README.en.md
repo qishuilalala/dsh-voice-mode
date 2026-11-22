@@ -40,9 +40,11 @@ dsh plugin --profile web add dsh-voice-mode
 # Equivalent via npx when the dsh CLI is not installed globally:
 npx -y @deepseek-ai/dsh plugin --profile web add dsh-voice-mode
 
-# Option 2: Build and install from source
+# Option 2: Build and install from source (Node.js 22.18+ on the 22.x line and pnpm 11)
 git clone https://github.com/qishuilalala/dsh-voice-mode.git
-cd dsh-voice-mode/plugin/dsh-voice-mode && pnpm install && pnpm build
+cd dsh-voice-mode/plugin/dsh-voice-mode
+pnpm install --frozen-lockfile
+pnpm run build
 dsh plugin --profile web add .
 ```
 
@@ -239,7 +241,7 @@ Rules starting or ending with ASCII letters/digits match whole words only (`sina
 | **shell (child process)** | Runs local TTS in a dedicated `child_process.fork` worker; under Electron desktop, probes system Node.js for Kokoro; **never interpolates shell strings or user input** | Local machine |
 | **env** | Reads path/runtime environment variables (`DSH_HOME`, `LOCALAPPDATA`, `PATH`, optional `DSHVM_NODE`) | Local machine |
 
-- Zero telemetry; the "Copy diagnostics" button exports version, runtime state, redacted non-secret settings, and stage timings — **never any audio or transcript text**.
+- In Voice Mode, select **Copy diagnostics** in the status bar above the chat input. To show the bar, use **Settings → Voice Mode → Display & interaction**. The snapshot includes a build hash, runtime state, selected settings, and any available stage timings. It contains no audio or transcript text. The plugin sends no telemetry.
 - API keys are stored host-only (`0600`) and never returned to browsers; third-party notices for bundled code are listed in [THIRD_PARTY_NOTICES.md](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/THIRD_PARTY_NOTICES.md), and vulnerability reporting is documented in [SECURITY.md](https://github.com/qishuilalala/dsh-voice-mode/blob/main/SECURITY.md).
 - Downloaded speech models from the [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) ecosystem remain under their upstream model licenses (not covered by this package's MIT license).
 
@@ -261,15 +263,15 @@ Rules starting or ending with ASCII letters/digits match whole words only (`sina
 
 ## Development & License
 
-Source builds and test suites require Node.js `>=22.18` and `pnpm 11`:
+Use Node.js 22.18+ on the 22.x line and pnpm 11 for local development. See the [contribution guide](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CONTRIBUTING.md#本地开发) for the full workflow.
 
 ```sh
 cd plugin/dsh-voice-mode
-pnpm install
+pnpm install --frozen-lockfile
+pnpm run check:lib-drift  # check committed bundles before build overwrites lib
 pnpm run build            # builds lib/index.js, lib/index.d.ts, lib/client.js, and workers
 pnpm run typecheck        # dual host + browser TypeScript checks
 pnpm test                 # unit tests, structure guards, and doc-consistency gates
-bash scripts/verify-install.sh  # fresh isolated pnpm + npm tarball installation check
 ```
 
 Released under the [MIT License](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/LICENSE), with early foundations derived from [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice) (MIT).

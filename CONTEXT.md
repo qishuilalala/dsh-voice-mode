@@ -33,7 +33,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
   ⑤ **命中置 `speechActive` 并结转 `silenceMs`**（D4：命中发生在用户停口之后时，尾随静音不定稿 → 命令悬挂；台架 LAG=3000ms 实证 0 条定稿）；⑥ **只喊唤醒词不关命令窗口**（D5：剥完为空时保持聆听，否则「唤醒词…停顿…命令」的命令会被当待机音频丢弃）。待机段计入 `speechMs`（过 MIN_SPEECH_MS）。真机台架 `test/wake-flow.test.mjs`（假浏览器+假 host 驱动真引擎；D1-D5 每处都有反向验证）。
 - **输出链路静默丢音（2026-09-18 真机「AI 回复偶尔不朗读」，2026-11-21 补重试预算）**：三类原因——① 云端 TTS 单句重试（最多 3 次，受 `synthBudgetMs` 6s 单句墙钟预算约束，慢超时不叠加 3 倍等待）期间经 `onRetry` → `tts-retry` 状态条提示进度，耗尽后 `onSkip` → host `tts-skip` → 客户端提示（流式回合未结束前保留队列累计 `failStreak`）；② 浏览器挂起 AudioContext 后播放被调度但**无声**（UI 仍显示朗读中、字幕照走）→ 现 `push()` 先 `warm()`（resume）+ 全局 pointerdown/keydown 恢复；③ SSE 丢帧致整句不完整 → 按设计丢弃坏句（`chunkId !== curChunkCount`），留 `tts-drop-sentence` 诊断。`engine.duck()` 为未启用预留挂点（增益恒 1，无静音风险）。回合 aborted 时不 flush 残句 = 有意（用户打断了不想听）。
 - **断句静音阈值由设置 silenceMs 真实驱动**（端点 VAD minSilenceDuration = silenceMs/1000，默认 1500ms；
-  客户端静音计时仅作 VAD 缺失兜底）。**发送为累积模式**：定稿进草稿，再静音一个 silenceMs 或 Ctrl/hold 才发，
+  客户端静音计时仅作 VAD 缺失兜底）。**发送为累积模式**：定稿进草稿，再等固定 1200ms 自动发送，也可通过 Ctrl/hold 立即发送，
   连续多段拼成一条消息（内部仍按 30s 分块识别、跨块拼接）。
 - **观测栅格 128ms**（64ms 帧 + `>=100ms` 阈值需攒两帧），三档确认窗 384/256/128ms；
   打断确认下限 = 2×128 = 256ms。真机实测 252~272ms、端到端 199~597ms（2026-09-02）。
@@ -55,12 +55,14 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 
 ## 设置语义
 
+以下是开发时常用的设置语义。完整字段见 `src/index.ts` 的 `VoiceSettingsValue` 与 `createVoiceSettingsSchema`，用户说明见[插件中文说明](plugin/dsh-voice-mode/README.md)。
+
 | 键 | 默认 | 语义 |
 |---|---|---|
 | ttsEngine | edge | 朗读引擎 edge / vits / kokoro / openai / mimo（即时；openai 为自建或托管 `POST /v1/audio/speech`；mimo 为小米 `POST /v1/chat/completions`，**独立 mimoTts.apiKey**；两者失败均自动回退本地） |
 | kokoroModel | int8 | Kokoro 精度 int8（109MB，CPU）/ fp32（311MB，音质更好）；即时切换，两档共用 103 音色 |
 | voice | 按引擎 | VITS 说话人名 / Kokoro sid 或中文名 / Edge ShortName / OpenAI 兼容引擎自由文本（即时） |
-| bargeInMode | detect | detect：开机探测本机原生 AEC，生效则自动打断，未生效自动落 manual；manual 长按打断（外放推荐）；`auto` 为旧值（src/index.ts:223 默认值 / :503 schema 真源；原值 214/476 为 2026-10-19 实测，已随 v0.7.27 重写漂移，本轮刷新） |
+| bargeInMode | detect | detect：探测本机原生 AEC，生效则自动打断，未生效则切换为 manual；manual 长按打断；auto 强制自动打断 |
 | echoGateDb | 6 | 打断要求 peak 高于 floor 此 dB；打不断降 3-4、噪音误打断升 8-10 |
 | interruptLevel | 0 | 确认帧数 3/2/1，越低越稳越慢 |
 | mode / silenceMs / shortcut / autoResume | toggle/1500/Ctrl+Shift+V/false | 交互（toggle 持续聆听 / hold 按住说话 / **once 说完就关**，PR #16）/静音断句/快捷键/切回自动恢复 |
@@ -88,7 +90,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 | composerShortcut | Alt+Enter | 光标在输入框时切语音模式的快捷键；留空=禁用；不插入换行 |
 | spokenFormat | true | 朗读前把 Markdown/代码块等转成口语化文本 |
 | senseVoice | true | 是否启用 SenseVoice 定稿通道（关则只用流式 zipformer） |
-| wakeWord | '' | 唤醒词（空=不启用；配套 wakeWordEnabled 等键见 schema） |
+| wakeWord | '' | 唤醒词（留空关闭，只在 toggle 模式下使用） |
 | toolBeep | false | 工具调用提示音（AI 调工具时轻响，避免误以为卡住） |
 
 **生效时机四档**（Issue #15 批 6）：① 即时（引擎/音色/语速/口语化提示词/模型镜像）② 下次识别（定稿重译/ITN）③ 下一段话（silenceMs 端点）④ 下次进入语音模式（其余，含上表大部分）。设置卡片顶部显示「已保存未生效」项及当前生效值（与运行态 boot 快照比对）。**自动发送附加等待固定 1200ms**（批 5，与 silenceMs 解耦——调低断句阈值不再压缩发送窗）。
@@ -110,7 +112,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 - 松手恰在 30s 滚段边界（~1-3s 窗口）的竞态（Rare，需给 hold 引入待发块队列）
 - **2026-10-15 静态审计登记（未真机复核，发版前不盲改引擎）**：① 已修（日期 2026-11-12，测试名「stop 在 resume 窗口后释放全部轨道且不激活」「stop 在 addModule 窗口后释放全部轨道且不激活」）；② 已是修复态（2026-11-12 台架确认，测试名「旧 stop 的 close 迟到不清除新会话资源」）；③ hold 取消分支已复位上传水位，host 流仍未 reset；2026-11-12 台架以「取消 hold 后新段按 epoch 隔离，定稿不含取消段文本」未复现残留文本，取消段仍留在 host 待清理；④ 回声地板棘轮：外放音量调大后 doubleTalk 持续为真，地板冻结在旧低值（asr.ts:964-972）；⑤ NLMS 非有限权重检测并清零，已修；测试：`A-5：麦克风极大有限值不得把权重撑成非有限（重置滤波器而非永久坏死）`。⑥ 跨 delta 小数点拆句已修，闭合代码块跨 delta 不朗读已修；测试：`跨 delta 的小数和版本号不被拆句，流结束时输出悬挂句点`、```` 流式切碎的 ``` 代码块整块不读（含跨 delta 的反引号与语言标记） ````。
 - **host 侧待核对（依赖宿主 Host/Origin 前置防护）**：DNS rebinding（`sameOriginRequest` 只比 Origin 与 Host，不校验 Host 白名单；dsh 以 `--trusted-host` 启动时宿主已拦）；经 HTTPS 反代时回环判定与限流键都取 remoteAddress（所有用户共享一个桶）。注：2026-11-20 深度审计已加固 `Sec-Fetch-Site: cross-site` 跨站 GET 拒绝（含 `/stream`/`/voices`）、未知 `sessionId` 先校验存在性再入独立限流桶（高基数回落按 `clientKey` 限流）、以及 `/models/status` 错误原文脱敏。
-- 发布流程见维护者本机文档（git push + npm publish + tag + GitHub release；`docs/RELEASE-WORKFLOW.md` 与 `scripts/release.sh`、`check-dsh-version.sh` 按 publication-policy 不入库）
+- 构建与发布校验见[贡献指南](CONTRIBUTING.md)及[发布工作流](.github/workflows/release.yml)。
 
 ## 声学基准与录制（ADR-0005）
 

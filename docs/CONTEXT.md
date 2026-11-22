@@ -1,6 +1,6 @@
 # dsh-voice-mode —— 跨文档索引与架构速查
 
-> **真源层级**：仓库根 [CONTEXT.md](../CONTEXT.md) 是现行开发者上下文与全量 35 项设置语义的唯一真源；当前版本与任务状态以 [docs/rules/STATE.md](rules/STATE.md) 为准；架构取舍以 [docs/adr/](adr/README.md)（ADR 0001–0015）为准。两处表述若有出入，以根 [CONTEXT.md](../CONTEXT.md) 为准（定位代码符号建议以 `grep` 符号名为准）。
+> [当前恢复点](rules/STATE.md)记录发布和任务状态，[架构决策](adr/README.md)记录设计取舍。[开发者上下文](../CONTEXT.md)概述关键约束，完整设置表见[插件中文说明](../plugin/dsh-voice-mode/README.md)。查找旧文档提到的代码时，可用 \`rg\` 或 \`grep\` 搜索符号名。
 
 ## 项目概览
 
@@ -34,12 +34,12 @@ dsh-voice-mode 为 DeepSeek Harness 提供会话内全双工语音对话能力�
 
 ## 常用验证命令
 
-在 `plugin/dsh-voice-mode/` 目录下执行：
+在 `plugin/dsh-voice-mode/` 目录下执行。首次安装依赖和提交产物的步骤见[贡献指南](../CONTRIBUTING.md#本地开发)。
 
 ```bash
+pnpm run check:lib-drift    # 在 build 覆盖 lib 前校验入库产物
+pnpm run build              # 重建 lib/ 产物并生成测试需要的构建元数据
 pnpm run typecheck          # 宿主侧与浏览器侧 TypeScript 类型检查
-pnpm run build              # 重建 lib/ 产物
-pnpm run check:lib-drift    # 校验入库产物与源码一致
 pnpm test                   # 运行全量自动化测试套件
 pnpm run check:anchors      # 校验目标宿主版本的 9 个客户端注入包锚点
 pnpm run check:doc-anchors  # 校验全仓 Markdown 代码锚点与基线一致
@@ -47,7 +47,7 @@ pnpm run check:doc-anchors  # 校验全仓 Markdown 代码锚点与基线一致
 
 ## 延伸阅读
 
-- **核心不变量与 35 项设置表**：[CONTEXT.md](../CONTEXT.md)
+- **核心约束与设置实现**：[CONTEXT.md](../CONTEXT.md)
 - **架构决策（ADR 0001–0015）**：[docs/adr/README.md](adr/README.md)
 - **宿主与跨平台兼容契约**：[docs/compat-contract.md](compat-contract.md)
 - **测试分层与真机验收清单**：[docs/qa/TEST-SYSTEM.md](qa/TEST-SYSTEM.md)、[docs/qa/must-verify-manually.md](qa/must-verify-manually.md)

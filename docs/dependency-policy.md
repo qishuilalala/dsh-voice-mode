@@ -1,24 +1,24 @@
 # 依赖升级政策
 
-> 适用范围：本仓 `plugin/dsh-voice-mode` 的 npm 依赖（运行时依赖与开发期类型依赖两类）。
-> 目的：把「什么证据才够合并一次升级」写清楚，避免用 CI 绿灯冒充行为等价。
+本政策适用于 `plugin/dsh-voice-mode`。声明范围见 [package.json](../plugin/dsh-voice-mode/package.json)，开发和构建使用 [pnpm-lock.yaml](../plugin/dsh-voice-mode/pnpm-lock.yaml) 锁定的版本。
 
-## 两类依赖，证据门槛不同
+## 依赖与变更验证
 
 | 类别 | 清单 | 合并门槛 |
 |---|---|---|
-| **开发期类型依赖**（只进 `devDependencies`，不随包发布） | `@deepseek-ai/cordis`、`@deepseek-ai/dsh-host-webserver`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-settings`、`@deepseek-ai/dsh-system-prompt`、`typescript`、`esbuild`、`@types/*` | CI（typecheck 矩阵 + 全量单测 + 安装形态门禁）全绿即可合并 |
-| **运行时依赖**（进 `dependencies`，随 npm 包发布、进入用户进程） | `sherpa-onnx`、`sherpa-onnx-node`、`msedge-tts`（构建期内联）、`@deepseek-ai/schemastery` | **大版本**升级额外要求：① API 面比对（导出名与方法集一致）；② **真模型/真服务回归**（见下）；③ 若上游已有更新版本，以最新为准而非被 Dependabot 锁定的旧版 |
+| **开发工具及宿主类型** | `typescript`、`esbuild`、`playwright-core`、`@types/*` 与 `@deepseek-ai/dsh-*` 宿主类型包。Cordis 也有宿主对等依赖声明。 | 核对类型矩阵、单测与全新安装。构建工具升级后检查产物差异。 |
+| **运行时依赖** | `sherpa-onnx@1.13.6`、`sherpa-onnx-node@1.13.6`、`@deepseek-ai/schemastery@3.19.0`（锁文件解析版本）。 | 大版本升级需核对调用接口。原生推理依赖成对验证，覆盖实际模型、安装形态和目标平台。 |
+| **内联依赖** | `msedge-tts@2.1.1` 打入 `lib/msedge-tts.cjs`，本地包 `@voice-mode/core@0.1.0` 打入插件产物。两者在 `devDependencies` 声明。 | 重建并核对入库产物、随包许可证和变更所涉及的真实服务或共享逻辑回归。 |
 
-## 为什么运行时依赖要更严
+## 重建内联依赖
 
-单测用桩件替代 `sherpa-onnx`（见 `test/` 下的 stub），因此 **CI 绿灯不能证明真实识别行为未变**：
-API 面一致（`index.js` 逐字节相同、方法集相同）只说明调用契约没变，而 WASM 核心被重建后
-解码行为（贪心搜索的 token 位置、端点判定等）可能静默变化——这类回归不会被本仓任何自动化捕获。
+共享核心取自仓内 [vendor/voice-mode-core-0.1.0.tgz](../plugin/dsh-voice-mode/vendor/voice-mode-core-0.1.0.tgz)，锁文件同时记录文件路径与完整性。同步新包时，将压缩包与锁文件一起更新，再按[贡献指南](../CONTRIBUTING.md#本地开发)重建并提交 `lib/`。从插件目录运行 `node scripts/gen-third-party-notices.mjs` 同步随包声明，再运行 `node scripts/check-notices-versions.mjs` 校验声明版本。
 
-**真模型回归的做法**：用仓库 fixture（`test/fixtures/zh-60s.wav`，60 秒中文语音）经流式识别器跑一遍，
-把转写文本与当前发布版本逐字比对；模型文件由 `src/models.ts` 按 SHA256 固定，缓存位于
-`~/.cache/dsh-voice-mode/models/`。比对不一致即视为回归，升级不合并。
+## 实际模型回归
+
+使用同一段获准用于测试的普通话录音与同一份模型，在已发布版本与候选版本上复测流式转写、断句和定稿。记录系统、依赖版本、模型与文本差异。模型文件由 [src/models.ts](../plugin/dsh-voice-mode/src/models.ts) 按 SHA256 校验。自动化半程识别和真机验收步骤见[测试体系](qa/TEST-SYSTEM.md)。
+
+[test/fixtures/zh-60s.wav](../test/fixtures/zh-60s.wav) 由 600 Hz 正弦波与静音组成，用于检查音频时长和停顿布局。评估转写、数字规范化或识别准确率时，需使用含可辨识语音和参考文本的样本。
 
 ## 已发生的实例（2026-10-28）
 
@@ -30,5 +30,4 @@ API 面一致（`index.js` 逐字节相同、方法集相同）只说明调用�
 
 ## 兼容性矩阵的位置
 
-开发期类型依赖的**下限**由 `scripts/verify-dual.sh` 的版本矩阵保证（当前 18 版锚点/typecheck），
-默认开发依赖版本只是「当前装的那一版」，**不代表**最低支持版本——升级默认版本不会削弱兼容性矩阵。
+宿主兼容下限及默认回归范围见[兼容契约](compat-contract.md)与 `scripts/verify-dual.sh`。升级默认开发依赖后，继续用类型矩阵验证各目标宿主版本。
