@@ -9,10 +9,18 @@ import { join, dirname } from 'node:path'
 
 const root = join(dirname(new URL(import.meta.url).pathname), '..')
 const lock = readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8')
+const { devDependencies } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const rows = [...readFileSync(join(root, 'THIRD_PARTY_NOTICES.md'), 'utf8').matchAll(/^\| (\S+) \| (\S+) \| [^|]+ \|$/gm)]
   .filter((r) => r[1] !== 'Package' && !/^-+$/.test(r[1]))
 if (!rows.length) { console.error('✗ notices 表格解析为空'); process.exit(1) }
-const bad = rows.filter(([, n, v]) => !new RegExp(`^  '?${n.replace(/[/.]/g, '\\$&')}@${v.replace(/\./g, '\\.')}[('\\s:]`, 'm').test(lock))
-  .map(([, n, v]) => `${n}@${v}`)
-if (bad.length) { console.error('✗ THIRD_PARTY_NOTICES.md 版本与 pnpm-lock.yaml 不一致：' + bad.join(', ') + '\n  → pnpm install && node build.mjs && node scripts/gen-third-party-notices.mjs'); process.exit(1) }
+const bad = rows.filter(([, name, version]) => {
+  const specifier = devDependencies[name]
+  if (specifier?.startsWith('file:./vendor/')) {
+    const resolution = specifier.replace('file:./', 'file:')
+    return !resolution.endsWith(`-${version}.tgz`) || !lock.includes(`\n  '${name}@${resolution}':`)
+  }
+  return !new RegExp(`^  '?${name.replace(/[/.]/g, '\\$&')}@${version.replace(/\./g, '\\.')}[('\\s:]`, 'm').test(lock)
+})
+  .map(([, name, version]) => `${name}@${version}`)
+if (bad.length) { console.error('✗ THIRD_PARTY_NOTICES.md 版本与 pnpm-lock.yaml 不一致：' + bad.join(', ') + '\n  → pnpm install --frozen-lockfile && node build.mjs && node scripts/gen-third-party-notices.mjs'); process.exit(1) }
 console.log(`✓ notices ${rows.length} 个包版本与 pnpm-lock.yaml 一致`)

@@ -1,17 +1,17 @@
 # dsh-voice-mode 文档索引
 
-当前发布与任务状态以[当前恢复点](rules/STATE.md)为准，近期迭代安排见[11 月实施规划](plan/plan-2026-11.md)与[产品路线图](plan/roadmap-2026-10.md)。仓库根 [CONTEXT.md](../CONTEXT.md) 是现行开发者上下文与 35 项设置语义唯一真源，[docs/CONTEXT.md](CONTEXT.md) 是跨文档速查入口。
+当前发布与任务状态见[当前恢复点](rules/STATE.md)，近期迭代见[11 月实施规划](plan/plan-2026-11.md)与[产品路线图](plan/roadmap-2026-10.md)。开发者从[贡献指南](../CONTRIBUTING.md)开始，架构与模块见[开发者上下文](../CONTEXT.md)和[架构速查](CONTEXT.md)。
 
 > 终端用户请直接阅读仓库根 [README.md](../README.md)、[plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md) 或 [English README](../plugin/dsh-voice-mode/README.en.md)。
 
 ## 快速导航
 
 1. **安装与上手** → [README.md](../README.md) / [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)
-2. **快捷键与设置项** → [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)（「操作手势与快捷键」「设置」两节）
+2. **快捷键与设置项** → [插件中文说明](../plugin/dsh-voice-mode/README.md)（「操作手势与快捷键」和「设置面板与全部配置项」）
 3. **宿主与平台兼容性** → [docs/compat-contract.md](compat-contract.md)
-4. **故障排查与真机验收** → [README.md](../README.md)（「故障排查」）+ [docs/qa/real-machine-acceptance-checklist.md](qa/real-machine-acceptance-checklist.md)
+4. **故障排查与真机验收** → [常见问题排查](../README.md#常见问题排查) + [真机验收清单](qa/real-machine-acceptance-checklist.md)
 5. **架构与设计决策** → [CONTEXT.md](../CONTEXT.md) + [docs/adr/](adr/README.md)（15 篇 ADR）+ [docs/glossary.md](glossary.md)
-6. **本地开发与贡献** → [CONTRIBUTING.md](../CONTRIBUTING.md) + [plugin/dsh-voice-mode/README.md](../plugin/dsh-voice-mode/README.md)（「开发」一节）
+6. **本地开发与贡献** → [CONTRIBUTING.md](../CONTRIBUTING.md) + [依赖策略](dependency-policy.md)
 
 ## 文档目录
 

@@ -40,9 +40,11 @@ dsh plugin --profile web add dsh-voice-mode
 # 未全局安装 dsh CLI 时等价写法：
 npx -y @deepseek-ai/dsh plugin --profile web add dsh-voice-mode
 
-# 方式二：源码构建安装
+# 方式二：源码构建安装（使用 Node.js 22.18+ 的 22.x 版本与 pnpm 11）
 git clone https://github.com/qishuilalala/dsh-voice-mode.git
-cd dsh-voice-mode/plugin/dsh-voice-mode && pnpm install && pnpm build
+cd dsh-voice-mode/plugin/dsh-voice-mode
+pnpm install --frozen-lockfile
+pnpm run build
 dsh plugin --profile web add .
 ```
 
@@ -240,7 +242,7 @@ dsh plugin --profile web add .
 | **shell（子进程）** | 本地 TTS 经 `child_process.fork` 运行固定子进程脚本；桌面端 Electron 下为 Kokoro 探测本机 Node.js 可执行文件；**不拼接外部命令、不执行用户输入** | 本机 |
 | **env** | 读取 `DSH_HOME`、`LOCALAPPDATA`、`PATH` 与可选 `DSHVM_NODE` 等目录定位环境变量 | 本机 |
 
-- 插件不包含任何遥测上报；「复制诊断」按钮仅复制版本号、运行状态、脱敏设置快照与阶段耗时，**绝不包含任何语音或转写原文**。
+- 进入语音模式后，输入框上方状态条的「复制诊断」会复制构建哈希、运行状态、部分设置与可用的阶段耗时。若状态条已隐藏，可在「设置 → 语音模式 → 显示与交互」打开。插件没有遥测上报，诊断快照不含音频或转写。
 - 远程 TTS 密钥只存宿主侧，读取接口仅返回布尔状态；内联第三方依赖版本与许可证清单见 [THIRD_PARTY_NOTICES.md](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/THIRD_PARTY_NOTICES.md)，安全披露政策见 [SECURITY.md](https://github.com/qishuilalala/dsh-voice-mode/blob/main/SECURITY.md)。
 - 本地语音模型由各自上游作者授权（源自 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 生态），本插件的 MIT 许可证不覆盖外部模型权重；商用前请核对所选模型的上游许可证。
 
@@ -262,15 +264,15 @@ dsh plugin --profile web add .
 
 ## 开发与许可证
 
-源码开发与全量测试要求 Node.js `>=22.18` 与 `pnpm 11`：
+本地开发使用 Node.js 22.18+ 的 22.x 版本和 pnpm 11，完整步骤见[贡献指南](https://github.com/qishuilalala/dsh-voice-mode/blob/main/CONTRIBUTING.md#本地开发)。
 
 ```sh
 cd plugin/dsh-voice-mode
-pnpm install
+pnpm install --frozen-lockfile
+pnpm run check:lib-drift  # 在 build 覆盖 lib 前校验已提交的产物
 pnpm run build            # 生成 lib/index.js、lib/index.d.ts、lib/client.js 及 worker 产物
 pnpm run typecheck        # 宿主与客户端双端 TypeScript 类型检查
 pnpm test                 # 运行全部单元测试、结构守卫与文档一致性门禁
-bash scripts/verify-install.sh  # 隔离目录验证打包产物的 pnpm / npm 全新安装
 ```
 
 本项目基于 [MIT 许可证](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/LICENSE) 开源；早期基础实现部分派生自 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)（MIT）。

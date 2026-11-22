@@ -118,6 +118,11 @@ t('THIRD_PARTY_NOTICES.md 覆盖全部被内联的第三方包（有 metafile �
   assert.ok(names.size >= 20, `内联包数量异常：${names.size}`)
   const missing = [...names].filter((nm) => !notices.includes(`| ${nm} |`))
   assert.deepEqual(missing, [], '需重新运行 node scripts/gen-third-party-notices.mjs')
+  const coreRoot = join(root, 'node_modules/@voice-mode/core')
+  const core = JSON.parse(readFileSync(join(coreRoot, 'package.json'), 'utf8'))
+  const coreLicense = readFileSync(join(coreRoot, 'LICENSE'), 'utf8').trim()
+  assert.ok(notices.includes(`| ${core.name} | ${core.version} | ${core.license} |`), '第三方声明缺少共享语音核心')
+  assert.ok(notices.includes(coreLicense), '第三方声明缺少共享语音核心的许可原文')
 })
 
 console.log(`\npackage-install：${n} 项通过`)

@@ -23,7 +23,8 @@
 ## 当前状态
 
 - **宿主与跨平台兼容**：已对 `dsh 0.1.1-rc.2` 至 `0.2.2-rc.5` 完成客户端注入锚点、宿主/浏览器双端类型检查与隔离运行态验证；完整版本证据、操作系统/架构/浏览器兼容表及未覆盖边界见[兼容契约](docs/compat-contract.md)。
-- **近期进展**：支持 7 家在线 TTS 预设与按预设独立密钥、小米 MiMo 语音合成、识别纠错词表可视化编辑、四分段设置面板，以及全模式键盘与触屏操作提示（含 macOS 本地化键帽展示与 `220ms` 键盘按住说话响应）。可安装版本以 [npm](https://www.npmjs.com/package/dsh-voice-mode) 与 [GitHub Releases](https://github.com/qishuilalala/dsh-voice-mode/releases) 为准，逐版变更见 [CHANGELOG.md](CHANGELOG.md)。
+- **已发布版本**：`v0.7.44` 随 npm 包提供宿主入口 TypeScript 声明和双语说明。已发布功能包括 7 家在线 TTS 预设及按预设独立密钥、小米 MiMo 语音合成、识别纠错词表、四分段设置面板和全模式键盘与触屏操作提示。安装版本见 [npm](https://www.npmjs.com/package/dsh-voice-mode) 和 [GitHub Releases](https://github.com/qishuilalala/dsh-voice-mode/releases)。
+- **源码中的未发布改动**：共享语音核心与 Markdown 水平线开头的流式朗读修复见[变更日志](CHANGELOG.md#unreleased)。
 - **验证边界**：CI 检查覆盖类型、单测、构建产物一致性与全新安装加载，不等同真实麦克风声学或全平台硬件验收；包声明范围为 `>=0.1.1-rc.2 <0.3.0-0`，未列于兼容契约的版本不做兼容承诺。
 
 ---
@@ -95,7 +96,7 @@ dsh plugin --profile web add dsh-voice-mode
 
 **生效时机分四档**：① 即时生效（快捷键、交互模式、朗读范围、自动发送、字幕与状态条开关、朗读引擎/预设/音色/语速、纠错词表、口语化提示词、模型镜像）② 下次识别生效（SenseVoice 定稿重译、逆文本归一化）③ 下一段话生效（静音判定时长）④ 下次进入语音模式生效（其余声学门控、唤醒词、字号宽度与空闲超时等）。设置面板顶部会提示「已保存但尚未生效」的项及其**当前生效值**。
 
-完整 **35 项设置键说明表**、在线 TTS YAML 示例与 HTTP 路由定义见 [插件详细文档（中文）](plugin/dsh-voice-mode/README.md) 与 [English Documentation](plugin/dsh-voice-mode/README.en.md)。
+完整 **36 项设置键说明表**、在线 TTS YAML 示例与 HTTP 路由定义见 [插件详细文档（中文）](plugin/dsh-voice-mode/README.md) 与 [English Documentation](plugin/dsh-voice-mode/README.en.md)。
 
 ---
 
@@ -149,17 +150,20 @@ flowchart LR
 | 扬声器外放时容易误打断或打不断 | 默认 `detect` 会在检测不到浏览器回声消除时将朗读期切为长按打断；仍受外放音量影响时，可将「打断方式」设为 `manual`（空闲正常说话，朗读期按住麦克风或 `Ctrl` 打断），或佩戴耳机 |
 | 空闲 5 分钟后自动退出语音模式 | 可在「显示与交互 → 空闲超时」调大 `idleTimeoutMinutes`（正在朗读、AI 回复生成中均自动续期，不计为空闲） |
 
+报告问题时，可进入语音模式，在输入框上方状态条点击「复制诊断」。若状态条已隐藏，在「设置 → 语音模式 → 显示与交互」打开状态条。诊断中的 `build=` 是构建提交哈希，安装版本可在宿主的已安装插件详情查看。
+
 ---
 
 ## 文档导航
 
 | 文档 | 内容 |
 | --- | --- |
-| [插件完整文档（中文）](plugin/dsh-voice-mode/README.md) | 全量 35 项设置表、在线预设与本地模型配置、API 路由、权限与数据流声明、开发说明 |
+| [插件完整文档（中文）](plugin/dsh-voice-mode/README.md) | 全量 36 项设置表、在线预设与本地模型配置、API 路由、权限与数据流声明、开发说明 |
 | [English Documentation](plugin/dsh-voice-mode/README.en.md) | Full user, configuration, privacy, and developer guide in English |
 | [兼容契约](docs/compat-contract.md) | 已验证 `dsh` 版本矩阵、操作系统/架构/浏览器支持情况与未覆盖说明 |
 | [文档总索引](docs/README.md) | 架构决策（ADR 0001–0015）、路线图、测试体系与历史归档入口 |
 | [CHANGELOG.md](CHANGELOG.md) | 各版本变更记录 |
+| [贡献指南](CONTRIBUTING.md) | 源码构建、自动化检查、问题报告与发布检查 |
 | [SECURITY.md](SECURITY.md) | 安全策略、数据边界与私密漏洞报告方式 |
 
 ---
