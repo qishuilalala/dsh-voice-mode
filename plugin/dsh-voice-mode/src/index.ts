@@ -20,7 +20,7 @@ import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 // Type-only: pulls the 'system-prompt/assemble' waterfall into the Events
 // registry (so ctx.on can type-check the assembly callback).
-import type { AssembleContext, PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
+import type { AssembleContext, AssembledSection, PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 // R15（Issue #15 Important-2）：'agent/turn-stopping' 由宿主的 @deepseek-ai/dsh-agent 声明，
 // 而本插件不依赖该包（engines.dsh 覆盖 0.1.1-rc.2 起全部版本），无法像上文那样
 // `import type {}` 把它拉进 Events 注册表——就地按同一意图补声明（只取用得到的字段）。
@@ -170,8 +170,16 @@ const respondJson = (res: ServerResponse, status: number, payload: unknown): voi
  * 字幕更自然。
  */
 
-/** 提示词 section 的稳定名称（注册层按 order 排序；瀑布里 push 即追加到组装结果末尾）。 */
+/** 提示词 section 的稳定名称。 */
 const VOICE_SPOKEN_SECTION = 'voice-mode:spoken-format'
+
+/**
+ * 该 section 的稳定排序位。0.2.3 起 `AssembledSection.order` 必填，且组装瀑布结束后按
+ * `a.order - b.order || name` 整体重排；0.2.2 及更早没有该字段、也不重排（push 即末尾）。
+ * 10300 高于官方已分配末位 `DEPLOYMENT_PERSONA_SUFFIX=10200`，从而在两条版本线上都排在最末。
+ * **稳定契约**：改值会让 admission 判定 order-only 更新，把正文再次 append。
+ */
+const VOICE_SPOKEN_SECTION_ORDER = 10300
 
 /**
  * dsh-agent 的 assembleContextFor 在 assemble 上下文里运行时注入 agent
@@ -1401,7 +1409,14 @@ export function apply(ctx: Context, config: Config): void {
     if (!config.enabled || !vset.spokenFormat) return next()
     const agentId = context.agent?.id
     if (agentId !== undefined && agentId === activeVoiceSession) {
-      assembly.sections.push({ name: VOICE_SPOKEN_SECTION, text: spokenPrompt(activeVoiceLang) })
+      // 交叉类型同时满足两种类型面：0.2.3 必填 order，0.2.2 及更早无该字段也不会触发
+      // excess property 检查（对象字面量赋给已声明 order 的交叉类型）；name/text 仍受校验。
+      const spokenSection: AssembledSection & { order: number } = {
+        name: VOICE_SPOKEN_SECTION,
+        text: spokenPrompt(activeVoiceLang),
+        order: VOICE_SPOKEN_SECTION_ORDER,
+      }
+      assembly.sections.push(spokenSection)
     }
     return next()
   })

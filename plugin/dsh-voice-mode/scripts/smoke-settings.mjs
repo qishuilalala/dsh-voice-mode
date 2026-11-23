@@ -129,7 +129,7 @@ function rawPost(body, origin) {
   return new Promise((resolve, reject) => {
     const u = new URL(base + '/voice-mode/settings')
     const req = request({ hostname: u.hostname, port: u.port, path: u.pathname, method: 'POST',
-      headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) } }, (res) => {
+      headers: { 'content-type': 'application/json', ...(process.env.DSHVM_AUTH_COOKIE ? { cookie: process.env.DSHVM_AUTH_COOKIE } : {}), ...(origin ? { origin } : {}) } }, (res) => {
       res.resume(); res.on('end', () => resolve(res.statusCode))
     })
     req.on('error', reject)

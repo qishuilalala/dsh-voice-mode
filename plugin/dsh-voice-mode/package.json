@@ -6,7 +6,7 @@
     "url": "https://github.com/qishuilalala"
   },
   "icon": "./icon.svg",
-  "version": "0.7.44",
+  "version": "0.7.45",
   "type": "module",
   "main": "lib/index.js",
   "types": "./lib/index.d.ts",
@@ -98,7 +98,7 @@
     "sherpa-onnx-node": "1.13.6"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/cordis": "^4.0.1 || ^4.2.0-alpha.1",
     "react": "^18.2.0"
   },
   "devDependencies": {

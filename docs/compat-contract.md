@@ -906,3 +906,27 @@ class AgentDefaultModelConfig extends Service {
   1. **收敛声明**：`engines.dsh` 上界改为 `<0.2.3-0`，把 0.2.3 线明确排除，等上游契约稳定再适配；
   2. **适配上游**：inject 改为按版本条件收敛（缺席包不进 `dsh.client.inject`），并为 `AssembledSection.order` 提供跨版本兼容写法（旧版无该字段，直接加会被 excess property 检查拒绝）。
 - **判据**：`order` 语义为「canonical history 重建的排序位」（上游 `SECTION_ORDERS` 集中分配，如 `PLAN_POLICY: 500`/`TEAM_POLICY: 600`），渲染路径 `renderPrompt` 不读取 `order`——故适配不改变现有朗读行为，但需选定与语音段落语义匹配的排序位。
+
+### 31bis. §31 结论勘误（同日二次核查，以本节为准）
+
+§31 依据首轮静态取证写成，二次核查（npm 制品 + 隔离核心实测 + 红队对抗）推翻了其中两点，故勘误：
+
+1. **设置卡槽位未受影响**：`plugins.bundle.config` 从来不是 `dsh-client-ui-settings-plugins` 声明，而是一直由 `@deepseek-ai/dsh-client-ui-plugin-manager` 声明，两版 `slot-contract.ts` 逐字相同；该包停发只是把「内置插件页」并入插件管理页。`settings.plugin.item` 更是自 0.2.2-rc.5 起就无人声明的死槽。因此 §31 推断的「设置卡片挂载受损」**不成立**。
+2. **真实阻塞是另一处**：`AssembledSection` 新增必填 `order` 后，缺该字段的注入对象会被 admission 原样写入 `order: undefined`；`dsh-session` 的 `snapshotAppend` → `snapshotJsonValue` 拒绝 own `undefined` 并抛 `carries non-JSON-serializable data`，**首个语音回合即失败**。此外 0.2.3 在 `system-prompt/assemble` 瀑布结束后按 `a.order - b.order || name` 整体重排（0.2.2 无此步），故 §31 所述「`renderPrompt` 不读 `order`」也是错的——数组顺序即渲染顺序。
+3. 结论由「无法适配」改为「已适配」，四层证据见 §32。
+
+## 32. 0.2.3-alpha.2 复核（2026-11-23，已适配并入矩阵）
+
+- **修复项**：① `src/index.ts` 为注入的 spoken-format section 补稳定排序位 `VOICE_SPOKEN_SECTION_ORDER = 10300`（高于官方已分配末位 `DEPLOYMENT_PERSONA_SUFFIX=10200`，恢复 ≤0.2.2「push 即末尾」语义；该值为稳定契约，改动会触发 admission 的 order-only 更新再 append）；类型用 `AssembledSection & { order: number }` 交叉类型，两种类型面同时成立。② `peerDependencies` 放宽为 `^4.0.1 || ^4.2.0-alpha.1`（4.2.0-alpha.1 属预发布，caret 需显式列出）。③ `smoke-runtime.sh` / `smoke-settings.mjs` 适配 0.2.3 起的宿主 token 鉴权（boot URL 带 `?token=…` 时先换 cookie 再复用；旧核心无 token 自动跳过）。
+- **锚点例外**：`@deepseek-ai/dsh-client-ui-settings-plugins` 在 0.2.3 线停发，但 inject 条目**保留**——≤0.1.5 宿主的 `settings.plugin.item` 由该包声明，删除会危及旧卡；新宿主缺包时客户端按 `dsh-client-modules` 的 graphRows 静默跳过（实测无 console error、卡片正常）。已在 `scripts/check-anchors.mjs` 的 `KNOWN_ABSENT` 登记，检查输出 ⚠ 而非 ❌。
+
+| 层 | 0.2.3-alpha.2 |
+|---|---|
+| L1 锚点 | ✅ 8 项存在 + 1 项已登记例外 |
+| L2 双 typecheck（host + client，cordis 4.2.0-alpha.1） | ✅ 全绿；同时回归 0.2.2-rc.5 仍全绿 |
+| L3 runtime 冒烟（隔离核心，端口 3163/3164） | ✅ 全绿（含 mic、设置卡、写入 400/403、console 0 error） |
+| L3 回归 | ✅ 0.2.2-rc.5 全绿（无 token 路径未被破坏） |
+| L4 真 LLM 闭环 | ❌ 未跑（沿用既有口径） |
+
+- **矩阵**：现行集 9 → **10 版**（新增该线最新已验证版，符合治理决策 5 的「每条小版本线最新已验证版」）、历史全集 27 → **28 版**；核心冒烟 8 → **9**（现行）/ 24 → **25**（全量）。CI typecheck 矩阵同步 10 版。
+- **仍存缺口**：① L4 未跑；② `order=10300` 仅保证「排在当前已分配位次之后」，上游若新增 >10300 的内置位次则语义可能变化（不影响正确性）；③ 真实语音往返与桌面端未在 0.2.3 上单独复核。

@@ -5,8 +5,11 @@
  * 上是否存在（默认 0.1.1-rc.2 与 0.1.2-alpha.4）。
  *
  * 目的：dsh 每次 minor 升级都可能删/改客户端锚点包（0.1.1→0.1.2 已删 dsh-client-runtime、
- * 降级 dsh-client-ui-slots）。升级 dsh 前先跑本脚本，若某个锚点在新版本线缺失，脚本非零退出并点名，
- * 避免「升级后客户端静默挂不上」。
+ * 降级 dsh-client-ui-slots；0.2.3 线起 dsh-client-ui-settings-plugins 停发）。升级 dsh 前先跑本脚本，
+ * 若某个锚点在新版本线缺失，脚本非零退出并点名，避免「升级后客户端静默挂不上」。
+ *
+ * 已登记例外（KNOWN_ABSENT）：为兼容旧宿主而**必须保留**的 inject 条目，在上游某条版本线
+ * 已停发。这类缺失按 ⚠ 提示、不判失败；未登记的缺失仍是 ❌ 失败。判据见 docs/compat-contract.md。
  *
  * 用法：
  *   node scripts/check-anchors.mjs [目标版本...]
@@ -38,8 +41,39 @@ const DEFAULT_TARGETS = [
   '0.2.1-rc.5',
   '0.2.2-rc.1',
   '0.2.2-rc.5',
+  '0.2.3-alpha.2',
 ]
 const targets = process.argv.slice(2).length ? process.argv.slice(2) : DEFAULT_TARGETS
+
+/**
+ * 已登记的「锚点包在该版本线不再发布」例外。
+ * 条目保留 inject 是为了旧宿主（≤0.1.5 的 settings.plugin.item 由该包声明）；新宿主缺包时
+ * 客户端按 system.ts 的 graphRows 静默跳过，实测不报错（见 compat-contract §32）。
+ */
+const KNOWN_ABSENT = [
+  { anchor: '@deepseek-ai/dsh-client-ui-settings-plugins', from: '0.2.3-alpha.0', note: '0.2.3 线起停发；设置卡槽位改由 dsh-client-ui-plugin-manager 声明' },
+]
+
+/** 粗粒度版本比较：只比较数字段与预发布后缀的存在性，够用于「某线之后」判定。 */
+function verKey(v) {
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(v)
+  if (!m) return null
+  return { nums: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] ?? '' }
+}
+function atLeast(version, floor) {
+  const a = verKey(version), b = verKey(floor)
+  if (!a || !b) return false
+  for (let i = 0; i < 3; i++) {
+    if (a.nums[i] !== b.nums[i]) return a.nums[i] > b.nums[i]
+  }
+  if (a.pre === b.pre) return true
+  if (a.pre === '') return true   // 正式版高于同号预发布
+  if (b.pre === '') return false
+  return a.pre.localeCompare(b.pre, 'en', { numeric: true }) >= 0
+}
+function registeredAbsent(anchor, target) {
+  return KNOWN_ABSENT.find((e) => e.anchor === anchor && atLeast(target, e.from)) ?? null
+}
 
 if (anchors.length === 0) {
   console.error('package.json 未声明 dsh.client.inject 锚点')
@@ -76,12 +110,16 @@ for (const anchor of anchors) {
 }
 
 let failures = 0
+let excused = 0
 for (const target of targets) {
   console.log(`\n=== 目标 dsh ${target} 下的锚点存在性 ===`)
   for (const anchor of anchors) {
     const versions = versionsByAnchor.get(anchor)
     if (versions && versions.has(target)) {
       console.log(`  ✅ ${anchor} @ ${target}`)
+    } else if (registeredAbsent(anchor, target)) {
+      console.log(`  ⚠ ${anchor} @ ${target} 未发布（已登记例外：${registeredAbsent(anchor, target).note}）`)
+      excused++
     } else {
       console.error(`  ❌ ${anchor} @ ${target} 不存在`)
       failures++
@@ -93,4 +131,5 @@ if (failures > 0) {
   console.error(`\n✗ 有 ${failures} 个锚点缺失：dsh.client.inject 需收敛为交集，或等待该包在新版本提供。`)
   process.exit(1)
 }
-console.log(`\n✓ 全部 ${anchors.length} 个锚点在 ${targets.join(' 与 ')} 均存在。`)
+const excusedNote = excused > 0 ? `（另有 ${excused} 项已登记例外，见 KNOWN_ABSENT）` : ''
+console.log(`\n✓ ${targets.length} 个目标版本的锚点检查通过${excusedNote}。`)

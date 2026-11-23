@@ -31,7 +31,7 @@ Full-duplex voice conversation plugin for **DeepSeek Harness (DSH)** across Web 
 
 ## Installation & Quick Start
 
-**Requirements**: DeepSeek Harness `>=0.1.1-rc.2 <0.3.0-0` (verified across client injection anchors, dual host/client typechecks, and isolated runtime smoke tests from `0.1.1-rc.2` through `0.2.2-rc.5`), Node.js `>=18.0.0`, and a modern browser supporting `getUserMedia` + Web Audio (Chrome / Edge / Firefox / Safari 16+) or the official DSH Desktop app.
+**Requirements**: DeepSeek Harness `>=0.1.1-rc.2 <0.3.0-0` (verified across client injection anchors, dual host/client typechecks, and isolated runtime smoke tests from `0.1.1-rc.2` through `0.2.3-alpha.2`), Node.js `>=18.0.0`, and a modern browser supporting `getUserMedia` + Web Audio (Chrome / Edge / Firefox / Safari 16+) or the official DSH Desktop app.
 
 ```sh
 # Option 1: Install from npm (recommended; replace "web" with your target profile if needed)

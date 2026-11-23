@@ -31,7 +31,7 @@
 
 ## 安装与快速开始
 
-**环境要求**：DeepSeek Harness `>=0.1.1-rc.2 <0.3.0-0`（已实测覆盖 `0.1.1-rc.2` 至 `0.2.2-rc.5` 的客户端注入锚点、双端类型检查与隔离运行态冒烟），Node.js `>=18.0.0`，支持 `getUserMedia` 与 Web Audio 的现代浏览器（Chrome / Edge / Firefox / Safari 16+）或 DSH 官方桌面客户端。
+**环境要求**：DeepSeek Harness `>=0.1.1-rc.2 <0.3.0-0`（已实测覆盖 `0.1.1-rc.2` 至 `0.2.3-alpha.2` 的客户端注入锚点、双端类型检查与隔离运行态冒烟），Node.js `>=18.0.0`，支持 `getUserMedia` 与 Web Audio 的现代浏览器（Chrome / Edge / Firefox / Safari 16+）或 DSH 官方桌面客户端。
 
 ```sh
 # 方式一：从 npm 安装（推荐；按实际环境替换 web 等 profile 名称）

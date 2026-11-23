@@ -7,12 +7,19 @@
 
 ## [Unreleased]
 
+## [0.7.45] - 2026-11-23
+
 - 回复以 Markdown 水平线开头时，朗读器可在流式输出期间读出后续正文。以 YAML 元数据开头的文档仍会跳过已闭合的元数据块。
 - 构建使用仓内锁定的 `@voice-mode/core@0.1.0`，共享分句、文本清洗、音色与 ASR 词表逻辑。插件随包内联所需代码。
 
+### 修复
+
+- **dsh 0.2.3 首个语音回合必失败**：0.2.3 起提示词分区结构新增必填 `order`，注入对象缺该字段会被写入 `order: undefined`，宿主序列化时抛 `carries non-JSON-serializable data`，语音回合直接失败。现为口播格式分区补稳定排序位 `10300`（高于官方已分配末位，恢复旧版「末尾」语义），并用交叉类型同时兼容新旧两版宿主类型面。
+- **0.2.3 宿主 token 鉴权适配**：0.2.3 起浏览器访问需先换取 token cookie，运行态冒烟脚本在无 cookie 时全线 401。冒烟脚本改为从 boot URL 取 token 换 cookie 后复用会话，旧版宿主无 token 时自动跳过。
+
 ### 维护
 
-- 巡检发现 dsh **0.2.3-alpha.2**（新版本线首个 alpha）存在两处破坏性上游变更，本轮**未覆盖**、不列入矩阵：① `@deepseek-ai/dsh-client-ui-settings-plugins` 在该线不再发布（`dsh-web-app@0.2.3-alpha.2` 依赖表已移除），9 个 client inject 锚点只剩 8 个；② `AssembledSection` 新增必填 `order: number`，host 类型面不兼容。cordis 映射已补 `0.2.3-* → 4.2.0-alpha.1`（保留旧映射）。是否收敛 `engines.dsh` 上界或适配上游，待维护者拍板，详见 `docs/compat-contract.md` §31。
+- 覆盖 dsh **0.2.3-alpha.2**：cordis 映射并入 `0.2.3-* → 4.2.0-alpha.1`（保留旧映射），锚点 8 项存在 + 1 项已登记例外（`dsh-client-ui-settings-plugins` 在该线停发，inject 为兼容旧宿主而保留），双 typecheck、隔离核心 runtime 冒烟全绿（含客户端侧），0.2.2-rc.5 回归仍全绿。现行集 9→10 版、历史全集 27→28 版、核心冒烟 8→9 / 24→25；`peerDependencies` 放宽至 `^4.0.1 || ^4.2.0-alpha.1`。实证见 `docs/compat-contract.md` §31bis/§32。
 
 ## [0.7.44] - 2026-11-21
 

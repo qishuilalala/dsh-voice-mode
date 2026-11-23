@@ -140,11 +140,29 @@ done
 [ -z "$URL" ] && { echo "✗ 60s 内未等到 URL"; tail -20 "$BOOTLOG"; exit 1; }
 echo "   boot 成功: $URL"
 
+# dsh 0.2.3+ 宿主强制浏览器 token 鉴权：boot URL 带 ?token=…，先换取 cookie，后续请求复用该 jar。
+# 旧核心的 URL 无 token 参数 → 此段整体跳过，行为与历史一致。
+COOKIE_JAR=""
+BOOT_TOKEN="$(printf '%s' "$URL" | sed -n 's/.*[?&]token=\([^&#]*\).*/\1/p')"
+if [ -n "$BOOT_TOKEN" ]; then
+  COOKIE_JAR="$(mktemp)"
+  trap 'rm -f "$COOKIE_JAR"' EXIT
+  curl -s -o /dev/null -c "$COOKIE_JAR" --max-time 10 "$URL" || true
+  echo "   宿主要求 token 鉴权：已换取会话 cookie"
+fi
+# 空数组在 set -u 下用 ${arr[@]+...} 展开，兼容 bash 4.4 之前。
+CURL_AUTH=()
+if [ -n "$COOKIE_JAR" ]; then
+  CURL_AUTH=(-b "$COOKIE_JAR")
+  # 供 playwright/node 脚本复用：curl jar 的 HttpOnly 行带 "#HttpOnly_" 前缀，需先剥掉再取 name=value。
+  export DSHVM_AUTH_COOKIE="$(sed 's/^#HttpOnly_//' "$COOKIE_JAR" | awk 'NF >= 7 && $0 !~ /^#/ { printf "%s=%s; ", $6, $7 }')"
+fi
+
 # 就绪等待：URL 打印 ≠ 端口已接受连接（旧核心如 0.1.1-rc.2 先打印后监听；curl 连接被拒会因 set -e 以 exit 7 误杀）。
 # 与 full-e2e.sh 的同名等待一致：任何 HTTP 码都算活着，000 才算没好。
 READY=""
 for _ in $(seq 1 60); do
-  CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://127.0.0.1:$PORT/voice-mode" 2>/dev/null || true)
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 ${CURL_AUTH[@]+"${CURL_AUTH[@]}"} "http://127.0.0.1:$PORT/voice-mode" 2>/dev/null || true)
   if [ -n "$CODE" ] && [ "$CODE" != "000" ]; then READY=1; break; fi
   if ! kill -0 "$NODE_PID" 2>/dev/null; then echo "✗ dsh 在就绪等待期退出"; tail -20 "$BOOTLOG"; exit 1; fi
   sleep 1
@@ -155,8 +173,8 @@ fail=0
 ORIGIN="http://127.0.0.1:$PORT"
 check() {  # name, url, expect_substr
   local body code
-  body=$(curl -s --max-time 10 -H "Origin:$ORIGIN" "$2" 2>/dev/null) || { echo "   ✗ $1 请求失败"; fail=1; return; }
-  code=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" -H "Origin:$ORIGIN" "$2" 2>/dev/null) || { echo "   ✗ $1 请求失败"; fail=1; return; }
+  body=$(curl -s --max-time 10 ${CURL_AUTH[@]+"${CURL_AUTH[@]}"} -H "Origin:$ORIGIN" "$2" 2>/dev/null) || { echo "   ✗ $1 请求失败"; fail=1; return; }
+  code=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" ${CURL_AUTH[@]+"${CURL_AUTH[@]}"} -H "Origin:$ORIGIN" "$2" 2>/dev/null) || { echo "   ✗ $1 请求失败"; fail=1; return; }
   if [ "$code" = "200" ] && printf '%s' "$body" | grep -q "$3"; then
     echo "   ✓ $1 ($code)"
   else
