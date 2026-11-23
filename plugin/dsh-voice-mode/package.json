@@ -71,6 +71,7 @@
     "smoke:runtime": "bash scripts/smoke-runtime.sh",
     "verify:dual": "bash scripts/verify-dual.sh",
     "e2e:full": "bash scripts/full-e2e.sh",
+    "check:engines": "node scripts/check-engines-matrix.mjs",
     "check:root-manifest": "node scripts/check-root-manifest.mjs"
   },
   "dsh": {

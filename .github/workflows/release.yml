@@ -57,6 +57,9 @@ jobs:
       # 2026-10-22 补：文档锚点守卫（R15 新增的唯一机械门禁，ci.yml 已有）——发布动作本身也须过
       - run: pnpm run check:doc-anchors
       - run: pnpm run typecheck
+      # 发版门禁：engines 声明必须与已验证矩阵自洽（防止把没实证过的版本线写进准入承诺）
+      - name: Engines × verified-matrix consistency check
+        run: node scripts/check-engines-matrix.mjs
 
       - name: Publish to npm
         env:

@@ -55,6 +55,10 @@ jobs:
       # 根 manifest（插件市场 dsh-plugin.org 收录读它）与插件 manifest 必须一致——两份手改会漂移
       - name: Root manifest consistency check
         run: node scripts/check-root-manifest.mjs
+      # engines.dsh 是对外的版本准入承诺；此前没有机械校验保证「承诺区间 ⊆ 已实证范围」，
+      # 上游开新线（2026-11-23 的 0.2.3）时声明早已覆盖而矩阵里没有任何实证。该步把不一致变红灯。
+      - name: Engines × verified-matrix consistency check
+        run: npm run check:engines
 
   # 安装形态门禁：link/源码态测不出「别人从 npm 安装」的缺陷（0.7.17 及更早版本在 pnpm 11 / npm 全新安装、
   # dsh ≥0.1.7 已安装形态下无法使用，见 docs/adr/0011）。此 job 对打包产物做 pnpm(严格 build 脚本策略)+npm 全新安装并 import，
