@@ -4991,6 +4991,7 @@ var respondJson2 = (res, status, payload) => {
   res.end(JSON.stringify(payload));
 };
 var VOICE_SPOKEN_SECTION = "voice-mode:spoken-format";
+var VOICE_SPOKEN_SECTION_ORDER = 10300;
 var inject = ["webServer", "settings", "sessions"];
 var defaultModelCacheDir = () => process.platform === "win32" ? join5(process.env.LOCALAPPDATA ?? join5(homedir2(), "AppData", "Local"), "dsh-voice-mode", "models") : join5(homedir2(), ".cache", "dsh-voice-mode", "models");
 var VOICE_SETTINGS_DEFAULTS = {
@@ -5711,7 +5712,12 @@ function apply(ctx, config) {
     if (!config.enabled || !vset.spokenFormat) return next();
     const agentId = context.agent?.id;
     if (agentId !== void 0 && agentId === activeVoiceSession) {
-      assembly.sections.push({ name: VOICE_SPOKEN_SECTION, text: spokenPrompt(activeVoiceLang) });
+      const spokenSection = {
+        name: VOICE_SPOKEN_SECTION,
+        text: spokenPrompt(activeVoiceLang),
+        order: VOICE_SPOKEN_SECTION_ORDER
+      };
+      assembly.sections.push(spokenSection);
     }
     return next();
   });
