@@ -887,3 +887,22 @@ class AgentDefaultModelConfig extends Service {
 
 - **矩阵扩展**：现行集保持 9 版（rc.4→rc.5 轮换：latest/next 跟进）、历史全集 **26 → 27 版** / 冒烟 **23 → 24 核心**（新增 rc.5 端口 3159）；`check-dsh-version.sh --check` 零未覆盖。
 - **兼容声明**：`engines.dsh` 维持 `">=0.1.1-rc.2 <0.3.0-0"` 不变；对外「已验证至」更新为 **0.2.2-rc.5**（next 通道）。本轮**不发版**（无产品代码变更；L4 仍未覆盖），矩阵与映射先行落盘。
+
+## 31. 0.2.3-alpha.2 阻断复核（2026-11-23，四步未通过，不列入矩阵）
+
+- **发现途径**：2026-11-23 巡检 `npm view @deepseek-ai/dsh dist-tags` 得 `alpha=0.2.3-alpha.2`（`latest`/`next` 仍为 `0.2.2-rc.5`），属**新版本线**首个 alpha，历史全集未覆盖。
+- **cordis 映射**（已补并保留旧映射）：0.2.3 线 peer 为 **`~4.2.0-alpha.1`**（`npm view @deepseek-ai/dsh-host-webserver@0.2.3-alpha.2 peerDependencies` 实证），`typecheck-dual.sh` 增 `0.2.3-*) echo 4.2.0-alpha.1`；映射已生效（typecheck 进入真实类型比对，而非「未列出」报错）。
+- **四层结果：两项硬阻塞，未通过**：
+
+| 层 | 0.2.3-alpha.2 | 根因 |
+|---|---|---|
+| L1 锚点（9 个 client.inject） | ❌ **8/9** | `@deepseek-ai/dsh-client-ui-settings-plugins` 在 0.2.3 线**不再发布**（该包最高版本停在 `0.2.2-rc.5`）；`@deepseek-ai/dsh-web-app@0.2.3-alpha.2` 的依赖表已**移除**该包（`0.2.2-rc.5` 中仍存在） |
+| L2 双 typecheck（host+client） | ❌ host 1 error，client 通过 | `AssembledSection` 新增**必填** `order: number`（`dsh-system-prompt@0.2.3-alpha.2` `lib/types/index.d.ts:103`；`0.2.2-rc.5` 同文件**无** `order` 字段）→ `src/index.ts:1404` 的 `system-prompt/assemble` 注入 `{name,text}` 缺 `order` |
+| L3 runtime 冒烟 | ⏸ 未跑 | L1/L2 前置失败，按纪律不伪造通过 |
+| L4 真 LLM 闭环 | ⏸ 未跑 | 沿既有口径（账户 `is_available=false`） |
+
+- **结论**：0.2.3-alpha.2 **不加入** `verify-dual.sh` 现行集与历史全集，不更新对外「已验证至」声明（仍为 0.2.2-rc.5）。
+- **风险（未闭环，需维护者拍板）**：`engines.dsh` 上界仍为 `<0.3.0-0`，**覆盖 0.2.3 线**；而该线已移除设置插件槽包、并改动 prompt section 契约，本插件在 0.2.3-alpha.2 上既无法解析第 9 个 inject，host 类型面也不兼容。两条出路二选一：
+  1. **收敛声明**：`engines.dsh` 上界改为 `<0.2.3-0`，把 0.2.3 线明确排除，等上游契约稳定再适配；
+  2. **适配上游**：inject 改为按版本条件收敛（缺席包不进 `dsh.client.inject`），并为 `AssembledSection.order` 提供跨版本兼容写法（旧版无该字段，直接加会被 excess property 检查拒绝）。
+- **判据**：`order` 语义为「canonical history 重建的排序位」（上游 `SECTION_ORDERS` 集中分配，如 `PLAN_POLICY: 500`/`TEAM_POLICY: 600`），渲染路径 `renderPrompt` 不读取 `order`——故适配不改变现有朗读行为，但需选定与语音段落语义匹配的排序位。

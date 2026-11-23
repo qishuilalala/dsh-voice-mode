@@ -10,6 +10,10 @@
 - 回复以 Markdown 水平线开头时，朗读器可在流式输出期间读出后续正文。以 YAML 元数据开头的文档仍会跳过已闭合的元数据块。
 - 构建使用仓内锁定的 `@voice-mode/core@0.1.0`，共享分句、文本清洗、音色与 ASR 词表逻辑。插件随包内联所需代码。
 
+### 维护
+
+- 巡检发现 dsh **0.2.3-alpha.2**（新版本线首个 alpha）存在两处破坏性上游变更，本轮**未覆盖**、不列入矩阵：① `@deepseek-ai/dsh-client-ui-settings-plugins` 在该线不再发布（`dsh-web-app@0.2.3-alpha.2` 依赖表已移除），9 个 client inject 锚点只剩 8 个；② `AssembledSection` 新增必填 `order: number`，host 类型面不兼容。cordis 映射已补 `0.2.3-* → 4.2.0-alpha.1`（保留旧映射）。是否收敛 `engines.dsh` 上界或适配上游，待维护者拍板，详见 `docs/compat-contract.md` §31。
+
 ## [0.7.44] - 2026-11-21
 
 ### 改进

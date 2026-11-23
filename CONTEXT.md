@@ -105,6 +105,7 @@ DSH 语音双工插件：进入语音模式 → 流式识别入草稿 → 静音
 
 ## 已知待办（短期，做完即删；历史批次队列归档于 docs/archive/plans/implementation-plan-2026-09-14.md）
 
+- **dsh 0.2.3 线未适配（2026-11-23 巡检实证）**：`dsh-client-ui-settings-plugins` 在该线不再发布（inject 锚点 9→8）、`AssembledSection` 新增必填 `order`（host typecheck 失败）；`engines.dsh` 上界 `<0.3.0-0` 目前仍覆盖该线，**需拍板收敛上界还是适配上游**，证据与两条出路见 `docs/compat-contract.md` §31。
 - 原生 AEC 失效兜底（耳机无原生 AEC / Safari）：自研 AEC 的 delay 对齐需 FDLMS+RES；
   该场景**尚无真机数据**，也是回声地板棘轮唯一还可能发作的一格
 - ADR-0006：第一级探测**已实现**（asr.ts:1212-1223 / client.tsx:2596-2601，探测到原生 AEC 失效即落 manual 并提示；client 侧原值 2106-2118 为 2026-10-19 实测，已随 v0.7.27 重写漂移，本轮刷新，asr 侧未漂移）；未做的是二级探测，阈值可用 fixture verdict 数据标定。2026-11-21 已将 `manual` 非按压丢帧收窄至朗读播放期，Safari 等无原生 AEC 环境空闲期可直接说话与使用唤醒词，朗读期按住麦克风/Ctrl 打断。
