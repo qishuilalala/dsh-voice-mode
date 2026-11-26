@@ -27,6 +27,12 @@
   且 CI 无法覆盖 WASM 核心重建的行为差异。后续以 2.0.1 + 真模型回归重新提。
 - PR #43（`cordis` ^4.0.2 → ^4.0.5）、#44（`dsh-system-prompt` 0.1.5-rc.1 → 0.1.5-rc.3）
   属开发期类型依赖，CI 全绿即合并。
+- PR #76（`ai-plugin-scanner-action` 1.2.817 → 1.2.818）属 CI 动作依赖，全绿即合并。
+- PR #77（`sherpa-onnx` / `sherpa-onnx-node` 1.13.6 → 2.0.2）**未合并并关闭**，理由与 #42 同类：
+  运行时 major 需「API 面比对 + 真模型回归」双条件。本次仅完成 API 名面比对（
+  `createOnlineRecognizer` / `createVad` / `readWave` 等仍导出、新增 forced-aligner，未见名字级破坏），
+  但真模型回归在本机仍不可行（ASR 探针返回空、TTS PCM 非确定性），且 2.0.x 含贪心搜索 decoder
+  位置修正（落在本插件解码路径上），CI 的 stub 覆盖不到。待真模型回归可用后以当时最新 2.0.x 重新提交。
 
 ## 兼容性矩阵的位置
 
