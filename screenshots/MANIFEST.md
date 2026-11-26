@@ -36,7 +36,7 @@
 
 ```bash
 # 推荐：真实驱动 UI（需要 dsh 访问 token）
-TOKEN=$(journalctl -u dsh.service --no-pager | grep -o 'token=[A-Za-z0-9_-]*' | tail -1 | cut -d= -f2)
+TOKEN=$(journalctl -u <your-dsh-service> --no-pager | grep -o 'token=[A-Za-z0-9_-]*' | tail -1 | cut -d= -f2)
 DSH_TOKEN="$TOKEN" node screenshots/scripts/capture-live.mjs --id S01
 DSH_TOKEN="$TOKEN" node screenshots/scripts/capture-live.mjs --all
 

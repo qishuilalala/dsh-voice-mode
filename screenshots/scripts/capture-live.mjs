@@ -12,7 +12,7 @@
 //
 // 环境变量：
 //   DSH_BASE    dsh Web 基址，默认 http://127.0.0.1:3018
-//   DSH_TOKEN   访问令牌（**必填**）。取法：`journalctl -u dsh.service | grep -o 'http://127.0.0.1:3018/?token=[^ ]*' | tail -1`
+//   DSH_TOKEN   访问令牌（**必填**）。取法：`journalctl -u <your-dsh-service> | grep -o 'http://127.0.0.1:3018/?token=[^ ]*' | tail -1`
 //   DSH_URL     也可直接给带 token 的完整 URL（优先于 DSH_BASE + DSH_TOKEN）
 //   CHROME_PATH 自定义 Chromium 可执行文件路径（默认自动探测 ms-playwright 缓存）
 //

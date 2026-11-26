@@ -317,7 +317,7 @@ tag 不可复现 npm 产物字节（差异仅 BUILD_TAG 一行），发版链存
 
 - 测试/门禁：`/tmp/qrepo`（HEAD 字节副本）+ `pnpm install --frozen-lockfile`；日志 `/tmp/test.log`、`test2.log`、
   `audit.log`、`verify-install.log`。
-- 运行时指纹：`journalctl -u dsh.service` 启动日志；`/plugins/??dsh-voice-mode/client.js` 的 BUILD_TAG；
+- 运行时指纹：`journalctl -u <your-dsh-service>` 启动日志；`/plugins/??dsh-voice-mode/client.js` 的 BUILD_TAG；
   `GET /voice-mode/preview` 405；`/voice-mode/settings`、`/stream`、`/models/status` 的 curl 输出。
 - ASR 探针：`/tmp/probe2.mjs`、`probe3.mjs`、`probe5.mjs`、`probe8.mjs`、`ww_probe.mjs`、`seg_probe.mjs`、`aec_probe.mjs`
   （`node --experimental-strip-types` 直接加载 src）。

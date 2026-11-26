@@ -12,7 +12,7 @@
 
 ```bash
 # 取当前 dsh 访问 token（服务启动时会打印带 token 的 URL）
-TOKEN=$(journalctl -u dsh.service --no-pager | grep -o 'token=[A-Za-z0-9_-]*' | tail -1 | cut -d= -f2)
+TOKEN=$(journalctl -u <your-dsh-service> --no-pager | grep -o 'token=[A-Za-z0-9_-]*' | tail -1 | cut -d= -f2)
 
 DSH_TOKEN="$TOKEN" node screenshots/scripts/capture-live.mjs --id S01
 DSH_TOKEN="$TOKEN" node screenshots/scripts/capture-live.mjs --all
@@ -57,7 +57,7 @@ python3 screenshots/scripts/make-demo-gif.py
 ## 1. 旧模板 capture.mjs —— 安装依赖（一次性）
 
 ```bash
-# 在任意目录（建议 /mnt/dsh-voice-mode/screenshots/scripts 单独初始化，不污染插件工程）
+# 在任意目录（建议 <repo>/screenshots/scripts 单独初始化，不污染插件工程）
 cd screenshots/scripts
 pnpm init                     # 或 npm init -y
 pnpm add playwright           # 或 npm install playwright
@@ -94,7 +94,7 @@ node screenshots/scripts/capture.mjs --all      # 全部 10 张（待真机的�
 
 ## 5. 常见问题
 
-- **页面是白底 + `authentication required`**：token 不对或过期。dsh Web 每次启动会打印新的带 token URL（`journalctl -u dsh.service | grep -o 'token=[^ ]*' | tail -1`）。旧 `capture.mjs` 截到的就是这一页——务必确认用 `capture-live.mjs` + 有效 `DSH_TOKEN`。
+- **页面是白底 + `authentication required`**：token 不对或过期。dsh Web 每次启动会打印新的带 token URL（`journalctl -u <your-dsh-service> | grep -o 'token=[^ ]*' | tail -1`）。旧 `capture.mjs` 截到的就是这一页——务必确认用 `capture-live.mjs` + 有效 `DSH_TOKEN`。
 - **报 `未找到 playwright npm 包`**（仅 `capture.mjs`）：按第 1 节安装。`capture-live.mjs` 不需要，它复用 `plugin/dsh-voice-mode/node_modules` 里的 `playwright-core`。
 - **浏览器内核缺失**：`pnpm exec playwright install chromium`，或给 `capture-live.mjs` 设 `CHROME_PATH` 指向已有 Chromium。
 - **截图 2x 尺寸偏大**：脚本默认 `deviceScaleFactor: 2`，需要 1x 时自行把该值改为 1。
