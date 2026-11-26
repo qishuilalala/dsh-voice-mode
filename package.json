@@ -1,6 +1,6 @@
 {
   "name": "dsh-voice-mode",
-  "version": "0.7.45",
+  "version": "0.7.46",
   "description": "Voice input (ASR / STT) and TTS read-aloud for DeepSeek Harness — DSH 语音插件：本地语音识别输入、按住说话、回复朗读与实时字幕打断",
   "author": {
     "name": "qishuilalala",

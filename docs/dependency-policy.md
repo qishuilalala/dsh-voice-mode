@@ -28,11 +28,13 @@
 - PR #43（`cordis` ^4.0.2 → ^4.0.5）、#44（`dsh-system-prompt` 0.1.5-rc.1 → 0.1.5-rc.3）
   属开发期类型依赖，CI 全绿即合并。
 - PR #76（`ai-plugin-scanner-action` 1.2.817 → 1.2.818）属 CI 动作依赖，全绿即合并。
-- PR #77（`sherpa-onnx` / `sherpa-onnx-node` 1.13.6 → 2.0.2）**未合并并关闭**，理由与 #42 同类：
-  运行时 major 需「API 面比对 + 真模型回归」双条件。本次仅完成 API 名面比对（
-  `createOnlineRecognizer` / `createVad` / `readWave` 等仍导出、新增 forced-aligner，未见名字级破坏），
-  但真模型回归在本机仍不可行（ASR 探针返回空、TTS PCM 非确定性），且 2.0.x 含贪心搜索 decoder
-  位置修正（落在本插件解码路径上），CI 的 stub 覆盖不到。待真模型回归可用后以当时最新 2.0.x 重新提交。
+- PR #77（`sherpa-onnx` / `sherpa-onnx-node` 1.13.6 → 2.0.2）当时关闭；**2026-11-26 已按本政策完成升级**：
+  先做 API 名面比对（`createOnlineRecognizer` / `createVad` / `readWave` 等仍导出、新增 forced-aligner，
+  未见名字级破坏），再用**真实模型**离线闸（`test/offline-gates.mjs`，TTS→ASR 闭环）做行为回归：
+  1.13.6 为 **9/10**（5s 定稿 11034ms 超 8000ms 预算），2.0.3 为 **10/10**（同一项 6120ms，TTS 16.5s→9.1s）。
+  结论：升级并配对到同一版本 `sherpa-onnx@2.0.3` + `sherpa-onnx-node@2.0.3`（此前 `sherpa-onnx` 用 caret、
+  node addon 用精确版本，易出现两个不同小版本并存的错配）。教训：本仓**已具备**真模型回归手段，
+  「真模型回归不可行」的说法不成立，后续运行时 major 一律先跑该闸再定。
 
 ## 兼容性矩阵的位置
 

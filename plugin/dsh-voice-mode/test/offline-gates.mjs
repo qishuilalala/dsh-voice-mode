@@ -10,6 +10,7 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync, symlinkSync } from 'n
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { createRequire } from 'node:module'
 import { build } from 'esbuild'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
@@ -62,6 +63,22 @@ async function buildHarness(workDir) {
   return harnessPath
 }
 
+/**
+ * 探测 ASR 实际使用的后端：原生 N-API addon 可用则为 native（多线程），否则走 WASM（单线程）。
+ * 结果只用于输出可诊断信息，不参与判定——判定仍用统一预算，避免为环境差异造两套阈值。
+ */
+function detectSherpaBackend() {
+  try {
+    const req = createRequire(join(pluginRoot, 'package.json'))
+    const native = req('sherpa-onnx-node')
+    return typeof native?.OnlineRecognizer === 'function'
+      ? { backend: 'native', threads: '多线程(默认 4)' }
+      : { backend: 'wasm', threads: '1' }
+  } catch {
+    return { backend: 'wasm', threads: '1' }
+  }
+}
+
 function wavToSamples(buf) {
   if (buf.toString('ascii', 0, 4) !== 'RIFF') throw new Error('not RIFF')
   const off = buf.indexOf('data') + 8
@@ -83,7 +100,20 @@ async function main() {
   const { createAsrRuntime, createSherpaVitsEngine, pcmToWav } = mod
   const cacheDir = process.env.DSHVM_MODEL_CACHE || join(process.env.HOME || '/root', '.cache', 'dsh-voice-mode', 'models')
   const SOURCE_TEXT = '今天天气很好，我们一起去公园散步吧。'
+  // 记录实际解析到的运行时栈与后端：延迟预算的绝对值和后端强相关（WASM 单线程 vs 原生 addon），
+  // 失败时必须能从输出判断是「真回归」还是「换了后端/机器」。2026-11-26 升级 sherpa-onnx 2.0.3 后实测：
+  // 同一预算在 WASM 单线程下 5s 定稿 6.1s（旧 1.13.6 为 11.0s），故不按后端拆档，只把后端打进输出。
+  const knownVersions = (names) => names.map((n) => {
+    try {
+      const pkgPath = join(pluginRoot, 'node_modules', n, 'package.json')
+      return n + '@' + JSON.parse(readFileSync(pkgPath, 'utf8')).version
+    } catch {
+      return n + '@(未安装)'
+    }
+  }).join(' ')
+  const { backend, threads } = detectSherpaBackend()
   console.log('offline-gates：cache=' + cacheDir)
+  console.log('offline-gates：栈=' + knownVersions(['sherpa-onnx', 'sherpa-onnx-node']) + ' / 后端=' + backend + ' / 线程=' + threads)
 
   const tts = createSherpaVitsEngine({ kind: 'vits', cacheDir, modelHost: () => '', allowCustomHost: false, broadcast: () => undefined })
   let wav

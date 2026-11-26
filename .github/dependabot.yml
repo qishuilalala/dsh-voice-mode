@@ -12,6 +12,9 @@ updates:
     groups:
       native-runtime:
         patterns: ["sherpa-onnx", "sherpa-onnx-node"]
+        # 运行时 major 不能只靠 CI 判定（见 docs/dependency-policy.md）：需 API 面比对 + 真模型回归。
+        # 故本组只自动提 minor/patch，major 由维护者显式发起（避免每两周提一次再人工关闭）。
+        update-types: ["minor", "patch"]
       build-tool:
         patterns: ["esbuild"]
       maintenance:
