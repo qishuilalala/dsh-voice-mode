@@ -934,7 +934,7 @@ class AgentDefaultModelConfig extends Service {
 ## 33. engines 准入承诺 × 矩阵一致性守卫（2026-11-23 新增机械门禁）
 
 - **要治的病**：`engines.dsh` 是对外准入承诺，但仓库此前**没有任何**机械校验保证「承诺区间 ⊆ 已实证范围」。2026-11-23 上游开 `0.2.3` 线时（§31bis/§32），`<0.3.0-0` 的声明早已覆盖该线而矩阵里没有任何 0.2.3 实证，且该线会让语音回合崩溃——只能靠人工巡检发现。
-- **处置**：新增 `scripts/check-engines-matrix.mjs`（`npm run check:engines`），判据 R1–R7 见 [依赖政策 §engines 准入承诺 × 验证矩阵](../dependency-policy.md)；已接入 CI（`ci.yml` 门禁步骤）与发版门禁（`release.yml`，typecheck 之后、publish 之前）。自测 `test/check-engines-matrix.test.mjs` 覆盖四个事故形态与例外登记（含本次真实事故：上游新增 0.2.3 线但矩阵无该线 → R7 必红）。
+- **处置**：新增 `scripts/check-engines-matrix.mjs`（`npm run check:engines`），判据 R1–R7 见 [依赖政策 §engines 准入承诺 × 验证矩阵](dependency-policy.md)；已接入 CI（`ci.yml` 门禁步骤）与发版门禁（`release.yml`，typecheck 之后、publish 之前）。自测 `test/check-engines-matrix.test.mjs` 覆盖四个事故形态与例外登记（含本次真实事故：上游新增 0.2.3 线但矩阵无该线 → R7 必红）。
 - **当前结论**：`✓ engines.dsh >=0.1.1-rc.2 <0.3.0-0 与矩阵自洽：现行 10 版 / 历史 28 版、区间内已发布 39 版全部有线级实证`。
 - **登记的唯一已知缺口**：`0.1.3` 线——上游只发布过 `0.1.3-alpha.2`，从未成为 latest/next；实测其 9 个注入锚点齐全、宿主 peer 为 cordis `^4.0.2`，技术上可补验（typecheck 映射 + 隔离核心冒烟），因无实际用户面而登记为「已声明未验证」。若要收编，路径已写在 `DECLARED_UNVERIFIED_LINES` 注释里。
 - **说明 R5 的粒度选择**：按 `major.minor`（小版本线）而非三段粒度判定上界。本项目对外声明的是**准入范围**（可宽于逐版实证，README/CONTEXT 有明示），逐版强制会让声明失去意义；而「跨到一条从没验证过的小版本线」是可执行的红线，正对应本次事故。
