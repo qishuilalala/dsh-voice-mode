@@ -101,3 +101,82 @@ test('E2E UX: /toggle 429 rate limit surfaces an actionable hint (rate_limited)'
     c.close()
   }
 })
+
+
+test('E2E UX: voice_disabled (403) surfaces an actionable hint', async () => {
+  const r = micRenderer()
+  const c = await voiceClient({ react: reactStub, 'asr.ts': asrStub })
+  const baseFetch = globalThis.fetch
+  try {
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes('/voice-mode/toggle')) {
+        return {
+          ok: false,
+          status: 403,
+          json: async () => ({ code: 'voice_disabled', error: 'voice mode disabled' }),
+        }
+      }
+      return baseFetch(url, init)
+    }
+    await r.mount(() =>
+      c.MicButton({
+        bus: c.bus,
+        sessionId: 's1',
+        useSession: (fn) => fn({ running: false }),
+        useInput: (fn) => fn({ draft: '', phase: 'idle' }),
+        inputActions: { setDraft() {}, submit() {} },
+      }),
+    )
+    r.button().props.onClick({ detail: 1 })
+    await r.flush()
+
+    const rendered = r.text()
+    assert.match(
+      rendered,
+      /(语音模式已禁用|Voice mode disabled)/,
+      `expected a visible disabled hint, rendered text: ${rendered.slice(0, 300)}`,
+    )
+  } finally {
+    globalThis.fetch = baseFetch
+    r.close()
+    c.close()
+  }
+})
+
+test('E2E flow: turn state and sentence captions follow real SSE events', async () => {
+  const r = micRenderer()
+  const c = await voiceClient({ react: reactStub, 'asr.ts': asrStub })
+  try {
+    await r.mount(() =>
+      c.MicButton({
+        bus: c.bus,
+        sessionId: 's1',
+        useSession: (fn) => fn({ running: false }),
+        useInput: (fn) => fn({ draft: '', phase: 'idle' }),
+        inputActions: { setDraft() {}, submit() {} },
+      }),
+    )
+    r.button().props.onClick({ detail: 1 })
+    await r.flush()
+    assert.equal(c.bus.activeSessionId, 's1', 'entry must claim the session')
+
+    // Real SSE 'turn' event drives the visible turn state.
+    c.emit('turn', { sessionId: 's1', state: 'agent-speaking' })
+    await r.flush()
+    assert.equal(c.bus.ui.turn, 'agent-speaking')
+
+    // Real audio frames produce playback state + captions.
+    c.audio('s1', 1)
+    await r.flush()
+    assert.equal(c.bus.ui.playing, true, 'final audio frame must start playback')
+    assert.equal(c.bus.ui.playingCaption, 's1', 'caption must follow the sentence text')
+
+    // Leaving the mode clears the turn state.
+    await c.bus.exit('s1')
+    await r.flush()
+    assert.equal(c.bus.ui.turn, 'idle')
+  } finally {
+    r.close()
+    c.close()
+  }
+})
