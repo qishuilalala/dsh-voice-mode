@@ -15,6 +15,11 @@ Please do **not** disclose vulnerability details in a public issue. Use GitHub's
 插件的 HTTP 面（`/voice-mode/*`）遵循宿主安全模型：默认仅回环访问（显式开放 LAN 时需部署侧鉴权，且设置与密钥写入始终要求回环）、同源与跨站请求头校验、请求体大小上限、按端点限流及会话存在性校验；在线 TTS 密钥仅以权限 0600 保存在宿主侧覆盖层文件，读取接口永不回传明文，远程合成请求禁用跨源重定向并拒绝内嵌凭据的地址；模型下载限制目标主机，主要模型文件按固定 SHA256 校验，辅助目录文件使用文件清单与本地存在性检查。权限与数据流的完整披露见 [中文使用说明](plugin/dsh-voice-mode/README.md) 的「权限、隐私与安全边界」。
 The plugin's HTTP surface (`/voice-mode/*`) follows the host security model: loopback by default (explicit LAN exposure requires deployment authentication, while settings and secret writes always require loopback), same-origin and cross-site fetch checks, body-size caps, per-endpoint rate limiting, and session existence checks; online TTS API keys are stored host-side only with 0600 permissions and never returned in plaintext, and remote synthesis requests disallow redirects and reject embedded URL credentials; model downloads restrict destination hosts, with pinned SHA256 digests for primary model files and manifest/presence checks for auxiliary directories. See "Permissions, Privacy & Security" in [English Documentation](plugin/dsh-voice-mode/README.en.md) for the full disclosure.
 
+## 遥测与启动外联 / Telemetry & Startup Network
+
+**零遥测**：插件不收集使用统计、崩溃上报或行为埋点；**启动不发起任何网络请求**。网络访问仅发生在你显式触发且配置了对应引擎/端点时（在线 TTS、云端 ASR、BYOK LLM、模型下载），完整数据流见插件 README 的「权限、隐私与安全边界」。
+**Zero telemetry**: the plugin collects no usage statistics, crash reports, or analytics, and makes **no network requests at startup**. Network access happens only when you explicitly trigger a configured engine or endpoint (online TTS, cloud ASR, BYOK LLM, model downloads); see "Permissions, Privacy & Security" in the plugin README for the full data flow.
+
 ## 历史扫描命中与处置（HOL Plugin Scanner）
 
 本仓库已接入 [HOL Plugin Scanner](https://github.com/hashgraph-online/hol-guard) 的持续扫描（`.github/workflows/hol-scanner.yml`，按上游指南 SHA 钉住）。以下是 0.7.33 治理前的三类历史命中，保留成因便于复核。0.7.33 已通过文案键名调整、公开协议令牌的等值拆分及测试沙箱迁移消除这些命中；以下原始写法不代表当前源码。
