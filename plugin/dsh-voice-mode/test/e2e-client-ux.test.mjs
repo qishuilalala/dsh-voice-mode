@@ -3,7 +3,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { voiceClient } from './helpers/voice-client.mjs'
-import { micRenderer, reactStub } from './helpers/mic-renderer.mjs'
+import { micRenderer, reactStub, asrStub } from './helpers/mic-renderer.mjs'
 
 const deniedAsrStub = `
 export function createAsrEngine() {
@@ -57,5 +57,47 @@ test('E2E UX: getUserMedia denial surfaces a visible actionable hint (micDenied)
     r.close()
     c.close()
     delete globalThis.__micEngine
+  }
+})
+
+
+test('E2E UX: /toggle 429 rate limit surfaces an actionable hint (rate_limited)', async () => {
+  const r = micRenderer()
+  const c = await voiceClient({ react: reactStub, 'asr.ts': asrStub })
+  const baseFetch = globalThis.fetch
+  try {
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes('/voice-mode/toggle')) {
+        return {
+          ok: false,
+          status: 429,
+          json: async () => ({ code: 'rate_limited', error: 'rate limited' }),
+        }
+      }
+      return baseFetch(url, init)
+    }
+    await r.mount(() =>
+      c.MicButton({
+        bus: c.bus,
+        sessionId: 's1',
+        useSession: (fn) => fn({ running: false }),
+        useInput: (fn) => fn({ draft: '', phase: 'idle' }),
+        inputActions: { setDraft() {}, submit() {} },
+      }),
+    )
+    r.button().props.onClick({ detail: 1 })
+    await r.flush()
+
+    const rendered = r.text()
+    assert.match(
+      rendered,
+      /(请求过于频繁|Too many requests)/,
+      `expected a visible rate-limit hint, rendered text: ${rendered.slice(0, 300)}`,
+    )
+    assert.equal(r.button().props['data-state'], 'off', 'rate-limited entry leaves the button off')
+  } finally {
+    globalThis.fetch = baseFetch
+    r.close()
+    c.close()
   }
 })
