@@ -1,7 +1,7 @@
 {
   "name": "dsh-voice-mode",
   "version": "0.7.46",
-  "description": "Voice input (ASR / STT) and TTS read-aloud for DeepSeek Harness — DSH 语音插件：本地语音识别输入、按住说话、回复朗读与实时字幕打断",
+  "description": "DSH 语音插件：本地流式语音识别输入、按住说话、回复朗读、实时字幕与发声打断（含 VITS/Kokoro/Edge/OpenAI/MiMo）。",
   "author": {
     "name": "qishuilalala",
     "url": "https://github.com/qishuilalala"
