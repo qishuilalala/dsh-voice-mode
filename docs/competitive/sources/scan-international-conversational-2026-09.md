@@ -98,6 +98,6 @@ dsh 已在声学侧（自适应阈值 + 朗读期超灵敏）做到接近头部�
 - https://www.apple.com/newsroom/2026/06/apple-introduces-siri-ai-a-profoundly-more-capable-and-personal-assistant（Apple Siri AI WWDC 2026）
 - https://www.apple.com/apple-intelligence（Apple Intelligence）
 - https://github.com/qishuilalala/dsh-voice-mode（本插件 GitHub README）
-- /mnt/dsh-voice-mode/CONTEXT.md（本插件开发者上下文）
+- <repo>/CONTEXT.md（本插件开发者上下文）
 
 > 注：二手评测未引用；2 条标"待核"（Anthropic 官方页未一手抓到、Sesame CSM 论文 PDF 404）。

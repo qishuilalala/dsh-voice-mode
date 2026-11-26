@@ -20,7 +20,7 @@
 ### 0.2 每批固定验证序列（任何一批不过则停）
 
 ```bash
-cd /mnt/dsh-voice-mode/plugin/dsh-voice-mode
+cd <repo>/plugin/dsh-voice-mode
 node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit        # ① host 侧（类型错最先暴露，成本最低）
 node node_modules/typescript/bin/tsc -p tsconfig.client.json --noEmit # ② client 侧
 node build.mjs                                                       # ③ 重建 lib（npm test 含 verify-client 的 lib mtime ≥ src 断言——src 改后不先 build 必失败；初版顺序此处自相矛盾，2026-09-14 批 1 执行者发现后定稿修正）

@@ -6,7 +6,7 @@
 ## 实测命令
 
 ```bash
-cd /mnt/dsh-voice-mode/plugin/dsh-voice-mode
+cd <repo>/plugin/dsh-voice-mode
 node -e "const m=await import('@deepseek-ai/dsh-llm');console.log(Object.keys(m).filter(k=>!k.startsWith('_')).length)"
 # → 62
 ```

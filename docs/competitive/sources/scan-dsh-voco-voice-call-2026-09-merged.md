@@ -4,7 +4,7 @@
 >
 > **抓取日期**：2026-09-15 ｜ **作者**：研究子会话（父 agent_id: session-b5f2d733-9d99-4e10-9ef3-b8ac97b7b24e）
 >
-> **本仓基线**：`/mnt/dsh-voice-mode/plugin/dsh-voice-mode/src/`（9k+ 行 TS 源码）已 CodeGraph 索引（项目 slug `dsh-voice-mode-54a8`），CONTEXT.md 与 ADR-0001/0003/0005/0006/0007 已通读。本报告**不修改任何源码**，只新增本文件 + 末尾建议落点。
+> **本仓基线**：`<repo>/plugin/dsh-voice-mode/src/`（9k+ 行 TS 源码）已 CodeGraph 索引（项目 slug `dsh-voice-mode-54a8`），CONTEXT.md 与 ADR-0001/0003/0005/0006/0007 已通读。本报告**不修改任何源码**，只新增本文件 + 末尾建议落点。
 >
 > **本仓 grep 验证**：方向 A（`background.?agent|agent.?delegation|backgroundAgent|delegate.*agent`）→ 0 命中；方向 B（`offer_call|offerCall|ringing|incoming.?call|agent.?initiated|voice.?call`）→ 2 命中但仅出现在 `docs/competitive/sources/scan-audio-landscape-2026-09.md:198`（竞品调研）与其他竞争文档（741 行），**src/ 内部 0 命中**。即两条新方向在本仓 host 平面基础设施完全缺失。
 
@@ -408,14 +408,14 @@ const fullAccessPolicy = { mode: 'danger-full-access' as const, workspaceRoot: p
 
 ### 本仓基线（dsh-voice-mode）
 
-- `plugin/dsh-voice-mode/src/index.ts`（1145 行，host 平面装配 + 12 处 `ctx.webServer.register(prefix, ...)`）：本机路径 `/mnt/dsh-voice-mode/plugin/dsh-voice-mode/src/index.ts`
-- `plugin/dsh-voice-mode/src/client.tsx`（2446 行，浏览器侧语音模式）：本机路径 `/mnt/dsh-voice-mode/plugin/dsh-voice-mode/src/client.tsx`
-- `CONTEXT.md`：本机路径 `/mnt/dsh-voice-mode/CONTEXT.md`
+- `plugin/dsh-voice-mode/src/index.ts`（1145 行，host 平面装配 + 12 处 `ctx.webServer.register(prefix, ...)`）：本机路径 `<repo>/plugin/dsh-voice-mode/src/index.ts`
+- `plugin/dsh-voice-mode/src/client.tsx`（2446 行，浏览器侧语音模式）：本机路径 `<repo>/plugin/dsh-voice-mode/src/client.tsx`
+- `CONTEXT.md`：本机路径 `<repo>/CONTEXT.md`
 - ADR 文件：
-  - `/mnt/dsh-voice-mode/docs/adr/0001-native-aec-primary.md`
-  - `/mnt/dsh-voice-mode/docs/adr/0003-server-side-vad.md`
-  - `/mnt/dsh-voice-mode/docs/adr/0005-acoustic-regression-harness.md`
-  - `/mnt/dsh-voice-mode/docs/adr/0006-barge-in-auto-degrade.md`
-  - `/mnt/dsh-voice-mode/docs/adr/0007-emotion-tag-dsl.md`
+  - `<repo>/docs/adr/0001-native-aec-primary.md`
+  - `<repo>/docs/adr/0003-server-side-vad.md`
+  - `<repo>/docs/adr/0005-acoustic-regression-harness.md`
+  - `<repo>/docs/adr/0006-barge-in-auto-degrade.md`
+  - `<repo>/docs/adr/0007-emotion-tag-dsl.md`
 - CodeGraph 索引：`~/.codegraph/projects/dsh-voice-mode-54a8/`
-- 本报告输出：`/mnt/dsh-voice-mode/docs/competitive/agent-call-landscape-2026-09.md`
+- 本报告输出：`<repo>/docs/competitive/agent-call-landscape-2026-09.md`

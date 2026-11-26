@@ -205,7 +205,7 @@ mic 实际渲染由真实实例佐证：配置完整的 dsh 0.1.1-rc.2 上 `docu
 
 ### 升级结果（2026-09-14，0.1.5-alpha.2 → 0.1.5-rc.2）
 
-- **方式**：原子升级，`systemd-run --unit=upgrade-dsh-015rc2` 独立单元执行（`/mnt/work/upgrade-dsh-015rc2.sh`），失败自动回滚 `/mnt/work/dsh-0.1.5-alpha.2-pre-rollback-20260914-095242.tar.gz`。
+- **方式**：原子升级，`systemd-run --unit=upgrade-dsh-015rc2` 独立单元执行（`<external>/work/upgrade-dsh-015rc2.sh`），失败自动回滚 `<external>/work/dsh-0.1.5-alpha.2-pre-rollback-20260914-095242.tar.gz`。
 - **结果**：`STATUS: OK`；`dsh --version=0.1.5-rc.2`；`/voice-mode` 200；NRestarts=0；journal 0 错误关键字。
 - **0.1.5-rc.1 → 0.1.5-rc.2**：tarball 解包 diff 仅 `package.json`（子包依赖版本号 bump），代码层零变更。
 - **Provider 列表**（升级后实测）：`deepseek-official`, `opencode-go`, `openrouter`, `minimax`；agent-default-model = `minimax / MiniMax-M3`。
@@ -495,7 +495,7 @@ class AgentDefaultModelConfig extends Service {
 
 ### 12.6 测试装置备注
 
-- 本机 `node_modules` 由 `/home/www` 的 pnpm store 链接，root 下 `typecheck-dual.sh` 的 `pnpm add` 报 `ERR_PNPM_UNEXPECTED_STORE`；用 `pnpm_config_store_dir=/home/www/.local/share/pnpm/store/v11` 环境变量绕过（`npm_config_store_dir` 无效）。
+- 本机 `node_modules` 由 `<home>` 的 pnpm store 链接，root 下 `typecheck-dual.sh` 的 `pnpm add` 报 `ERR_PNPM_UNEXPECTED_STORE`；用 `pnpm_config_store_dir=<home>/.local/share/pnpm/store/v11` 环境变量绕过（`npm_config_store_dir` 无效）。
 - `/tmp/dshcore` 在本轮开始时不存在，已按 `ensure-core.sh` 重建三核心。
 
 ---
@@ -663,7 +663,7 @@ class AgentDefaultModelConfig extends Service {
 | L3 runtime 冒烟 | ✅ 宿主端点、中英文界面、设置页（卡片/写入/刷新保留/迁移/热切换/非法值与跨源拒绝） |
 | L4 真流程（真 LLM） | ✅ 2 帧 SSE 音频 / 0 tts-error |
 
-- 环境注记：本机以 root 跑 `typecheck-dual.sh` 时，`node_modules` 由 `www` 的 pnpm store 链入，pnpm 会报 `ERR_PNPM_UNEXPECTED_STORE`（脚本把 `pnpm add` 输出吞掉，表现为「pnpm add 失败」）；设 `pnpm_config_store_dir=/home/www/.local/share/pnpm/store/v11` 即可，与 alpha.2 本身无关。
+- 环境注记：本机以 root 跑 `typecheck-dual.sh` 时，`node_modules` 由 `www` 的 pnpm store 链入，pnpm 会报 `ERR_PNPM_UNEXPECTED_STORE`（脚本把 `pnpm add` 输出吞掉，表现为「pnpm add 失败」）；设 `pnpm_config_store_dir=<home>/.local/share/pnpm/store/v11` 即可，与 alpha.2 本身无关。
 - 已纳入 `verify-dual.sh` 字面量矩阵（14 版锚点/typecheck、11 核心冒烟），`check-dsh-version.sh` 退出 0。插件运行行为零改动，无需发版。
 
 ## 18. 0.2.1-alpha.3 复核（2026-10-15，上游 alpha 通道新版本）

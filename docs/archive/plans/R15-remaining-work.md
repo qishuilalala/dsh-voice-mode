@@ -210,7 +210,7 @@ R15 阶段围绕**已发布代码（v0.7.27）**做了三轮「独立 sweep → 
 ## 5. 快速开始下一轮
 
 ```bash
-cd /mnt/dsh-voice-mode
+cd <repo>
 git fetch origin && git rev-list --left-right --count origin/main...HEAD   # 期望 0 0
 cd plugin/dsh-voice-mode
 npm test 2>&1 | tail -2          # 期望 exit 0 / 827 ✓ / 53 套件

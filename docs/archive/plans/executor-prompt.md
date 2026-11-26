@@ -20,7 +20,7 @@
 3. **PoC 前置**：计划 3.0a（批 1）等标注「开工前置 PoC」的步骤必须最先做，未通过按计划降级路径处理，不得跳过。
 4. **每批固定验证四连**（任一失败即停）：
    ```bash
-   cd /mnt/dsh-voice-mode/plugin/dsh-voice-mode
+   cd <repo>/plugin/dsh-voice-mode
    node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
    node node_modules/typescript/bin/tsc -p tsconfig.client.json --noEmit
    npm test          # 必须含上一批全部 + 本批新增，零失败

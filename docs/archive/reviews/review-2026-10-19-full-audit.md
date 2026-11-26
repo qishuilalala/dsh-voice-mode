@@ -57,7 +57,7 @@
 
 ### 3.2 战线二：本地 dsh 保持在最新版本
 
-- 现状：0.2.0-rc.2 = `latest`，达标（口径= npm latest）。升级 SOP 完备：`~/.dsh/docs/UPGRADES.md` + `/mnt/work/upgrade-dsh-020rc2.sh` + 回滚基线 `dsh-0.1.5-rc.3-pre-rollback-20261001-*.tar.gz`；先例「不升级生产 dsh 到 alpha」（v0.7.11 轮范围纪律）。
+- 现状：0.2.0-rc.2 = `latest`，达标（口径= npm latest）。升级 SOP 完备：`~/.dsh/docs/UPGRADES.md` + `<external>/work/upgrade-dsh-020rc2.sh` + 回滚基线 `dsh-0.1.5-rc.3-pre-rollback-20261001-*.tar.gz`；先例「不升级生产 dsh 到 alpha」（v0.7.11 轮范围纪律）。
 - 待明确：`next=0.2.1-rc.2` 已发布 2 天，0.2.1 稳定临近。「最新」= latest only，还是 latest+next 预升级？官方无「生产用哪个通道 / RC 能否用于生产」的说法（官网仅标「预览版」；36 个版本无稳定版）——这是官方缺口，只能由维护者自定口径。
 - 与本战线的耦合：本地 dsh 若升 next，插件在上面的运行面同样未验证（矩阵止于 alpha.3）；先验证后升级才符合既有纪律（0.2.0-rc.2 轮即先四层验证再升生产）。
 

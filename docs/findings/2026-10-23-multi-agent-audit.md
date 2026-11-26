@@ -1,6 +1,6 @@
 # dsh-voice-mode 现状与独立多代理审查（2026-10-23）
 
-> 基线：`/mnt/dsh-voice-mode` HEAD `dc828c8`（tag `v0.7.28`，已与 `origin/main` 同步）。
+> 基线：`<repo>` HEAD `dc828c8`（tag `v0.7.28`，已与 `origin/main` 同步）。
 > 方法：7 个只读审查代理按域并行（宿主核心 / ASR 采集 / host ASR 运行时 / TTS / 客户端 UI / 工程质量 / 临界点），
 > 主会话独立复核关键结论并做运行时取证。**历史文档、CHANGELOG、ADR、STATE 一律不作为事实**，
 > 所有结论只绑定当前源码（file:line）、运行时响应、日志或可复跑探针。
@@ -324,7 +324,7 @@ tag 不可复现 npm 产物字节（差异仅 BUILD_TAG 一行），发版链存
 - TTS 探针：`/tmp/rev-tts/{tree_offline.mjs, ssml_probe.cjs, hash_cost.mjs, real_worker_probe*.cjs, edge_handshake_probe.cjs}`。
 - 模型/纠错探针：`/tmp/probe-llm-correct.mjs`、`probe-models.mjs`、`probe-models-stall.mjs`、`probe-asrh-hang.mjs`、
   `probe-undici-bodytimeout.mjs`、`probe-sense-decode.mjs`。
-- 临界点探针：`/tmp/probe-limits.sh`、`/home/www/.cache/dsh-voice-mode` 实测、cgroup `memory.stat/events`。
+- 临界点探针：`/tmp/probe-limits.sh`、`<home>/.cache/dsh-voice-mode` 实测、cgroup `memory.stat/events`。
 - 代码锚点：本报告内所有 `file:line` 均对 HEAD `dc828c8` 有效；行号漂移时以符号名检索为准。
 
 ---

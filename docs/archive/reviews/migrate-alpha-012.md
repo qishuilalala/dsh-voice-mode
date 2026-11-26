@@ -119,13 +119,13 @@ voice-mode 用到的槽位/服务→对应 alpha 提供者：
 ### 线上升级待办顺序
 
 1. `npm install -g @deepseek-ai/dsh@0.1.2-alpha.4`（**不要 `--ignore-scripts`**）。
-2. 线上 profile `/home/www/.dsh/profiles/web`：确认 `dsh-voice-mode` 依赖以 link 或锁版本存在；`voice-mode` 已由 bundle patch 插入，检查是否与 profile 层 insert 重复。
+2. 线上 profile `<home>/.dsh/profiles/web`：确认 `dsh-voice-mode` 依赖以 link 或锁版本存在；`voice-mode` 已由 bundle patch 插入，检查是否与 profile 层 insert 重复。
 3. `systemctl restart dsh.service`；`dsh --version` → 0.1.2-alpha.4。
 4. 实测 `/voice-mode/*` 200 + 客户端麦克风按钮渲染 + 一次真实语音回合。
 
 ## 7. 其他第三方插件的 alpha 兼容风险（2026-09-02，非 voice-mode 范围）
 
-线上 profile `/home/www/.dsh/profiles/web` 里两个第三方插件引用了 **alpha 已移除**的客户端锚点包：
+线上 profile `<home>/.dsh/profiles/web` 里两个第三方插件引用了 **alpha 已移除**的客户端锚点包：
 
 | 插件 | 版本 | `dsh.client.inject` 里指向被移除包的项 |
 |---|---|---|
@@ -191,7 +191,7 @@ boot **失败**，根因是若干第三方插件的 **host half `import` 了 alp
 - 定位并清除 `~/.dsh/storages` 下损坏的 session-projection-cache 记录（属数据操作，须先备份 + 用户同意）；
 - 或让 alpha 侧 `dsh-storage-domain` 对旧格式宽容迁移（属 dsh 上游改动，非本插件）。
 
-> 恢复基线：`/home/www/.dsh/profiles/web/package.json.pre-alpha-20260902-113907.bak`、`pnpm-lock.yaml.pre-alpha-20260902-113907.bak`、`cordis.patch.yml.pre-alpha-20260902-113907.bak`（打回 `dsh --version` 退到 0.1.1-rc.2 即回 stable）。
+> 恢复基线：`<home>/.dsh/profiles/web/package.json.pre-alpha-20260902-113907.bak`、`pnpm-lock.yaml.pre-alpha-20260902-113907.bak`、`cordis.patch.yml.pre-alpha-20260902-113907.bak`（打回 `dsh --version` 退到 0.1.1-rc.2 即回 stable）。
 
 ## 10. 双向兼容（旧 0.1.1 + 新 0.1.2）落地
 

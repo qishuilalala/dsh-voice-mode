@@ -1,6 +1,6 @@
 # 真机对照基线审查：P0 六项 + 第一轮 A1-A10 + B3/B5/B9/D1
 
-> 基线：`/mnt/dsh-voice-mode/plugin/dsh-voice-mode/src/` 9k+ 行 TS 源码 + `/mnt/dsh-voice-mode/docs/competitive/backlog.md` 36 条 backlog
+> 基线：`<repo>/plugin/dsh-voice-mode/src/` 9k+ 行 TS 源码 + `<repo>/docs/competitive/backlog.md` 36 条 backlog
 > 方法：只读、对照 `file:line`、不重新调研、不修改任何文件
 > 字段：每项给「结论 / 证据 / 工作量重估 / 风险点」
 
