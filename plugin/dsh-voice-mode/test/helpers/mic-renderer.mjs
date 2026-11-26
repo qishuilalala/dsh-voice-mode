@@ -20,7 +20,10 @@ export function micRenderer() {
   const flush=async()=>{for(let i=0;i<40;i++){await Promise.resolve();if(dirty&&renderFn){dirty=false;pos=0;tree=renderFn();while(effects.length)effects.shift()()}}}
   const buttons=n=>!n||typeof n!=='object'?[]:[...(n.type==='button'?[n]:[]),...(n.props?.children??[]).flat(Infinity).flatMap(buttons)]
   const unmount=()=>{renderFn=null;for(const cell of cells)cell?.cleanup?.();cells.length=0;effects.length=0;dirty=true}
+  const textOf=(n)=>n==null||typeof n==='boolean'?'':typeof n==='string'||typeof n==='number'?String(n):Array.isArray(n)?n.map(textOf).join(''):n.props?.children==null?'':textOf(n.props.children)
   return {hooks,flush,unmount,
+    get tree(){return tree},
+    text(){return textOf(tree)},
     async mount(fn){renderFn=fn;await flush()},
     async render(){dirty=true;await flush()},
     button(){return buttons(tree).find(n=>n.props.onPointerDown)},
