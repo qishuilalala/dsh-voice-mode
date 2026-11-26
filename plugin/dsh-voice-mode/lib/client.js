@@ -7285,7 +7285,7 @@ function telemetryDeltas(tel) {
   }
   return out;
 }
-var BUILD_TAG = "a12bee7";
+var BUILD_TAG = "c564e21";
 var TELEMETRY_FLAG = "dsh-voice-mode.telemetry";
 var telemetryEnabled = (() => {
   try {
