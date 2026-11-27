@@ -27,6 +27,18 @@ L4（真实 LLM 生成 → 语音播报）长期是「未闭环」项：此前�
 
 缺凭据时打印 `SKIP` 并 exit 0——CI 无密钥不应判红，但**跳过不是通过**，输出明确区分。要真正跑，需要至少一条可用 LLM 通道 + MiMo 密钥。
 
+## 生产实例旁证（2026-11-27）
+
+除脚本内的直连验证外，另核对过**运行中实例的真实生产路径**：`GET /voice-mode/config` 报告
+`ttsEngine=mimo`、`ttsKeyPresent=true`、`audioMime=audio/wav`；`POST /voice-mode/preview`（走同一队列与同一引擎）
+返回 `HTTP 200`、169 KB `audio/wav`。说明「MiMo 已配置可用」不是脚本内自证，而是线上路径可复核。
+
+## 在 CI 里真跑（可选）
+
+默认在 CI 中 **SKIP**（无凭据），只保证脚本不腐化。若希望 CI 也覆盖这条链路，需在仓库 Secrets 配
+`MIMO_API_KEY`（宿主侧 MiMo 密钥）与 `OPENROUTER_API_KEY`（或 `DEEPSEEK_API_KEY`），并把脚本纳入必需检查；
+注意这会把第三方 API 调用与费用带进 CI，是否开启属维护者决策。
+
 ## 最近一次证据（2026-11-27）
 
 ```
