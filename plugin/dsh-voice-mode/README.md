@@ -275,4 +275,4 @@ pnpm run typecheck        # 宿主与客户端双端 TypeScript 类型检查
 pnpm test                 # 运行全部单元测试、结构守卫与文档一致性门禁
 ```
 
-本项目基于 [MIT 许可证](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/LICENSE) 开源；早期基础实现部分派生自 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)（MIT）。
+本项目基于 [MIT 许可证](https://github.com/qishuilalala/dsh-voice-mode/blob/main/plugin/dsh-voice-mode/LICENSE) 开源（`LICENSE` 保持标准 MIT 原文，便于许可证识别）；早期基础实现部分派生自 [haoku123/dsh-voice](https://github.com/haoku123/dsh-voice)（MIT），派生署名与范围说明见 [NOTICE](https://github.com/qishuilalala/dsh-voice-mode/blob/main/NOTICE)。

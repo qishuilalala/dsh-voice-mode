@@ -1,0 +1,11 @@
+dsh-voice-mode
+Copyright (c) 2026 dsh-voice-mode contributors
+
+This product includes software derived from dsh-voice
+(https://github.com/haoku123/dsh-voice), Copyright (c) 2026 haoku123,
+licensed under the MIT License. The derived portions were substantially
+modified and extended for DeepSeek Harness (dsh) integration.
+
+The MIT license text itself is kept canonical and unmodified in LICENSE so that
+license detection tools can identify it; attribution for derived work lives here
+rather than inside the license text.

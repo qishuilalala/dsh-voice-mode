@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **许可证元数据无法识别**：`LICENSE` 里混入了「Portions derived from…」署名段，导致 GitHub 许可证识别为 `NOASSERTION`，并连带 DSH Store 的自动上架检查判为 blocked。现把 `LICENSE` 恢复为标准 MIT 原文（中英仓库根与插件包各一份），派生署名与修改范围移入新增的 `NOTICE`（随 npm 包分发），README 许可证说明补指针。
+
 ### 维护
 
 - L4（真实 LLM 回复 → 朗读）转为**常驻回归项**：新增 `npm run verify:l4`（`test/l4-real-llm.mjs`）——真实 LLM 通道取回复原文，交 MiMo 引擎合成，断言非空回复、音频字节、容器 MIME、两段延迟预算，并自检凭据不外泄；无凭据时明确 SKIP（非通过）。首次通过证据：回复 26 字/1.14s、音频 215KB wav/3.03s。说明见 `docs/qa/l4-real-llm.md`。它**不替代**真机四项（不覆盖收音、播放与听感）。
