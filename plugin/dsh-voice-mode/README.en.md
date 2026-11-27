@@ -232,6 +232,18 @@ Rules starting or ending with ASCII letters/digits match whole words only (`sina
 
 ---
 
+## Install, Enable & Uninstall
+
+| Stage | Operation |
+| --- | --- |
+| Install | `dsh plugin --profile web add dsh-voice-mode` (`web` = your profile name; the profile is initialised on first use) |
+| Enable | Restart or reload the host, then configure under Settings → Voice Mode. Voice mode is off by default and never changes host behaviour silently |
+| Upgrade | Re-run `add` with the target version; browser-side changes apply on page reload, host-side changes need a host restart |
+| Uninstall | `dsh plugin --profile web remove dsh-voice-mode`, then restart the host. To remove all traces also delete `$DSH_HOME/voice-mode.settings.json` and the model cache (`~/.cache/dsh-voice-mode/`, or `%LOCALAPPDATA%\dsh-voice-mode\` on Windows) |
+| Rollback | Reinstall the previous version (`add dsh-voice-mode@<previous>`) and restart; the settings overlay is plain JSON and reads back directly |
+
+The plugin declares only a `prepack` script (used when packaging from source); installing or removing it runs no lifecycle scripts.
+
 ## Permissions, Privacy & Security
 
 | Capability | Plugin Behaviour | Data Destination |

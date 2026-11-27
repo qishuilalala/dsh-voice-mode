@@ -233,6 +233,18 @@ dsh plugin --profile web add .
 
 ---
 
+## 安装、启用与卸载
+
+| 阶段 | 操作 |
+| --- | --- |
+| 安装 | `dsh plugin --profile web add dsh-voice-mode`（`web` 换成实际 profile 名；首次使用会初始化该 profile） |
+| 启用 | 重启或刷新宿主后，在「设置 → 语音模式」按需配置；插件默认关闭语音模式，不会静默改动宿主行为 |
+| 升级 | 同安装命令加目标版本，或直接 `add` 最新版；浏览器侧改动刷新页面生效，宿主侧改动需重启宿主进程 |
+| 卸载 | `dsh plugin --profile web remove dsh-voice-mode` 后重启宿主；如需彻底清理，可删除用户设置覆盖层 `$DSH_HOME/voice-mode.settings.json` 与模型缓存目录（macOS/Linux `~/.cache/dsh-voice-mode/`，Windows `%LOCALAPPDATA%\dsh-voice-mode\`） |
+| 回滚 | 重新安装上一个版本（`add dsh-voice-mode@<上一版本>`）并重启宿主；本插件不做数据迁移，设置覆盖层可直接回读 |
+
+以上命令由 `dsh plugin` 转发给 profile 内包管理器，安装/卸载本身不执行本插件的任何生命周期脚本（本插件只声明 `prepack`，仅在从源码打包时使用）。
+
 ## 权限、隐私与安全边界
 
 | 能力类别 | 插件实际行为 | 数据去向 |

@@ -10,6 +10,7 @@
 ### 修复
 
 - **许可证元数据无法识别**：`LICENSE` 里混入了「Portions derived from…」署名段，导致 GitHub 许可证识别为 `NOASSERTION`，并连带 DSH Store 的自动上架检查判为 blocked。现把 `LICENSE` 恢复为标准 MIT 原文（中英仓库根与插件包各一份），派生署名与修改范围移入新增的 `NOTICE`（随 npm 包分发），README 许可证说明补指针。
+- **补齐商店契约所需的生命周期证据**：中英 README 新增「安装 / 启用 / 升级 / 卸载 / 回滚」对照表（命令经 `dsh plugin` 转发、`prepack` 不属安装期脚本、模型缓存与设置覆盖层的清理路径），对应 DSH Store 要求的 install/start/uninstall 证据。
 
 ### 维护
 
