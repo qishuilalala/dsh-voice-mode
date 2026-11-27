@@ -111,3 +111,4 @@ test/tab-switch-finalize.test.mjs
 test/check-engines-matrix.test.mjs
 test/e2e-client-ux.test.mjs
 test/check-release-sync.test.mjs
+test/l4-real-llm.mjs

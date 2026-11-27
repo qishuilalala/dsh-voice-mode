@@ -58,6 +58,7 @@
     "prepack": "node build.mjs",
     "test": "node scripts/run-tests.mjs",
     "verify:client": "node test/verify-client.mjs",
+    "verify:l4": "node test/l4-real-llm.mjs",
     "prefetch": "node scripts/prefetch.mjs",
     "list-voices": "node scripts/list-voices.mjs",
     "bench-asr": "node scripts/bench-asr.mjs",
