@@ -75,6 +75,7 @@
     "e2e:full": "bash scripts/full-e2e.sh",
     "check:engines": "node scripts/check-engines-matrix.mjs",
     "check:release-sync": "node scripts/check-release-sync.mjs",
+    "check:store": "node scripts/check-store-status.mjs",
     "check:root-manifest": "node scripts/check-root-manifest.mjs"
   },
   "dsh": {

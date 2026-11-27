@@ -1,0 +1,20 @@
+{
+  "capturedAt": "2026-11-27T06:47:20.072Z",
+  "version": "0.7.46",
+  "commit": "91bafe9e6897436981d91c4d76299807fe6c2ba0",
+  "status": "blocked",
+  "checkedAt": "2026-11-26T17:12:51.000Z",
+  "updatePolicy": "external-only",
+  "admissionState": "review-required",
+  "reasons": [
+    "GitHub repository license metadata is NOASSERTION",
+    "fixed-source license evidence needs manual review",
+    "runtime or optional dependencies require a separate supply-chain review",
+    "fixed-source security warnings require review",
+    "runtime source contains the files permission signal",
+    "runtime source contains the network permission signal",
+    "runtime source contains the commands permission signal",
+    "runtime source contains the credentials permission signal",
+    "dynamic module loading or code evaluation requires separate review"
+  ]
+}

@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 维护
+
+- 新增 DSH Store 上架状态跟进工具（`npm run check:store`）：拉取商店 catalog 条目的权威 JSON，与仓库内基线快照比对，逐条列出阻断原因的新增/消失，并判断「商店检查的 commit 是否落后本地 HEAD」以区分未复检与复检仍不合规。机制、已修项与判据见 `docs/qa/dsh-store-submission.md`；不纳入 CI 必过项（依赖第三方定时产物）。
+
 ### 修复
 
 - **许可证元数据无法识别**：`LICENSE` 里混入了「Portions derived from…」署名段，导致 GitHub 许可证识别为 `NOASSERTION`，并连带 DSH Store 的自动上架检查判为 blocked。现把 `LICENSE` 恢复为标准 MIT 原文（中英仓库根与插件包各一份），派生署名与修改范围移入新增的 `NOTICE`（随 npm 包分发），README 许可证说明补指针。
