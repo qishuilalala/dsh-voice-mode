@@ -60,6 +60,9 @@ jobs:
       # 发版门禁：engines 声明必须与已验证矩阵自洽（防止把没实证过的版本线写进准入承诺）
       - name: Engines × verified-matrix consistency check
         run: node scripts/check-engines-matrix.mjs
+      # 发版声明面：README/STATE 必须已跟到本次版本，否则「发出去的版本」与「文档说的版本」不一致
+      - name: Release declaration sync check
+        run: node scripts/check-release-sync.mjs
 
       - name: Publish to npm
         env:

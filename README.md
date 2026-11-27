@@ -23,7 +23,7 @@
 ## 当前状态
 
 - **宿主与跨平台兼容**：已对 `dsh 0.1.1-rc.2` 至 `0.2.3-alpha.2` 完成客户端注入锚点、宿主/浏览器双端类型检查与隔离运行态验证；完整版本证据、操作系统/架构/浏览器兼容表及未覆盖边界见[兼容契约](docs/compat-contract.md)。
-- **已发布版本**：`v0.7.45` 修复 dsh `0.2.3` 线上首个语音回合失败的问题并适配新宿主鉴权；延续 `v0.7.44` 的宿主入口 TypeScript 声明与双语说明。已发布功能包括 7 家在线 TTS 预设及按预设独立密钥、小米 MiMo 语音合成、识别纠错词表、四分段设置面板和全模式键盘与触屏操作提示。安装版本见 [npm](https://www.npmjs.com/package/dsh-voice-mode) 和 [GitHub Releases](https://github.com/qishuilalala/dsh-voice-mode/releases)。
+- **已发布版本**：`v0.7.46` 把运行时语音栈升级到 `sherpa-onnx` 2.0.3 配对版本（真实模型实测：5 秒语音定稿 11.0s→6.1s、合成 16.5s→9.1s、定稿准确率 100%）；`v0.7.45` 修复 dsh `0.2.3` 线上首个语音回合失败并适配新宿主鉴权；`v0.7.44` 起随包提供宿主入口 TypeScript 声明与双语说明。已发布功能包括 7 家在线 TTS 预设及按预设独立密钥、小米 MiMo 语音合成、识别纠错词表、四分段设置面板和全模式键盘与触屏操作提示。安装版本见 [npm](https://www.npmjs.com/package/dsh-voice-mode) 和 [GitHub Releases](https://github.com/qishuilalala/dsh-voice-mode/releases)。
 - **源码中的未发布改动**：共享语音核心与 Markdown 水平线开头的流式朗读修复见[变更日志](CHANGELOG.md#unreleased)。
 - **验证边界**：CI 检查覆盖类型、单测、构建产物一致性与全新安装加载，不等同真实麦克风声学或全平台硬件验收；包声明范围为 `>=0.1.1-rc.2 <0.3.0-0`，未列于兼容契约的版本不做兼容承诺。
 

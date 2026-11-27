@@ -59,6 +59,10 @@ jobs:
       # 上游开新线（2026-11-23 的 0.2.3）时声明早已覆盖而矩阵里没有任何实证。该步把不一致变红灯。
       - name: Engines × verified-matrix consistency check
         run: npm run check:engines
+      # 发版声明面一致性：CHANGELOG 最新已发布版本 == 两个 manifest == README「已发布版本」== STATE「当前正式版/回滚锚点」。
+      # 2026-11-26 发 v0.7.46 时漏了 README/STATE，次日巡检才发现；该步把漏同步变红灯。
+      - name: Release declaration sync check
+        run: npm run check:release-sync
 
   # 安装形态门禁：link/源码态测不出「别人从 npm 安装」的缺陷（0.7.17 及更早版本在 pnpm 11 / npm 全新安装、
   # dsh ≥0.1.7 已安装形态下无法使用，见 docs/adr/0011）。此 job 对打包产物做 pnpm(严格 build 脚本策略)+npm 全新安装并 import，

@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### 维护
+
+- 新增「发版声明面一致性」门禁（`npm run check:release-sync`，已接入 CI 与发版门禁）：校验 CHANGELOG 最新已发布版本、两个 manifest、README「已发布版本」、STATE「当前正式版/回滚锚点」五处一致。起因：2026-11-26 发 `v0.7.46` 时只改了版本号与 CHANGELOG，README 与 STATE 仍停在 `v0.7.45`，直到次日巡检才发现。
+
 ## [0.7.46] - 2026-11-26
 
 ### 变更
